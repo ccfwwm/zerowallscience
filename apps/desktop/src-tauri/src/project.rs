@@ -347,11 +347,16 @@ fn populate_import(
     mut meta: ProjectMeta,
 ) -> Result<ProjectInfo, String> {
     copy_tree(source, dir).map_err(|e| format!("could not copy the folder: {e}"))?;
-    // The source may have carried its own `.zerowall/` (if it was ever app-
-    // managed): drop it wholesale so a stale identity, a foreign project.json, or a
-    // legacy `.no-snapshots` opt-out — which would silently disable versioning for
-    // the fresh copy — cannot leak in. write_meta then re-creates ours.
-    let _ = force_remove_dir_all(&dir.join(".zerowall"));
+    // The source may have carried current or pre-ZeroWall app metadata. Drop both
+    // stores wholesale so stale identity, provenance, and snapshot policy cannot
+    // leak into the fresh copy. `write_meta` then creates only our current store.
+    for store in [".zerowall", ".openscience"] {
+        let path = dir.join(store);
+        if path.exists() {
+            force_remove_dir_all(&path)
+                .map_err(|e| format!("could not remove imported {store} metadata: {e}"))?;
+        }
+    }
     meta.imported_from = Some(source.to_string_lossy().to_string());
     write_meta(dir, &meta)?;
     // An imported project is the user's EXISTING work, so — unlike "New project",
@@ -547,7 +552,7 @@ pub fn open_project_folder(app: AppHandle, id: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_in, folder_slug, read_meta};
+    use super::{create_in, folder_slug, populate_import, read_meta};
     use std::fs;
 
     #[test]
@@ -793,6 +798,45 @@ mod tests {
         fs::create_dir_all(dir.join(".zerowall")).unwrap();
         fs::write(dir.join(".zerowall").join("project.json"), "{not json").unwrap();
         assert!(read_meta(&dir).is_none());
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn import_discards_current_and_legacy_workspace_metadata() {
+        let base = std::env::temp_dir().join(format!(
+            "zerowall-project-import-metadata-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&base);
+        let source = base.join("source");
+        fs::create_dir_all(source.join(".zerowall")).unwrap();
+        fs::create_dir_all(source.join(".openscience")).unwrap();
+        fs::write(source.join("paper.md"), "research\n").unwrap();
+        fs::write(source.join(".zerowall/project.json"), r#"{"id":"foreign"}"#).unwrap();
+        fs::write(source.join(".zerowall/.no-snapshots"), "stale opt-out\n").unwrap();
+        fs::write(source.join(".zerowall/provenance.jsonl"), "stale provenance\n").unwrap();
+        fs::write(source.join(".openscience/project.json"), r#"{"id":"legacy"}"#).unwrap();
+        fs::write(source.join(".openscience/provenance.jsonl"), "legacy provenance\n").unwrap();
+
+        let projects = base.join("projects");
+        fs::create_dir_all(&projects).unwrap();
+        let (destination, meta) = create_in(&projects, "Imported Study").unwrap();
+        let expected_id = meta.id.clone();
+        populate_import(&source, &destination, meta).unwrap();
+
+        let imported = read_meta(&destination).expect("fresh project metadata");
+        assert_eq!(imported.id, expected_id);
+        assert_ne!(imported.id, "foreign");
+        assert_ne!(imported.id, "legacy");
+        assert_eq!(imported.imported_from.as_deref(), Some(source.to_string_lossy().as_ref()));
+        assert!(!destination.join(".openscience").exists());
+        assert!(!destination.join(".zerowall/provenance.jsonl").exists());
+        assert!(
+            !destination.join(".zerowall/.no-snapshots").exists(),
+            "the source snapshot opt-out must not survive the import"
+        );
+        assert_eq!(fs::read_to_string(destination.join("paper.md")).unwrap(), "research\n");
+
         let _ = fs::remove_dir_all(&base);
     }
 

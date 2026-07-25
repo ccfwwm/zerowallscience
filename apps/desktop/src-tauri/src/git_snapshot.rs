@@ -29,6 +29,7 @@ const AUTHOR_EMAIL: &str = "zerowall-science@local";
 /// touching the user's branches, HEAD, working tree, or staging area. Inspect a
 /// branch's history with `git log refs/zerowall/snapshots/<branch>`.
 const SNAPSHOT_REF_PREFIX: &str = "refs/zerowall/snapshots";
+const LEGACY_SNAPSHOT_REF_PREFIX: &str = "refs/openscience/snapshots";
 
 /// The well-known SHA-1 of git's empty tree — used to skip the very first
 /// snapshot of an empty workspace (nothing to record yet).
@@ -351,11 +352,19 @@ fn encode_ref_component(name: &str) -> String {
 
 /// The snapshot ref for the workspace's current branch (one chain per branch).
 /// A detached HEAD snapshots into a shared `_detached` bucket.
-fn snapshot_ref(root: &Path) -> String {
+fn snapshot_ref_with_prefix(root: &Path, prefix: &str) -> String {
     match current_branch(root) {
-        Some(branch) => format!("{SNAPSHOT_REF_PREFIX}/{}", encode_ref_component(&branch)),
-        None => format!("{SNAPSHOT_REF_PREFIX}/_detached"),
+        Some(branch) => format!("{prefix}/{}", encode_ref_component(&branch)),
+        None => format!("{prefix}/_detached"),
     }
+}
+
+fn snapshot_ref(root: &Path) -> String {
+    snapshot_ref_with_prefix(root, SNAPSHOT_REF_PREFIX)
+}
+
+fn legacy_snapshot_ref(root: &Path) -> String {
+    snapshot_ref_with_prefix(root, LEGACY_SNAPSHOT_REF_PREFIX)
 }
 
 /// Resolve `rev` to a commit/tree SHA, or `None` if it does not exist (an unborn
@@ -584,6 +593,16 @@ pub fn commit(root: &Path, message: &str) -> Result<bool, String> {
     }
     let index = root.join(".git").join(SNAPSHOT_INDEX);
     let sref = snapshot_ref(root);
+
+    // The bundle rename also renamed the hidden snapshot namespace. Bridge the
+    // new per-branch ref once so lookups remain continuous and a new snapshot is
+    // parented to the legacy tip. The legacy ref is intentionally preserved.
+    if rev_parse(root, &sref).is_none() {
+        let legacy_ref = legacy_snapshot_ref(root);
+        if let Some(legacy_tip) = rev_parse(root, &legacy_ref) {
+            run(root, &["update-ref", &sref, &legacy_tip])?;
+        }
+    }
 
     // Stage the whole working tree into the DEDICATED index (never the user's).
     run_indexed(root, &index, &["add", "-A", "--", "."])?;
@@ -1034,6 +1053,45 @@ mod tests {
         assert!(rev_parse(&root, &feat_ref).is_some());
         assert_ne!(rev_parse(&root, &base_ref), rev_parse(&root, &feat_ref));
         assert_eq!(current_branch(&root).as_deref(), Some("feature/x"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn first_zerowall_snapshot_continues_the_legacy_snapshot_chain() {
+        if !git_available() {
+            eprintln!("git unavailable; skipping git snapshot test");
+            return;
+        }
+        let root = std::env::temp_dir().join(format!("zerowall-git-legacy-ref-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        super::run(&root, &["init"]).unwrap();
+        fs::write(root.join("research.md"), "base\n").unwrap();
+        super::run(&root, &["add", "research.md"]).unwrap();
+        super::run(&root, &["commit", "-m", "base"]).unwrap();
+
+        let branch = current_branch(&root).unwrap();
+        let legacy_ref = format!(
+            "refs/openscience/snapshots/{}",
+            super::encode_ref_component(&branch)
+        );
+        let head_tree = rev_parse(&root, "HEAD^{tree}").unwrap();
+        let legacy_tip = String::from_utf8_lossy(
+            &super::capture(&root, &["commit-tree", &head_tree, "-p", "HEAD", "-m", "legacy snapshot"]).unwrap(),
+        )
+        .trim()
+        .to_string();
+        super::run(&root, &["update-ref", &legacy_ref, &legacy_tip]).unwrap();
+
+        fs::write(root.join("research.md"), "base\nnew result\n").unwrap();
+        assert!(commit(&root, "first ZeroWall snapshot").unwrap());
+
+        let new_ref = snapshot_ref(&root);
+        let new_tip = rev_parse(&root, &new_ref).unwrap();
+        assert_eq!(rev_parse(&root, &format!("{new_tip}^")), Some(legacy_tip.clone()));
+        assert_eq!(rev_parse(&root, &legacy_ref), Some(legacy_tip.clone()));
+        super::run(&root, &["merge-base", "--is-ancestor", &legacy_tip, &new_tip]).unwrap();
+
         let _ = fs::remove_dir_all(&root);
     }
 }

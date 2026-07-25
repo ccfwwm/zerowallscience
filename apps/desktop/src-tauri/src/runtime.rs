@@ -34,6 +34,77 @@ pub(crate) fn runtime_root(app: &AppHandle) -> Result<PathBuf, String> {
         .join("runtime"))
 }
 
+/// Resolve the app-data directory used by releases with the previous bundle id.
+/// Tauri app-data paths end in the configured identifier on Windows, macOS, and
+/// Linux, so the legacy installation is a sibling of the current directory.
+fn legacy_app_data_dir(current: &Path) -> Option<PathBuf> {
+    current
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(|parent| parent.join("com.ai4s.workbench"))
+}
+
+/// Copy a legacy app-data tree into the current tree without replacing anything
+/// already created by ZeroWall. `create_new` makes the new installation win even
+/// if two startup paths race. Symlinks and type conflicts are skipped: following
+/// a legacy link could escape app-data, while an existing destination is always
+/// authoritative.
+fn copy_missing_tree(source: &Path, destination: &Path) -> Result<(), String> {
+    if destination.exists() && !destination.is_dir() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(destination)
+        .map_err(|e| format!("could not create {}: {e}", destination.display()))?;
+    for entry in std::fs::read_dir(source)
+        .map_err(|e| format!("could not read {}: {e}", source.display()))?
+    {
+        let entry = entry.map_err(|e| format!("could not read legacy app-data entry: {e}"))?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("could not inspect {}: {e}", source_path.display()))?;
+        if file_type.is_dir() {
+            copy_missing_tree(&source_path, &destination_path)?;
+        } else if file_type.is_file() && !destination_path.exists() {
+            use std::io::Write;
+            let mut input = std::fs::File::open(&source_path)
+                .map_err(|e| format!("could not open {}: {e}", source_path.display()))?;
+            let mut output = match std::fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&destination_path)
+            {
+                Ok(file) => file,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(format!("could not create {}: {e}", destination_path.display())),
+            };
+            if let Err(e) = std::io::copy(&mut input, &mut output).and_then(|_| output.flush()) {
+                drop(output);
+                let _ = std::fs::remove_file(&destination_path);
+                return Err(format!("could not copy {}: {e}", source_path.display()));
+            }
+            if let Ok(metadata) = std::fs::metadata(&source_path) {
+                let _ = std::fs::set_permissions(&destination_path, metadata.permissions());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Import app-private state from the old bundle-id directory. The source is kept
+/// for rollback, missing files are copied recursively, and current files always
+/// win. The destination is app-data itself, never a tracked research workspace.
+pub(crate) fn migrate_legacy_app_data(current: &Path) -> Result<(), String> {
+    let Some(legacy) = legacy_app_data_dir(current) else {
+        return Ok(());
+    };
+    if !legacy.is_dir() {
+        return Ok(());
+    }
+    copy_missing_tree(&legacy, current)
+}
+
 /// The running sidecar's base URL (`http://127.0.0.1:<port>`), or None when the
 /// runtime is not started yet. The gateway proxies agent calls here, adding the
 /// per-run Basic-auth password (`server_password`) itself.
@@ -994,10 +1065,70 @@ pub fn kill_child(state: &RuntimeState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        auth_has_provider, parse_scutil_proxy, prune_stale_skills, random_hex,
-        remove_key_from_config, resolve_proxy_env, sync_skill_pack, validate_proxy_url,
+        auth_has_provider, legacy_app_data_dir, migrate_legacy_app_data, parse_scutil_proxy,
+        prune_stale_skills, random_hex, remove_key_from_config, resolve_proxy_env,
+        sync_skill_pack, validate_proxy_url,
     };
     use std::fs;
+
+    #[test]
+    fn legacy_app_data_path_is_the_previous_bundle_id_sibling() {
+        let current = std::path::Path::new("app-data-root").join("com.zerowall.science");
+        let legacy_id = ["com", "ai4s", "workbench"].join(".");
+        assert_eq!(
+            legacy_app_data_dir(&current),
+            Some(std::path::Path::new("app-data-root").join(legacy_id))
+        );
+        assert_eq!(legacy_app_data_dir(std::path::Path::new("com.zerowall.science")), None);
+    }
+
+    #[test]
+    fn legacy_app_data_migration_preserves_runtime_and_workspace_selection() {
+        let root = std::env::temp_dir().join(format!("zerowall-app-data-legacy-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let current = root.join("com.zerowall.science");
+        let legacy = root.join(["com", "ai4s", "workbench"].join("."));
+        fs::create_dir_all(legacy.join("runtime/xdg-config/opencode")).unwrap();
+        fs::create_dir_all(legacy.join("runtime/xdg-data/opencode")).unwrap();
+        fs::write(legacy.join("runtime/active-workspace.txt"), "C:/research/active").unwrap();
+        fs::write(legacy.join("runtime/base-workspace.txt"), "C:/research/base").unwrap();
+        fs::write(legacy.join("runtime/xdg-config/opencode/opencode.jsonc"), "provider-state").unwrap();
+        fs::write(legacy.join("runtime/xdg-data/opencode/auth.json"), "private-runtime-state").unwrap();
+
+        migrate_legacy_app_data(&current).unwrap();
+
+        assert_eq!(fs::read_to_string(current.join("runtime/active-workspace.txt")).unwrap(), "C:/research/active");
+        assert_eq!(fs::read_to_string(current.join("runtime/base-workspace.txt")).unwrap(), "C:/research/base");
+        assert_eq!(fs::read_to_string(current.join("runtime/xdg-config/opencode/opencode.jsonc")).unwrap(), "provider-state");
+        assert_eq!(fs::read_to_string(current.join("runtime/xdg-data/opencode/auth.json")).unwrap(), "private-runtime-state");
+        assert!(legacy.is_dir(), "the compatibility copy must preserve the legacy source");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn legacy_app_data_migration_is_non_overwriting_and_idempotent() {
+        let root = std::env::temp_dir().join(format!("zerowall-app-data-mixed-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let current = root.join("com.zerowall.science");
+        let legacy = root.join(["com", "ai4s", "workbench"].join("."));
+        fs::create_dir_all(legacy.join("runtime/xdg-config/opencode")).unwrap();
+        fs::create_dir_all(current.join("runtime/xdg-config/opencode")).unwrap();
+        fs::write(legacy.join("runtime/active-workspace.txt"), "legacy-active").unwrap();
+        fs::write(legacy.join("runtime/base-workspace.txt"), "legacy-base").unwrap();
+        fs::write(legacy.join("runtime/xdg-config/opencode/opencode.jsonc"), "legacy-provider").unwrap();
+        fs::write(current.join("runtime/active-workspace.txt"), "current-active").unwrap();
+        fs::write(current.join("runtime/xdg-config/opencode/opencode.jsonc"), "current-provider").unwrap();
+
+        migrate_legacy_app_data(&current).unwrap();
+        migrate_legacy_app_data(&current).unwrap();
+
+        assert_eq!(fs::read_to_string(current.join("runtime/active-workspace.txt")).unwrap(), "current-active");
+        assert_eq!(fs::read_to_string(current.join("runtime/xdg-config/opencode/opencode.jsonc")).unwrap(), "current-provider");
+        assert_eq!(fs::read_to_string(current.join("runtime/base-workspace.txt")).unwrap(), "legacy-base");
+
+        let _ = fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn auth_store_provider_lookup() {

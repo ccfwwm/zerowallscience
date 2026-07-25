@@ -1,5 +1,7 @@
 # Progress
 
+2026-07-25 23:56 · fix(compatibility): fresh project imports now discard both current and legacy workspace metadata, startup non-destructively restores legacy bundle app-data, snapshot refs retain legacy ancestry, and the exact brand allowlist is self-tested; 634 frontend and 128 Rust tests, typecheck, lint, Clippy, and production builds pass.
+
 2026-07-25 23:26 · fix(repository): removed inherited OMO session-continuation records and purged ignored build/test caches from the fresh ZeroWall Science repository after independent P0 review; tracked and local trees now contain source assets only.
 
 2026-07-25 23:16 · chore(brand): established the fresh ZeroWall Science baseline from Open Science Desktop `ab2853f`, migrated product/package/runtime identities and `.zerowall` workspace metadata with legacy import support; 634 frontend, 123 Rust, and 76 Python tests, typecheck, lint, Clippy, and production builds pass.

@@ -8,7 +8,7 @@
     "dev": "pnpm --filter @zerowall/desktop dev",
     "build": "pnpm --filter @zerowall/desktop build",
     "test": "pnpm --filter @zerowall/desktop test",
-    "test:brand": "node scripts/check-brand-contract.mjs",
+    "test:brand": "node --test scripts/check-brand-contract.test.mjs && node scripts/check-brand-contract.mjs",
     "typecheck": "pnpm --filter @zerowall/desktop typecheck",
     "lint": "pnpm --filter @zerowall/desktop lint"
   },
