@@ -1,5 +1,7 @@
 # Progress
 
+2026-07-26 00:15 · fix(security): legacy app-data migration now rejects source and destination symlinks, Windows reparse points, and file/directory type conflicts at every recursive boundary, preventing writes outside the new app-data tree; 129 Rust tests, build, Clippy, and the brand contract pass.
+
 2026-07-25 23:56 · fix(compatibility): fresh project imports now discard both current and legacy workspace metadata, startup non-destructively restores legacy bundle app-data, snapshot refs retain legacy ancestry, and the exact brand allowlist is self-tested; 634 frontend and 128 Rust tests, typecheck, lint, Clippy, and production builds pass.
 
 2026-07-25 23:26 · fix(repository): removed inherited OMO session-continuation records and purged ignored build/test caches from the fresh ZeroWall Science repository after independent P0 review; tracked and local trees now contain source assets only.

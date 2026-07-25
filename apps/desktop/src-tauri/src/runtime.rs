@@ -50,11 +50,31 @@ fn legacy_app_data_dir(current: &Path) -> Option<PathBuf> {
 /// a legacy link could escape app-data, while an existing destination is always
 /// authoritative.
 fn copy_missing_tree(source: &Path, destination: &Path) -> Result<(), String> {
-    if destination.exists() && !destination.is_dir() {
+    let source_metadata = std::fs::symlink_metadata(source)
+        .map_err(|e| format!("could not inspect {}: {e}", source.display()))?;
+    if !source_metadata.is_dir() || metadata_is_link_or_reparse_point(&source_metadata) {
         return Ok(());
     }
-    std::fs::create_dir_all(destination)
-        .map_err(|e| format!("could not create {}: {e}", destination.display()))?;
+    match std::fs::symlink_metadata(destination) {
+        Ok(metadata) => {
+            if !metadata.is_dir() || metadata_is_link_or_reparse_point(&metadata) {
+                return Ok(());
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if let Err(e) = std::fs::create_dir(destination) {
+                if e.kind() != std::io::ErrorKind::AlreadyExists {
+                    return Err(format!("could not create {}: {e}", destination.display()));
+                }
+            }
+            let metadata = std::fs::symlink_metadata(destination)
+                .map_err(|e| format!("could not inspect {}: {e}", destination.display()))?;
+            if !metadata.is_dir() || metadata_is_link_or_reparse_point(&metadata) {
+                return Ok(());
+            }
+        }
+        Err(e) => return Err(format!("could not inspect {}: {e}", destination.display())),
+    }
     for entry in std::fs::read_dir(source)
         .map_err(|e| format!("could not read {}: {e}", source.display()))?
     {
@@ -66,7 +86,17 @@ fn copy_missing_tree(source: &Path, destination: &Path) -> Result<(), String> {
             .map_err(|e| format!("could not inspect {}: {e}", source_path.display()))?;
         if file_type.is_dir() {
             copy_missing_tree(&source_path, &destination_path)?;
-        } else if file_type.is_file() && !destination_path.exists() {
+        } else if file_type.is_file() {
+            match std::fs::symlink_metadata(&destination_path) {
+                Ok(_) => continue,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    return Err(format!(
+                        "could not inspect {}: {e}",
+                        destination_path.display()
+                    ));
+                }
+            }
             use std::io::Write;
             let mut input = std::fs::File::open(&source_path)
                 .map_err(|e| format!("could not open {}: {e}", source_path.display()))?;
@@ -92,6 +122,20 @@ fn copy_missing_tree(source: &Path, destination: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn metadata_is_link_or_reparse_point(metadata: &std::fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    }
+    #[cfg(not(windows))]
+    false
+}
+
 /// Import app-private state from the old bundle-id directory. The source is kept
 /// for rollback, missing files are copied recursively, and current files always
 /// win. The destination is app-data itself, never a tracked research workspace.
@@ -99,7 +143,10 @@ pub(crate) fn migrate_legacy_app_data(current: &Path) -> Result<(), String> {
     let Some(legacy) = legacy_app_data_dir(current) else {
         return Ok(());
     };
-    if !legacy.is_dir() {
+    let Ok(metadata) = std::fs::symlink_metadata(&legacy) else {
+        return Ok(());
+    };
+    if !metadata.is_dir() || metadata_is_link_or_reparse_point(&metadata) {
         return Ok(());
     }
     copy_missing_tree(&legacy, current)
@@ -1127,6 +1174,58 @@ mod tests {
         assert_eq!(fs::read_to_string(current.join("runtime/xdg-config/opencode/opencode.jsonc")).unwrap(), "current-provider");
         assert_eq!(fs::read_to_string(current.join("runtime/base-workspace.txt")).unwrap(), "legacy-base");
 
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    fn create_directory_link(target: &std::path::Path, link: &std::path::Path) {
+        std::os::unix::fs::symlink(target, link).expect("create destination directory symlink");
+    }
+
+    #[cfg(windows)]
+    fn create_directory_link(target: &std::path::Path, link: &std::path::Path) {
+        if std::os::windows::fs::symlink_dir(target, link).is_ok() {
+            return;
+        }
+        let status = std::process::Command::new("cmd")
+            .args(["/c", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .status()
+            .expect("start mklink junction fallback");
+        assert!(status.success(), "create destination directory junction");
+    }
+
+    #[test]
+    fn legacy_app_data_migration_does_not_follow_destination_directory_links() {
+        let root = std::env::temp_dir().join(format!(
+            "zerowall-app-data-destination-link-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let current = root.join("com.zerowall.science");
+        let legacy = legacy_app_data_dir(&current).unwrap();
+        let outside = root.join("outside");
+        fs::create_dir_all(legacy.join("runtime/xdg-config/opencode")).unwrap();
+        fs::write(
+            legacy.join("runtime/xdg-config/opencode/opencode.jsonc"),
+            "legacy-provider",
+        )
+        .unwrap();
+        fs::create_dir_all(&current).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let linked_runtime = current.join("runtime");
+        create_directory_link(&outside, &linked_runtime);
+
+        migrate_legacy_app_data(&current).unwrap();
+
+        assert!(
+            !outside.join("xdg-config/opencode/opencode.jsonc").exists(),
+            "migration must not write through a destination directory link"
+        );
+        assert!(fs::symlink_metadata(&linked_runtime).is_ok());
+
+        fs::remove_dir(&linked_runtime).unwrap();
         let _ = fs::remove_dir_all(&root);
     }
 
