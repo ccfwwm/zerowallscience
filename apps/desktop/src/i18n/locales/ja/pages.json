@@ -1,0 +1,101 @@
+{
+  "notebooks": {
+    "title": "ノートブック",
+    "openJupyterLab": "JupyterLab を開く",
+    "openJupyterLabTitle": "同じ環境とファイルで、ブラウザで完全な JupyterLab を開く",
+    "newNotebook": "新規ノートブック",
+    "pythonNotebook": "Python ノートブック",
+    "rNotebook": "R ノートブック",
+    "description": "セッションフォルダ全体の Jupyter ノートブックを新しい順に表示します。セルはノートブック自身のフォルダ内のローカル Python または R カーネルで実行され、エージェントも同じファイルを操作します。",
+    "createsIn": "新しいノートブックの作成先:",
+    "empty": {
+      "tauri": "まだノートブックがありません。作成するか、エージェントに作成を依頼してください。",
+      "web": "ノートブックはデスクトップアプリで利用可能です。"
+    },
+    "toast": {
+      "openingJupyterLab": "ブラウザで JupyterLab を開いています…",
+      "setUpJupyterFirst": "先に Jupyter を設定してください — 設定 → MCP サーバー → Jupyter。",
+      "couldNotOpenJupyterLab": "JupyterLab を開けませんでした",
+      "couldNotCreateNotebook": "ノートブックを作成できませんでした"
+    },
+    "editor": {
+      "backAria": "ノートブック一覧に戻る",
+      "languageR": "R",
+      "languagePython": "Python",
+      "saved": "保存済み",
+      "unsaved": "未保存",
+      "openJupyterLabAria": "JupyterLab で開く",
+      "historyAria": "履歴",
+      "historyTitle": "履歴 — 記録された各バージョンのコードと会話",
+      "reloadAria": "ディスクから再読み込み",
+      "reloadTitle": "再読み込み（エージェントの変更を取り込む）",
+      "closeAria": "インスペクターを閉じる",
+      "stopCellTitle": "停止 — このノートブックのカーネルを再起動します（変数はリセットされます）",
+      "stopLabel": "停止",
+      "runLabel": "実行",
+      "addCellLabel": "セルを追加"
+    }
+  },
+  "files": {
+    "loading": "読み込み中…",
+    "folderEmpty": "このフォルダは空です。",
+    "explorerUnavailableWeb": "ファイルエクスプローラーはデスクトップアプリで利用可能です。",
+    "selectFilePrompt": "ファイルを選択するとここにプレビューが表示されます。",
+    "pane": {
+      "subtitle": "このセッションのフォルダ",
+      "closeAria": "ファイルを閉じる"
+    },
+    "contextMenu": {
+      "copyPath": "パスをコピー",
+      "copyRelativePath": "相対パスをコピー",
+      "relativePathLabel": "相対パス",
+      "openInDefaultApp": "デフォルトのアプリで開く"
+    }
+  },
+  "skills": {
+    "title": "スキル & エージェント",
+    "description": {
+      "prefix": "OpenCode ランタイムからライブで読み込まれます — バンドルされた ai4s-skills パックと、ワークスペース内の ",
+      "suffix": " にあるものすべて。"
+    },
+    "install": {
+      "sectionTitle": "スキルをインストール",
+      "placeholder": "スキル（Markdown）または GitHub URL を貼り付けてください — エージェントが .opencode/skills/ にインストールします",
+      "starting": "開始中…",
+      "cta": "エージェントでインストール",
+      "hintConnected": "セッションを開き、エージェントに追加を依頼します（customize-opencode）。",
+      "hintDisconnected": "先にランタイムに接続してください。"
+    },
+    "environment": {
+      "sectionTitle": "科学計算環境",
+      "detectionUnavailable": "環境検出はデスクトップアプリで実行されます。",
+      "found": "検出済み",
+      "notFound": "未検出",
+      "note": "OpenCode はここにインストールされているものを使ってコードを実行します（例: シェルツール経由の Python）。Python/R/Jupyter はバンドルされていません。分析を有効にするには、それらまたは Science Pack をインストールしてください。"
+    },
+    "agentsSection": {
+      "sectionTitle": "エージェント ({{count}})",
+      "empty": "エージェントが報告されていません。",
+      "agentMode": {
+        "primary": "プライマリ",
+        "subagent": "サブエージェント",
+        "all": "すべて"
+      }
+    },
+    "skillsListSection": {
+      "sectionTitle": "スキル ({{count}})",
+      "empty": "まだスキルが読み込まれていません。",
+      "source": {
+        "builtin": "組み込み",
+        "project": "プロジェクト",
+        "user": "ユーザー"
+      }
+    },
+    "disconnected": "読み込まれたスキルとエージェントを一覧表示するには、ランタイムに接続してください。"
+  },
+  "notFound": {
+    "title": "404 — 見つかりません",
+    "hint": "このページは存在しません。",
+    "backLink": "ワークスペースに戻る"
+  }
+}

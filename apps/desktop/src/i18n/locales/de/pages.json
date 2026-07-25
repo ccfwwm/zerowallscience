@@ -1,0 +1,101 @@
+{
+  "notebooks": {
+    "title": "Notebooks",
+    "openJupyterLab": "JupyterLab öffnen",
+    "openJupyterLabTitle": "Das vollständige JupyterLab (gleiche Umgebung und Dateien) im Browser öffnen",
+    "newNotebook": "Neues Notebook",
+    "pythonNotebook": "Python-Notebook",
+    "rNotebook": "R-Notebook",
+    "description": "Alle Jupyter-Notebooks aus Ihren Sitzungsordnern, neueste zuerst. Zellen laufen auf dem lokalen Python- oder R-Kernel im eigenen Ordner des Notebooks; der Agent arbeitet an denselben Dateien.",
+    "createsIn": "Neue Notebooks werden erstellt in",
+    "empty": {
+      "tauri": "Noch keine Notebooks. Erstellen Sie eines, oder lassen Sie den Agenten eines erzeugen.",
+      "web": "Notebooks sind in der Desktop-App verfügbar."
+    },
+    "toast": {
+      "openingJupyterLab": "JupyterLab wird im Browser geöffnet…",
+      "setUpJupyterFirst": "Richten Sie zuerst Jupyter ein — Einstellungen → MCP-Server → Jupyter.",
+      "couldNotOpenJupyterLab": "JupyterLab konnte nicht geöffnet werden",
+      "couldNotCreateNotebook": "Notebook konnte nicht erstellt werden"
+    },
+    "editor": {
+      "backAria": "Zurück zu Notebooks",
+      "languageR": "R",
+      "languagePython": "Python",
+      "saved": "Gespeichert",
+      "unsaved": "Nicht gespeichert",
+      "openJupyterLabAria": "In JupyterLab öffnen",
+      "historyAria": "Verlauf",
+      "historyTitle": "Verlauf — jede aufgezeichnete Version mit Code und Unterhaltung",
+      "reloadAria": "Von der Festplatte neu laden",
+      "reloadTitle": "Neu laden (Änderungen des Agenten übernehmen)",
+      "closeAria": "Inspektor schließen",
+      "stopCellTitle": "Stopp — startet den Kernel dieses Notebooks neu (Variablen werden zurückgesetzt)",
+      "stopLabel": "Stopp",
+      "runLabel": "Ausführen",
+      "addCellLabel": "Zelle hinzufügen"
+    }
+  },
+  "files": {
+    "loading": "Wird geladen…",
+    "folderEmpty": "Dieser Ordner ist leer.",
+    "explorerUnavailableWeb": "Der Datei-Explorer ist in der Desktop-App verfügbar.",
+    "selectFilePrompt": "Wählen Sie eine Datei, um sie hier anzuzeigen.",
+    "pane": {
+      "subtitle": "Ordner dieser Sitzung",
+      "closeAria": "Dateien schließen"
+    },
+    "contextMenu": {
+      "copyPath": "Pfad kopieren",
+      "copyRelativePath": "Relativen Pfad kopieren",
+      "relativePathLabel": "Relativer Pfad",
+      "openInDefaultApp": "In Standard-App öffnen"
+    }
+  },
+  "skills": {
+    "title": "Skills & Agenten",
+    "description": {
+      "prefix": "Live aus der OpenCode-Runtime geladen — das gebündelte ai4s-skills-Paket plus alles unter ",
+      "suffix": " in Ihrem Arbeitsbereich."
+    },
+    "install": {
+      "sectionTitle": "Einen Skill installieren",
+      "placeholder": "Einen Skill (Markdown) oder eine GitHub-URL einfügen — der Agent installiert ihn in .opencode/skills/",
+      "starting": "Wird gestartet…",
+      "cta": "Mit Agent installieren",
+      "hintConnected": "Öffnet eine Sitzung und bittet den Agenten, ihn hinzuzufügen (customize-opencode).",
+      "hintDisconnected": "Verbinden Sie zuerst die Runtime."
+    },
+    "environment": {
+      "sectionTitle": "Wissenschaftliche Umgebung",
+      "detectionUnavailable": "Die Umgebungserkennung läuft in der Desktop-App.",
+      "found": "gefunden",
+      "notFound": "nicht gefunden",
+      "note": "OpenCode führt Code mit dem aus, was hier installiert ist (z. B. Python über sein Shell-Tool). Python/R/Jupyter sind nicht gebündelt; installieren Sie sie oder ein Science Pack, um Analysen zu ermöglichen."
+    },
+    "agentsSection": {
+      "sectionTitle": "Agenten ({{count}})",
+      "empty": "Keine Agenten gemeldet.",
+      "agentMode": {
+        "primary": "primär",
+        "subagent": "Subagent",
+        "all": "alle"
+      }
+    },
+    "skillsListSection": {
+      "sectionTitle": "Skills ({{count}})",
+      "empty": "Noch keine Skills geladen.",
+      "source": {
+        "builtin": "integriert",
+        "project": "Projekt",
+        "user": "Benutzer"
+      }
+    },
+    "disconnected": "Verbinden Sie die Runtime, um die geladenen Skills und Agenten aufzulisten."
+  },
+  "notFound": {
+    "title": "404 — Nicht gefunden",
+    "hint": "Diese Seite existiert nicht.",
+    "backLink": "Zurück zum Arbeitsbereich"
+  }
+}

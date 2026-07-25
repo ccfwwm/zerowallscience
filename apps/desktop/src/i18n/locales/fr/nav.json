@@ -1,0 +1,85 @@
+{
+  "sidebar": {
+    "collapse": "Réduire la barre latérale",
+    "collapseTitle": "Réduire la barre latérale ({{shortcut}})",
+    "expand": "Développer la barre latérale",
+    "expandTitle": "Développer la barre latérale ({{shortcut}})",
+    "settings": "Paramètres",
+    "home": "Accueil"
+  },
+  "items": {
+    "new": "Nouveau",
+    "notebooks": "Notebooks",
+    "files": "Fichiers",
+    "runs": "Exécutions",
+    "skills": "Compétences",
+    "projects": "Projets"
+  },
+  "projects": {
+    "heading": "Projets",
+    "new": "Nouveau projet",
+    "importedBadge": "importé",
+    "menuScratch": "Partir de zéro",
+    "menuExisting": "Utiliser un dossier existant",
+    "nameTitle": "Nommer le projet",
+    "nameSubtitle": "Court et reconnaissable",
+    "namePlaceholder": "Nom du projet",
+    "newSessionAria": "Nouvelle session dans « {{name}} »",
+    "noSessions": "Aucune session pour l’instant.",
+    "renameHint": "Double-cliquez pour renommer",
+    "pageSearch": "Rechercher des projets",
+    "colName": "Nom",
+    "colSources": "Sources",
+    "colUpdated": "Mis à jour",
+    "noResults": "Aucun projet correspondant.",
+    "pin": "Épingler",
+    "unpin": "Détacher",
+    "rename": "Renommer",
+    "remove": "Retirer",
+    "more": "Plus",
+    "removeTitle": "Retirer {{name}} ?",
+    "removeBody": "Retire le projet de la barre latérale. Les fichiers sur le disque ne seront pas supprimés.",
+    "seeAll": "Tous les projets",
+    "openFolder": "Ouvrir {{path}}"
+  },
+  "history": {
+    "heading": "Sessions",
+    "empty": "Aucune conversation pour le moment.",
+    "exampleTag": "exemple",
+    "deleteAria": "Supprimer {{title}}",
+    "running": "En cours"
+  },
+  "confirmDelete": {
+    "sessionTitle": "Supprimer la session ?",
+    "sessionBody": "« {{title}} » et ses messages seront supprimés. Cette action est irréversible.",
+    "exampleTitle": "Masquer l'exemple ?",
+    "exampleBody": "« {{title}} » sera masqué dans la barre latérale.",
+    "deleteAction": "Supprimer",
+    "hideAction": "Masquer"
+  },
+  "status": {
+    "runtime": "Runtime",
+    "model": "Modèle",
+    "modelNotSet": "non défini",
+    "values": {
+      "ready": "prêt",
+      "connecting": "connexion…",
+      "error": "erreur",
+      "offline": "hors ligne"
+    }
+  },
+  "commandPalette": {
+    "ariaLabel": "Palette de commandes",
+    "placeholder": "Tapez une commande…",
+    "noResults": "Aucun résultat.",
+    "actions": {
+      "newSession": "Nouvelle session",
+      "analyzeData": "Analyser mes données (nouveau flux de travail)",
+      "auditReport": "Auditer un rapport (revue de traçabilité)",
+      "openNotebooks": "Ouvrir les notebooks",
+      "manageSkills": "Gérer les compétences",
+      "openSettings": "Ouvrir les paramètres",
+      "toggleTheme": "Changer de thème (clair / chaud / sombre)"
+    }
+  }
+}

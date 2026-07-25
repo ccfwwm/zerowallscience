@@ -1,0 +1,19 @@
+{
+  "name": "zerowall-science",
+  "version": "0.3.0",
+  "private": true,
+  "description": "ZeroWall Science — local-first, model-agnostic AI research workbench for macOS, Windows and Linux.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "pnpm --filter @zerowall/desktop dev",
+    "build": "pnpm --filter @zerowall/desktop build",
+    "test": "pnpm --filter @zerowall/desktop test",
+    "test:brand": "node scripts/check-brand-contract.mjs",
+    "typecheck": "pnpm --filter @zerowall/desktop typecheck",
+    "lint": "pnpm --filter @zerowall/desktop lint"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.4.0"
+}

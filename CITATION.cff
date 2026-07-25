@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use ZeroWall Science in your research, please cite it as below."
+title: "ZeroWall Science: a local-first, model-agnostic AI research workbench"
+type: software
+authors:
+  - name: "The ZeroWall Science Contributors"
+repository-code: "https://github.com/ccfwwm/zerowallscience"
+url: "https://zerowall.aicodeme.cn"
+license: MIT
+version: 0.3.0
+date-released: "2026-07-25"
+keywords:
+  - AI for science
+  - research workbench
+  - AI agents
+  - reproducibility
+  - local-first
+  - desktop application

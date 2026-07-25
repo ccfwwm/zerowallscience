@@ -1,0 +1,85 @@
+{
+  "sidebar": {
+    "collapse": "Collapse sidebar",
+    "collapseTitle": "Collapse sidebar ({{shortcut}})",
+    "expand": "Expand sidebar",
+    "expandTitle": "Expand sidebar ({{shortcut}})",
+    "settings": "Settings",
+    "home": "Home"
+  },
+  "items": {
+    "new": "New",
+    "notebooks": "Notebooks",
+    "files": "Files",
+    "runs": "Runs",
+    "skills": "Skills",
+    "projects": "Projects"
+  },
+  "projects": {
+    "heading": "Projects",
+    "new": "New project",
+    "importedBadge": "imported",
+    "menuScratch": "Start from scratch",
+    "menuExisting": "Use an existing folder",
+    "nameTitle": "Name project",
+    "nameSubtitle": "Keep it short and recognizable",
+    "namePlaceholder": "Project name",
+    "newSessionAria": "New session in {{name}}",
+    "noSessions": "No sessions yet.",
+    "renameHint": "Double-click to rename",
+    "pageSearch": "Search projects",
+    "colName": "Name",
+    "colSources": "Sources",
+    "colUpdated": "Updated",
+    "noResults": "No projects match.",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "rename": "Rename",
+    "remove": "Remove",
+    "more": "More",
+    "removeTitle": "Remove {{name}}?",
+    "removeBody": "This removes the project from the sidebar. Files on disk will not be deleted.",
+    "seeAll": "All projects",
+    "openFolder": "Open {{path}}"
+  },
+  "history": {
+    "heading": "Sessions",
+    "empty": "No conversations yet.",
+    "exampleTag": "example",
+    "deleteAria": "Delete {{title}}",
+    "running": "Working"
+  },
+  "confirmDelete": {
+    "sessionTitle": "Delete session?",
+    "sessionBody": "\"{{title}}\" and its messages will be deleted. This cannot be undone.",
+    "exampleTitle": "Hide example?",
+    "exampleBody": "\"{{title}}\" will be hidden from the sidebar.",
+    "deleteAction": "Delete",
+    "hideAction": "Hide"
+  },
+  "status": {
+    "runtime": "Runtime",
+    "model": "Model",
+    "modelNotSet": "not set",
+    "values": {
+      "ready": "ready",
+      "connecting": "connecting",
+      "error": "error",
+      "offline": "offline"
+    }
+  },
+  "commandPalette": {
+    "ariaLabel": "Command palette",
+    "placeholder": "Type a command…",
+    "noResults": "No results.",
+    "actions": {
+      "newSession": "New session",
+      "analyzeData": "Analyze my data (new workflow)",
+      "auditReport": "Audit a report (traceability review)",
+      "openNotebooks": "Open notebooks",
+      "manageSkills": "Manage skills",
+      "openSettings": "Open settings",
+      "toggleTheme": "Switch theme (light / warm / dark)"
+    }
+  }
+}

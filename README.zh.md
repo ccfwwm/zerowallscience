@@ -1,0 +1,281 @@
+<div align="center">
+
+[![ZeroWall Science — 本地优先 AI 科研桌面工作台](./docs/assets/banner.webp)](https://github.com/ccfwwm/zerowallscience)
+
+# ZeroWall Science
+
+**本地优先、模型无关的 macOS、Windows & Linux AI 科研桌面工作台。**
+
+它是 Claude Science 及同类 AI-for-science 工作台的开源桌面替代：
+基于 Tauri、MCP、agent skills 和可复现工件构建。它把智能体、笔记本、文件、图表、
+报告、运行记录和审查连接成一条可审计的桌面工作流。
+
+<p>
+  <a href="./README.md">English</a> ·
+  <b>简体中文</b> ·
+  <a href="./README.ja.md">日本語</a> ·
+  <a href="./README.es.md">Español</a> ·
+  <a href="./README.de.md">Deutsch</a> ·
+  <a href="./README.fr.md">Français</a> ·
+  <a href="./README.ko.md">한국어</a>
+</p>
+
+<p>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://internscience.github.io/ResearchClawBench-Home/"><img src="https://img.shields.io/badge/%F0%9F%8F%86%20%231-ResearchClawBench-FFB300" alt="#1 on ResearchClawBench"></a>
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue" alt="Platforms">
+  <img src="https://img.shields.io/badge/i18n-7%20languages-5B8DEF" alt="7 interface languages">
+  <img src="https://img.shields.io/badge/built%20with-Tauri%202%20%2B%20React-24C8DB" alt="Built with Tauri + React">
+  <img src="https://img.shields.io/badge/runtime-OpenCode-success" alt="OpenCode runtime">
+  <a href="https://discord.gg/fWNMDKcd5P"><img src="https://img.shields.io/badge/Join-Discord-5865F2" alt="Join Discord"></a>
+  <a href="http://makeapullrequest.com"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
+  <a href="https://linux.do"><img src="https://img.shields.io/badge/Join-linux.do-orange" alt="linux.do"></a>
+</p>
+
+</div>
+
+---
+
+## 最新动态
+
+- **2026-07-21** — 🌐 **随时随地访问——连手机都行。** 一个基于令牌认证的网关，把*真正的*桌面 UI 提供给命令行、局域网中的浏览器或你的手机（默认仅回环地址；局域网需手动开启）。在电脑前发起一次运行，然后在手机上查看完成的图表和报告。 *(v0.2.3)*
+- **2026-07-21** — 🧭 **浏览器控制。** 智能体可以驱动你自己的 Chrome——保留配置文件和登录状态——像你一样浏览实时网页，也可以按需使用隔离的隐私浏览器。 *(v0.2.3)*
+- **2026-07-09** — 🎉 **ResearchClawBench 排名第 1。** ZeroWall Science 在面向自主科研智能体的端到端基准 [ResearchClawBench](https://internscience.github.io/ResearchClawBench-Home/) 上，按已评分任务平均分排名第 1（Pass@1 榜单）。
+
+---
+
+## 目录
+
+- [✨ 它能做什么](#它能做什么)
+- [🎬 效果演示](#效果演示)
+- [🧪 当前能力](#当前能力)
+- [🔌 技能与连接器](#技能与连接器)
+- [📦 安装](#安装)
+- [🚀 从源码构建](#从源码构建)
+- [🔒 安全与隐私](#安全与隐私)
+- [🗂️ 仓库结构](#仓库结构)
+- [📌 状态](#状态)
+- [🤝 参与贡献](#参与贡献)
+- [📖 引用](#引用)
+- [⚖️ 许可证](#许可证)
+
+## 它能做什么
+
+**跑完整个科研闭环**——从一个宽泛的方向到一篇成稿论文：探索、文献综述、假设、实验代码、分析、绘图、写作，全部在一次连续、可审计的会话里完成。
+
+- **自主科研智能体**：内置的 `ai4s-agent` 端到端串起各专项技能(探索 → 综述 → 实验 → 写作)，每一步都把一个真实、可检查的工件落到你的工作区里,而不只是一条聊天回复。
+- **一切都可回溯**：图、表、报告、笔记本和运行输出都连回生成它们的确切代码、输入、环境、模型输出和对话。
+- **本地优先，数据归你**：会话、数据、溯源、笔记本和运行记录都在本机的本地文件夹里,默认不外流。
+- **模型无关运行时**：UI 通过 `packages/sdk` 调用内置固定版本的 OpenCode sidecar——自带模型即可;模型提供方、技能和 MCP 服务器保持可插拔。
+- **天然可复现**：本地、SSH/Slurm、Modal 和 notebook-batch 运行都被记录为可复现的 run record,而不是散落的终端输出。
+- **随时随地访问**：内置的、基于令牌认证的网关把*真正的*桌面 UI 提供给局域网里的浏览器或手机(有隧道时更可从任何地方访问)——在电脑前发起一次运行,午饭时用手机查看进度。默认关闭;开启前仅限回环地址,且 API key 永不离开本机。
+- **驱动你自己的浏览器**：智能体可以控制你真实的 Chrome,保留你的配置文件和登录状态,像你一样浏览实时网页——你也可以选择一个隔离的隐私浏览器。
+- **可扩展**：智能体技能、MCP 服务器与一键科学连接器、`/` 命令、`!` shell 模式,以及一个模型无关的 SDK。
+
+## 效果演示
+
+**一句提示 -> 一张可发表级别的图，图上每个点都能回溯到生成它的确切代码和输入。** 没有黑盒：打开任意工件，就能看到生成它的脚本、它的数据文件，以及产出它的对话。
+
+![工件检查器中，一张跨物种图谱图与其生成脚本和输入文件并列展示](./docs/assets/showcase-provenance.webp)
+
+**文献 -> 可验证报告。** 把检索扇出到多个来源，起草一篇渲染成 PDF 的稿件，并在发布前用引用评审把关——DOI 逐一解析，无出处的数值以及图表/代码不一致都会被标记出来。
+
+![一篇蛋白质语言模型的文献综述被汇编成 PDF 稿件，引用评审确认每个 DOI 都可解析](./docs/assets/showcase-literature.webp)
+
+**驱动你自己的 Chrome。** 智能体通过你真实的浏览器配置文件——连同登录状态——读取实时网页，再把找到的内容变成一张图和一份可排序的 CSV。
+
+![智能体通过 browser-control 驱动用户自己的 Chrome，把 bioRxiv 预印本采集成图表和 CSV](./docs/assets/showcase-browser.webp)
+
+**随时随地做研究——连手机都行。** 内置的认证网关把*真正的*桌面 UI 提供给局域网里的浏览器(或通过隧道),这样你就能在电脑前发起一次运行,再在手机上查看完成的图表和报告。
+
+<table align="center">
+  <tr>
+    <td align="center" width="33%"><img src="./docs/assets/showcase-mobile-home.webp" width="240" alt="在手机浏览器中运行的工作台：带有起步分析的新建会话界面"><br><sub>新建会话</sub></td>
+    <td align="center" width="33%"><img src="./docs/assets/showcase-mobile-run.webp" width="240" alt="在手机上查看一份完成的剂量-响应分析——脚本、结果、图表与报告"><br><sub>一份完成的分析</sub></td>
+    <td align="center" width="33%"><img src="./docs/assets/showcase-mobile-reproduce.webp" width="240" alt="在手机上查看正在复现的 scVI 基准，以及它的 ARI-vs-epoch 图"><br><sub>一份复现的基准</sub></td>
+  </tr>
+</table>
+
+<details>
+<summary><b>更多截图</b></summary>
+
+<br>
+
+![在远程 A100 上以固定环境复现 scVI 整合基准，附带执行日志和溯源](./docs/assets/showcase-remote.webp)
+
+![一张 8 组的 scVI 超参数扫描表格，与共享智能体内核的实时分析笔记本并列](./docs/assets/showcase-experiment.webp)
+
+</details>
+
+## 当前能力
+
+**把科研闭环做成技能。** 一个元技能跑完整条流水线;每个阶段都是一个自足的技能,产出真实、可评审的工件——在 OpenCode 支持的任意模型上都能跑:
+
+| 技能 | 职责 | 主要产出 |
+| --- | --- | --- |
+| `ai4s-agent` | 按顺序运行下面四个技能 | 完整的研究包 |
+| `research-explorer` | 把宽泛方向收敛成具体课题 | `research_exploration.md`、`topic_matrix.md`、`literature_pre_survey.md` |
+| `literature-survey` | 撰写文献综述 | 6–20 页 PDF、60+ 条真实引用、LaTeX 源码、分类学图 |
+| `experiment-suite` | 构建实验包 | 设计文档、可运行代码、带溯源的 `results.json`、图、报告 |
+| `paper-writer` | 撰写研究论文 | 8–14 页 PDF、200+ 引用、4–8 张图、表格 |
+| `mindmap-render` | 渲染思维导图 | 由 `topic_matrix.md` 生成的图片 |
+| `integrity-auditor` | 审计论文完整性 | 图像/数值/逻辑问题、四级证据分级、`audit_report.md` |
+
+这些技能随 `ai4s-skills` 技能包一起提供,与第一方审查技能以及下方的 Office/文档技能并列。
+
+### 平台
+
+| 范围 | 当前状态 |
+| --- | --- |
+| 桌面外壳 | Tauri 2 + React + TypeScript + Vite，主打 macOS 和 Windows 桌面构建，同时提供 Linux 包。 |
+| 运行时 | 内置 OpenCode sidecar，由应用自动启动，并与用户自己的 OpenCode 配置/数据隔离。 |
+| 会话 | 多会话聊天与历史、按时间创建的工作区文件夹、跨工作区全局历史、`/` 命令和 `!` shell 模式。 |
+| 文件 | 全局和会话内文件浏览、右键菜单、系统打开/定位、复制路径、本地预览服务。 |
+| 远程访问 | 基于令牌认证的网关，把真正的 UI 提供给命令行、局域网 Web 浏览器或你的手机(默认仅回环地址，局域网需手动开启);支持只读与完全访问两种模式;可复制一条内嵌令牌的链接，一键连接。API key 永不经过网络传输。 |
+| 浏览器控制 | 智能体驱动你自己的 Chrome——保留配置文件和登录状态——通过无障碍树读取页面，也可按需使用隔离的隐私浏览器。 |
+| 笔记本 | 真实 `.ipynb` 文件、Python/R 笔记本创建、本地内核运行、内置 `uv` 管理 Jupyter 环境，以及打开 JupyterLab。 |
+| 运行记录 | 追加式 run log、全局 SQLite 索引、搜索/筛选/分页、本地与远程 surface、输出链接、日志和复现提示。 |
+| 溯源 | `.zerowall/provenance.jsonl` 记录文件版本，并把产物连回创建它的运行或编辑。 |
+| 审查 | 内置 traceability、stats-integrity、domain-check、large-file、publication-figure、remote-compute、Modal run 等第一方技能。 |
+| 查看器 | PDF、图片、视频、HTML、Markdown、代码、CSV/TSV 表格与图表、DOCX、XLSX、PPTX、分子、3D mesh、基因组轨道、FITS、DOS/DOSCAR、EIGENVAL bands、qcode、异常图和 phase 文件。 |
+| 模型 | OpenCode 提供方目录、OAuth/API key 连接、自定义 OpenAI-compatible endpoint，以及 OpenCode 支持的本地/云模型选项。 |
+| 界面语言 | English、简体中文、日本語、Español、Deutsch、Français、한국어。Portuguese (Brazil) 和 Arabic 已注册，但还不可选。 |
+
+## 技能与连接器
+
+构建和发布时会拉取内置技能，避免把第三方技能包直接提交到 git 历史：
+
+- `ai4s-research/ai4s-skills` 技能包。
+- Apache-2.0 `anthropics/skills` 仓库中的 Office/文档技能：`docx`、`pdf`、`pptx`、`xlsx`。
+- `runtime/skills/core/` 中的第一方技能：`traceability-review`、`stats-integrity`、`domain-check`、`large-file`、`publication-figures`、`remote-compute`、`modal-run`。
+
+当前一键科学 MCP 连接器包括：
+
+- 文献检索：arXiv、PubMed、Crossref、Semantic Scholar、bioRxiv/medRxiv。
+- 生物医学数据库：PubMed、ClinicalTrials.gov、MyVariant/ClinVar。
+- Materials Project。
+- FRED 经济数据。
+- Space weather。
+- Open-Meteo 天气与气候。
+- USGS water data。
+
+你也可以在 Settings 中添加任意本地或远程 MCP 服务器。参见
+[`docs/CONNECT_YOUR_TOOLS.md`](./docs/CONNECT_YOUR_TOOLS.md)。
+
+中立定位对比见
+[`ZeroWall Science vs OpenScience`](./docs/zerowall-science-vs-openscience.md)。
+
+## 安装
+
+从 [Releases 页面](https://github.com/ccfwwm/zerowallscience/releases/latest) 下载最新安装包。
+
+- **macOS**：`.dmg` / `.app`，Apple Silicon 和 Intel，要求 macOS 13 Ventura 或更高。
+- **Windows**：NSIS `.exe` 和 `.msi`，Windows 10/11 x64。
+- **Linux**：x86_64 Linux 的 `.deb` 和 `.rpm`。
+
+当前构建尚未代码签名或 notarize。
+
+**macOS**：如果 Gatekeeper 提示应用已损坏或来自未知开发者，把应用安装到 Applications 后运行：
+
+```bash
+xattr -cr "/Applications/ZeroWall Science.app"
+```
+
+**Windows**：如果出现 SmartScreen，选择 **更多信息 -> 仍要运行**。
+
+**Linux**：
+
+```bash
+sudo apt install ./ZeroWallScience_*.deb
+# 或
+sudo rpm -i ZeroWallScience_*.rpm
+```
+
+## 从源码构建
+
+前置依赖：
+
+- Node.js >= 20
+- pnpm 9
+- Rust 工具链
+- Tauri 在当前系统需要的 macOS、Windows 或 Linux 依赖
+
+```bash
+git clone https://github.com/ccfwwm/zerowallscience
+cd zerowallscience
+pnpm install
+
+bash scripts/dev/fetch-opencode.sh
+bash scripts/dev/fetch-uv.sh
+bash scripts/dev/fetch-skills.sh
+
+pnpm --filter @zerowall/desktop tauri dev
+pnpm --filter @zerowall/desktop tauri build
+```
+
+常用检查：
+
+```bash
+pnpm test
+pnpm typecheck
+pnpm lint
+```
+
+## 安全与隐私
+
+- 工作区文件、原始数据、会话历史、溯源、笔记本和运行记录默认保留在本机。
+- 命令执行、删除文件、安装依赖和远程连接在桌面应用中走人工批准流程。
+- 提供方凭据写入应用私有运行时配置，不进入工作区、溯源、git、导出或用户全局 OpenCode 配置。
+- Settings 中有大白话数据流说明，说明哪些内容可能发给所选模型提供方。
+
+## 仓库结构
+
+| 路径 | 用途 |
+| --- | --- |
+| `apps/desktop/` | Tauri + React 桌面应用。 |
+| `packages/sdk/` | `OpenCodeClient`，避免 UI 直接调用 OpenCode。 |
+| `packages/shared/` | 共享领域类型和图表色板。 |
+| `packages/ui/` | 共享 UI 包。 |
+| `runtime/skills/core/` | 第一方科学技能。 |
+| `runtime/skills/external/` | 构建时拉取的外部技能。 |
+| `runtime/harness/` | 运行时 harness 知识与 operator 上下文。 |
+| `runtime/mcp/` | MCP 运行时说明和配置。 |
+| `examples/` | 内置示例工作区。 |
+| `scripts/dev/` | sidecar、`uv`、技能拉取器和聚焦回归探针。 |
+| `docs/` | 产品、技术、operator、连接器和研究笔记。 |
+
+## 状态
+
+项目是正在积极开发的桌面 MVP。最可靠的当前实现日志是 [`PROGRESS.md`](./PROGRESS.md)。
+产品和架构说明位于 [`docs/PRD.md`](./docs/PRD.md) 和
+[`docs/TECHNICAL_DESIGN.md`](./docs/TECHNICAL_DESIGN.md)，但这些文档同时包含目标设计和历史状态说明。
+
+近期工作集中在签名/notarize 发布、更广的 Windows/Linux 验证、自动更新、连接器加固，以及继续强化可复现性审查。
+
+## 参与贡献
+
+欢迎 Issue 和 PR。请保持改动最小且可验证，遵循 [`AGENTS.md`](./AGENTS.md)，并在提交 PR 前运行检查。讨论和交流可以加入
+[ZeroWall Science Discord](https://discord.gg/fWNMDKcd5P)，也可以在 [linux.do](https://linux.do) 社区参与。
+
+## 引用
+
+如果 ZeroWall Science 对你的研究有帮助,请如下引用:
+
+```bibtex
+@software{open_science_desktop,
+  author  = {{The ZeroWall Science Contributors}},
+  title   = {ZeroWall Science: a local-first, model-agnostic AI research workbench},
+  year    = {2026},
+  version = {0.3.0},
+  url     = {https://github.com/ccfwwm/zerowallscience},
+  license = {MIT}
+}
+```
+
+仓库页顶部的 **"Cite this repository"** 按钮(由 [`CITATION.cff`](./CITATION.cff) 生成)提供 APA 与 BibTeX 两种格式。
+
+## 许可证
+
+[MIT](./LICENSE)。随附的第三方技能和连接器保留各自许可证。
+
+> ZeroWall Science 仍是 beta 阶段科研工具。产出应视为草稿：发表或决策前请核对数字、引用、代码和结论。

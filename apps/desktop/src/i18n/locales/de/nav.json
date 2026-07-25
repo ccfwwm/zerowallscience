@@ -1,0 +1,85 @@
+{
+  "sidebar": {
+    "collapse": "Seitenleiste einklappen",
+    "collapseTitle": "Seitenleiste einklappen ({{shortcut}})",
+    "expand": "Seitenleiste ausklappen",
+    "expandTitle": "Seitenleiste ausklappen ({{shortcut}})",
+    "settings": "Einstellungen",
+    "home": "Startseite"
+  },
+  "items": {
+    "new": "Neu",
+    "notebooks": "Notebooks",
+    "files": "Dateien",
+    "runs": "Durchläufe",
+    "skills": "Skills",
+    "projects": "Projekte"
+  },
+  "projects": {
+    "heading": "Projekte",
+    "new": "Neues Projekt",
+    "importedBadge": "importiert",
+    "menuScratch": "Bei null anfangen",
+    "menuExisting": "Vorhandenen Ordner verwenden",
+    "nameTitle": "Projekt benennen",
+    "nameSubtitle": "Kurz und einprägsam halten",
+    "namePlaceholder": "Projektname",
+    "newSessionAria": "Neue Sitzung in „{{name}}“",
+    "noSessions": "Noch keine Sitzungen.",
+    "renameHint": "Zum Umbenennen doppelklicken",
+    "pageSearch": "Projekte suchen",
+    "colName": "Name",
+    "colSources": "Quellen",
+    "colUpdated": "Aktualisiert",
+    "noResults": "Keine passenden Projekte.",
+    "pin": "Anheften",
+    "unpin": "Lösen",
+    "rename": "Umbenennen",
+    "remove": "Entfernen",
+    "more": "Mehr",
+    "removeTitle": "{{name}} entfernen?",
+    "removeBody": "Entfernt das Projekt aus der Seitenleiste. Dateien auf der Festplatte werden nicht gelöscht.",
+    "seeAll": "Alle Projekte",
+    "openFolder": "{{path}} öffnen"
+  },
+  "history": {
+    "heading": "Sitzungen",
+    "empty": "Noch keine Unterhaltungen.",
+    "exampleTag": "Beispiel",
+    "deleteAria": "{{title}} löschen",
+    "running": "Arbeitet"
+  },
+  "confirmDelete": {
+    "sessionTitle": "Sitzung löschen?",
+    "sessionBody": "„{{title}}“ und die zugehörigen Nachrichten werden gelöscht. Dies kann nicht widerrufen werden.",
+    "exampleTitle": "Beispiel ausblenden?",
+    "exampleBody": "„{{title}}“ wird in der Seitenleiste ausgeblendet.",
+    "deleteAction": "Löschen",
+    "hideAction": "Ausblenden"
+  },
+  "status": {
+    "runtime": "Runtime",
+    "model": "Modell",
+    "modelNotSet": "nicht festgelegt",
+    "values": {
+      "ready": "bereit",
+      "connecting": "verbindet …",
+      "error": "Fehler",
+      "offline": "offline"
+    }
+  },
+  "commandPalette": {
+    "ariaLabel": "Befehlspalette",
+    "placeholder": "Befehl eingeben…",
+    "noResults": "Keine Ergebnisse.",
+    "actions": {
+      "newSession": "Neue Sitzung",
+      "analyzeData": "Meine Daten analysieren (neuer Workflow)",
+      "auditReport": "Bericht prüfen (Nachvollziehbarkeitsprüfung)",
+      "openNotebooks": "Notebooks öffnen",
+      "manageSkills": "Skills verwalten",
+      "openSettings": "Einstellungen öffnen",
+      "toggleTheme": "Design wechseln (Hell / Warm / Dunkel)"
+    }
+  }
+}

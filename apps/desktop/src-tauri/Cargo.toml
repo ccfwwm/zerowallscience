@@ -1,0 +1,45 @@
+[package]
+name = "zerowall-science"
+version = "0.3.0"
+description = "ZeroWall Science"
+authors = ["ZeroWall Science contributors"]
+edition = "2021"
+
+[lib]
+name = "zerowall_science_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# macos-private-api: transparent webview background for the vibrancy sidebar
+# (tauri.macos.conf.json); no-op on other platforms.
+tauri = { version = "2", features = ["macos-private-api"] }
+tauri-plugin-shell = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Already in the tree via tauri — used directly for stall timeouts on uv setup.
+tokio = { version = "1", features = ["time"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-notification = "2"
+getrandom = "0.4.3"
+opener = { version = "0.8.5", features = ["reveal"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "native-tls"] }
+# Watches the active workspace so file changes from outside the app (an external
+# editor, a detached process) still enqueue a debounced git snapshot.
+notify = "6"
+
+# Already in the tree via tao — used to re-pin the traffic lights (src/macos.rs).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSButton",
+    "NSControl",
+    "NSResponder",
+    "NSView",
+    "NSWindow",
+] }

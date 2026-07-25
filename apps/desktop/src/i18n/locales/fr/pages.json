@@ -1,0 +1,101 @@
+{
+  "notebooks": {
+    "title": "Notebooks",
+    "openJupyterLab": "Ouvrir JupyterLab",
+    "openJupyterLabTitle": "Ouvrir JupyterLab complet (même environnement et fichiers) dans votre navigateur",
+    "newNotebook": "Nouveau notebook",
+    "pythonNotebook": "Notebook Python",
+    "rNotebook": "Notebook R",
+    "description": "Tous les notebooks Jupyter de vos dossiers de session, du plus récent au plus ancien. Les cellules s'exécutent sur le noyau Python ou R local dans le propre dossier du notebook ; l'agent travaille sur les mêmes fichiers.",
+    "createsIn": "Les nouveaux notebooks sont créés dans",
+    "empty": {
+      "tauri": "Aucun notebook pour le moment. Créez-en un, ou demandez à l'agent d'en produire un.",
+      "web": "Les notebooks sont disponibles dans l'application de bureau."
+    },
+    "toast": {
+      "openingJupyterLab": "Ouverture de JupyterLab dans votre navigateur…",
+      "setUpJupyterFirst": "Configurez d'abord Jupyter — Paramètres → Serveurs MCP → Jupyter.",
+      "couldNotOpenJupyterLab": "Impossible d'ouvrir JupyterLab",
+      "couldNotCreateNotebook": "Impossible de créer le notebook"
+    },
+    "editor": {
+      "backAria": "Retour aux notebooks",
+      "languageR": "R",
+      "languagePython": "Python",
+      "saved": "Enregistré",
+      "unsaved": "Non enregistré",
+      "openJupyterLabAria": "Ouvrir dans JupyterLab",
+      "historyAria": "Historique",
+      "historyTitle": "Historique — chaque version enregistrée avec son code et sa conversation",
+      "reloadAria": "Recharger depuis le disque",
+      "reloadTitle": "Recharger (récupérer les modifications de l'agent)",
+      "closeAria": "Fermer l'inspecteur",
+      "stopCellTitle": "Arrêter — redémarre le noyau de ce notebook (les variables sont réinitialisées)",
+      "stopLabel": "Arrêter",
+      "runLabel": "Exécuter",
+      "addCellLabel": "Ajouter une cellule"
+    }
+  },
+  "files": {
+    "loading": "Chargement…",
+    "folderEmpty": "Ce dossier est vide.",
+    "explorerUnavailableWeb": "L'explorateur de fichiers est disponible dans l'application de bureau.",
+    "selectFilePrompt": "Sélectionnez un fichier pour le prévisualiser ici.",
+    "pane": {
+      "subtitle": "le dossier de cette session",
+      "closeAria": "Fermer les fichiers"
+    },
+    "contextMenu": {
+      "copyPath": "Copier le chemin",
+      "copyRelativePath": "Copier le chemin relatif",
+      "relativePathLabel": "Chemin relatif",
+      "openInDefaultApp": "Ouvrir dans l'application par défaut"
+    }
+  },
+  "skills": {
+    "title": "Compétences et agents",
+    "description": {
+      "prefix": "Chargé en direct depuis le runtime OpenCode — le pack ai4s-skills intégré, plus tout ce qui se trouve sous ",
+      "suffix": " dans votre espace de travail."
+    },
+    "install": {
+      "sectionTitle": "Installer une compétence",
+      "placeholder": "Collez une compétence (Markdown) ou une URL GitHub — l'agent l'installe dans .opencode/skills/",
+      "starting": "Démarrage…",
+      "cta": "Installer avec l'agent",
+      "hintConnected": "Ouvre une session et demande à l'agent de l'ajouter (customize-opencode).",
+      "hintDisconnected": "Connectez d'abord le runtime."
+    },
+    "environment": {
+      "sectionTitle": "Environnement scientifique",
+      "detectionUnavailable": "La détection de l'environnement s'exécute dans l'application de bureau.",
+      "found": "trouvé",
+      "notFound": "introuvable",
+      "note": "OpenCode exécute le code avec ce qui est installé ici (p. ex. Python via son outil shell). Python/R/Jupyter ne sont pas intégrés ; installez-les, ou un Science Pack, pour activer l'analyse."
+    },
+    "agentsSection": {
+      "sectionTitle": "Agents ({{count}})",
+      "empty": "Aucun agent signalé.",
+      "agentMode": {
+        "primary": "principal",
+        "subagent": "sous-agent",
+        "all": "tous"
+      }
+    },
+    "skillsListSection": {
+      "sectionTitle": "Compétences ({{count}})",
+      "empty": "Aucune compétence chargée pour le moment.",
+      "source": {
+        "builtin": "intégré",
+        "project": "projet",
+        "user": "utilisateur"
+      }
+    },
+    "disconnected": "Connectez le runtime pour lister les compétences et agents qu'il a chargés."
+  },
+  "notFound": {
+    "title": "404 — Introuvable",
+    "hint": "Cette page n'existe pas.",
+    "backLink": "Retour à l'espace de travail"
+  }
+}

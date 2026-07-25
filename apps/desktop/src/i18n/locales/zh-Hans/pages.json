@@ -1,0 +1,101 @@
+{
+  "notebooks": {
+    "title": "笔记本",
+    "openJupyterLab": "打开 JupyterLab",
+    "openJupyterLabTitle": "在浏览器中打开完整的 JupyterLab（相同环境和文件）",
+    "newNotebook": "新建笔记本",
+    "pythonNotebook": "Python 笔记本",
+    "rNotebook": "R 笔记本",
+    "description": "您所有会话文件夹中的 Jupyter 笔记本，按最新排序。单元格在笔记本自身文件夹中的本地 Python 或 R 内核上运行；代理处理的是同一批文件。",
+    "createsIn": "新笔记本创建于",
+    "empty": {
+      "tauri": "尚无笔记本。创建一个，或让代理生成一个。",
+      "web": "笔记本功能在桌面应用中可用。"
+    },
+    "toast": {
+      "openingJupyterLab": "正在浏览器中打开 JupyterLab…",
+      "setUpJupyterFirst": "请先设置 Jupyter — 设置 → MCP 服务器 → Jupyter。",
+      "couldNotOpenJupyterLab": "无法打开 JupyterLab",
+      "couldNotCreateNotebook": "无法创建笔记本"
+    },
+    "editor": {
+      "backAria": "返回笔记本列表",
+      "languageR": "R",
+      "languagePython": "Python",
+      "saved": "已保存",
+      "unsaved": "未保存",
+      "openJupyterLabAria": "在 JupyterLab 中打开",
+      "historyAria": "历史记录",
+      "historyTitle": "历史记录 — 每个已记录版本及其代码和对话",
+      "reloadAria": "从磁盘重新加载",
+      "reloadTitle": "重新加载（获取代理的更改）",
+      "closeAria": "关闭检查器",
+      "stopCellTitle": "停止 — 重启此笔记本的内核（变量将被重置）",
+      "stopLabel": "停止",
+      "runLabel": "运行",
+      "addCellLabel": "添加单元格"
+    }
+  },
+  "files": {
+    "loading": "正在加载…",
+    "folderEmpty": "此文件夹为空。",
+    "explorerUnavailableWeb": "文件浏览器在桌面应用中可用。",
+    "selectFilePrompt": "选择一个文件以在此处预览。",
+    "pane": {
+      "subtitle": "此会话的文件夹",
+      "closeAria": "关闭文件"
+    },
+    "contextMenu": {
+      "copyPath": "复制路径",
+      "copyRelativePath": "复制相对路径",
+      "relativePathLabel": "相对路径",
+      "openInDefaultApp": "用默认应用打开"
+    }
+  },
+  "skills": {
+    "title": "技能与代理",
+    "description": {
+      "prefix": "从 OpenCode 运行时实时加载——内置的 ai4s-skills 包，以及您工作区中位于 ",
+      "suffix": " 下的所有内容。"
+    },
+    "install": {
+      "sectionTitle": "安装技能",
+      "placeholder": "粘贴一个技能（Markdown）或 GitHub URL — 代理会将其安装到 .opencode/skills/",
+      "starting": "正在启动…",
+      "cta": "使用代理安装",
+      "hintConnected": "将打开一个会话并让代理添加它（customize-opencode）。",
+      "hintDisconnected": "请先连接运行时。"
+    },
+    "environment": {
+      "sectionTitle": "科学计算环境",
+      "detectionUnavailable": "环境检测功能在桌面应用中运行。",
+      "found": "已找到",
+      "notFound": "未找到",
+      "note": "OpenCode 使用此处已安装的组件运行代码（例如通过其 shell 工具调用 Python）。Python/R/Jupyter 并未内置；请安装它们或安装 Science Pack 以启用分析功能。"
+    },
+    "agentsSection": {
+      "sectionTitle": "代理（{{count}}）",
+      "empty": "未报告任何代理。",
+      "agentMode": {
+        "primary": "主要",
+        "subagent": "子代理",
+        "all": "全部"
+      }
+    },
+    "skillsListSection": {
+      "sectionTitle": "技能（{{count}}）",
+      "empty": "尚未加载任何技能。",
+      "source": {
+        "builtin": "内置",
+        "project": "项目",
+        "user": "用户"
+      }
+    },
+    "disconnected": "连接运行时以列出其已加载的技能和代理。"
+  },
+  "notFound": {
+    "title": "404 — 未找到",
+    "hint": "此页面不存在。",
+    "backLink": "返回工作区"
+  }
+}

@@ -1,0 +1,251 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  makeLeaf,
+  leaves,
+  findLeaf,
+  insertLeaf,
+  removeLeaf,
+  setSplitSizes,
+  setLeafSession,
+  adjacentLeafId,
+  normalize,
+  useLayoutStore,
+  MIN_SIZE,
+  type PaneNode,
+  type PaneSplit,
+} from "./layout";
+
+const asSplit = (n: PaneNode): PaneSplit => {
+  if (n.kind !== "split") throw new Error("expected split");
+  return n;
+};
+const sessions = (n: PaneNode) => leaves(n).map((l) => l.sessionId);
+
+describe("N-ary pane-tree ops", () => {
+  it("insertLeaf wraps a lone leaf into a 2-child split, evenly", () => {
+    const root = makeLeaf("A");
+    const tree = insertLeaf(root, root.id, "right", makeLeaf("B"));
+    const s = asSplit(tree);
+    expect(s.dir).toBe("row");
+    expect(sessions(tree)).toEqual(["A", "B"]);
+    expect(s.sizes).toEqual([0.5, 0.5]);
+  });
+
+  it("insertLeaf honors edge order (left/top put the new pane first)", () => {
+    const root = makeLeaf("A");
+    expect(sessions(insertLeaf(root, root.id, "left", makeLeaf("B")))).toEqual(["B", "A"]);
+    const top = asSplit(insertLeaf(root, root.id, "top", makeLeaf("B")));
+    expect(top.dir).toBe("col");
+    expect(sessions(top)).toEqual(["B", "A"]);
+  });
+
+  it("docking on the SAME axis adds an equal sibling (2→½, 3→⅓)", () => {
+    let tree: PaneNode = makeLeaf("A");
+    tree = insertLeaf(tree, findLeaf(tree, tree.id)!.id, "right", makeLeaf("B"));
+    expect(asSplit(tree).sizes).toEqual([0.5, 0.5]);
+    // Dock C to the right of B → three equal columns.
+    const bId = leaves(tree)[1].id;
+    tree = insertLeaf(tree, bId, "right", makeLeaf("C"));
+    const s = asSplit(tree);
+    expect(sessions(tree)).toEqual(["A", "B", "C"]);
+    expect(s.children).toHaveLength(3);
+    s.sizes.forEach((x) => expect(x).toBeCloseTo(1 / 3));
+  });
+
+  it("docking on the PERPENDICULAR axis nests a new split at that child", () => {
+    let tree: PaneNode = makeLeaf("A");
+    tree = insertLeaf(tree, tree.id, "right", makeLeaf("B")); // row [A, B]
+    const bId = leaves(tree)[1].id;
+    tree = insertLeaf(tree, bId, "bottom", makeLeaf("C")); // B becomes col [B, C]
+    expect(sessions(tree)).toEqual(["A", "B", "C"]);
+    const rootSplit = asSplit(tree);
+    expect(rootSplit.dir).toBe("row");
+    expect(rootSplit.children[0].kind).toBe("leaf"); // A
+    expect(asSplit(rootSplit.children[1]).dir).toBe("col"); // [B, C]
+  });
+
+  it("insertLeaf on a missing target is a no-op", () => {
+    const root = makeLeaf("A");
+    expect(insertLeaf(root, "nope", "right", makeLeaf("B"))).toBe(root);
+  });
+
+  it("removeLeaf re-equalizes survivors and reports the next focus", () => {
+    let tree: PaneNode = makeLeaf("A");
+    tree = insertLeaf(tree, tree.id, "right", makeLeaf("B"));
+    const bId = leaves(tree)[1].id;
+    tree = insertLeaf(tree, bId, "right", makeLeaf("C")); // A|B|C equal thirds
+    const res = removeLeaf(tree, bId); // close the middle
+    expect(res).not.toBeNull();
+    expect(sessions(res!.tree)).toEqual(["A", "C"]);
+    asSplit(res!.tree).sizes.forEach((x) => expect(x).toBeCloseTo(0.5));
+    expect(findLeaf(res!.tree, res!.nextFocusId)?.sessionId).toBe("C"); // next in order
+  });
+
+  it("removeLeaf collapses a split that falls to one child", () => {
+    const root = makeLeaf("A");
+    const tree = insertLeaf(root, root.id, "right", makeLeaf("B"));
+    const bId = leaves(tree)[1].id;
+    const res = removeLeaf(tree, bId);
+    expect(res!.tree.kind).toBe("leaf");
+    expect((res!.tree as { sessionId: string }).sessionId).toBe("A");
+  });
+
+  it("removeLeaf on the only leaf returns null", () => {
+    const root = makeLeaf("A");
+    expect(removeLeaf(root, root.id)).toBeNull();
+  });
+
+  it("normalize merges a same-direction nested split into its parent", () => {
+    // Hand-build row[ row[A,B], C ] and expect it to flatten to row[A,B,C].
+    let inner: PaneNode = makeLeaf("A");
+    inner = insertLeaf(inner, inner.id, "right", makeLeaf("B")); // row[A,B]
+    const crafted: PaneNode = {
+      kind: "split",
+      id: "x",
+      dir: "row",
+      children: [inner, makeLeaf("C")],
+      sizes: [0.5, 0.5],
+    };
+    const flat = asSplit(normalize(crafted));
+    expect(flat.dir).toBe("row");
+    expect(sessions(flat)).toEqual(["A", "B", "C"]);
+    expect(flat.children.every((c) => c.kind === "leaf")).toBe(true);
+    expect(flat.sizes.reduce((a, b) => a + b, 0)).toBeCloseTo(1);
+    // A,B each had 0.5 of the 0.5 left half → 0.25, 0.25; C → 0.5.
+    expect(flat.sizes).toEqual([0.25, 0.25, 0.5]);
+  });
+
+  it("setSplitSizes clamps to MIN_SIZE and renormalizes to sum 1", () => {
+    let tree: PaneNode = makeLeaf("A");
+    tree = insertLeaf(tree, tree.id, "right", makeLeaf("B"));
+    const id = asSplit(tree).id;
+    const out = asSplit(setSplitSizes(tree, id, [0.99, 0.01]));
+    expect(out.sizes[1]).toBeCloseTo(MIN_SIZE / (0.99 + MIN_SIZE));
+    expect(out.sizes.reduce((a, b) => a + b, 0)).toBeCloseTo(1);
+  });
+
+  it("setLeafSession rebinds one leaf only", () => {
+    let tree: PaneNode = makeLeaf("A");
+    tree = insertLeaf(tree, tree.id, "right", makeLeaf("B"));
+    const [a, b] = leaves(tree);
+    const next = setLeafSession(tree, a.id, "A2");
+    expect(sessions(next)).toEqual(["A2", "B"]);
+    expect(findLeaf(next, b.id)?.sessionId).toBe("B");
+  });
+
+  it("adjacentLeafId cycles focus in visual order and wraps", () => {
+    let tree: PaneNode = makeLeaf("A");
+    tree = insertLeaf(tree, tree.id, "right", makeLeaf("B"));
+    tree = insertLeaf(tree, leaves(tree)[1].id, "right", makeLeaf("C"));
+    const [a, b, c] = leaves(tree).map((l) => l.id);
+    expect(adjacentLeafId(tree, a, "next")).toBe(b);
+    expect(adjacentLeafId(tree, c, "next")).toBe(a); // wrap
+    expect(adjacentLeafId(tree, a, "prev")).toBe(c); // wrap
+  });
+});
+
+describe("layout store — groups", () => {
+  const S = () => useLayoutStore.getState();
+  beforeEach(() => {
+    // Reset to a single group with one bound leaf.
+    const leaf = makeLeaf("A");
+    useLayoutStore.setState({
+      groups: [{ id: "g0", name: "", tree: leaf, focusedLeafId: leaf.id, zoomedLeafId: null }],
+      activeGroupId: "g0",
+      tree: leaf,
+      focusedLeafId: leaf.id,
+      zoomedLeafId: null,
+    });
+  });
+
+  it("addGroup creates an empty active group; the old one is untouched", () => {
+    const id = S().addGroup();
+    expect(S().activeGroupId).toBe(id);
+    expect(S().tree).toBeNull(); // new group is empty (onboarding)
+    expect(S().groups).toHaveLength(2);
+    // The first group kept its pane.
+    expect(S().groups[0].tree).not.toBeNull();
+  });
+
+  it("setActiveGroup swaps the mirrored tree/focus", () => {
+    const id = S().addGroup(); // empty, active
+    S().setActiveGroup("g0");
+    expect(S().tree).not.toBeNull(); // g0's pane is back
+    S().setActiveGroup(id);
+    expect(S().tree).toBeNull();
+  });
+
+  it("mutations only affect the ACTIVE group", () => {
+    S().addGroup(); // active empty group
+    S().reset("Z"); // fill the active (empty) group
+    expect(leaves(S().tree!).map((l) => l.sessionId)).toEqual(["Z"]);
+    // g0 still shows A.
+    expect(leaves(S().groups[0].tree!).map((l) => l.sessionId)).toEqual(["A"]);
+  });
+
+  it("dockSession fills an empty group (first drop)", () => {
+    const id = S().addGroup();
+    S().dockSession("", "right", "B");
+    const g = S().groups.find((x) => x.id === id)!;
+    expect(g.tree?.kind).toBe("leaf");
+    expect(leaves(g.tree!).map((l) => l.sessionId)).toEqual(["B"]);
+  });
+
+  it("closeGroup activates a neighbor and never drops below one group", () => {
+    const id = S().addGroup(); // g0 + new
+    S().closeGroup(id);
+    expect(S().groups).toHaveLength(1);
+    expect(S().activeGroupId).toBe("g0");
+    // Closing the sole remaining group empties it instead of removing it.
+    S().closeGroup("g0");
+    expect(S().groups).toHaveLength(1);
+    expect(S().tree).toBeNull();
+  });
+
+  it("closing the last pane empties the group (onboarding), not disallowed", () => {
+    // g0 has a single leaf "A".
+    S().closePane(S().focusedLeafId!);
+    expect(S().tree).toBeNull();
+    expect(S().groups[0].tree).toBeNull();
+  });
+
+  it("split then close re-equalizes and stays within the active group", () => {
+    S().split("row", "B"); // A | B
+    expect(leaves(S().tree!).map((l) => l.sessionId)).toEqual(["A", "B"]);
+    asSplit(S().tree!).sizes.forEach((x) => expect(x).toBeCloseTo(0.5));
+    S().closePane(S().focusedLeafId!); // close B (focused)
+    expect(S().tree?.kind).toBe("leaf"); // collapsed back to A
+    expect(leaves(S().tree!).map((l) => l.sessionId)).toEqual(["A"]);
+  });
+
+  it("moveLeaf re-docks within the group without duplicating", () => {
+    S().split("row", "B"); // A | B, focus B
+    S().split("row", "C"); // A | B | C, focus C
+    const [a, , c] = leaves(S().tree!).map((l) => l.id);
+    // Move C to the bottom of A → A becomes col[A, C], B stays.
+    S().moveLeaf(c, a, "bottom");
+    expect(leaves(S().tree!).map((l) => l.sessionId).sort()).toEqual(["A", "B", "C"]);
+    expect(leaves(S().tree!)).toHaveLength(3); // no duplicate
+  });
+
+  it("setLeafZoom sets a per-leaf zoom only on that leaf", () => {
+    S().split("row", "B");
+    const [a, b] = leaves(S().tree!);
+    S().setLeafZoom(a.id, 0.75);
+    const after = leaves(S().tree!);
+    expect(after.find((l) => l.id === a.id)?.zoom).toBe(0.75);
+    expect(after.find((l) => l.id === b.id)?.zoom).toBeUndefined();
+  });
+
+  it("persists layout to localStorage on mutation", () => {
+    S().split("row", "B");
+    const raw = window.localStorage.getItem("zerowall.layout.v2");
+    expect(raw).toBeTruthy();
+    const saved = JSON.parse(raw!);
+    expect(saved.activeGroupId).toBe(S().activeGroupId);
+    // The persisted active group's tree carries both sessions.
+    const g = saved.groups.find((x: { id: string }) => x.id === saved.activeGroupId);
+    expect(JSON.stringify(g.tree)).toContain("\"A\"");
+    expect(JSON.stringify(g.tree)).toContain("\"B\"");
+  });
+});
