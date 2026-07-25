@@ -21,6 +21,7 @@ mod provenance;
 mod runs;
 mod runs_index;
 mod runtime;
+pub mod science_db;
 mod science_mcp;
 mod tools;
 #[cfg(target_os = "macos")]
@@ -68,6 +69,7 @@ pub fn run() {
             // external editor, a detached process) still enqueue a debounced
             // snapshot. Re-pointed on every workspace switch in set_workspace.
             if let Ok(ws) = runtime::workspace_dir(app.handle()) {
+                science_db::open_science_db(&ws).map_err(std::io::Error::other)?;
                 git_snapshot::watch_workspace(&ws);
             }
             // Bring the remote-access gateway back up if the user left it enabled.

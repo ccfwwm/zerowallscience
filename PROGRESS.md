@@ -1,5 +1,7 @@
 # Progress
 
+2026-07-26 01:15 · feat(data): added lifecycle-initialized per-workspace `science.db` storage with transactional fingerprinted M000-M008 migrations, 40 indexed relational tables, keychain-only secret references, scoped relationship constraints, and safe SHA-256 content paths; 145 Rust tests, build, Clippy, and the brand contract pass.
+
 2026-07-26 00:15 · fix(security): legacy app-data migration now rejects source and destination symlinks, Windows reparse points, and file/directory type conflicts at every recursive boundary, preventing writes outside the new app-data tree; 129 Rust tests, build, Clippy, and the brand contract pass.
 
 2026-07-25 23:56 · fix(compatibility): fresh project imports now discard both current and legacy workspace metadata, startup non-destructively restores legacy bundle app-data, snapshot refs retain legacy ancestry, and the exact brand allowlist is self-tested; 634 frontend and 128 Rust tests, typecheck, lint, Clippy, and production builds pass.

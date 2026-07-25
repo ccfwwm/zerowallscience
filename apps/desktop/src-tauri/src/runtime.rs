@@ -1000,6 +1000,16 @@ pub fn open_workspace_base(app: AppHandle) -> Result<(), String> {
 /// stream with `?directory=` and creates sessions with it (a bare `/event`
 /// stream would not see other folders' instances, so the scoped stream is
 /// required). `path` must be absolute.
+fn prepare_workspace_dir(dir: &Path) -> Result<PathBuf, String> {
+    if !dir.is_absolute() {
+        return Err("workspace path must be absolute".into());
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("could not create folder: {e}"))?;
+    let canonical = dir.canonicalize().map_err(|e| e.to_string())?;
+    crate::science_db::open_science_db(&canonical)?;
+    Ok(canonical)
+}
+
 #[tauri::command(async)]
 pub fn set_workspace(
     app: AppHandle,
@@ -1007,11 +1017,7 @@ pub fn set_workspace(
     path: String,
 ) -> Result<String, String> {
     let dir = PathBuf::from(&path);
-    if !dir.is_absolute() {
-        return Err("workspace path must be absolute".into());
-    }
-    std::fs::create_dir_all(&dir).map_err(|e| format!("could not create folder: {e}"))?;
-    let canon = dir.canonicalize().map_err(|e| e.to_string())?;
+    let canon = prepare_workspace_dir(&dir)?;
     std::fs::write(active_workspace_file(&app)?, canon.to_string_lossy().as_bytes())
         .map_err(|e| e.to_string())?;
 
@@ -1113,8 +1119,8 @@ pub fn kill_child(state: &RuntimeState) {
 mod tests {
     use super::{
         auth_has_provider, legacy_app_data_dir, migrate_legacy_app_data, parse_scutil_proxy,
-        prune_stale_skills, random_hex, remove_key_from_config, resolve_proxy_env,
-        sync_skill_pack, validate_proxy_url,
+        prepare_workspace_dir, prune_stale_skills, random_hex, remove_key_from_config,
+        resolve_proxy_env, sync_skill_pack, validate_proxy_url,
     };
     use std::fs;
 
@@ -1127,6 +1133,24 @@ mod tests {
             Some(std::path::Path::new("app-data-root").join(legacy_id))
         );
         assert_eq!(legacy_app_data_dir(std::path::Path::new("com.zerowall.science")), None);
+    }
+
+    #[test]
+    fn preparing_a_workspace_initializes_its_science_database() {
+        let root = std::env::temp_dir().join(format!(
+            "zerowall-prepare-science-workspace-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+
+        let prepared = prepare_workspace_dir(&root).unwrap();
+
+        assert_eq!(prepared, root.canonicalize().unwrap());
+        assert!(prepared.join(".zerowall/science.db").is_file());
+        let status = crate::science_db::science_db_status(&prepared).unwrap();
+        assert_eq!(status.version, 8);
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
