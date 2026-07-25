@@ -1,5 +1,7 @@
 # Progress
 
+2026-07-25 23:26 · fix(repository): removed inherited OMO session-continuation records and purged ignored build/test caches from the fresh ZeroWall Science repository after independent P0 review; tracked and local trees now contain source assets only.
+
 2026-07-25 23:16 · chore(brand): established the fresh ZeroWall Science baseline from Open Science Desktop `ab2853f`, migrated product/package/runtime identities and `.zerowall` workspace metadata with legacy import support; 634 frontend, 123 Rust, and 76 Python tests, typecheck, lint, Clippy, and production builds pass.
 
 2026-07-25 04:22 · feat(session): agent answers now expose one-click copy feedback, existing sessions open at the latest messages with a non-yanking ↓ Latest control, and global/session file browsers persist their last directory with safe root fallback; 634 tests, typecheck, lint, production build, and a verified 77 MB Apple Silicon DMG pass (`85a64967dcb79b2b84672ed779831548dc83700c00ecbdd1e19c86c927a9fe4e`).
