@@ -68,6 +68,49 @@ const MIGRATIONS: &[Migration] = &[
     },
 ];
 
+const REQUIRED_TABLES: &[&str] = &[
+    "agents",
+    "annotations",
+    "approval_decisions",
+    "artifact_edges",
+    "artifact_versions",
+    "artifacts",
+    "assignments",
+    "claims",
+    "compaction_archives",
+    "compute_jobs",
+    "compute_providers",
+    "compute_usage",
+    "content_snapshots",
+    "egress_policies",
+    "events",
+    "executions",
+    "leases",
+    "managed_endpoints",
+    "marketplace_sources",
+    "mcp_resources",
+    "mcp_servers",
+    "memories",
+    "message_queue",
+    "messages",
+    "projects",
+    "provenance_refs",
+    "read_marks",
+    "resolutions",
+    "resource_grants",
+    "reviewer_runs",
+    "routine_schedules",
+    "schema_metadata",
+    "schema_migrations",
+    "secret_refs",
+    "session_concurrency",
+    "sessions",
+    "skills",
+    "termination_queue",
+    "tool_policies",
+    "verification_checks",
+];
+
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScienceDbStatus {
@@ -135,6 +178,7 @@ pub fn open_science_db(root: &Path) -> Result<Connection, String> {
         .map_err(|error| format!("open science database {}: {error}", path.display()))?;
     configure_connection(&conn)?;
     apply_migrations(&mut conn, MIGRATIONS)?;
+    verify_schema_state(&conn)?;
     Ok(conn)
 }
 
@@ -255,6 +299,40 @@ fn apply_migrations(conn: &mut Connection, migrations: &[Migration]) -> Result<(
     Ok(())
 }
 
+fn verify_schema_state(conn: &Connection) -> Result<(), String> {
+    let expected_version = MIGRATIONS
+        .last()
+        .map(|migration| migration.version)
+        .ok_or_else(|| "science database has no migrations".to_owned())?;
+    let actual_version = current_version(conn)?
+        .ok_or_else(|| "science database metadata is missing".to_owned())?;
+    if actual_version != expected_version {
+        return Err(format!(
+            "science database current version is {actual_version}, expected {expected_version}"
+        ));
+    }
+
+    let recorded_count = conn
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+            row.get::<_, usize>(0)
+        })
+        .map_err(|error| format!("count science database migrations: {error}"))?;
+    if recorded_count != MIGRATIONS.len() {
+        return Err(format!(
+            "science database has {recorded_count} migration records, expected {}",
+            MIGRATIONS.len()
+        ));
+    }
+
+    for table in REQUIRED_TABLES {
+        if !table_exists(conn, table)? {
+            return Err(format!("science database required table is missing: {table}"));
+        }
+    }
+
+    Ok(())
+}
+
 /// Open the database if necessary and return its migration state.
 pub fn science_db_status(root: &Path) -> Result<ScienceDbStatus, String> {
     let conn = open_science_db(root)?;
@@ -311,49 +389,6 @@ mod tests {
     use rusqlite::Connection;
 
     use super::*;
-
-    const EXPECTED_TABLES: &[&str] = &[
-        "agents",
-        "annotations",
-        "approval_decisions",
-        "artifact_edges",
-        "artifact_versions",
-        "artifacts",
-        "assignments",
-        "claims",
-        "compaction_archives",
-        "compute_jobs",
-        "compute_providers",
-        "compute_usage",
-        "content_snapshots",
-        "egress_policies",
-        "events",
-        "executions",
-        "leases",
-        "managed_endpoints",
-        "marketplace_sources",
-        "mcp_resources",
-        "mcp_servers",
-        "memories",
-        "message_queue",
-        "messages",
-        "projects",
-        "provenance_refs",
-        "read_marks",
-        "resolutions",
-        "resource_grants",
-        "reviewer_runs",
-        "routine_schedules",
-        "schema_metadata",
-        "schema_migrations",
-        "secret_refs",
-        "session_concurrency",
-        "sessions",
-        "skills",
-        "termination_queue",
-        "tool_policies",
-        "verification_checks",
-    ];
 
     struct TestWorkspace(PathBuf);
 
@@ -423,10 +458,10 @@ mod tests {
             status.applied_migration_ids,
             (0..=8).map(|n| format!("M{n:03}")).collect::<Vec<_>>()
         );
-        assert_eq!(status.table_count, EXPECTED_TABLES.len() as u32);
+        assert_eq!(status.table_count, REQUIRED_TABLES.len() as u32);
         assert_eq!(
             table_names(&conn),
-            EXPECTED_TABLES
+            REQUIRED_TABLES
                 .iter()
                 .map(|name| (*name).to_owned())
                 .collect()
@@ -535,6 +570,32 @@ mod tests {
         let error = apply_migrations(&mut conn, &[changed]).unwrap_err();
         assert!(error.contains("checksum"), "{error}");
         assert!(!table_names(&conn).contains("unexpected"));
+    }
+
+    #[test]
+    fn reopening_rejects_metadata_version_drift() {
+        let workspace = TestWorkspace::new("metadata-drift");
+        let conn = open_science_db(workspace.path()).unwrap();
+        conn.execute(
+            "UPDATE schema_metadata SET current_version = 7 WHERE singleton = 1",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+
+        let error = open_science_db(workspace.path()).unwrap_err();
+        assert!(error.contains("current version"), "{error}");
+    }
+
+    #[test]
+    fn reopening_rejects_a_missing_migrated_table() {
+        let workspace = TestWorkspace::new("missing-table");
+        let conn = open_science_db(workspace.path()).unwrap();
+        conn.execute_batch("DROP TABLE claims").unwrap();
+        drop(conn);
+
+        let error = open_science_db(workspace.path()).unwrap_err();
+        assert!(error.contains("claims"), "{error}");
     }
 
     #[test]
