@@ -177,14 +177,16 @@
       "sphere": "Kugel",
       "cartoon": "Cartoon"
     },
-    "moleculeViewerAria": "{{filename}} 3D-Molekülbetrachter",
+    "moleculeViewerAria": "{{filename}} Molekülbetrachter",
     "notChemicalFile": "Keine chemische Strukturdatei.",
     "noStructuresFound": "Keine chemischen Strukturen in dieser Datei gefunden.",
     "resetView": "Ansicht zurücksetzen",
     "atomCount_one": "{{count}} Atom",
     "atomCount_other": "{{count}} Atome",
     "renderingStructure": "Struktur wird gerendert…",
-    "badge3D": "3D"
+    "badge3D": "3D",
+    "badge2D": "2D",
+    "flatStructureHint": "Flache Struktur: Diese Datei enthält keine 3D-Konformation."
   },
   "dos": {
     "readError": "Diese DOSCAR-Datei konnte nicht gelesen werden — {{error}}.",

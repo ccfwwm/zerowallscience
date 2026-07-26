@@ -4,6 +4,13 @@
 /** 3Dmol.js render styles the viewer exposes. */
 export type MoleculeStyleMode = "stick" | "sphere" | "cartoon";
 
+/**
+ * What the coordinates in a model actually describe. A structure drawn in 2D
+ * (or laid out from SMILES) has every z at zero: it is a diagram, not a
+ * conformation, and must not be presented as 3D.
+ */
+export type MoleculeDimensionality = "2D" | "3D";
+
 /** File extension → the format string 3Dmol.js expects in `addModel`. */
 const MOLECULE_FORMATS: Record<string, string> = {
   cif: "cif",
@@ -58,10 +65,41 @@ export function defaultStyleMode(filename: string, content: string): MoleculeSty
 }
 
 /**
+ * Read the dimensionality of a model's coordinates.
+ *
+ * Molfile/SDF atom lines and XYZ lines both start with three coordinates. If
+ * every z is zero the structure is flat — a 2D depiction, not a conformation.
+ * Formats that only exist in 3D (pdb/cif/mol2/pqr/cube) are reported as 3D
+ * without parsing, since their coordinates are measured or modelled.
+ *
+ * Returns "3D" when no coordinate lines are recognisable, so an unparseable
+ * file is never downgraded to a claim we cannot support either way.
+ */
+export function dimensionalityOf(content: string, format: string | null): MoleculeDimensionality {
+  if (format !== "sdf" && format !== "xyz") return "3D";
+
+  // Match a leading x y z triple, the shape shared by molfile V2000 atom
+  // blocks ("  1.2340   -0.5670    0.0000 C") and XYZ lines ("C 1.234 ...").
+  const TRIPLE = /^\s*(?:[A-Za-z][A-Za-z]?\s+)?(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\b/;
+  let sawCoordinates = false;
+  for (const line of content.split(/\r?\n/)) {
+    const m = TRIPLE.exec(line);
+    if (!m) continue;
+    sawCoordinates = true;
+    if (parseFloat(m[3]) !== 0) return "3D";
+  }
+  return sawCoordinates ? "2D" : "3D";
+}
+
+/**
  * Convert a `.smi` / `.smiles` file (one `<SMILES> [name]` per line, `#`
- * comments skipped) into a single SDF string with 2D coordinates, so the same
- * 3D viewer can render it. Returns null if no line parses. openchemlib is
- * loaded lazily to keep it out of the main bundle.
+ * comments skipped) into a single SDF string.
+ *
+ * SMILES encodes connectivity only, so openchemlib lays the atoms out as a
+ * flat diagram (`inventCoordinates`, every z zero). The result is a 2D
+ * depiction the viewer can draw — it is NOT a conformation, and callers must
+ * label it accordingly (see dimensionalityOf). Returns null if no line parses.
+ * openchemlib is loaded lazily to keep it out of the main bundle.
  */
 export async function smilesToMolblock(text: string): Promise<string | null> {
   const lines = text

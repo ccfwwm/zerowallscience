@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultStyleMode,
+  dimensionalityOf,
   isSmilesFile,
   looksLikeMacromolecule,
   moleculeFormatFor,
@@ -71,11 +72,50 @@ describe("smilesToMolblock", () => {
     expect(sdf!.match(/\$\$\$\$/g)).toHaveLength(2);
     expect(sdf!.startsWith("ethanol\n")).toBe(true);
     expect(sdf).toContain("\nbenzene\n");
-    // Real coordinates were generated (not all-zero), so 3D rendering works.
+    // Atoms were laid out, so there is something to draw.
     expect(sdf).toMatch(/-?\d+\.\d{3,}/);
+  });
+
+  it("lays SMILES out flat — it is a diagram, not a conformation", async () => {
+    const sdf = await smilesToMolblock("CC(=O)Oc1ccccc1C(=O)O aspirin\n");
+    expect(sdf).not.toBeNull();
+    // inventCoordinates is a 2D layout: every z is zero. Claiming 3D here
+    // would assert a conformation SMILES does not encode.
+    expect(dimensionalityOf(sdf!, "sdf")).toBe("2D");
   });
 
   it("returns null when nothing parses", async () => {
     expect(await smilesToMolblock("   \n# only a comment\n")).toBeNull();
+  });
+});
+
+describe("dimensionalityOf", () => {
+  const atom = (x: number, y: number, z: number) =>
+    `${x.toFixed(4).padStart(10)}${y.toFixed(4).padStart(10)}${z.toFixed(4).padStart(10)} C   0  0`;
+
+  it("reads a flat molfile as 2D", () => {
+    const flat = ["name", "", "", "  2  1  0", atom(1.2, 0.5, 0), atom(-1.2, -0.5, 0)].join("\n");
+    expect(dimensionalityOf(flat, "sdf")).toBe("2D");
+  });
+
+  it("reads a molfile with any non-zero z as 3D", () => {
+    const conformer = ["name", "", "", "  2  1  0", atom(1.2, 0.5, 0), atom(-1.2, -0.5, 0.87)].join("\n");
+    expect(dimensionalityOf(conformer, "sdf")).toBe("3D");
+  });
+
+  it("handles XYZ, where the element leads the coordinates", () => {
+    expect(dimensionalityOf("2\ncomment\nC 0.0000 0.0000 0.0000\nO 1.1300 0.0000 0.0000\n", "xyz")).toBe("2D");
+    expect(dimensionalityOf("2\ncomment\nC 0.0000 0.0000 0.0000\nO 1.1300 0.0000 1.2000\n", "xyz")).toBe("3D");
+  });
+
+  it("treats inherently 3D formats as 3D without parsing", () => {
+    // A PDB's coordinates are measured or modelled; z may legitimately be 0.
+    expect(dimensionalityOf("ATOM      1  C   LIG A   1       1.000   2.000   0.000", "pdb")).toBe("3D");
+    expect(dimensionalityOf("data_x", "cif")).toBe("3D");
+    expect(dimensionalityOf("", "mol2")).toBe("3D");
+  });
+
+  it("does not downgrade a file whose coordinates it cannot find", () => {
+    expect(dimensionalityOf("no coordinates here", "sdf")).toBe("3D");
   });
 });

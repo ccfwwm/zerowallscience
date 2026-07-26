@@ -173,13 +173,15 @@
       "sphere": "구",
       "cartoon": "카툰"
     },
-    "moleculeViewerAria": "{{filename}} 3D 분자 뷰어",
+    "moleculeViewerAria": "{{filename}} 분자 뷰어",
     "notChemicalFile": "화학 구조 파일이 아닙니다.",
     "noStructuresFound": "이 파일에서 화학 구조를 찾을 수 없습니다.",
     "resetView": "보기 초기화",
     "atomCount_other": "원자 {{count}}개",
     "renderingStructure": "구조 렌더링 중…",
-    "badge3D": "3D"
+    "badge3D": "3D",
+    "badge2D": "2D",
+    "flatStructureHint": "평면 구조: 이 파일에는 3D 입체구조가 없습니다."
   },
   "dos": {
     "readError": "이 DOSCAR를 읽을 수 없습니다 — {{error}}.",

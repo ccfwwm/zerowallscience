@@ -43,6 +43,29 @@ describe("MoleculeView", () => {
     expect(model).toMatch(/-?\d+\.\d{3,}/);
   });
 
+  it("labels a SMILES layout 2D, since it carries no conformation", async () => {
+    render(<MoleculeView filename="mols.smi" text="CCO ethanol" />);
+    expect(await screen.findByText("2D")).toBeInTheDocument();
+    expect(screen.queryByText("3D")).not.toBeInTheDocument();
+  });
+
+  it("labels a flat molfile 2D and a conformer 3D", async () => {
+    const atom = (z: string) => `    1.2000    0.5000    ${z} C   0  0`;
+    const molfile = (z: string) => ["mol", "", "", "  1  0  0", atom(z)].join("\n");
+
+    const { rerender, unmount } = render(<MoleculeView filename="flat.mol" text={molfile("0.0000")} />);
+    expect(await screen.findByText("2D")).toBeInTheDocument();
+
+    rerender(<MoleculeView filename="conf.mol" text={molfile("0.8700")} />);
+    await waitFor(() => expect(screen.getByText("3D")).toBeInTheDocument());
+    unmount();
+  });
+
+  it("keeps the 3D label for a PDB, whose coordinates are measured", async () => {
+    render(<MoleculeView filename="1abc.pdb" text={"ATOM  1  C   LIG\nATOM  2  O   LIG"} />);
+    expect(await screen.findByText("3D")).toBeInTheDocument();
+  });
+
   it("re-applies the style when the user switches render mode", async () => {
     render(<MoleculeView filename="ligand.mol" text="mol" />);
     await waitFor(() => expect(viewer.setStyle).toHaveBeenCalled());

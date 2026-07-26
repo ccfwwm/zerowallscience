@@ -4,10 +4,12 @@ import { Atom, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   defaultStyleMode,
+  dimensionalityOf,
   isSmilesFile,
   looksLikeMacromolecule,
   moleculeFormatFor,
   smilesToMolblock,
+  type MoleculeDimensionality,
   type MoleculeStyleMode,
 } from "@/lib/molecule";
 import { cn } from "@/lib/cn";
@@ -19,11 +21,15 @@ const STYLE_OPTIONS: Array<{ value: MoleculeStyleMode }> = [
 ];
 
 /**
- * Interactive 3D structure viewer (P1-3) for chemical files
+ * Interactive structure viewer (P1-3) for chemical files
  * (cif/pdb/mol/mol2/sdf/xyz/pqr/cube and SMILES). 3Dmol.js renders a rotatable,
- * zoomable model entirely locally via WebGL — no service. SMILES has no
- * coordinates, so it is converted to a molblock first. The scene sits on a
+ * zoomable model entirely locally via WebGL — no service. The scene sits on a
  * white stage (chemistry convention), consistent in light and dark themes.
+ *
+ * The badge reports what the coordinates actually are. SMILES carries no
+ * coordinates, so it is laid out as a flat diagram; a molfile drawn in 2D is
+ * equally flat. Those render as a plane and are labelled 2D — calling them 3D
+ * would claim a conformation the file does not contain.
  */
 export function MoleculeView({ filename, text }: { filename: string; text: string }) {
   const { t } = useTranslation(["inspector", "common"]);
@@ -47,6 +53,9 @@ export function MoleculeView({ filename, text }: { filename: string; text: strin
   const [rendering, setRendering] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [atomCount, setAtomCount] = useState<number | null>(null);
+  // Measured from the model handed to 3Dmol, not from the extension: a .sdf may
+  // hold either a flat drawing or a conformer.
+  const [dimensionality, setDimensionality] = useState<MoleculeDimensionality | null>(null);
 
   useEffect(() => {
     setStyleMode(defaultStyleMode(filename, text));
@@ -68,6 +77,7 @@ export function MoleculeView({ filename, text }: { filename: string; text: strin
     setRendering(true);
     setError(null);
     setAtomCount(null);
+    setDimensionality(null);
     container.replaceChildren();
 
     (async () => {
@@ -79,6 +89,7 @@ export function MoleculeView({ filename, text }: { filename: string; text: strin
           setError(t("molecule.noStructuresFound"));
           return;
         }
+        setDimensionality(dimensionalityOf(model, format));
 
         const $3Dmol = await import("3dmol");
         if (cancelled || !containerRef.current) return;
@@ -182,8 +193,11 @@ export function MoleculeView({ filename, text }: { filename: string; text: strin
         className="absolute left-3 top-3 flex items-center gap-2 rounded-input border border-border/70 bg-surface/90 p-1 shadow-card backdrop-blur"
         data-molecule-controls="true"
       >
-        <div className="flex items-center gap-1 px-1.5 text-xs font-medium text-muted">
-          <Atom size={13} /> {t("molecule.badge3D")}
+        <div
+          className="flex items-center gap-1 px-1.5 text-xs font-medium text-muted"
+          title={dimensionality === "2D" ? t("molecule.flatStructureHint") : undefined}
+        >
+          <Atom size={13} /> {dimensionality === "2D" ? t("molecule.badge2D") : t("molecule.badge3D")}
         </div>
         <div className="flex rounded bg-surface-2 p-0.5">
           {styleOptions.map((o) => (

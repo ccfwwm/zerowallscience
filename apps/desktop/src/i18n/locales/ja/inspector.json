@@ -173,13 +173,15 @@
       "sphere": "スフィア",
       "cartoon": "カートゥーン"
     },
-    "moleculeViewerAria": "{{filename}} の 3D 分子ビューア",
+    "moleculeViewerAria": "{{filename}} の分子ビューア",
     "notChemicalFile": "化学構造ファイルではありません。",
     "noStructuresFound": "このファイルに化学構造が見つかりません。",
     "resetView": "表示をリセット",
     "atomCount_other": "{{count}} 個の原子",
     "renderingStructure": "構造をレンダリング中…",
-    "badge3D": "3D"
+    "badge3D": "3D",
+    "badge2D": "2D",
+    "flatStructureHint": "平面構造: このファイルには 3D 立体配座がありません。"
   },
   "dos": {
     "readError": "この DOSCAR を読み込めませんでした — {{error}}。",

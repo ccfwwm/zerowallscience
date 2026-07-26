@@ -177,14 +177,16 @@
       "sphere": "Sphere",
       "cartoon": "Cartoon"
     },
-    "moleculeViewerAria": "{{filename}} 3D molecule viewer",
+    "moleculeViewerAria": "{{filename}} molecule viewer",
     "notChemicalFile": "Not a chemical structure file.",
     "noStructuresFound": "No chemical structures found in this file.",
     "resetView": "Reset view",
     "atomCount_one": "{{count}} atom",
     "atomCount_other": "{{count}} atoms",
     "renderingStructure": "Rendering structure…",
-    "badge3D": "3D"
+    "badge3D": "3D",
+    "badge2D": "2D",
+    "flatStructureHint": "Flat structure: this file has no 3D conformation."
   },
   "dos": {
     "readError": "Could not read this DOSCAR — {{error}}.",

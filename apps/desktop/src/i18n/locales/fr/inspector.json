@@ -177,14 +177,16 @@
       "sphere": "Sphères",
       "cartoon": "Cartoon"
     },
-    "moleculeViewerAria": "Visionneuse de molécule 3D {{filename}}",
+    "moleculeViewerAria": "Visionneuse de molécule {{filename}}",
     "notChemicalFile": "Ce n'est pas un fichier de structure chimique.",
     "noStructuresFound": "Aucune structure chimique trouvée dans ce fichier.",
     "resetView": "Réinitialiser la vue",
     "atomCount_one": "{{count}} atome",
     "atomCount_other": "{{count}} atomes",
     "renderingStructure": "Rendu de la structure…",
-    "badge3D": "3D"
+    "badge3D": "3D",
+    "badge2D": "2D",
+    "flatStructureHint": "Structure plane : ce fichier ne contient pas de conformation 3D."
   },
   "dos": {
     "readError": "Impossible de lire ce DOSCAR — {{error}}.",

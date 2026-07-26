@@ -173,13 +173,15 @@
       "sphere": "球状",
       "cartoon": "卡通"
     },
-    "moleculeViewerAria": "{{filename}} 三维分子查看器",
+    "moleculeViewerAria": "{{filename}} 分子查看器",
     "notChemicalFile": "不是化学结构文件。",
     "noStructuresFound": "此文件中未找到化学结构。",
     "resetView": "重置视图",
     "atomCount_other": "{{count}} 个原子",
     "renderingStructure": "正在渲染结构…",
-    "badge3D": "三维"
+    "badge3D": "三维",
+    "badge2D": "二维",
+    "flatStructureHint": "平面结构：此文件不含三维构象。"
   },
   "dos": {
     "readError": "无法读取此 DOSCAR 文件 — {{error}}。",
