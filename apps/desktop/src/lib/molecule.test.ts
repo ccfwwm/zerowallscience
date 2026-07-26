@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  canDepict2D,
   defaultStyleMode,
+  depict2D,
   dimensionalityOf,
   isSmilesFile,
   looksLikeMacromolecule,
   moleculeFormatFor,
+  renderSvgInto,
   smilesToMolblock,
 } from "./molecule";
 
@@ -117,5 +120,106 @@ describe("dimensionalityOf", () => {
 
   it("does not downgrade a file whose coordinates it cannot find", () => {
     expect(dimensionalityOf("no coordinates here", "sdf")).toBe("3D");
+  });
+});
+
+describe("canDepict2D", () => {
+  it("accepts small-molecule connection tables and SMILES", () => {
+    expect(canDepict2D("aspirin.sdf", "")).toBe(true);
+    expect(canDepict2D("ligand.smi", "CCO")).toBe(true);
+    expect(canDepict2D("query.smiles", "CCO")).toBe(true);
+  });
+
+  it("rejects formats that carry no bond orders", () => {
+    // Drawing a structural formula from these would have to invent the bonds.
+    for (const name of ["1abc.pdb", "cell.cif", "opt.xyz", "lig.mol2", "notes.txt"]) {
+      expect(canDepict2D(name, "")).toBe(false);
+    }
+  });
+
+  it("rejects a macromolecule even in an accepted format", () => {
+    const residues = Array.from(
+      { length: 25 },
+      (_, i) => `ATOM  ${String(i + 1).padStart(5)}  CA  MET A${String(i + 1).padStart(4)}`,
+    );
+    const protein = ["HEADER", ...residues].join("\n");
+    expect(canDepict2D("big.sdf", protein)).toBe(false);
+  });
+});
+
+describe("depict2D", () => {
+  it("draws SMILES as an SVG structural formula", async () => {
+    const svg = await depict2D("aspirin.smi", "CC(=O)Oc1ccccc1C(=O)O aspirin\n", 400, 300);
+    expect(svg).not.toBeNull();
+    expect(svg!).toMatch(/^<svg/);
+    expect(svg!).toContain("</svg>");
+  });
+
+  it("draws the first record of an SDF", async () => {
+    const sdf = await smilesToMolblock("CCO ethanol\nc1ccccc1 benzene\n");
+    const svg = await depict2D("two.sdf", sdf!, 400, 300);
+    expect(svg).not.toBeNull();
+    expect(svg!).toMatch(/^<svg/);
+  });
+
+  it("returns null when nothing parses", async () => {
+    expect(await depict2D("empty.smi", "# only a comment\n", 400, 300)).toBeNull();
+    expect(await depict2D("junk.sdf", "not a molfile", 400, 300)).toBeNull();
+  });
+
+  it("escapes text rather than emitting markup", async () => {
+    // The molfile title line is dropped and atom labels are escaped, so file
+    // content cannot inject nodes into the drawing.
+    const svg = await depict2D("x.smi", "CCO '><script>alert(1)</script>\n", 400, 300);
+    expect(svg).not.toBeNull();
+    expect(svg!).not.toContain("<script");
+  });
+});
+
+describe("renderSvgInto", () => {
+  const host = () => document.createElement("div");
+
+  it("mounts the drawing and stretches it to the container", () => {
+    const el = host();
+    expect(renderSvgInto(el, '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30"><rect/></svg>')).toBe(
+      true,
+    );
+    const svg = el.firstElementChild!;
+    expect(svg.getAttribute("width")).toBe("100%");
+    expect(svg.getAttribute("height")).toBe("100%");
+    expect(svg.querySelector("rect")).not.toBeNull();
+  });
+
+  it("replaces whatever was there before", () => {
+    const el = host();
+    el.appendChild(document.createElement("span"));
+    renderSvgInto(el, '<svg xmlns="http://www.w3.org/2000/svg"><g/></svg>');
+    expect(el.childElementCount).toBe(1);
+    expect(el.querySelector("span")).toBeNull();
+  });
+
+  it("strips active content and links", () => {
+    const el = host();
+    const svg = [
+      '<svg xmlns="http://www.w3.org/2000/svg">',
+      "<script>alert(1)</script>",
+      '<image href="x.png"/>',
+      '<a href="https://example.com"><text>t</text></a>',
+      '<rect onclick="alert(1)" onload="alert(2)"/>',
+      "</svg>",
+    ].join("");
+    expect(renderSvgInto(el, svg)).toBe(true);
+    expect(el.querySelector("script")).toBeNull();
+    expect(el.querySelector("image")).toBeNull();
+    expect(el.querySelector("a")).toBeNull();
+    const rect = el.querySelector("rect")!;
+    expect(rect.getAttribute("onclick")).toBeNull();
+    expect(rect.getAttribute("onload")).toBeNull();
+  });
+
+  it("refuses malformed SVG instead of mounting an error document", () => {
+    const el = host();
+    expect(renderSvgInto(el, "<svg><unclosed>")).toBe(false);
+    expect(el.childElementCount).toBe(0);
   });
 });

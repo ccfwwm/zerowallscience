@@ -178,6 +178,7 @@
       "cartoon": "Cartoon"
     },
     "moleculeViewerAria": "Visor de la molécula {{filename}}",
+    "structureDiagramAria": "Diagrama de estructura 2D de {{filename}}",
     "notChemicalFile": "No es un archivo de estructura química.",
     "noStructuresFound": "No se encontraron estructuras químicas en este archivo.",
     "resetView": "Restablecer vista",

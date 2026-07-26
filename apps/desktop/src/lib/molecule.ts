@@ -64,6 +64,100 @@ export function defaultStyleMode(filename: string, content: string): MoleculeSty
   return macromoleculeExt && looksLikeMacromolecule(content) ? "cartoon" : "stick";
 }
 
+/** Formats a 2D depiction can be drawn from: a connection table or SMILES. */
+const DEPICTABLE_2D = new Set(["mol", "sdf", "smi", "smiles"]);
+
+/**
+ * Can this file be drawn as a conventional 2D structural formula?
+ *
+ * Only small-molecule connection tables qualify. A protein has no meaningful
+ * flat depiction, and pdb/cif/mol2/xyz carry no bond orders, so a 2D drawing
+ * from them would invent double bonds that the file never stated.
+ */
+export function canDepict2D(filename: string, content: string): boolean {
+  return DEPICTABLE_2D.has(extOf(filename)) && !looksLikeMacromolecule(content);
+}
+
+/**
+ * Render the first record of a molfile/SDF/SMILES as an SVG structural formula.
+ *
+ * This is a chemist's 2D drawing — bond orders, stereo bonds and atom labels
+ * by openchemlib's own layout — not a projection of the 3D scene. Returns null
+ * when nothing parses. openchemlib is loaded lazily.
+ *
+ * The returned markup is untrusted: it derives from workspace file content.
+ * Callers must parse it (see renderSvgInto) rather than assigning innerHTML.
+ */
+export async function depict2D(
+  filename: string,
+  content: string,
+  width: number,
+  height: number,
+): Promise<string | null> {
+  const OCL = await import("openchemlib");
+  let mol: import("openchemlib").Molecule | null = null;
+
+  if (isSmilesFile(filename)) {
+    const first = content
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l && !l.startsWith("#"));
+    if (!first) return null;
+    try {
+      mol = OCL.Molecule.fromSmiles(first.split(/\s+/)[0]);
+    } catch {
+      return null;
+    }
+  } else {
+    // An SDF may hold many records; depict the first, matching the viewer.
+    const record = content.split(/^\$\$\$\$\s*$/m)[0];
+    try {
+      mol = OCL.Molecule.fromMolfile(record);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!mol || mol.getAllAtoms() === 0) return null;
+  // A 3D conformer projected flat overlaps badly; re-lay it out as a diagram.
+  mol.inventCoordinates();
+  return mol.toSVG(Math.max(1, Math.round(width)), Math.max(1, Math.round(height)), undefined, {
+    autoCrop: true,
+    autoCropMargin: 8,
+    suppressChiralText: true,
+  });
+}
+
+/**
+ * Parse SVG markup and mount it, dropping anything executable.
+ *
+ * openchemlib escapes text content, but this markup is derived from untrusted
+ * workspace files, so it is parsed as XML (never innerHTML) and scripts,
+ * external references and event-handler attributes are stripped regardless.
+ */
+export function renderSvgInto(container: Element, svg: string): boolean {
+  const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+  const root = doc.documentElement;
+  if (!root || root.getElementsByTagName("parsererror").length > 0 || root.nodeName === "parsererror") {
+    return false;
+  }
+
+  for (const el of Array.from(root.querySelectorAll("script, foreignObject, use, image, a"))) {
+    el.remove();
+  }
+  for (const el of Array.from(root.querySelectorAll("*"))) {
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith("on") || name === "href" || name === "xlink:href") el.removeAttribute(attr.name);
+    }
+  }
+
+  root.setAttribute("width", "100%");
+  root.setAttribute("height", "100%");
+  container.replaceChildren(document.importNode(root, true));
+  return true;
+}
+
 /**
  * Read the dimensionality of a model's coordinates.
  *

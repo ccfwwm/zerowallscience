@@ -3,11 +3,14 @@ import type { GLViewer } from "3dmol";
 import { Atom, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
+  canDepict2D,
   defaultStyleMode,
+  depict2D,
   dimensionalityOf,
   isSmilesFile,
   looksLikeMacromolecule,
   moleculeFormatFor,
+  renderSvgInto,
   smilesToMolblock,
   type MoleculeDimensionality,
   type MoleculeStyleMode,
@@ -30,12 +33,19 @@ const STYLE_OPTIONS: Array<{ value: MoleculeStyleMode }> = [
  * coordinates, so it is laid out as a flat diagram; a molfile drawn in 2D is
  * equally flat. Those render as a plane and are labelled 2D — calling them 3D
  * would claim a conformation the file does not contain.
+ *
+ * Small-molecule connection tables (sdf/mol/smi) can also be shown as a proper
+ * 2D structural formula with bond orders, which is how chemists read them; a
+ * flat file opens that way by default. Formats without bond orders (pdb, cif,
+ * xyz, mol2) get no 2D option, since drawing one would invent bonds.
  */
 export function MoleculeView({ filename, text }: { filename: string; text: string }) {
   const { t } = useTranslation(["inspector", "common"]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<GLViewer | null>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+
+  const svgRef = useRef<HTMLDivElement | null>(null);
 
   const format = useMemo(() => moleculeFormatFor(filename), [filename]);
   const isMacromolecule = useMemo(() => looksLikeMacromolecule(text), [text]);
@@ -45,6 +55,16 @@ export function MoleculeView({ filename, text }: { filename: string; text: strin
     () => STYLE_OPTIONS.filter((o) => o.value !== "cartoon" || isMacromolecule),
     [isMacromolecule],
   );
+
+  const has2D = useMemo(() => canDepict2D(filename, text), [filename, text]);
+  // A file with no third dimension opens as the 2D drawing it already is.
+  // SMILES is flat by definition; for a molfile the coordinates decide.
+  const prefers2D = useMemo(
+    () => has2D && (isSmilesFile(filename) || dimensionalityOf(text, format) === "2D"),
+    [has2D, filename, text, format],
+  );
+  const [viewMode, setViewMode] = useState<"2D" | "3D">(() => (prefers2D ? "2D" : "3D"));
+  useEffect(() => setViewMode(prefers2D ? "2D" : "3D"), [prefers2D]);
 
   const [styleMode, setStyleMode] = useState<MoleculeStyleMode>(() =>
     defaultStyleMode(filename, text),
@@ -68,8 +88,46 @@ export function MoleculeView({ filename, text }: { filename: string; text: strin
     v.render();
   }, []);
 
-  // Build (or rebuild) the scene whenever the file or style changes.
+  // Draw the 2D structural formula. Sized from the container, redrawn on
+  // resize so the depiction stays crisp rather than being scaled up.
   useEffect(() => {
+    if (viewMode !== "2D") return;
+    const host = svgRef.current;
+    if (!host) return;
+
+    let cancelled = false;
+    setRendering(true);
+    setError(null);
+    setAtomCount(null);
+    setDimensionality("2D");
+
+    const draw = async () => {
+      const width = host.clientWidth || 480;
+      const height = host.clientHeight || 360;
+      try {
+        const svg = await depict2D(filename, text, width, height);
+        if (cancelled || !svgRef.current) return;
+        if (!svg || !renderSvgInto(svgRef.current, svg)) {
+          setError(t("molecule.noStructuresFound"));
+          return;
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) setRendering(false);
+      }
+    };
+
+    void draw();
+    return () => {
+      cancelled = true;
+      svgRef.current?.replaceChildren();
+    };
+  }, [viewMode, filename, text, t]);
+
+  // Build (or rebuild) the 3D scene whenever the file or style changes.
+  useEffect(() => {
+    if (viewMode !== "3D") return;
     const container = containerRef.current;
     if (!container || !format) return;
 
@@ -122,7 +180,7 @@ export function MoleculeView({ filename, text }: { filename: string; text: strin
       viewerRef.current = null;
       container.replaceChildren();
     };
-  }, [filename, text, format, styleMode, isMacromolecule, t]);
+  }, [viewMode, filename, text, format, styleMode, isMacromolecule, t]);
 
   // Keep the scene sized to its container.
   useEffect(() => {
@@ -174,55 +232,95 @@ export function MoleculeView({ filename, text }: { filename: string; text: strin
 
   if (!format) return <div className="p-4 text-sm text-muted">{t("molecule.notChemicalFile")}</div>;
 
+  const is3D = viewMode === "3D";
+
   return (
     <div
       className={cn(
-        "relative h-full min-h-[420px] w-full touch-none select-none overflow-hidden bg-white",
-        isDragging ? "cursor-grabbing" : "cursor-grab",
+        "relative h-full min-h-[420px] w-full select-none overflow-hidden bg-white",
+        // Only the 3D scene consumes pointer gestures; 2D scrolls and pans
+        // normally, which matters on a phone.
+        is3D && "touch-none",
+        is3D && (isDragging ? "cursor-grabbing" : "cursor-grab"),
       )}
       data-molecule-viewer="true"
-      onPointerDownCapture={onPointerDown}
-      onPointerMoveCapture={onPointerMove}
-      onPointerUpCapture={endDrag}
-      onPointerCancelCapture={endDrag}
-      onWheel={onWheel}
+      onPointerDownCapture={is3D ? onPointerDown : undefined}
+      onPointerMoveCapture={is3D ? onPointerMove : undefined}
+      onPointerUpCapture={is3D ? endDrag : undefined}
+      onPointerCancelCapture={is3D ? endDrag : undefined}
+      onWheel={is3D ? onWheel : undefined}
     >
-      <div ref={containerRef} className="absolute inset-0" aria-label={t("molecule.moleculeViewerAria", { filename })} />
+      {is3D ? (
+        <div ref={containerRef} className="absolute inset-0" aria-label={t("molecule.moleculeViewerAria", { filename })} />
+      ) : (
+        <div
+          ref={svgRef}
+          className="absolute inset-0 flex items-center justify-center p-10"
+          role="img"
+          aria-label={t("molecule.structureDiagramAria", { filename })}
+        />
+      )}
 
       <div
-        className="absolute left-3 top-3 flex items-center gap-2 rounded-input border border-border/70 bg-surface/90 p-1 shadow-card backdrop-blur"
+        className="absolute left-3 top-3 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 rounded-input border border-border/70 bg-surface/90 p-1 shadow-card backdrop-blur"
         data-molecule-controls="true"
       >
         <div
           className="flex items-center gap-1 px-1.5 text-xs font-medium text-muted"
+          data-molecule-dimensionality={dimensionality ?? undefined}
           title={dimensionality === "2D" ? t("molecule.flatStructureHint") : undefined}
         >
           <Atom size={13} /> {dimensionality === "2D" ? t("molecule.badge2D") : t("molecule.badge3D")}
         </div>
-        <div className="flex rounded bg-surface-2 p-0.5">
-          {styleOptions.map((o) => (
+
+        {has2D && (
+          <div className="flex rounded bg-surface-2 p-0.5">
+            {(["2D", "3D"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setViewMode(mode)}
+                aria-pressed={viewMode === mode}
+                className={cn(
+                  "rounded px-2 py-1 text-xs font-medium transition-colors",
+                  viewMode === mode ? "bg-surface text-text shadow-sm" : "text-muted hover:text-text",
+                )}
+              >
+                {t(mode === "2D" ? "molecule.badge2D" : "molecule.badge3D")}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Render styles and the camera reset only mean something in 3D. */}
+        {is3D && (
+          <>
+            <div className="flex rounded bg-surface-2 p-0.5">
+              {styleOptions.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setStyleMode(o.value)}
+                  className={cn(
+                    "rounded px-2 py-1 text-xs font-medium transition-colors",
+                    styleMode === o.value ? "bg-surface text-text shadow-sm" : "text-muted hover:text-text",
+                  )}
+                >
+                  {t(`molecule.style.${o.value}`)}
+                </button>
+              ))}
+            </div>
             <button
-              key={o.value}
               type="button"
-              onClick={() => setStyleMode(o.value)}
-              className={cn(
-                "rounded px-2 py-1 text-xs font-medium transition-colors",
-                styleMode === o.value ? "bg-surface text-text shadow-sm" : "text-muted hover:text-text",
-              )}
+              onClick={resetView}
+              aria-label={t("molecule.resetView")}
+              title={t("molecule.resetView")}
+              className="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-surface-2 hover:text-text"
             >
-              {t(`molecule.style.${o.value}`)}
+              <RotateCcw size={13} />
             </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={resetView}
-          aria-label={t("molecule.resetView")}
-          title={t("molecule.resetView")}
-          className="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-surface-2 hover:text-text"
-        >
-          <RotateCcw size={13} />
-        </button>
+          </>
+        )}
       </div>
 
       <div className="pointer-events-none absolute bottom-3 right-3 rounded-input border border-border/70 bg-surface/90 px-3 py-1.5 text-xs text-muted shadow-card backdrop-blur">

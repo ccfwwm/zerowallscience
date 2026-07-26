@@ -178,6 +178,7 @@
       "cartoon": "Cartoon"
     },
     "moleculeViewerAria": "{{filename}} molecule viewer",
+    "structureDiagramAria": "{{filename}} 2D structure diagram",
     "notChemicalFile": "Not a chemical structure file.",
     "noStructuresFound": "No chemical structures found in this file.",
     "resetView": "Reset view",
