@@ -1,0 +1,60 @@
+# Compute Environments Pack - Remote and local compute configuration
+schema: zerowall.science/pack/v1
+id: compute-environments
+name: Compute Environments
+description: Configure and manage local, remote, and cloud compute environments
+version: 1.0.0
+
+source:
+  repo: https://github.com/zerowall/science
+  commit: 7064c01922672b008a730a7667b18f3c227e82a8
+  path: runtime/packs/compute-environments
+  modified: false
+
+author:
+  name: ZeroWall Team
+  url: https://zerowall.com
+
+license: MIT
+
+components:
+  skills:
+    - id: compute-env-setup
+      name: Compute Environment Setup
+      description: General compute environment configuration and dependency management
+      path: ../../skills/compute/compute-env-setup/SKILL.md
+      whenToUse: Setting up reproducible compute environments
+      enabled: true
+
+    - id: local-env-setup
+      name: Local Environment Setup
+      description: Configure local Python/R/Julia environments
+      path: ../../skills/compute/local-env-setup/SKILL.md
+      whenToUse: Setting up local development environments
+      enabled: true
+
+    - id: probe-compute-environment
+      name: Probe Compute Environment
+      description: Detect available compute resources and capabilities
+      path: ../../skills/compute/probe-compute-environment/SKILL.md
+      whenToUse: Checking available hardware and software
+      enabled: true
+
+    - id: remote-compute-ssh
+      name: Remote Compute via SSH
+      description: Configure SSH-based remote compute access
+      path: ../../skills/compute/remote-compute-ssh/SKILL.md
+      whenToUse: Setting up SSH connections to HPC or cloud instances
+      enabled: true
+
+    - id: remote-compute-modal
+      name: Remote Compute via Modal
+      description: Configure Modal.com cloud compute integration
+      path: ../../skills/compute/remote-compute-modal/SKILL.md
+      whenToUse: Running serverless compute jobs on Modal
+      enabled: true
+
+dependencies:
+  core-research: ^1.0.0
+
+minZeroWallVersion: 0.3.0

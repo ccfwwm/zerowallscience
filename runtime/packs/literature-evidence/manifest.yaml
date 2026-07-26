@@ -1,0 +1,95 @@
+# Literature & Evidence Pack - Scientific literature search and synthesis
+schema: zerowall.science/pack/v1
+id: literature-evidence
+name: Literature & Evidence
+description: Scientific literature search, PDF exploration, and evidence synthesis
+version: 1.0.0
+
+source:
+  repo: https://github.com/zerowall/science
+  commit: 7064c01922672b008a730a7667b18f3c227e82a8
+  path: runtime/packs/literature-evidence
+  modified: false
+
+author:
+  name: ZeroWall Team
+  url: https://zerowall.com
+
+license: MIT
+
+components:
+  skills:
+    - id: literature-review
+      name: Literature Review
+      description: Systematic literature search and synthesis
+      path: ../../skills/literature/literature-review/SKILL.md
+      whenToUse: Conducting systematic literature reviews
+      enabled: true
+
+    - id: pdf-explore
+      name: PDF Explorer
+      description: Deep exploration and extraction from scientific PDFs
+      path: ../../skills/literature/pdf-explore/SKILL.md
+      whenToUse: Analyzing individual research papers in detail
+      enabled: true
+
+    - id: bear-abstracts
+      name: BEAR Abstracts
+      description: Extract and analyze paper abstracts
+      path: ../../skills/literature/bear-abstracts/SKILL.md
+      whenToUse: Screening papers by abstract content
+      enabled: true
+
+    - id: bear-citations
+      name: BEAR Citations
+      description: Extract and verify citation networks
+      path: ../../skills/literature/bear-citations/SKILL.md
+      whenToUse: Building citation graphs and reference analysis
+      enabled: true
+
+    - id: bear-concepts
+      name: BEAR Concepts
+      description: Extract scientific concepts from papers
+      path: ../../skills/literature/bear-concepts/SKILL.md
+      whenToUse: Concept mapping and ontology extraction
+      enabled: true
+
+    - id: bear-datasets
+      name: BEAR Datasets
+      description: Identify datasets mentioned in papers
+      path: ../../skills/literature/bear-datasets/SKILL.md
+      whenToUse: Finding reusable datasets from literature
+      enabled: true
+
+    - id: bear-figures
+      name: BEAR Figures
+      description: Extract and analyze figures from papers
+      path: ../../skills/literature/bear-figures/SKILL.md
+      whenToUse: Visual evidence extraction and figure analysis
+      enabled: true
+
+    - id: bear-methods
+      name: BEAR Methods
+      description: Extract experimental methods sections
+      path: ../../skills/literature/bear-methods/SKILL.md
+      whenToUse: Reproducing or comparing methodologies
+      enabled: true
+
+    - id: bear-results
+      name: BEAR Results
+      description: Extract and structure results from papers
+      path: ../../skills/literature/bear-results/SKILL.md
+      whenToUse: Quantitative evidence extraction
+      enabled: true
+
+    - id: bear-tables
+      name: BEAR Tables
+      description: Extract structured data from paper tables
+      path: ../../skills/literature/bear-tables/SKILL.md
+      whenToUse: Extracting tabular data for meta-analysis
+      enabled: true
+
+dependencies:
+  core-research: ^1.0.0
+
+minZeroWallVersion: 0.3.0

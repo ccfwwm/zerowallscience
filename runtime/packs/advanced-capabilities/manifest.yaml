@@ -1,0 +1,81 @@
+# Advanced Capabilities Pack - Browser automation, model endpoints, and skill authoring
+schema: zerowall.science/pack/v1
+id: advanced-capabilities
+name: Advanced Capabilities
+description: Browser automation, custom model endpoints, and skill authoring tools
+version: 1.0.0
+
+source:
+  repo: https://github.com/zerowall/science
+  commit: 7064c01922672b008a730a7667b18f3c227e82a8
+  path: runtime/packs/advanced-capabilities
+  modified: false
+
+author:
+  name: ZeroWall Team
+  url: https://zerowall.com
+
+license: MIT
+
+components:
+  skills:
+    - id: browser-use
+      name: Browser Automation
+      description: Automated web browsing and data extraction
+      path: ../../skills/advanced/browser-use/SKILL.md
+      whenToUse: Scraping web data or automating browser interactions
+      enabled: true
+
+    - id: managed-model-endpoints
+      name: Managed Model Endpoints
+      description: Set up and manage custom model endpoints
+      path: ../../skills/advanced/managed-model-endpoints/SKILL.md
+      whenToUse: Configuring custom or self-hosted model endpoints
+      enabled: true
+
+    - id: using-model-endpoint
+      name: Using Model Endpoints
+      description: Interact with custom model endpoints in workflows
+      path: ../../skills/advanced/using-model-endpoint/SKILL.md
+      whenToUse: Calling custom models in analysis pipelines
+      enabled: true
+
+    - id: skill-creator
+      name: Skill Creator
+      description: Author new Skills for ZeroWall Science
+      path: ../../skills/advanced/skill-creator/SKILL.md
+      whenToUse: Creating custom Skills for domain-specific workflows
+      enabled: true
+
+    - id: agent-infini
+      name: Agent Infini
+      description: Extended context agent with infinite memory
+      path: ../../skills/advanced/agent-infini/SKILL.md
+      whenToUse: Tasks requiring very long context or memory
+      enabled: false
+
+    - id: customize
+      name: Customize
+      description: Customize ZeroWall behavior and preferences
+      path: ../../skills/advanced/customize/SKILL.md
+      whenToUse: Personalizing the research environment
+      enabled: true
+
+    - id: product-self-knowledge
+      name: Product Self-Knowledge
+      description: Query ZeroWall's own capabilities and documentation
+      path: ../../skills/advanced/product-self-knowledge/SKILL.md
+      whenToUse: Learning about ZeroWall features and usage
+      enabled: true
+
+    - id: self-awareness
+      name: Self-Awareness
+      description: Introspection and system state monitoring
+      path: ../../skills/advanced/self-awareness/SKILL.md
+      whenToUse: Debugging or understanding agent behavior
+      enabled: true
+
+dependencies:
+  core-research: ^1.0.0
+
+minZeroWallVersion: 0.3.0

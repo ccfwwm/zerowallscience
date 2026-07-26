@@ -1,0 +1,71 @@
+# Core Research Pack - Essential research and analysis skills
+schema: zerowall.science/pack/v1
+id: core-research
+name: Core Research
+description: Essential research and analysis skills for scientific workflows
+version: 1.0.0
+
+source:
+  repo: https://github.com/zerowall/science
+  commit: 7064c01922672b008a730a7667b18f3c227e82a8
+  path: runtime/packs/core-research
+  modified: false
+
+author:
+  name: ZeroWall Team
+  url: https://zerowall.com
+
+license: MIT
+
+components:
+  skills:
+    - id: domain-check
+      name: Domain Correctness Check
+      description: Validate domain-specific correctness (units, CRS, statistical methods)
+      path: ../../skills/core/domain-check/SKILL.md
+      whenToUse: After completing analysis to verify domain-specific correctness
+      enabled: true
+
+    - id: large-file
+      name: Large File Handler
+      description: Handle large datasets with streaming and chunked processing
+      path: ../../skills/core/large-file/SKILL.md
+      whenToUse: When working with files larger than 100MB
+      enabled: true
+
+    - id: modal-run
+      name: Modal Remote Execution
+      description: Execute compute-intensive jobs on Modal cloud platform
+      path: ../../skills/core/modal-run/SKILL.md
+      whenToUse: For heavy computation requiring GPUs or distributed processing
+      enabled: true
+
+    - id: publication-figures
+      name: Publication Figures
+      description: Create publication-ready figures with proper styling and export
+      path: ../../skills/core/publication-figures/SKILL.md
+      whenToUse: When generating figures for papers or presentations
+      enabled: true
+
+    - id: remote-compute
+      name: Remote Compute Setup
+      description: Configure and manage remote compute resources (SSH, HPC, cloud)
+      path: ../../skills/core/remote-compute/SKILL.md
+      whenToUse: Setting up remote compute environments
+      enabled: true
+
+    - id: stats-integrity
+      name: Statistical Integrity Check
+      description: Verify statistical analysis correctness and reproducibility
+      path: ../../skills/core/stats-integrity/SKILL.md
+      whenToUse: After statistical analysis to verify methodological correctness
+      enabled: true
+
+    - id: traceability-review
+      name: Traceability Review
+      description: Review citations, data sources, and computational provenance
+      path: ../../skills/core/traceability-review/SKILL.md
+      whenToUse: Before finalizing reports to ensure all claims are traceable
+      enabled: true
+
+minZeroWallVersion: 0.3.0

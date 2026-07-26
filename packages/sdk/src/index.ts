@@ -3,6 +3,15 @@ export { ZeroWallClient } from "./ZeroWallClient";
 export type { AgentRuntime } from "./runtime";
 export { BaseAgentRuntime } from "./base-runtime";
 export {
+  PackRegistry,
+  packRegistry,
+  loadPackRegistry,
+  getInstalledPacks,
+  getTotalSkillCount,
+  getEnabledSkillCount,
+  type PackRegistryEntry,
+} from "./pack-registry";
+export {
   OPENCODE_VERSION,
   DEFAULT_OPENCODE_URL,
   type OpenCodeEvent,

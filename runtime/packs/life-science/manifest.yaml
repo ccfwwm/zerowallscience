@@ -1,0 +1,130 @@
+# Life Science Pack - Computational biology and drug discovery tools
+schema: zerowall.science/pack/v1
+id: life-science
+name: Life Science
+description: Computational biology, protein structure prediction, and drug discovery tools
+version: 1.0.0
+
+source:
+  repo: https://github.com/zerowall/science
+  commit: 7064c01922672b008a730a7667b18f3c227e82a8
+  path: runtime/packs/life-science
+  modified: false
+
+author:
+  name: ZeroWall Team
+  url: https://zerowall.com
+
+license: MIT
+
+components:
+  skills:
+    - id: alphafold2
+      name: AlphaFold2 Runner
+      description: Protein structure prediction using AlphaFold2
+      path: ../../skills/life-science/alphafold2/SKILL.md
+      whenToUse: Predicting protein 3D structure from amino acid sequence
+      enabled: false
+
+    - id: boltz
+      name: Boltz-1 Runner
+      description: Biomolecular structure prediction with Boltz-1
+      path: ../../skills/life-science/boltz/SKILL.md
+      whenToUse: Multi-chain protein and nucleic acid structure prediction
+      enabled: false
+
+    - id: borzoi
+      name: Borzoi Predictor
+      description: Gene expression prediction from DNA sequence
+      path: ../../skills/life-science/borzoi/SKILL.md
+      whenToUse: Predicting tissue-specific gene expression patterns
+      enabled: false
+
+    - id: chai1
+      name: Chai-1 Runner
+      description: Multi-modal biomolecular structure prediction
+      path: ../../skills/life-science/chai1/SKILL.md
+      whenToUse: Unified protein-RNA-DNA-small molecule structure prediction
+      enabled: false
+
+    - id: diffdock
+      name: DiffDock Docking
+      description: Molecular docking using diffusion models
+      path: ../../skills/life-science/diffdock/SKILL.md
+      whenToUse: Predicting protein-ligand binding poses
+      enabled: false
+
+    - id: esmfold2
+      name: ESMFold2 Runner
+      description: Fast protein structure prediction with ESMFold
+      path: ../../skills/life-science/esmfold2/SKILL.md
+      whenToUse: Quick structure prediction without MSA search
+      enabled: false
+
+    - id: evo2
+      name: Evo-2 Predictor
+      description: Evolutionary sequence generation and prediction
+      path: ../../skills/life-science/evo2/SKILL.md
+      whenToUse: Generating functional protein sequences
+      enabled: false
+
+    - id: fair-esm2
+      name: Fair-ESM2 Embeddings
+      description: Protein language model embeddings
+      path: ../../skills/life-science/fair-esm2/SKILL.md
+      whenToUse: Extracting protein sequence representations
+      enabled: false
+
+    - id: ligandmpnn
+      name: LigandMPNN Designer
+      description: Protein sequence design with ligand conditioning
+      path: ../../skills/life-science/ligandmpnn/SKILL.md
+      whenToUse: Designing protein sequences for ligand binding
+      enabled: false
+
+    - id: openfold3
+      name: OpenFold3 Runner
+      description: Open-source protein structure prediction
+      path: ../../skills/life-science/openfold3/SKILL.md
+      whenToUse: Transparent AlphaFold alternative for academic use
+      enabled: false
+
+    - id: proteinmpnn
+      name: ProteinMPNN Designer
+      description: Protein sequence design from backbone structure
+      path: ../../skills/life-science/proteinmpnn/SKILL.md
+      whenToUse: Designing sequences for given protein backbone
+      enabled: false
+
+    - id: scgpt
+      name: scGPT Analyzer
+      description: Single-cell RNA-seq analysis with foundation models
+      path: ../../skills/life-science/scgpt/SKILL.md
+      whenToUse: Analyzing single-cell transcriptomics data
+      enabled: false
+
+    - id: scvi-tools
+      name: scvi-tools Suite
+      description: Probabilistic single-cell analysis methods
+      path: ../../skills/life-science/scvi-tools/SKILL.md
+      whenToUse: Integrating and analyzing single-cell datasets
+      enabled: false
+
+    - id: solublempnn
+      name: SolubleM PNN Designer
+      description: Design soluble protein variants
+      path: ../../skills/life-science/solublempnn/SKILL.md
+      whenToUse: Improving protein solubility for expression
+      enabled: false
+
+    - id: indication-dossier
+      name: Indication Dossier Builder
+      description: Compile disease indication research dossiers
+      path: ../../skills/life-science/indication-dossier/SKILL.md
+      whenToUse: Researching therapeutic indications for drug development
+      enabled: true
+
+dependencies:
+  core-research: ^1.0.0
+
+minZeroWallVersion: 0.3.0

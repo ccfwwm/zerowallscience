@@ -1,0 +1,53 @@
+# Figure & Publishing Pack - Scientific visualization and publication tools
+schema: zerowall.science/pack/v1
+id: figure-publishing
+name: Figure & Publishing
+description: Create publication-ready figures, narratives, and presentation materials
+version: 1.0.0
+
+source:
+  repo: https://github.com/zerowall/science
+  commit: 7064c01922672b008a730a7667b18f3c227e82a8
+  path: runtime/packs/figure-publishing
+  modified: false
+
+author:
+  name: ZeroWall Team
+  url: https://zerowall.com
+
+license: MIT
+
+components:
+  skills:
+    - id: figure-composer
+      name: Figure Composer
+      description: Compose multi-panel scientific figures with consistent styling
+      path: ../../skills/publishing/figure-composer/SKILL.md
+      whenToUse: Creating complex multi-panel figures for publications
+      enabled: true
+
+    - id: figure-style
+      name: Figure Style Guide
+      description: Apply journal-specific figure styling and formatting
+      path: ../../skills/publishing/figure-style/SKILL.md
+      whenToUse: Formatting figures for specific journal requirements
+      enabled: true
+
+    - id: paper-narrative
+      name: Paper Narrative Builder
+      description: Structure and draft scientific paper narratives
+      path: ../../skills/publishing/paper-narrative/SKILL.md
+      whenToUse: Drafting paper outlines and narrative flow
+      enabled: true
+
+    - id: journal-club-ppt
+      name: Journal Club Presentation
+      description: Generate journal club presentation slides from papers
+      path: ../../skills/publishing/journal-club-ppt/SKILL.md
+      whenToUse: Creating presentation materials for paper discussions
+      enabled: true
+
+dependencies:
+  core-research: ^1.0.0
+
+minZeroWallVersion: 0.3.0

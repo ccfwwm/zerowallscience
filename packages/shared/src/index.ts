@@ -8,6 +8,9 @@ export type ModelStatus = "connected" | "disconnected" | "error";
 export * from "./agents";
 export * from "./models";
 
+// P3: Science Pack definitions
+export * from "./science-pack";
+
 export interface Project {
   id: string;
   name: string;

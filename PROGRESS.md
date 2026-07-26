@@ -1,5 +1,7 @@
 # Progress
 
+2026-07-26 11:30 · feat(p3): Science Pack foundation — created SciencePackManifestV1 schema with validation, 6 pack manifests covering 42 skills (core-research, life-science, literature-evidence, figure-publishing, compute-environments, advanced-capabilities), PackRegistry with load/list/filter operations, unit tests for validation/collisions/versioning and registry operations; packs use YAML format with source provenance (repo/commit/path/SHA/modified), components (skills/MCP/agents/connectors), dependencies, platform assets; establishes P3 catalog infrastructure.
+
 2026-07-26 11:00 · test(p2): ZeroWallClient unit tests — added comprehensive test suite covering initialization, provider refresh, AgentRuntime interface forwarding, handoff logging, and session snapshots; mock OpenCodeClient with all required methods; establishes test infrastructure for P2 agent system.
 
 2026-07-26 10:55 · feat(p2): session creation integration — modified sendPrompt() to route new sessions through ZeroWallClient when available, preserves existing OpenCodeClient fallback for ongoing sessions and uninitialized state; enables P2 agent routing on session creation with backward compatibility.
