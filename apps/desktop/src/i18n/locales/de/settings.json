@@ -366,5 +366,55 @@
     "disable": "Deaktivieren",
     "processing": "Wird verarbeitet ...",
     "error": "Fehler"
-  }
+  },
+  "memory": {
+    "title": "Gedächtnis",
+    "subtitle": "Was der Agent für diesen Arbeitsbereich gelernt und behalten hat. Deaktivieren behält den Eintrag, verhindert aber das Abrufen; Löschen entfernt ihn.",
+    "unavailable": "In der Desktop-App verfügbar.",
+    "loading": "Einträge werden gelesen ...",
+    "empty": "In diesem Arbeitsbereich wurde noch nichts gelernt.",
+    "disabledBadge": "Deaktiviert",
+    "contentUnavailable": "Inhalt nicht verfügbar.",
+    "enableAria": "Diesen Eintrag aktivieren",
+    "disableAria": "Diesen Eintrag deaktivieren",
+    "deleteAria": "Diesen Eintrag löschen",
+    "deleteTitle": "Endgültig löschen",
+    "refresh": "Aktualisieren",
+    "confirmDelete": {
+      "title": "Diesen Eintrag löschen?",
+      "body": "Er wird endgültig entfernt. Um ihn sichtbar, aber ohne Abruf zu behalten, deaktiviere ihn stattdessen.",
+      "confirm": "Löschen"
+    },
+    "toast": {
+      "deleted": "Eintrag gelöscht"
+    }
+  },
+    "annotations": {
+      "title": "Anmerkungen",
+      "subtitle": "Notizen, die an eine Dateiversion in diesem Arbeitsbereich gebunden sind. Jede Notiz hält Datei, Version und die betreffenden Zeilen fest, damit sie am beschriebenen Text überprüft werden kann.",
+      "unavailable": "In der Desktop-App verfügbar.",
+      "loading": "Anmerkungen werden gelesen…",
+      "empty": "In diesem Arbeitsbereich wurde noch nichts annotiert.",
+      "authorYou": "Sie",
+      "versionBadge": "v{{number}}",
+      "wholeFile": "gesamte Datei",
+      "anchorLine": "Zeile {{line}}",
+      "anchorLines": "Zeilen {{start}}–{{end}}",
+      "kindLabel": "Kategorie",
+      "bodyLabel": "Notiz",
+      "save": "Speichern",
+      "editAria": "Diese Anmerkung bearbeiten",
+      "deleteAria": "Diese Anmerkung löschen",
+      "deleteTitle": "Endgültig löschen",
+      "refresh": "Aktualisieren",
+      "confirmDelete": {
+        "title": "Diese Anmerkung löschen?",
+        "body": "Sie wird endgültig entfernt. Die Datei, auf die sie verweist, bleibt unverändert.",
+        "confirm": "Löschen"
+      },
+      "toast": {
+        "saved": "Anmerkung gespeichert",
+        "deleted": "Anmerkung gelöscht"
+      }
+    }
 }

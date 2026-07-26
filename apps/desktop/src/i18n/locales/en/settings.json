@@ -366,5 +366,55 @@
     "disable": "Disable",
     "processing": "Processing...",
     "error": "Error"
-  }
+  },
+  "memory": {
+    "title": "Memory",
+    "subtitle": "What the agent has learned and kept for this workspace. Disabling keeps a memory here but stops it being recalled; deleting removes it.",
+    "unavailable": "Available in the desktop app.",
+    "loading": "Reading memories…",
+    "empty": "Nothing learned yet in this workspace.",
+    "disabledBadge": "Disabled",
+    "contentUnavailable": "Content unavailable.",
+    "enableAria": "Enable this memory",
+    "disableAria": "Disable this memory",
+    "deleteAria": "Delete this memory",
+    "deleteTitle": "Delete permanently",
+    "refresh": "Refresh",
+    "confirmDelete": {
+      "title": "Delete this memory?",
+      "body": "It is removed for good. To keep it visible but out of recall, disable it instead.",
+      "confirm": "Delete"
+    },
+    "toast": {
+      "deleted": "Memory deleted"
+    }
+  },
+    "annotations": {
+      "title": "Annotations",
+      "subtitle": "Notes anchored to a version of a file in this workspace. Each note records the file, the version, and the lines it was made against, so it can be checked against the text it describes.",
+      "unavailable": "Available in the desktop app.",
+      "loading": "Reading annotations…",
+      "empty": "Nothing annotated yet in this workspace.",
+      "authorYou": "You",
+      "versionBadge": "v{{number}}",
+      "wholeFile": "whole file",
+      "anchorLine": "line {{line}}",
+      "anchorLines": "lines {{start}}–{{end}}",
+      "kindLabel": "Category",
+      "bodyLabel": "Note",
+      "save": "Save",
+      "editAria": "Edit this annotation",
+      "deleteAria": "Delete this annotation",
+      "deleteTitle": "Delete permanently",
+      "refresh": "Refresh",
+      "confirmDelete": {
+        "title": "Delete this annotation?",
+        "body": "It is removed for good. The file it points at is untouched.",
+        "confirm": "Delete"
+      },
+      "toast": {
+        "saved": "Annotation saved",
+        "deleted": "Annotation deleted"
+      }
+    }
 }

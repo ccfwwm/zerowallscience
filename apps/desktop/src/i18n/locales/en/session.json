@@ -260,7 +260,21 @@
     "dismissedCount": "· {{count}} dismissed",
     "dismissAria": "Dismiss finding: {{title}}",
     "dismissTitle": "Dismiss this finding",
-    "allDismissed": "All findings dismissed."
+    "allDismissed": "All findings dismissed.",
+    "resolve": {
+      "prompt": "Resolve…",
+      "aria": "Resolve finding: {{title}}",
+      "resolved": "Resolved · {{action}}",
+      "previously": "Previously {{action}}",
+      "reopen": "Reopen",
+      "reopenAria": "Reopen finding: {{title}}",
+      "action": {
+        "verified": "Verified",
+        "conditional": "Conditional",
+        "inconclusive": "Inconclusive",
+        "refuted": "Refuted"
+      }
+    }
   },
   "interaction": {
     "question": {

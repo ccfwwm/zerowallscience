@@ -260,7 +260,21 @@
     "dismissedCount": "· {{count}} descartados",
     "dismissAria": "Descartar hallazgo: {{title}}",
     "dismissTitle": "Descartar este hallazgo",
-    "allDismissed": "Todos los hallazgos han sido descartados."
+    "allDismissed": "Todos los hallazgos han sido descartados.",
+    "resolve": {
+      "prompt": "Resolver…",
+      "aria": "Resolver hallazgo: {{title}}",
+      "resolved": "Resuelto · {{action}}",
+      "previously": "Antes {{action}}",
+      "reopen": "Reabrir",
+      "reopenAria": "Reabrir hallazgo: {{title}}",
+      "action": {
+        "verified": "Verificado",
+        "conditional": "Condicional",
+        "inconclusive": "Sin concluir",
+        "refuted": "Refutado"
+      }
+    }
   },
   "interaction": {
     "question": {

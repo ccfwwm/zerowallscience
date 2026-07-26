@@ -27,6 +27,8 @@ export function renderBlock(
   i: number,
   handlers?: BlockHandlers,
   liveReasoningIndex?: number,
+  /** The session these blocks belong to — see BlockList's prop of the same name. */
+  sessionId?: string | null,
 ) {
   switch (block.kind) {
     case "user":
@@ -47,7 +49,7 @@ export function renderBlock(
     case "tool-call":
       return <ToolCallRow key={i} block={block} />;
     case "reviewer":
-      return <ReviewerCard key={i} block={block} />;
+      return <ReviewerCard key={i} block={block} sessionId={sessionId} />;
     case "table":
       return <DataTable key={i} block={block} />;
     case "figure":
@@ -69,12 +71,17 @@ export const BlockList = memo(function BlockList({
   blocks,
   handlers,
   liveReasoningIndex,
+  sessionId,
 }: {
   blocks: ThreadBlock[];
   handlers?: BlockHandlers;
   /** Global index of the reasoning block streaming right now (live session);
    *  that block renders expanded and unfolds/collapses itself as it streams. */
   liveReasoningIndex?: number;
+  /** The session these blocks were read from. Panes tile, so this is the pane's
+   *  own session — not the focused one — and rows that persist per-session state
+   *  (the reviewer card's claims) need it to file that state correctly. */
+  sessionId?: string | null;
 }) {
   // Runs of quiet tool steps render as one collapsible group (Codex-style);
   // everything else — text, artifacts, prominent tool cards — on its own.
@@ -89,7 +96,7 @@ export const BlockList = memo(function BlockList({
             liveReasoningIndex={liveReasoningIndex}
           />
         ) : (
-          renderBlock(item.block, item.index, handlers, liveReasoningIndex)
+          renderBlock(item.block, item.index, handlers, liveReasoningIndex, sessionId)
         ),
       )}
     </>

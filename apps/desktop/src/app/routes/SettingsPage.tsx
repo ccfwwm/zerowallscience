@@ -63,6 +63,8 @@ import { RemoteComputeCard } from "@/components/settings/RemoteComputeCard";
 import { RemoteAccessCard } from "@/components/settings/RemoteAccessCard";
 import { ModalCard } from "@/components/settings/ModalCard";
 import { DataFlowCard } from "@/components/settings/DataFlowCard";
+import { MemoryCard } from "@/components/settings/MemoryCard";
+import { AnnotationsCard } from "@/components/settings/AnnotationsCard";
 import { ModelBrowser } from "@/components/settings/ModelBrowser";
 import { fallbackDefaultModel } from "@/components/settings/modelCatalog";
 import { ProviderManagerCard } from "@/components/settings/ProviderManagerCard";
@@ -1859,6 +1861,14 @@ export function SettingsPage() {
           <>
             <RemoteComputeCard />
             <ModalCard />
+          </>
+        )}
+
+        {/* ---- Workspace research state: what the agent kept, what was noted ---- */}
+        {section === "runtime" && (
+          <>
+            <MemoryCard />
+            <AnnotationsCard />
           </>
         )}
 

@@ -593,6 +593,7 @@ export function SessionView({
                 blocks={thread.blocks}
                 handlers={handlers}
                 liveReasoningIndex={liveReasoningIndex}
+                sessionId={eid}
               />
             )}
             {working && (

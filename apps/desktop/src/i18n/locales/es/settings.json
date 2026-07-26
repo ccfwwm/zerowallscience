@@ -366,5 +366,55 @@
     "disable": "Desactivar",
     "processing": "Procesando...",
     "error": "Error"
-  }
+  },
+  "memory": {
+    "title": "Memoria",
+    "subtitle": "Lo que el agente ha aprendido y guardado para este espacio de trabajo. Desactivar conserva la memoria pero impide que se recupere; eliminar la borra.",
+    "unavailable": "Disponible en la aplicación de escritorio.",
+    "loading": "Leyendo memorias…",
+    "empty": "Todavía no se ha aprendido nada en este espacio de trabajo.",
+    "disabledBadge": "Desactivada",
+    "contentUnavailable": "Contenido no disponible.",
+    "enableAria": "Activar esta memoria",
+    "disableAria": "Desactivar esta memoria",
+    "deleteAria": "Eliminar esta memoria",
+    "deleteTitle": "Eliminar definitivamente",
+    "refresh": "Actualizar",
+    "confirmDelete": {
+      "title": "¿Eliminar esta memoria?",
+      "body": "Se elimina definitivamente. Para mantenerla visible pero fuera de la recuperación, desactívala.",
+      "confirm": "Eliminar"
+    },
+    "toast": {
+      "deleted": "Memoria eliminada"
+    }
+  },
+    "annotations": {
+      "title": "Anotaciones",
+      "subtitle": "Notas ancladas a una versión de un archivo de este espacio de trabajo. Cada nota registra el archivo, la versión y las líneas a las que se refiere, para poder contrastarla con el texto que describe.",
+      "unavailable": "Disponible en la aplicación de escritorio.",
+      "loading": "Leyendo anotaciones…",
+      "empty": "Todavía no hay nada anotado en este espacio de trabajo.",
+      "authorYou": "Tú",
+      "versionBadge": "v{{number}}",
+      "wholeFile": "archivo completo",
+      "anchorLine": "línea {{line}}",
+      "anchorLines": "líneas {{start}}–{{end}}",
+      "kindLabel": "Categoría",
+      "bodyLabel": "Nota",
+      "save": "Guardar",
+      "editAria": "Editar esta anotación",
+      "deleteAria": "Eliminar esta anotación",
+      "deleteTitle": "Eliminar definitivamente",
+      "refresh": "Actualizar",
+      "confirmDelete": {
+        "title": "¿Eliminar esta anotación?",
+        "body": "Se elimina definitivamente. El archivo al que apunta no se modifica.",
+        "confirm": "Eliminar"
+      },
+      "toast": {
+        "saved": "Anotación guardada",
+        "deleted": "Anotación eliminada"
+      }
+    }
 }

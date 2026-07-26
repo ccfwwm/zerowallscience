@@ -366,5 +366,55 @@
     "disable": "Désactiver",
     "processing": "Traitement...",
     "error": "Erreur"
-  }
+  },
+  "memory": {
+    "title": "Mémoire",
+    "subtitle": "Ce que l'agent a appris et conservé pour cet espace de travail. Désactiver conserve la mémoire mais empêche son rappel ; supprimer l'efface.",
+    "unavailable": "Disponible dans l'application de bureau.",
+    "loading": "Lecture des mémoires…",
+    "empty": "Rien n'a encore été appris dans cet espace de travail.",
+    "disabledBadge": "Désactivée",
+    "contentUnavailable": "Contenu indisponible.",
+    "enableAria": "Activer cette mémoire",
+    "disableAria": "Désactiver cette mémoire",
+    "deleteAria": "Supprimer cette mémoire",
+    "deleteTitle": "Supprimer définitivement",
+    "refresh": "Actualiser",
+    "confirmDelete": {
+      "title": "Supprimer cette mémoire ?",
+      "body": "Elle est supprimée définitivement. Pour la garder visible mais hors rappel, désactivez-la.",
+      "confirm": "Supprimer"
+    },
+    "toast": {
+      "deleted": "Mémoire supprimée"
+    }
+  },
+    "annotations": {
+      "title": "Annotations",
+      "subtitle": "Notes rattachées à une version d'un fichier de cet espace de travail. Chaque note enregistre le fichier, la version et les lignes visées, afin de pouvoir être confrontée au texte qu'elle décrit.",
+      "unavailable": "Disponible dans l'application de bureau.",
+      "loading": "Lecture des annotations…",
+      "empty": "Rien n'a encore été annoté dans cet espace de travail.",
+      "authorYou": "Vous",
+      "versionBadge": "v{{number}}",
+      "wholeFile": "fichier entier",
+      "anchorLine": "ligne {{line}}",
+      "anchorLines": "lignes {{start}}–{{end}}",
+      "kindLabel": "Catégorie",
+      "bodyLabel": "Note",
+      "save": "Enregistrer",
+      "editAria": "Modifier cette annotation",
+      "deleteAria": "Supprimer cette annotation",
+      "deleteTitle": "Supprimer définitivement",
+      "refresh": "Actualiser",
+      "confirmDelete": {
+        "title": "Supprimer cette annotation ?",
+        "body": "Elle est supprimée définitivement. Le fichier qu'elle vise n'est pas modifié.",
+        "confirm": "Supprimer"
+      },
+      "toast": {
+        "saved": "Annotation enregistrée",
+        "deleted": "Annotation supprimée"
+      }
+    }
 }

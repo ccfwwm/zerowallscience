@@ -1,9 +1,13 @@
 import {
   VERIFICATION_RESULTS,
+  type ClaimStatus,
   type FindingLevel,
+  type ResolutionAction,
   type ReviewCheck,
   type ReviewerBlock,
 } from "@zerowall/shared";
+import { isTauri } from "./tauri";
+import { isGatewayWeb } from "./webMode";
 
 const FENCE = /```review\s*\n([\s\S]*?)\n```/;
 // Reuse the persisted vocabulary rather than a second copy of the literals.
@@ -47,4 +51,67 @@ export function splitReview(markdown: string): { clean: string; review: Reviewer
   }
   const clean = review ? markdown.replace(FENCE, "").trim() : markdown;
   return { clean, review };
+}
+
+// ---- persisted review state (M006, via src-tauri/src/review_store.rs) -------
+// The science database lives inside the workspace folder, so only the desktop
+// app can reach it: the gateway web client is a browser talking over HTTP and
+// has no such path. Every call below returns null off-desktop, and the card
+// hides its controls rather than offering one that fails.
+
+/** One persisted finding: its claim row, current state, and last resolution. */
+export interface StoredFinding {
+  claimId: string;
+  status: ClaimStatus;
+  /** Action of the newest resolution, or null when never resolved. Survives a
+   *  reopen, so the card can still show what the last verdict was. */
+  resolution: ResolutionAction | null;
+  resolvedAt: string | null;
+}
+
+/** A persisted reviewer run: `findings` is positional against the block's own
+ *  findings, in the same order they were sent. */
+export interface StoredReview {
+  runId: string;
+  findings: StoredFinding[];
+}
+
+/** True when review state can be persisted at all (desktop only). */
+export const canPersistReview = isTauri && !isGatewayWeb;
+
+/**
+ * Persist a reviewer block for a session and read its state back. Idempotent
+ * per block: re-sending the same findings finds the run already stored instead
+ * of duplicating it, so a card remount is free. Returns null off-desktop.
+ */
+export async function syncReview(
+  sessionId: string,
+  block: ReviewerBlock,
+): Promise<StoredReview | null> {
+  if (!canPersistReview) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<StoredReview>("review_sync", {
+    sessionId,
+    findings: block.findings,
+    note: block.note ?? null,
+  });
+}
+
+/** Resolve a claim; returns the whole run's new state. Null off-desktop. */
+export async function resolveClaim(
+  claimId: string,
+  action: ResolutionAction,
+  note?: string,
+): Promise<StoredReview | null> {
+  if (!canPersistReview) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<StoredReview>("review_resolve", { claimId, action, note: note ?? null });
+}
+
+/** Reopen a resolved claim. The resolution history is kept — see
+ *  `review_store::reopen_claim`. Null off-desktop. */
+export async function reopenClaim(claimId: string): Promise<StoredReview | null> {
+  if (!canPersistReview) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<StoredReview>("review_reopen", { claimId });
 }

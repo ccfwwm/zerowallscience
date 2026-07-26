@@ -364,5 +364,55 @@
     "disable": "禁用",
     "processing": "处理中...",
     "error": "错误"
-  }
+  },
+  "memory": {
+    "title": "记忆",
+    "subtitle": "代理在此工作区学到并保留的内容。禁用会保留记忆但不再被调用；删除则彻底移除。",
+    "unavailable": "仅在桌面应用中可用。",
+    "loading": "正在读取记忆…",
+    "empty": "此工作区尚无学到的内容。",
+    "disabledBadge": "已禁用",
+    "contentUnavailable": "内容不可用。",
+    "enableAria": "启用此记忆",
+    "disableAria": "禁用此记忆",
+    "deleteAria": "删除此记忆",
+    "deleteTitle": "永久删除",
+    "refresh": "刷新",
+    "confirmDelete": {
+      "title": "删除此记忆？",
+      "body": "将被永久移除。若只想保留可见但不再被调用，请改为禁用。",
+      "confirm": "删除"
+    },
+    "toast": {
+      "deleted": "记忆已删除"
+    }
+  },
+    "annotations": {
+      "title": "标注",
+      "subtitle": "锚定到本工作区某个文件版本的注释。每条注释都记录文件、版本与所针对的行，便于对照原文核对。",
+      "unavailable": "仅在桌面应用中可用。",
+      "loading": "正在读取标注…",
+      "empty": "此工作区尚无标注。",
+      "authorYou": "你",
+      "versionBadge": "v{{number}}",
+      "wholeFile": "整个文件",
+      "anchorLine": "第 {{line}} 行",
+      "anchorLines": "第 {{start}}–{{end}} 行",
+      "kindLabel": "类别",
+      "bodyLabel": "注释",
+      "save": "保存",
+      "editAria": "编辑此标注",
+      "deleteAria": "删除此标注",
+      "deleteTitle": "永久删除",
+      "refresh": "刷新",
+      "confirmDelete": {
+        "title": "删除此标注？",
+        "body": "将被彻底移除。它指向的文件不会受影响。",
+        "confirm": "删除"
+      },
+      "toast": {
+        "saved": "标注已保存",
+        "deleted": "标注已删除"
+      }
+    }
 }

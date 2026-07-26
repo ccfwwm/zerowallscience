@@ -364,5 +364,55 @@
     "disable": "無効化",
     "processing": "処理中...",
     "error": "エラー"
-  }
+  },
+  "memory": {
+    "title": "メモリー",
+    "subtitle": "このワークスペースでエージェントが学習し保持した内容です。無効化すると残ったまま呼び出されなくなり、削除すると失われます。",
+    "unavailable": "デスクトップアプリでのみ利用できます。",
+    "loading": "メモリーを読み込み中…",
+    "empty": "このワークスペースにはまだ学習内容がありません。",
+    "disabledBadge": "無効",
+    "contentUnavailable": "内容を読み込めません。",
+    "enableAria": "このメモリーを有効化",
+    "disableAria": "このメモリーを無効化",
+    "deleteAria": "このメモリーを削除",
+    "deleteTitle": "完全に削除",
+    "refresh": "再読み込み",
+    "confirmDelete": {
+      "title": "このメモリーを削除しますか？",
+      "body": "完全に削除されます。表示は残して呼び出しだけ止めるには、無効化してください。",
+      "confirm": "削除"
+    },
+    "toast": {
+      "deleted": "メモリーを削除しました"
+    }
+  },
+    "annotations": {
+      "title": "注釈",
+      "subtitle": "このワークスペース内のファイルバージョンに紐づけられたメモです。各メモはファイル・バージョン・対象行を記録するため、元のテキストと照らし合わせられます。",
+      "unavailable": "デスクトップアプリでのみ利用できます。",
+      "loading": "注釈を読み込み中…",
+      "empty": "このワークスペースにはまだ注釈がありません。",
+      "authorYou": "あなた",
+      "versionBadge": "v{{number}}",
+      "wholeFile": "ファイル全体",
+      "anchorLine": "{{line}} 行目",
+      "anchorLines": "{{start}}–{{end}} 行目",
+      "kindLabel": "カテゴリ",
+      "bodyLabel": "メモ",
+      "save": "保存",
+      "editAria": "この注釈を編集",
+      "deleteAria": "この注釈を削除",
+      "deleteTitle": "完全に削除",
+      "refresh": "再読み込み",
+      "confirmDelete": {
+        "title": "この注釈を削除しますか？",
+        "body": "完全に削除されます。参照先のファイルは変更されません。",
+        "confirm": "削除"
+      },
+      "toast": {
+        "saved": "注釈を保存しました",
+        "deleted": "注釈を削除しました"
+      }
+    }
 }

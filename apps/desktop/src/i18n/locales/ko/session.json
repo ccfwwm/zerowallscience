@@ -252,7 +252,21 @@
     "dismissedCount": "· {{count}}개 해제됨",
     "dismissAria": "발견 사항 해제: {{title}}",
     "dismissTitle": "이 발견 사항 해제",
-    "allDismissed": "모든 발견 사항이 해제되었습니다."
+    "allDismissed": "모든 발견 사항이 해제되었습니다.",
+    "resolve": {
+      "prompt": "처리…",
+      "aria": "발견 사항 처리: {{title}}",
+      "resolved": "처리됨 · {{action}}",
+      "previously": "이전 {{action}}",
+      "reopen": "다시 열기",
+      "reopenAria": "발견 사항 다시 열기: {{title}}",
+      "action": {
+        "verified": "검증됨",
+        "conditional": "조건부",
+        "inconclusive": "판정 불가",
+        "refuted": "반박됨"
+      }
+    }
   },
   "interaction": {
     "question": {

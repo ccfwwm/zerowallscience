@@ -364,5 +364,55 @@
     "disable": "비활성화",
     "processing": "처리 중...",
     "error": "오류"
-  }
+  },
+  "memory": {
+    "title": "메모리",
+    "subtitle": "에이전트가 이 워크스페이스에서 학습해 보관한 내용입니다. 비활성화하면 남아 있지만 다시 불러오지 않고, 삭제하면 사라집니다.",
+    "unavailable": "데스크톱 앱에서 사용할 수 있습니다.",
+    "loading": "메모리를 읽는 중…",
+    "empty": "이 워크스페이스에서 아직 학습한 내용이 없습니다.",
+    "disabledBadge": "비활성화됨",
+    "contentUnavailable": "내용을 사용할 수 없습니다.",
+    "enableAria": "이 메모리 활성화",
+    "disableAria": "이 메모리 비활성화",
+    "deleteAria": "이 메모리 삭제",
+    "deleteTitle": "영구 삭제",
+    "refresh": "새로 고침",
+    "confirmDelete": {
+      "title": "이 메모리를 삭제할까요?",
+      "body": "영구적으로 삭제됩니다. 보이게 두되 불러오지 않으려면 비활성화하세요.",
+      "confirm": "삭제"
+    },
+    "toast": {
+      "deleted": "메모리를 삭제했습니다"
+    }
+  },
+    "annotations": {
+      "title": "주석",
+      "subtitle": "이 작업 공간의 파일 버전에 고정된 메모입니다. 각 메모는 파일, 버전, 대상 행을 기록하므로 원문과 대조할 수 있습니다.",
+      "unavailable": "데스크톱 앱에서만 사용할 수 있습니다.",
+      "loading": "주석을 읽는 중…",
+      "empty": "이 작업 공간에는 아직 주석이 없습니다.",
+      "authorYou": "나",
+      "versionBadge": "v{{number}}",
+      "wholeFile": "파일 전체",
+      "anchorLine": "{{line}}행",
+      "anchorLines": "{{start}}–{{end}}행",
+      "kindLabel": "분류",
+      "bodyLabel": "메모",
+      "save": "저장",
+      "editAria": "이 주석 편집",
+      "deleteAria": "이 주석 삭제",
+      "deleteTitle": "영구 삭제",
+      "refresh": "새로 고침",
+      "confirmDelete": {
+        "title": "이 주석을 삭제할까요?",
+        "body": "영구적으로 제거됩니다. 가리키는 파일은 변경되지 않습니다.",
+        "confirm": "삭제"
+      },
+      "toast": {
+        "saved": "주석을 저장했습니다",
+        "deleted": "주석을 삭제했습니다"
+      }
+    }
 }

@@ -260,7 +260,21 @@
     "dismissedCount": "· {{count}} ignorés",
     "dismissAria": "Ignorer le constat : {{title}}",
     "dismissTitle": "Ignorer ce constat",
-    "allDismissed": "Tous les constats ont été ignorés."
+    "allDismissed": "Tous les constats ont été ignorés.",
+    "resolve": {
+      "prompt": "Traiter…",
+      "aria": "Traiter le constat : {{title}}",
+      "resolved": "Traité · {{action}}",
+      "previously": "Auparavant {{action}}",
+      "reopen": "Réouvrir",
+      "reopenAria": "Réouvrir le constat : {{title}}",
+      "action": {
+        "verified": "Vérifié",
+        "conditional": "Conditionnel",
+        "inconclusive": "Non concluant",
+        "refuted": "Réfuté"
+      }
+    }
   },
   "interaction": {
     "question": {

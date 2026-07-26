@@ -1,6 +1,7 @@
 // ZeroWall Science — Tauri 2 entry. Hosts the React frontend and supervises the
 // bundled OpenCode sidecar (isolated config/data + dedicated port; killed on exit).
 mod artifact_file;
+mod annotation_store;
 mod browser;
 mod debug_log;
 mod examples;
@@ -12,17 +13,20 @@ mod compute;
 mod jupyter;
 mod kernel;
 mod large_file;
+mod memory_store;
 mod modal;
 mod model_probe;
 mod opencode_config;
 mod preview_server;
 mod project;
 mod provenance;
+mod review_store;
 mod runs;
 mod runs_index;
 mod runtime;
 pub mod science_db;
 mod science_mcp;
+pub mod science_store;
 mod secret_store;
 mod tools;
 #[cfg(target_os = "macos")]
@@ -157,6 +161,20 @@ pub fn run() {
             provenance::record_provenance,
             provenance::list_provenance,
             provenance::read_env_lockfile,
+            review_store::review_sync,
+            review_store::review_resolve,
+            review_store::review_reopen,
+            memory_store::create_memory,
+            memory_store::list_memories,
+            memory_store::set_memory_disabled,
+            memory_store::delete_memory,
+            memory_store::record_compaction_archive,
+            memory_store::list_compaction_archives,
+            annotation_store::create_annotation_cmd,
+            annotation_store::list_annotations_cmd,
+            annotation_store::list_annotations_for_version_cmd,
+            annotation_store::update_annotation_cmd,
+            annotation_store::delete_annotation_cmd,
             runs::record_run,
             runs::list_runs,
             runs::read_run_log,

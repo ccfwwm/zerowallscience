@@ -260,7 +260,21 @@
     "dismissedCount": "· {{count}} verworfen",
     "dismissAria": "Befund verwerfen: {{title}}",
     "dismissTitle": "Diesen Befund verwerfen",
-    "allDismissed": "Alle Befunde verworfen."
+    "allDismissed": "Alle Befunde verworfen.",
+    "resolve": {
+      "prompt": "Klären…",
+      "aria": "Befund klären: {{title}}",
+      "resolved": "Geklärt · {{action}}",
+      "previously": "Zuvor {{action}}",
+      "reopen": "Wieder öffnen",
+      "reopenAria": "Befund wieder öffnen: {{title}}",
+      "action": {
+        "verified": "Bestätigt",
+        "conditional": "Bedingt",
+        "inconclusive": "Unklar",
+        "refuted": "Widerlegt"
+      }
+    }
   },
   "interaction": {
     "question": {

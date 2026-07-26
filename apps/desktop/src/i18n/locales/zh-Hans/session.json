@@ -252,7 +252,21 @@
     "dismissedCount": "· {{count}} 项已忽略",
     "dismissAria": "忽略发现：{{title}}",
     "dismissTitle": "忽略此项发现",
-    "allDismissed": "所有发现均已忽略。"
+    "allDismissed": "所有发现均已忽略。",
+    "resolve": {
+      "prompt": "处理…",
+      "aria": "处理发现：{{title}}",
+      "resolved": "已处理 · {{action}}",
+      "previously": "此前为{{action}}",
+      "reopen": "重新打开",
+      "reopenAria": "重新打开发现：{{title}}",
+      "action": {
+        "verified": "已验证",
+        "conditional": "有条件通过",
+        "inconclusive": "无法判定",
+        "refuted": "已否证"
+      }
+    }
   },
   "interaction": {
     "question": {

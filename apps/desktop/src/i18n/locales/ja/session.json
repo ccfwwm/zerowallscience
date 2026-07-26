@@ -252,7 +252,21 @@
     "dismissedCount": "· {{count}} 件却下済み",
     "dismissAria": "指摘を却下: {{title}}",
     "dismissTitle": "この指摘を却下",
-    "allDismissed": "すべての指摘が却下されました。"
+    "allDismissed": "すべての指摘が却下されました。",
+    "resolve": {
+      "prompt": "対応…",
+      "aria": "指摘に対応: {{title}}",
+      "resolved": "対応済み · {{action}}",
+      "previously": "以前は{{action}}",
+      "reopen": "再オープン",
+      "reopenAria": "指摘を再オープン: {{title}}",
+      "action": {
+        "verified": "検証済み",
+        "conditional": "条件付き",
+        "inconclusive": "判定不能",
+        "refuted": "否認"
+      }
+    }
   },
   "interaction": {
     "question": {
