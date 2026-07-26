@@ -1,5 +1,7 @@
 # Progress
 
+2026-07-26 09:52 · feat(security): moved runtime secrets to OS keychain — provider credentials and connector secrets now live exclusively in Windows Credential Manager / macOS Keychain / Linux Secret Service via `keyring` 4.1.5; startup migrates legacy `auth.json` + `opencode.json(c)` (idempotent, fail-closed); sidecar injects `OPENCODE_AUTH_CONTENT` + connector env vars from keychain; `import_opencode_login` reads CLI auth.json without modifying it; removed `provider_auth_exists` (disk read); SDK `addCustomProvider` apiKey is optional and frontend separated to `setProviderSecret`; SQLite/JSON/JSONL/logs/export store only `secret_ref`, never raw values; 158 Rust tests GREEN, clippy clean, `git diff --check` clean.
+
 2026-07-26 01:31 · feat(data): added lifecycle-initialized per-workspace `science.db` storage with transactional fingerprinted M000-M008 migrations, 40 indexed relational tables, keychain-only secret references, scoped relationship constraints, safe SHA-256 content paths, and startup schema-integrity checks; 147 Rust tests, build, Clippy, and the brand contract pass.
 
 2026-07-26 00:15 · fix(security): legacy app-data migration now rejects source and destination symlinks, Windows reparse points, and file/directory type conflicts at every recursive boundary, preventing writes outside the new app-data tree; 129 Rust tests, build, Clippy, and the brand contract pass.

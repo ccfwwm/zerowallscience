@@ -23,6 +23,7 @@ mod runs_index;
 mod runtime;
 pub mod science_db;
 mod science_mcp;
+mod secret_store;
 mod tools;
 #[cfg(target_os = "macos")]
 mod macos;
@@ -116,7 +117,11 @@ pub fn run() {
             runtime::pick_folder,
             runtime::import_opencode_login,
             model_probe::probe_endpoint_models,
-            runtime::provider_auth_exists,
+            secret_store::set_provider_secret,
+            secret_store::remove_provider_secret,
+            secret_store::provider_secret_exists,
+            secret_store::set_connector_secret,
+            secret_store::remove_connector_secret,
             runtime::remove_config_entry,
             jupyter::jupyter_status,
             jupyter::setup_jupyter,

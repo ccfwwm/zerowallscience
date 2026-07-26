@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderCatalogEntry, ProviderInfo } from "@zerowall/sdk";
 import i18n from "@/i18n";
 import * as runtime from "@/lib/runtime";
+import * as tauri from "@/lib/tauri";
 import { useRuntimeStore } from "@/lib/runtime";
 import { useSetupStore } from "@/lib/setup";
 import { useToastStore } from "@/lib/toast";
@@ -146,7 +147,12 @@ describe("Settings model browser integration", () => {
     expect(screen.queryByText("The model catalog is currently unavailable.")).not.toBeInTheDocument();
   });
 
-  it("saves the Amazon Bedrock region before its API key", async () => {
+  it("saves the Amazon Bedrock region before storing its API key in the OS keychain", async () => {
+    const setProviderSecret = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(
+      tauri as unknown as { setProviderSecret: typeof setProviderSecret },
+      "setProviderSecret",
+    ).mockImplementation(setProviderSecret);
     const client = catalogClient(vi.fn().mockResolvedValue([]), [
       {
         id: "amazon-bedrock",
@@ -182,11 +188,12 @@ describe("Settings model browser integration", () => {
 
     await waitFor(() => {
       expect(client.setProviderRegion).toHaveBeenCalledWith("amazon-bedrock", "eu-central-1");
-      expect(client.setProviderApiKey).toHaveBeenCalledWith("amazon-bedrock", "bedrock-key");
+      expect(setProviderSecret).toHaveBeenCalledWith("amazon-bedrock", "bedrock-key");
+      expect(client.setProviderApiKey).not.toHaveBeenCalled();
     });
     expect(
       vi.mocked(client.setProviderRegion).mock.invocationCallOrder[0],
-    ).toBeLessThan(vi.mocked(client.setProviderApiKey).mock.invocationCallOrder[0]);
+    ).toBeLessThan(setProviderSecret.mock.invocationCallOrder[0]);
   });
 
   it("drops the cached catalog when the server URL changes (no stale models from the old runtime)", async () => {

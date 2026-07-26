@@ -114,7 +114,7 @@ pub fn detect_chrome() -> Option<ChromeInfo> {
 
 /// Platform-specific executable locations, most-preferred browser first.
 fn chrome_candidates() -> Vec<(&'static str, Vec<String>)> {
-    let home = std::env::var("HOME").unwrap_or_default();
+    let _home = std::env::var("HOME").unwrap_or_default();
     #[cfg(target_os = "macos")]
     {
         let user = |app: &str| format!("{home}{app}");

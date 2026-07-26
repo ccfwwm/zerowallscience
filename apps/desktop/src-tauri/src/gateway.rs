@@ -207,7 +207,7 @@ impl Request {
         let mut reader = BufReader::new(stream.try_clone().ok()?);
         let mut line = String::new();
         reader.read_line(&mut line).ok()?;
-        let mut parts = line.trim_end().split_whitespace();
+        let mut parts = line.split_whitespace();
         let method = parts.next()?.to_string();
         let target = parts.next()?.to_string();
         let (path, query) = match target.split_once('?') {

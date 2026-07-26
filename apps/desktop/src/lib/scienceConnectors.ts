@@ -116,19 +116,15 @@ function scriptBeside(python: string, bin: string): string {
   return `${dir}${sep}${bin}${exe}`;
 }
 
-/** Local-MCP config for a connector, given the managed interpreter path and an
- *  optional API key (passed via env, never written to provenance/logs). */
+/** Local-MCP config for a connector. Secrets are injected into the sidecar
+ * process from the OS credential manager and never serialized here. */
 export function connectorConfig(
   c: ScienceConnector,
   python: string,
-  apiKey?: string,
+  _apiKey?: string,
 ): McpConfig {
   const command = c.bin
     ? [scriptBeside(python, c.bin)]
     : [python, "-m", c.module ?? "", ...(c.args ?? [])];
-  const config: McpConfig = { type: "local", command, enabled: true };
-  if (c.apiKeyEnv && apiKey && apiKey.trim()) {
-    config.environment = { [c.apiKeyEnv]: apiKey.trim() };
-  }
-  return config;
+  return { type: "local", command, enabled: true };
 }

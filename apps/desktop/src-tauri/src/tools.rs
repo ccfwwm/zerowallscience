@@ -44,7 +44,6 @@ fn probe_with_path(name: &str, bin: &str, version_arg: &str, path: Option<&str>)
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     // A Finder-launched app has a minimal PATH, so probing with the plain
     // environment misreported the user's anaconda/homebrew tools as missing —

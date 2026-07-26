@@ -39,9 +39,11 @@ import {
   logDebug,
   openWorkspaceBase,
   pickFolder,
-  providerAuthExists,
+  providerSecretExists,
   pythonInterpreter,
   removeConfigEntry,
+  removeProviderSecret,
+  setProviderSecret,
   setPythonPath,
   setWorkspaceBase,
   workspaceBase,
@@ -142,7 +144,6 @@ export function SettingsPage() {
   // failures (keep the last good list); a server-URL change resets it so a
   // different runtime can never render the previous runtime's catalog.
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "unavailable">("loading");
-  const [authMethods, setAuthMethods] = useState<Record<string, ProviderAuthMethod[]>>({});
   const [catalog, setCatalog] = useState<ProviderCatalogEntry[]>([]);
   const [customIds, setCustomIds] = useState<string[]>([]);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
@@ -226,13 +227,11 @@ export function SettingsPage() {
       setCatalogState((s) => (s === "ready" ? s : "unavailable"));
     }
     try {
-      const [m, c, custom, mcp] = await Promise.all([
-        client.listAuthMethods(),
+      const [c, custom, mcp] = await Promise.all([
         client.listProviderCatalog(),
         client.listCustomProviderIds(),
         client.listMcpServers().catch(() => []),
       ]);
-      setAuthMethods(m);
       setCatalog(c.all);
       setCustomIds(custom);
       setMcpServers(mcp);
@@ -442,7 +441,7 @@ export function SettingsPage() {
       if (providerID === "amazon-bedrock") {
         await getClient()!.setProviderRegion(providerID, bedrockRegion.trim());
       }
-      await getClient()!.setProviderApiKey(providerID, keyInput.trim());
+      await setProviderSecret(providerID, keyInput.trim());
       cancelOAuth(); // a pending browser login for this panel is now moot
       setKeyInput("");
       setConnectQuery("");
@@ -489,8 +488,8 @@ export function SettingsPage() {
     // collision, proxy, dropped redirect). The browser then shows "success"
     // while the app looks frozen (#17). Only conclusive for a provider that
     // had no credentials when the wait began.
-    const hadAuth = await providerAuthExists(providerID);
-    const loginLanded = async () => !hadAuth && (await providerAuthExists(providerID));
+    const hadAuth = await providerSecretExists(providerID);
+    const loginLanded = async () => !hadAuth && (await providerSecretExists(providerID));
 
     // The callback POST hangs open until the browser redirect lands, but the
     // webview's native fetch enforces its own idle timeout (~60s in WKWebView)
@@ -603,9 +602,9 @@ export function SettingsPage() {
         // exactly" — the stale key silently re-attaches (#37). Clear it too.
         // Best-effort: most custom providers carry their key inline (no auth
         // entry), and DELETE on a missing one is expected to fail.
-        await getClient()!.removeProviderAuth(providerID).catch(() => undefined);
+        await removeProviderSecret(providerID).catch(() => false);
       } else {
-        await getClient()!.removeProviderAuth(providerID);
+        await removeProviderSecret(providerID);
       }
       try {
         const provs = await getClient()!.listProviders();
@@ -671,10 +670,10 @@ export function SettingsPage() {
         name: cName.trim(),
         npm: cNpm,
         baseURL: cUrl.trim(),
-        apiKey: cKey.trim() || undefined,
         models,
         contexts,
       });
+      if (cKey.trim()) await setProviderSecret(id, cKey.trim());
       toast.success(t("toast.endpointAdded", { name: cName.trim() }));
       setShowCustom(false);
       setCName("");
@@ -796,11 +795,9 @@ export function SettingsPage() {
   // authorize call is by that index, and filtering re-numbers positions (a
   // provider whose api method precedes an oauth one would authorize the wrong
   // method).
-  const oauthMethods: Array<{ method: ProviderAuthMethod; index: number }> = selected
-    ? (authMethods[selected.id] ?? [])
-        .map((method, index) => ({ method, index }))
-        .filter(({ method }) => method.type === "oauth")
-    : [];
+  // OpenCode's OAuth callback persists auth.json. Keep browser OAuth hidden
+  // until the callback is adapted to return credentials directly to Keychain.
+  const oauthMethods: Array<{ method: ProviderAuthMethod; index: number }> = [];
 
   return (
     <div className="h-full overflow-y-auto">
