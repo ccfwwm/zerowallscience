@@ -49,6 +49,30 @@ class Failure(Exception):
     """A verification step failed for one example."""
 
 
+def check_coverage() -> list[str]:
+    """Assert EXAMPLES covers every example that ships a `workflow.py`.
+
+    EXAMPLES is hand-maintained, so without this check a newly added example
+    would simply never be verified — and a silent skip reads exactly like a
+    pass. Examples with no `workflow.py` (the agent does the analysis itself,
+    as in climate-trends) have nothing deterministic to reproduce and are
+    correctly absent.
+    """
+    if not EXAMPLES_DIR.is_dir():
+        return [f"missing examples directory: {EXAMPLES_DIR}"]
+    on_disk = {p.name for p in EXAMPLES_DIR.iterdir() if (p / "workflow.py").is_file()}
+    listed = set(EXAMPLES)
+    problems = [
+        f"{name}: ships workflow.py but is not in EXAMPLES, so it is never verified"
+        for name in sorted(on_disk - listed)
+    ]
+    problems += [
+        f"{name}: listed in EXAMPLES but ships no workflow.py"
+        for name in sorted(listed - on_disk)
+    ]
+    return problems
+
+
 def run_script(script: pathlib.Path, out_dir: pathlib.Path) -> None:
     proc = subprocess.run(
         [sys.executable, str(script), str(out_dir)],
@@ -190,6 +214,13 @@ def main(argv: list[str]) -> int:
     if unknown:
         print(f"unknown example(s): {', '.join(unknown)}", file=sys.stderr)
         print(f"known: {', '.join(EXAMPLES)}", file=sys.stderr)
+        return 2
+
+    gaps = check_coverage()
+    if gaps:
+        print("example coverage is out of sync with examples/:", file=sys.stderr)
+        for gap in gaps:
+            print(f"  {gap}", file=sys.stderr)
         return 2
 
     print(f"Verifying {len(selected)} example(s) with tolerance abs={ABS_TOL} rel={REL_TOL}\n")
