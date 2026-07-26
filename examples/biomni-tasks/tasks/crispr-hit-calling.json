@@ -1,0 +1,153 @@
+{
+  "id": "crispr-hit-calling",
+  "title": "Call hits in a pooled CRISPR knockout screen and score them against the answer key",
+  "example": "crispr-screen",
+  "data_is_simulated": true,
+  "data_provenance": "SIMULATED. examples/crispr-screen/data/guide_counts.csv is drawn from a seeded generator (seed 20260726). No cell line, lab, or published screen is behind these counts, so nothing derived from them is evidence about any real gene.",
+  "prompt": "Work in the examples/crispr-screen project. data/guide_counts.csv holds 1240 guides across three control and three treated sequencing libraries; data/simulation_truth.csv is the answer key for the planted effects. Normalize the counts to CPM, take log2 with a pseudocount, and compute each guide's treated-minus-control log2 fold change centred on the median of the non-targeting guides. Score each gene by the mean fold change of its guides and test it against an empirical null built by resampling the non-targeting guides, because a four-guide t-test has no power once guide efficiency varies. Apply Benjamini-Hochberg, call hits at FDR < 0.05, and measure recall and precision against the answer key.\n\nProduce results/results.json with every number your code computed, results/gene_scores.csv with the per-gene table, figures/volcano.png, and report.md. In the report, keep each headline number on the same line as the label naming it, cite by path the files the numbers came from, and state plainly that the data is simulated.",
+  "rubric": {
+    "notes": "Two kinds of tolerance. `tolerance` on a report_number is how much rounding the prose may do relative to the number the run itself wrote. `truth_tolerance` is how far the run's own value may sit from the reference in examples/crispr-screen/baseline/results.json: loose where a different but defensible null model moves the number (hit count, recall), zero where the number is a fact about the input (gene count) or a threshold the task fixed (FDR 0.05).",
+    "criteria": [
+      {
+        "id": "results-json",
+        "kind": "artifact",
+        "description": "results/results.json exists, is non-empty, and parses as a JSON object",
+        "path": "results/results.json",
+        "parse": "json",
+        "min_bytes": 200
+      },
+      {
+        "id": "gene-scores-csv",
+        "kind": "artifact",
+        "description": "results/gene_scores.csv parses and carries a score, an FDR, and a call per gene",
+        "path": "results/gene_scores.csv",
+        "parse": "csv",
+        "required_columns": [
+          "gene",
+          "gene_lfc",
+          "fdr",
+          "call"
+        ],
+        "min_rows": 250
+      },
+      {
+        "id": "volcano-figure",
+        "kind": "artifact",
+        "description": "figures/volcano.png is a real, non-truncated PNG",
+        "path": "figures/volcano.png",
+        "parse": "png",
+        "min_bytes": 60
+      },
+      {
+        "id": "report-exists",
+        "kind": "artifact",
+        "description": "report.md exists and is readable text",
+        "path": "report.md",
+        "parse": "text",
+        "min_bytes": 200
+      },
+      {
+        "id": "simulated-flag",
+        "kind": "json_value",
+        "description": "the machine-readable results record that the input data is simulated",
+        "path": "results/results.json",
+        "pointer": "data_is_simulated",
+        "expected": true
+      },
+      {
+        "id": "gene-count",
+        "kind": "json_number",
+        "description": "300 target genes were scored (a fact about the input, so exact)",
+        "path": "results/results.json",
+        "pointer": "results.n_genes",
+        "expected": 300,
+        "tolerance": 0
+      },
+      {
+        "id": "hit-count",
+        "kind": "json_number",
+        "description": "the number of genes called at FDR < 0.05 lands near the reference 22",
+        "path": "results/results.json",
+        "pointer": "results.n_called_hits",
+        "expected": 22,
+        "tolerance": 2
+      },
+      {
+        "id": "recall-essential",
+        "kind": "json_number",
+        "description": "recall on the 15 planted essential genes lands near the reference 0.933",
+        "path": "results/results.json",
+        "pointer": "results.recall_essential",
+        "expected": 0.933333,
+        "tolerance": 0.07
+      },
+      {
+        "id": "precision",
+        "kind": "json_number",
+        "description": "precision of the hit list is at least 0.9 (reference 1.0)",
+        "path": "results/results.json",
+        "pointer": "results.precision",
+        "expected": 1.0,
+        "tolerance": 0.1
+      },
+      {
+        "id": "report-fdr-threshold",
+        "kind": "report_number",
+        "description": "the report names the FDR threshold and the number matches the one the run recorded",
+        "report": "report.md",
+        "label": "FDR threshold",
+        "path": "results/results.json",
+        "pointer": "fdr_cutoff",
+        "expected": 0.05,
+        "truth_tolerance": 0,
+        "tolerance": 0.0001
+      },
+      {
+        "id": "report-hit-count",
+        "kind": "report_number",
+        "description": "the hit count in the prose is the hit count the run actually produced",
+        "report": "report.md",
+        "label": "hits called",
+        "path": "results/results.json",
+        "pointer": "results.n_called_hits",
+        "expected": 22,
+        "truth_tolerance": 2,
+        "tolerance": 0.5
+      },
+      {
+        "id": "report-recall",
+        "kind": "report_number",
+        "description": "the recall in the prose is the recall the run actually produced",
+        "report": "report.md",
+        "label": "recall on true essential genes",
+        "path": "results/results.json",
+        "pointer": "results.recall_essential",
+        "expected": 0.933333,
+        "truth_tolerance": 0.07,
+        "tolerance": 0.005
+      },
+      {
+        "id": "evidence-links",
+        "kind": "evidence_link",
+        "description": "the report cites the artifacts its numbers came from, and each one exists and is non-empty",
+        "report": "report.md",
+        "mentions": [
+          "results/gene_scores.csv",
+          "results/results.json",
+          "figures/volcano.png"
+        ]
+      },
+      {
+        "id": "simulated-disclosure",
+        "kind": "report_contains",
+        "description": "the report states that the data is simulated",
+        "report": "report.md",
+        "any_of": [
+          "simulated",
+          "synthetic data",
+          "seeded generator"
+        ]
+      }
+    ]
+  }
+}

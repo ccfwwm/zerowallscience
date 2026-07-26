@@ -1,0 +1,185 @@
+{
+  "id": "extremophile-cardinal-temperatures",
+  "title": "Recover cardinal growth temperatures from simulated OD curves",
+  "example": "extremophile",
+  "data_is_simulated": true,
+  "data_provenance": "SIMULATED. The optical-density readings in examples/extremophile/data/ come from a seeded generator (seed 20260726). ZW-THERM-01 and ZW-HYPER-02 are invented strain names, not organisms; no culture, isolate, or published growth study is behind these curves.",
+  "prompt": "Work in the examples/extremophile project. The data holds replicate optical-density time courses for two simulated thermophile strains across a range of temperatures. Fit a logistic growth model to each curve to get a maximum specific growth rate, and skip curves whose optical density never rises above the detection floor rather than fitting noise. Then fit a cardinal-temperature model to the growth rates of each strain to estimate its minimum, optimum, and maximum growth temperature, and compare those estimates against data/simulation_truth.csv.\n\nProduce results/results.json with every number your code computed, results/growth_rate_fits.csv with the per-curve fits, results/mu_by_temperature.csv with the per-temperature summary, figures/growth_and_cardinal.png, and report.md. In the report, keep each headline number on the same line as the label naming it, say how many curves you excluded and why, cite by path the files the numbers came from, and state plainly that the data is simulated.",
+  "rubric": {
+    "notes": "`truth_tolerance` values are set against examples/extremophile/baseline/results.json. The count of fitted curves gets a small allowance because the detection floor is a judgement call; the recovered optimum temperature is allowed 1.5 C of error against the planted truth, which is far tighter than a fit to noise would achieve.",
+    "criteria": [
+      {
+        "id": "results-json",
+        "kind": "artifact",
+        "description": "results/results.json exists, is non-empty, and parses as a JSON object",
+        "path": "results/results.json",
+        "parse": "json",
+        "min_bytes": 200
+      },
+      {
+        "id": "fits-csv",
+        "kind": "artifact",
+        "description": "results/growth_rate_fits.csv parses and reports a rate and a fit quality per curve",
+        "path": "results/growth_rate_fits.csv",
+        "parse": "csv",
+        "required_columns": [
+          "strain",
+          "temperature_c",
+          "mu_max_per_h",
+          "fit_r2"
+        ],
+        "min_rows": 40
+      },
+      {
+        "id": "summary-csv",
+        "kind": "artifact",
+        "description": "results/mu_by_temperature.csv parses and summarizes rate by strain and temperature",
+        "path": "results/mu_by_temperature.csv",
+        "parse": "csv",
+        "required_columns": [
+          "strain",
+          "temperature_c",
+          "mu_max_mean"
+        ],
+        "min_rows": 12
+      },
+      {
+        "id": "growth-figure",
+        "kind": "artifact",
+        "description": "figures/growth_and_cardinal.png is a real, non-truncated PNG",
+        "path": "figures/growth_and_cardinal.png",
+        "parse": "png",
+        "min_bytes": 60
+      },
+      {
+        "id": "report-exists",
+        "kind": "artifact",
+        "description": "report.md exists and is readable text",
+        "path": "report.md",
+        "parse": "text",
+        "min_bytes": 200
+      },
+      {
+        "id": "simulated-flag",
+        "kind": "json_value",
+        "description": "the machine-readable results record that the input data is simulated",
+        "path": "results/results.json",
+        "pointer": "data_is_simulated",
+        "expected": true
+      },
+      {
+        "id": "curves-fitted",
+        "kind": "json_number",
+        "description": "the number of curves actually fitted lands near the reference 54",
+        "path": "results/results.json",
+        "pointer": "results.n_curves_fitted",
+        "expected": 54,
+        "tolerance": 3
+      },
+      {
+        "id": "curves-skipped",
+        "kind": "json_number",
+        "description": "low-signal curves were excluded rather than fitted (reference 21)",
+        "path": "results/results.json",
+        "pointer": "results.n_curves_skipped_low_od",
+        "expected": 21,
+        "tolerance": 3
+      },
+      {
+        "id": "fit-quality",
+        "kind": "json_number",
+        "description": "the median logistic fit R2 is near the reference 0.988",
+        "path": "results/results.json",
+        "pointer": "results.median_logistic_fit_r2",
+        "expected": 0.987573,
+        "tolerance": 0.03
+      },
+      {
+        "id": "hyper-t-opt",
+        "kind": "json_number",
+        "description": "the recovered optimum temperature for ZW-HYPER-02 is near the planted 90 C",
+        "path": "results/results.json",
+        "pointer": "results.strains.ZW-HYPER-02.t_opt_c",
+        "expected": 90.1509,
+        "tolerance": 1.5
+      },
+      {
+        "id": "therm-t-opt",
+        "kind": "json_number",
+        "description": "the recovered optimum temperature for ZW-THERM-01 is near the planted 72 C",
+        "path": "results/results.json",
+        "pointer": "results.strains.ZW-THERM-01.t_opt_c",
+        "expected": 72.1038,
+        "tolerance": 1.5
+      },
+      {
+        "id": "t-opt-error",
+        "kind": "json_number",
+        "description": "the worst optimum-temperature error against the answer key stays under 1.5 C",
+        "path": "results/results.json",
+        "pointer": "results.max_t_opt_abs_error_c",
+        "expected": 0.1509,
+        "tolerance": 1.3
+      },
+      {
+        "id": "report-hyper-t-opt",
+        "kind": "report_number",
+        "description": "the optimum temperature for ZW-HYPER-02 in the prose is the one the run produced",
+        "report": "report.md",
+        "label": "ZW-HYPER-02 optimum growth temperature",
+        "path": "results/results.json",
+        "pointer": "results.strains.ZW-HYPER-02.t_opt_c",
+        "expected": 90.1509,
+        "truth_tolerance": 1.5,
+        "tolerance": 0.05
+      },
+      {
+        "id": "report-curves-fitted",
+        "kind": "report_number",
+        "description": "the number of fitted curves in the prose is the number the run produced",
+        "report": "report.md",
+        "label": "growth curves fitted",
+        "path": "results/results.json",
+        "pointer": "results.n_curves_fitted",
+        "expected": 54,
+        "truth_tolerance": 3,
+        "tolerance": 0.5
+      },
+      {
+        "id": "report-curves-skipped",
+        "kind": "report_number",
+        "description": "the number of excluded curves in the prose is the number the run produced",
+        "report": "report.md",
+        "label": "curves excluded for low optical density",
+        "path": "results/results.json",
+        "pointer": "results.n_curves_skipped_low_od",
+        "expected": 21,
+        "truth_tolerance": 3,
+        "tolerance": 0.5
+      },
+      {
+        "id": "evidence-links",
+        "kind": "evidence_link",
+        "description": "the report cites the artifacts its numbers came from, and each one exists and is non-empty",
+        "report": "report.md",
+        "mentions": [
+          "results/growth_rate_fits.csv",
+          "results/mu_by_temperature.csv",
+          "results/results.json",
+          "figures/growth_and_cardinal.png"
+        ]
+      },
+      {
+        "id": "simulated-disclosure",
+        "kind": "report_contains",
+        "description": "the report states that the data is simulated",
+        "report": "report.md",
+        "any_of": [
+          "simulated",
+          "synthetic data",
+          "seeded generator"
+        ]
+      }
+    ]
+  }
+}
