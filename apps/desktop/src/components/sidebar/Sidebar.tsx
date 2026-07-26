@@ -16,6 +16,7 @@ import {
   PanelLeft,
   Plus,
   Settings,
+  Share2,
   Trash2,
 } from "lucide-react";
 import type { Project } from "@zerowall/shared";
@@ -482,6 +483,15 @@ export function Sidebar({ project }: { project: Project }) {
             label={t("items.runs")}
             onClick={() => navigate("/runs")}
           />
+          {/* The graph is derived from the workspace's local science database,
+              which the web client has no route to — hidden there. */}
+          {!isGatewayWeb && (
+            <NavRow
+              icon={<Share2 size={16} />}
+              label={t("items.graph")}
+              onClick={() => navigate("/graph")}
+            />
+          )}
           <NavRow
             icon={<Files size={16} />}
             label={t("items.skills")}

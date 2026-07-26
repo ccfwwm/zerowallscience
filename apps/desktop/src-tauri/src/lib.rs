@@ -20,6 +20,7 @@ mod opencode_config;
 mod preview_server;
 mod project;
 mod provenance;
+mod research_graph;
 mod review_store;
 mod runs;
 mod runs_index;
@@ -175,6 +176,7 @@ pub fn run() {
             annotation_store::list_annotations_for_version_cmd,
             annotation_store::update_annotation_cmd,
             annotation_store::delete_annotation_cmd,
+            research_graph::research_graph_cmd,
             runs::record_run,
             runs::list_runs,
             runs::read_run_log,
