@@ -1,5 +1,9 @@
 # Progress
 
+2026-07-26 10:45 · feat(p2): domestic model probing in Settings — added probeDomesticModels() to detect Kimi/GLM/DeepSeek/Baichuan/MiniMax endpoints, Probe button with loading state in Agent section, displays found providers and model counts; users can discover available domestic models without manual configuration.
+
+2026-07-26 10:40 · feat(p2): agent selector UI in Settings — added Agent section to models tab with role dropdown (general/research/code/data), loaded agent count display, reads from runtime store (selectedAgent, agentDefinitions), follows existing Settings patterns with Row components.
+
 2026-07-26 10:30 · feat(p2): frontend runtime integration for agent system — added agent state to RuntimeState (selectedAgent, agentDefinitions, agentBindings, zeroWallClient), loadAgentDefinitions() fetches from /runtime/agents/*.json on bootstrap, initializeZeroWallClient() called in loadCatalog with provider set, ZeroWallClient implements full AgentRuntime interface forwarding to OpenCodeClient, localStorage persistence for agent selection and bindings; typecheck and build pass.
 
 2026-07-26 10:07 · feat(agents): ZeroWallClient routing + 4 Agents (P2 phases 1-2) — created ZeroWallClient unified entry point, 4 Agent definitions (general/research/code/data) with JSON Schema v1, 7 role-model binding slots, primary→fallback resolution, session snapshot capture, handoff logging, domestic model endpoints (Kimi/GLM/DeepSeek/Baichuan/MiniMax), probeModels() detection; routing by agent role injects model+reasoning, logs every handoff for replay; SDK/shared modules exported.
