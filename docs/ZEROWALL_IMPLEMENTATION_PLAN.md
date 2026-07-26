@@ -296,17 +296,19 @@ cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml
 
 ### P3：Science Pack、Catalog 与 Marketplace
 
+**状态：Phase 1 完成（2026-07-26）。** 详见 `docs/P3_IMPLEMENTATION_SUMMARY.md`。
+
 **文件：** Create `packages/shared/src/science-pack.ts`、`runtime/packs/schema/v1.json`、`runtime/packs/*/manifest.yaml`、`runtime/marketplace/*`、`runtime/connectors/registry.ts`。
 
-- [ ] 定义 `SciencePackManifestV1` 和 contract tests。
+- [x] 定义 `SciencePackManifestV1` 和 contract tests。
 - [ ] 支持安装、启停、升级、回滚和来源 SHA 校验。
 - [ ] 支持 Skill/MCP/Agent 分配和工具策略。
-- [ ] 生成 42 个 Wisp Skill manifest。
-- [ ] 保留 source repo/commit/path/SHA/modified。
+- [x] 生成 42 个 Wisp Skill manifest。
+- [x] 保留 source repo/commit/path/SHA/modified。
 - [ ] 大型资产和原始快照使用 Git LFS。
 - [ ] 发布包只打包当前平台资源。
 
-**验收：** 42 Skills 精确枚举；Pack 可独立禁用；manifest 可解析；无重复 ID。
+**验收：** 42 Skills 精确枚举 ✅；Pack 可独立禁用（manifest 字段就绪）✅；manifest 可解析 ✅；无重复 ID ✅。
 
 ### P4：生命科学旗舰与 23 组 MCP
 
