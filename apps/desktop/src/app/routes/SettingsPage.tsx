@@ -108,6 +108,12 @@ export function SettingsPage() {
   const defaultModel = useRuntimeStore((s) => s.defaultModel);
   const loadCatalog = useRuntimeStore((s) => s.loadCatalog);
   const connected = status === "ready";
+
+  // P2: Agent system state
+  const selectedAgent = useRuntimeStore((s) => s.selectedAgent);
+  const setSelectedAgent = useRuntimeStore((s) => s.setSelectedAgent);
+  const agentDefinitions = useRuntimeStore((s) => s.agentDefinitions);
+
   const updateEnabled = useUpdateStore((s) => s.enabled);
   const setUpdateEnabled = useUpdateStore((s) => s.setEnabled);
   const updateBadgeEnabled = useUpdateStore((s) => s.badgeEnabled);
@@ -938,6 +944,29 @@ export function SettingsPage() {
 
         {/* ---- Models ---- */}
         {section === "models" && (
+        <>
+        {/* Agent Selector */}
+        <Section title={t("agent.title", "Agent")} hint={t("agent.hint", "Choose the AI agent for different tasks")}>
+          <Row title={t("agent.selected", "Current Agent")} control={
+            <select
+              value={selectedAgent}
+              onChange={(e) => setSelectedAgent(e.target.value as any)}
+              className={selectCls()}
+              disabled={!connected}
+            >
+              <option value="general">{t("agent.general", "General Purpose")}</option>
+              <option value="research">{t("agent.research", "Research Assistant")}</option>
+              <option value="code">{t("agent.code", "Code Specialist")}</option>
+              <option value="data">{t("agent.data", "Data Analyst")}</option>
+            </select>
+          } />
+          <Row title={t("agent.definitions", "Loaded Agents")} control={
+            <span className="text-[13px] text-muted">
+              {agentDefinitions.length} {t("agent.definitionsCount", "agent(s)")}
+            </span>
+          } />
+        </Section>
+
         <Section title={t("model.title")} hint={t("model.hint")}>
           {!modelSurfaceAvailable ? (
             <p className="text-[13px] text-muted">{t("model.connectPrompt")}</p>
@@ -955,6 +984,7 @@ export function SettingsPage() {
             />
           )}
         </Section>
+        </>
         )}
 
         {/* ---- Providers ---- */}
