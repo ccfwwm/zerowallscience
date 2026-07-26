@@ -1,0 +1,74 @@
+{
+  "domain": "metabolomics",
+  "toolCount": 17,
+  "tools": [
+    {
+      "name": "arrayexpress_search_experiments",
+      "description": "Search ArrayExpress functional-genomics experiments (complete retrieval)"
+    },
+    {
+      "name": "arrayexpress_get_experiment",
+      "description": "Fetch one ArrayExpress experiment as a flattened record"
+    },
+    {
+      "name": "arrayexpress_get_experiment_files",
+      "description": "List every file of an ArrayExpress experiment with download endpoints"
+    },
+    {
+      "name": "arrayexpress_get_experiment_samples",
+      "description": "Fetch per-sample SDRF annotation rows for an ArrayExpress experiment"
+    },
+    {
+      "name": "geo_search_series",
+      "description": "Search NCBI GEO DataSets (db=gds) and return series-level records"
+    },
+    {
+      "name": "geo_get_series",
+      "description": "Fetch structured metadata for GEO series (GSE accessions), samples included"
+    },
+    {
+      "name": "metabolights_list_studies",
+      "description": "List every public MetaboLights study accession"
+    },
+    {
+      "name": "metabolights_get_studies",
+      "description": "Fetch structured metadata for MetaboLights studies (MTBLSxxx accessions)"
+    },
+    {
+      "name": "metabolights_get_study_files",
+      "description": "Complete file inventory for a public MetaboLights study"
+    },
+    {
+      "name": "metabolights_search_data_files",
+      "description": "Glob search over a MetaboLights study's raw-data folder (FILES tree)"
+    },
+    {
+      "name": "mgnify_search_studies",
+      "description": "Find MGnify metagenomics studies by free text OR biome lineage"
+    },
+    {
+      "name": "mgnify_get_studies",
+      "description": "Fetch structured records for MGnify studies (MGYS accessions)"
+    },
+    {
+      "name": "mgnify_get_study_analyses",
+      "description": "List ALL analyses of one MGnify study (complete pagination)"
+    },
+    {
+      "name": "pride_search_projects",
+      "description": "Search PRIDE Archive proteomics projects (complete, verified retrieval)"
+    },
+    {
+      "name": "pride_get_projects",
+      "description": "Fetch full metadata for PRIDE projects by accession (e.g. 'PXD010154')"
+    },
+    {
+      "name": "pride_search_project_proteins",
+      "description": "List protein evidence rows for one PRIDE affinity-proteomics project"
+    },
+    {
+      "name": "pride_find_projects_for_protein",
+      "description": "Find PRIDE projects containing a protein (MS-archive direction)"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "domain": "pathways",
+  "toolCount": 16,
+  "tools": [
+    {
+      "name": "encode_search_experiments",
+      "description": "Search ENCODE functional genomics experiments (ChIP-seq, ATAC-seq, ...)"
+    },
+    {
+      "name": "encode_search_biosamples",
+      "description": "Search ENCODE biosamples (cell lines, tissues, primary cells)"
+    },
+    {
+      "name": "encode_list_files",
+      "description": "List ENCODE data files by format / assay / biosample"
+    },
+    {
+      "name": "encode_get_experiment",
+      "description": "Get one ENCODE experiment's metadata by accession (e.g. 'ENCSR000AKP')"
+    },
+    {
+      "name": "encode_get_file",
+      "description": "Get one ENCODE file's metadata by accession (e.g. 'ENCFF002JUR')"
+    },
+    {
+      "name": "encode_get_biosample",
+      "description": "Get one ENCODE biosample's metadata by accession (e.g. 'ENCBS013JZP')"
+    },
+    {
+      "name": "jaspar_get_matrix",
+      "description": "Get one JASPAR TF binding profile by versioned matrix id (e.g. 'MA0002.2')"
+    },
+    {
+      "name": "jaspar_matrix_versions",
+      "description": "List all versions of a JASPAR base matrix id (e.g. 'MA0002')"
+    },
+    {
+      "name": "jaspar_list_matrices",
+      "description": "Search/list JASPAR TF binding profiles (the full profile catalog)"
+    },
+    {
+      "name": "jaspar_list_species",
+      "description": "List all species with JASPAR profiles (NCBI tax_id + name)"
+    },
+    {
+      "name": "jaspar_list_taxa",
+      "description": "List all JASPAR taxonomic groups (vertebrates, plants, fungi, ...)"
+    },
+    {
+      "name": "jaspar_list_collections",
+      "description": "List all JASPAR collections (CORE, UNVALIDATED, ...)"
+    },
+    {
+      "name": "jaspar_list_releases",
+      "description": "List all JASPAR database releases (year, release number, active flag)"
+    },
+    {
+      "name": "unibind_search_tfbs",
+      "description": "Search UniBind ChIP-seq datasets with high-confidence TFBS predictions"
+    },
+    {
+      "name": "unibind_get_dataset",
+      "description": "Get one UniBind dataset's detail: per-model TFBS counts + file URLs"
+    },
+    {
+      "name": "unibind_tfbs_in_region",
+      "description": "TF binding sites overlapping a genomic region (UniBind 2021 maps)"
+    }
+  ]
+}

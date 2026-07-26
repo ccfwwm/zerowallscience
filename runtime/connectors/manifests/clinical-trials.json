@@ -1,0 +1,62 @@
+{
+  "domain": "clinical-trials",
+  "toolCount": 14,
+  "tools": [
+    {
+      "name": "gwas_associations_for_variant",
+      "description": "GWAS Catalog associations reported for one variant (rsID), most"
+    },
+    {
+      "name": "gwas_associations_for_gene",
+      "description": "GWAS Catalog associations whose variants are MAPPED to a gene"
+    },
+    {
+      "name": "gwas_associations_for_trait",
+      "description": "GWAS Catalog associations annotated to one EFO trait, most"
+    },
+    {
+      "name": "gwas_search_traits",
+      "description": "Search GWAS Catalog EFO trait annotations by label substring \u2014 the"
+    },
+    {
+      "name": "gwas_search_studies",
+      "description": "Search GWAS Catalog studies by trait annotation or publication"
+    },
+    {
+      "name": "gwas_get_study",
+      "description": "Fetch one GWAS Catalog study by its GCST accession"
+    },
+    {
+      "name": "gwas_get_variant",
+      "description": "Fetch one GWAS Catalog variant record (position, mapped genes,"
+    },
+    {
+      "name": "eqtl_list_datasets",
+      "description": "List eQTL Catalogue datasets (one dataset = one study x tissue/cell"
+    },
+    {
+      "name": "eqtl_associations",
+      "description": "Molecular-QTL association rows from one eQTL Catalogue dataset,"
+    },
+    {
+      "name": "phewas_instances",
+      "description": "List the public PheWeb PheWAS portals this server can query, with"
+    },
+    {
+      "name": "phewas_variant",
+      "description": "PheWAS for one variant: its association statistics against every"
+    },
+    {
+      "name": "phewas_finngen_gene",
+      "description": "Gene-level PheWAS from FinnGen R12: for every disease endpoint, the"
+    },
+    {
+      "name": "phewas_list_phenotypes",
+      "description": "Complete phenotype (disease endpoint) catalogue of a PheWeb"
+    },
+    {
+      "name": "phewas_search_phenotypes",
+      "description": "Search a PheWeb instance's phenotypes (and entities) by name \u2014 the"
+    }
+  ]
+}

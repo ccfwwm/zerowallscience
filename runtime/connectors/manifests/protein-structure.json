@@ -1,0 +1,70 @@
+{
+  "domain": "protein-structure",
+  "toolCount": 16,
+  "tools": [
+    {
+      "name": "emdb_get_entries",
+      "description": "Fetch structured metadata records for EMDB cryo-EM entries"
+    },
+    {
+      "name": "emdb_search_entries",
+      "description": "Search EMDB with a Solr-style query; complete paged retrieval of compact rows"
+    },
+    {
+      "name": "emdb_get_entry_section",
+      "description": "Fetch one detailed metadata section for EMDB entries"
+    },
+    {
+      "name": "emdb_get_validation",
+      "description": "Fetch numeric validation-analysis metrics for EMDB entries"
+    },
+    {
+      "name": "complexportal_get_complexes",
+      "description": "Fetch curated Complex Portal records by CPX accession"
+    },
+    {
+      "name": "complexportal_search_by_participant",
+      "description": "Search Complex Portal for complexes containing a molecule"
+    },
+    {
+      "name": "intact_fetch_interactions",
+      "description": "Retrieve ALL IntAct binary interactions matching a query, MI-score filtered"
+    },
+    {
+      "name": "intact_get_interactor",
+      "description": "Resolve a molecule to its IntAct interactor record(s)"
+    },
+    {
+      "name": "intact_get_interaction_details",
+      "description": "Full curated detail for ONE IntAct interaction AC (e.g. 'EBI-15635490')"
+    },
+    {
+      "name": "intact_build_network",
+      "description": "Build a depth-1 IntAct interaction network around seed proteins"
+    },
+    {
+      "name": "pdb_search_structures",
+      "description": "Search RCSB PDB entries by attribute filters; paged, capped + flagged"
+    },
+    {
+      "name": "pdb_get_structures",
+      "description": "Fetch entry-level summaries for PDB entries (batch, max 25 ids)"
+    },
+    {
+      "name": "pdb_get_entities",
+      "description": "Polymer entity details for one PDB entry, incl. UniProt mappings"
+    },
+    {
+      "name": "pdb_get_ligands",
+      "description": "Bound ligands (nonpolymer components) of one PDB entry, with chemistry"
+    },
+    {
+      "name": "alphafold_get_prediction",
+      "description": "AlphaFold DB predicted-structure metadata for one UniProt accession"
+    },
+    {
+      "name": "alphafold_check_coverage",
+      "description": "Batch AlphaFold DB coverage check (max 40 unique UniProt accessions)"
+    }
+  ]
+}

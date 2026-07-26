@@ -1,0 +1,50 @@
+{
+  "domain": "genomics",
+  "toolCount": 11,
+  "tools": [
+    {
+      "name": "ensembl_lookup",
+      "description": "Look up an Ensembl gene/transcript/protein by stable ID or a gene"
+    },
+    {
+      "name": "ensembl_xrefs",
+      "description": "External cross-references of an Ensembl stable ID \u2014 the bridge from"
+    },
+    {
+      "name": "ensembl_vep_variant",
+      "description": "Predict variant consequences with Ensembl VEP \u2014 most-severe-first"
+    },
+    {
+      "name": "ensembl_homology",
+      "description": "Orthologues or paralogues of a gene from Ensembl Compara"
+    },
+    {
+      "name": "ensembl_sequence",
+      "description": "Fetch sequence from Ensembl \u2014 by stable ID (gene/transcript/"
+    },
+    {
+      "name": "ensembl_overlap_region",
+      "description": "List Ensembl features overlapping a genomic region \u2014 genes,"
+    },
+    {
+      "name": "ucsc_list_tracks",
+      "description": "List data tracks available in a UCSC Genome Browser assembly"
+    },
+    {
+      "name": "ucsc_track_data",
+      "description": "Fetch raw rows of any UCSC Genome Browser track in a region \u2014"
+    },
+    {
+      "name": "ucsc_conservation",
+      "description": "Evolutionary conservation summary for a region from UCSC"
+    },
+    {
+      "name": "ucsc_tfbs_clusters",
+      "description": "ENCODE transcription-factor binding site clusters overlapping a"
+    },
+    {
+      "name": "ucsc_chrom_sizes",
+      "description": "Chromosome/contig names and sizes of a UCSC assembly \u2014 for"
+    }
+  ]
+}
