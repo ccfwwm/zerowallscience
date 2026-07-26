@@ -1,0 +1,123 @@
+# Sidecar / bundled-asset integrity lockfile
+#
+# Every artifact that scripts/dev/fetch-*.sh downloads off the network is pinned
+# here by SHA-256. The fetch scripts verify the bytes they downloaded against
+# these pins and ABORT the build on mismatch, so a compromised mirror, a
+# re-tagged release, or a truncated download can never reach a shipped
+# installer. See scripts/dev/verify-digest.sh for the checker.
+#
+# ---------------------------------------------------------------------------
+# FORMAT
+# ---------------------------------------------------------------------------
+# One pin per line, four whitespace-separated fields:
+#
+#   <artifact> <version> <target> <sha256>
+#
+#   artifact  logical name used by the fetch script (opencode, uv,
+#             agent-browser, ai4s-skills, anthropic-skills, goal-plugin).
+#   version   the exact version or commit the script pins. Encoding it here
+#             means bumping a version WITHOUT adding its pin fails the lookup
+#             loudly instead of silently skipping verification.
+#   target    Rust target triple the asset is for, or `any` for a
+#             target-independent artifact (source archives, npm tarballs).
+#   sha256    lowercase hex SHA-256 of the downloaded file, exactly as it
+#             arrives on disk (the archive/binary itself, not its contents).
+#
+# Blank lines and `#` comments are ignored.
+#
+# ---------------------------------------------------------------------------
+# HOW TO ADD OR BUMP A PIN
+# ---------------------------------------------------------------------------
+# Never hand-write or guess a digest, and never "fix" a failing build by
+# pasting in whatever the file currently hashes to. That turns verification
+# back off. A digest is only legitimate from one of two sources:
+#
+#   1. PREFERRED - a checksum the upstream project publishes for that exact
+#      release. For GitHub releases, `digest` on each asset in the release API
+#      is computed by GitHub and is the authoritative value:
+#
+#        curl -sSL https://api.github.com/repos/<owner>/<repo>/releases/tags/<tag> \
+#          | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>\
+#            JSON.parse(s).assets.forEach(a=>console.log(a.digest,a.name)))"
+#
+#      Some projects also ship a sidecar checksum file (uv publishes
+#      `<asset>.sha256`); npm publishes `dist.integrity` in the packument.
+#      Cross-check against it when available.
+#
+#   2. FALLBACK - compute it from a file you actually downloaded, when upstream
+#      publishes no checksum (GitHub source tarballs, for example - the archive
+#      `ETag` is NOT a content hash). Download it and run:
+#
+#        bash scripts/dev/verify-digest.sh --print <file>
+#
+#      This pins "the bytes that were served when the pin was made". It detects
+#      later tampering and transport corruption; it is not a statement about
+#      upstream's intent, so review what you downloaded before pinning it.
+#
+# When bumping a version: change the version in the fetch script (or its
+# environment default), then add the new pin rows here and delete the old ones.
+# Keep every target the script supports pinned - an unpinned target aborts.
+#
+# ---------------------------------------------------------------------------
+# PINS
+# ---------------------------------------------------------------------------
+
+# opencode - agent runtime sidecar. scripts/dev/fetch-opencode.sh
+# Source: GitHub release API asset digests for anomalyco/opencode v1.17.13
+#   https://api.github.com/repos/anomalyco/opencode/releases/tags/v1.17.13
+opencode 1.17.13 aarch64-apple-darwin      dd016d3e26b347d675ab26c45d1e287545912d5c4c49fa0770b622d4a1367e23
+opencode 1.17.13 x86_64-apple-darwin       0bf3d9d134097ca698b83f64c55db960d6d2d0c409069bf4cfd863e5de503b4a
+opencode 1.17.13 x86_64-pc-windows-msvc    18aa3df701a6eafcca201b5bcc63e086c96c8daa6ae2495cf718e12cb0ce3361
+opencode 1.17.13 aarch64-pc-windows-msvc   bafec2dd6b89055910284ba910d59605295866563ccdb3d035c0c4b887dd11e6
+opencode 1.17.13 x86_64-unknown-linux-gnu  157afa289d1a8d9372de0ce19ac726119b937a1f6b201808d46f06e4e59bb348
+opencode 1.17.13 aarch64-unknown-linux-gnu bbaccdd374aaab66cd97c7f8ad1c080aa393610fa5f80ee8dfc007f9500afaf9
+
+# uv - Python environment provisioner sidecar. scripts/dev/fetch-uv.sh
+# Source: GitHub release API asset digests for astral-sh/uv 0.11.26
+#   https://api.github.com/repos/astral-sh/uv/releases/tags/0.11.26
+# Cross-checked against upstream's own published sidecar checksum files,
+#   https://github.com/astral-sh/uv/releases/download/0.11.26/<asset>.sha256
+# which agree on all six targets.
+uv 0.11.26 aarch64-apple-darwin      8f7fbf1708399b921857bce71e1d60f0d3ccf52a30caebc1c1a2f175dce13ab6
+uv 0.11.26 x86_64-apple-darwin       922b460202707dd5f4ccacbadbe7f6a546cc46e82a99bf50ca99a7977a78eddd
+uv 0.11.26 x86_64-pc-windows-msvc    4e1278ede866be6c0bf32d2f466cc6de7a9fb399ecf20c9ce2d186e52424be47
+uv 0.11.26 aarch64-pc-windows-msvc   98246149741f558e25e45ecf2b0b20f34de0634269f2bf0dcb4012d4b6ba289a
+uv 0.11.26 x86_64-unknown-linux-gnu  6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0
+uv 0.11.26 aarch64-unknown-linux-gnu befa1a59c91e96eb601b0fd9a97c03dd666f17baba644b2b4db9c59a767e387e
+
+# agent-browser - browser-automation sidecar. scripts/dev/fetch-agent-browser.sh
+# Source: GitHub release API asset digests for vercel-labs/agent-browser v0.32.1
+#   https://api.github.com/repos/vercel-labs/agent-browser/releases/tags/v0.32.1
+# Upstream publishes no aarch64-pc-windows-msvc build, and the fetch script does
+# not support that triple, so there is deliberately no pin for it.
+agent-browser 0.32.1 aarch64-apple-darwin      13d54d6ac027abcafde7e6bfa16c4e266315e80e7fafd96dc6ba455377a56162
+agent-browser 0.32.1 x86_64-apple-darwin       898851be00042231369234b84dbdce1383d3262a2c5fe43c0ff55193f8151d94
+agent-browser 0.32.1 x86_64-pc-windows-msvc    ff419b70fdea810d9f991020694dd436ae5f35f7807ed2e5e743daa0f3e13a2b
+agent-browser 0.32.1 x86_64-unknown-linux-gnu  a72c905c384df9de839f33e53b28c9369eb9bb7af0ee20beb042a8243446df3d
+agent-browser 0.32.1 aarch64-unknown-linux-gnu 59704e87ec2ca35b4b2cf83964693a2dc92e50b458c0328c591706a8231b2268
+
+# goal-plugin - OpenCode goal plugin npm tarball. scripts/dev/fetch-goal-plugin.sh
+# Pins the npm tarball that `npm pack` retrieves, before esbuild bundles it.
+# Source: npm registry packument `dist.integrity` for
+#   @prevalentware/opencode-goal-plugin@0.1.24 ->
+#   sha512-o/PpmZPUhGlZym5EgjW3rJ5cVjsMX1dlj6dp38Mg+D3RoaeRE6V6f32r1nzRVkE2Gh6vqHcOEu6ylYu/kxvA2w==
+#   (https://registry.npmjs.org/@prevalentware/opencode-goal-plugin)
+# npm publishes SHA-512, not SHA-256. The SHA-256 below was computed locally
+# from the tarball downloaded during pinning, after confirming that tarball
+# matched the published sha512 integrity AND dist.shasum
+# (d9d0cef1e3399545444616f69be051fa95d154ea) exactly. Recheck both when bumping.
+goal-plugin 0.1.24 any 4ec56552fbcfc66eebed1dfe5b26289c42cb4156aa528298d7ce9e7dac67e527
+
+# ai4s-skills - default scientific skill pack. scripts/dev/fetch-skills.sh
+# GitHub source archives have no upstream checksum (the HTTP ETag is not a
+# content hash - verified: it matches neither the .tar.gz nor its uncompressed
+# tar stream). Computed locally from the archive downloaded during pinning.
+# GitHub source tarballs for a fixed commit SHA have been byte-stable in
+# practice, but they are regenerated on demand; if a future gzip change breaks
+# this pin, re-pin per the FALLBACK procedure above and note it in the review.
+ai4s-skills 8fa2ab0523082c135598909b227ed8feb48263ad any cbe373236b85e952762c5cbae7d72eb72c1e11077865c71b9ac59a084dd9a408
+
+# anthropic-skills - docx/pdf/pptx/xlsx document skills. scripts/dev/fetch-skills.sh
+# Same situation and same caveat as ai4s-skills: computed locally from the
+# archive downloaded during pinning.
+anthropic-skills 9d2f1ae187231d8199c64b5b762e1bdf2244733d any d3369ba9df41ec79bccc1ca98c63cd7c4fe866718670f34e149b2c0acc9e4c0a

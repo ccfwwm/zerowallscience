@@ -4,6 +4,10 @@
 # Runs locally and in CI so the skills never live in this repo's git history.
 set -euo pipefail
 
+# Digest verification: every download is checked against scripts/dev/sidecar-lock.txt
+# before it is used, and a mismatch aborts. See that lockfile to add/bump a pin.
+. "$(cd "$(dirname "$0")" && pwd)/verify-digest.sh"
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 # ---- ai4s-skills: the default scientific pack ----
@@ -14,6 +18,13 @@ URL="https://github.com/ai4s-research/ai4s-skills/archive/${AI4S_SKILLS_COMMIT}.
 TMP="$(mktemp -d)"
 echo "Downloading $URL"
 curl -fsSL "$URL" -o "$TMP/skills.tar.gz"
+
+# Verify the archive before extracting it: a bad archive is never unpacked.
+if ! verify_pinned_digest ai4s-skills "$AI4S_SKILLS_COMMIT" any "$TMP/skills.tar.gz"; then
+  rm -rf "$TMP"
+  exit 1
+fi
+
 tar -xzf "$TMP/skills.tar.gz" -C "$TMP"
 
 SRC="$(find "$TMP" -maxdepth 1 -type d -name 'ai4s-skills-*' | head -1)"
@@ -39,6 +50,13 @@ URL="https://github.com/anthropics/skills/archive/${ANTHROPIC_SKILLS_COMMIT}.tar
 TMP="$(mktemp -d)"
 echo "Downloading $URL"
 curl -fsSL "$URL" -o "$TMP/skills.tar.gz"
+
+# Verify the archive before extracting it: a bad archive is never unpacked.
+if ! verify_pinned_digest anthropic-skills "$ANTHROPIC_SKILLS_COMMIT" any "$TMP/skills.tar.gz"; then
+  rm -rf "$TMP"
+  exit 1
+fi
+
 tar -xzf "$TMP/skills.tar.gz" -C "$TMP"
 
 SRC="$(find "$TMP" -maxdepth 1 -type d -name 'skills-*' | head -1)"

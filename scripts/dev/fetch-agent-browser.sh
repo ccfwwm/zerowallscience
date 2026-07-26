@@ -5,6 +5,10 @@
 # agent-browser ships raw (unarchived) binaries per platform on its releases.
 set -euo pipefail
 
+# Digest verification: every download is checked against scripts/dev/sidecar-lock.txt
+# before it is used, and a mismatch aborts. See that lockfile to add/bump a pin.
+. "$(cd "$(dirname "$0")" && pwd)/verify-digest.sh"
+
 AGENT_BROWSER_VERSION="${AGENT_BROWSER_VERSION:-0.32.1}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT_DIR="$ROOT/apps/desktop/src-tauri/binaries"
@@ -29,6 +33,13 @@ case "$TRIPLE" in
 esac
 
 echo "Downloading $URL"
-curl -fsSL "$URL" -o "$DEST"
+# Stage in a temp dir and verify before installing, so a failed check can never
+# leave an unverified binary at $DEST for the bundler to pick up.
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+curl -fsSL "$URL" -o "$TMP/$ASSET"
+verify_pinned_digest agent-browser "$AGENT_BROWSER_VERSION" "$TRIPLE" "$TMP/$ASSET"
+
+cp "$TMP/$ASSET" "$DEST"
 chmod +x "$DEST"
 echo "Placed sidecar for $TRIPLE at $DEST"

@@ -4,6 +4,10 @@
 # isolated Jupyter environment for the Jupyter MCP integration on demand.
 set -euo pipefail
 
+# Digest verification: every download is checked against scripts/dev/sidecar-lock.txt
+# before it is used, and a mismatch aborts. See that lockfile to add/bump a pin.
+. "$(cd "$(dirname "$0")" && pwd)/verify-digest.sh"
+
 UV_VERSION="${UV_VERSION:-0.11.26}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT_DIR="$ROOT/apps/desktop/src-tauri/binaries"
@@ -22,6 +26,13 @@ URL="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${ASSET}"
 TMP="$(mktemp -d)"
 echo "Downloading $URL"
 curl -fsSL "$URL" -o "$TMP/$ASSET"
+
+# Verify the archive before extracting it: a bad archive is never unpacked.
+if ! verify_pinned_digest uv "$UV_VERSION" "$TRIPLE" "$TMP/$ASSET"; then
+  rm -rf "$TMP"
+  exit 1
+fi
+
 case "$ASSET" in
   *.tar.gz) tar -xzf "$TMP/$ASSET" -C "$TMP" ;;
   *.zip) unzip -oq "$TMP/$ASSET" -d "$TMP" ;;

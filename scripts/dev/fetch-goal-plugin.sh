@@ -8,6 +8,10 @@
 # plugin specs itself, and the app must not fetch from npm at run time.
 set -euo pipefail
 
+# Digest verification: every download is checked against scripts/dev/sidecar-lock.txt
+# before it is used, and a mismatch aborts. See that lockfile to add/bump a pin.
+. "$(cd "$(dirname "$0")" && pwd)/verify-digest.sh"
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 GOAL_PLUGIN_VERSION="${GOAL_PLUGIN_VERSION:-0.1.24}"
@@ -18,7 +22,15 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 echo "Packing ${PKG}@${GOAL_PLUGIN_VERSION}"
 (cd "$TMP" && npm pack --silent "${PKG}@${GOAL_PLUGIN_VERSION}" > /dev/null)
-tar -xzf "$TMP"/*.tgz -C "$TMP"
+
+# Verify the packed registry tarball before extracting or bundling it. `npm pack`
+# of a remote spec copies the registry tarball byte-for-byte, so this pins the
+# published artifact itself.
+TGZ="$(find "$TMP" -maxdepth 1 -type f -name '*.tgz' | head -1)"
+[ -n "$TGZ" ] || { echo "npm pack produced no tarball" >&2; exit 1; }
+verify_pinned_digest goal-plugin "$GOAL_PLUGIN_VERSION" any "$TGZ"
+
+tar -xzf "$TGZ" -C "$TMP"
 
 # Install runtime deps next to the entry so esbuild can resolve them.
 (cd "$TMP/package" && npm install --silent --no-fund --no-audit --omit=dev --ignore-scripts effect zod > /dev/null)

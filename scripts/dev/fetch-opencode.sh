@@ -4,6 +4,10 @@
 # Runs per-platform locally and in CI so the binary never lives in git.
 set -euo pipefail
 
+# Digest verification: every download is checked against scripts/dev/sidecar-lock.txt
+# before it is used, and a mismatch aborts. See that lockfile to add/bump a pin.
+. "$(cd "$(dirname "$0")" && pwd)/verify-digest.sh"
+
 OPENCODE_VERSION="${OPENCODE_VERSION:-1.17.13}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT_DIR="$ROOT/apps/desktop/src-tauri/binaries"
@@ -26,6 +30,13 @@ URL="https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION
 TMP="$(mktemp -d)"
 echo "Downloading $URL"
 curl -fsSL "$URL" -o "$TMP/$ASSET"
+
+# Verify the archive before extracting it: a bad archive is never unpacked.
+if ! verify_pinned_digest opencode "$OPENCODE_VERSION" "$TRIPLE" "$TMP/$ASSET"; then
+  rm -rf "$TMP"
+  exit 1
+fi
+
 case "$ASSET" in
   *.tar.gz) tar -xzf "$TMP/$ASSET" -C "$TMP" ;;
   *)
