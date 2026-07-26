@@ -1,145 +1,16 @@
 {
   "domain": "protein-interactions",
   "version": "1.0.0",
-  "description": "IntAct, ComplexPortal protein interaction contracts",
+  "description": "STRING, BioGRID, IntAct, MINT, DIP, HPRD protein interaction contracts",
   "tools": [
-    {
-      "name": "intact_fetch_interactions",
-      "description": "Retrieve IntAct binary interactions",
-      "inputSchema": {
-        "type": "object",
-        "required": ["query"],
-        "properties": {
-          "query": { "type": "string" },
-          "min_mi_score": { "type": "number", "default": 0.4 },
-          "max_records": { "type": "integer", "default": 100 }
-        }
-      },
-      "outputSchema": {
-        "type": "object",
-        "required": ["interactions"],
-        "properties": {
-          "interactions": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "interaction_ac": { "type": "string" },
-                "interactor_a": { "type": "string" },
-                "interactor_b": { "type": "string" },
-                "mi_score": { "type": "number" }
-              }
-            }
-          }
-        }
-      },
-      "errorCases": [],
-      "rateLimits": {"requestsPerSecond": 1}
-    },
-    {
-      "name": "intact_get_interactor",
-      "description": "Resolve molecule to IntAct interactor",
-      "inputSchema": {
-        "type": "object",
-        "required": ["identifier"],
-        "properties": {
-          "identifier": { "type": "string" }
-        }
-      },
-      "outputSchema": {
-        "type": "object",
-        "required": ["interactors"],
-        "properties": {
-          "interactors": { "type": "array" }
-        }
-      },
-      "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}],
-      "rateLimits": {"requestsPerSecond": 1}
-    },
-    {
-      "name": "intact_get_interaction_details",
-      "description": "Fetch full IntAct interaction details",
-      "inputSchema": {
-        "type": "object",
-        "required": ["interaction_ac"],
-        "properties": {
-          "interaction_ac": { "type": "string", "pattern": "^EBI-\\d+$" }
-        }
-      },
-      "outputSchema": {
-        "type": "object",
-        "required": ["interaction_ac", "participants"],
-        "properties": {
-          "interaction_ac": { "type": "string" },
-          "participants": { "type": "array" },
-          "experiments": { "type": "array" }
-        }
-      },
-      "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}],
-      "rateLimits": {"requestsPerSecond": 1}
-    },
-    {
-      "name": "intact_build_network",
-      "description": "Build IntAct interaction network",
-      "inputSchema": {
-        "type": "object",
-        "required": ["seed_proteins"],
-        "properties": {
-          "seed_proteins": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-          "depth": { "type": "integer", "default": 1, "minimum": 1, "maximum": 2 }
-        }
-      },
-      "outputSchema": {
-        "type": "object",
-        "required": ["nodes", "edges"],
-        "properties": {
-          "nodes": { "type": "array" },
-          "edges": { "type": "array" }
-        }
-      },
-      "errorCases": [],
-      "rateLimits": {"requestsPerSecond": 1}
-    },
-    {
-      "name": "complexportal_get_complexes",
-      "description": "Fetch Complex Portal records",
-      "inputSchema": {
-        "type": "object",
-        "required": ["complex_acs"],
-        "properties": {
-          "complex_acs": { "type": "array", "items": { "type": "string", "pattern": "^CPX-\\d+$" }}
-        }
-      },
-      "outputSchema": {
-        "type": "object",
-        "required": ["complexes"],
-        "properties": {
-          "complexes": { "type": "array" }
-        }
-      },
-      "errorCases": [],
-      "rateLimits": {"requestsPerSecond": 1}
-    },
-    {
-      "name": "complexportal_search_by_participant",
-      "description": "Search complexes containing a molecule",
-      "inputSchema": {
-        "type": "object",
-        "required": ["participant"],
-        "properties": {
-          "participant": { "type": "string" },
-          "species": { "type": "string", "default": "Homo sapiens" }
-        }
-      },
-      "outputSchema": {
-        "type": "object",
-        "required": ["complexes"],
-        "properties": {
-          "complexes": { "type": "array" }
-        }
-      },
-      "errorCases": [],
-      "rateLimits": {"requestsPerSecond": 1}
-    }
+    {"name": "string_search_interactions", "inputSchema": {"type": "object", "required": ["protein"], "properties": {"protein": {"type": "string"}, "species": {"type": "integer", "default": 9606}}}, "outputSchema": {"type": "object", "required": ["interactions"], "properties": {"interactions": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "string_get_network", "inputSchema": {"type": "object", "required": ["proteins"], "properties": {"proteins": {"type": "array", "items": {"type": "string"}}, "species": {"type": "integer", "default": 9606}}}, "outputSchema": {"type": "object", "required": ["network"], "properties": {"network": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "biogrid_search_interactions", "inputSchema": {"type": "object", "required": ["gene_name"], "properties": {"gene_name": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["interactions"], "properties": {"interactions": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "biogrid_get_interaction", "inputSchema": {"type": "object", "required": ["interaction_id"], "properties": {"interaction_id": {"type": "integer"}}}, "outputSchema": {"type": "object", "required": ["interaction_id"], "properties": {"interaction_id": {"type": "integer"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "intact_search", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["interactions"], "properties": {"interactions": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "intact_get_interaction", "inputSchema": {"type": "object", "required": ["ac"], "properties": {"ac": {"type": "string", "pattern": "^EBI-\\d+$"}}}, "outputSchema": {"type": "object", "required": ["ac"], "properties": {"ac": {"type": "string"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "mint_search_interactions", "inputSchema": {"type": "object", "required": ["protein"], "properties": {"protein": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["interactions"], "properties": {"interactions": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "dip_search", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["interactions"], "properties": {"interactions": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "hprd_search_interactions", "inputSchema": {"type": "object", "required": ["gene_symbol"], "properties": {"gene_symbol": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["interactions"], "properties": {"interactions": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}}
   ]
 }
