@@ -44,6 +44,11 @@ fn probe_with_path(name: &str, bin: &str, version_arg: &str, path: Option<&str>)
 
 #[cfg(test)]
 mod tests {
+    // Both tests below are `#[cfg(unix)]` (they write a shell script and chmod
+    // it), so on Windows this import would be unused and `-D warnings` would
+    // reject it — hence the matching gate.
+    #[cfg(unix)]
+    use super::*;
 
     // A Finder-launched app has a minimal PATH, so probing with the plain
     // environment misreported the user's anaconda/homebrew tools as missing —

@@ -114,9 +114,12 @@ pub fn detect_chrome() -> Option<ChromeInfo> {
 
 /// Platform-specific executable locations, most-preferred browser first.
 fn chrome_candidates() -> Vec<(&'static str, Vec<String>)> {
-    let _home = std::env::var("HOME").unwrap_or_default();
+    // HOME is read inside the macOS arm only: it is the sole platform that
+    // looks for a per-user /Applications copy. Binding it out here made the
+    // name unused on Windows and Linux, which `clippy -D warnings` rejects.
     #[cfg(target_os = "macos")]
     {
+        let home = std::env::var("HOME").unwrap_or_default();
         let user = |app: &str| format!("{home}{app}");
         vec![
             (
@@ -174,7 +177,6 @@ fn chrome_candidates() -> Vec<(&'static str, Vec<String>)> {
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        let _ = home;
         vec![
             (
                 "chrome",
