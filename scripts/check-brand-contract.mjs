@@ -85,6 +85,38 @@ const allowedLegacyOccurrences = [
     context: "docs.join(\"Open Science\"),",
     expectedCount: 1,
   },
+  // Provenance: these four name the predecessor product this repository was
+  // forked from. The lineage is a fact about where the code came from, so it
+  // cannot be renamed away — but it is pinned per line and counted, so a new
+  // mention still fails the contract.
+  {
+    path: "docs/ZEROWALL_IMPLEMENTATION_PLAN.md",
+    pattern: "Open Science",
+    literal: "Open Science",
+    context: "**架构：** 以 Open Science Desktop `ab2853f` 为唯一桌面、Web Gateway、SDK 和 OpenCode runtime 基线。Wisp、Claude Science、OpenClaudeScience 与 Rakserver 资产只能通过稳定的 Pack、Skill、MCP、Kernel、Compute 和 Platform Service 接口适配，不得并行引入第二套前端或 Agent runtime。",
+    expectedCount: 1,
+  },
+  {
+    path: "docs/ZEROWALL_IMPLEMENTATION_PLAN.md",
+    pattern: "Open Science",
+    literal: "Open Science",
+    context: "| Open Science Desktop | `C:\\softworks\\gpt-tools\\open-science` | `ab2853ff8cc8` |",
+    expectedCount: 1,
+  },
+  {
+    path: "docs/ZEROWALL_IMPLEMENTATION_PLAN.md",
+    pattern: "Open Science",
+    literal: "Open Science",
+    context: "- [x] 从 Open Science Desktop `ab2853f` 建立全新 Git 历史。",
+    expectedCount: 1,
+  },
+  {
+    path: "docs/ZEROWALL_IMPLEMENTATION_STATUS.md",
+    pattern: "Open Science",
+    literal: "Open Science",
+    context: "`PROGRESS.md` 继承了 Open Science Desktop 的大量历史记录，其中包括“2026-07-03 已发布同名 public repository”等旧信息。该记录与当前 fresh repository 的 Git/remote 实况冲突。",
+    expectedCount: 1,
+  },
 ];
 const binaryExtensions = new Set([
   ".gif",
