@@ -1,0 +1,30 @@
+{
+  "domain": "protein-interactions",
+  "toolCount": 6,
+  "tools": [
+    {
+      "name": "intact_fetch_interactions",
+      "description": "Retrieve ALL IntAct binary interactions matching a query, MI-score filtered"
+    },
+    {
+      "name": "intact_get_interactor",
+      "description": "Resolve a molecule to its IntAct interactor record(s)"
+    },
+    {
+      "name": "intact_get_interaction_details",
+      "description": "Full curated detail for ONE IntAct interaction AC (e.g. 'EBI-15635490')"
+    },
+    {
+      "name": "intact_build_network",
+      "description": "Build a depth-1 IntAct interaction network around seed proteins"
+    },
+    {
+      "name": "complexportal_get_complexes",
+      "description": "Fetch curated Complex Portal records by CPX accession"
+    },
+    {
+      "name": "complexportal_search_by_participant",
+      "description": "Search Complex Portal for complexes containing a molecule"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "domain": "epidemiology",
+  "toolCount": 8,
+  "tools": [
+    {
+      "name": "who_disease_outbreak_news",
+      "description": "Fetch WHO Disease Outbreak News reports by date range or disease"
+    },
+    {
+      "name": "gisaid_search_sequences",
+      "description": "Search GISAID viral genome sequences by strain, location, date"
+    },
+    {
+      "name": "gisaid_get_sequence",
+      "description": "Fetch GISAID sequence metadata and submission details"
+    },
+    {
+      "name": "outbreak_info_search",
+      "description": "Search Outbreak.info for COVID-19 and other pathogen data"
+    },
+    {
+      "name": "ecdc_surveillance_data",
+      "description": "Fetch ECDC disease surveillance data by country and time period"
+    },
+    {
+      "name": "cdc_wonder_mortality",
+      "description": "Query CDC WONDER mortality database by cause, year, geography"
+    },
+    {
+      "name": "globalepidemics_forecasts",
+      "description": "Fetch epidemic forecasting models and predictions"
+    },
+    {
+      "name": "healthmap_alerts",
+      "description": "Search HealthMap disease outbreak alerts by location and disease"
+    }
+  ]
+}

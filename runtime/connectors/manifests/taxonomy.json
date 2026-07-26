@@ -1,0 +1,34 @@
+{
+  "domain": "taxonomy",
+  "toolCount": 7,
+  "tools": [
+    {
+      "name": "ncbi_taxonomy_search",
+      "description": "Search NCBI Taxonomy database by organism name or taxonomic rank"
+    },
+    {
+      "name": "ncbi_taxonomy_get_taxon",
+      "description": "Fetch complete taxonomic record for a given TaxID"
+    },
+    {
+      "name": "ncbi_taxonomy_lineage",
+      "description": "Get full taxonomic lineage from kingdom to species for a TaxID"
+    },
+    {
+      "name": "ncbi_taxonomy_descendants",
+      "description": "List all taxonomic descendants of a given TaxID"
+    },
+    {
+      "name": "gtdb_search_genomes",
+      "description": "Search Genome Taxonomy Database by species or accession"
+    },
+    {
+      "name": "gtdb_get_taxonomy",
+      "description": "Fetch GTDB taxonomic classification for a genome accession"
+    },
+    {
+      "name": "itis_search_taxa",
+      "description": "Search Integrated Taxonomic Information System by scientific name"
+    }
+  ]
+}
