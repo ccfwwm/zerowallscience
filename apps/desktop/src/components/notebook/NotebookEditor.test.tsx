@@ -72,3 +72,56 @@ describe("NotebookEditor · stopping a hung cell", () => {
     expect(await screen.findByText(/kernel error: kernel exited unexpectedly/)).toBeInTheDocument();
   });
 });
+
+describe("NotebookEditor · figures", () => {
+  // A 1x1 transparent PNG.
+  const PNG =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AARAwMDAwAEsQBaHzOZgAAAABJRU5ErkJggg==";
+
+  beforeEach(() => {
+    mocks.kernelExecute.mockReset();
+    mocks.kernelReset.mockReset();
+  });
+
+  it("renders a figure the cell produced", async () => {
+    mocks.kernelExecute.mockResolvedValue({
+      ok: true,
+      stdout: "",
+      result: null,
+      error: null,
+      image: PNG,
+    });
+    render(<NotebookEditor path="analysis.ipynb" />);
+    await userEvent.click(await screen.findByLabelText("Run cell 1"));
+
+    const img = await screen.findByRole("img");
+    expect(img).toHaveAttribute("src", `data:image/png;base64,${PNG}`);
+    // The plot IS the output — "(no output)" under a chart reads as failure.
+    expect(screen.queryByText("(no output)")).not.toBeInTheDocument();
+  });
+
+  it("clears the previous figure when a re-run produces none", async () => {
+    mocks.kernelExecute.mockResolvedValueOnce({
+      ok: true,
+      stdout: "",
+      result: null,
+      error: null,
+      image: PNG,
+    });
+    render(<NotebookEditor path="analysis.ipynb" />);
+    await userEvent.click(await screen.findByLabelText("Run cell 1"));
+    expect(await screen.findByRole("img")).toBeInTheDocument();
+
+    // A stale plot sitting next to fresh numbers is worse than no plot.
+    mocks.kernelExecute.mockResolvedValueOnce({
+      ok: true,
+      stdout: "42\n",
+      result: null,
+      error: null,
+      image: null,
+    });
+    await userEvent.click(await screen.findByLabelText("Run cell 1"));
+    expect(await screen.findByText("42")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+});

@@ -213,6 +213,9 @@ export function NotebookEditor({
       const res = await kernelExecute(cell.code, lang, path, root);
       update(cell.index, {
         output: res ? formatExecResult(res) : "(local kernel available only in the desktop app)",
+        // A run always replaces the previous figure — a stale plot next to new
+        // numbers is worse than no plot. `undefined` clears it.
+        image: res?.image ?? undefined,
       });
     } catch (e) {
       update(cell.index, {

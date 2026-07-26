@@ -8,6 +8,10 @@ export interface ExecResult {
   stdout: string;
   result: string | null;
   error: string | null;
+  /** Base64 PNG of a figure the cell produced (matplotlib / R graphics), if any. */
+  image?: string | null;
+  /** True when stdout was clipped because the cell printed too much. */
+  truncated?: boolean;
 }
 
 /** Languages with a local kernel. A notebook runs one of these. */
@@ -51,11 +55,17 @@ export async function kernelReset(
   await invoke("kernel_reset", { language, notebook, root });
 }
 
-/** Render a kernel result as the text shown under a notebook cell. */
+/**
+ * Render a kernel result as the text shown under a notebook cell. A cell that
+ * produced only a figure has no text, but it did run — reporting "(no output)"
+ * under a plot would misread as failure.
+ */
 export function formatExecResult(r: ExecResult): string {
   if (!r.ok && r.error) return r.error.trimEnd();
   const parts: string[] = [];
   if (r.stdout) parts.push(r.stdout.trimEnd());
   if (r.result !== null) parts.push(r.result);
-  return parts.join("\n") || "(no output)";
+  const text = parts.join("\n");
+  if (text) return text;
+  return r.image ? "" : "(no output)";
 }

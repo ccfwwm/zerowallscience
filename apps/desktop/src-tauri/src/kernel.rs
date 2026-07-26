@@ -79,6 +79,10 @@ pub struct ExecResult {
     stdout: String,
     result: Option<String>,
     error: Option<String>,
+    /// Base64 PNG of a figure the cell produced (matplotlib / R graphics), if any.
+    image: Option<String>,
+    /// True when `stdout` was clipped because the cell printed too much.
+    truncated: bool,
 }
 
 /// Normalize a requested language to a supported kernel id. Empty -> python.
@@ -222,12 +226,26 @@ fn python_candidates() -> Vec<String> {
 #[cfg(windows)]
 fn rscript_candidates() -> Vec<String> {
     let mut c = vec!["Rscript".to_string(), "Rscript.exe".to_string()];
-    for base in [
-        "C:\\Program Files\\R",
-        "C:\\Program Files (x86)\\R",
-    ] {
-        // Newest install layout: <base>\R-x.y.z\bin\Rscript.exe — probed via PATH first,
-        // this literal fallback covers the common single-version install.
+    // The Windows installer does NOT add R to PATH and installs into a
+    // VERSIONED directory: <base>\R-x.y.z\bin\Rscript.exe. Enumerate those,
+    // newest first — a bare `<base>\bin\Rscript.exe` does not exist in a
+    // standard install, so probing only that finds nothing.
+    for base in ["C:\\Program Files\\R", "C:\\Program Files (x86)\\R"] {
+        let Ok(entries) = std::fs::read_dir(base) else { continue };
+        let mut vers: Vec<std::path::PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .map(|n| n.to_string_lossy().starts_with("R-"))
+                    .unwrap_or(false)
+            })
+            .collect();
+        vers.sort();
+        for v in vers.into_iter().rev() {
+            c.push(v.join("bin").join("Rscript.exe").to_string_lossy().to_string());
+        }
+        // Some layouts (and manual copies) do put the binary directly under bin.
         c.push(format!("{base}\\bin\\Rscript.exe"));
     }
     c
@@ -451,6 +469,40 @@ fn spawn_kernel(app: &AppHandle, lang: &str, cwd: &std::path::Path, key: &str) -
     Kernel::from_child(child, code_file)
 }
 
+/// How many unrecognized lines to skip while looking for a response. The Python
+/// bridge writes its protocol to a private descriptor, so cell output can never
+/// appear here; R cannot redirect its own descriptors that cheaply, so a startup
+/// warning or package banner can still slip in. Skipping those is what keeps a
+/// stray line from costing the user a whole session's variables.
+const MAX_SKIPPED_LINES: usize = 64;
+
+/// Read lines until the response for `want` arrives. A line that is not JSON, or
+/// carries another id, is discarded: it is noise on the stream, not an answer.
+fn read_response(
+    stdout: &mut BufReader<ChildStdout>,
+    want: &str,
+) -> Result<serde_json::Value, String> {
+    for _ in 0..MAX_SKIPPED_LINES {
+        let mut line = String::new();
+        let n = stdout
+            .read_line(&mut line)
+            .map_err(|e| format!("kernel read failed: {e}"))?;
+        if n == 0 {
+            return Err("kernel exited unexpectedly".into());
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim()) else {
+            continue; // not a response — stray output from the kernel process
+        };
+        match v.get("id").and_then(|x| x.as_str()) {
+            // A stale response (from a cell whose read was abandoned) must not
+            // be handed to this cell as its result.
+            Some(id) if id != want => continue,
+            _ => return Ok(v),
+        }
+    }
+    Err("kernel produced no usable response".into())
+}
+
 /// Send one request to a running kernel and read its single JSON response line.
 fn exec_on(k: &mut KernelIo, code: &str) -> Result<ExecResult, String> {
     k.seq += 1;
@@ -468,21 +520,15 @@ fn exec_on(k: &mut KernelIo, code: &str) -> Result<ExecResult, String> {
     }
     k.stdin.flush().map_err(|e| format!("kernel flush failed: {e}"))?;
 
-    let mut line = String::new();
-    let n = k
-        .stdout
-        .read_line(&mut line)
-        .map_err(|e| format!("kernel read failed: {e}"))?;
-    if n == 0 {
-        return Err("kernel exited unexpectedly".into());
-    }
-    let v: serde_json::Value =
-        serde_json::from_str(line.trim()).map_err(|e| format!("bad kernel response: {e}"))?;
+    let want = k.seq.to_string();
+    let v = read_response(&mut k.stdout, &want)?;
     Ok(ExecResult {
         ok: v.get("ok").and_then(|x| x.as_bool()).unwrap_or(false),
         stdout: v.get("stdout").and_then(|x| x.as_str()).unwrap_or("").to_string(),
         result: v.get("result").and_then(|x| x.as_str()).map(str::to_string),
         error: v.get("error").and_then(|x| x.as_str()).map(str::to_string),
+        image: v.get("image").and_then(|x| x.as_str()).map(str::to_string),
+        truncated: v.get("truncated").and_then(|x| x.as_bool()).unwrap_or(false),
     })
 }
 
@@ -713,6 +759,88 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A `BufReader<ChildStdout>` cannot be built without a process, so drive
+    /// `read_response` through a real child that just echoes canned lines.
+    fn reader_over(lines: &str) -> (Child, BufReader<ChildStdout>) {
+        let Ok((python, _)) = resolve_python(None, None, python_candidates()) else {
+            panic!("no python");
+        };
+        // Write the fixture verbatim: `-c` with sys.stdout.write keeps it exact.
+        let code = format!("import sys; sys.stdout.write({:?})", lines);
+        let mut child = crate::runtime::quiet_command(&python)
+            .arg("-c")
+            .arg(code)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn echo");
+        let out = BufReader::new(child.stdout.take().unwrap());
+        (child, out)
+    }
+
+    // R cannot redirect its own descriptors, so a package banner or startup
+    // warning can land on the protocol stream. Such a line is noise: skipping
+    // it keeps the user's session, where failing the read would reap the kernel
+    // and discard every variable they had built up.
+    #[test]
+    fn read_response_skips_noise_before_the_answer() {
+        if resolve_python(None, None, python_candidates()).is_err() {
+            eprintln!("skipping: no python found");
+            return;
+        }
+        let (mut child, mut out) = reader_over(
+            "Loading required package: ggplot2\n\
+             {\"id\":\"1\",\"ok\":true,\"stdout\":\"hi\",\"result\":null,\"error\":null}\n",
+        );
+        let v = read_response(&mut out, "1").expect("must find the response past the banner");
+        assert_eq!(v["stdout"], "hi");
+        let _ = child.kill();
+    }
+
+    // A response for another cell must never be handed over as this cell's
+    // result — that would show one cell's numbers under a different cell.
+    #[test]
+    fn read_response_ignores_a_stale_id() {
+        if resolve_python(None, None, python_candidates()).is_err() {
+            eprintln!("skipping: no python found");
+            return;
+        }
+        let (mut child, mut out) = reader_over(
+            "{\"id\":\"1\",\"ok\":true,\"stdout\":\"stale\",\"result\":null,\"error\":null}\n\
+             {\"id\":\"2\",\"ok\":true,\"stdout\":\"fresh\",\"result\":null,\"error\":null}\n",
+        );
+        let v = read_response(&mut out, "2").expect("must wait for the requested id");
+        assert_eq!(v["stdout"], "fresh");
+        let _ = child.kill();
+    }
+
+    // A kernel that died mid-cell must surface as an error, not hang.
+    #[test]
+    fn read_response_reports_a_dead_kernel() {
+        if resolve_python(None, None, python_candidates()).is_err() {
+            eprintln!("skipping: no python found");
+            return;
+        }
+        let (mut child, mut out) = reader_over("");
+        let e = read_response(&mut out, "1").unwrap_err();
+        assert!(e.contains("exited"), "got: {e}");
+        let _ = child.kill();
+    }
+
+    // Endless noise must not loop forever.
+    #[test]
+    fn read_response_gives_up_on_unbounded_noise() {
+        if resolve_python(None, None, python_candidates()).is_err() {
+            eprintln!("skipping: no python found");
+            return;
+        }
+        let noise = "not json\n".repeat(MAX_SKIPPED_LINES + 5);
+        let (mut child, mut out) = reader_over(&noise);
+        let e = read_response(&mut out, "1").unwrap_err();
+        assert!(e.contains("no usable response"), "got: {e}");
+        let _ = child.kill();
+    }
+
     #[test]
     fn normalizes_languages() {
         assert_eq!(normalize_lang("").unwrap(), "python");
@@ -823,6 +951,153 @@ mod tests {
         let _ = child.kill();
     }
 
+    // The protocol stream must be unreachable from cell code. A subprocess
+    // inherits descriptors rather than `sys.stdout`, so before the bridge
+    // reserved a private fd, `subprocess.run` and `os.write(1, ...)` injected
+    // raw text between responses: the host read "FROM_SUBPROCESS" as the
+    // response, failed to parse it, and reaped the kernel — the user lost every
+    // variable because a cell shelled out. Both must now be captured as output.
+    #[test]
+    fn cell_output_cannot_corrupt_the_protocol_stream() {
+        let Ok((python, _)) = resolve_python(None, None, python_candidates()) else {
+            eprintln!("skipping: no python found");
+            return;
+        };
+        let script = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../runtime/kernel/kernel_bridge.py");
+        let mut child = Command::new(python)
+            .arg(script)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn bridge");
+        let mut stdin = child.stdin.take().unwrap();
+        let mut stdout = BufReader::new(child.stdout.take().unwrap());
+        let mut send = |id: &str, code: &str| {
+            writeln!(stdin, "{}", serde_json::json!({"id": id, "code": code})).unwrap();
+            stdin.flush().unwrap();
+        };
+
+        // A child process writing to the inherited fd 1.
+        send(
+            "1",
+            "import subprocess,sys; subprocess.run([sys.executable,'-c','print(\"FROM_SUBPROCESS\")'])",
+        );
+        let r1 = read(&mut stdout);
+        assert_eq!(r1["id"], "1", "the response must not be preceded by raw output");
+        assert!(
+            r1["stdout"].as_str().unwrap().contains("FROM_SUBPROCESS"),
+            "a subprocess's output belongs in the cell: {r1}"
+        );
+
+        // A direct write to fd 1, bypassing sys.stdout entirely.
+        send("2", "import os; os.write(1, b'RAW_FD_WRITE\\n')");
+        let r2 = read(&mut stdout);
+        assert_eq!(r2["id"], "2");
+        assert!(r2["stdout"].as_str().unwrap().contains("RAW_FD_WRITE"), "got: {r2}");
+
+        // The kernel is still healthy and its namespace intact.
+        send("3", "'alive'");
+        let r3 = read(&mut stdout);
+        assert_eq!(r3["result"], "'alive'");
+
+        let _ = child.kill();
+    }
+
+    // A runaway loop must not produce one unbounded response line: the host
+    // buffers a response whole, so an uncapped cell stalls the notebook.
+    #[test]
+    fn python_caps_a_runaway_cells_output() {
+        let Ok((python, _)) = resolve_python(None, None, python_candidates()) else {
+            eprintln!("skipping: no python found");
+            return;
+        };
+        let script = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../runtime/kernel/kernel_bridge.py");
+        let mut child = Command::new(python)
+            .arg(script)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn bridge");
+        let mut stdin = child.stdin.take().unwrap();
+        let mut stdout = BufReader::new(child.stdout.take().unwrap());
+
+        writeln!(
+            stdin,
+            "{}",
+            serde_json::json!({"id":"1","code":"for i in range(200000): print(i)"})
+        )
+        .unwrap();
+        stdin.flush().unwrap();
+        let r = read(&mut stdout);
+        assert_eq!(r["truncated"], true, "a 200k-line cell must report truncation");
+        let out = r["stdout"].as_str().unwrap();
+        assert!(out.len() < 250_000, "output was not capped: {} chars", out.len());
+        assert!(out.contains("characters omitted"), "the clip must be visible to the user");
+        // Both ends are kept, so the user sees where it started and ended.
+        assert!(out.starts_with("0\n1\n"), "the head must survive");
+        assert!(out.trim_end().ends_with("199999"), "the tail must survive");
+
+        let _ = child.kill();
+    }
+
+    // Figures: a matplotlib plot must come back as a base64 PNG, and a cell
+    // that draws nothing must not report one (an empty canvas is not a figure).
+    #[test]
+    fn python_returns_a_figure_only_when_the_cell_draws() {
+        let Ok((python, _)) = resolve_python(None, None, python_candidates()) else {
+            eprintln!("skipping: no python found");
+            return;
+        };
+        let script = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../runtime/kernel/kernel_bridge.py");
+        let mut child = Command::new(python)
+            .arg(script)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn bridge");
+        let mut stdin = child.stdin.take().unwrap();
+        let mut stdout = BufReader::new(child.stdout.take().unwrap());
+        let mut send = |id: &str, code: &str| {
+            writeln!(stdin, "{}", serde_json::json!({"id": id, "code": code})).unwrap();
+            stdin.flush().unwrap();
+        };
+
+        // No plot -> no image.
+        send("1", "x = 1");
+        assert!(read(&mut stdout)["image"].is_null(), "a cell that draws nothing has no figure");
+
+        send(
+            "2",
+            "import importlib.util as u\n\
+             have = u.find_spec('matplotlib') is not None\n\
+             have",
+        );
+        if read(&mut stdout)["result"].as_str() != Some("True") {
+            eprintln!("skipping the figure assertion: matplotlib not installed");
+            let _ = child.kill();
+            return;
+        }
+
+        send(
+            "3",
+            "import matplotlib\nmatplotlib.use('Agg')\n\
+             import matplotlib.pyplot as plt\nplt.plot([1,2,3],[2,1,3])\n'drawn'",
+        );
+        let r = read(&mut stdout);
+        let png = r["image"].as_str().expect("a plotted cell must return a figure");
+        // A base64 PNG starts with the PNG magic bytes (\x89PNG -> "iVBOR").
+        assert!(png.starts_with("iVBOR"), "not a PNG: {}", &png[..png.len().min(20)]);
+
+        // The figure was consumed, Jupyter-style: the next cell starts clean.
+        send("4", "'after'");
+        assert!(read(&mut stdout)["image"].is_null(), "a shown figure must not repeat");
+
+        let _ = child.kill();
+    }
+
     // Same round trip against the real R bridge (skipped if R is not installed):
     // shared state across cells, last-expression value, and error reporting.
     #[test]
@@ -876,5 +1151,122 @@ mod tests {
 
         let _ = child.kill();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // R cannot redirect its own descriptors, so `system()` handed the child the
+    // kernel's stdout — the protocol stream — and its output arrived as a bare
+    // line between responses. It is now routed through a file. `intern = TRUE`
+    // is not an option: on Windows it closes the kernel's inherited stdin, so
+    // the read loop hits EOF and the kernel exits mid-session.
+    #[test]
+    fn r_shell_calls_stay_out_of_the_protocol_and_leave_the_kernel_alive() {
+        let Some(rscript) = rscript_bin() else {
+            eprintln!("skipping: no Rscript found");
+            return;
+        };
+        let script = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../runtime/kernel/kernel_bridge.R");
+        let dir = std::env::temp_dir().join(format!("os_r_shell_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let code_file = dir.join("r_cell.R");
+        std::fs::write(&code_file, "").unwrap();
+        let mut child = Command::new(rscript)
+            .arg(script)
+            .arg(&code_file)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn R bridge");
+        let mut stdin = child.stdin.take().unwrap();
+        let mut stdout = BufReader::new(child.stdout.take().unwrap());
+        let mut poke = |code: &str, id: &str| {
+            std::fs::write(&code_file, code).unwrap();
+            writeln!(stdin, "{id}").unwrap();
+            stdin.flush().unwrap();
+        };
+
+        poke("x <- 1\nsystem('echo FROM_SYSTEM')", "1");
+        let r1 = read(&mut stdout);
+        assert_eq!(r1["id"], "1", "the shell output must not precede the response");
+        assert!(
+            r1["stdout"].as_str().unwrap().contains("FROM_SYSTEM"),
+            "the child's output belongs in the cell: {r1}"
+        );
+
+        // The session survived the shell call, with its variables.
+        poke("x", "2");
+        assert_eq!(read(&mut stdout)["result"], "[1] 1");
+
+        // A drawn plot returns a PNG; a cell that draws nothing does not (an
+        // untouched device still writes a blank image, which is not a figure).
+        poke("plot(1:10, (1:10)^2)\n'plotted'", "3");
+        let r3 = read(&mut stdout);
+        let png = r3["image"].as_str().expect("a plotted cell must return a figure");
+        assert!(png.starts_with("iVBOR"), "not a PNG: {}", &png[..png.len().min(20)]);
+
+        poke("y <- 2", "4");
+        assert!(read(&mut stdout)["image"].is_null(), "a cell that draws nothing has no figure");
+
+        let _ = child.kill();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // Same output cap as Python: one cell cannot build an unbounded response.
+    #[test]
+    fn r_caps_a_runaway_cells_output() {
+        let Some(rscript) = rscript_bin() else {
+            eprintln!("skipping: no Rscript found");
+            return;
+        };
+        let script = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../runtime/kernel/kernel_bridge.R");
+        let dir = std::env::temp_dir().join(format!("os_r_cap_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let code_file = dir.join("r_cell.R");
+        std::fs::write(&code_file, "for (i in 1:60000) cat(i, '\\n')").unwrap();
+        let mut child = Command::new(rscript)
+            .arg(script)
+            .arg(&code_file)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn R bridge");
+        let mut stdin = child.stdin.take().unwrap();
+        let mut stdout = BufReader::new(child.stdout.take().unwrap());
+        writeln!(stdin, "1").unwrap();
+        stdin.flush().unwrap();
+
+        let r = read(&mut stdout);
+        assert_eq!(r["truncated"], true, "a 60k-line cell must report truncation");
+        let out = r["stdout"].as_str().unwrap();
+        assert!(out.len() < 250_000, "output was not capped: {} chars", out.len());
+        assert!(out.contains("characters omitted"), "the clip must be visible to the user");
+
+        let _ = child.kill();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // The Windows R installer uses a VERSIONED directory and does not touch
+    // PATH, so probing only `<base>\bin\Rscript.exe` finds nothing on a stock
+    // install — R notebooks then report "no R found" on a machine that has R.
+    #[cfg(windows)]
+    #[test]
+    fn rscript_candidates_cover_versioned_windows_installs() {
+        let c = rscript_candidates();
+        assert!(c.iter().any(|p| p == "Rscript"), "PATH must still be tried first");
+        // Any R-x.y.z directory present on this machine must be offered.
+        if let Ok(entries) = std::fs::read_dir("C:\\Program Files\\R") {
+            let versioned: Vec<String> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.file_name().map(|n| n.to_string_lossy().starts_with("R-")).unwrap_or(false)
+                })
+                .map(|p| p.join("bin").join("Rscript.exe").to_string_lossy().to_string())
+                .collect();
+            for v in versioned {
+                assert!(c.contains(&v), "a versioned install must be probed: {v}\ncandidates: {c:?}");
+            }
+        }
     }
 }
