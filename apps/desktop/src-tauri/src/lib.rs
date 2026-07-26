@@ -126,7 +126,6 @@ pub fn run() {
             jupyter::jupyter_status,
             jupyter::setup_jupyter,
             jupyter::start_jupyter,
-            runtime::configure_opencode,
             runtime::get_approval_mode,
             runtime::set_approval_mode,
             runtime::get_proxy_setting,

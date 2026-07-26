@@ -6,18 +6,6 @@ import { isGatewayWeb, gatewayGet } from "./webMode";
 export const isTauri =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-export interface OpenCodeCredentials {
-  provider: string;
-  apiKey: string;
-  model: string;
-  baseUrl?: string;
-}
-
-export type ConfigureResult =
-  | { ok: true; path: string }
-  | { ok: false; reason: "not-desktop" }
-  | { ok: false; reason: "error"; message: string };
-
 /** Start the bundled OpenCode sidecar (desktop only). Returns its base URL. */
 export async function startRuntime(): Promise<string | null> {
   if (!isTauri) return null;
@@ -253,19 +241,6 @@ export async function setMirrorSetting(pypi: string, python: string): Promise<vo
   if (!isTauri) return;
   const { invoke } = await import("@tauri-apps/api/core");
   await invoke("set_mirror_setting", { pypi, python });
-}
-
-/** Whether the bundled runtime's credential store has an entry for this
- *  provider — ground truth that a browser login landed even when its OAuth
- *  callback was lost. False in browser dev (and on any read failure). */
-export async function providerAuthExists(providerID: string): Promise<boolean> {
-  if (!isTauri) return false;
-  const { invoke } = await import("@tauri-apps/api/core");
-  try {
-    return await invoke<boolean>("provider_auth_exists", { providerId: providerID });
-  } catch {
-    return false;
-  }
 }
 
 /** Per-session goal-mode state, as the bundled goal plugin records it.
@@ -872,23 +847,4 @@ export async function watchFullscreen(cb: (fullscreen: boolean) => void): Promis
   };
   await sync();
   return win.onResized(() => void sync());
-}
-
-/** Write the provider key/model into OpenCode's config via the Rust command. */
-export async function configureOpenCode(
-  creds: OpenCodeCredentials,
-): Promise<ConfigureResult> {
-  if (!isTauri) return { ok: false, reason: "not-desktop" };
-  try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const path = await invoke<string>("configure_opencode", {
-      provider: creds.provider,
-      apiKey: creds.apiKey,
-      model: creds.model,
-      baseUrl: creds.baseUrl ?? null,
-    });
-    return { ok: true, path };
-  } catch (e) {
-    return { ok: false, reason: "error", message: e instanceof Error ? e.message : String(e) };
-  }
 }

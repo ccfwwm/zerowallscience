@@ -656,7 +656,11 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
     return (await res.json()) as Record<string, ProviderAuthMethod[]>;
   }
 
-  /** Store an API key for a provider. */
+  /**
+   * Store an API key for a provider.
+   * @deprecated Use OS keychain via setProviderSecret Tauri command instead.
+   * Only retained for test compatibility with the OpenCode HTTP API.
+   */
   async setProviderApiKey(providerID: string, key: string): Promise<void> {
     const res = await this.fetchImpl(`${this.baseUrl}/auth/${encodeURIComponent(providerID)}`, {
       method: "PUT",
@@ -690,7 +694,11 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
     if (!res.ok) throw await this.apiError(res, "Failed to set provider region");
   }
 
-  /** Remove a provider's stored credentials. */
+  /**
+   * Remove a provider's stored credentials.
+   * @deprecated Use OS keychain via removeProviderSecret Tauri command instead.
+   * Only retained for test compatibility with the OpenCode HTTP API.
+   */
   async removeProviderAuth(providerID: string): Promise<void> {
     const res = await this.fetchImpl(`${this.baseUrl}/auth/${encodeURIComponent(providerID)}`, {
       method: "DELETE",

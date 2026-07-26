@@ -8,8 +8,6 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
-use crate::opencode_config::merge_config;
-
 #[derive(Default)]
 struct RuntimeLifecycle {
     child: Option<CommandChild>,
@@ -252,11 +250,6 @@ pub fn base_workspace_dir(app: &AppHandle) -> Result<PathBuf, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     migrate_legacy_workspace_store(&dir)?;
     Ok(dir)
-}
-
-/// Path OpenCode reads when XDG_CONFIG_HOME points at our private dir.
-fn opencode_config_file(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(xdg_config_home(app)?.join("opencode").join("opencode.json"))
 }
 
 /// The config file to edit in place: the server may have rewritten the config
@@ -856,13 +849,14 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
     // sidecar's environment just below.
     tighten_private(&root);
     tighten_private(&cfg_file);
+    let home = std::env::var("HOME").unwrap_or_default();
+    let port_str = port.to_string();
+
     // Materialize provider credentials and connector secrets from the OS
     // keychain. OPENCODE_AUTH_CONTENT is always set (to `{}` when empty) so it
     // takes precedence over any on-disk auth.json, and local MCP servers
     // inherit connector secrets from this process environment.
     let secrets = crate::secret_store::sidecar_secrets(app)?;
-    let home = std::env::var("HOME").unwrap_or_default();
-    let port_str = port.to_string();
 
     let cmd = app
         .shell()
@@ -1146,10 +1140,12 @@ pub fn kill_child(state: &RuntimeState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        auth_has_provider, legacy_app_data_dir, migrate_legacy_app_data, parse_scutil_proxy,
+        auth_has_provider, legacy_app_data_dir, migrate_legacy_app_data,
         prepare_workspace_dir, prune_stale_skills, random_hex, remove_key_from_config,
         resolve_proxy_env, sync_skill_pack, validate_proxy_url,
     };
+    #[cfg(target_os = "macos")]
+    use super::parse_scutil_proxy;
     use std::fs;
 
     #[test]
@@ -1313,6 +1309,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn scutil_proxy_parses_and_prefers_https() {
         // Real `scutil --proxy` shape (indented `Key : value` lines).
         let all = "<dictionary> {\n  HTTPEnable : 1\n  HTTPPort : 1087\n  HTTPProxy : 127.0.0.1\n  HTTPSEnable : 1\n  HTTPSPort : 1087\n  HTTPSProxy : 127.0.0.1\n  SOCKSEnable : 1\n  SOCKSPort : 1087\n  SOCKSProxy : 127.0.0.1\n}";
@@ -1448,6 +1445,61 @@ mod tests {
             "s"
         );
         fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn import_opencode_login_reads_cli_auth_and_writes_to_keychain() {
+        use crate::secret_store::{load_registry, save_registry, CredentialStore};
+
+        let root = std::env::temp_dir().join(format!(
+            "zerowall-import-opencode-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+
+        // Simulate a CLI auth.json with multiple providers (API key and OAuth).
+        let cli_auth = root.join("cli-auth.json");
+        fs::write(
+            &cli_auth,
+            r#"{
+                "anthropic": {"type": "api", "key": "sk-ant-test-key"},
+                "openai": {"type": "oauth", "refresh": "refresh-token", "access": "access-token", "expires": 1234567890}
+            }"#,
+        )
+        .unwrap();
+
+        // Import the auth document using the same flow as import_opencode_login.
+        let registry_path = root.join("secret-refs.json");
+        let backend = crate::secret_store::KeyringCredentialStore;
+        let mut registry = load_registry(&registry_path).unwrap_or_default();
+        let content = fs::read_to_string(&cli_auth).unwrap();
+        let count = crate::secret_store::import_auth_document(&backend, &mut registry, &content).unwrap();
+
+        assert_eq!(count, 2, "should import 2 providers");
+
+        // Save the registry.
+        save_registry(&registry_path, &registry).unwrap();
+
+        // Verify the registry was created and contains references (but not secrets).
+        assert!(registry_path.exists(), "registry file should be created");
+        let registry_content = fs::read_to_string(&registry_path).unwrap();
+        assert!(registry_content.contains("provider:anthropic"), "registry should reference anthropic");
+        assert!(registry_content.contains("provider:openai"), "registry should reference openai");
+        assert!(!registry_content.contains("sk-ant-test-key"), "API key must not be in registry");
+        assert!(!registry_content.contains("refresh-token"), "OAuth refresh token must not be in registry");
+        assert!(!registry_content.contains("access-token"), "OAuth access token must not be in registry");
+
+        // Verify the original CLI file was NOT modified.
+        let cli_content_after = fs::read_to_string(&cli_auth).unwrap();
+        assert!(cli_content_after.contains("sk-ant-test-key"), "CLI auth.json must not be modified");
+        assert!(cli_content_after.contains("refresh-token"), "CLI auth.json must not be modified");
+
+        // Clean up: delete keychain entries using the provider IDs we know.
+        // This is a best-effort cleanup to avoid polluting the real keychain.
+        let _ = backend.delete("provider:anthropic");
+        let _ = backend.delete("provider:openai");
+        let _ = fs::remove_dir_all(&root);
     }
 }
 
@@ -1593,29 +1645,4 @@ pub fn set_mirror_setting(app: AppHandle, pypi: String, python: String) -> Resul
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     std::fs::write(&path, lines.join("\n")).map_err(|e| e.to_string())
-}
-
-/// Write the provider key/model into the app-private OpenCode config and restart
-/// the sidecar so it picks them up. Returns the same base URL (stable port).
-#[tauri::command(async)]
-pub fn configure_opencode(
-    app: AppHandle,
-    state: State<'_, RuntimeState>,
-    provider: String,
-    api_key: String,
-    model: String,
-    base_url: Option<String>,
-) -> Result<String, String> {
-    let path = opencode_config_file(&app)?;
-    let existing = std::fs::read_to_string(&path).unwrap_or_default();
-    let merged = merge_config(&existing, &provider, &api_key, &model, base_url.as_deref())?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    std::fs::write(&path, merged).map_err(|e| e.to_string())?;
-    tighten_private(&path);
-
-    // Restart so the running server reloads the new provider config.
-    Ok(restart_sidecar_if_running(&app, &state)?
-        .unwrap_or_else(|| path.to_string_lossy().to_string()))
 }
