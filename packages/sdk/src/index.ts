@@ -12,6 +12,11 @@ export {
   type PackRegistryEntry,
 } from "./pack-registry";
 export {
+  SciencePackManager,
+  getPackManager,
+  initializePackManager,
+} from "./pack-manager";
+export {
   OPENCODE_VERSION,
   DEFAULT_OPENCODE_URL,
   type OpenCodeEvent,
