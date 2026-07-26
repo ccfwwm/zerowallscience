@@ -3,14 +3,11 @@ import type { AgentRuntime } from "./runtime";
 import type {
   AgentDefinition,
   AgentHandoff,
-  isToolAllowed,
 } from "../../shared/src/agents";
 import type {
   AgentRole,
   RoleModelBinding,
   SessionModelSnapshot,
-  DEFAULT_ROLE_BINDINGS,
-  resolveRoleModel,
 } from "../../shared/src/models";
 
 /**
@@ -30,7 +27,6 @@ import type {
  */
 export class ZeroWallClient implements AgentRuntime {
   private readonly opencode: OpenCodeClient;
-  private readonly platform: any | null; // SciencePlatformClient placeholder (P2)
   private readonly agents: Map<string, AgentDefinition>;
   private readonly roleBindings: Record<AgentRole, RoleModelBinding>;
   private readonly handoffLog: AgentHandoff[] = [];
@@ -39,22 +35,20 @@ export class ZeroWallClient implements AgentRuntime {
 
   constructor(opts: {
     opencode: OpenCodeClient;
-    platform?: any; // SciencePlatformClient
     agents: Map<string, AgentDefinition>;
     roleBindings?: Record<AgentRole, RoleModelBinding>;
   }) {
     this.opencode = opts.opencode;
-    this.platform = opts.platform ?? null;
     this.agents = opts.agents;
-    this.roleBindings = opts.roleBindings ?? ({} as any); // DEFAULT_ROLE_BINDINGS will be imported
+    this.roleBindings = opts.roleBindings ?? ({} as any);
   }
 
   /**
    * Refresh available providers (called after provider config changes).
    */
   async refreshProviders(): Promise<void> {
-    const providers = await this.opencode.getProviders();
-    this.availableProviders = new Set(providers.map((p: any) => p.id));
+    const providers = await this.opencode.listProviders();
+    this.availableProviders = new Set(providers.map((p) => p.id));
   }
 
   /**
@@ -122,13 +116,115 @@ export class ZeroWallClient implements AgentRuntime {
    * In P2, this will route based on the agent role and model binding.
    */
 
-  connect(onEvent: (event: any) => void): void {
-    return this.opencode.connect(onEvent);
+  async connect(): Promise<void> {
+    // OpenCodeClient.connect is not async, but AgentRuntime requires it
+    // We'll call refreshProviders here to initialize the provider set
+    await this.refreshProviders();
   }
 
   close(): void {
     return this.opencode.close();
   }
+
+  getStatus(): any {
+    return this.opencode.getStatus();
+  }
+
+  onStatus(listener: (status: any) => void): () => void {
+    return this.opencode.onStatus(listener);
+  }
+
+  onEvent(listener: (event: any) => void): () => void {
+    return this.opencode.onEvent(listener);
+  }
+
+  async createSession(): Promise<string> {
+    return this.opencode.createSession();
+  }
+
+  async listSessions(): Promise<any[]> {
+    return this.opencode.listSessions();
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    return this.opencode.deleteSession(sessionId);
+  }
+
+  async getMessages(sessionId: string): Promise<any[]> {
+    return this.opencode.getMessages(sessionId);
+  }
+
+  async sendPrompt(
+    sessionId: string,
+    text: string,
+    agent?: string,
+    model?: string | null,
+    variant?: string | null,
+  ): Promise<void> {
+    return this.opencode.sendPrompt(sessionId, text, agent, model, variant);
+  }
+
+  async abortSession(sessionId: string): Promise<void> {
+    return this.opencode.abortSession(sessionId);
+  }
+
+  async revert(sessionId: string, messageID: string, partID?: string): Promise<void> {
+    return this.opencode.revert(sessionId, messageID, partID);
+  }
+
+  async unrevert(sessionId: string): Promise<void> {
+    return this.opencode.unrevert(sessionId);
+  }
+
+  async listSkills(): Promise<any[]> {
+    return this.opencode.listSkills();
+  }
+
+  async listAgents(): Promise<any[]> {
+    return this.opencode.listAgents();
+  }
+
+  async listCommands(): Promise<any[]> {
+    return this.opencode.listCommands();
+  }
+
+  async getDefaultModel(): Promise<string | null> {
+    return this.opencode.getDefaultModel();
+  }
+
+  async setDefaultModel(model: string): Promise<void> {
+    return this.opencode.setDefaultModel(model);
+  }
+
+  async runShell(sessionId: string, command: string, agent?: string): Promise<void> {
+    return this.opencode.runShell(sessionId, command, agent);
+  }
+
+  async runCommand(sessionId: string, command: string, args?: string): Promise<void> {
+    return this.opencode.runCommand(sessionId, command, args);
+  }
+
+  async listQuestions(sessionId?: string): Promise<any[]> {
+    return this.opencode.listQuestions(sessionId);
+  }
+
+  async listPermissions(sessionId?: string): Promise<any[]> {
+    return this.opencode.listPermissions(sessionId);
+  }
+
+  async answerQuestion(requestId: string, answers: string[][]): Promise<void> {
+    return this.opencode.answerQuestion(requestId, answers);
+  }
+
+  async rejectQuestion(requestId: string): Promise<void> {
+    return this.opencode.rejectQuestion(requestId);
+  }
+
+  async replyPermission(requestId: string, reply: any): Promise<void> {
+    return this.opencode.replyPermission(requestId, reply);
+  }
+
+  // P2-specific methods (not part of AgentRuntime interface)
 
   async prompt(
     sessionId: string | null,
@@ -156,59 +252,52 @@ export class ZeroWallClient implements AgentRuntime {
       reasoning: this.roleBindings[role]?.reasoning,
     };
 
-    // Call underlying OpenCode client
-    const result = await this.opencode.prompt(sessionId, parts, enhancedOpts);
+    // Call underlying OpenCode client sendPrompt
+    const sid = sessionId ?? await this.createSession();
+    await this.opencode.sendPrompt(sid, parts.join('\n'), enhancedOpts.agent, enhancedOpts.model, enhancedOpts.reasoning);
 
     // Capture snapshot on session creation
     if (!sessionId) {
-      this.captureSnapshot(result.sessionId, role, resolvedModel);
+      this.captureSnapshot(sid, role, resolvedModel);
       this.logHandoff({
         timestamp: new Date().toISOString(),
         fromAgent: null,
         toAgent: agent.id,
-        sessionId: result.sessionId,
+        sessionId: sid,
         reason: "user-selected",
         model: resolvedModel,
       });
     }
 
-    return result;
+    return { sessionId: sid };
   }
 
   async cancel(sessionId: string): Promise<void> {
-    return this.opencode.cancel(sessionId);
-  }
-
-  async getMessages(sessionId: string): Promise<any[]> {
-    return this.opencode.getMessages(sessionId);
+    return this.opencode.abortSession(sessionId);
   }
 
   async getSessions(): Promise<any[]> {
-    return this.opencode.getSessions();
-  }
-
-  async deleteSession(sessionId: string): Promise<void> {
-    return this.opencode.deleteSession(sessionId);
+    return this.opencode.listSessions();
   }
 
   async reply(permission: any): Promise<void> {
-    return this.opencode.reply(permission);
+    return this.opencode.replyPermission(permission.requestId, permission);
   }
 
-  async answer(questionId: string, answer: string): Promise<void> {
-    return this.opencode.answer(questionId, answer);
+  async answer(questionId: string, answers: string[][]): Promise<void> {
+    return this.opencode.answerQuestion(questionId, answers);
   }
 
   async getProviders(): Promise<any[]> {
-    return this.opencode.getProviders();
+    return this.opencode.listProviders();
   }
 
   async getMcpConfig(): Promise<any> {
-    return this.opencode.getMcpConfig();
+    return this.opencode.listMcpServers();
   }
 
   async getSkills(): Promise<any[]> {
-    return this.opencode.getSkills();
+    return this.opencode.listSkills();
   }
 
   async addCustomProvider(id: string, opts: any): Promise<void> {
