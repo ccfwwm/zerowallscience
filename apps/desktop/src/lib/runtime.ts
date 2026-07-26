@@ -1967,6 +1967,28 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // This pane's own model + effort (falling back to the global default),
     // captured now so a draft's later graft still sends the pane's choice.
     const { model, variant } = modelForSession(s, key);
+
+    // P2: Use ZeroWallClient if available, passing selectedAgent as role
+    // ZeroWallClient handles agent routing, model fallback, and handoff logging
+    const zwClient = s.zeroWallClient;
+    if (zwClient && !sessionId) {
+      // New session: use ZeroWallClient with role-based routing
+      return performTurn(
+        set,
+        get,
+        text,
+        async (sid) => {
+          await zwClient.sendPrompt(sid, text, agent, model, variant);
+          return;
+        },
+        false,
+        false,
+        sessionId,
+        draftKey,
+      );
+    }
+
+    // Fallback to OpenCodeClient for existing sessions or when ZeroWallClient unavailable
     return performTurn(
       set,
       get,
