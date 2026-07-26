@@ -1,0 +1,42 @@
+{
+  "domain": "rna",
+  "toolCount": 9,
+  "tools": [
+    {
+      "name": "accession_to_id",
+      "description": "Convert an Rfam accession to its family id (e.g. RF00005 -> \"tRNA\")."
+    },
+    {
+      "name": "get_covariance_model",
+      "description": "Infernal covariance model (CM file) of an Rfam family."
+    },
+    {
+      "name": "get_family",
+      "description": "Rfam family metadata record."
+    },
+    {
+      "name": "get_seed_alignment",
+      "description": "Seed alignment of an Rfam family."
+    },
+    {
+      "name": "get_sequence_regions",
+      "description": "All full-region hits of an Rfam family across sequence databases."
+    },
+    {
+      "name": "get_structure_mapping",
+      "description": "PDB residue-level structure mappings of an Rfam family."
+    },
+    {
+      "name": "get_tree",
+      "description": "Seed phylogenetic tree of an Rfam family (NHX/Newick text)."
+    },
+    {
+      "name": "id_to_accession",
+      "description": "Convert an Rfam family id to its accession (e.g. \"tRNA\" -> RF00005)."
+    },
+    {
+      "name": "search_sequence",
+      "description": "Search a single RNA sequence against all Rfam covariance models (cmscan)."
+    }
+  ]
+}

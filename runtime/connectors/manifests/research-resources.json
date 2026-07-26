@@ -1,0 +1,26 @@
+{
+  "domain": "research-resources",
+  "toolCount": 5,
+  "tools": [
+    {
+      "name": "find_antibodies_by_catalog",
+      "description": "Find antibodies by vendor catalog number (exact, case-insensitive)."
+    },
+    {
+      "name": "get_antibody",
+      "description": "Fetch Antibody Registry detail record(s) for one antibody accession / RRID."
+    },
+    {
+      "name": "get_antibody_registry_stats",
+      "description": "Registry-level statistics: total antibody count and last-update date."
+    },
+    {
+      "name": "search_antibodies",
+      "description": "Full-text search of the Antibody Registry (antibodyregistry.org, ~3.2M records)."
+    },
+    {
+      "name": "search_grants",
+      "description": "Search Grants.gov funding opportunities (search2 API; complete, count-verified retrieval)."
+    }
+  ]
+}

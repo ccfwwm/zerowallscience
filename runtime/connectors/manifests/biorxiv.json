@@ -1,0 +1,34 @@
+{
+  "domain": "biorxiv",
+  "toolCount": 7,
+  "tools": [
+    {
+      "name": "get_categories",
+      "description": "List all 27 bioRxiv subject categories for filtering searches."
+    },
+    {
+      "name": "get_content_statistics",
+      "description": "Get bioRxiv submission statistics over time."
+    },
+    {
+      "name": "get_preprint",
+      "description": "Get complete metadata for a specific preprint by DOI."
+    },
+    {
+      "name": "get_usage_statistics",
+      "description": "Get bioRxiv usage/engagement statistics over time."
+    },
+    {
+      "name": "search_by_funder",
+      "description": "Search for preprints funded by a specific organization using ROR ID."
+    },
+    {
+      "name": "search_preprints",
+      "description": "Search bioRxiv/medRxiv preprints."
+    },
+    {
+      "name": "search_published_preprints",
+      "description": "Find preprints that have been published in peer-reviewed journals."
+    }
+  ]
+}

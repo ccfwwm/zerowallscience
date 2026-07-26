@@ -1,0 +1,212 @@
+{
+  "domain": "research-resources",
+  "package": "mcp_research_resources",
+  "derivedFrom": "bio-tools/lib/mcp_research_resources/server.py",
+  "toolCount": 5,
+  "tools": [
+    {
+      "name": "find_antibodies_by_catalog",
+      "description": "Find antibodies by vendor catalog number (exact, case-insensitive). Implemented as full-text search + client-side exact matching on the catalog number (or its listed alternatives), because the upstream column-filter route returns HTTP 500 for every key.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "catalog_number": {
+            "type": "string",
+            "description": "Vendor catalog number, e.g. \"ab32572\"."
+          },
+          "vendor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional vendor-name filter (exact, case-insensitive)."
+          },
+          "page_size": {
+            "type": "integer",
+            "description": "Rows per underlying search page.",
+            "default": 100
+          }
+        },
+        "required": [
+          "catalog_number"
+        ]
+      },
+      "returns": "Returns: {catalog_num, vendor, match_count, search_total_elements, matches}.",
+      "upstreams": [
+        "antibody_registry"
+      ]
+    },
+    {
+      "name": "get_antibody",
+      "description": "Fetch Antibody Registry detail record(s) for one antibody accession / RRID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "antibody_id": {
+            "type": "string",
+            "description": "Plain number (\"3643095\"), \"AB_3643095\", or \"RRID:AB_3643095\"."
+          }
+        },
+        "required": [
+          "antibody_id"
+        ]
+      },
+      "returns": "Returns: {ab_id, rrid, record_count, records: [...]} — the upstream route is list-valued (an accession can map to multiple curated records, e.g. multi-vendor duplicates). A nonexistent id yields record_count 0, not an error.",
+      "upstreams": [
+        "antibody_registry"
+      ]
+    },
+    {
+      "name": "get_antibody_registry_stats",
+      "description": "Registry-level statistics: total antibody count and last-update date.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "returns": "Returns the upstream /api/datainfo payload (registry size, last update).",
+      "upstreams": [
+        "antibody_registry"
+      ]
+    },
+    {
+      "name": "search_antibodies",
+      "description": "Full-text search of the Antibody Registry (antibodyregistry.org, ~3.2M records). Token-based matching against antibody name / target / catalog text (upstream semantics: \"TP53\" and \"p53\" are different queries). With `page=None` all pages are walked up to `max_records` or the anonymous depth cap — rows beyond offset 500 require authentication upstream (flagged as `anonymous_limit_hit`, never silently dropped).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text (target name, catalog number, clone ID, ...)."
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "1-based page for single-page retrieval; None walks pages."
+          },
+          "page_size": {
+            "type": "integer",
+            "description": "Rows per page (page * page_size must stay <= 500).",
+            "default": 100
+          },
+          "max_records": {
+            "type": "integer",
+            "description": "Cap on rows retrieved in walk mode.",
+            "default": 500
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "returns": "Returns: {query, total_elements (index rows, not unique antibodies), retrieved, unique_ab_ids, complete, truncated_at_max_records, anonymous_limit_hit, items: [{abId, abName, abTarget, catalogNum, vendorName, cloneId, sourceOrganism, targetSpecies, ...}]}.",
+      "upstreams": [
+        "antibody_registry"
+      ]
+    },
+    {
+      "name": "search_grants",
+      "description": "Search Grants.gov funding opportunities (search2 API; complete, count-verified retrieval). At least one search criterion is required. Statuses default to the API's own default [\"forecasted\", \"posted\"] (current opportunities); add \"closed\" and/or \"archived\" to search historical ones.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free-text keyword search."
+          },
+          "opportunity_number": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exact opportunity number (e.g. \"PAR-25-327\")."
+          },
+          "aln": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Assistance Listing Number / CFDA (e.g. \"93.866\")."
+          },
+          "agencies": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Agency codes, e.g. [\"HHS-NIH11\"] (NIH), [\"HHS-FDA\"], [\"NSF\"]."
+          },
+          "opportunity_statuses": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Subset of [\"forecasted\", \"posted\", \"closed\", \"archived\"]. eligibilities / funding_categories / funding_instruments: Grants.gov filter codes (the facet blocks in the response enumerate valid values with counts)."
+          },
+          "eligibilities": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "funding_categories": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "funding_instruments": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "count_only": {
+            "type": "boolean",
+            "description": "Return just the hit count + facets (no record retrieval).",
+            "default": false
+          },
+          "max_records": {
+            "type": "integer",
+            "description": "Cap on opportunity records returned (the walk retrieves and count-verifies the complete set; `truncated` flags the cap).",
+            "default": 100
+          },
+          "include_facets": {
+            "type": "boolean",
+            "description": "Include facet blocks (status/agency/eligibility/ category/instrument value counts — independent aggregations of the same query).",
+            "default": true
+          }
+        }
+      },
+      "returns": "Returns: {hit_count, n_returned, truncated, records: [{id, number, title, agencyCode, agencyName, oppStatus, openDate, closeDate, alnist, ...}], facets?}.",
+      "upstreams": [
+        "grants_gov_search"
+      ]
+    }
+  ],
+  "upstreams": [
+    {
+      "package": "antibody_registry",
+      "minIntervalSeconds": 0.5,
+      "requestsPerSecond": 2.0
+    }
+  ]
+}

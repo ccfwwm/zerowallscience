@@ -1,0 +1,26 @@
+{
+  "domain": "zinc",
+  "toolCount": 5,
+  "tools": [
+    {
+      "name": "zinc_get_3d",
+      "description": "Locate docking-ready 3D structures for ZINC compounds."
+    },
+    {
+      "name": "zinc_random_sample",
+      "description": "Draw a random sample of purchasable compounds from ZINC22 — for building screening decks, property baselines, or decoy sets."
+    },
+    {
+      "name": "zinc_search_by_id",
+      "description": "Look up purchasable compounds in ZINC22/ZINC20 by ZINC identifier — answers \"what is this compound and who sells it\"."
+    },
+    {
+      "name": "zinc_search_by_smiles",
+      "description": "Search ZINC22's purchasable chemical space by structure — answers \"what purchasable compounds look like this SMILES\"."
+    },
+    {
+      "name": "zinc_search_by_supplier",
+      "description": "Resolve vendor catalog numbers to ZINC compounds — answers \"which ZINC substance is this supplier code, and what's its structure\"."
+    }
+  ]
+}

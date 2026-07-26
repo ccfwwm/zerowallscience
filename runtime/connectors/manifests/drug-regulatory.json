@@ -1,0 +1,34 @@
+{
+  "domain": "drug-regulatory",
+  "toolCount": 7,
+  "tools": [
+    {
+      "name": "count_drug_applications",
+      "description": "Aggregate Drugs@FDA applications: bucket counts over one field, optionally filtered."
+    },
+    {
+      "name": "get_drug_application",
+      "description": "Fetch one Drugs@FDA application by its number (e.g. \"NDA020702\", \"ANDA076543\", \"BLA125514\")."
+    },
+    {
+      "name": "get_drug_statistics",
+      "description": "Corpus-level Drugs@FDA statistics in one call."
+    },
+    {
+      "name": "get_generic_equivalents",
+      "description": "Find applications sharing a brand-name drug's exact active-ingredient set."
+    },
+    {
+      "name": "list_pharmacologic_classes",
+      "description": "Enumerate pharmacologic classes present in Drugs@FDA, with application counts."
+    },
+    {
+      "name": "search_drug_applications",
+      "description": "Search FDA Drugs@FDA applications (NDA/ANDA/BLA) by any combination of filters."
+    },
+    {
+      "name": "search_drug_labels",
+      "description": "Retrieve FDA drug product labels (SPL) by ingredient/name/route, with targeted section extraction."
+    }
+  ]
+}

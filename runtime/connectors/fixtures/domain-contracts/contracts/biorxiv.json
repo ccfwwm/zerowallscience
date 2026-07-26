@@ -1,0 +1,720 @@
+{
+  "domain": "biorxiv",
+  "package": "mcp_biorxiv",
+  "derivedFrom": "bio-tools/lib/mcp_biorxiv/schemas.json",
+  "originalConnector": "bioRxiv",
+  "toolCount": 7,
+  "tools": [
+    {
+      "name": "get_categories",
+      "description": "List all 27 bioRxiv subject categories for filtering searches.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "api_format": {
+                  "type": "string"
+                },
+                "description": {}
+              }
+            }
+          },
+          "error": {}
+        }
+      }
+    },
+    {
+      "name": "get_content_statistics",
+      "description": "Get bioRxiv submission statistics over time.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "interval": {
+            "default": "monthly",
+            "description": "Statistics interval: 'monthly' or 'yearly'",
+            "enum": [
+              "monthly",
+              "yearly"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "month": {
+                  "type": "string"
+                },
+                "new_papers": {
+                  "type": "number"
+                },
+                "new_papers_cumulative": {
+                  "type": "number"
+                },
+                "revised_papers": {
+                  "type": "number"
+                },
+                "preprint_date": {},
+                "revised_papers_cumulative": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "error": {}
+        }
+      }
+    },
+    {
+      "name": "get_preprint",
+      "description": "Get complete metadata for a specific preprint by DOI.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "doi": {
+            "description": "DOI of the preprint (e.g., '10.1101/2024.01.01.123456' or 'https://doi.org/10.1101/2024.01.01.123456')",
+            "type": "string"
+          },
+          "server": {
+            "default": "biorxiv",
+            "description": "Which server to query: 'biorxiv' or 'medrxiv'",
+            "enum": [
+              "biorxiv",
+              "medrxiv"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "doi"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "preprint": {
+            "type": "object",
+            "properties": {
+              "doi": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "authors": {
+                "type": "string"
+              },
+              "author_corresponding": {
+                "type": "string"
+              },
+              "author_corresponding_institution": {
+                "type": "string"
+              },
+              "date": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "license": {
+                "type": "string"
+              },
+              "abstract": {
+                "type": "string"
+              },
+              "jatsxml": {
+                "type": "string"
+              },
+              "funding": {},
+              "published_doi": {
+                "type": "string"
+              },
+              "server": {
+                "type": "string"
+              },
+              "pdf_url": {
+                "type": "string"
+              },
+              "web_url": {
+                "type": "string"
+              }
+            }
+          },
+          "error": {}
+        }
+      }
+    },
+    {
+      "name": "get_usage_statistics",
+      "description": "Get bioRxiv usage/engagement statistics over time.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "interval": {
+            "default": "monthly",
+            "description": "Statistics interval: 'monthly' or 'yearly'",
+            "enum": [
+              "monthly",
+              "yearly"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "month": {
+                  "type": "string"
+                },
+                "abstract_views": {
+                  "type": "number"
+                },
+                "full_text_views": {
+                  "type": "number"
+                },
+                "pdf_downloads": {
+                  "type": "number"
+                },
+                "abstract_cumulative": {
+                  "type": "number"
+                },
+                "full_text_cumulative": {
+                  "type": "number"
+                },
+                "pdf_cumulative": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "error": {}
+        }
+      }
+    },
+    {
+      "name": "search_by_funder",
+      "description": "Search for preprints funded by a specific organization using ROR ID.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "animal behavior and cognition",
+                  "biochemistry",
+                  "bioengineering",
+                  "bioinformatics",
+                  "biophysics",
+                  "cancer biology",
+                  "cell biology",
+                  "clinical trials",
+                  "developmental biology",
+                  "ecology",
+                  "epidemiology",
+                  "evolutionary biology",
+                  "genetics",
+                  "genomics",
+                  "immunology",
+                  "microbiology",
+                  "molecular biology",
+                  "neuroscience",
+                  "paleontology",
+                  "pathology",
+                  "pharmacology and toxicology",
+                  "physiology",
+                  "plant biology",
+                  "scientific communication and education",
+                  "synthetic biology",
+                  "systems biology",
+                  "zoology"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Subject category to filter by"
+          },
+          "cursor": {
+            "default": 0,
+            "description": "Pagination cursor (starts at 0)",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "date_from": {
+            "description": "Start date in YYYY-MM-DD format (must be >= 2025-04-10)",
+            "type": "string"
+          },
+          "date_to": {
+            "description": "End date in YYYY-MM-DD format",
+            "type": "string"
+          },
+          "funder_ror_id": {
+            "description": "Funder ROR ID (9-character string, e.g., '02mhbdp94' for European Commission)",
+            "type": "string"
+          },
+          "limit": {
+            "default": 10,
+            "description": "Maximum results to return (1-100)",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "server": {
+            "default": "biorxiv",
+            "description": "Which server to query: 'biorxiv' or 'medrxiv'",
+            "enum": [
+              "biorxiv",
+              "medrxiv"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "funder_ror_id",
+          "date_from",
+          "date_to"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "doi": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "authors": {
+                  "type": "string"
+                },
+                "date": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "abstract_preview": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "cursor": {
+            "type": "number"
+          },
+          "count": {
+            "type": "number"
+          },
+          "total": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Total matching records when the upstream route reports it; null when the route carries no total (e.g. /funder/) — use count<limit to detect end-of-stream."
+          },
+          "error": {}
+        }
+      }
+    },
+    {
+      "name": "search_preprints",
+      "description": "Search bioRxiv/medRxiv preprints. Returns DOI, title, authors, abstract preview, category.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "animal behavior and cognition",
+                  "biochemistry",
+                  "bioengineering",
+                  "bioinformatics",
+                  "biophysics",
+                  "cancer biology",
+                  "cell biology",
+                  "clinical trials",
+                  "developmental biology",
+                  "ecology",
+                  "epidemiology",
+                  "evolutionary biology",
+                  "genetics",
+                  "genomics",
+                  "immunology",
+                  "microbiology",
+                  "molecular biology",
+                  "neuroscience",
+                  "paleontology",
+                  "pathology",
+                  "pharmacology and toxicology",
+                  "physiology",
+                  "plant biology",
+                  "scientific communication and education",
+                  "synthetic biology",
+                  "systems biology",
+                  "zoology"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Subject category to filter by"
+          },
+          "cursor": {
+            "default": 0,
+            "description": "Pagination cursor for retrieving additional results (starts at 0)",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Start date for search in YYYY-MM-DD format (e.g., '2024-01-01'). Use with date_to."
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "End date for search in YYYY-MM-DD format (e.g., '2024-12-31'). Use with date_from."
+          },
+          "limit": {
+            "default": 10,
+            "description": "Maximum number of results to return (1-100)",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "recent_count": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Search last ~90 days, limit results to N (e.g., 50). Use 'limit' for actual result count."
+          },
+          "recent_days": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Get preprints from last N days (e.g., 30). Alternative to date range."
+          },
+          "server": {
+            "default": "biorxiv",
+            "description": "Which server to query: 'biorxiv' (biological sciences) or 'medrxiv' (medical sciences)",
+            "enum": [
+              "biorxiv",
+              "medrxiv"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "doi": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "authors": {
+                  "type": "string"
+                },
+                "date": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "abstract_preview": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "cursor": {
+            "type": "number"
+          },
+          "count": {
+            "type": "number"
+          },
+          "total": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Total matching records when the upstream route reports it; null when the route carries no total (e.g. /funder/) — use count<limit to detect end-of-stream."
+          },
+          "error": {}
+        }
+      }
+    },
+    {
+      "name": "search_published_preprints",
+      "description": "Find preprints that have been published in peer-reviewed journals.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "default": 0,
+            "description": "Pagination cursor (starts at 0)",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Start date in YYYY-MM-DD format. Use with date_to."
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "End date in YYYY-MM-DD format. Use with date_from."
+          },
+          "include_details": {
+            "default": true,
+            "description": "If True, returns full metadata (authors, abstract). If False, returns summary only.",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 10,
+            "description": "Maximum results to return (1-100)",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "publisher": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Filter by publisher DOI prefix (e.g., '10.1038'). If provided, searches a specific publisher endpoint."
+          },
+          "recent_count": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Get N most recent published articles (e.g., 50)."
+          },
+          "recent_days": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Get published articles from last N days (e.g., 30)."
+          },
+          "server": {
+            "default": "biorxiv",
+            "description": "Which preprint server(s) to search: 'biorxiv' or 'medrxiv'. Default: 'biorxiv'",
+            "enum": [
+              "biorxiv",
+              "medrxiv"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "biorxiv_doi": {
+                  "type": "string"
+                },
+                "published_doi": {
+                  "type": "string"
+                },
+                "published_journal": {
+                  "type": "string"
+                },
+                "preprint_platform": {
+                  "type": "string"
+                },
+                "preprint_title": {
+                  "type": "string"
+                },
+                "preprint_authors": {
+                  "type": "string"
+                },
+                "preprint_category": {
+                  "type": "string"
+                },
+                "preprint_date": {
+                  "type": "string"
+                },
+                "published_date": {
+                  "type": "string"
+                },
+                "preprint_abstract": {
+                  "type": "string"
+                },
+                "preprint_author_corresponding": {
+                  "type": "string"
+                },
+                "preprint_author_corresponding_institution": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "cursor": {
+            "type": "number"
+          },
+          "count": {
+            "type": "number"
+          },
+          "total": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Total matching records when the upstream route reports it; null when the route carries no total (e.g. /funder/) — use count<limit to detect end-of-stream."
+          },
+          "error": {}
+        }
+      }
+    }
+  ]
+}

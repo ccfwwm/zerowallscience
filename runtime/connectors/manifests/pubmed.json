@@ -1,0 +1,34 @@
+{
+  "domain": "pubmed",
+  "toolCount": 7,
+  "tools": [
+    {
+      "name": "convert_article_ids",
+      "description": "Convert between various ID formats, including PMID, PMCID, and DOI."
+    },
+    {
+      "name": "find_related_articles",
+      "description": "Find related articles and resources in PubMed."
+    },
+    {
+      "name": "get_article_metadata",
+      "description": "Retrieve detailed article metadata from PubMed."
+    },
+    {
+      "name": "get_copyright_status",
+      "description": "Get copyright information for articles in PubMed."
+    },
+    {
+      "name": "get_full_text_article",
+      "description": "Retrieve full-text articles from PubMed Central (PMC)."
+    },
+    {
+      "name": "lookup_article_by_citation",
+      "description": "Lookup articles by citation details in PubMed."
+    },
+    {
+      "name": "search_articles",
+      "description": "Search PubMed for biomedical and life sciences research articles matching a given query."
+    }
+  ]
+}

@@ -1,158 +1,78 @@
 {
   "domain": "variants",
-  "toolCount": 38,
+  "toolCount": 18,
   "tools": [
     {
-      "name": "clingen_gene_validity",
-      "description": "ClinGen gene-disease validity curations (classification of how strong"
-    },
-    {
-      "name": "clingen_dosage_sensitivity",
-      "description": "ClinGen dosage sensitivity curations: haploinsufficiency and"
-    },
-    {
-      "name": "clingen_actionability",
-      "description": "ClinGen clinical actionability curations: for disorders associated"
-    },
-    {
-      "name": "clingen_variant_classifications",
-      "description": "ClinGen Evidence Repository (ERepo) expert-panel variant pathogenicity"
-    },
-    {
-      "name": "civic_search_genes",
-      "description": "Civic Search Genes"
-    },
-    {
-      "name": "civic_gene_variants",
-      "description": "All variants of one CIViC gene (by CIViC gene id), fully paginated \u2014"
-    },
-    {
-      "name": "civic_get_variant",
-      "description": "One CIViC variant by its CIViC variant id (details incl. aliases,"
-    },
-    {
-      "name": "civic_search_variants",
-      "description": "Civic Search Variants"
-    },
-    {
-      "name": "civic_get_evidence_item",
-      "description": "One CIViC evidence item by id: clinical significance of a molecular"
-    },
-    {
-      "name": "civic_search_evidence",
-      "description": "Search CIViC evidence items by any combination of filters; fully"
-    },
-    {
-      "name": "civic_get_assertion",
-      "description": "One CIViC assertion by id: an expert-curated summary claim (AMP/ASCO/"
-    },
-    {
-      "name": "civic_search_assertions",
-      "description": "Search CIViC assertions by any combination of filters; fully paginated"
-    },
-    {
-      "name": "civic_get_molecular_profile",
-      "description": "One CIViC molecular profile by id (variant combination that evidence/"
-    },
-    {
-      "name": "civic_search_molecular_profiles",
-      "description": "Civic Search Molecular Profiles"
-    },
-    {
-      "name": "civic_search_diseases",
-      "description": "Civic Search Diseases"
-    },
-    {
-      "name": "civic_search_therapies",
-      "description": "Civic Search Therapies"
-    },
-    {
-      "name": "open_targets_graphql",
-      "description": "Run an arbitrary GraphQL query against the Open Targets Platform API"
-    },
-    {
-      "name": "open_targets_disease_drugs",
-      "description": "Known/investigational drugs for a disease (Open Targets Platform)"
-    },
-    {
-      "name": "open_targets_disease_targets",
-      "description": "Top associated targets for a disease, ranked by Open Targets overall"
-    },
-    {
-      "name": "open_targets_drug",
-      "description": "Drug details by ChEMBL id (Open Targets Platform)"
-    },
-    {
-      "name": "get_variant",
-      "description": "Look up one gnomAD short variant by ID and return its population"
-    },
-    {
-      "name": "search_variants",
-      "description": "Search gnomAD for variant IDs matching a query string (rsID like"
-    },
-    {
-      "name": "gene_variants",
-      "description": "List ALL gnomAD short variants in a gene (complete listing \u2014 can be"
-    },
-    {
-      "name": "gene_constraint",
-      "description": "gnomAD gene constraint metrics: pLI, observed/expected LoF-missense-"
-    },
-    {
-      "name": "region_variants",
-      "description": "List ALL gnomAD short variants in a genomic region (max 1 Mb \u2014 split"
-    },
-    {
-      "name": "liftover_variant",
-      "description": "Map a variant ID between reference builds (GRCh37 <-> GRCh38) using"
-    },
-    {
-      "name": "clinvar_variants",
-      "description": "List ClinVar variants in a gene as mirrored by gnomAD, with clinical"
-    },
-    {
-      "name": "structural_variants",
-      "description": "List gnomAD structural variants (deletions, duplications, insertions,"
-    },
-    {
-      "name": "get_structural_variant",
-      "description": "Look up one gnomAD structural variant by its release-specific SV ID"
-    },
-    {
-      "name": "mitochondrial_variants",
-      "description": "List gnomAD mitochondrial variants with heteroplasmy-aware counts"
-    },
-    {
-      "name": "cadd_variant_score",
-      "description": "CADD deleteriousness score for one SNV (ref>alt at chrom:pos)"
-    },
-    {
       "name": "cadd_position_scores",
-      "description": "CADD scores for ALL possible single-nucleotide substitutions at one"
+      "description": "CADD scores for ALL possible single-nucleotide substitutions at one genomic position (up to 3 records, one per alt allele)."
     },
     {
       "name": "cadd_range_scores",
-      "description": "CADD scores for every SNV in a genomic window [start, end]"
+      "description": "CADD scores for every SNV in a genomic window [start, end] (inclusive, max 100 bp — split larger spans into consecutive windows)."
     },
     {
-      "name": "clinvar_search",
-      "description": "Search ClinVar directly (live NCBI, not gnomAD's snapshot) and return"
+      "name": "cadd_variant_score",
+      "description": "CADD deleteriousness score for one SNV (ref>alt at chrom:pos)."
     },
     {
       "name": "clinvar_get_records",
-      "description": "Fetch full ClinVar records for a batch of VCV/RCV accessions or bare"
+      "description": "Fetch full ClinVar records for a batch of VCV/RCV accessions or bare variation IDs."
+    },
+    {
+      "name": "clinvar_search",
+      "description": "Search ClinVar directly (live NCBI, not gnomAD's snapshot) and return matching variation records with clinical significance, review status and gold stars."
     },
     {
       "name": "clinvar_variant_by_rsid",
-      "description": "All ClinVar variation records that reference a dbSNP rsID, with full"
+      "description": "All ClinVar variation records that reference a dbSNP rsID, with full classifications (an rsID can map to several VCVs — one per alternate allele, e.g. rs121913529 covers KRAS G12D/G12V/G12A)."
+    },
+    {
+      "name": "clinvar_variants",
+      "description": "List ClinVar variants in a gene as mirrored by gnomAD, with clinical significance, review status and gold stars."
     },
     {
       "name": "dbsnp_get_rsids",
-      "description": "Canonical dbSNP RefSNP records for a batch of rsIDs: GRCh38+GRCh37"
+      "description": "Canonical dbSNP RefSNP records for a batch of rsIDs: GRCh38+GRCh37 placements, alleles, gene context, per-study allele frequencies, and ClinVar cross-references."
     },
     {
       "name": "dbsnp_search_by_region",
-      "description": "List dbSNP rsIDs in a genomic window (esearch db=snp positional"
+      "description": "List dbSNP rsIDs in a genomic window (esearch db=snp positional index — NCBI Variation Services has no region endpoint)."
+    },
+    {
+      "name": "gene_constraint",
+      "description": "gnomAD gene constraint metrics: pLI, observed/expected LoF-missense- synonymous counts with oe ratios + 90% CI bounds, and per-class z-scores."
+    },
+    {
+      "name": "gene_variants",
+      "description": "List ALL gnomAD short variants in a gene (complete listing — can be thousands of rows for large genes)."
+    },
+    {
+      "name": "get_structural_variant",
+      "description": "Look up one gnomAD structural variant by its release-specific SV ID."
+    },
+    {
+      "name": "get_variant",
+      "description": "Look up one gnomAD short variant by ID and return its population frequencies."
+    },
+    {
+      "name": "liftover_variant",
+      "description": "Map a variant ID between reference builds (GRCh37 <-> GRCh38) using gnomAD's liftover table."
+    },
+    {
+      "name": "mitochondrial_variants",
+      "description": "List gnomAD mitochondrial variants with heteroplasmy-aware counts (``ac_het``, ``ac_hom``, ``max_heteroplasmy``) for a mitochondrial gene OR a chrM coordinate window."
+    },
+    {
+      "name": "region_variants",
+      "description": "List ALL gnomAD short variants in a genomic region (max 1 Mb — split larger regions into consecutive windows)."
+    },
+    {
+      "name": "search_variants",
+      "description": "Search gnomAD for variant IDs matching a query string (rsID like ``rs7412``, a variant ID, or a prefix)."
+    },
+    {
+      "name": "structural_variants",
+      "description": "List gnomAD structural variants (deletions, duplications, insertions, inversions, CNVs...) overlapping a gene."
     }
   ]
 }

@@ -1,0 +1,1153 @@
+{
+  "domain": "chembl",
+  "package": "mcp_chembl",
+  "derivedFrom": "bio-tools/lib/mcp_chembl/schemas.json",
+  "originalConnector": "ChEMBL",
+  "toolCount": 6,
+  "tools": [
+    {
+      "name": "compound_search",
+      "description": "Search for chemical compounds in ChEMBL database by name, ChEMBL ID, or molecular structure.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "chembl_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "ChEMBL identifier (e.g., 'CHEMBL25' for aspirin)"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum number of results to return",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_phase": {
+            "anyOf": [
+              {
+                "enum": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Filter by clinical phase. Use 4 for approved drugs only"
+          },
+          "name": {
+            "description": "Compound name or synonym to search for (e.g., 'aspirin', 'imatinib'). Case-insensitive search. This is the primary search criterion.",
+            "type": "string"
+          },
+          "similarity_threshold": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 70,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Similarity threshold percentage for structure search (70-100). Only used with SMILES search"
+          },
+          "smiles": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "SMILES structure for similarity search. Requires similarity_threshold parameter"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "compounds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "molecule_chembl_id": {
+                  "type": "string"
+                },
+                "pref_name": {
+                  "type": "string"
+                },
+                "molecule_type": {
+                  "type": "string"
+                },
+                "max_phase": {
+                  "type": "number"
+                },
+                "first_approval": {},
+                "oral": {
+                  "type": "boolean"
+                },
+                "parenteral": {
+                  "type": "boolean"
+                },
+                "topical": {
+                  "type": "boolean"
+                },
+                "black_box_warning": {
+                  "type": "boolean"
+                },
+                "therapeutic_flag": {
+                  "type": "boolean"
+                },
+                "natural_product": {
+                  "type": "boolean"
+                },
+                "withdrawn_flag": {
+                  "type": "boolean"
+                },
+                "molecule_properties": {
+                  "type": "object",
+                  "properties": {
+                    "alogp": {
+                      "type": "number"
+                    },
+                    "aromatic_rings": {
+                      "type": "number"
+                    },
+                    "full_mwt": {
+                      "type": "number"
+                    },
+                    "hba": {
+                      "type": "number"
+                    },
+                    "hbd": {
+                      "type": "number"
+                    },
+                    "heavy_atoms": {
+                      "type": "number"
+                    },
+                    "psa": {
+                      "type": "number"
+                    },
+                    "rtb": {
+                      "type": "number"
+                    },
+                    "ro3_pass": {
+                      "type": "string"
+                    },
+                    "num_ro5_violations": {
+                      "type": "number"
+                    },
+                    "qed_weighted": {
+                      "type": "number"
+                    },
+                    "molecular_formula": {
+                      "type": "string"
+                    },
+                    "mw_freebase": {
+                      "type": "number"
+                    },
+                    "np_likeness_score": {
+                      "type": "number"
+                    },
+                    "med_chem_friendly": {},
+                    "molecular_species": {}
+                  }
+                },
+                "smiles": {
+                  "type": "string"
+                },
+                "inchi": {
+                  "type": "string"
+                },
+                "inchi_key": {
+                  "type": "string"
+                },
+                "synonyms": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "availability_type": {},
+                "chirality": {
+                  "type": "number"
+                },
+                "chemical_probe": {
+                  "type": "number"
+                },
+                "dosed_ingredient": {
+                  "type": "boolean"
+                },
+                "first_in_class": {
+                  "type": "number"
+                },
+                "helm_notation": {},
+                "inorganic_flag": {
+                  "type": "number"
+                },
+                "orphan": {
+                  "type": "number"
+                },
+                "polymer_flag": {
+                  "type": "number"
+                },
+                "prodrug": {
+                  "type": "number"
+                },
+                "structure_type": {
+                  "type": "string"
+                },
+                "usan_stem": {},
+                "usan_stem_definition": {},
+                "usan_substem": {},
+                "usan_year": {},
+                "veterinary": {
+                  "type": "number"
+                },
+                "score": {},
+                "cross_references": {},
+                "atc_classifications": {},
+                "molecule_hierarchy": {
+                  "type": "object",
+                  "properties": {
+                    "active_chembl_id": {
+                      "type": "string"
+                    },
+                    "molecule_chembl_id": {
+                      "type": "string"
+                    },
+                    "parent_chembl_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "drug_search",
+      "description": "Search for approved drugs and clinical candidates by therapeutic indication.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "drug_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Drug name or partial name (e.g., 'imatinib')"
+          },
+          "indication": {
+            "description": "Disease indication to search for (e.g., 'hypertension', 'cancer', 'diabetes'). This is the primary search criterion.",
+            "type": "string"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum number of results to return",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_phase": {
+            "anyOf": [
+              {
+                "enum": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Filter by clinical phase. Use 4 for approved drugs, 3 for late-stage trials"
+          },
+          "molecule_chembl_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "ChEMBL identifier for the molecule (e.g., 'CHEMBL941')"
+          },
+          "only_approved": {
+            "default": false,
+            "description": "If True, returns only approved drugs (max_phase=4). Shortcut for max_phase=4",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "indication"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "indication_query": {
+            "type": "object"
+          },
+          "total_indication_rows": {},
+          "drugs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "molecule_chembl_id": {
+                  "type": "string"
+                },
+                "pref_name": {
+                  "type": "string"
+                },
+                "best_phase_for_ind": {},
+                "efo_terms": {
+                  "type": "array"
+                },
+                "indication_rows": {
+                  "type": "array"
+                },
+                "warning_summary": {
+                  "type": "array"
+                },
+                "molecule_type": {
+                  "type": "string"
+                },
+                "max_phase": {
+                  "type": "number"
+                },
+                "first_approval": {
+                  "type": "number"
+                },
+                "oral": {
+                  "type": "boolean"
+                },
+                "parenteral": {
+                  "type": "boolean"
+                },
+                "therapeutic_flag": {
+                  "type": "boolean"
+                },
+                "indications": {},
+                "applicants": {},
+                "atc_code_description": {},
+                "availability_type": {
+                  "type": "number"
+                },
+                "biotherapeutic": {},
+                "black_box": {},
+                "black_box_warning": {
+                  "type": "number"
+                },
+                "chirality": {
+                  "type": "number"
+                },
+                "drug_type": {},
+                "first_in_class": {
+                  "type": "number"
+                },
+                "helm_notation": {},
+                "molecule_properties": {
+                  "type": "object",
+                  "properties": {
+                    "alogp": {
+                      "type": "number"
+                    },
+                    "aromatic_rings": {
+                      "type": "number"
+                    },
+                    "full_mwt": {
+                      "type": "number"
+                    },
+                    "hba": {
+                      "type": "number"
+                    },
+                    "hbd": {
+                      "type": "number"
+                    },
+                    "heavy_atoms": {
+                      "type": "number"
+                    },
+                    "psa": {
+                      "type": "number"
+                    },
+                    "rtb": {
+                      "type": "number"
+                    },
+                    "ro3_pass": {
+                      "type": "string"
+                    },
+                    "num_ro5_violations": {
+                      "type": "number"
+                    },
+                    "qed_weighted": {
+                      "type": "number"
+                    },
+                    "molecular_formula": {
+                      "type": "string"
+                    },
+                    "mw_freebase": {
+                      "type": "number"
+                    },
+                    "np_likeness_score": {
+                      "type": "number"
+                    },
+                    "med_chem_friendly": {},
+                    "molecular_species": {}
+                  }
+                },
+                "molecule_structures": {
+                  "type": "object",
+                  "properties": {
+                    "canonical_smiles": {
+                      "type": "string"
+                    },
+                    "molfile": {
+                      "type": "string"
+                    },
+                    "standard_inchi": {
+                      "type": "string"
+                    },
+                    "standard_inchi_key": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "molecule_synonyms": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "molecule_synonym": {
+                        "type": "string"
+                      },
+                      "syn_type": {
+                        "type": "string"
+                      },
+                      "synonyms": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "ob_patent": {},
+                "sc_patent": {},
+                "prodrug": {
+                  "type": "number"
+                },
+                "research_codes": {},
+                "rule_of_five": {},
+                "synonyms": {},
+                "topical": {
+                  "type": "number"
+                },
+                "usan_stem": {
+                  "type": "string"
+                },
+                "usan_stem_definition": {
+                  "type": "string"
+                },
+                "usan_stem_substem": {},
+                "usan_year": {
+                  "type": "number"
+                },
+                "withdrawn_flag": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "get_admet",
+      "description": "Retrieve ADMET-related molecular properties for drug-likeness assessment.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "molecule_chembl_id": {
+            "description": "ChEMBL identifier for the molecule (e.g., 'CHEMBL941' for imatinib). If you only have a drug name, use compound_search first to find the ChEMBL ID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "molecule_chembl_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "found": {
+            "type": "boolean"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "molecule_chembl_id": {
+                "type": "string"
+              },
+              "alogp": {
+                "type": "number"
+              },
+              "molecular_weight": {
+                "type": "number"
+              },
+              "mw_freebase": {
+                "type": "number"
+              },
+              "psa": {
+                "type": "number"
+              },
+              "hba": {
+                "type": "number"
+              },
+              "hbd": {
+                "type": "number"
+              },
+              "rtb": {
+                "type": "number"
+              },
+              "aromatic_rings": {
+                "type": "number"
+              },
+              "heavy_atoms": {
+                "type": "number"
+              },
+              "num_ro5_violations": {
+                "type": "number"
+              },
+              "ro3_pass": {
+                "type": "string"
+              },
+              "qed_weighted": {
+                "type": "number"
+              },
+              "molecular_formula": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "get_bioactivity",
+      "description": "Retrieve bioactivity measurements (IC50, Ki, EC50, etc.) for compound-target interactions.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "activity_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "IC50",
+                  "EC50",
+                  "Ki",
+                  "Kd",
+                  "AC50",
+                  "GI50",
+                  "ED50",
+                  "Potency"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Activity type to filter. IC50 (inhibitors), Ki/Kd (binding affinity), EC50 (agonists)"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum number of results to return",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Maximum activity value for filtering (in standard units). Example: max_value=100 with unit='nM' finds potent compounds"
+          },
+          "min_pchembl": {
+            "anyOf": [
+              {
+                "maximum": 14,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Minimum pChEMBL value (higher = more potent). pChEMBL = -log(molar IC50/Ki/Kd/EC50). Typical range: 4-10"
+          },
+          "min_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Minimum activity value for filtering (in standard units)"
+          },
+          "molecule_chembl_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "ChEMBL identifier for the molecule (e.g., 'CHEMBL25')"
+          },
+          "target_chembl_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "ChEMBL identifier for the target (e.g., 'CHEMBL1824'). Use target_search tool first to find this ID."
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "nM",
+                  "uM",
+                  "mM",
+                  "pM",
+                  "M"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Activity unit for value filtering. nM is most common for potent compounds"
+          }
+        },
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "activities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "activity_id": {
+                  "type": "number"
+                },
+                "molecule_chembl_id": {
+                  "type": "string"
+                },
+                "target_chembl_id": {
+                  "type": "string"
+                },
+                "target_pref_name": {
+                  "type": "string"
+                },
+                "target_organism": {},
+                "standard_type": {
+                  "type": "string"
+                },
+                "standard_relation": {
+                  "type": "string"
+                },
+                "standard_value": {
+                  "type": "number"
+                },
+                "standard_units": {
+                  "type": "string"
+                },
+                "pchembl_value": {
+                  "type": "number"
+                },
+                "assay_chembl_id": {
+                  "type": "string"
+                },
+                "assay_description": {
+                  "type": "string"
+                },
+                "assay_type": {
+                  "type": "string"
+                },
+                "data_validity_comment": {},
+                "activity_comment": {},
+                "activity_properties": {},
+                "action_type": {},
+                "bao_endpoint": {
+                  "type": "string"
+                },
+                "bao_format": {
+                  "type": "string"
+                },
+                "bao_label": {
+                  "type": "string"
+                },
+                "canonical_smiles": {
+                  "type": "string"
+                },
+                "data_validity_description": {},
+                "document_chembl_id": {
+                  "type": "string"
+                },
+                "document_journal": {
+                  "type": "string"
+                },
+                "document_year": {
+                  "type": "number"
+                },
+                "ligand_efficiency": {},
+                "molecule_pref_name": {
+                  "type": "string"
+                },
+                "parent_molecule_chembl_id": {
+                  "type": "string"
+                },
+                "potential_duplicate": {
+                  "type": "number"
+                },
+                "qudt_units": {
+                  "type": "string"
+                },
+                "uo_units": {
+                  "type": "string"
+                },
+                "record_id": {
+                  "type": "number"
+                },
+                "src_id": {
+                  "type": "number"
+                },
+                "toid": {},
+                "standard_flag": {
+                  "type": "number"
+                },
+                "standard_text_value": {},
+                "standard_upper_value": {},
+                "target_tax_id": {},
+                "text_value": {},
+                "type": {
+                  "type": "string"
+                },
+                "units": {
+                  "type": "string"
+                },
+                "upper_value": {},
+                "value": {
+                  "type": "number"
+                },
+                "relation": {
+                  "type": "string"
+                },
+                "assay_variant_accession": {},
+                "assay_variant_mutation": {}
+              }
+            }
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "get_mechanism",
+      "description": "Retrieve mechanism of action (MoA) data for approved drugs and clinical candidates.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "INHIBITOR",
+                  "AGONIST",
+                  "ANTAGONIST",
+                  "BLOCKER",
+                  "MODULATOR",
+                  "OPENER",
+                  "ACTIVATOR",
+                  "POSITIVE ALLOSTERIC MODULATOR",
+                  "NEGATIVE ALLOSTERIC MODULATOR",
+                  "PARTIAL AGONIST",
+                  "INVERSE AGONIST"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Type of action. INHIBITOR is most common for small molecules"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum number of results to return",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "molecule_chembl_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "ChEMBL identifier for the molecule (e.g., 'CHEMBL25')"
+          },
+          "target_chembl_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "ChEMBL identifier for the target (e.g., 'CHEMBL1824')"
+          }
+        },
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "mechanisms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "mec_id": {
+                  "type": "number"
+                },
+                "molecule_chembl_id": {
+                  "type": "string"
+                },
+                "mechanism_of_action": {
+                  "type": "string"
+                },
+                "target_chembl_id": {
+                  "type": "string"
+                },
+                "action_type": {
+                  "type": "string"
+                },
+                "direct_interaction": {
+                  "type": "boolean"
+                },
+                "disease_efficacy": {
+                  "type": "boolean"
+                },
+                "mechanism_comment": {},
+                "binding_site_comment": {},
+                "selectivity_comment": {},
+                "molecular_mechanism": {
+                  "type": "number"
+                },
+                "max_phase": {
+                  "type": "number"
+                },
+                "parent_molecule_chembl_id": {
+                  "type": "string"
+                },
+                "record_id": {
+                  "type": "number"
+                },
+                "site_id": {},
+                "mechanism_refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "ref_id": {
+                        "type": "string"
+                      },
+                      "ref_type": {
+                        "type": "string"
+                      },
+                      "ref_url": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "variant_sequence": {}
+              }
+            }
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "target_search",
+      "description": "Search for biological targets (proteins, enzymes, receptors, organisms) in ChEMBL database.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "gene_symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Gene symbol to search for (e.g., 'EGFR', 'BRAF', 'TP53'). Searches target component synonyms."
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum number of results to return",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "organism": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Organism name (e.g., 'Homo sapiens', 'human', 'mouse')"
+          },
+          "target_chembl_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "ChEMBL identifier for the target (e.g., 'CHEMBL1824')"
+          },
+          "target_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Target name or partial name (e.g., 'EGFR', 'kinase', 'receptor')"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "SINGLE PROTEIN",
+                  "PROTEIN COMPLEX",
+                  "PROTEIN FAMILY",
+                  "ORGANISM",
+                  "TISSUE",
+                  "CELL-LINE",
+                  "NUCLEIC-ACID",
+                  "SUBCELLULAR"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Type of target. SINGLE PROTEIN recommended for highest confidence data"
+          }
+        },
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "target_chembl_id": {
+                  "type": "string"
+                },
+                "pref_name": {
+                  "type": "string"
+                },
+                "target_type": {
+                  "type": "string"
+                },
+                "organism": {
+                  "type": "string"
+                },
+                "tax_id": {
+                  "type": "number"
+                },
+                "components": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "component_id": {
+                        "type": "number"
+                      },
+                      "component_type": {
+                        "type": "string"
+                      },
+                      "accession": {
+                        "type": "string"
+                      },
+                      "component_description": {
+                        "type": "string"
+                      },
+                      "gene_symbol": {
+                        "type": "string"
+                      },
+                      "relationship": {
+                        "type": "string"
+                      },
+                      "target_component_xrefs": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "xref_id": {
+                              "type": "string"
+                            },
+                            "xref_name": {
+                              "type": "string"
+                            },
+                            "xref_src_db": {
+                              "type": "string"
+                            },
+                            "xref_src_url": {}
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "species_group_flag": {
+                  "type": "boolean"
+                },
+                "cross_references": {},
+                "score": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

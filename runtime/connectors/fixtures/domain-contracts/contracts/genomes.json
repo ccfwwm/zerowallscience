@@ -1,0 +1,439 @@
+{
+  "domain": "genomes",
+  "package": "mcp_genomes",
+  "derivedFrom": "bio-tools/lib/mcp_genomes/server.py",
+  "toolCount": 11,
+  "tools": [
+    {
+      "name": "ensembl_homology",
+      "description": "Orthologues or paralogues of a gene from Ensembl Compara (condensed rows — no alignments/sequences).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "gene_symbol": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "gene symbol (e.g. ``BRAF``) — resolved to a stable ID in ``species`` first. Pass exactly one of gene_symbol / gene_id."
+          },
+          "gene_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Ensembl gene ID (e.g. ``ENSG00000157764``)."
+          },
+          "homology_type": {
+            "type": "string",
+            "description": "``orthologues`` (default), ``paralogues`` or ``projections``.",
+            "default": "orthologues"
+          },
+          "target_species": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "restrict to one species (``mus_musculus``)."
+          },
+          "target_taxon": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "restrict to an NCBI taxon subtree, e.g. ``9443`` (Primates). Combinable with target_species (OR semantics upstream)."
+          },
+          "species": {
+            "type": "string",
+            "description": "source species of the gene (default ``homo_sapiens``)."
+          },
+          "max_homologies": {
+            "type": "integer",
+            "description": "output row cap (default 200; a human gene has ~200+ vertebrate orthologues). ``n_total`` always carries the complete count and ``homologies_truncated`` flags the cap.",
+            "default": 200
+          }
+        }
+      },
+      "returns": "Returns ``{gene_id, gene_symbol, species, homology_type, target_species, target_taxon, n_total, homologies_truncated, homologies}``; rows sorted by (species, id): ``{type (ortholog_one2one/ortholog_one2many/within_species_paralog/ ...), species, id, protein_id, taxonomy_level, method_link_type}``. Quirk: the upstream /homology/symbol route stalls — this tool always resolves symbols itself and queries by stable ID.",
+      "upstreams": [
+        "ensembl_rest"
+      ]
+    },
+    {
+      "name": "ensembl_lookup",
+      "description": "Look up an Ensembl gene/transcript/protein by stable ID or a gene by symbol; returns the core annotation record (location, biotype, canonical transcript, description).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Ensembl stable ID (``ENSG00000157764``, ``ENST...``, ``ENSP...`` — versioned IDs accepted) or a gene symbol/alias (``BRAF``). True stable IDs (``ENS`` + optional species code + feature letter + a >= 6-digit block, or ``LRG_N``) are routed to the ID endpoint; everything else — including symbols that merely start with \"ENS\", like ``ENSA`` or ``ENSAP1`` — to the symbol endpoint."
+          },
+          "species": {
+            "type": "string",
+            "description": "Ensembl species name for symbol lookups, e.g. ``homo_sapiens`` (default), ``mus_musculus``. Ignored for stable IDs (they are species-unique)."
+          },
+          "expand": {
+            "type": "boolean",
+            "description": "when true, include the child feature tree (a gene's transcripts, their exons/translation). Adds bulk; default off.",
+            "default": false
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "returns": "Returns ``{found, query, species, record}``; ``record`` is null when nothing matches, else the upstream lookup dict — for a gene: ``{id, display_name, description, biotype, object_type, seq_region_name, start, end, strand, assembly_name (GRCh38 for human), canonical_transcript, version, ...}`` with 1-based inclusive coordinates.",
+      "upstreams": [
+        "ensembl_rest"
+      ]
+    },
+    {
+      "name": "ensembl_overlap_region",
+      "description": "List Ensembl features overlapping a genomic region — genes, transcripts, regulatory features (enhancers/promoters), repeats, variants, karyotype bands.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "region": {
+            "type": "string",
+            "description": "1-based inclusive region ``chrom:start-end`` (GRCh38 for human), e.g. ``7:140719327-140925199``. Upstream rejects spans > 5 Mb (HTTP 400) — split larger queries."
+          },
+          "feature": {
+            "type": "string",
+            "description": "feature type — ``gene`` (default), ``transcript``, ``exon``, ``cds``, ``regulatory`` (Ensembl Regulatory Build: enhancers, promoters, CTCF sites...), ``motif``, ``repeat``, ``variation``, ``structural_variation``, ``band``, ``simple``, ``misc``.",
+            "default": "gene"
+          },
+          "species": {
+            "type": "string",
+            "description": "Ensembl species name (default ``homo_sapiens``)."
+          },
+          "max_features": {
+            "type": "integer",
+            "description": "output row cap (default 500). ``n_total`` always carries the complete overlap count and ``features_truncated`` flags the cap.",
+            "default": 500
+          }
+        },
+        "required": [
+          "region"
+        ]
+      },
+      "returns": "Returns ``{region, species, feature, n_total, features_truncated, features}`` sorted by (start, id). Row shape varies by feature type — genes: ``{id, external_name, biotype, description, start, end, strand, canonical_transcript, ...}``; regulatory: ``{id, description (enhancer/promoter/...), start, end, extended_start/end, ...}``. Empty regions return ``n_total: 0``.",
+      "upstreams": [
+        "ensembl_rest"
+      ]
+    },
+    {
+      "name": "ensembl_sequence",
+      "description": "Fetch sequence from Ensembl — by stable ID (gene/transcript/ protein) or by genomic region. Pass EITHER ``stable_id`` OR ``region``:",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "stable_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Ensembl stable ID (``ENSG...``/``ENST...``/``ENSP...``)."
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "1-based inclusive region ``chrom:start..end`` or ``chrom:start-end`` (GRCh38 for human), e.g. ``7:140753300-140753400``. Max 10 Mb upstream."
+          },
+          "species": {
+            "type": "string",
+            "description": "species for the region route (default ``homo_sapiens``); ignored for stable IDs."
+          },
+          "seq_type": {
+            "type": "string",
+            "description": "for the ID route — ``genomic`` (default; the unspliced span for genes/transcripts), ``cdna``, ``cds`` or ``protein`` (``protein`` only for ENST/ENSP). Ignored for regions: the output then reports ``seq_type: \"genomic\"`` regardless of what was passed (the region route always returns genomic DNA).",
+            "default": "genomic"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "description": "payload guard (default 400000). Sequences larger than this have the ``seq`` field omitted — ``length``, ``sha256`` and metadata are always returned; re-call with a larger max_bytes for the full text (a whole gene's genomic span can be megabases — prefer cdna/cds/protein or sub-regions).",
+            "default": 400000
+          }
+        }
+      },
+      "returns": "Returns ``{found, query, seq_type, id, description, molecule, length, sha256, seq}`` — ``length`` is in the unit implied by ``molecule`` (bases for dna, residues for protein); ``seq`` is replaced by ``seq_omitted`` when capped. ``found: false`` with null fields for unknown stable IDs; malformed/oversized regions raise with the upstream message.",
+      "upstreams": [
+        "ensembl_rest"
+      ]
+    },
+    {
+      "name": "ensembl_vep_variant",
+      "description": "Predict variant consequences with Ensembl VEP — most-severe-first summary of the (often huge) per-transcript consequence list. Pass EITHER ``variant_id`` OR ``region`` + ``allele``:",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "variant_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "known-variant ID — dbSNP rsID (``rs7412``), COSMIC (``COSV52986153``) or HGMD ID."
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GRCh38 1-based inclusive region ``chrom:start-end``, e.g. ``7:140753336-140753336`` (SNV: start == end; insertion: start = end + 1). An explicit strand suffix ``:1``/``:-1`` is accepted (default forward)."
+          },
+          "allele": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "variant allele on the forward strand for the region route, e.g. ``T`` (or ``-`` for a deletion)."
+          },
+          "species": {
+            "type": "string",
+            "description": "Ensembl species name (default ``homo_sapiens``)."
+          },
+          "max_consequences": {
+            "type": "integer",
+            "description": "cap on returned per-transcript consequence rows (default 25). The FULL count is always in ``n_transcript_consequences`` and the rows kept are the most severe (HIGH > MODERATE > LOW > MODIFIER) — ``transcript_consequences_truncated`` flags the cap.",
+            "default": 25
+          }
+        }
+      },
+      "returns": "Returns ``{query, n_results, results}``; each result: ``{input, assembly_name, seq_region_name, start, end, strand, allele_string, most_severe_consequence, genes: [{gene_id, gene_symbol, worst_impact, n_transcripts}...], n_transcript_consequences, transcript_consequences_truncated, transcript_consequences: [{transcript_id, gene_id, gene_symbol, consequence_terms, impact, biotype, (for coding: amino_acids, codons, protein_start/end, sift_*, polyphen_*)}...], n_regulatory_feature_consequences, n_motif_feature_consequences, colocated_variants: [{id, allele_string, clin_sig, somatic, ...}]}``. Unknown rsIDs raise with the upstream message.",
+      "upstreams": [
+        "ensembl_rest"
+      ]
+    },
+    {
+      "name": "ensembl_xrefs",
+      "description": "External cross-references of an Ensembl stable ID — the bridge from Ensembl gene/transcript IDs to HGNC, NCBI (EntrezGene), UniProt, OMIM, RefSeq, Expression Atlas and others.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "stable_id": {
+            "type": "string",
+            "description": "Ensembl stable ID (``ENSG00000157764``, ``ENST...``)."
+          },
+          "external_db": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "optional exact upstream database-name filter, e.g. ``HGNC``, ``EntrezGene``, ``Uniprot_gn``, ``MIM_GENE``, ``RefSeq_mRNA``. Omit for all databases."
+          }
+        },
+        "required": [
+          "stable_id"
+        ]
+      },
+      "returns": "Returns ``{stable_id, external_db, n_xrefs, xrefs}`` — the COMPLETE list (never truncated), sorted by (dbname, primary_id); each row: ``{dbname, db_display_name, primary_id, display_id, description, synonyms, info_type}``. Unknown IDs return ``n_xrefs: 0`` (the upstream's 400 \"ID ... not found\" is mapped to an empty list, like an ID with no xrefs).",
+      "upstreams": [
+        "ensembl_rest"
+      ]
+    },
+    {
+      "name": "ucsc_chrom_sizes",
+      "description": "Chromosome/contig names and sizes of a UCSC assembly — for validating coordinates and iterating regions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "genome": {
+            "type": "string",
+            "description": "UCSC genome/db name (default ``hg38``)."
+          },
+          "filter_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "case-insensitive substring filter on the name — e.g. ``chr1``; omit for all. Tip: hg38 has 711 sequences, mostly alt/random/unplaced contigs; the primary chromosomes sort first (largest-first ordering)."
+          },
+          "max_chroms": {
+            "type": "integer",
+            "description": "output row cap (default 100). ``n_total`` carries the full (post-filter) count; ``chroms_truncated`` flags the cap.",
+            "default": 100
+          }
+        }
+      },
+      "returns": "Returns ``{genome, filter_text, chrom_count (assembly-wide, from the API), n_total, chroms_truncated, chromosomes: [{name, size_bp}...]}`` sorted by size descending (so chr1..chr22/X/Y lead on human).",
+      "upstreams": [
+        "ucsc_tracks"
+      ]
+    },
+    {
+      "name": "ucsc_conservation",
+      "description": "Evolutionary conservation summary for a region from UCSC phyloP / phastCons tracks (base-wise scores over multi-species alignments).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "chrom": {
+            "type": "string",
+            "description": "``chr``-prefixed chromosome (``chr7``)."
+          },
+          "start": {
+            "type": "integer",
+            "description": "region start, 0-based half-open (UCSC convention)."
+          },
+          "end": {
+            "type": "integer",
+            "description": "region end (exclusive). Span capped at 100000 bp — split larger regions."
+          },
+          "genome": {
+            "type": "string",
+            "description": "UCSC genome/db (default ``hg38``)."
+          },
+          "track": {
+            "type": "string",
+            "description": "conservation track (default ``phyloP100way`` — 100-way vertebrate phyloP; positive = conserved, negative = fast-evolving, exon ~ >2, strongly constrained ~ >5). Alternatives on hg38: ``phastCons100way`` (0..1 conservation probability), ``phyloP30way``, ``phastCons30way``, ``phyloP447way`` (Zoonomia+), ``phyloP470way``; hg19: ``phyloP100wayAll`` / ``phastCons100way``.",
+            "default": "phyloP100way"
+          },
+          "include_values": {
+            "type": "boolean",
+            "description": "when true, also return per-base rows ``{start, end, value}`` (capped at ``max_values`` rows, ``values_truncated`` flags the cap). Default false: summary stats only.",
+            "default": false
+          },
+          "max_values": {
+            "type": "integer",
+            "description": "per-base row cap for ``include_values`` (default 2000).",
+            "default": 2000
+          }
+        },
+        "required": [
+          "chrom",
+          "start",
+          "end"
+        ]
+      },
+      "returns": "Returns ``{genome, track, chrom, start, end, span_bp, n_bases_covered, coverage_fraction, mean, min, max}`` (+ ``values``, ``values_truncated`` when requested). Stats are weighted by each row's base span, clipped to the requested window; bases without alignment data are simply uncovered (coverage_fraction < 1), not zero-scored. Non-score tracks (BED-like, no per-base ``value``) raise — use ``ucsc_track_data`` for those; an upstream-truncated row list also raises rather than summarising a prefix.",
+      "upstreams": [
+        "ucsc_tracks"
+      ]
+    },
+    {
+      "name": "ucsc_list_tracks",
+      "description": "List data tracks available in a UCSC Genome Browser assembly (leaf tracks only — the queryable ones), optionally filtered.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "genome": {
+            "type": "string",
+            "description": "UCSC genome/db name — ``hg38`` (default), ``hg19``, ``mm39``, ``danRer11``, ... (~220 assemblies)."
+          },
+          "filter_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "case-insensitive substring matched against track name, short label and long label — e.g. ``phyloP``, ``TFBS``, ``ClinVar``. Omit to list everything (hg38 has ~24k leaf tracks; you almost always want a filter)."
+          },
+          "max_tracks": {
+            "type": "integer",
+            "description": "output row cap (default 200). ``n_total`` carries the full match count; ``tracks_truncated`` flags the cap.",
+            "default": 200
+          }
+        }
+      },
+      "returns": "Returns ``{genome, filter_text, n_total, tracks_truncated, tracks}`` sorted by track name; each row: ``{track, short_label, long_label, type (wig/bigWig/bed N/bigBed/factorSource/...), group, parent}``. Use the ``track`` value with ``ucsc_track_data``. Quirk: the first call per genome downloads the full ~17 MB listing and caches it for the process, so repeat filters are fast.",
+      "upstreams": [
+        "ucsc_tracks"
+      ]
+    },
+    {
+      "name": "ucsc_tfbs_clusters",
+      "description": "ENCODE transcription-factor binding site clusters overlapping a region (ChIP-seq peak clusters across hundreds of cell types) — which TFs bind where.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "chrom": {
+            "type": "string",
+            "description": "``chr``-prefixed chromosome (``chr7``)."
+          },
+          "start": {
+            "type": "integer",
+            "description": "region start, 0-based half-open (UCSC convention)."
+          },
+          "end": {
+            "type": "integer",
+            "description": "region end (exclusive)."
+          },
+          "genome": {
+            "type": "string",
+            "description": "``hg38`` (default; track ``encRegTfbsClustered``, ENCODE 3) or ``hg19`` (``wgEncodeRegTfbsClusteredV3``). Other assemblies have no ENCODE TFBS track and raise."
+          },
+          "max_rows": {
+            "type": "integer",
+            "description": "row cap (API ``maxItemsOutput``, default 1000); ``truncated`` reflects the API's own ``maxItemsLimit`` flag.",
+            "default": 1000
+          }
+        },
+        "required": [
+          "chrom",
+          "start",
+          "end"
+        ]
+      },
+      "returns": "Returns ``{genome, track, chrom, start, end, items_returned, truncated, n_factors, factors, clusters}`` — ``clusters`` sorted by (chromStart, name): ``{name (TF symbol, e.g. CTCF), chrom, chromStart, chromEnd, score (0-1000 cluster strength), sourceCount (number of supporting experiments)}``; ``factors`` is the distinct TF list. Score >= ~600 and high sourceCount ~ robust binding.",
+      "upstreams": [
+        "ucsc_tracks"
+      ]
+    },
+    {
+      "name": "ucsc_track_data",
+      "description": "Fetch raw rows of any UCSC Genome Browser track in a region — the generic escape hatch behind ``ucsc_conservation`` / ``ucsc_tfbs_clusters`` (gene tracks, ClinVar, GWAS catalog, CpG islands, repeats, ...).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "track": {
+            "type": "string",
+            "description": "UCSC track name as returned by ``ucsc_list_tracks`` (e.g. ``knownGene``, ``cpgIslandExt``, ``clinvarMain``)."
+          },
+          "chrom": {
+            "type": "string",
+            "description": "``chr``-prefixed chromosome name (``chr7``, ``chrX``) — UCSC requires the prefix, unlike Ensembl."
+          },
+          "start": {
+            "type": "integer",
+            "description": "region start, 0-based half-open (UCSC convention; an Ensembl 1-based start is ``start - 1`` here)."
+          },
+          "end": {
+            "type": "integer",
+            "description": "region end (exclusive)."
+          },
+          "genome": {
+            "type": "string",
+            "description": "UCSC genome/db name (default ``hg38``)."
+          },
+          "max_rows": {
+            "type": "integer",
+            "description": "row cap passed to the API as ``maxItemsOutput`` (default 1000). ``truncated`` reflects the API's own ``maxItemsLimit`` flag — no silent truncation.",
+            "default": 1000
+          }
+        },
+        "required": [
+          "track",
+          "chrom",
+          "start",
+          "end"
+        ]
+      },
+      "returns": "Returns ``{genome, track, chrom, start, end, track_type, items_returned, truncated, rows}`` — ``rows`` in upstream shape (BED-like tracks: ``{chrom, chromStart, chromEnd, name, score, ...}``; wiggle tracks: ``{start, end, value}``). Unknown tracks raise with the upstream \"can not find track\" message. Quirk: for some huge tracks the API caps output itself and points at ``dataDownloadUrl`` — that URL is echoed when present.",
+      "upstreams": [
+        "ucsc_tracks"
+      ]
+    }
+  ],
+  "upstreams": [
+    {
+      "package": "ensembl_rest",
+      "minIntervalSeconds": 0.34,
+      "requestsPerSecond": 2.941
+    },
+    {
+      "package": "ucsc_tracks",
+      "minIntervalSeconds": 0.5,
+      "requestsPerSecond": 2.0
+    }
+  ]
+}

@@ -41,6 +41,13 @@ export type McpLogger = (serverId: string, level: McpLogLevel, message: string) 
 export interface MCPServerManagerOptions {
   /** Absolute path of the managed interpreter (`science_mcp_python`). */
   python: string;
+  /**
+   * Directory the MCP assets are staged in — the parent of `bio-tools/`.
+   * Substituted for `${MCP_SERVERS_DIR}` in each server's launch command.
+   * Required for the bundled domain servers; omitting it makes them throw
+   * rather than hand OpenCode an unresolved path.
+   */
+  serversDir?: string;
   logger?: McpLogger;
   /** Emit `{env:NAME}` references for declared secrets in the MCP config. */
   secretPlaceholders?: boolean;
@@ -67,6 +74,7 @@ export class MCPServerManager {
   private readonly monitors = new Map<string, ReturnType<typeof setInterval>>();
 
   private readonly python: string;
+  private readonly serversDir?: string;
   private readonly logger?: McpLogger;
   private readonly placeholders: boolean;
   private readonly now: () => number;
@@ -77,6 +85,7 @@ export class MCPServerManager {
     options: MCPServerManagerOptions,
   ) {
     this.python = options.python;
+    this.serversDir = options.serversDir;
     this.logger = options.logger;
     this.placeholders = options.secretPlaceholders ?? false;
     this.now = options.now ?? (() => Date.now());
@@ -97,7 +106,10 @@ export class MCPServerManager {
   }
 
   private entry(config: MCPServerConfig, enabled: boolean): LocalMcpConfig {
-    return toMcpConfig(config, this.python, enabled, { placeholders: this.placeholders });
+    return toMcpConfig(config, this.python, enabled, {
+      placeholders: this.placeholders,
+      serversDir: this.serversDir,
+    });
   }
 
   /** Register the server enabled and wait until OpenCode reports it healthy. */

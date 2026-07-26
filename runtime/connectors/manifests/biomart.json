@@ -1,0 +1,38 @@
+{
+  "domain": "biomart",
+  "toolCount": 8,
+  "tools": [
+    {
+      "name": "batch_translate",
+      "description": "Translates multiple identifiers in a single batch operation."
+    },
+    {
+      "name": "get_data",
+      "description": "Queries Biomart for data using specified attributes and filters."
+    },
+    {
+      "name": "get_translation",
+      "description": "Translates a single identifier from one attribute type to another."
+    },
+    {
+      "name": "list_all_attributes",
+      "description": "Lists all available attributes for a given dataset with some filtering."
+    },
+    {
+      "name": "list_common_attributes",
+      "description": "Lists commonly used attributes available for a given dataset."
+    },
+    {
+      "name": "list_datasets",
+      "description": "Lists all available biomart datasets for a given mart."
+    },
+    {
+      "name": "list_filters",
+      "description": "Lists all available filters for a given dataset."
+    },
+    {
+      "name": "list_marts",
+      "description": "Lists all available Biomart marts (databases) from Ensembl."
+    }
+  ]
+}

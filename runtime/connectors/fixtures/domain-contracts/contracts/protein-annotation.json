@@ -1,0 +1,313 @@
+{
+  "domain": "protein-annotation",
+  "package": "mcp_protein_annotation",
+  "derivedFrom": "bio-tools/lib/mcp_protein_annotation/server.py",
+  "toolCount": 13,
+  "tools": [
+    {
+      "name": "get_domain_architecture",
+      "description": "Complete InterPro domain architecture for one or more UniProt proteins. For each UniProt accession (e.g. \"P04637\"), returns every matching InterPro entry — accession, name, type (family/domain/repeat/site), member-database signatures (Pfam, PANTHER, SMART, PROSITE, CDD, ...), and the entry's fragment coordinates on the protein. Pagination is followed to completion and verified against the API's count, so large multi-domain proteins are never silently truncated. Use this for the protein->domains direction (includes all Pfam domain annotations for a protein). For the entry->proteins direction use search_interpro_entries / get_pfam_family_proteins.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accessions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "accessions"
+        ]
+      },
+      "returns": "Returns {\"summaries\": {accession: {protein, protein_length, entry_count, entries: [...]}, ...}, \"stats\": {http_requests, bytes_downloaded}}. Absent location keys mean model=null, score=null, representative=false, fragment dc_status=\"CONTINUOUS\"."
+    },
+    {
+      "name": "get_interpro_entry",
+      "description": "Detail record for an InterPro entry (IPRxxxxxx) or Pfam family (PFxxxxx). The route is chosen by accession prefix, so this serves both InterPro entry detail and Pfam family detail. Returns a deterministic summary: accession, name, type, description, GO terms (sorted), member-database signatures, integrated/set relationships (e.g. a Pfam family's clan in \"set_info\"), and counters.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accession": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accession"
+        ]
+      }
+    },
+    {
+      "name": "get_pfam_clan",
+      "description": "Pfam clan detail including the complete sorted member-family list.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "clan_accession": {
+            "type": "string",
+            "description": "clan accession, e.g. \"CL0016\" (kinase clan)."
+          }
+        },
+        "required": [
+          "clan_accession"
+        ]
+      },
+      "returns": "Returns clan metadata plus \"members\" (every PF family in the clan) and \"member_count\"."
+    },
+    {
+      "name": "get_pfam_family_proteins",
+      "description": "Member proteins of a Pfam family (complete walk or count).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pfam_accession": {
+            "type": "string",
+            "description": "Pfam family accession, e.g. \"PF00069\"."
+          },
+          "reviewed_only": {
+            "type": "boolean",
+            "description": "restrict to reviewed (Swiss-Prot) proteins.",
+            "default": false
+          },
+          "tax_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "restrict to an NCBI taxon, e.g. 9606 for human."
+          },
+          "count_only": {
+            "type": "boolean",
+            "description": "return only the match count — REQUIRED for very large families (e.g. unfiltered PF00069 has hundreds of thousands of members); the full walk is paced at <=2 req/s.",
+            "default": false
+          }
+        },
+        "required": [
+          "pfam_accession"
+        ]
+      },
+      "returns": "Returns {\"count\": n, \"results\": [...]} (results empty when count_only)."
+    },
+    {
+      "name": "get_pfam_family_proteomes",
+      "description": "Proteomes containing members of a Pfam family.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pfam_accession": {
+            "type": "string",
+            "description": "Pfam family accession, e.g. \"PF00069\"."
+          },
+          "count_only": {
+            "type": "boolean",
+            "description": "default True — the upstream proteome route's cursor pagination is defective for deep walks (fleet-documented), so the count is the reliable product. Set False only for small families.",
+            "default": true
+          }
+        },
+        "required": [
+          "pfam_accession"
+        ]
+      },
+      "returns": "Returns {\"count\": n, \"results\": [...]}."
+    },
+    {
+      "name": "get_protein_atlas_gene",
+      "description": "Human Protein Atlas per-gene record (HPA release 25.1, pinned host).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "gene": {
+            "type": "string"
+          },
+          "full": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "gene"
+        ]
+      }
+    },
+    {
+      "name": "get_string_best_similarity_hits",
+      "description": "Best homology hit per input protein in a target species (STRING).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "gene symbols in the source species."
+          },
+          "species": {
+            "type": "integer",
+            "description": "source NCBI taxonomy ID (9606 = human).",
+            "default": 9606
+          },
+          "target_species": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "target NCBI taxonomy ID; None asks STRING for the best hit across all species in its homology data."
+          }
+        },
+        "required": [
+          "symbols"
+        ]
+      },
+      "returns": "Returns mapping info plus one best-hit record per query protein, sorted by query STRING ID."
+    },
+    {
+      "name": "get_string_network",
+      "description": "STRING protein-protein interaction network for a gene list (v12.0). Maps symbols to STRING IDs first (unmapped symbols are reported explicitly), then retrieves the interaction network at the stated confidence threshold.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "gene symbols, e.g. [\"TP53\", \"BRCA1\", \"EGFR\"]."
+          },
+          "species": {
+            "type": "integer",
+            "description": "NCBI taxonomy ID (9606 = human).",
+            "default": 9606
+          },
+          "required_score": {
+            "type": "integer",
+            "description": "minimum combined interaction score 0-1000 (400 = medium confidence, 700 = high, 900 = highest).",
+            "default": 700
+          }
+        },
+        "required": [
+          "symbols"
+        ]
+      },
+      "returns": "Returns structured JSON: \"nodes\" (per-input mapping + degree; isolated nodes visible), \"unmapped\", deterministically ordered \"edges\" ({a, b, score, evidence-by-channel}), \"summary\" (node/edge counts, score stats), and a \"provenance\" request log."
+    },
+    {
+      "name": "get_string_similarity_scores",
+      "description": "Smith-Waterman protein similarity bitscores among a gene set (STRING). Maps symbols to STRING IDs, then fetches STRING's all-vs-all homology bitscores within the set. \"pairs\" holds one record per reported unordered pair including self-scores; pairs absent from STRING's similarity data are not listed (sparse semantics — absence means no recorded similarity, not zero).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "species": {
+            "type": "integer",
+            "default": 9606
+          }
+        },
+        "required": [
+          "symbols"
+        ]
+      },
+      "returns": "Returns {\"species\", \"mapped\", \"unmapped\", \"pairs\": [{id_a, id_b, name_a, name_b, bitscore}, ...]}."
+    },
+    {
+      "name": "map_string_ids",
+      "description": "Map gene symbols/aliases to STRING protein identifiers (v12.0 pinned). Every input symbol is either mapped (best match, with preferred name and annotation) or listed in \"unmapped\" — the two always partition the input, so silent drops are impossible.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "gene symbols or aliases, e.g. [\"TP53\", \"PD-1\"]."
+          },
+          "species": {
+            "type": "integer",
+            "description": "NCBI taxonomy ID (9606 = human).",
+            "default": 9606
+          }
+        },
+        "required": [
+          "symbols"
+        ]
+      },
+      "returns": "Returns {\"string_version\", \"species\", \"mapped\": [{query, string_id, preferred_name, annotation, ...}], \"unmapped\": [symbol, ...]}."
+    },
+    {
+      "name": "search_interpro_entries",
+      "description": "Keyword search over InterPro or member-database entries (complete walk).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entry_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_db": {
+            "type": "string",
+            "default": "interpro"
+          },
+          "go_term": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "search_pfam_clans",
+      "description": "Keyword search over Pfam clans (InterPro 'sets', accessions CLxxxx).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "returns": "Returns {\"count\": n, \"results\": [{accession, name, ...}, ...]}; an empty upstream result (HTTP 204) yields count=0 with an empty list."
+    },
+    {
+      "name": "search_protein_atlas",
+      "description": "Column-selected bulk search over the Human Protein Atlas.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "free-text search (gene symbol, description keyword, ...)."
+          },
+          "columns": {
+            "type": "string",
+            "description": "comma-separated HPA search_download column codes. Common codes: g=Gene, gs=Gene synonym, eg=Ensembl, gd=Gene description, up=Uniprot, chr=Chromosome, chrp=Position, scl=Subcellular location, scml=Subcellular main location, ab=Antibody, pc=Protein class, pe=Evidence, di=Disease involvement.",
+            "default": "g,gs,eg,gd,up,chr,chrp,scl"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "returns": "Returns a list of row dicts keyed by the human-readable field names of the per-gene record."
+    }
+  ]
+}

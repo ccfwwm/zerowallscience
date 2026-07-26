@@ -1,21 +1,30 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   MCP_SERVER_CONFIGS,
+  MCP_SERVERS_DIR_TOKEN,
   getAllMCPServerIds,
   getMCPServerConfig,
-  pythonModule,
+  launcherArgs,
   resolveMcpCommand,
   secretPlaceholders,
   secretRequirements,
+  serverPackage,
   toMcpConfig,
   validateMCPServerConfig,
   type MCPServerConfig,
 } from "../../../packages/shared/src/mcp-config";
-import { DOMAIN_GROUPS } from "../../connectors/schema";
+import { DOMAIN_GROUPS, packageForDomain } from "../../connectors/schema";
+
+const here = dirname(fileURLToPath(import.meta.url));
+/** Where the assets live in the checked-out tree: the parent of `bio-tools/`. */
+const SERVERS_DIR = join(here, "..", "..", "connectors");
 
 describe("MCP server templates", () => {
   it("covers exactly the 23 registry domain groups", () => {
-    expect(MCP_SERVER_CONFIGS).toHaveLength(23);
+    expect(MCP_SERVER_CONFIGS).toHaveLength(DOMAIN_GROUPS.length);
     expect(getAllMCPServerIds().sort()).toEqual([...DOMAIN_GROUPS].sort());
   });
 
@@ -30,15 +39,38 @@ describe("MCP server templates", () => {
     }
   });
 
-  it("launches each domain as its python module", () => {
+  it("launches each domain through the documented launcher", () => {
     for (const config of MCP_SERVER_CONFIGS) {
       // `python`, not `python3`: resolved to the managed interpreter, which on
       // Windows is <env>\Scripts\python.exe.
       expect(config.command).toBe("python");
-      expect(config.args).toEqual(["-m", pythonModule(config.id)]);
+      expect(config.args).toEqual([
+        `${MCP_SERVERS_DIR_TOKEN}/bio-tools/run_server.py`,
+        packageForDomain(config.id as (typeof DOMAIN_GROUPS)[number]),
+      ]);
     }
-    expect(pythonModule("single-cell")).toBe("mcp_single_cell.server");
-    expect(pythonModule("clinical-trials")).toBe("mcp_clinical_trials.server");
+    expect(serverPackage("clinical-trials")).toBe("mcp_clinical_trials");
+    expect(launcherArgs("zinc")).toEqual([
+      "${MCP_SERVERS_DIR}/bio-tools/run_server.py",
+      "mcp_zinc",
+    ]);
+  });
+
+  it("never launches a domain as a python module", () => {
+    // `python -m <pkg>.server` cannot start these servers: no package defines
+    // __main__, `lib/` is not on sys.path, and the TLS posture step is skipped.
+    for (const config of MCP_SERVER_CONFIGS) {
+      expect(config.args, config.id).not.toContain("-m");
+    }
+  });
+
+  it("resolves to a launcher and a package that exist on disk", () => {
+    for (const config of MCP_SERVER_CONFIGS) {
+      const [, launcher, pkg] = resolveMcpCommand(config, "python", SERVERS_DIR);
+      expect(existsSync(launcher), launcher).toBe(true);
+      const server = join(SERVERS_DIR, "bio-tools", "lib", pkg, "server.py");
+      expect(existsSync(server), server).toBe(true);
+    }
   });
 
   it("declares a status health check and a restart policy", () => {
@@ -48,67 +80,95 @@ describe("MCP server templates", () => {
     }
   });
 
-  it("declares secret names only where a key is actually required", () => {
-    expect(getMCPServerConfig("literature")?.secrets).toContain("NCBI_API_KEY");
-    expect(getMCPServerConfig("drug-discovery")?.secrets).toContain("DRUGBANK_API_KEY");
-    // Open APIs must not invent credentials.
-    expect(getMCPServerConfig("clinical-trials")?.secrets).toEqual([]);
+  it("declares only the secret names the server code reads", () => {
+    // OpenAlex has no anonymous access; only `openalex_works` reads the key and
+    // only `mcp_literature` serves it.
+    expect(getMCPServerConfig("literature")?.secrets).toEqual(["OPENALEX_API_KEY"]);
+    // NCBI E-utilities: optional key, raises the rate limit.
+    expect(getMCPServerConfig("pubmed")?.secrets).toEqual(["NCBI_API_KEY"]);
+    expect(getMCPServerConfig("variants")?.secrets).toEqual(["NCBI_API_KEY"]);
+    // `geo_meta` reaches E-utilities but has no api_key plumbing.
+    expect(getMCPServerConfig("omics-archives")?.secrets).toEqual([]);
     expect(getMCPServerConfig("chemistry")?.secrets).toEqual([]);
+  });
+
+  it("declares no credential the servers never read", () => {
+    const declared = new Set(MCP_SERVER_CONFIGS.flatMap((c) => c.secrets ?? []));
+    expect([...declared].sort()).toEqual(["NCBI_API_KEY", "OPENALEX_API_KEY"]);
   });
 
   it("returns undefined for an unknown id", () => {
     expect(getMCPServerConfig("nope")).toBeUndefined();
+    // A slug from the old fabricated taxonomy must not resolve.
+    expect(getMCPServerConfig("drug-discovery")).toBeUndefined();
+    expect(getMCPServerConfig("genomics")).toBeUndefined();
   });
 });
 
 describe("resolveMcpCommand", () => {
-  it("substitutes the managed interpreter (unix)", () => {
-    expect(resolveMcpCommand(getMCPServerConfig("literature")!, "/env/bin/python")).toEqual([
-      "/env/bin/python",
-      "-m",
-      "mcp_literature.server",
+  it("substitutes the interpreter and the servers dir (unix)", () => {
+    expect(
+      resolveMcpCommand(getMCPServerConfig("literature")!, "/env/bin/python", "/opt/zw/mcp"),
+    ).toEqual(["/env/bin/python", "/opt/zw/mcp/bio-tools/run_server.py", "mcp_literature"]);
+  });
+
+  it("substitutes the interpreter and the servers dir (windows)", () => {
+    expect(
+      resolveMcpCommand(
+        getMCPServerConfig("pubmed")!,
+        "C:\\env\\Scripts\\python.exe",
+        "C:\\ProgramData\\zw\\mcp",
+      ),
+    ).toEqual([
+      "C:\\env\\Scripts\\python.exe",
+      "C:\\ProgramData\\zw\\mcp/bio-tools/run_server.py",
+      "mcp_pubmed",
     ]);
   });
 
-  it("substitutes the managed interpreter (windows)", () => {
-    expect(
-      resolveMcpCommand(getMCPServerConfig("genomics")!, "C:\\env\\Scripts\\python.exe"),
-    ).toEqual(["C:\\env\\Scripts\\python.exe", "-m", "mcp_genomics.server"]);
+  it("fails closed when the servers dir is missing", () => {
+    const config = getMCPServerConfig("zinc")!;
+    expect(() => resolveMcpCommand(config, "/env/bin/python")).toThrow(
+      /needs the servers directory/,
+    );
+    expect(() => resolveMcpCommand(config, "/env/bin/python", "   ")).toThrow(
+      /needs the servers directory/,
+    );
   });
 
-  it("leaves a non-python command untouched", () => {
+  it("leaves a command with no placeholder untouched", () => {
     const config: MCPServerConfig = { id: "x", name: "X", command: "node", args: ["s.js"] };
     expect(resolveMcpCommand(config, "/env/bin/python")).toEqual(["node", "s.js"]);
   });
 });
 
 describe("toMcpConfig", () => {
+  const opts = { serversDir: "/opt/zw/mcp" };
+
   it("produces an enabled local entry", () => {
-    expect(toMcpConfig(getMCPServerConfig("variants")!, "/env/bin/python")).toEqual({
+    expect(toMcpConfig(getMCPServerConfig("variants")!, "/env/bin/python", true, opts)).toEqual({
       type: "local",
-      command: ["/env/bin/python", "-m", "mcp_variants.server"],
+      command: ["/env/bin/python", "/opt/zw/mcp/bio-tools/run_server.py", "mcp_variants"],
       enabled: true,
     });
   });
 
   it("produces a disabled entry when stopping", () => {
-    expect(toMcpConfig(getMCPServerConfig("variants")!, "/p", false).enabled).toBe(false);
+    expect(toMcpConfig(getMCPServerConfig("variants")!, "/p", false, opts).enabled).toBe(false);
   });
 
   it("never serializes a secret name or value by default", () => {
-    const config = getMCPServerConfig("drug-discovery")!;
-    const entry = toMcpConfig(config, "/env/bin/python");
+    const entry = toMcpConfig(getMCPServerConfig("literature")!, "/env/bin/python", true, opts);
     expect(entry.environment).toBeUndefined();
-    expect(JSON.stringify(entry)).not.toContain("DRUGBANK_API_KEY");
+    expect(JSON.stringify(entry)).not.toContain("OPENALEX_API_KEY");
   });
 
   it("emits {env:NAME} placeholders on request — references, never values", () => {
-    const config = getMCPServerConfig("literature")!;
-    const entry = toMcpConfig(config, "/p", true, { placeholders: true });
-    expect(entry.environment).toEqual({
-      NCBI_API_KEY: "{env:NCBI_API_KEY}",
-      SEMANTIC_SCHOLAR_API_KEY: "{env:SEMANTIC_SCHOLAR_API_KEY}",
+    const entry = toMcpConfig(getMCPServerConfig("literature")!, "/p", true, {
+      ...opts,
+      placeholders: true,
     });
+    expect(entry.environment).toEqual({ OPENALEX_API_KEY: "{env:OPENALEX_API_KEY}" });
   });
 
   it("carries non-secret env through", () => {
@@ -116,7 +176,7 @@ describe("toMcpConfig", () => {
       id: "x",
       name: "X",
       command: "python",
-      args: ["-m", "x"],
+      args: ["x.py"],
       env: { MCP_LOG_LEVEL: "info" },
     };
     expect(toMcpConfig(config, "/p").environment).toEqual({ MCP_LOG_LEVEL: "info" });
@@ -126,14 +186,13 @@ describe("toMcpConfig", () => {
 describe("secret helpers", () => {
   it("maps secret names onto P1B connector keychain entries", () => {
     expect(secretRequirements(getMCPServerConfig("literature")!)).toEqual([
-      { connectorId: "literature", environment: "NCBI_API_KEY" },
-      { connectorId: "literature", environment: "SEMANTIC_SCHOLAR_API_KEY" },
+      { connectorId: "literature", environment: "OPENALEX_API_KEY" },
     ]);
   });
 
   it("is empty for keyless servers", () => {
-    expect(secretRequirements(getMCPServerConfig("proteomics")!)).toEqual([]);
-    expect(secretPlaceholders(getMCPServerConfig("proteomics")!)).toEqual({});
+    expect(secretRequirements(getMCPServerConfig("chembl")!)).toEqual([]);
+    expect(secretPlaceholders(getMCPServerConfig("chembl")!)).toEqual({});
   });
 });
 

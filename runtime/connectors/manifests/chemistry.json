@@ -3,52 +3,52 @@
   "toolCount": 12,
   "tools": [
     {
-      "name": "pubchem_search_compounds",
-      "description": "Resolve a chemical identifier to PubChem CIDs, optionally with core"
-    },
-    {
-      "name": "pubchem_get_compounds",
-      "description": "Full computed property records for a batch of PubChem CIDs, with"
-    },
-    {
-      "name": "pubchem_similarity_search",
-      "description": "2D Tanimoto similarity search over all of PubChem for a query SMILES"
-    },
-    {
-      "name": "pubchem_get_bioassay_summary",
-      "description": "Bioassay activity summary for one PubChem compound \u2014 which assays"
-    },
-    {
-      "name": "pubchem_get_safety",
-      "description": "GHS safety classification for one PubChem compound (PUG-View"
-    },
-    {
-      "name": "chebi_search",
-      "description": "Full-text search over ChEBI entities (names, synonyms, formulae,"
-    },
-    {
-      "name": "chebi_get_entity",
-      "description": "Full ChEBI entity record: names, structure, chemical data, roles and"
-    },
-    {
-      "name": "chebi_get_ontology",
-      "description": "Ontology relations of a ChEBI entity \u2014 what it IS (outgoing ``is a``"
-    },
-    {
-      "name": "rhea_search_reactions",
-      "description": "Search Rhea master reactions by equation text, participant ChEBI ID,"
-    },
-    {
-      "name": "rhea_get_reaction",
-      "description": "Full record for one Rhea reaction: equation, participants with ChEBI"
-    },
-    {
       "name": "bindingdb_ligands_by_target",
-      "description": "Measured binding affinities (Ki/Kd/IC50/EC50) of all BindingDB"
+      "description": "Measured binding affinities (Ki/Kd/IC50/EC50) of all BindingDB ligands against one protein target, by UniProt accession."
     },
     {
       "name": "bindingdb_targets_by_compound",
-      "description": "Bindingdb Targets By Compound"
+      "description": "Protein targets with measured affinities for compounds 2D-similar to a query SMILES — \"what does this molecule (or its close analogs) bind?\"."
+    },
+    {
+      "name": "chebi_get_entity",
+      "description": "Full ChEBI entity record: names, structure, chemical data, roles and cross-references."
+    },
+    {
+      "name": "chebi_get_ontology",
+      "description": "Ontology relations of a ChEBI entity — what it IS (outgoing ``is a`` parents, conjugate acids/bases, functional parents...) and what points AT it (incoming relations, i.e. its children/derivatives)."
+    },
+    {
+      "name": "chebi_search",
+      "description": "Full-text search over ChEBI entities (names, synonyms, formulae, InChIKeys)."
+    },
+    {
+      "name": "pubchem_get_bioassay_summary",
+      "description": "Bioassay activity summary for one PubChem compound — which assays tested it, against which targets, with what outcome and potency."
+    },
+    {
+      "name": "pubchem_get_compounds",
+      "description": "Full computed property records for a batch of PubChem CIDs, with optional capped synonym lists."
+    },
+    {
+      "name": "pubchem_get_safety",
+      "description": "GHS safety classification for one PubChem compound (PUG-View ``GHS Classification`` heading), aggregated across reporting sources."
+    },
+    {
+      "name": "pubchem_search_compounds",
+      "description": "Resolve a chemical identifier to PubChem CIDs, optionally with core computed properties for the top hits."
+    },
+    {
+      "name": "pubchem_similarity_search",
+      "description": "2D Tanimoto similarity search over all of PubChem for a query SMILES (synchronous ``fastsimilarity_2d`` route — no job polling)."
+    },
+    {
+      "name": "rhea_get_reaction",
+      "description": "Full record for one Rhea reaction: equation, participants with ChEBI IDs and stoichiometry, EC links, direction family and literature."
+    },
+    {
+      "name": "rhea_search_reactions",
+      "description": "Search Rhea master reactions by equation text, participant ChEBI ID, or EC number (query type auto-detected)."
     }
   ]
 }

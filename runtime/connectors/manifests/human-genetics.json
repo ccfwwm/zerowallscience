@@ -1,0 +1,62 @@
+{
+  "domain": "human-genetics",
+  "toolCount": 14,
+  "tools": [
+    {
+      "name": "eqtl_associations",
+      "description": "Molecular-QTL association rows from one eQTL Catalogue dataset, filtered by gene, variant or region."
+    },
+    {
+      "name": "eqtl_list_datasets",
+      "description": "List eQTL Catalogue datasets (one dataset = one study x tissue/cell type x quantification method)."
+    },
+    {
+      "name": "gwas_associations_for_gene",
+      "description": "GWAS Catalog associations whose variants are MAPPED to a gene (catalog's Ensembl pipeline mapping, not author-reported), most significant first."
+    },
+    {
+      "name": "gwas_associations_for_trait",
+      "description": "GWAS Catalog associations annotated to one EFO trait, most significant first."
+    },
+    {
+      "name": "gwas_associations_for_variant",
+      "description": "GWAS Catalog associations reported for one variant (rsID), most significant first."
+    },
+    {
+      "name": "gwas_get_study",
+      "description": "Fetch one GWAS Catalog study by its GCST accession."
+    },
+    {
+      "name": "gwas_get_variant",
+      "description": "Fetch one GWAS Catalog variant record (position, mapped genes, consequence) by rsID — lighter than pulling its associations."
+    },
+    {
+      "name": "gwas_search_studies",
+      "description": "Search GWAS Catalog studies by trait annotation or publication."
+    },
+    {
+      "name": "gwas_search_traits",
+      "description": "Search GWAS Catalog EFO trait annotations by label substring — the entry point for resolving a disease/phenotype name to the ontology ids that ``gwas_associations_for_trait`` / ``gwas_search_studies`` take."
+    },
+    {
+      "name": "phewas_finngen_gene",
+      "description": "Gene-level PheWAS from FinnGen R12: for every disease endpoint, the best-associated variant in the gene region, most significant first."
+    },
+    {
+      "name": "phewas_instances",
+      "description": "List the public PheWeb PheWAS portals this server can query, with genome build and capability registry."
+    },
+    {
+      "name": "phewas_list_phenotypes",
+      "description": "Complete phenotype (disease endpoint) catalogue of a PheWeb instance, with case/control counts."
+    },
+    {
+      "name": "phewas_search_phenotypes",
+      "description": "Search a PheWeb instance's phenotypes (and entities) by name — the entry point for resolving a disease name to a phenocode."
+    },
+    {
+      "name": "phewas_variant",
+      "description": "PheWAS for one variant: its association statistics against every phenotype in a biobank PheWeb portal, most significant first."
+    }
+  ]
+}

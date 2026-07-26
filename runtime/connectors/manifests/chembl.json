@@ -1,0 +1,30 @@
+{
+  "domain": "chembl",
+  "toolCount": 6,
+  "tools": [
+    {
+      "name": "compound_search",
+      "description": "Search for chemical compounds in ChEMBL database by name, ChEMBL ID, or molecular structure."
+    },
+    {
+      "name": "drug_search",
+      "description": "Search for approved drugs and clinical candidates by therapeutic indication."
+    },
+    {
+      "name": "get_admet",
+      "description": "Retrieve ADMET-related molecular properties for drug-likeness assessment."
+    },
+    {
+      "name": "get_bioactivity",
+      "description": "Retrieve bioactivity measurements (IC50, Ki, EC50, etc.) for compound-target interactions."
+    },
+    {
+      "name": "get_mechanism",
+      "description": "Retrieve mechanism of action (MoA) data for approved drugs and clinical candidates."
+    },
+    {
+      "name": "target_search",
+      "description": "Search for biological targets (proteins, enzymes, receptors, organisms) in ChEMBL database."
+    }
+  ]
+}

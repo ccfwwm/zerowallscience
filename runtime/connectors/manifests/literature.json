@@ -3,40 +3,40 @@
   "toolCount": 9,
   "tools": [
     {
-      "name": "openalex_search_works",
-      "description": "Search OpenAlex scholarly works (all disciplines, ~250M records)"
-    },
-    {
-      "name": "openalex_get_work",
-      "description": "Fetch one OpenAlex work in full \u2014 metadata, abstract (reconstructed"
-    },
-    {
-      "name": "openalex_citations",
-      "description": "List works that CITE a given work (incoming citations), via"
-    },
-    {
-      "name": "openalex_references",
-      "description": "List the works a given work CITES (outgoing references), hydrated"
-    },
-    {
-      "name": "openalex_search_authors",
-      "description": "Search OpenAlex author profiles by name"
-    },
-    {
-      "name": "openalex_get_author",
-      "description": "Fetch one OpenAlex author profile plus their top-cited works"
-    },
-    {
-      "name": "openalex_venue_info",
-      "description": "Openalex Venue Info"
+      "name": "arxiv_get_papers",
+      "description": "Batch-fetch arXiv paper metadata (incl. abstracts) by ID — one paced request for up to 100 papers."
     },
     {
       "name": "arxiv_search",
-      "description": "Search arXiv preprints (physics, math, CS, stats, q-bio, ...) via"
+      "description": "Search arXiv preprints (physics, math, CS, stats, q-bio, ...) via the official Atom API."
     },
     {
-      "name": "arxiv_get_papers",
-      "description": "Batch-fetch arXiv paper metadata (incl. abstracts) by ID \u2014 one"
+      "name": "openalex_citations",
+      "description": "List works that CITE a given work (incoming citations), via OpenAlex's citation graph."
+    },
+    {
+      "name": "openalex_get_author",
+      "description": "Fetch one OpenAlex author profile plus their top-cited works."
+    },
+    {
+      "name": "openalex_get_work",
+      "description": "Fetch one OpenAlex work in full — metadata, abstract (reconstructed from the inverted index), OA locations, and the complete outgoing reference ID list."
+    },
+    {
+      "name": "openalex_references",
+      "description": "List the works a given work CITES (outgoing references), hydrated to full metadata in reference-list order."
+    },
+    {
+      "name": "openalex_search_authors",
+      "description": "Search OpenAlex author profiles by name."
+    },
+    {
+      "name": "openalex_search_works",
+      "description": "Search OpenAlex scholarly works (all disciplines, ~250M records) with year/type/OA/venue filters."
+    },
+    {
+      "name": "openalex_venue_info",
+      "description": "Look up journals/repositories (\"sources\") in OpenAlex — OA status, DOAJ listing, APC, citation metrics."
     }
   ]
 }

@@ -1,0 +1,380 @@
+{
+  "domain": "chemistry",
+  "package": "mcp_chemistry",
+  "derivedFrom": "bio-tools/lib/mcp_chemistry/server.py",
+  "toolCount": 12,
+  "tools": [
+    {
+      "name": "bindingdb_ligands_by_target",
+      "description": "Measured binding affinities (Ki/Kd/IC50/EC50) of all BindingDB ligands against one protein target, by UniProt accession.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "uniprot": {
+            "type": "string",
+            "description": "UniProt accession of the target, e.g. ``P00533`` (EGFR)."
+          },
+          "affinity_cutoff_nm": {
+            "type": "integer",
+            "description": "only measurements with value <= this many nM (default 10000 = 10 uM). Tighten (e.g. 100) to get only potent binders — hot targets have tens of thousands of rows at 10 uM.",
+            "default": 10000
+          },
+          "max_rows": {
+            "type": "integer",
+            "description": "cap on returned rows (1-1000, default 100). The full match set is downloaded and counted, so ``n_rows_total`` is the true count and ``truncated`` flags the cap. Rows are sorted by (affinity_type, numeric affinity ascending) — most potent first within each measurement type.",
+            "default": 100
+          }
+        },
+        "required": [
+          "uniprot"
+        ]
+      },
+      "returns": "Returns ``{uniprot, affinity_cutoff_nm, n_rows_total, truncated, rows}``; each row: ``{target_name, monomer_id (BindingDB ligand ID), smiles, affinity_type (Ki/Kd/IC50/EC50), affinity (STRING, may carry ``>``/``<`` qualifiers, in nM), pmid, doi}``. No hits returns n_rows_total=0 (not an error).",
+      "upstreams": [
+        "bindingdb_affinities"
+      ]
+    },
+    {
+      "name": "bindingdb_targets_by_compound",
+      "description": "Protein targets with measured affinities for compounds 2D-similar to a query SMILES — \"what does this molecule (or its close analogs) bind?\".",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "smiles": {
+            "type": "string",
+            "description": "query structure as SMILES, e.g. ``CC(=O)OC1=CC=CC=C1C(=O)O`` (aspirin)."
+          },
+          "similarity": {
+            "type": "number",
+            "description": "minimum 2D Tanimoto similarity (0.5-1.0, default 0.85; 1.0 = this exact structure only).",
+            "default": 0.85
+          },
+          "max_rows": {
+            "type": "integer",
+            "description": "cap on returned rows (1-1000, default 100). The full row set is downloaded, so ``n_rows_total`` is the true row count and ``truncated`` flags the cap. ``api_hit_count`` is the upstream's own matching-compound count — rows are per-measurement (several Ki/Kd/IC50 rows per compound), so it is not row-for-row comparable with ``n_rows_total``. Rows sorted by (target_name, affinity_type, numeric affinity).",
+            "default": 100
+          }
+        },
+        "required": [
+          "smiles"
+        ]
+      },
+      "returns": "Returns ``{smiles, similarity, api_hit_count, n_rows_total, truncated, rows}``; each row: ``{monomer_id, smiles (the matched analog), ligand_name, target_name, species, affinity_type, affinity (STRING, may carry ``>``/``<`` qualifiers, in nM), tanimoto}``. No hits returns n_rows_total=0 (not an error).",
+      "upstreams": [
+        "bindingdb_affinities"
+      ]
+    },
+    {
+      "name": "chebi_get_entity",
+      "description": "Full ChEBI entity record: names, structure, chemical data, roles and cross-references.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "chebi_id": {
+            "type": "string",
+            "description": "ChEBI identifier — ``CHEBI:27732`` or bare ``27732``. Secondary (merged) IDs resolve to the primary record."
+          },
+          "max_synonyms": {
+            "type": "integer",
+            "description": "cap on returned synonyms (default 30); ``n_synonyms_total`` keeps the true count.",
+            "default": 30
+          },
+          "max_xrefs": {
+            "type": "integer",
+            "description": "cap on returned cross-references (default 50; citations and registry numbers can run to hundreds); ``n_xrefs_total`` keeps the true count.",
+            "default": 50
+          }
+        },
+        "required": [
+          "chebi_id"
+        ]
+      },
+      "returns": "Returns ``{chebi_accession, name, definition, stars, formula, charge, mass, monoisotopic_mass, smiles, inchi, inchikey, iupac_names, synonyms, n_synonyms_total, synonyms_truncated, secondary_ids, xrefs (type/accession/source/url), n_xrefs_total, xrefs_truncated, roles (ChEBI role classification, e.g. \"central nervous system stimulant\"), modified_on, is_released}``. Ontology parents/children are NOT here — use ``chebi_get_ontology``. Unknown IDs raise a not-found error.",
+      "upstreams": [
+        "chebi_ontology"
+      ]
+    },
+    {
+      "name": "chebi_get_ontology",
+      "description": "Ontology relations of a ChEBI entity — what it IS (outgoing ``is a`` parents, conjugate acids/bases, functional parents...) and what points AT it (incoming relations, i.e. its children/derivatives).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "chebi_id": {
+            "type": "string",
+            "description": "ChEBI identifier — ``CHEBI:27732`` or bare ``27732``."
+          },
+          "relation_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "optional exact filter, e.g. ``is a``, ``has part``, ``has role``, ``is conjugate acid of``, ``is conjugate base of``, ``has functional parent``, ``is tautomer of``, ``is enantiomer of``. Default: all types."
+          },
+          "max_relations": {
+            "type": "integer",
+            "description": "per-direction cap (default 100; hub entities like water have thousands of incoming ``has part`` relations). ``n_*_total`` keep true counts; ``*_truncated`` flag caps.",
+            "default": 100
+          }
+        },
+        "required": [
+          "chebi_id"
+        ]
+      },
+      "returns": "Returns ``{chebi_accession, name, relation_type_filter, outgoing_relations, n_outgoing_total, outgoing_truncated, incoming_relations, n_incoming_total, incoming_truncated}``. Each relation: ``{relation_type, init_chebi_id, init_name, final_chebi_id, final_name}`` read as \"init --relation--> final\"; for outgoing rows init is this entity, for incoming rows final is this entity.",
+      "upstreams": [
+        "chebi_ontology"
+      ]
+    },
+    {
+      "name": "chebi_search",
+      "description": "Full-text search over ChEBI entities (names, synonyms, formulae, InChIKeys).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "term": {
+            "type": "string",
+            "description": "search text, e.g. ``caffeine``, ``C8H10N4O2`` or an InChIKey."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "page size (1-100, default 20).",
+            "default": 20
+          },
+          "page": {
+            "type": "integer",
+            "description": "1-based page number for walking further hits.",
+            "default": 1
+          }
+        },
+        "required": [
+          "term"
+        ]
+      },
+      "returns": "Returns ``{term, page, size, api_total, number_pages, results}`` — ``api_total`` is ChEBI's own total hit count (results beyond this page exist iff ``api_total > page*size``). Each result: chebi_accession, name, definition, stars (3 = manually curated), formula, charge, mass, monoisotopic_mass, smiles, inchikey, relevance score.",
+      "upstreams": [
+        "chebi_ontology"
+      ]
+    },
+    {
+      "name": "pubchem_get_bioassay_summary",
+      "description": "Bioassay activity summary for one PubChem compound — which assays tested it, against which targets, with what outcome and potency.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cid": {
+            "type": "integer",
+            "description": "PubChem CID, e.g. ``2244`` (aspirin)."
+          },
+          "active_only": {
+            "type": "boolean",
+            "description": "keep only rows with Activity Outcome == ``Active`` (default False). Filtering happens BEFORE the cap, so ``n_rows_total`` is the true count of (filtered) rows.",
+            "default": false
+          },
+          "max_rows": {
+            "type": "integer",
+            "description": "cap on returned rows (1-1000, default 100). Heavily assayed compounds have tens of thousands of rows; ``truncated`` + ``n_rows_total`` make the cap explicit.",
+            "default": 100
+          }
+        },
+        "required": [
+          "cid"
+        ]
+      },
+      "returns": "Returns ``{cid, active_only, n_rows_total, truncated, rows}``; each row maps the upstream columns: AID, SID, CID, Activity Outcome (Active/Inactive/Unspecified/Inconclusive), Target Accession (protein), Target GeneID, Activity Value [uM], Activity Name (IC50/Ki/...), Assay Name, Assay Type, PubMed ID. ``rows`` is [] for compounds with no assay data (not an error).",
+      "upstreams": [
+        "pubchem_compounds"
+      ]
+    },
+    {
+      "name": "pubchem_get_compounds",
+      "description": "Full computed property records for a batch of PubChem CIDs, with optional capped synonym lists.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "PubChem compound IDs (1-50 per call), e.g. ``[2244, 2519]``."
+          },
+          "include_synonyms": {
+            "type": "boolean",
+            "description": "also fetch synonyms in one extra request (default False — synonym lists are long).",
+            "default": false
+          },
+          "max_synonyms": {
+            "type": "integer",
+            "description": "per-CID cap on returned synonyms (default 30). ``n_synonyms_total`` per record keeps the true count.",
+            "default": 30
+          }
+        },
+        "required": [
+          "cids"
+        ]
+      },
+      "returns": "Returns ``{n_requested, duplicates, records, not_found}``; ``duplicates`` lists CIDs passed more than once (collapsed to one record each, first-occurrence order — arXiv ``get_papers`` precedent). Each record carries CID, MolecularFormula, MolecularWeight, SMILES (isomeric), ConnectivitySMILES, InChI, InChIKey, IUPACName, XLogP, ExactMass, TPSA, Charge, HBondDonorCount, HBondAcceptorCount, RotatableBondCount, HeavyAtomCount — plus ``synonyms``/``n_synonyms_total``/ ``synonyms_truncated`` when requested. CIDs the API doesn't know are listed in ``not_found``.",
+      "upstreams": [
+        "pubchem_compounds"
+      ]
+    },
+    {
+      "name": "pubchem_get_safety",
+      "description": "GHS safety classification for one PubChem compound (PUG-View ``GHS Classification`` heading), aggregated across reporting sources.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cid": {
+            "type": "integer",
+            "description": "PubChem CID, e.g. ``702`` (ethanol)."
+          }
+        },
+        "required": [
+          "cid"
+        ]
+      },
+      "returns": "Returns ``{cid, found, ghs}``. ``ghs`` is null when PubChem has no GHS section for the compound; otherwise ``{cid, record_title, signals (e.g. [\"Danger\"]), pictograms (e.g. [\"Flammable\", \"Irritant\"]), hazard_statements (H-codes with occurrence percentages, e.g. \"H302 (95.6%): Harmful if swallowed [...]\"), precautionary_statement_codes, notes, n_source_references}``. Aggregated = union across all SDS sources PubChem indexes; percentages in the statement text show how many sources report each hazard.",
+      "upstreams": [
+        "pubchem_compounds"
+      ]
+    },
+    {
+      "name": "pubchem_search_compounds",
+      "description": "Resolve a chemical identifier to PubChem CIDs, optionally with core computed properties for the top hits.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "the identifier — a chemical name (``aspirin``, ``acetylsalicylic acid``), SMILES (``CC(=O)OC1=CC=CC=C1C(=O)O``) or InChIKey (``BSYNRYMUTXBXSQ-UHFFFAOYSA-N``), matching ``namespace``. Names match PubChem's full synonym index (brand names, CAS numbers like ``50-78-2`` work too)."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "one of ``name`` (default), ``smiles``, ``inchikey``, ``cid``.",
+            "default": "name"
+          },
+          "max_cids": {
+            "type": "integer",
+            "description": "cap on returned CIDs (1-100, default 25). ``n_cids_total`` always carries the full match count and ``truncated`` flags a capped list.",
+            "default": 25
+          },
+          "with_properties": {
+            "type": "boolean",
+            "description": "also fetch properties (formula, weight, SMILES, InChIKey, IUPAC name, XLogP, TPSA, H-bond counts...) for the returned CIDs in one extra request (default True).",
+            "default": true
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "returns": "Returns ``{query, namespace, n_cids_total, truncated, cids, properties}``; ``cids`` is [] when nothing matches (not an error). ``properties`` rows use PubChem's 2025 field names: ``SMILES`` is the full isomeric SMILES, ``ConnectivitySMILES`` the stereo-stripped one.",
+      "upstreams": [
+        "pubchem_compounds"
+      ]
+    },
+    {
+      "name": "pubchem_similarity_search",
+      "description": "2D Tanimoto similarity search over all of PubChem for a query SMILES (synchronous ``fastsimilarity_2d`` route — no job polling).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "smiles": {
+            "type": "string",
+            "description": "query structure as SMILES, e.g. ``CC(=O)OC1=CC=CC=C1C(=O)O``."
+          },
+          "threshold": {
+            "type": "integer",
+            "description": "minimum Tanimoto similarity in percent (1-100, default 90). Lower values match more, and 2D similarity is permissive — below ~85 expect very loose analogs.",
+            "default": 90
+          },
+          "max_records": {
+            "type": "integer",
+            "description": "upstream cap on hits (1-200, default 50). The API does not report the uncapped total, so ``may_be_truncated`` is true exactly when the cap was filled.",
+            "default": 50
+          },
+          "with_properties": {
+            "type": "boolean",
+            "description": "also fetch core properties for the first 10 hits.",
+            "default": false
+          }
+        },
+        "required": [
+          "smiles"
+        ]
+      },
+      "returns": "Returns ``{smiles, threshold, n_cids, may_be_truncated, cids, properties}`` — CIDs in upstream (relevance) order; the query compound itself is usually the first hit.",
+      "upstreams": [
+        "pubchem_compounds"
+      ]
+    },
+    {
+      "name": "rhea_get_reaction",
+      "description": "Full record for one Rhea reaction: equation, participants with ChEBI IDs and stoichiometry, EC links, direction family and literature.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rhea_id": {
+            "type": "string",
+            "description": "Rhea accession — ``RHEA:10280`` or bare ``10280``. Master (undirected) IDs carry the full participant breakdown; the related directional IDs are listed in the output. Unknown IDs raise a not-found error."
+          }
+        },
+        "required": [
+          "rhea_id"
+        ]
+      },
+      "returns": "Returns ``{rhea_id, equation, status, is_transport, is_chemically_balanced, ec_numbers (e.g. [\"2.1.1.160\"]), pubmed_ids, directional_reactions (the two left-to-right / right-to-left RHEA IDs), bidirectional_reaction, left_side, right_side}``. Each side lists participants ``{compound_accession (e.g. \"CHEBI:27732\", or \"POLYMER:...\"/\"GENERIC:...\" for non-small-molecule participants), name, coefficient (\"1\", \"2\", ... or symbolic \"N\"/\"2n\" for polymeric stoichiometry)}``. Sides follow the equation's left/right as written; master reactions are undirected — check ``directional_reactions`` for the physiological direction entries.",
+      "upstreams": [
+        "rhea_reactions"
+      ]
+    },
+    {
+      "name": "rhea_search_reactions",
+      "description": "Search Rhea master reactions by equation text, participant ChEBI ID, or EC number (query type auto-detected).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "one of — a ChEBI ID (``CHEBI:27732`` / ``27732``) to find reactions with that participant (small molecules, reactive parts of generic compounds, and polymer underlying ChEBIs all match); a full EC number (``2.1.1.160``, partial ECs like ``2.1.1.-`` are rejected) for enzyme-linked reactions; anything else is a case-insensitive substring match on the chemical equation text (e.g. ``caffeine``, ``S-adenosyl-L-methionine``)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "row cap (1-500, default 50). ``api_total`` (a companion COUNT query) always carries the true match count and ``truncated`` flags a capped list.",
+            "default": 50
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "returns": "Returns ``{query, query_type (chebi|ec|text), api_total, n_returned, truncated, reactions}``; each reaction: ``{rhea_id (master accession, e.g. \"RHEA:10280\"), equation, status (Approved/Preliminary/Obsolete)}``, ordered by rhea_id. Feed rhea_id into ``rhea_get_reaction`` for participants/EC/citations.",
+      "upstreams": [
+        "rhea_reactions"
+      ]
+    }
+  ],
+  "upstreams": [
+    {
+      "package": "bindingdb_affinities",
+      "minIntervalSeconds": 0.6,
+      "requestsPerSecond": 1.667
+    },
+    {
+      "package": "chebi_ontology",
+      "minIntervalSeconds": 0.55,
+      "requestsPerSecond": 1.818
+    },
+    {
+      "package": "pubchem_compounds",
+      "minIntervalSeconds": 0.5,
+      "requestsPerSecond": 2.0
+    },
+    {
+      "package": "rhea_reactions",
+      "minIntervalSeconds": 0.6,
+      "requestsPerSecond": 1.667
+    }
+  ]
+}

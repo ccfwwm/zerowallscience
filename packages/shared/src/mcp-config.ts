@@ -15,7 +15,9 @@ export interface MCPServerConfig {
   /** Executable. `"python"` is a placeholder resolved to the managed
    *  interpreter of the shared science-MCP env (Windows: `Scripts/python.exe`). */
   command: string;
-  /** Arguments, e.g. `["-m", "mcp_literature.server"]`. */
+  /** Arguments. `${MCP_SERVERS_DIR}` is a placeholder resolved to the staged
+   *  assets directory, e.g.
+   *  `["${MCP_SERVERS_DIR}/bio-tools/run_server.py", "mcp_literature"]`. */
   args?: string[];
   /** Non-secret environment variables. Must never carry credentials. */
   env?: Record<string, string>;
@@ -80,9 +82,29 @@ export const MCP_DEFAULTS = {
   restartPolicy: "on-failure" as const,
 };
 
-/** Python module for a domain id: `variants` → `mcp_variants.server`. */
-export function pythonModule(id: string): string {
-  return `mcp_${id.replace(/-/g, "_")}.server`;
+/**
+ * Placeholder for the directory the MCP assets are staged in.
+ *
+ * `bio-tools/run_server.py` documents this exact token as the launch form, so it
+ * is resolved here rather than reinvented: `resolveMcpCommand` substitutes it,
+ * symmetrically with the `"python"` command placeholder.
+ */
+export const MCP_SERVERS_DIR_TOKEN = "${MCP_SERVERS_DIR}";
+
+/** Python package for a domain id: `clinical-trials` → `mcp_clinical_trials`. */
+export function serverPackage(id: string): string {
+  return `mcp_${id.replace(/-/g, "_")}`;
+}
+
+/**
+ * Launcher arguments for a domain id.
+ *
+ * `run_server.py <pkg>` — not `-m <pkg>.server`: no domain package defines
+ * `__main__`, that form needs `bio-tools/lib/` already on `sys.path`, and it
+ * skips the launcher's `tls_policy.apply_posture()` step.
+ */
+export function launcherArgs(id: string): string[] {
+  return [`${MCP_SERVERS_DIR_TOKEN}/bio-tools/run_server.py`, serverPackage(id)];
 }
 
 function server(
@@ -94,7 +116,7 @@ function server(
     id,
     name,
     command: "python",
-    args: ["-m", pythonModule(id)],
+    args: launcherArgs(id),
     secrets,
     healthCheck: "status",
     restartPolicy: "on-failure",
@@ -102,34 +124,53 @@ function server(
 }
 
 /**
- * The 23 life-science domain servers. Secret names are only listed where the
- * upstream API actually requires (or rate-limit-rewards) a key; the rest are
- * open APIs and declare none.
+ * The 23 life-science domain servers — the keys of
+ * `runtime/connectors/bio-tools/lib/mcp_bio/domains.json`, in that file's order.
+ * A slug with no `lib/mcp_<slug>/server.py` beside it is a server that cannot
+ * start, so this list is not a taxonomy to edit by hand.
+ *
+ * Secret names come from what the server code actually reads (grepped across all
+ * 23 packages), not from what an upstream API offers:
+ *
+ * - `OPENALEX_API_KEY` — required. `mcp_servers_common.ua.require_openalex_key()`
+ *   raises without it; OpenAlex has no anonymous access. Read only by
+ *   `openalex_works`, which only `mcp_literature` serves.
+ * - `NCBI_API_KEY` — optional, raises the E-utilities rate limit. Read by the
+ *   `clinvar_records` / `dbsnp_records` helpers (`mcp_variants`) and the
+ *   `pubmed_*` / `ncbi_elink` helpers (`mcp_pubmed`). `geo_meta`
+ *   (`mcp_omics_archives`) reaches E-utilities too but has no `api_key`
+ *   plumbing, so it declares none.
+ *
+ * Not declared here, deliberately: `OPERON_CONTACT_EMAIL` / `NCBI_EMAIL` is
+ * user PII gated on consent rather than a credential (NCBI mandates a contact
+ * address, so `mcp_variants` and `mcp_pubmed` tools raise `contact_email_required`
+ * until the consent surface exists), and `OPERON_VERSION` / `OPERON_INSTALL_ID`
+ * are non-secret user-agent values.
  */
 export const MCP_SERVER_CONFIGS: MCPServerConfig[] = [
-  server("literature", "Literature", ["NCBI_API_KEY", "SEMANTIC_SCHOLAR_API_KEY"]),
-  server("clinical-trials", "Clinical Trials"),
-  server("genomics", "Genomics", ["NCBI_API_KEY"]),
-  server("variants", "Genetic Variants", ["NCBI_API_KEY"]),
-  server("gene-expression", "Gene Expression", ["NCBI_API_KEY"]),
-  server("proteomics", "Proteomics"),
-  server("protein-structure", "Protein Structure"),
-  server("protein-interactions", "Protein Interactions", ["BIOGRID_ACCESS_KEY"]),
+  server("biomart", "BioMart"),
+  server("biorxiv", "bioRxiv"),
+  server("cancer-models", "Cancer Models"),
+  server("cellguide", "CellGuide"),
+  server("chembl", "ChEMBL"),
   server("chemistry", "Chemistry"),
-  server("drug-discovery", "Drug Discovery", ["DRUGBANK_API_KEY"]),
-  server("metabolomics", "Metabolomics"),
-  server("transcriptomics", "Transcriptomics", ["NCBI_API_KEY"]),
-  server("single-cell", "Single Cell"),
-  server("imaging", "Imaging"),
-  server("pathways", "Pathways"),
-  server("ontology", "Ontology", ["BIOPORTAL_API_KEY"]),
-  server("taxonomy", "Taxonomy", ["NCBI_API_KEY"]),
-  server("epidemiology", "Epidemiology"),
-  server("regulatory", "Regulatory", ["OPENFDA_API_KEY"]),
-  server("biobanks", "Biobanks"),
-  server("cell-lines", "Cell Lines"),
-  server("antibodies", "Antibodies"),
-  server("assays", "Assays"),
+  server("clinical-genomics", "Clinical Genomics"),
+  server("clinical-trials", "Clinical Trials"),
+  server("drug-regulatory", "Drug Regulatory"),
+  server("expression", "Expression"),
+  server("genes-ontologies", "Genes and Ontologies"),
+  server("genomes", "Genomes"),
+  server("human-genetics", "Human Genetics"),
+  server("literature", "Literature", ["OPENALEX_API_KEY"]),
+  server("omics-archives", "Omics Archives"),
+  server("protein-annotation", "Protein Annotation"),
+  server("pubmed", "PubMed", ["NCBI_API_KEY"]),
+  server("regulation", "Regulation"),
+  server("research-resources", "Research Resources"),
+  server("rna", "RNA"),
+  server("structures-interactions", "Structures and Interactions"),
+  server("variants", "Variants", ["NCBI_API_KEY"]),
+  server("zinc", "ZINC"),
 ];
 
 export function getMCPServerConfig(id: string): MCPServerConfig | undefined {
@@ -140,11 +181,35 @@ export function getAllMCPServerIds(): string[] {
   return MCP_SERVER_CONFIGS.map((c) => c.id);
 }
 
-/** Resolve a launch command. `"python"` becomes the managed interpreter so the
- *  user's own Python is never used (Windows path form is preserved as given). */
-export function resolveMcpCommand(config: MCPServerConfig, python: string): string[] {
+/**
+ * Resolve a launch command.
+ *
+ * Two placeholders are substituted: `"python"` becomes the managed interpreter
+ * so the user's own Python is never used, and `${MCP_SERVERS_DIR}` becomes
+ * `serversDir` (the staged assets directory). Both path forms are passed through
+ * as given, so a Windows path stays a Windows path.
+ *
+ * Throws when an argument carries the token and no `serversDir` was supplied:
+ * handing OpenCode a half-resolved path would spawn a server that fails at
+ * launch with a confusing "no such file" instead of failing here.
+ */
+export function resolveMcpCommand(
+  config: MCPServerConfig,
+  python: string,
+  serversDir?: string,
+): string[] {
   const exe = config.command === "python" ? python : config.command;
-  return [exe, ...(config.args ?? [])];
+  const args = (config.args ?? []).map((arg) => {
+    if (!arg.includes(MCP_SERVERS_DIR_TOKEN)) return arg;
+    if (serversDir === undefined || serversDir.trim() === "") {
+      throw new Error(
+        `MCP server "${config.id}" needs the servers directory: ` +
+          `"${arg}" contains ${MCP_SERVERS_DIR_TOKEN} but no serversDir was given`,
+      );
+    }
+    return arg.split(MCP_SERVERS_DIR_TOKEN).join(serversDir);
+  });
+  return [exe, ...args];
 }
 
 /** `{env:NAME}` references for a server's secrets — placeholders, never values.
@@ -161,17 +226,18 @@ export function secretPlaceholders(config: MCPServerConfig): Record<string, stri
  * the keychain only. Rust injects them into the sidecar environment
  * (`secret_store::sidecar_environment`) and the MCP child — spawned by the
  * sidecar — inherits them. Pass `placeholders` to additionally emit `{env:NAME}`
- * references for servers that need them declared explicitly.
+ * references for servers that need them declared explicitly, and `serversDir` to
+ * resolve the `${MCP_SERVERS_DIR}` token in the launch command.
  */
 export function toMcpConfig(
   config: MCPServerConfig,
   python: string,
   enabled = true,
-  options: { placeholders?: boolean } = {},
+  options: { placeholders?: boolean; serversDir?: string } = {},
 ): LocalMcpConfig {
   const entry: LocalMcpConfig = {
     type: "local",
-    command: resolveMcpCommand(config, python),
+    command: resolveMcpCommand(config, python, options.serversDir),
     enabled,
   };
   const environment = {

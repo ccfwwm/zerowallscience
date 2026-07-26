@@ -36,11 +36,19 @@ class FakeRuntime implements McpRuntime {
 }
 
 const PYTHON = "C:\\env\\Scripts\\python.exe";
+/** Where the MCP assets are staged — the parent of `bio-tools/`. */
+const SERVERS_DIR = "C:\\ProgramData\\zerowall\\mcp";
+
+/** The command the manager must hand OpenCode for a domain server. */
+function launch(pkg: string): string[] {
+  return [PYTHON, `${SERVERS_DIR}/bio-tools/run_server.py`, pkg];
+}
 
 function makeManager(runtime: McpRuntime, overrides: Record<string, unknown> = {}) {
   const logs: Array<{ id: string; level: string; message: string }> = [];
   const manager = new MCPServerManager(runtime, {
     python: PYTHON,
+    serversDir: SERVERS_DIR,
     logger: (id, level, message) => logs.push({ id, level, message }),
     // No real waiting: the retry loop yields instead of sleeping.
     sleep: async () => {},
@@ -50,6 +58,7 @@ function makeManager(runtime: McpRuntime, overrides: Record<string, unknown> = {
 }
 
 let runtime: FakeRuntime;
+/** The one domain that requires a credential (OPENALEX_API_KEY). */
 let literature: MCPServerConfig;
 
 beforeEach(() => {
@@ -64,7 +73,7 @@ describe("startMCPServer", () => {
 
     expect(runtime.registered.get("literature")).toEqual({
       type: "local",
-      command: [PYTHON, "-m", "mcp_literature.server"],
+      command: launch("mcp_literature"),
       enabled: true,
     });
     expect(manager.getServerStatus("literature")).toMatchObject({
@@ -81,6 +90,17 @@ describe("startMCPServer", () => {
     await expect(manager.startMCPServer(literature)).rejects.toThrow(
       "MCP server literature is already running",
     );
+  });
+
+  it("fails closed when no servers dir was configured", async () => {
+    // Better to refuse here than to hand OpenCode a path still carrying
+    // `${MCP_SERVERS_DIR}`, which would fail later as "no such file".
+    const { manager } = makeManager(runtime, { serversDir: undefined });
+    await expect(manager.startMCPServer(literature)).rejects.toThrow(
+      /needs the servers directory/,
+    );
+    expect(runtime.registered.size).toBe(0);
+    expect(manager.getServerStatus("literature")?.state).toBe("failed");
   });
 
   it("fails fast when the runtime reports a terminal failure", async () => {
@@ -116,23 +136,32 @@ describe("startMCPServer", () => {
 
     const text = logs.map((l) => l.message).join("\n");
     expect(text).toMatch(/secrets present|no secrets required/);
-    expect(text).not.toContain("NCBI_API_KEY");
-    expect(text).not.toContain("SEMANTIC_SCHOLAR_API_KEY");
+    expect(text).not.toContain("OPENALEX_API_KEY");
   });
 
-  it("never writes a secret value into the MCP config", async () => {
+  it("never writes a secret name or value into the MCP config", async () => {
     const { manager } = makeManager(runtime);
     await manager.startMCPServer(literature);
     const serialized = JSON.stringify([...runtime.registered.values()]);
-    expect(serialized).not.toContain("NCBI_API_KEY");
+    expect(serialized).not.toContain("OPENALEX_API_KEY");
   });
 
   it("emits {env:NAME} references when placeholders are enabled", async () => {
     const { manager } = makeManager(runtime, { secretPlaceholders: true });
     await manager.startMCPServer(literature);
     expect(runtime.registered.get("literature")?.environment).toEqual({
-      NCBI_API_KEY: "{env:NCBI_API_KEY}",
-      SEMANTIC_SCHOLAR_API_KEY: "{env:SEMANTIC_SCHOLAR_API_KEY}",
+      OPENALEX_API_KEY: "{env:OPENALEX_API_KEY}",
+    });
+  });
+
+  it("declares no environment for a keyless domain", async () => {
+    const { manager } = makeManager(runtime, { secretPlaceholders: true });
+    const chembl = { ...getMCPServerConfig("chembl")!, startupTimeout: 1_000 };
+    await manager.startMCPServer(chembl);
+    expect(runtime.registered.get("chembl")).toEqual({
+      type: "local",
+      command: launch("mcp_chembl"),
+      enabled: true,
     });
   });
 });
@@ -304,38 +333,43 @@ describe("health monitor and restart policy", () => {
 });
 
 describe("fleet operations", () => {
+  /** A second domain, launched from its own package. */
+  const second = () => ({ ...getMCPServerConfig("variants")!, startupTimeout: 1_000 });
+
   it("tracks several servers independently", async () => {
     const { manager } = makeManager(runtime);
-    const genomics = { ...getMCPServerConfig("genomics")!, startupTimeout: 1_000 };
     await manager.startMCPServer(literature);
-    await manager.startMCPServer(genomics);
+    await manager.startMCPServer(second());
 
     expect(manager.getAllServerStatuses().map((s) => s.id).sort()).toEqual([
-      "genomics",
       "literature",
+      "variants",
     ]);
+    expect(runtime.registered.get("variants")?.command).toEqual(launch("mcp_variants"));
   });
 
   it("disables every registered server on shutdown", async () => {
     const { manager } = makeManager(runtime);
-    const genomics = { ...getMCPServerConfig("genomics")!, startupTimeout: 1_000 };
     await manager.startMCPServer(literature);
-    await manager.startMCPServer(genomics);
+    await manager.startMCPServer(second());
 
     await manager.shutdownAll();
 
     expect(runtime.registered.get("literature")?.enabled).toBe(false);
-    expect(runtime.registered.get("genomics")?.enabled).toBe(false);
+    expect(runtime.registered.get("variants")?.enabled).toBe(false);
     expect(manager.getAllServerStatuses().every((s) => s.state === "stopped")).toBe(true);
   });
 
   it("exposes the keychain entries a server needs, names only", async () => {
     const { manager } = makeManager(runtime);
     await manager.startMCPServer(literature);
+    await manager.startMCPServer(second());
 
     expect(manager.secretRequirements("literature")).toEqual([
-      { connectorId: "literature", environment: "NCBI_API_KEY" },
-      { connectorId: "literature", environment: "SEMANTIC_SCHOLAR_API_KEY" },
+      { connectorId: "literature", environment: "OPENALEX_API_KEY" },
+    ]);
+    expect(manager.secretRequirements("variants")).toEqual([
+      { connectorId: "variants", environment: "NCBI_API_KEY" },
     ]);
     expect(manager.secretRequirements("ghost")).toEqual([]);
   });

@@ -1,0 +1,26 @@
+{
+  "domain": "cellguide",
+  "toolCount": 5,
+  "tools": [
+    {
+      "name": "get_cell_tissues",
+      "description": "Get tissues where a cell type is found."
+    },
+    {
+      "name": "get_cell_type_info",
+      "description": "Get detailed information about a cell type including description, synonyms, and basic metadata."
+    },
+    {
+      "name": "get_marker_genes",
+      "description": "Get marker genes for a cell type."
+    },
+    {
+      "name": "get_source_data",
+      "description": "Get source datasets and publications for a cell type."
+    },
+    {
+      "name": "search_cell_types",
+      "description": "Search for cell types by name or synonym."
+    }
+  ]
+}

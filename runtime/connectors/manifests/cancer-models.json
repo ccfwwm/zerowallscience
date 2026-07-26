@@ -1,0 +1,50 @@
+{
+  "domain": "cancer-models",
+  "toolCount": 11,
+  "tools": [
+    {
+      "name": "cbioportal_clinical_attributes",
+      "description": "Catalogue a cBioPortal study's clinical data dictionary — which patient/sample-level attributes exist (survival, stage, subtype, treatment, ...), before pulling clinical values elsewhere."
+    },
+    {
+      "name": "cbioportal_cna_in_gene",
+      "description": "Discrete copy-number events (GISTIC-style calls) for one gene in one cBioPortal study: complete per-level counts (always) + a capped, flagged per-sample event listing."
+    },
+    {
+      "name": "cbioportal_get_study",
+      "description": "Fetch one cBioPortal study's full record: description, citation, verified sample/patient counts, per-platform data counts, and every molecular profile available for downstream queries (4 paced requests)."
+    },
+    {
+      "name": "cbioportal_list_studies",
+      "description": "Search/list cancer genomics studies on public cBioPortal — patient tumor sequencing cohorts (TCGA, MSK-IMPACT, GENIE subsets, trial cohorts...)."
+    },
+    {
+      "name": "cbioportal_mutation_frequency",
+      "description": "Fraction of sequenced samples carrying >= 1 somatic mutation in a gene, per study — compare a gene's mutation prevalence across up to 12 cohorts in one call (e.g. KRAS: ~0.90 in paad_qcmg_uq_2016 vs ~0.15 pan-cancer in msk_impact_2017)."
+    },
+    {
+      "name": "cbioportal_mutations_in_gene",
+      "description": "All somatic mutations in one gene across one cBioPortal study's samples: complete aggregate counts (always) + a capped, explicitly flagged per-mutation listing."
+    },
+    {
+      "name": "gene_dependencies",
+      "description": "CRISPR knock-out dependency scores for one gene across cancer cell lines (dataset ``crispr_ko``; sources Sanger and Broad/DepMap)."
+    },
+    {
+      "name": "get_model",
+      "description": "Fetch one cell-line model's detail record by SIDM ID or exact name/synonym (e.g. ``SIDM00903`` or ``A549``; synonym matching is exact — ``K-562`` matches, ``K562`` does not; use ``search_models`` for fuzzy lookup)."
+    },
+    {
+      "name": "list_models",
+      "description": "List cancer cell-line / organoid models from the Sanger Cell Model Passports, optionally filtered by tissue and/or cancer type."
+    },
+    {
+      "name": "search_genes",
+      "description": "Look up genes in the Cell Model Passports by official symbol — resolves symbols to SIDG gene IDs for ``gene_dependencies``."
+    },
+    {
+      "name": "search_models",
+      "description": "Fuzzy server-side search for cell-line models by name (e.g. ``K562``, ``HeLa``)."
+    }
+  ]
+}

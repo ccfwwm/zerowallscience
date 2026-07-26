@@ -1,0 +1,150 @@
+{
+  "domain": "zinc",
+  "package": "mcp_zinc",
+  "derivedFrom": "bio-tools/lib/mcp_zinc/server.py",
+  "toolCount": 5,
+  "tools": [
+    {
+      "name": "zinc_get_3d",
+      "description": "Locate docking-ready 3D structures for ZINC compounds. ZINC22 ships pre-generated 3D conformers (DOCK ``.db2.gz``, ``.mol2.gz``, ``.sdf.gz``) in its file repository, organized by tranche — this tool resolves each id to its tranche and returns the repository locations to download from for docking prep (DOCK6, AutoDock Vina, etc.).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "zinc_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "ZINC ids to prepare (max 50 per call — 3D retrieval is per-compound work; keep batches small)."
+          },
+          "timeout_s": {
+            "type": "number",
+            "description": "overall lookup budget in seconds (default 25, clamped to 5-55 — under the 60s MCP transport ceiling)."
+          }
+        },
+        "required": [
+          "zinc_ids"
+        ]
+      },
+      "returns": "Returns ``{query, returned_count, structures, repository_note}``; each structure entry carries ``zinc_id``, ``found``, ``smiles``, ``source``, ``tranche_name`` + ``tranche_properties``, and ``download``: the tranche's repository directory pattern under ``https://files.docking.org/zinc22/`` plus the available 3D formats. Sub-release directories (``zinc-22a``, ``zinc-22b``, …) must be browsed for exact file names — the repository does not expose a per-compound fetch URL."
+    },
+    {
+      "name": "zinc_random_sample",
+      "description": "Draw a random sample of purchasable compounds from ZINC22 — for building screening decks, property baselines, or decoy sets.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "sample size; doubles as this tool's ``max_results`` (default 50, hard cap 500 — larger decks should be drawn in several calls, not one unbounded pull)."
+          },
+          "subset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "optional predefined property filter — ``fragment`` (MW < 250), ``lead-like`` (MW 250-350, logP <= 3.5), ``drug-like`` (MW 350-500, Lipinski), ``lugs`` (curated); other upstream subset names pass through verbatim."
+          },
+          "timeout_s": {
+            "type": "number",
+            "description": "overall search budget in seconds (default 25, clamped to 5-55 — under the 60s MCP transport ceiling)."
+          }
+        }
+      },
+      "returns": "Returns the standard bounded shape with records as in ``zinc_search_by_id`` (random order; re-calling draws a fresh sample)."
+    },
+    {
+      "name": "zinc_search_by_id",
+      "description": "Look up purchasable compounds in ZINC22/ZINC20 by ZINC identifier — answers \"what is this compound and who sells it\".",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "zinc_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "one or more ZINC ids (e.g. ``ZINC000000000012``), max 100 per call (one batched query — preferred over many single-id calls)."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "response bound (default 50, hard cap 500)."
+          },
+          "timeout_s": {
+            "type": "number",
+            "description": "overall search budget in seconds (default 25, clamped to 5-55 — under the 60s MCP transport ceiling). The async backend computes server-side; a timeout error names the task uuid so the search can be re-polled."
+          }
+        },
+        "required": [
+          "zinc_ids"
+        ]
+      },
+      "returns": "Returns ``{query, total_available, returned_count, truncated, source_counts, records}``; each record carries ``zinc_id``, ``smiles``, ``catalogs`` (supplier list — the purchasability signal), ``tranche_name`` plus decoded ``tranche_properties`` (heavy atoms, logP bin), and ``source`` (``zinc22``/``zinc20``). Ids with no match simply have no record."
+    },
+    {
+      "name": "zinc_search_by_smiles",
+      "description": "Search ZINC22's purchasable chemical space by structure — answers \"what purchasable compounds look like this SMILES\". This is BOTH the exact-match and the analog-discovery (similarity) tool: CartBlanche22 exposes one structure-search endpoint whose ``dist`` parameter spans exact through diverse, so there is deliberately no separate similarity-search tool.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "smiles": {
+            "type": "string",
+            "description": "query SMILES string (sent verbatim as a form field — no URL encoding needed)."
+          },
+          "dist": {
+            "type": "integer",
+            "description": "Tanimoto DISTANCE threshold 0-10 (a distance, not a percent similarity: 0 = exact structure match, 1-3 = close analogs, 4-6 = moderate analogs, 7-10 = diverse chemical space; larger = looser = slower and many more hits).",
+            "default": 0
+          },
+          "adist": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "anonymous-graph distance 0-10 (scaffold-shaped tolerance); defaults to ``dist`` like the reference workflows."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "response bound (default 50, hard cap 500). Broad searches can match enormous sets — raise ``dist`` gradually rather than starting loose."
+          },
+          "timeout_s": {
+            "type": "number",
+            "description": "overall search budget in seconds (default 25, clamped to 5-55 — under the 60s MCP transport ceiling); similarity searches are the slowest ZINC queries."
+          }
+        },
+        "required": [
+          "smiles"
+        ]
+      },
+      "returns": "Returns the standard bounded shape (``total_available`` vs ``returned_count``, per-source counts) with records as in ``zinc_search_by_id``."
+    },
+    {
+      "name": "zinc_search_by_supplier",
+      "description": "Resolve vendor catalog numbers to ZINC compounds — answers \"which ZINC substance is this supplier code, and what's its structure\".",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "supplier_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "one or more vendor catalog codes (e.g. ``MCULE-2311834287``), max 100 per call."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "response bound (default 50, hard cap 500)."
+          },
+          "timeout_s": {
+            "type": "number",
+            "description": "overall search budget in seconds (default 25, clamped to 5-55 — under the 60s MCP transport ceiling)."
+          }
+        },
+        "required": [
+          "supplier_codes"
+        ]
+      },
+      "returns": "Returns the standard bounded shape; records additionally carry ``supplier_code`` alongside ``zinc_id``/``smiles``/``catalogs``."
+    }
+  ]
+}

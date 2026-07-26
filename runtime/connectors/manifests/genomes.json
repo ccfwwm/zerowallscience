@@ -1,0 +1,50 @@
+{
+  "domain": "genomes",
+  "toolCount": 11,
+  "tools": [
+    {
+      "name": "ensembl_homology",
+      "description": "Orthologues or paralogues of a gene from Ensembl Compara (condensed rows — no alignments/sequences)."
+    },
+    {
+      "name": "ensembl_lookup",
+      "description": "Look up an Ensembl gene/transcript/protein by stable ID or a gene by symbol; returns the core annotation record (location, biotype, canonical transcript, description)."
+    },
+    {
+      "name": "ensembl_overlap_region",
+      "description": "List Ensembl features overlapping a genomic region — genes, transcripts, regulatory features (enhancers/promoters), repeats, variants, karyotype bands."
+    },
+    {
+      "name": "ensembl_sequence",
+      "description": "Fetch sequence from Ensembl — by stable ID (gene/transcript/ protein) or by genomic region."
+    },
+    {
+      "name": "ensembl_vep_variant",
+      "description": "Predict variant consequences with Ensembl VEP — most-severe-first summary of the (often huge) per-transcript consequence list."
+    },
+    {
+      "name": "ensembl_xrefs",
+      "description": "External cross-references of an Ensembl stable ID — the bridge from Ensembl gene/transcript IDs to HGNC, NCBI (EntrezGene), UniProt, OMIM, RefSeq, Expression Atlas and others."
+    },
+    {
+      "name": "ucsc_chrom_sizes",
+      "description": "Chromosome/contig names and sizes of a UCSC assembly — for validating coordinates and iterating regions."
+    },
+    {
+      "name": "ucsc_conservation",
+      "description": "Evolutionary conservation summary for a region from UCSC phyloP / phastCons tracks (base-wise scores over multi-species alignments)."
+    },
+    {
+      "name": "ucsc_list_tracks",
+      "description": "List data tracks available in a UCSC Genome Browser assembly (leaf tracks only — the queryable ones), optionally filtered."
+    },
+    {
+      "name": "ucsc_tfbs_clusters",
+      "description": "ENCODE transcription-factor binding site clusters overlapping a region (ChIP-seq peak clusters across hundreds of cell types) — which TFs bind where."
+    },
+    {
+      "name": "ucsc_track_data",
+      "description": "Fetch raw rows of any UCSC Genome Browser track in a region — the generic escape hatch behind ``ucsc_conservation`` / ``ucsc_tfbs_clusters`` (gene tracks, ClinVar, GWAS catalog, CpG islands, repeats, ...)."
+    }
+  ]
+}

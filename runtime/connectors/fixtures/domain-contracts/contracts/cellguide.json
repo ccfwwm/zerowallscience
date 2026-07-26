@@ -1,0 +1,104 @@
+{
+  "domain": "cellguide",
+  "package": "mcp_cellguide",
+  "derivedFrom": "bio-tools/lib/mcp_cellguide/server.py",
+  "toolCount": 5,
+  "tools": [
+    {
+      "name": "get_cell_tissues",
+      "description": "Get tissues where a cell type is found. Shows the anatomical locations of a cell type.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cell_type": {
+            "type": "string",
+            "description": "Cell type ID or name"
+          }
+        },
+        "required": [
+          "cell_type"
+        ]
+      }
+    },
+    {
+      "name": "get_cell_type_info",
+      "description": "Get detailed information about a cell type including description, synonyms, and basic metadata. Use this to learn about what a cell type is.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cell_type": {
+            "type": "string",
+            "description": "Cell type ID (e.g., CL:0000622) or name (e.g., 'acinar cell')"
+          }
+        },
+        "required": [
+          "cell_type"
+        ]
+      }
+    },
+    {
+      "name": "get_marker_genes",
+      "description": "Get marker genes for a cell type. Returns genes that are specifically expressed in this cell type.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cell_type": {
+            "type": "string",
+            "description": "Cell type ID or name"
+          },
+          "marker_type": {
+            "type": "string",
+            "description": "'computational' (data-derived) or 'canonical' (literature-based)",
+            "default": "computational"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of genes to return",
+            "default": 20
+          }
+        },
+        "required": [
+          "cell_type"
+        ]
+      }
+    },
+    {
+      "name": "get_source_data",
+      "description": "Get source datasets and publications for a cell type. Shows where cell type data comes from.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cell_type": {
+            "type": "string",
+            "description": "Cell type ID or name"
+          }
+        },
+        "required": [
+          "cell_type"
+        ]
+      }
+    },
+    {
+      "name": "search_cell_types",
+      "description": "Search for cell types by name or synonym. Use this when you need to find cell types matching a query.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query (e.g., 'acinar', 'T cell', 'neuron')"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of results",
+            "default": 10
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "returns": "Returns ``{result: [{id, name, synonyms, ontology_description}, ...]}``."
+    }
+  ]
+}

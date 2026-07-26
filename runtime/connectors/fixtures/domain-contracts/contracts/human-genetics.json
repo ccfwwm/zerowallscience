@@ -1,0 +1,419 @@
+{
+  "domain": "human-genetics",
+  "package": "mcp_human_genetics",
+  "derivedFrom": "bio-tools/lib/mcp_human_genetics/server.py",
+  "toolCount": 14,
+  "tools": [
+    {
+      "name": "eqtl_associations",
+      "description": "Molecular-QTL association rows from one eQTL Catalogue dataset, filtered by gene, variant or region.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "description": "QTD accession from ``eqtl_list_datasets``, e.g. ``QTD000266`` (GTEx liver, gene expression)."
+          },
+          "gene_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "unversioned Ensembl gene ID, e.g. ``ENSG00000130203`` (APOE). At least one of gene_id / rsid / variant / pos is required (the API rejects unfiltered scans)."
+          },
+          "rsid": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "dbSNP rsID, e.g. ``rs7412``."
+          },
+          "variant": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "eQTL Catalogue variant string ``chr19_44908822_C_T`` (chr-prefixed, underscore-separated, GRCh38)."
+          },
+          "pos": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "genomic window ``chromosome:start-end`` (GRCh38, no chr prefix), e.g. ``19:44900000-44920000``."
+          },
+          "nlog10p_min": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "optional significance floor: only rows with -log10(p) >= this value (e.g. 5 keeps p <= 1e-5). Applied upstream."
+          },
+          "max_records": {
+            "type": "integer",
+            "description": "output cap (default 1000 = one page).",
+            "default": 1000
+          }
+        },
+        "required": [
+          "dataset_id"
+        ]
+      },
+      "returns": "Returns ``{dataset_id, filters, returned, truncated, associations}``; each row is the upstream record: ``{molecular_trait_id, gene_id, variant, rsid, chromosome, position, ref, alt, type (SNP/INDEL), beta, se, pvalue, nlog10p, maf, ac, an, r2, median_tpm}``. Rows cover ONLY the cis window the dataset tested (±1 Mb of each gene); an empty result means \"not tested / not present\", not \"no eQTL anywhere\". The API publishes no total count: ``truncated=false`` proves exhaustion, ``truncated=true`` means the cap was hit (narrow with nlog10p_min or a tighter region).",
+      "upstreams": [
+        "eqtl_catalogue"
+      ]
+    },
+    {
+      "name": "eqtl_list_datasets",
+      "description": "List eQTL Catalogue datasets (one dataset = one study x tissue/cell type x quantification method).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "study_label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "exact study name, e.g. ``GTEx``, ``Alasoo_2018``, ``BLUEPRINT``."
+          },
+          "tissue_label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "exact tissue/cell-type label, e.g. ``liver``, ``macrophage``, ``LCL``. (Exact match, lowercase in the catalogue.)"
+          },
+          "quant_method": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "quantification method — ``ge`` (gene expression), ``exon``, ``tx``, ``txrev``, ``microarray``, ``leafcutter``, ``aptamer`` (plasma protein). For conventional gene-level eQTLs use ``ge``."
+          },
+          "max_records": {
+            "type": "integer",
+            "description": "output cap (default 1000; the full unfiltered catalogue is ~760 datasets, so the default returns everything).",
+            "default": 1000
+          }
+        }
+      },
+      "returns": "Returns ``{filters, returned, truncated, datasets}`` sorted by dataset_id; each dataset: ``{dataset_id (QTD...), study_id (QTS...), study_label, sample_group, tissue_id (ontology term), tissue_label, condition_label, quant_method, sample_size}``. The API publishes no total count; ``truncated=false`` proves the listing is complete (exhausted upstream).",
+      "upstreams": [
+        "eqtl_catalogue"
+      ]
+    },
+    {
+      "name": "gwas_associations_for_gene",
+      "description": "GWAS Catalog associations whose variants are MAPPED to a gene (catalog's Ensembl pipeline mapping, not author-reported), most significant first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "gene_symbol": {
+            "type": "string",
+            "description": "HGNC symbol, exact match, e.g. ``PCSK9``, ``APOE``. Case-sensitive upstream — pass the canonical uppercase symbol. Intergenic variants are mapped to flanking genes, so rows may sit outside the gene body."
+          },
+          "max_records": {
+            "type": "integer",
+            "description": "output cap (default 500); rows are server-sorted by p-value ascending, so a capped result is the top-signal prefix."
+          }
+        },
+        "required": [
+          "gene_symbol"
+        ]
+      },
+      "returns": "Returns ``{gene_symbol, api_total, returned, truncated, associations}`` with the same association row shape as ``gwas_associations_for_variant``. A nonexistent symbol returns ``api_total=0`` (exact-match filter), not an error.",
+      "upstreams": [
+        "gwas_catalog"
+      ]
+    },
+    {
+      "name": "gwas_associations_for_trait",
+      "description": "GWAS Catalog associations annotated to one EFO trait, most significant first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "efo_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ontology term short form as used by the catalog, e.g. ``MONDO_0005010`` (coronary artery disorder), ``EFO_0004340`` (body mass index), ``HP_0003124`` (hypercholesterolemia). The catalog migrated many historical EFO ids to MONDO/HP terms — resolve current ids with ``gwas_search_traits`` first (e.g. ``EFO_0001645`` no longer exists). Pass exactly one of efo_id / efo_trait."
+          },
+          "efo_trait": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "exact trait LABEL (e.g. ``coronary artery disorder``) — convenience alternative when you already know the precise label."
+          },
+          "max_records": {
+            "type": "integer",
+            "description": "output cap (default 500); rows are server-sorted by p-value ascending, so a capped result is the top-signal prefix."
+          }
+        }
+      },
+      "returns": "Returns ``{efo_id|efo_trait, api_total, returned, truncated, associations}`` with the same association row shape as ``gwas_associations_for_variant``. An unknown id/label returns ``api_total=0``, not an error.",
+      "upstreams": [
+        "gwas_catalog"
+      ]
+    },
+    {
+      "name": "gwas_associations_for_variant",
+      "description": "GWAS Catalog associations reported for one variant (rsID), most significant first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rs_id": {
+            "type": "string",
+            "description": "dbSNP rsID, e.g. ``rs7412`` (APOE) or ``rs699`` (AGT). Must be the catalog's current rsID — merged/retired IDs may return zero rows rather than an error."
+          },
+          "max_records": {
+            "type": "integer",
+            "description": "output cap (default 500). Trait-hub variants can carry 1000+ associations; rows are server-sorted by p-value ascending, so a capped result is the top-signal prefix."
+          }
+        },
+        "required": [
+          "rs_id"
+        ]
+      },
+      "returns": "Returns ``{rs_id, api_total, returned, truncated, associations}``. ``api_total`` is the catalog's own total; ``truncated`` flags a capped fetch. Each association row: ``{association_id, p_value, pvalue_mantissa, pvalue_exponent, pvalue_description, or_value, beta, ci_lower, ci_upper, range, risk_frequency, snp_effect_alleles (e.g. \"rs7412-T\"), rs_ids, locations (\"chrom:pos\"), mapped_genes, efo_traits [{efo_id, efo_trait}], bg_efo_traits, reported_trait, multi_snp_haplotype, snp_interaction, study_accession_id (GCST...), pubmed_id, first_author}``. ``or_value`` and ``beta`` are mutually exclusive per row (binary vs quantitative trait); ``p_value`` of 0.0 means p < ~1e-308 (underflow — use mantissa/exponent).",
+      "upstreams": [
+        "gwas_catalog"
+      ]
+    },
+    {
+      "name": "gwas_get_study",
+      "description": "Fetch one GWAS Catalog study by its GCST accession.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accession_id": {
+            "type": "string",
+            "description": "study accession, e.g. ``GCST90841394``. Listed in every association row (``study_accession_id``) and study search result."
+          }
+        },
+        "required": [
+          "accession_id"
+        ]
+      },
+      "returns": "Returns ``{found, accession_id, study}`` where ``study`` is the same row shape as ``gwas_search_studies`` (null when the accession is unknown).",
+      "upstreams": [
+        "gwas_catalog"
+      ]
+    },
+    {
+      "name": "gwas_get_variant",
+      "description": "Fetch one GWAS Catalog variant record (position, mapped genes, consequence) by rsID — lighter than pulling its associations.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rs_id": {
+            "type": "string",
+            "description": "dbSNP rsID, e.g. ``rs7412``."
+          }
+        },
+        "required": [
+          "rs_id"
+        ]
+      },
+      "returns": "Returns ``{found, rs_id, variant}``; ``variant`` is ``{rs_id, merged, functional_class, most_severe_consequence, alleles (e.g. \"C/T (forward)\"), mapped_genes, locations [{chromosome, position, region}], last_update_date}`` — positions are GRCh38 — or null when the rsID is not in the catalog. ``merged=1`` means the rsID was merged into another record upstream.",
+      "upstreams": [
+        "gwas_catalog"
+      ]
+    },
+    {
+      "name": "gwas_search_studies",
+      "description": "Search GWAS Catalog studies by trait annotation or publication.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "efo_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ontology short form (e.g. ``MONDO_0005010``); resolve via ``gwas_search_traits``. Filters combine (AND) — usually pass just one."
+          },
+          "efo_trait": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "exact trait label alternative to efo_id."
+          },
+          "pubmed_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "PubMed ID of the study's publication, e.g. ``38714703``."
+          },
+          "max_records": {
+            "type": "integer",
+            "description": "output cap (default 500)."
+          }
+        }
+      },
+      "returns": "Returns ``{filters, api_total, returned, truncated, studies}``; each study row: ``{accession_id (GCST...), disease_trait (author-reported), efo_traits, bg_efo_traits, pubmed_id, initial_sample_size, replication_sample_size, discovery_ancestry, replication_ancestry, genotyping_technologies, platforms, cohort, full_summary_stats_available, imputed, gxe}``. Count-verified against the catalog total when not capped. At least one filter is required (the unfiltered catalog is ~90k studies).",
+      "upstreams": [
+        "gwas_catalog"
+      ]
+    },
+    {
+      "name": "gwas_search_traits",
+      "description": "Search GWAS Catalog EFO trait annotations by label substring — the entry point for resolving a disease/phenotype name to the ontology ids that ``gwas_associations_for_trait`` / ``gwas_search_studies`` take.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "case-insensitive substring of the trait label, e.g. ``coronary`` matches \"coronary artery disorder\" (MONDO_0005010), \"coronary artery calcification\" (EFO_0004723) etc. The catalog mixes EFO, MONDO, HP and OBA ids — don't assume an EFO_ prefix."
+          },
+          "max_records": {
+            "type": "integer",
+            "description": "output cap (default 500)."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "returns": "Returns ``{query, api_total, returned, truncated, efo_traits}``; each row ``{efo_id, efo_trait, uri}``, sorted by label. Count-verified against the catalog's own total when not capped.",
+      "upstreams": [
+        "gwas_catalog"
+      ]
+    },
+    {
+      "name": "phewas_finngen_gene",
+      "description": "Gene-level PheWAS from FinnGen R12: for every disease endpoint, the best-associated variant in the gene region, most significant first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "gene_symbol": {
+            "type": "string",
+            "description": "HGNC symbol, e.g. ``PCSK9``, ``APOE``. Unknown symbols raise a not-found error."
+          },
+          "max_phenos": {
+            "type": "integer",
+            "description": "output cap (default 200); FinnGen has ~2470 endpoints, one row each. Rows are sorted by p-value ascending before capping."
+          }
+        },
+        "required": [
+          "gene_symbol"
+        ]
+      },
+      "returns": "Returns ``{instance: \"finngen\", genome_build: \"GRCh38\", gene_symbol, total, returned, truncated, phenotypes}``; each row is the ``phewas_variant`` row shape plus ``variant: {chrom, pos, ref, alt, varid, rsids}`` — the top variant for that endpoint in this gene's region (region != gene body; PheWeb pads gene boundaries). Most rows are null results (pval ~ 1) — the per-endpoint BEST variant is still reported; filter by pval yourself for significant hits.",
+      "upstreams": [
+        "pheweb_portals"
+      ]
+    },
+    {
+      "name": "phewas_instances",
+      "description": "List the public PheWeb PheWAS portals this server can query, with genome build and capability registry.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "returns": "Returns ``{instances: {key: {label, base_url, genome_build, capabilities, notes}}}``. ``capabilities`` name the endpoints each instance exposes: ``variant`` (phewas_variant), ``gene`` (phewas_finngen_gene), ``phenotypes`` (phewas_list_phenotypes), ``autocomplete`` (phewas_search_phenotypes). NOTE the build split: FinnGen R12 variant IDs are GRCh38; BioBank Japan (pheweb.jp) is GRCh37/hg19 — liftover coordinates before cross-querying."
+    },
+    {
+      "name": "phewas_list_phenotypes",
+      "description": "Complete phenotype (disease endpoint) catalogue of a PheWeb instance, with case/control counts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "instance": {
+            "type": "string",
+            "description": "currently only ``finngen`` exposes this endpoint (BBJ does not — use ``phewas_search_phenotypes`` there).",
+            "default": "finngen"
+          },
+          "max_records": {
+            "type": "integer",
+            "description": "output cap (default 3000 > FinnGen's ~2470 endpoints, so the default returns the complete catalogue).",
+            "default": 3000
+          }
+        }
+      },
+      "returns": "Returns ``{instance, total, returned, truncated, phenotypes}`` sorted by phenocode; each row: ``{phenocode (e.g. \"T2D\"), phenostring, category, num_cases, num_controls, num_gw_significant (count of genome-wide-significant loci for that endpoint)}``. Phenocodes are the ids used across FinnGen tools and at r12.finngen.fi/pheno/<code>.",
+      "upstreams": [
+        "pheweb_portals"
+      ]
+    },
+    {
+      "name": "phewas_search_phenotypes",
+      "description": "Search a PheWeb instance's phenotypes (and entities) by name — the entry point for resolving a disease name to a phenocode.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "free-text phenotype query, e.g. ``diabetes``, ``asthma``. Matches phenotype names/codes; some instances also match gene names and rsIDs."
+          },
+          "instance": {
+            "type": "string",
+            "description": "``finngen`` (default) or ``bbj`` — both expose autocomplete.",
+            "default": "finngen"
+          },
+          "max_records": {
+            "type": "integer",
+            "description": "output cap (default 500; autocomplete responses are short lists, rarely capped)."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "returns": "Returns ``{instance, query, total, returned, truncated, matches}``; each match: ``{display (human-readable label), phenocode, url (instance-relative, may be null)}``. Use the phenocode with ``phewas_list_phenotypes`` rows or the instance website; BBJ display strings embed the code in parentheses.",
+      "upstreams": [
+        "pheweb_portals"
+      ]
+    },
+    {
+      "name": "phewas_variant",
+      "description": "PheWAS for one variant: its association statistics against every phenotype in a biobank PheWeb portal, most significant first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "instance": {
+            "type": "string",
+            "description": "``finngen`` (FinnGen R12, GRCh38) or ``bbj`` (BioBank Japan, GRCh37/hg19) — see ``phewas_instances``. Variant coordinates MUST be on the instance's build."
+          },
+          "variant": {
+            "type": "string",
+            "description": "``chrom-pos-ref-alt`` (``:``/``_`` separators and ``chr`` prefix tolerated), e.g. ``19-44908822-C-T`` (APOE rs7412, GRCh38/finngen) or ``1-55505647-G-T`` (PCSK9 rs11591147, GRCh37/bbj)."
+          },
+          "max_phenos": {
+            "type": "integer",
+            "description": "output cap (default 200). FinnGen returns ~2470 phenotype rows per variant; rows are sorted by p-value ascending before capping."
+          }
+        },
+        "required": [
+          "instance",
+          "variant"
+        ]
+      },
+      "returns": "Returns ``{instance, genome_build, variant, variant_meta, total, returned, truncated, phenotypes}``; ``variant_meta`` carries {chrom, pos, ref, alt, rsids, nearest_genes, gnomad (lean AF block, FinnGen only)}. Each phenotype row: ``{phenocode, phenostring, category, pval, mlogp, beta, sebeta, af|maf, maf_case, maf_control, n_cases, n_controls, n_samples}`` (fields the instance doesn't publish are null; BBJ rows have af, FinnGen rows have maf triplets + mlogp). Unknown variants raise a not-found error.",
+      "upstreams": [
+        "pheweb_portals"
+      ]
+    }
+  ],
+  "upstreams": [
+    {
+      "package": "eqtl_catalogue",
+      "minIntervalSeconds": 0.5,
+      "requestsPerSecond": 2.0
+    },
+    {
+      "package": "gwas_catalog",
+      "minIntervalSeconds": 0.5,
+      "requestsPerSecond": 2.0
+    },
+    {
+      "package": "pheweb_portals",
+      "minIntervalSeconds": 0.5,
+      "requestsPerSecond": 2.0
+    }
+  ]
+}

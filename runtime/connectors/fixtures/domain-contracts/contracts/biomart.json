@@ -1,0 +1,236 @@
+{
+  "domain": "biomart",
+  "package": "mcp_biomart",
+  "derivedFrom": "bio-tools/lib/mcp_biomart/schemas.json",
+  "originalConnector": "biomart",
+  "toolCount": 8,
+  "tools": [
+    {
+      "name": "batch_translate",
+      "description": "Translates multiple identifiers in a single batch operation.",
+      "inputSchema": {
+        "properties": {
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "from_attr": {
+            "title": "From Attr",
+            "type": "string"
+          },
+          "mart": {
+            "title": "Mart",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "to_attr": {
+            "title": "To Attr",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mart",
+          "dataset",
+          "from_attr",
+          "to_attr",
+          "targets"
+        ],
+        "title": "batch_translateArguments",
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "translations": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "not_found": {
+            "type": "array"
+          },
+          "found_count": {
+            "type": "number"
+          },
+          "not_found_count": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    {
+      "name": "get_data",
+      "description": "Queries Biomart for data using specified attributes and filters.",
+      "inputSchema": {
+        "properties": {
+          "attributes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Attributes",
+            "type": "array"
+          },
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "filters": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Filters",
+            "type": "object"
+          },
+          "mart": {
+            "title": "Mart",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mart",
+          "dataset",
+          "attributes",
+          "filters"
+        ],
+        "title": "get_dataArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "get_translation",
+      "description": "Translates a single identifier from one attribute type to another.",
+      "inputSchema": {
+        "properties": {
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "from_attr": {
+            "title": "From Attr",
+            "type": "string"
+          },
+          "mart": {
+            "title": "Mart",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "to_attr": {
+            "title": "To Attr",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mart",
+          "dataset",
+          "from_attr",
+          "to_attr",
+          "target"
+        ],
+        "title": "get_translationArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "list_all_attributes",
+      "description": "Lists all available attributes for a given dataset with some filtering.",
+      "inputSchema": {
+        "properties": {
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "mart": {
+            "title": "Mart",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mart",
+          "dataset"
+        ],
+        "title": "list_all_attributesArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "list_common_attributes",
+      "description": "Lists commonly used attributes available for a given dataset.",
+      "inputSchema": {
+        "properties": {
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "mart": {
+            "title": "Mart",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mart",
+          "dataset"
+        ],
+        "title": "list_common_attributesArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "list_datasets",
+      "description": "Lists all available biomart datasets for a given mart.",
+      "inputSchema": {
+        "properties": {
+          "mart": {
+            "title": "Mart",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mart"
+        ],
+        "title": "list_datasetsArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "list_filters",
+      "description": "Lists all available filters for a given dataset.",
+      "inputSchema": {
+        "properties": {
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "mart": {
+            "title": "Mart",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mart",
+          "dataset"
+        ],
+        "title": "list_filtersArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "list_marts",
+      "description": "Lists all available Biomart marts (databases) from Ensembl.",
+      "inputSchema": {
+        "properties": {},
+        "title": "list_martsArguments",
+        "type": "object"
+      }
+    }
+  ]
+}

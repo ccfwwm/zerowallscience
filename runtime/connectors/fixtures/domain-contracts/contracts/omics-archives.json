@@ -1,0 +1,446 @@
+{
+  "domain": "omics-archives",
+  "package": "mcp_omics_archives",
+  "derivedFrom": "bio-tools/lib/mcp_omics_archives/server.py",
+  "toolCount": 17,
+  "tools": [
+    {
+      "name": "arrayexpress_get_experiment",
+      "description": "Fetch one ArrayExpress experiment as a flattened record. `accession` is e.g. 'E-MTAB-5061'. The deeply nested BioStudies submission JSON is flattened to the fields a functional-genomics analyst needs: accession, title, release date, study type, organisms, description, assay count, sample count, technology, assay-by-molecule, experimental designs/factors, authors + affiliations, publications (with DOI), protocol count/types, array designs, file count, files-by-type summary, total file bytes, and link targets. Use arrayexpress_get_experiment_files for the per-file inventory and arrayexpress_get_experiment_samples for SDRF rows.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accession": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accession"
+        ]
+      },
+      "upstreams": [
+        "arrayexpress_experiments"
+      ]
+    },
+    {
+      "name": "arrayexpress_get_experiment_files",
+      "description": "List every file of an ArrayExpress experiment with download endpoints. Per-file records (name, size in bytes, type, format, description) from the authoritative submission JSON, plus the HTTP/FTP download base links and the /info endpoint's independent file count (carried alongside so disagreements are visible).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accession": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accession"
+        ]
+      },
+      "upstreams": [
+        "arrayexpress_experiments"
+      ]
+    },
+    {
+      "name": "arrayexpress_get_experiment_samples",
+      "description": "Fetch per-sample SDRF annotation rows for an ArrayExpress experiment. Locates the experiment's SDRF file, downloads and parses every row (sample name, characteristics[...], factor value[...], assay/data-file columns — headers exactly as in the MAGE-TAB, repeated headers suffixed #2/#3). Experiments without an SDRF (some sequencing submissions keep sample metadata in ENA only) return {\"error\": \"no_sdrf\"}. All rows are parsed and n_samples reports the true total; the output lists at most max_rows_returned rows (rows_truncated=true when capped — single- cell experiments can have thousands).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accession": {
+            "type": "string"
+          },
+          "max_rows_returned": {
+            "type": "integer",
+            "default": 200
+          }
+        },
+        "required": [
+          "accession"
+        ]
+      },
+      "upstreams": [
+        "arrayexpress_experiments"
+      ]
+    },
+    {
+      "name": "arrayexpress_search_experiments",
+      "description": "Search ArrayExpress functional-genomics experiments (complete retrieval). Filters combine (AND): `query` free text (BioStudies/Lucene syntax), `organism` (e.g. 'Homo sapiens'), `study_type` (e.g. 'RNA-seq of coding RNA from single cells', 'ChIP-seq', 'transcription profiling by array'), `technology` (e.g. 'sequencing assay', 'array assay'), release-date range (inclusive ISO dates), and arbitrary extra facet=value pairs. Facet values are matched case-insensitively. Every result page is walked and the unique-record count is verified against the API's totalHits (total_hits in the output; a mismatch raises rather than silently truncating). `max_records` (default 50; raise for broader scans) stops the walk early for large result sets — then truncated=true and total_hits still reports the full count. Records are compact (accession, title, release_date, files, links, is_public) in deterministic release-date order; fetch detail with arrayexpress_get_experiment.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "organism": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "study_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "technology": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "released_after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "released_before": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "extra_facets": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "max_records": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": 50
+          }
+        }
+      },
+      "upstreams": [
+        "arrayexpress_experiments"
+      ]
+    },
+    {
+      "name": "geo_get_series",
+      "description": "Fetch structured metadata for GEO series (GSE accessions), samples included. Per series: title, summary, overall design, organism/taxon, GDS type, platform IDs, publication date, BioProject, PubMed ids, series-level supplementary file URLs, and every sample (accession, title, organism, characteristics as tag/value pairs, library strategy/source/selection, instrument, per-sample supplementary file URLs). This covers both series-level and sample-level questions in one call. Sources: one esearch + one esummary for the batch, then two targeted SOFT *header* requests per series (2 + 2·N requests, NCBI-paced). Data tables and platform annotation tables are never downloaded. Large single-cell series (hundreds of samples) produce large records — batch accordingly.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accessions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "accessions"
+        ]
+      },
+      "upstreams": [
+        "geo_meta"
+      ]
+    },
+    {
+      "name": "geo_search_series",
+      "description": "Search NCBI GEO DataSets (db=gds) and return series-level records. `term` is full E-utilities syntax, e.g. '\"single cell rna seq\"[All Fields] AND \"Homo sapiens\"[Organism] AND gse[ETYP] AND 2021/01/01:2021/12/31[PDAT]'. Add gse[ETYP] to restrict to series.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "term": {
+            "type": "string"
+          },
+          "retmax": {
+            "type": "integer",
+            "default": 500
+          }
+        },
+        "required": [
+          "term"
+        ]
+      },
+      "returns": "Returns count (esearch's own total — may exceed the number of returned records when it is larger than retmax) and records: trimmed esummary docs sorted by accession (accession, title, summary, organism/taxon, GDS type, n_samples, publication date, platform, sample accessions+titles, FTP link, BioProject, PubMed ids). Call geo_get_series for full per-sample characteristics. Requests go through NCBI E-utilities at a polite pace.",
+      "upstreams": [
+        "geo_meta"
+      ]
+    },
+    {
+      "name": "metabolights_get_studies",
+      "description": "Fetch structured metadata for MetaboLights studies (MTBLSxxx accessions). Per study (from the parsed ISA payload): title, description, status, release/submission year, organisms (+ organism parts), assays (measurement / technology / platform per assay sheet), study design factors, design descriptors (ontology terms), sample count, and protocols (name + description: sample collection, extraction, chromatography, mass spectrometry, NMR, data transformation, metabolite identification...). With include_samples=true the parsed sample table is attached per study (header-keyed rows: source name, characteristics, factor values; n_rows_total always reports the true size, output capped at max_sample_rows_returned rows with rows_truncated flag). Private or unknown accessions are listed in not_found. Output is sorted by numeric accession; duplicates are de-duplicated.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accessions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "include_samples": {
+            "type": "boolean",
+            "default": false
+          },
+          "max_sample_rows_returned": {
+            "type": "integer",
+            "default": 200
+          }
+        },
+        "required": [
+          "accessions"
+        ]
+      },
+      "upstreams": [
+        "metabolights_meta"
+      ]
+    },
+    {
+      "name": "metabolights_get_study_files",
+      "description": "Complete file inventory for a public MetaboLights study. study_folder lists the top-level study directory (ISA-Tab metadata files i_/s_/a_*.txt, MAF metabolite tables m_*.tsv, and folder entries); data_files recursively lists the FILES raw-data folder (set include_data_files=false to skip that second, sometimes slow request). Deterministically sorted; volatile timestamps dropped.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accession": {
+            "type": "string"
+          },
+          "include_data_files": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "accession"
+        ]
+      },
+      "upstreams": [
+        "metabolights_meta"
+      ]
+    },
+    {
+      "name": "metabolights_list_studies",
+      "description": "List every public MetaboLights study accession.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "returns": "Returns the de-duplicated, numerically sorted accession list (MTBLS1, MTBLS2, ...) plus count and the API's own reported_count (these agree or something is wrong upstream). NOTE: the old connector's `metabolights_search_studies` was a documented no-op — upstream ignored the query parameter and returned this same listing; there is no server-side study search. To find studies by topic, fetch candidates with metabolights_get_studies and filter on their titles/descriptors, or search a cross-archive index instead.",
+      "upstreams": [
+        "metabolights_meta"
+      ]
+    },
+    {
+      "name": "metabolights_search_data_files",
+      "description": "Glob search over a MetaboLights study's raw-data folder (FILES tree). `pattern` is a filename glob applied server-side and re-verified client-side, e.g. '*.mzML', '*.raw', '*.zip'; omit it to list every data file. Results are relative paths under the study folder ('FILES/...'), sorted.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accession": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "accession"
+        ]
+      },
+      "upstreams": [
+        "metabolights_meta"
+      ]
+    },
+    {
+      "name": "mgnify_get_studies",
+      "description": "Fetch structured records for MGnify studies (MGYS accessions). Per study: accession, ENA secondary accession (ERP/SRP), BioProject, study name, abstract, biome lineage(s), sample count, centre name, data origination, last update. With include_analyses=true each study additionally carries its complete analyses listing (count-verified pagination) plus analysis-count breakdowns by pipeline version and by experiment type — one extra paginated sweep per study. Unknown accessions are reported in missing, never dropped.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accessions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "include_analyses": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "accessions"
+        ]
+      },
+      "upstreams": [
+        "mgnify_studies"
+      ]
+    },
+    {
+      "name": "mgnify_get_study_analyses",
+      "description": "List ALL analyses of one MGnify study (complete pagination). `accession` is an MGYS study accession. Returns analyses_count (the API's own total — retrieval is verified against it) and one record per MGYA analysis: pipeline version, experiment type (amplicon / metagenomic / assembly / ...), status, and the run / assembly / sample accessions it was computed from, sorted by MGYA accession.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accession": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accession"
+        ]
+      },
+      "upstreams": [
+        "mgnify_studies"
+      ]
+    },
+    {
+      "name": "mgnify_search_studies",
+      "description": "Find MGnify metagenomics studies by free text OR biome lineage. Provide exactly one of: `query` — free-text search (e.g. 'coral', 'wastewater sludge'); `biome_lineage` — a GOLD-style lineage (e.g. 'root:Host-associated:Human:Digestive system:Large intestine' or 'root:Engineered:Wastewater'), which includes all sub-lineages. The full listing is paginated to completion and verified against the API's own pagination count (count == len(records), or the call fails loudly). Records: MGYS accession, study name, abstract, biome lineages, sample count, centre name, ENA/BioProject accessions. Use mgnify_get_studies / mgnify_get_study_analyses for detail.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "biome_lineage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "upstreams": [
+        "mgnify_studies"
+      ]
+    },
+    {
+      "name": "pride_find_projects_for_protein",
+      "description": "Find PRIDE projects containing a protein (MS-archive direction). `protein_accession` is a UniProt accession (e.g. 'P04637'). Returns the projects whose identification results include the protein, with sorted project accession lists — the complementary route for classic mass-spec (PXD) projects where per-project protein listings are not served. Feed the accessions to pride_get_projects for full metadata.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "protein_accession": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protein_accession"
+        ]
+      },
+      "upstreams": [
+        "pride_projects"
+      ]
+    },
+    {
+      "name": "pride_get_projects",
+      "description": "Fetch full metadata for PRIDE projects by accession (e.g. 'PXD010154'). Per project: title, description, sample/data processing protocols, organisms, organism parts, diseases, instruments, experiment types, quantification methods, submission/publication dates, submitters, lab heads, keywords, and references (PubMed id + DOI) — the same normalized record shape pride_search_projects returns, so the two are directly comparable. Unknown accessions are listed in not_found. Output is sorted by accession.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accessions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "accessions"
+        ]
+      },
+      "upstreams": [
+        "pride_projects"
+      ]
+    },
+    {
+      "name": "pride_search_project_proteins",
+      "description": "List protein evidence rows for one PRIDE affinity-proteomics project. Pages through the PRIDE affinity-proteomics protein index for `project_accession` until exhausted; rows (protein accession, gene symbol, protein name, per-project evidence fields) are sorted by protein accession. `keyword` filters server-side (matches accession, gene symbol, or protein name). NOTE: this index only serves affinity-proteomics projects. For classic mass-spec PXD submissions, per-project protein listings are not served by PRIDE — use pride_find_projects_for_protein for the protein→projects direction instead.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_accession": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "project_accession"
+        ]
+      },
+      "upstreams": [
+        "pride_projects"
+      ]
+    },
+    {
+      "name": "pride_search_projects",
+      "description": "Search PRIDE Archive proteomics projects (complete, verified retrieval). Filters combine (AND): `keyword` free text (e.g. 'phosphoproteome', 'single-cell proteomics'); `organism` / `instrument` / `disease` take the exact PRIDE facet strings (e.g. 'Homo sapiens (human)', 'Orbitrap Fusion Lumos', 'Covid-19'); extra_filters adds arbitrary field==value filters (e.g. {\"experimentTypes\": \"Shotgun proteomics\"}). The walk is bounded by `max_records_returned` (default 50; raise for broader scans — upstream sorts by accession ASC, so results are a stable prefix of the full set); api_total always carries the API's own true total and records_truncated flags a capped fetch — silent truncation is impossible. When the walk completes within the cap, the unique-project count is verified against api_total (a mismatch raises). Records are normalized (accession, title, organisms, organism parts, diseases, instruments, experiment types, quantification methods, submission/publication dates, submitters, lab PIs, references with PubMed id + DOI), sorted by accession. Output lists at most max_records_returned records (records_truncated=true when capped; api_total always carries the true count).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "organism": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instrument": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "disease": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "extra_filters": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "max_records_returned": {
+            "type": "integer",
+            "default": 50
+          }
+        }
+      },
+      "upstreams": [
+        "pride_projects"
+      ]
+    }
+  ],
+  "upstreams": [
+    {
+      "package": "arrayexpress_experiments",
+      "minIntervalSeconds": 0.51,
+      "requestsPerSecond": 1.961
+    },
+    {
+      "package": "metabolights_meta",
+      "minIntervalSeconds": 0.5,
+      "requestsPerSecond": 2.0
+    }
+  ]
+}

@@ -65,11 +65,13 @@ up once `maxRestartAttempts` is spent, leaving it `failed`.
 ## Testing
 
 ```bash
-cd apps/desktop && npx vitest run --root ../.. runtime/mcp
+cd apps/desktop && npx vitest run mcp
 ```
 
-The desktop vitest root is `apps/desktop`, so `runtime/**` tests are not
-collected by a plain `npm test`; running them in CI needs a vitest workspace.
+The desktop vitest config reaches out to `../../runtime/**`, so these run with
+the rest of the suite. They need no network and no processes: the sidecar is
+replaced by a `FakeRuntime` implementing the `McpRuntime` port, and the clock
+and sleep are injected.
 
 ## First batch (v0.1)
 

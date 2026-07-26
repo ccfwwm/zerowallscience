@@ -1,0 +1,176 @@
+{
+  "domain": "rna",
+  "package": "mcp_rna",
+  "derivedFrom": "bio-tools/lib/mcp_rna/server.py",
+  "toolCount": 9,
+  "tools": [
+    {
+      "name": "accession_to_id",
+      "description": "Convert an Rfam accession to its family id (e.g. RF00005 -> \"tRNA\").",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accession": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accession"
+        ]
+      }
+    },
+    {
+      "name": "get_covariance_model",
+      "description": "Infernal covariance model (CM file) of an Rfam family.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "type": "string"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "default": 400000
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "returns": "Returns {\"family\", \"header\" (parsed fields: NAME, ACC, STATES, CLEN, W, ...), \"size_bytes\", \"sha256\", \"cm\" (the full CM text, usable directly with Infernal cmsearch/cmscan)}. CMs of large families exceed MCP transport limits: when the text is larger than max_bytes (default 400000) the \"cm\" field is omitted and \"cm_omitted\"/\"size_bytes\" explain why — header, size and sha256 are always returned. Raise max_bytes explicitly if your client can take the payload."
+    },
+    {
+      "name": "get_family",
+      "description": "Rfam family metadata record.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "type": "string",
+            "description": "Rfam accession (\"RF00005\") or family id (\"tRNA\") — both resolve."
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "returns": "Returns a flattened record — rfam_acc, rfam_id, description, RNA type, seed/full sequence counts (num_seed, num_full), gathering/trusted/noise cutoffs, clan, curation info — plus the complete upstream JSON in \"raw\"."
+    },
+    {
+      "name": "get_seed_alignment",
+      "description": "Seed alignment of an Rfam family.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "type": "string",
+            "description": "Rfam accession or family id."
+          },
+          "fmt": {
+            "type": "string",
+            "description": "\"stockholm\" (default; includes the consensus secondary structure line) or \"fasta\" (aligned, gapped FASTA).",
+            "default": "stockholm"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "default": 400000
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "returns": "Returns {\"family\", \"format\", \"num_sequences\", \"sequence_names\", \"sha256\", \"alignment\"} — the sha256 lets you verify integrity without re-downloading. Large families (e.g. RF00005/tRNA) have multi-MB seed alignments that exceed MCP transport limits: when the text is larger than max_bytes (default 400000) the \"alignment\" field is omitted and \"alignment_omitted\"/\"size_bytes\" explain why — metadata, counts and sha256 are always returned. Raise max_bytes explicitly if your client can take the payload."
+    },
+    {
+      "name": "get_sequence_regions",
+      "description": "All full-region hits of an Rfam family across sequence databases.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "returns": "Returns {\"family\", \"declared_count\" (the server's own count line), \"num_regions\" (parsed rows), \"regions\": [{accession, start, end, description, ...}, ...]}. Known upstream limitation: rfam.org returns HTTP 403 on this route for very large families (e.g. RF00005/tRNA with ~5.3M regions); that error is surfaced as-is. Check num_full via get_family first."
+    },
+    {
+      "name": "get_structure_mapping",
+      "description": "PDB residue-level structure mappings of an Rfam family.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "returns": "Returns {\"family\", \"num_mappings\", \"num_pdb_ids\", \"pdb_ids\", \"mapping\": [{pdb_id, chain, pdb_start, pdb_end, seq_start, seq_end, cm_start, cm_end, ...}, ...]} sorted deterministically."
+    },
+    {
+      "name": "get_tree",
+      "description": "Seed phylogenetic tree of an Rfam family (NHX/Newick text).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "returns": "Returns {\"family\", \"num_leaf_labels\", \"sha256\", \"tree\"}."
+    },
+    {
+      "name": "id_to_accession",
+      "description": "Convert an Rfam family id to its accession (e.g. \"tRNA\" -> RF00005).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "family_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "family_id"
+        ]
+      }
+    },
+    {
+      "name": "search_sequence",
+      "description": "Search a single RNA sequence against all Rfam covariance models (cmscan). Submits an asynchronous job to rfam.org and polls until done.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "type": "string",
+            "description": "RNA/DNA sequence (plain string, no FASTA header); practical upstream limit ~10 kb."
+          },
+          "max_wait_s": {
+            "type": "number",
+            "description": "give up (TimeoutError) after this many seconds.",
+            "default": 300.0
+          },
+          "poll_interval_s": {
+            "type": "number",
+            "description": "seconds between result polls.",
+            "default": 5.0
+          }
+        },
+        "required": [
+          "sequence"
+        ]
+      },
+      "returns": "Returns {\"job_id\", \"num_hits\", \"families\", \"hits\": {family_id: [hit records with e-values, scores, alignment blocks], ...}, \"search_sequence\"}. KNOWN LIMITATION: the upstream job backend was down at build time (2026-06-08) — valid submissions fail with \"SearchUnavailable ... Please come back later\" while invalid sequences still get a proper 400. The error is surfaced as-is; there is no local fallback."
+    }
+  ]
+}
