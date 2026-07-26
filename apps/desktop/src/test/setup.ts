@@ -1,4 +1,6 @@
 import "@testing-library/jest-dom/vitest";
+import { afterEach } from "vitest";
+import { installViewportStub, resetViewport } from "./viewport";
 
 // DOM stubs — only in a browser-like (jsdom) environment. The node-env tests
 // (e.g. the OpenCode integration test) skip these.
@@ -13,18 +15,12 @@ if (typeof window !== "undefined") {
   if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = () => {};
   }
-  if (!window.matchMedia) {
-    window.matchMedia = ((query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      dispatchEvent: () => false,
-    })) as unknown as typeof window.matchMedia;
-  }
+  // Media queries answer against a viewport width tests can set (default:
+  // desktop, so this reads `false` exactly like the old hardcoded stub and
+  // jsdom itself). `setViewportWidth(PHONE_WIDTH)` opts a test into the phone
+  // layout; the afterEach below puts every test back on desktop.
+  installViewportStub();
+  afterEach(resetViewport);
 
   // Web Storage stub. jsdom (25) under Node (>=25) exposes window.localStorage
   // but its methods are not functions, so reads at module init — e.g. the theme
