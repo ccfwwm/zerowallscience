@@ -1,5 +1,7 @@
 # Progress
 
+2026-07-26 12:30 · feat(p3): complete runtime pack loading integration — implemented full loadPacks/enablePack/disablePack logic with workspace path resolution, error handling, and bootstrap integration; loadPacks() called during bootstrap after agent definitions, handles null workspace gracefully; dynamic SDK imports avoid circular dependencies; typecheck passes.
+
 2026-07-26 12:15 · feat(p3): runtime integration for Science Packs — added installedPacks state, loadPacks/enablePack/disablePack methods to RuntimeState, placeholder implementations with TODO comments for full integration; establishes state management hooks for pack lifecycle in desktop runtime; typecheck passes.
 
 2026-07-26 12:00 · feat(p3): SciencePackManager lifecycle operations — implemented install/upgrade/enable/disable/uninstall/verify/inspect methods with pack-state.json persistence, directory copying for installation, state transitions (installed/upgrading/disabled/error), 16 unit tests with memfs mocking; manager handles local directory sources, validates manifests during install, persists enabled/disabled state across restarts; establishes Phase 2 pack management infrastructure.

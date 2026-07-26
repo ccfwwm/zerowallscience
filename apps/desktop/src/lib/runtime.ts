@@ -24,6 +24,7 @@ import type {
   AgentRole,
   RoleModelBinding,
   AgentDefinition,
+  InstalledPack,
 } from "@zerowall/shared";
 import {
   detectTools as probeTools,
@@ -220,7 +221,7 @@ interface RuntimeState {
 
   /** P3: Science Pack state */
   /** Installed science packs. */
-  installedPacks: any[]; // TODO: Import InstalledPack type from @zerowall/shared
+  installedPacks: InstalledPack[];
   /** Load packs from runtime directory. */
   loadPacks: () => Promise<void>;
   /** Enable a pack. */
@@ -954,25 +955,52 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   // P3: Science Pack state
   installedPacks: [],
   loadPacks: async () => {
-    // TODO: Implement pack loading from runtime directory
-    // const { initializePackManager, getInstalledPacks } = await import("@zerowall/sdk");
-    // await initializePackManager(runtimePath);
-    // const packs = getInstalledPacks();
-    // set({ installedPacks: packs });
+    try {
+      // Dynamic import to avoid circular dependencies
+      const { initializePackManager } = await import("@zerowall/sdk");
+      const wsPath = await workspacePath();
+      if (!wsPath) {
+        void logDebug("No workspace path available for pack loading");
+        return;
+      }
+      const runtimePath = `${wsPath}/.zerowall/runtime`;
+      await initializePackManager(runtimePath);
+
+      const { getInstalledPacks } = await import("@zerowall/sdk");
+      const packs = getInstalledPacks();
+      set({ installedPacks: packs });
+    } catch (err) {
+      console.error("Failed to load packs:", err);
+      set({ installedPacks: [] });
+    }
   },
-  enablePack: async (_packId) => {
-    // TODO: Implement pack enable
-    // const { getPackManager } = await import("@zerowall/sdk");
-    // const manager = getPackManager(runtimePath);
-    // await manager.enable(packId);
-    // await get().loadPacks();
+  enablePack: async (packId) => {
+    try {
+      const { getPackManager } = await import("@zerowall/sdk");
+      const wsPath = await workspacePath();
+      if (!wsPath) throw new Error("No workspace path available");
+      const runtimePath = `${wsPath}/.zerowall/runtime`;
+      const manager = getPackManager(runtimePath);
+      await manager.enable(packId);
+      await get().loadPacks();
+    } catch (err) {
+      console.error(`Failed to enable pack ${packId}:`, err);
+      throw err;
+    }
   },
-  disablePack: async (_packId) => {
-    // TODO: Implement pack disable
-    // const { getPackManager } = await import("@zerowall/sdk");
-    // const manager = getPackManager(runtimePath);
-    // await manager.disable(packId);
-    // await get().loadPacks();
+  disablePack: async (packId) => {
+    try {
+      const { getPackManager } = await import("@zerowall/sdk");
+      const wsPath = await workspacePath();
+      if (!wsPath) throw new Error("No workspace path available");
+      const runtimePath = `${wsPath}/.zerowall/runtime`;
+      const manager = getPackManager(runtimePath);
+      await manager.disable(packId);
+      await get().loadPacks();
+    } catch (err) {
+      console.error(`Failed to disable pack ${packId}:`, err);
+      throw err;
+    }
   },
 
   setAgentMode: (mode, sessionId) =>
@@ -1670,6 +1698,13 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         set({ agentDefinitions });
       } catch (err) {
         void logDebug(`Failed to load agent definitions: ${err}`);
+      }
+
+      // Load science packs (works in both Tauri and web)
+      try {
+        await get().loadPacks();
+      } catch (err) {
+        void logDebug(`Failed to load science packs: ${err}`);
       }
 
       // Web client (served by the gateway): the sidecar already runs on the host
