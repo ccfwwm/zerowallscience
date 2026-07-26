@@ -59,6 +59,18 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "headerImage": "installer/nsis-header.bmp",
+        "sidebarImage": "installer/nsis-sidebar.bmp"
+      },
+      "wix": {
+        "bannerPath": "installer/wix-banner.bmp",
+        "dialogImagePath": "installer/wix-dialog.bmp"
+      }
+    }
   }
 }
