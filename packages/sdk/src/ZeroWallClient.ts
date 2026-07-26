@@ -61,8 +61,20 @@ export class ZeroWallClient implements AgentRuntime {
    * Resolve the active model for a given role.
    */
   private resolveModel(role: AgentRole): string | undefined {
-    // Will call resolveRoleModel from models.ts
-    return undefined; // TODO: implement in next chunk
+    const binding = this.roleBindings[role];
+    if (!binding) return undefined;
+
+    const primaryProvider = binding.primary?.split("/")[0];
+    if (primaryProvider && this.availableProviders.has(primaryProvider)) {
+      return binding.primary;
+    }
+
+    const fallbackProvider = binding.fallback?.split("/")[0];
+    if (fallbackProvider && this.availableProviders.has(fallbackProvider)) {
+      return binding.fallback;
+    }
+
+    return undefined;
   }
 
   /**
@@ -123,8 +135,44 @@ export class ZeroWallClient implements AgentRuntime {
     parts: any[],
     opts?: any,
   ): Promise<{ sessionId: string }> {
-    // P2 TODO: route based on agent role, apply model bindings, log handoff
-    return this.opencode.prompt(sessionId, parts, opts);
+    // P2 routing: resolve model based on agent role
+    const role = (opts?.role as AgentRole) ?? "general";
+    const agent = Array.from(this.agents.values()).find((a) => a.role === role);
+
+    if (!agent) {
+      throw new Error(`No agent found for role: ${role}`);
+    }
+
+    // Resolve model with fallback
+    const resolvedModel = this.resolveModel(role);
+    if (!resolvedModel) {
+      throw new Error(`No available model for role: ${role}`);
+    }
+
+    // Apply model binding to opts
+    const enhancedOpts = {
+      ...opts,
+      model: resolvedModel,
+      reasoning: this.roleBindings[role]?.reasoning,
+    };
+
+    // Call underlying OpenCode client
+    const result = await this.opencode.prompt(sessionId, parts, enhancedOpts);
+
+    // Capture snapshot on session creation
+    if (!sessionId) {
+      this.captureSnapshot(result.sessionId, role, resolvedModel);
+      this.logHandoff({
+        timestamp: new Date().toISOString(),
+        fromAgent: null,
+        toAgent: agent.id,
+        sessionId: result.sessionId,
+        reason: "user-selected",
+        model: resolvedModel,
+      });
+    }
+
+    return result;
   }
 
   async cancel(sessionId: string): Promise<void> {

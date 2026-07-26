@@ -1,4 +1,5 @@
 export { OpenCodeClient } from "./OpenCodeClient";
+export { ZeroWallClient } from "./ZeroWallClient";
 export type { AgentRuntime } from "./runtime";
 export { BaseAgentRuntime } from "./base-runtime";
 export {
