@@ -40,6 +40,18 @@ describe("Sidebar in the gateway web client", () => {
     expect(screen.queryByRole("button", { name: "Notebooks" })).toBeNull();
   });
 
+  it("offers the Research Graph in the desktop app", async () => {
+    renderAt("/files");
+    expect(await screen.findByRole("button", { name: "Research Graph" })).toBeInTheDocument();
+  });
+
+  it("drops the Research Graph in the browser, which has no route to the local science database", async () => {
+    signedInWebClient();
+    renderAt("/files");
+    expect(await screen.findByRole("button", { name: "Files" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Research Graph" })).toBeNull();
+  });
+
   it("offers the add-project control in the desktop app", async () => {
     renderAt("/files");
     // Matched by aria-label, so this is the header [+] menu trigger — not the
