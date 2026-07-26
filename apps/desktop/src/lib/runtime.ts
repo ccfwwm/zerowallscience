@@ -26,6 +26,14 @@ import type {
   AgentDefinition,
   InstalledPack,
 } from "@zerowall/shared";
+import generalPurposeAgent from "../../../../runtime/agents/general-purpose.json";
+import researchAssistantAgent from "../../../../runtime/agents/research-assistant.json";
+import codeSpecialistAgent from "../../../../runtime/agents/code-specialist.json";
+import dataAnalystAgent from "../../../../runtime/agents/data-analyst.json";
+import onboardingAgent from "../../../../runtime/agents/onboarding.json";
+import operonAgent from "../../../../runtime/agents/operon.json";
+import reviewerAgent from "../../../../runtime/agents/reviewer.json";
+import bookmarkerAgent from "../../../../runtime/agents/bookmarker.json";
 import {
   detectTools as probeTools,
   commitWorkspaceSnapshot,
@@ -841,29 +849,60 @@ export function getClient(): OpenCodeClient | null {
   return opencodeClient;
 }
 
-/** Load agent definitions from runtime/agents/*.json files. */
+/** Raw built-in agent definitions, keyed by id (validated on load). */
+const BUILT_IN_AGENT_SOURCES: Record<string, unknown> = {
+  "general-purpose": generalPurposeAgent,
+  "research-assistant": researchAssistantAgent,
+  "code-specialist": codeSpecialistAgent,
+  "data-analyst": dataAnalystAgent,
+  onboarding: onboardingAgent,
+  operon: operonAgent,
+  reviewer: reviewerAgent,
+  bookmarker: bookmarkerAgent,
+};
+
+/**
+ * Load the built-in agent definitions.
+ *
+ * The JSON lives in `runtime/agents/` and is bundled at build time rather than
+ * fetched: nothing serves `/runtime/agents/*` in either the Tauri shell or the
+ * gateway web client, so a fetch would 404 and silently yield zero agents.
+ * Bundling keeps desktop and web identical and makes a missing/invalid
+ * definition a build-time problem instead of a runtime one.
+ */
 async function loadAgentDefinitions(): Promise<AgentDefinition[]> {
-  const { BUILT_IN_AGENTS, validateAgentDefinition } = await import("@zerowall/shared");
+  const { validateAgentDefinition, validateHandoffRules } = await import("@zerowall/shared");
   const agents: AgentDefinition[] = [];
 
-  for (const agentId of BUILT_IN_AGENTS) {
+  for (const [agentId, raw] of Object.entries(BUILT_IN_AGENT_SOURCES)) {
     try {
-      const response = await fetch(`/runtime/agents/${agentId}.json`);
-      if (!response.ok) continue;
-      const json = await response.json();
-      if (validateAgentDefinition(json)) {
-        agents.push(json as AgentDefinition);
+      if (validateAgentDefinition(raw)) {
+        agents.push(raw);
       }
-    } catch {
-      /* skip unreadable agent definitions */
+    } catch (err) {
+      void logDebug(`Invalid agent definition "${agentId}": ${err}`);
     }
+  }
+
+  // Handoff targets are only meaningful if every referenced agent loaded. A
+  // dangling edge means routing would dead-end, so surface it instead of
+  // discovering it mid-session.
+  try {
+    validateHandoffRules(new Map(agents.map((a) => [a.id, a])));
+  } catch (err) {
+    void logDebug(`Agent handoff rules invalid: ${err}`);
   }
 
   return agents;
 }
 
-/** Initialize ZeroWallClient with loaded agents and bindings. */
-function initializeZeroWallClient(
+/**
+ * Point the P2 agent client at a freshly loaded catalog, creating it on first
+ * use. `existing` is reused rather than replaced so the handoff log and session
+ * snapshots survive a reconnect — see ZeroWallClient.configure().
+ */
+function syncZeroWallClient(
+  existing: ZeroWallClient | null,
   client: OpenCodeClient,
   agentDefs: AgentDefinition[],
   bindings: Record<AgentRole, RoleModelBinding>,
@@ -873,13 +912,11 @@ function initializeZeroWallClient(
   for (const def of agentDefs) {
     agents.set(def.id, def);
   }
-  const zwClient = new ZeroWallClient({
-    opencode: client,
-    agents,
-    roleBindings: bindings,
-  });
-  // Sync available providers immediately
-  zwClient['availableProviders'] = providers;
+  const zwClient =
+    existing ?? new ZeroWallClient({ opencode: client, agents, roleBindings: bindings });
+  // `client` is re-supplied every time: connect() builds a new OpenCodeClient
+  // and closes the old one, so a reused zwClient must be re-pointed at it.
+  zwClient.configure({ opencode: client, agents, roleBindings: bindings, providers });
   return zwClient;
 }
 
@@ -1147,17 +1184,30 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           : { agents, defaultModel, commands, providers },
       );
 
-      // P2: Initialize ZeroWallClient with loaded agents and bindings
-      // This must happen BEFORE the self-heal logic below, so the client is ready
+      // P2: bind the agent-routing client to the freshly loaded providers.
+      // Isolated in its own try/catch: this is an enhancement layer, and a
+      // failure here must never abort the self-heal or the skills poll below
+      // (the outer catch would swallow it and silently degrade both).
       if (opencodeClient) {
-        const state = get();
-        const { DEFAULT_ROLE_BINDINGS } = await import("@zerowall/shared");
-        const bindings = Object.keys(state.agentBindings).length > 0
-          ? state.agentBindings
-          : DEFAULT_ROLE_BINDINGS;
-        const providerSet = new Set(providers.map((p) => p.id));
-        const zwClient = initializeZeroWallClient(opencodeClient, state.agentDefinitions, bindings, providerSet);
-        set({ zeroWallClient: zwClient, agentBindings: bindings });
+        try {
+          const state = get();
+          const { DEFAULT_ROLE_BINDINGS } = await import("@zerowall/shared");
+          const bindings = Object.keys(state.agentBindings).length > 0
+            ? state.agentBindings
+            : DEFAULT_ROLE_BINDINGS;
+          const providerSet = new Set(providers.map((p) => p.id));
+          const zwClient = syncZeroWallClient(
+            state.zeroWallClient,
+            opencodeClient,
+            state.agentDefinitions,
+            bindings,
+            providerSet,
+          );
+          set({ zeroWallClient: zwClient, agentBindings: bindings });
+        } catch (err) {
+          // Stay on the OpenCodeClient fallback path (see sendPrompt).
+          void logDebug(`ZeroWallClient init failed, using OpenCodeClient fallback: ${err}`);
+        }
       }
 
       // Self-heal a dangling default model. It can go stale out-of-band — its
@@ -1173,16 +1223,13 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       // switch as "dangling" and points it back at an old model (#37).
       const justSwitched =
         defaultModel === lastSwitchModel && Date.now() - lastSwitchAt < SWITCH_HEAL_GRACE_MS;
-      console.log(`[self-heal] switching=${get().switching} justSwitched=${justSwitched} defaultModel=${defaultModel} providers=${providers.length}`);
       if (!get().switching && !justSwitched && defaultModel) {
         const next = fallbackDefaultModel(providers, defaultModel);
-        console.log(`[self-heal] next=${next}`);
         if (next) {
           try {
             // Call the underlying client directly to avoid triggering a reconnect
             // inside loadCatalog (which would cause infinite recursion). The
             // reconnect that called loadCatalog is already in progress.
-            console.log(`[self-heal] calling setDefaultModel(${next})`);
             await client.setDefaultModel(next);
             set({ defaultModel: next });
             toast.success(
@@ -1190,7 +1237,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
             );
           } catch (err) {
             // Leave it stale — the send-time error still guides to Settings.
-            console.log(`[self-heal] FAILED: ${err}`);
+            void logDebug(`default model self-heal failed: ${err}`);
           }
         }
       }
@@ -2069,32 +2116,26 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // captured now so a draft's later graft still sends the pane's choice.
     const { model, variant } = modelForSession(s, key);
 
-    // P2: Use ZeroWallClient if available, passing selectedAgent as role
-    // ZeroWallClient handles agent routing, model fallback, and handoff logging
+    // P2: send through ZeroWallClient when it is up, so the turn is recorded
+    // against the selected role — the first turn pins the session's model
+    // snapshot and logs the opening handoff, and a later turn under a different
+    // role logs the agent → agent handoff. Falls back to the raw OpenCodeClient
+    // when P2 init failed (see loadCatalog): a send must never depend on the
+    // agent layer being ready. `agent` above is the OpenCode agent *mode*
+    // ("plan"), which is orthogonal to the ZeroWall role.
     const zwClient = s.zeroWallClient;
-    if (zwClient && !sessionId) {
-      // New session: use ZeroWallClient with role-based routing
-      return performTurn(
-        set,
-        get,
-        text,
-        async (sid) => {
-          await zwClient.sendPrompt(sid, text, agent, model, variant);
-          return;
-        },
-        false,
-        false,
-        sessionId,
-        draftKey,
-      );
-    }
+    const runtime = zwClient ?? client!;
+    const role = s.selectedAgent;
 
-    // Fallback to OpenCodeClient for existing sessions or when ZeroWallClient unavailable
     return performTurn(
       set,
       get,
       text,
-      (sid) => withRetry(() => client!.sendPrompt(sid, text, agent, model, variant)),
+      async (sid) => {
+        await withRetry(() => runtime.sendPrompt(sid, text, agent, model, variant));
+        // Only after the runtime accepted the turn — a failed send is not a handoff.
+        zwClient?.recordTurn(sid, role, model);
+      },
       false,
       false,
       sessionId,

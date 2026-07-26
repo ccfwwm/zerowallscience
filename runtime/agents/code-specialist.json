@@ -3,7 +3,7 @@
   "id": "code-specialist",
   "name": "Code Specialist",
   "role": "code",
-  "description": "代码专家，擅长软件开发、代码审查、调试和重构。支持多语言编程和自动化测试。",
+  "description": "Code specialist skilled in software development, code review, debugging, and refactoring. Supports multi-language programming and automated testing.",
   "capabilities": {
     "tools": true,
     "reasoning": true,

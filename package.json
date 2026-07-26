@@ -9,11 +9,15 @@
     "build": "pnpm --filter @zerowall/desktop build",
     "test": "pnpm --filter @zerowall/desktop test",
     "test:brand": "node --test scripts/check-brand-contract.test.mjs && node scripts/check-brand-contract.mjs",
+    "test:agents": "node scripts/validate-agents.mjs",
     "typecheck": "pnpm --filter @zerowall/desktop typecheck",
     "lint": "pnpm --filter @zerowall/desktop lint"
   },
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@9.4.0"
+  "packageManager": "pnpm@9.4.0",
+  "devDependencies": {
+    "ajv": "^8.20.0"
+  }
 }

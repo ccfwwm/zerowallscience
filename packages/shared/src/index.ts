@@ -11,6 +11,9 @@ export * from "./models";
 // P3: Science Pack definitions
 export * from "./science-pack";
 
+// P3: MCP Server Configuration
+export * from "./mcp-config";
+
 export interface Project {
   id: string;
   name: string;

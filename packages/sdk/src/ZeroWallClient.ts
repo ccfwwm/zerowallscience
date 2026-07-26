@@ -26,9 +26,11 @@ import type {
  * - Logs all handoffs for replay and provenance.
  */
 export class ZeroWallClient implements AgentRuntime {
-  private readonly opencode: OpenCodeClient;
-  private readonly agents: Map<string, AgentDefinition>;
-  private readonly roleBindings: Record<AgentRole, RoleModelBinding>;
+  // Config, refreshed by configure() as the catalog reloads. The history below
+  // (handoff log, snapshots) deliberately outlives it — see configure().
+  private opencode: OpenCodeClient;
+  private agents: Map<string, AgentDefinition>;
+  private roleBindings: Record<AgentRole, RoleModelBinding>;
   private readonly handoffLog: AgentHandoff[] = [];
   private readonly sessionSnapshots: Map<string, SessionModelSnapshot> = new Map();
   private availableProviders: Set<string> = new Set();
@@ -49,6 +51,36 @@ export class ZeroWallClient implements AgentRuntime {
   async refreshProviders(): Promise<void> {
     const providers = await this.opencode.listProviders();
     this.availableProviders = new Set(providers.map((p) => p.id));
+  }
+
+  /**
+   * Refresh the routing config from a reloaded catalog. Only the fields given
+   * are replaced.
+   *
+   * The client is long-lived on purpose: the catalog reloads on every connect
+   * (and a reconnect follows every model or workspace switch), and rebuilding
+   * the client each time would drop the handoff log and the session snapshots.
+   * That is not just lost history — recordTurn() reads the log to tell an
+   * opening turn from a continuing one, so a rebuilt client would record a
+   * second "user-selected" opening for a session that was already running.
+   *
+   * `opencode` must be re-supplied whenever the caller reconnects: a reconnect
+   * builds a fresh OpenCodeClient and closes the old one, so a client left
+   * holding the previous transport would send into a dead connection.
+   *
+   * Providers are passed in rather than fetched because the caller already has
+   * a fresh list, which saves a round-trip through refreshProviders().
+   */
+  configure(opts: {
+    opencode?: OpenCodeClient;
+    agents?: Map<string, AgentDefinition>;
+    roleBindings?: Record<AgentRole, RoleModelBinding>;
+    providers?: Iterable<string>;
+  }): void {
+    if (opts.opencode) this.opencode = opts.opencode;
+    if (opts.agents) this.agents = opts.agents;
+    if (opts.roleBindings) this.roleBindings = opts.roleBindings;
+    if (opts.providers) this.availableProviders = new Set(opts.providers);
   }
 
   /**
@@ -95,6 +127,64 @@ export class ZeroWallClient implements AgentRuntime {
     };
     this.sessionSnapshots.set(sessionId, snapshot);
     return snapshot;
+  }
+
+  /** The agent that serves a role, if one is loaded. */
+  private agentForRole(role: AgentRole): AgentDefinition | undefined {
+    for (const agent of this.agents.values()) {
+      if (agent.role === role) return agent;
+    }
+    return undefined;
+  }
+
+  /** The agent currently owning a session, per the handoff log. */
+  private currentAgent(sessionId: string): string | null {
+    for (let i = this.handoffLog.length - 1; i >= 0; i--) {
+      if (this.handoffLog[i].sessionId === sessionId) return this.handoffLog[i].toAgent;
+    }
+    return null;
+  }
+
+  /**
+   * Record a turn for `sessionId` under `role`, returning the handoff it logged
+   * (or undefined when nothing changed).
+   *
+   * Called on every send, so it must be idempotent: a turn that stays with the
+   * same agent logs nothing. The first turn opens the session — it pins the
+   * model snapshot for reproducibility and logs a user-initiated handoff
+   * (`fromAgent: null`); a later turn under a different role logs the agent →
+   * agent handoff but leaves the snapshot alone, since the snapshot records
+   * what the session was *created* with.
+   *
+   * `model` is the model the caller is actually sending with; it wins over the
+   * role binding so the log records what ran, not what was configured. Falls
+   * back to the binding (primary if its provider is available, else fallback).
+   */
+  recordTurn(
+    sessionId: string,
+    role: AgentRole,
+    model?: string | null,
+  ): AgentHandoff | undefined {
+    const agent = this.agentForRole(role);
+    if (!agent) return undefined;
+
+    const from = this.currentAgent(sessionId);
+    if (from === agent.id) return undefined;
+
+    const resolved = model ?? this.resolveModel(role) ?? this.roleBindings[role]?.primary;
+    if (!resolved) return undefined;
+
+    const handoff: AgentHandoff = {
+      timestamp: new Date().toISOString(),
+      fromAgent: from,
+      toAgent: agent.id,
+      sessionId,
+      reason: from ? "role-routing" : "user-selected",
+      model: resolved,
+    };
+    if (!from) this.captureSnapshot(sessionId, role, resolved);
+    this.logHandoff(handoff);
+    return handoff;
   }
 
   /**

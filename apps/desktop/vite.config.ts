@@ -24,5 +24,12 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // Workspace packages and the runtime tree have no runner of their own;
+    // run their tests here so nothing is silently uncollected.
+    include: [
+      "**/*.{test,spec}.?(c|m)[jt]s?(x)",
+      "../../packages/*/src/**/*.{test,spec}.?(c|m)[jt]s?(x)",
+      "../../runtime/**/*.{test,spec}.?(c|m)[jt]s?(x)",
+    ],
   },
 });

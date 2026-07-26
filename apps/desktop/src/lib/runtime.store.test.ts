@@ -85,7 +85,11 @@ vi.mock("./kernel", () => ({ kernelReset: mocks.kernelReset }));
 vi.mock("./systemNotification", () => ({
   notifyPermissionRequest: mocks.notifyPermissionRequest,
 }));
-vi.mock("@zerowall/sdk", () => {
+vi.mock("@zerowall/sdk", async () => {
+  // The REAL ZeroWallClient — the store's P2 path (agent routing, handoff log,
+  // session snapshots) is only meaningfully covered if it runs. It is a thin
+  // wrapper with type-only imports, so pulling it in costs nothing.
+  const { ZeroWallClient } = await import("../../../../packages/sdk/src/ZeroWallClient");
   class OpenCodeClient {
     private statusCb: (s: string) => void = () => {};
     constructor(opts: Record<string, unknown>) {
@@ -216,7 +220,18 @@ vi.mock("@zerowall/sdk", () => {
       this.statusCb("offline");
     }
   }
-  return { OpenCodeClient, DEFAULT_OPENCODE_URL: "http://127.0.0.1:4096" };
+  return {
+    OpenCodeClient,
+    ZeroWallClient,
+    DEFAULT_OPENCODE_URL: "http://127.0.0.1:4096",
+    // P3: Pack management mocks
+    initializePackManager: vi.fn(async () => {}),
+    getPackManager: vi.fn(() => ({
+      enable: vi.fn(async () => {}),
+      disable: vi.fn(async () => {}),
+    })),
+    getInstalledPacks: vi.fn(() => []),
+  };
 });
 
 import type { ArtifactBlock } from "@zerowall/shared";
@@ -250,6 +265,12 @@ beforeEach(async () => {
     sessionParents: {},
     panes: {},
     sessionAgents: {},
+    // P2: no agents loaded and no client — bootstrap() supplies them, and the
+    // handoff tests below opt in. Reset so a client from a prior test cannot
+    // leak its handoff log into the next one.
+    agentDefinitions: [],
+    zeroWallClient: null,
+    selectedAgent: "general",
   });
   await useRuntimeStore.getState().connect();
   expect(useRuntimeStore.getState().status).toBe("ready");

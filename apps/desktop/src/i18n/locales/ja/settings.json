@@ -6,6 +6,7 @@
     "models": "モデル",
     "runtime": "ランタイム",
     "connectors": "コネクタ",
+    "packs": "サイエンスパック",
     "compute": "コンピューティング",
     "privacy": "プライバシー",
     "browser": "ブラウザ",
@@ -342,5 +343,26 @@
     "error": "リモートアクセスの変更に失敗しました",
     "connect": "接続",
     "connectPrompt": "デスクトップアプリのアクセストークンを入力:設定 → リモートアクセス。"
+  },
+  "packs": {
+    "title": "サイエンスパック",
+    "hint": "スキル、MCP ツール、コネクタを含む研究ドメインパックをインストール・管理します",
+    "noPacks": "パックはインストールされていません",
+    "noPacksHint": "サイエンスパックは runtime/packs に配置されます",
+    "enabled": "有効",
+    "totalSkills": "スキル総数",
+    "skills": "スキル",
+    "mcpServers": "MCP サーバー",
+    "agents": "エージェント",
+    "connectors": "コネクタ",
+    "author": "作者",
+    "license": "ライセンス",
+    "source": "ソース",
+    "expand": "展開",
+    "collapse": "折りたたむ",
+    "enable": "有効化",
+    "disable": "無効化",
+    "processing": "処理中...",
+    "error": "エラー"
   }
 }

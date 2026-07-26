@@ -6,6 +6,7 @@
     "models": "Modelle",
     "runtime": "Laufzeit",
     "connectors": "Konnektoren",
+    "packs": "Wissenschaftspakete",
     "compute": "Rechenleistung",
     "privacy": "Datenschutz",
     "browser": "Browser",
@@ -344,5 +345,26 @@
     "error": "Ändern des Fernzugriffs fehlgeschlagen",
     "connect": "Verbinden",
     "connectPrompt": "Gib das Zugriffstoken aus der Desktop-App ein → Einstellungen → Fernzugriff."
+  },
+  "packs": {
+    "title": "Wissenschaftspakete",
+    "hint": "Forschungspakete mit Skills, MCP-Tools und Konnektoren installieren und verwalten",
+    "noPacks": "Keine Pakete installiert",
+    "noPacksHint": "Wissenschaftspakete werden unter runtime/packs verfügbar sein",
+    "enabled": "aktiviert",
+    "totalSkills": "Skills gesamt",
+    "skills": "Skills",
+    "mcpServers": "MCP-Server",
+    "agents": "Agenten",
+    "connectors": "Konnektoren",
+    "author": "Autor",
+    "license": "Lizenz",
+    "source": "Quelle",
+    "expand": "Ausklappen",
+    "collapse": "Einklappen",
+    "enable": "Aktivieren",
+    "disable": "Deaktivieren",
+    "processing": "Wird verarbeitet ...",
+    "error": "Fehler"
   }
 }

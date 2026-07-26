@@ -146,13 +146,99 @@ function matchesPattern(tool: string, pattern: string): boolean {
 }
 
 /**
- * The four built-in agent IDs.
+ * The built-in agent IDs (4 general agents + 4 P2 specialized agents).
  */
 export const BUILT_IN_AGENTS = [
   "general-purpose",
   "research-assistant",
   "code-specialist",
   "data-analyst",
+  "onboarding",
+  "operon",
+  "reviewer",
+  "bookmarker",
 ] as const;
 
 export type BuiltInAgentId = typeof BUILT_IN_AGENTS[number];
+
+/**
+ * Agent handoff rules validation.
+ * Ensures all handoff targets reference valid agent IDs.
+ */
+export function validateHandoffRules(
+  agents: Map<string, AgentDefinition>,
+): boolean {
+  for (const [id, agent] of agents) {
+    if (!agent.metadata?.handoff) continue;
+
+    const handoff = agent.metadata.handoff;
+    const targets = handoff.to || [];
+    const sources = handoff.from || [];
+
+    for (const targetId of targets) {
+      if (!agents.has(targetId)) {
+        throw new Error(
+          `Agent "${id}" handoff references unknown target agent "${targetId}"`
+        );
+      }
+    }
+
+    for (const sourceId of sources) {
+      if (!agents.has(sourceId)) {
+        throw new Error(
+          `Agent "${id}" handoff references unknown source agent "${sourceId}"`
+        );
+      }
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Get the handoff graph as an adjacency list.
+ * Returns a map of agent ID → array of target agent IDs.
+ */
+export function getHandoffGraph(
+  agents: Map<string, AgentDefinition>,
+): Map<string, string[]> {
+  const graph = new Map<string, string[]>();
+
+  for (const [id, agent] of agents) {
+    const targets = agent.metadata?.handoff?.to || [];
+    graph.set(id, targets);
+  }
+
+  return graph;
+}
+
+/**
+ * Check if a handoff path exists from source to target agent.
+ * Uses BFS to find a path in the handoff graph.
+ */
+export function canHandoff(
+  agents: Map<string, AgentDefinition>,
+  fromAgentId: string,
+  toAgentId: string,
+): boolean {
+  const graph = getHandoffGraph(agents);
+
+  if (!graph.has(fromAgentId)) return false;
+  if (fromAgentId === toAgentId) return true;
+
+  const visited = new Set<string>();
+  const queue = [fromAgentId];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    const targets = graph.get(current) || [];
+    if (targets.includes(toAgentId)) return true;
+
+    queue.push(...targets);
+  }
+
+  return false;
+}

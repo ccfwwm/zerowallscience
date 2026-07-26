@@ -20,7 +20,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 64,
-      "description": "Human-readable agent name (e.g., 'General Purpose', '研究助手')"
+      "description": "Human-readable agent name (e.g., 'General Purpose', 'Research Assistant'). English only; localized names belong in metadata.locale."
     },
     "role": {
       "type": "string",

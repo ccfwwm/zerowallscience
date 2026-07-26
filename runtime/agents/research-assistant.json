@@ -3,7 +3,7 @@
   "id": "research-assistant",
   "name": "Research Assistant",
   "role": "research",
-  "description": "科研助手，专注于文献检索、数据分析、实验设计和学术写作。支持 PubMed、arXiv、OpenAlex 等学术资源。",
+  "description": "Research assistant focused on literature search, data analysis, experiment design, and academic writing. Supports PubMed, arXiv, OpenAlex, and other scholarly resources.",
   "capabilities": {
     "tools": true,
     "reasoning": true,

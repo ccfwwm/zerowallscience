@@ -70,6 +70,18 @@ export interface SciencePackManifestV1 {
 
   /** Minimum ZeroWall version required */
   minZeroWallVersion?: string;
+
+  /**
+   * Declared integrity of the pack payload.
+   *
+   * `sha256` covers every file in the pack directory EXCEPT `manifest.yaml`
+   * itself (which would otherwise be self-referential). It is verified before
+   * install and before upgrade; a mismatch rejects the operation.
+   */
+  integrity?: {
+    /** Lowercase hex SHA-256 of the pack payload */
+    sha256: string;
+  };
 }
 
 export interface SciencePackSkill {
@@ -147,6 +159,44 @@ export type PackState =
   | "upgrading"    // Upgrade in progress
   | "error";       // Installation/upgrade failed
 
+/** How a version entry came to exist */
+export type PackVersionOperation = "install" | "upgrade" | "rollback" | "adopt";
+
+/** One entry in a pack's version history */
+export interface PackVersionHistory {
+  /** Semantic version */
+  version: string;
+  /** Timestamp this version became active (Unix ms) */
+  installedAt: number;
+  /**
+   * Snapshot directory for this version.
+   *
+   * The snapshot is written lazily: it only exists on disk once the version is
+   * replaced by an upgrade or rollback. Use it to restore the version.
+   */
+  path: string;
+  /** Lowercase hex SHA-256 of the full pack directory for this version */
+  sha256: string;
+  /** Who performed the operation */
+  operator: string;
+  /** Which operation produced this entry */
+  operation: PackVersionOperation;
+}
+
+/** Extended pack state with version history */
+export interface PackStateRecord {
+  /** Current installation state */
+  state: PackState;
+  /** Currently active version */
+  currentVersion: string;
+  /** Version history, newest first (capped at MAX_VERSION_HISTORY) */
+  versions: PackVersionHistory[];
+  /** Last operation timestamp (Unix ms) */
+  lastModified: number;
+  /** Error message if state === "error" */
+  error?: string;
+}
+
 export interface InstalledPack {
   /** Manifest data */
   manifest: SciencePackManifestV1;
@@ -170,8 +220,8 @@ export interface SciencePackManager {
   /** Install a pack from catalog or file */
   install(source: string): Promise<InstalledPack>;
 
-  /** Upgrade an installed pack */
-  upgrade(packId: string, targetVersion?: string): Promise<InstalledPack>;
+  /** Upgrade an installed pack from a source containing the new version */
+  upgrade(packId: string, targetVersion?: string, source?: string): Promise<InstalledPack>;
 
   /** Enable all components in a pack */
   enable(packId: string): Promise<void>;
@@ -182,8 +232,8 @@ export interface SciencePackManager {
   /** Uninstall a pack */
   uninstall(packId: string): Promise<void>;
 
-  /** Rollback to previous version */
-  rollback(packId: string): Promise<InstalledPack>;
+  /** Rollback to the previous version, or to a specific version in history */
+  rollback(packId: string, targetVersion?: string): Promise<InstalledPack>;
 
   /** Verify pack integrity (SHA checksums) */
   verify(packId: string): Promise<boolean>;

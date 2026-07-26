@@ -111,6 +111,46 @@ describe("ZeroWallClient", () => {
     });
   });
 
+  describe("configure", () => {
+    it("sends through the transport it was re-pointed at", async () => {
+      const client = new ZeroWallClient({
+        opencode: mockOpenCodeClient,
+        agents: agentDefinitions,
+        roleBindings,
+      });
+      // A reconnect builds a new OpenCodeClient and closes the old one.
+      const reconnected = createMockOpenCodeClient();
+      client.configure({ opencode: reconnected });
+
+      await client.sendPrompt("session-123", "Hello");
+
+      expect(reconnected.sendPrompt).toHaveBeenCalled();
+      expect(mockOpenCodeClient.sendPrompt).not.toHaveBeenCalled();
+    });
+
+    it("keeps the handoff log and snapshots across a reconfigure", () => {
+      const client = new ZeroWallClient({
+        opencode: mockOpenCodeClient,
+        agents: agentDefinitions,
+        roleBindings,
+      });
+      client.recordTurn("session-123", "research", "anthropic/claude-opus-5");
+
+      client.configure({
+        opencode: createMockOpenCodeClient(),
+        agents: agentDefinitions,
+        roleBindings,
+        providers: ["anthropic"],
+      });
+
+      // The session is still open, so the next turn must not log a second
+      // "user-selected" opening for it.
+      expect(client.recordTurn("session-123", "research")).toBeUndefined();
+      expect(client.getHandoffLog()).toHaveLength(1);
+      expect(client.getSessionSnapshot("session-123")).toBeDefined();
+    });
+  });
+
   describe("AgentRuntime interface", () => {
     it("should forward connect to OpenCodeClient", async () => {
       const client = new ZeroWallClient({
@@ -170,30 +210,153 @@ describe("ZeroWallClient", () => {
   });
 
   describe("handoff logging", () => {
-    it("should return empty handoff log initially", () => {
-      const client = new ZeroWallClient({
+    const newClient = () =>
+      new ZeroWallClient({
         opencode: mockOpenCodeClient,
         agents: agentDefinitions,
         roleBindings,
       });
+
+    it("should return empty handoff log initially", () => {
+      const client = newClient();
 
       const log = client.getHandoffLog();
 
       expect(log).toEqual([]);
     });
+
+    it("logs a user-initiated handoff on a session's first turn", () => {
+      const client = newClient();
+
+      const handoff = client.recordTurn("session-123", "research", "anthropic/claude-opus-5");
+
+      expect(handoff).toMatchObject({
+        fromAgent: null,
+        toAgent: "research",
+        sessionId: "session-123",
+        reason: "user-selected",
+        model: "anthropic/claude-opus-5",
+      });
+      expect(client.getHandoffLog()).toHaveLength(1);
+    });
+
+    it("logs nothing when a later turn stays with the same agent", () => {
+      const client = newClient();
+
+      client.recordTurn("session-123", "research", "anthropic/claude-opus-5");
+      const repeat = client.recordTurn("session-123", "research", "anthropic/claude-opus-5");
+
+      expect(repeat).toBeUndefined();
+      expect(client.getHandoffLog()).toHaveLength(1);
+    });
+
+    it("logs an agent → agent handoff when the role changes mid-session", () => {
+      const client = newClient();
+
+      client.recordTurn("session-123", "research", "anthropic/claude-opus-5");
+      const handoff = client.recordTurn("session-123", "code", "anthropic/claude-sonnet-5");
+
+      expect(handoff).toMatchObject({
+        fromAgent: "research",
+        toAgent: "code",
+        sessionId: "session-123",
+        reason: "role-routing",
+        model: "anthropic/claude-sonnet-5",
+      });
+      expect(client.getHandoffLog().map((h) => h.toAgent)).toEqual(["research", "code"]);
+    });
+
+    it("keeps each session's handoff chain independent", () => {
+      const client = newClient();
+
+      client.recordTurn("session-a", "research", "anthropic/claude-opus-5");
+      const handoff = client.recordTurn("session-b", "code", "anthropic/claude-sonnet-5");
+
+      // session-b's first turn is still user-initiated — session-a's agent
+      // must not leak in as the source.
+      expect(handoff?.fromAgent).toBeNull();
+    });
+
+    it("falls back to the role binding when the caller sends no model", () => {
+      const client = newClient();
+      client.configure({ providers: ["anthropic"] });
+
+      const handoff = client.recordTurn("session-123", "code");
+
+      expect(handoff?.model).toBe("anthropic/claude-opus-5");
+    });
+
+    it("falls back to the binding's backup slot when the primary provider is gone", () => {
+      const client = newClient();
+      client.configure({ providers: ["kimi"] });
+
+      const handoff = client.recordTurn("session-123", "code");
+
+      expect(handoff?.model).toBe("kimi/moonshot-v1");
+    });
+
+    it("logs nothing for a role no loaded agent serves", () => {
+      const client = new ZeroWallClient({
+        opencode: mockOpenCodeClient,
+        agents: new Map(),
+        roleBindings,
+      });
+
+      expect(client.recordTurn("session-123", "research", "anthropic/claude-opus-5")).toBeUndefined();
+      expect(client.getHandoffLog()).toEqual([]);
+    });
+
+    it("hands back a copy of the log, so callers cannot mutate it", () => {
+      const client = newClient();
+      client.recordTurn("session-123", "research", "anthropic/claude-opus-5");
+
+      client.getHandoffLog().push({} as any);
+
+      expect(client.getHandoffLog()).toHaveLength(1);
+    });
   });
 
   describe("session snapshots", () => {
-    it("should return undefined for unknown session", () => {
-      const client = new ZeroWallClient({
+    const newClient = () =>
+      new ZeroWallClient({
         opencode: mockOpenCodeClient,
         agents: agentDefinitions,
         roleBindings,
       });
 
+    it("should return undefined for unknown session", () => {
+      const client = newClient();
+
       const snapshot = client.getSessionSnapshot("unknown-session");
 
       expect(snapshot).toBeUndefined();
+    });
+
+    it("pins the snapshot on the first turn, with the role's reasoning effort", () => {
+      const client = newClient();
+
+      client.recordTurn("session-123", "research", "anthropic/claude-opus-5");
+
+      expect(client.getSessionSnapshot("session-123")).toMatchObject({
+        sessionId: "session-123",
+        role: "research",
+        model: "anthropic/claude-opus-5",
+        reasoning: "max",
+      });
+    });
+
+    it("keeps the creation-time snapshot when the role changes mid-session", () => {
+      const client = newClient();
+
+      client.recordTurn("session-123", "research", "anthropic/claude-opus-5");
+      client.recordTurn("session-123", "code", "anthropic/claude-sonnet-5");
+
+      // Reproducibility: the snapshot records what the session was created
+      // with; the switch is captured in the handoff log instead.
+      expect(client.getSessionSnapshot("session-123")).toMatchObject({
+        role: "research",
+        model: "anthropic/claude-opus-5",
+      });
     });
   });
 });

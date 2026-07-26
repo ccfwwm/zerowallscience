@@ -6,6 +6,7 @@
     "models": "모델",
     "runtime": "런타임",
     "connectors": "커넥터",
+    "packs": "사이언스 팩",
     "compute": "컴퓨팅",
     "privacy": "개인정보",
     "browser": "브라우저",
@@ -342,5 +343,26 @@
     "error": "원격 접속 변경 실패",
     "connect": "연결",
     "connectPrompt": "데스크톱 앱의 접속 토큰을 입력하세요 → 설정 → 원격 접속."
+  },
+  "packs": {
+    "title": "사이언스 팩",
+    "hint": "스킬, MCP 도구, 커넥터를 포함한 연구 도메인 팩을 설치하고 관리합니다",
+    "noPacks": "설치된 팩이 없습니다",
+    "noPacksHint": "사이언스 팩은 runtime/packs에서 사용할 수 있습니다",
+    "enabled": "활성화됨",
+    "totalSkills": "전체 스킬",
+    "skills": "스킬",
+    "mcpServers": "MCP 서버",
+    "agents": "에이전트",
+    "connectors": "커넥터",
+    "author": "작성자",
+    "license": "라이선스",
+    "source": "소스",
+    "expand": "펼치기",
+    "collapse": "접기",
+    "enable": "활성화",
+    "disable": "비활성화",
+    "processing": "처리 중...",
+    "error": "오류"
   }
 }

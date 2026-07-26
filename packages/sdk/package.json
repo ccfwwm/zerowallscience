@@ -12,5 +12,9 @@
   "dependencies": {
     "@zerowall/shared": "workspace:*",
     "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "memfs": "^4.64.0",
+    "vitest": "^2.1.4"
   }
 }

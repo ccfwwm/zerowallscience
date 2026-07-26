@@ -6,6 +6,7 @@
     "models": "Modèles",
     "runtime": "Environnement d'exécution",
     "connectors": "Connecteurs",
+    "packs": "Packs scientifiques",
     "compute": "Calcul",
     "privacy": "Confidentialité",
     "browser": "Navigateur",
@@ -344,5 +345,26 @@
     "error": "Échec de la modification de l'accès distant",
     "connect": "Se connecter",
     "connectPrompt": "Saisis le jeton d'accès de l'app de bureau → Réglages → Accès distant."
+  },
+  "packs": {
+    "title": "Packs scientifiques",
+    "hint": "Installez et gérez des packs de domaines de recherche avec compétences, outils MCP et connecteurs",
+    "noPacks": "Aucun pack installé",
+    "noPacksHint": "Les packs scientifiques seront disponibles dans runtime/packs",
+    "enabled": "activé",
+    "totalSkills": "compétences au total",
+    "skills": "Compétences",
+    "mcpServers": "Serveurs MCP",
+    "agents": "Agents",
+    "connectors": "Connecteurs",
+    "author": "Auteur",
+    "license": "Licence",
+    "source": "Source",
+    "expand": "Déplier",
+    "collapse": "Replier",
+    "enable": "Activer",
+    "disable": "Désactiver",
+    "processing": "Traitement...",
+    "error": "Erreur"
   }
 }

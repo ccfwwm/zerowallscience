@@ -3,7 +3,7 @@
   "id": "general-purpose",
   "name": "General Purpose",
   "role": "general",
-  "description": "通用 AI 助手，适用于日常对话、文本生成、翻译、总结等通用任务。",
+  "description": "General-purpose AI assistant for everyday conversation, text generation, translation, summarization, and similar tasks.",
   "capabilities": {
     "tools": true,
     "reasoning": true,

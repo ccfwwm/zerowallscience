@@ -6,6 +6,7 @@
     "models": "Modelos",
     "runtime": "Entorno de ejecución",
     "connectors": "Conectores",
+    "packs": "Paquetes científicos",
     "compute": "Cómputo",
     "privacy": "Privacidad",
     "browser": "Navegador",
@@ -344,5 +345,26 @@
     "error": "Error al cambiar el acceso remoto",
     "connect": "Conectar",
     "connectPrompt": "Introduce el token de acceso de la app de escritorio → Ajustes → Acceso remoto."
+  },
+  "packs": {
+    "title": "Paquetes científicos",
+    "hint": "Instala y gestiona paquetes de dominios de investigación con habilidades, herramientas MCP y conectores",
+    "noPacks": "No hay paquetes instalados",
+    "noPacksHint": "Los paquetes científicos estarán disponibles en runtime/packs",
+    "enabled": "activado",
+    "totalSkills": "habilidades totales",
+    "skills": "Habilidades",
+    "mcpServers": "Servidores MCP",
+    "agents": "Agentes",
+    "connectors": "Conectores",
+    "author": "Autor",
+    "license": "Licencia",
+    "source": "Origen",
+    "expand": "Expandir",
+    "collapse": "Contraer",
+    "enable": "Activar",
+    "disable": "Desactivar",
+    "processing": "Procesando...",
+    "error": "Error"
   }
 }

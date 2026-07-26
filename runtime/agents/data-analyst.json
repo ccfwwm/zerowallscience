@@ -3,7 +3,7 @@
   "id": "data-analyst",
   "name": "Data Analyst",
   "role": "data",
-  "description": "数据分析师，专注于数据清洗、统计分析、可视化和机器学习。支持 Python、R 和 SQL。",
+  "description": "Data analyst focused on data cleaning, statistical analysis, visualization, and machine learning. Supports Python, R, and SQL.",
   "capabilities": {
     "tools": true,
     "reasoning": true,
