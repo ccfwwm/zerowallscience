@@ -1,0 +1,174 @@
+{
+  "domain": "variants",
+  "version": "1.0.0",
+  "description": "ClinVar, gnomAD, dbSNP variant database contracts",
+  "tools": [
+    {
+      "name": "clinvar_search_variants",
+      "description": "Search ClinVar by gene, condition, or variant ID",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "gene": { "type": ["string", "null"] },
+          "condition": { "type": ["string", "null"] },
+          "variant_id": { "type": ["string", "null"] },
+          "significance": {
+            "type": ["string", "null"],
+            "enum": [null, "Pathogenic", "Likely pathogenic", "Benign", "Likely benign", "Uncertain significance"]
+          },
+          "max_records": { "type": "integer", "minimum": 1, "maximum": 1000 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["n_records_returned", "records"],
+        "properties": {
+          "query": { "type": "object" },
+          "n_records_returned": { "type": "integer" },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["variation_id", "name"],
+              "properties": {
+                "variation_id": { "type": "string" },
+                "name": { "type": "string" },
+                "gene": { "type": "string" },
+                "clinical_significance": { "type": "string" },
+                "review_status": { "type": "string" },
+                "last_evaluated": { "type": ["string", "null"] },
+                "conditions": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "empty_query",
+          "condition": "All parameters are null/empty",
+          "expectedError": {
+            "type": "ValueError",
+            "message": "At least one search parameter required"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 3,
+        "note": "NCBI E-utilities: 3 req/s without API key, 10 req/s with key"
+      }
+    },
+    {
+      "name": "gnomad_search_variants",
+      "description": "Search gnomAD population allele frequencies",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "variant": { "type": ["string", "null"], "description": "chr-pos-ref-alt format" },
+          "gene": { "type": ["string", "null"] },
+          "region": { "type": ["string", "null"], "pattern": "^chr[0-9XY]+:\\d+-\\d+$" },
+          "dataset": { "type": "string", "enum": ["gnomad_r4", "gnomad_r3"], "default": "gnomad_r4" },
+          "max_records": { "type": "integer", "minimum": 1, "maximum": 1000 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["n_records_returned", "records"],
+        "properties": {
+          "dataset": { "type": "string" },
+          "query": { "type": "object" },
+          "n_records_returned": { "type": "integer" },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["variant_id", "allele_freq"],
+              "properties": {
+                "variant_id": { "type": "string" },
+                "gene": { "type": ["string", "null"] },
+                "allele_freq": { "type": "number", "minimum": 0, "maximum": 1 },
+                "allele_count": { "type": "integer" },
+                "allele_number": { "type": "integer" },
+                "homozygote_count": { "type": "integer" },
+                "consequence": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "empty_query",
+          "condition": "variant, gene, and region all null",
+          "expectedError": {
+            "type": "ValueError",
+            "message": "variant, gene, or region required"
+          }
+        },
+        {
+          "case": "invalid_variant_format",
+          "condition": "variant not in chr-pos-ref-alt format",
+          "expectedError": {
+            "type": "ValueError",
+            "message": "variant must be chr-pos-ref-alt format"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 2,
+        "note": "gnomAD GraphQL API polite usage"
+      }
+    },
+    {
+      "name": "dbsnp_search_rsids",
+      "description": "Search dbSNP by rs ID, gene, or position",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rsid": { "type": ["string", "null"], "pattern": "^rs\\d+$" },
+          "gene": { "type": ["string", "null"] },
+          "chromosome": { "type": ["string", "null"] },
+          "position": { "type": ["integer", "null"], "minimum": 1 },
+          "max_records": { "type": "integer", "minimum": 1, "maximum": 500 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["n_records_returned", "records"],
+        "properties": {
+          "query": { "type": "object" },
+          "n_records_returned": { "type": "integer" },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["rsid"],
+              "properties": {
+                "rsid": { "type": "string" },
+                "chromosome": { "type": "string" },
+                "position": { "type": "integer" },
+                "ref_allele": { "type": "string" },
+                "alt_alleles": { "type": "array", "items": { "type": "string" } },
+                "gene": { "type": ["string", "null"] },
+                "maf": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+              }
+            }
+          }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "empty_query",
+          "condition": "All search parameters null",
+          "expectedError": {
+            "type": "ValueError",
+            "message": "At least one search parameter required"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 3
+      }
+    }
+  ]
+}

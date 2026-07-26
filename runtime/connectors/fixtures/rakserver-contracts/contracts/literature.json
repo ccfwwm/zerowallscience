@@ -1,0 +1,214 @@
+{
+  "domain": "literature",
+  "version": "1.0.0",
+  "description": "OpenAlex and arXiv literature search contracts",
+  "tools": [
+    {
+      "name": "openalex_search_works",
+      "description": "Search OpenAlex scholarly works with filters",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": ["string", "null"] },
+          "year_from": { "type": ["integer", "null"] },
+          "year_to": { "type": ["integer", "null"] },
+          "work_type": { "type": ["string", "null"] },
+          "open_access_only": { "type": "boolean" },
+          "venue": { "type": ["string", "null"] },
+          "sort": { "type": "string", "enum": ["relevance", "cited_by_count", "publication_date"] },
+          "max_records": { "type": "integer", "minimum": 1, "maximum": 500 },
+          "include_abstracts": { "type": "boolean" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["api_total", "n_records_returned", "records_truncated", "records"],
+        "properties": {
+          "query": { "type": ["string", "null"] },
+          "filters": { "type": "object" },
+          "sort": { "type": "string" },
+          "api_total": { "type": "integer" },
+          "n_records_returned": { "type": "integer" },
+          "records_truncated": { "type": "boolean" },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["openalex_id", "title"],
+              "properties": {
+                "openalex_id": { "type": "string" },
+                "doi": { "type": ["string", "null"] },
+                "title": { "type": "string" },
+                "publication_year": { "type": ["integer", "null"] },
+                "cited_by_count": { "type": "integer" },
+                "is_retracted": { "type": "boolean" },
+                "open_access": {
+                  "type": "object",
+                  "properties": {
+                    "is_oa": { "type": "boolean" },
+                    "oa_status": { "type": "string" },
+                    "oa_url": { "type": ["string", "null"] }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "openalex_key_required",
+          "condition": "No OpenAlex API key configured",
+          "expectedError": {
+            "error": "openalex_key_required",
+            "message": "OpenAlex API requires authentication. Set OPENALEX_API_KEY."
+          }
+        },
+        {
+          "case": "empty_query_no_filters",
+          "condition": "query is null/empty and no filters set",
+          "expectedError": {
+            "type": "ValueError",
+            "message": "query or at least one filter must be provided"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 2,
+        "note": "OpenAlex polite pool: <= 2 req/s with authenticated key"
+      },
+      "examples": [
+        {
+          "name": "simple_search",
+          "input": {
+            "query": "CRISPR gene editing",
+            "max_records": 10
+          },
+          "expectedFields": ["api_total", "records", "records_truncated"]
+        },
+        {
+          "name": "filtered_search",
+          "input": {
+            "query": "machine learning",
+            "year_from": 2020,
+            "open_access_only": true,
+            "max_records": 25
+          },
+          "expectedFields": ["api_total", "records"]
+        }
+      ]
+    },
+    {
+      "name": "openalex_get_work",
+      "description": "Fetch one OpenAlex work by ID or DOI",
+      "inputSchema": {
+        "type": "object",
+        "required": ["work_id"],
+        "properties": {
+          "work_id": {
+            "type": "string",
+            "description": "W-id, DOI, or openalex.org URL"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["openalex_id", "title"],
+        "properties": {
+          "openalex_id": { "type": "string" },
+          "doi": { "type": ["string", "null"] },
+          "title": { "type": "string" },
+          "abstract": { "type": ["string", "null"] },
+          "publication_year": { "type": ["integer", "null"] },
+          "cited_by_count": { "type": "integer" },
+          "referenced_works": { "type": "array", "items": { "type": "string" } },
+          "counts_by_year": { "type": "array" }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "openalex_key_required",
+          "expectedError": {
+            "error": "openalex_key_required"
+          }
+        },
+        {
+          "case": "not_found",
+          "condition": "Unknown work_id or DOI",
+          "expectedError": {
+            "type": "NotFoundError",
+            "message": "Work not found"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 2
+      }
+    },
+    {
+      "name": "arxiv_search",
+      "description": "Search arXiv preprints",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": ["string", "null"] },
+          "category": { "type": ["string", "null"] },
+          "date_from": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "date_to": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "start": { "type": "integer", "minimum": 0 },
+          "max_results": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "sort_by": { "type": "string", "enum": ["relevance", "submittedDate", "lastUpdatedDate"] },
+          "sort_order": { "type": "string", "enum": ["ascending", "descending"] }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["search_query", "api_total", "n_records_returned", "records"],
+        "properties": {
+          "search_query": { "type": "string" },
+          "api_total": { "type": "integer" },
+          "start_index": { "type": "integer" },
+          "n_records_returned": { "type": "integer" },
+          "records_truncated": { "type": "boolean" },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["arxiv_id", "title", "abstract"],
+              "properties": {
+                "arxiv_id": { "type": "string" },
+                "title": { "type": "string" },
+                "abstract": { "type": "string" },
+                "authors": { "type": "array", "items": { "type": "string" } },
+                "published": { "type": "string" },
+                "pdf_url": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "empty_query_no_category",
+          "condition": "query and category both null/empty",
+          "expectedError": {
+            "type": "ValueError",
+            "message": "query or category must be provided"
+          }
+        },
+        {
+          "case": "malformed_query",
+          "condition": "arXiv API returns HTTP 200 error feed",
+          "expectedError": {
+            "type": "ValueError",
+            "message": "arXiv query syntax error"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 0.33,
+        "note": "arXiv ToS: >= 3 seconds between requests"
+      }
+    }
+  ]
+}
