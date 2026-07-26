@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { ResearchGraphView } from "@/components/inspector/ResearchGraphView";
 import { ProvenanceIndex } from "@/components/inspector/ProvenanceIndex";
+import { isGatewayWeb } from "@/lib/webMode";
 
 /**
  * The project-level view of the work: how the pieces relate (the research
@@ -19,6 +20,23 @@ import { ProvenanceIndex } from "@/components/inspector/ProvenanceIndex";
  */
 export function GraphPage() {
   const { t } = useTranslation(["pages", "inspector", "common"]);
+  // The sidebar hides this entry in the web client, but the route is still
+  // reachable by URL. Without this, a web visitor would get an empty graph and
+  // "no artifact has recorded provenance" — which asserts the project is empty
+  // when the truth is that this client cannot read it.
+  if (isGatewayWeb) {
+    return (
+      <div className="mx-auto w-full max-w-5xl px-8 py-6">
+        <h1 className="font-serif text-xl text-text">{t("graph.title", "Research Graph")}</h1>
+        <p className="mt-3 text-sm text-muted">
+          {t(
+            "graph.desktopOnly",
+            "The research graph and provenance index read the workspace's local database and files, which the web client has no route to. Open this project in the desktop app to see them.",
+          )}
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl px-8 py-6">
