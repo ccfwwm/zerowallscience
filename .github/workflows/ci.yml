@@ -1,0 +1,128 @@
+name: ci
+
+# Verification gates for ordinary development: typecheck, frontend tests, the
+# brand contract, agent definitions, and the Rust unit tests + clippy.
+#
+# Packaging is NOT duplicated here — build.yml owns installer builds on `v*`
+# tags. This workflow only proves the tree is healthy.
+#
+# `eslint` is deliberately not a gate yet: `npx eslint .` in apps/desktop
+# currently reports 5 errors (i18next/no-literal-string, no-control-regex).
+# Add the step once those are fixed rather than shipping a red workflow.
+
+on:
+  # Pushes to main (the gap this workflow closes) and every pull request.
+  # Restricting push to main keeps PR branches from running the suite twice.
+  push:
+    branches: [main]
+  pull_request:
+
+# Supersede older runs for the same branch / PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only: unlike build.yml, nothing here creates releases.
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: typecheck, tests, contracts
+    # The JS/TS gates are platform-independent, so one fast runner is enough.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4   # version comes from package.json "packageManager"
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: apps/desktop
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Frontend tests
+        working-directory: apps/desktop
+        run: npx vitest run
+
+      - name: Brand contract
+        run: pnpm run test:brand
+
+      - name: Agent definitions
+        run: pnpm run test:agents
+
+  rust:
+    name: rust (${{ matrix.platform }})
+    strategy:
+      # One platform failing should not hide the other's result — the kernel and
+      # path handling differ per OS, so both are worth seeing.
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same package list build.yml uses; webkit2gtk is required to even compile.
+      - name: Install Linux system dependencies
+        if: startsWith(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl \
+            wget file libxdo-dev libssl-dev libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      # tauri_build::build() resolves every `externalBin` and `resources` path in
+      # tauri.conf.json and aborts the compile if one is missing. Those paths are
+      # gitignored (fetched per-platform), so a fresh checkout cannot compile at
+      # all without them. Empty files satisfy the existence check, which is all
+      # `cargo test --lib` and `cargo clippy` need — they never bundle. build.yml
+      # fetches the real binaries because an installer obviously does need them.
+      - name: Create sidecar and resource placeholders
+        shell: bash
+        run: |
+          set -euo pipefail
+          TRIPLE="$(rustc -Vv | sed -n 's/host: //p')"
+          case "$TRIPLE" in
+            *windows*) EXT=".exe" ;;
+            *)         EXT="" ;;
+          esac
+          mkdir -p apps/desktop/src-tauri/binaries
+          for tool in opencode uv agent-browser; do
+            : > "apps/desktop/src-tauri/binaries/$tool-$TRIPLE$EXT"
+          done
+          for dir in runtime/goal-plugin \
+                     runtime/skills/external/ai4s-skills \
+                     runtime/skills/external/anthropic-skills; do
+            mkdir -p "$dir"
+            : > "$dir/.ci-placeholder"
+          done
+
+      - name: Rust unit tests
+        working-directory: apps/desktop/src-tauri
+        run: cargo test --lib
+
+      # Clippy is clean over the shipping crate, so warnings are errors — that
+      # keeps it clean. Note the scope: `--all-targets` also lints the test code,
+      # which currently has 20 warnings (assert_eq! on bools, unwaited children
+      # in kernel tests). Widen the scope only together with fixing those.
+      - name: Clippy
+        working-directory: apps/desktop/src-tauri
+        run: cargo clippy -- -D warnings
