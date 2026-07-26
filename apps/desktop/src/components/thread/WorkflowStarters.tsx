@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight, FileSearch, FlaskConical, FolderOpen, LineChart } from "lucide-react";
 import { installExample, isTauri } from "@/lib/tauri";
+import { isGatewayWeb } from "@/lib/webMode";
 import { toast } from "@/lib/toast";
 
 export interface WorkflowStarter {
@@ -158,6 +159,14 @@ export function WorkflowStarters({ onPick }: { onPick: (prompt: string) => void 
     },
   };
 
+  // Installing an example unpacks bundle resources through the `install_example`
+  // Tauri command, which the web client cannot reach and the gateway does not
+  // expose. Sending the prompt anyway would point the agent at files that were
+  // never unpacked, so the row is hidden in web mode rather than shipped broken.
+  const visibleStarters = isGatewayWeb
+    ? WORKFLOW_STARTERS.filter((s) => s.id !== "examples")
+    : WORKFLOW_STARTERS;
+
   /** Install an example's files, then hand its prompt to the composer. */
   const pickExample = (dir: string, prompt: string) => {
     void (async () => {
@@ -221,7 +230,7 @@ export function WorkflowStarters({ onPick }: { onPick: (prompt: string) => void 
           </>
         ) : (
           <div className="mt-7 overflow-hidden rounded-card border border-border bg-surface shadow-card">
-            {WORKFLOW_STARTERS.map((s) => (
+            {visibleStarters.map((s) => (
             <button
               key={s.id}
               onClick={() => {
