@@ -1,0 +1,469 @@
+{
+  "domain": "genomics",
+  "version": "1.0.0",
+  "description": "Ensembl, NCBI, genome assembly and sequence retrieval contracts",
+  "tools": [
+    {
+      "name": "ensembl_rest_sequence",
+      "description": "Fetch genomic sequence from Ensembl REST API",
+      "inputSchema": {
+        "type": "object",
+        "required": ["region"],
+        "properties": {
+          "region": {
+            "type": "string",
+            "pattern": "^[0-9XYMTxy]+:\\d+\\.\\.\\d+$",
+            "description": "Region in format chr:start..end"
+          },
+          "species": { "type": "string", "default": "human" },
+          "strand": { "type": "integer", "enum": [1, -1], "default": 1 },
+          "expand_5prime": { "type": "integer", "minimum": 0, "default": 0 },
+          "expand_3prime": { "type": "integer", "minimum": 0, "default": 0 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["id", "seq"],
+        "properties": {
+          "id": { "type": "string" },
+          "seq": { "type": "string", "pattern": "^[ACGTN]+$" },
+          "desc": { "type": "string" },
+          "query_region": { "type": "string" }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "invalid_region",
+          "condition": "Region format invalid or chromosome not found",
+          "expectedError": {
+            "type": "ValueError",
+            "message": "Invalid region format"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 15,
+        "note": "Ensembl REST: 15 req/s without API key"
+      }
+    },
+    {
+      "name": "ensembl_rest_lookup",
+      "description": "Lookup gene/transcript metadata from Ensembl",
+      "inputSchema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string", "description": "Gene or transcript stable ID" },
+          "species": { "type": "string", "default": "human" },
+          "expand": { "type": "boolean", "default": false }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["id", "object_type"],
+        "properties": {
+          "id": { "type": "string" },
+          "object_type": { "type": "string", "enum": ["Gene", "Transcript"] },
+          "display_name": { "type": "string" },
+          "description": { "type": "string" },
+          "seq_region_name": { "type": "string" },
+          "start": { "type": "integer" },
+          "end": { "type": "integer" },
+          "strand": { "type": "integer" },
+          "biotype": { "type": "string" }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "not_found",
+          "condition": "Unknown gene/transcript ID",
+          "expectedError": {
+            "type": "NotFoundError",
+            "message": "ID not found"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 15
+      }
+    },
+    {
+      "name": "ensembl_rest_overlap",
+      "description": "Find genes/features overlapping a genomic region",
+      "inputSchema": {
+        "type": "object",
+        "required": ["region"],
+        "properties": {
+          "region": { "type": "string", "pattern": "^[0-9XYxy]+:\\d+-\\d+$" },
+          "species": { "type": "string", "default": "human" },
+          "feature": {
+            "type": "string",
+            "enum": ["gene", "transcript", "exon", "cds", "repeat"],
+            "default": "gene"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["features"],
+        "properties": {
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "start", "end"],
+              "properties": {
+                "id": { "type": "string" },
+                "external_name": { "type": "string" },
+                "start": { "type": "integer" },
+                "end": { "type": "integer" },
+                "strand": { "type": "integer" },
+                "biotype": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "invalid_region",
+          "expectedError": {
+            "type": "ValueError",
+            "message": "Invalid region format"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 15
+      }
+    },
+    {
+      "name": "ensembl_rest_homology",
+      "description": "Find orthologs/paralogs for a gene",
+      "inputSchema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string" },
+          "species": { "type": "string", "default": "human" },
+          "target_species": { "type": ["string", "null"] },
+          "type": {
+            "type": "string",
+            "enum": ["orthologues", "paralogues", "all"],
+            "default": "all"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "target", "type"],
+              "properties": {
+                "id": { "type": "string" },
+                "target": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string" },
+                    "species": { "type": "string" }
+                  }
+                },
+                "type": { "type": "string" },
+                "dn_ds": { "type": ["number", "null"] }
+              }
+            }
+          }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "not_found",
+          "expectedError": {
+            "type": "NotFoundError"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 15
+      }
+    },
+    {
+      "name": "ncbi_datasets_genome",
+      "description": "Search NCBI Datasets for genome assemblies",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taxon": { "type": ["string", "null"] },
+          "accession": { "type": ["string", "null"] },
+          "assembly_level": {
+            "type": ["string", "null"],
+            "enum": [null, "Complete Genome", "Chromosome", "Scaffold", "Contig"]
+          },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["assemblies"],
+        "properties": {
+          "total_count": { "type": "integer" },
+          "assemblies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["accession", "organism"],
+              "properties": {
+                "accession": { "type": "string" },
+                "organism": { "type": "string" },
+                "assembly_level": { "type": "string" },
+                "assembly_name": { "type": "string" },
+                "submission_date": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "empty_query",
+          "condition": "taxon and accession both null",
+          "expectedError": {
+            "type": "ValueError",
+            "message": "taxon or accession required"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 3,
+        "note": "NCBI E-utilities standard rate"
+      }
+    },
+    {
+      "name": "ncbi_datasets_gene",
+      "description": "Fetch gene metadata from NCBI Datasets",
+      "inputSchema": {
+        "type": "object",
+        "required": ["gene_id"],
+        "properties": {
+          "gene_id": {
+            "type": "string",
+            "description": "NCBI Gene ID or symbol"
+          },
+          "taxon": { "type": "string", "default": "human" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["gene"],
+        "properties": {
+          "gene": {
+            "type": "object",
+            "required": ["gene_id", "symbol"],
+            "properties": {
+              "gene_id": { "type": "string" },
+              "symbol": { "type": "string" },
+              "description": { "type": "string" },
+              "type": { "type": "string" },
+              "genomic_ranges": { "type": "array" }
+            }
+          }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "not_found",
+          "expectedError": {
+            "type": "NotFoundError"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 3
+      }
+    },
+    {
+      "name": "ucsc_tracks_list",
+      "description": "List available UCSC Genome Browser tracks",
+      "inputSchema": {
+        "type": "object",
+        "required": ["genome"],
+        "properties": {
+          "genome": { "type": "string", "description": "e.g. hg38, mm10" },
+          "group": { "type": ["string", "null"] }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["tracks"],
+        "properties": {
+          "genome": { "type": "string" },
+          "tracks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "track": { "type": "string" },
+                "shortLabel": { "type": "string" },
+                "longLabel": { "type": "string" },
+                "type": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "errorCases": [],
+      "rateLimits": {
+        "requestsPerSecond": 1,
+        "note": "UCSC public MySQL: polite usage"
+      }
+    },
+    {
+      "name": "ucsc_tracks_data",
+      "description": "Fetch track data for a genomic region from UCSC",
+      "inputSchema": {
+        "type": "object",
+        "required": ["genome", "track", "region"],
+        "properties": {
+          "genome": { "type": "string" },
+          "track": { "type": "string" },
+          "region": { "type": "string", "pattern": "^chr[0-9XYxy]+:\\d+-\\d+$" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["features"],
+        "properties": {
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chrom": { "type": "string" },
+                "start": { "type": "integer" },
+                "end": { "type": "integer" },
+                "name": { "type": "string" },
+                "score": { "type": ["number", "null"] }
+              }
+            }
+          }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "track_not_found",
+          "expectedError": {
+            "type": "NotFoundError",
+            "message": "Track not found for genome"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 1
+      }
+    },
+    {
+      "name": "refseq_assembly_summary",
+      "description": "Fetch RefSeq assembly summary metadata",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accession": { "type": ["string", "null"] },
+          "organism": { "type": ["string", "null"] },
+          "level": { "type": ["string", "null"] }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["assemblies"],
+        "properties": {
+          "assemblies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "assembly_accession": { "type": "string" },
+                "organism_name": { "type": "string" },
+                "assembly_level": { "type": "string" },
+                "release_date": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "errorCases": [],
+      "rateLimits": {
+        "requestsPerSecond": 3
+      }
+    },
+    {
+      "name": "refseq_gene_info",
+      "description": "Fetch RefSeq gene annotation",
+      "inputSchema": {
+        "type": "object",
+        "required": ["gene_id"],
+        "properties": {
+          "gene_id": { "type": "string" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["gene_id", "symbol"],
+        "properties": {
+          "gene_id": { "type": "string" },
+          "symbol": { "type": "string" },
+          "description": { "type": "string" },
+          "map_location": { "type": "string" }
+        }
+      },
+      "errorCases": [
+        {
+          "case": "not_found",
+          "expectedError": {
+            "type": "NotFoundError"
+          }
+        }
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 3
+      }
+    },
+    {
+      "name": "gencode_releases",
+      "description": "List GENCODE releases and download URLs",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "species": { "type": "string", "enum": ["human", "mouse"], "default": "human" },
+          "latest_only": { "type": "boolean", "default": true }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["releases"],
+        "properties": {
+          "species": { "type": "string" },
+          "releases": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "version": { "type": "string" },
+                "release_date": { "type": "string" },
+                "gtf_url": { "type": "string" },
+                "fasta_url": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "errorCases": [],
+      "rateLimits": {
+        "requestsPerSecond": 1
+      }
+    }
+  ]
+}
