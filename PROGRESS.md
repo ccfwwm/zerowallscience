@@ -1,5 +1,7 @@
 # Progress
 
+2026-07-26 13:00 · feat(p3): Settings UI for Science Packs management — added Packs section with PackCard/PacksSection components, enable/disable toggle with loading state, expandable details showing skills/author/license/source, "packs" section in settings navigation with Package icon, English and Chinese translations; users can view installed packs, see component counts, toggle pack state, expand to see skill lists with enabled indicators; typecheck passes.
+
 2026-07-26 12:30 · feat(p3): complete runtime pack loading integration — implemented full loadPacks/enablePack/disablePack logic with workspace path resolution, error handling, and bootstrap integration; loadPacks() called during bootstrap after agent definitions, handles null workspace gracefully; dynamic SDK imports avoid circular dependencies; typecheck passes.
 
 2026-07-26 12:15 · feat(p3): runtime integration for Science Packs — added installedPacks state, loadPacks/enablePack/disablePack methods to RuntimeState, placeholder implementations with TODO comments for full integration; establishes state management hooks for pack lifecycle in desktop runtime; typecheck passes.

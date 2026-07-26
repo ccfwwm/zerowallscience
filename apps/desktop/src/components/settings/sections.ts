@@ -8,6 +8,7 @@ import {
   Settings,
   Shapes,
   ShieldCheck,
+  Package,
   type LucideIcon,
 } from "lucide-react";
 
@@ -21,6 +22,7 @@ export const SETTINGS_SECTIONS = [
   { key: "models", icon: Shapes },
   { key: "runtime", icon: Cpu, desktopOnly: true },
   { key: "connectors", icon: Plug, desktopOnly: true },
+  { key: "packs", icon: Package, desktopOnly: true },
   { key: "browser", icon: Globe, desktopOnly: true },
   { key: "compute", icon: Cloud, desktopOnly: true },
   { key: "remote", icon: Radio, desktopOnly: true },

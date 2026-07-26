@@ -68,6 +68,7 @@ import { fallbackDefaultModel } from "@/components/settings/modelCatalog";
 import { ProviderManagerCard } from "@/components/settings/ProviderManagerCard";
 import { Row, Section, Switch } from "@/components/settings/Section";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { PacksSection } from "@/components/settings/PacksSection";
 import { resolveSection } from "@/components/settings/sections";
 import { chipCls, inputCls, selectCls } from "@/components/settings/inputCls";
 import { SCIENCE_CONNECTORS } from "@/lib/scienceConnectors";
@@ -1566,6 +1567,17 @@ export function SettingsPage() {
                 </div>
               </div>
             </div>
+          )}
+        </Section>
+        )}
+
+        {/* ---- Science Packs ---- */}
+        {section === "packs" && (
+        <Section title={t("packs.title", "Science Packs")} hint={t("packs.hint", "Install and manage research domain packs")} flush>
+          {!connected ? (
+            <p className="px-4 py-3 text-[13px] text-muted">{t("mcp.connectPrompt")}</p>
+          ) : (
+            <PacksSection />
           )}
         </Section>
         )}

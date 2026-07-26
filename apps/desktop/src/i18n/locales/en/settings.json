@@ -6,6 +6,7 @@
     "models": "Models",
     "runtime": "Runtime",
     "connectors": "Connectors",
+    "packs": "Science Packs",
     "compute": "Compute",
     "privacy": "Privacy",
     "browser": "Browser",
@@ -344,5 +345,26 @@
     "error": "Remote access change failed",
     "connect": "Connect",
     "connectPrompt": "Enter the access token from the desktop app → Settings → Remote Access."
+  },
+  "packs": {
+    "title": "Science Packs",
+    "hint": "Install and manage research domain packs with skills, MCP tools, and connectors",
+    "noPacks": "No packs installed",
+    "noPacksHint": "Science Packs will be available in runtime/packs",
+    "enabled": "enabled",
+    "totalSkills": "total skills",
+    "skills": "Skills",
+    "mcpServers": "MCP Servers",
+    "agents": "Agents",
+    "connectors": "Connectors",
+    "author": "Author",
+    "license": "License",
+    "source": "Source",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "enable": "Enable",
+    "disable": "Disable",
+    "processing": "Processing...",
+    "error": "Error"
   }
 }
