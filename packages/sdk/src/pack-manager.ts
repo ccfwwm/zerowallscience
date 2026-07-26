@@ -35,8 +35,51 @@ import type {
 import { validatePackManifest, compareVersions } from "@zerowall/shared";
 import { packRegistry } from "./pack-registry";
 import { parse as parseYaml } from "yaml";
-import { createHash } from "crypto";
-import * as nodePath from "path";
+
+/**
+ * Node built-ins are not imported at module scope.
+ *
+ * This module is reachable from the browser bundle: `runtime.ts` pulls the SDK
+ * in with a dynamic `import("@zerowall/sdk")`, and the SDK barrel re-exports
+ * this file. A top-level `import { createHash } from "crypto"` therefore lands
+ * in rollup's graph, where `crypto` and `path` resolve to
+ * `__vite-browser-external` and the production build fails outright — while
+ * typecheck and tests, which run under Node, stay perfectly green. The
+ * `fs/promises` calls below never had this problem because they were already
+ * deferred to call time; `crypto` is now deferred the same way.
+ *
+ * `path` is gone entirely: every use here was a pure string operation on
+ * already-absolute paths, so the two helpers below do the job without a
+ * platform dependency. Paths are normalized to forward slashes, which Windows
+ * accepts and which the digest already required (relative paths are hashed
+ * POSIX-style so a pack's checksum does not change with the OS).
+ */
+const nodeCrypto = () => import("crypto");
+
+/** Join path segments with a forward slash, collapsing separators. */
+function joinPath(...segments: string[]): string {
+  return segments
+    .filter((s) => s !== "")
+    .join("/")
+    .replace(/[/\\]+/g, "/");
+}
+
+/** `to` expressed relative to `from`, POSIX-style. Both must be absolute. */
+function relativePath(from: string, to: string): string {
+  const norm = (p: string) => p.replace(/[/\\]+/g, "/").replace(/\/$/, "");
+  const fromParts = norm(from).split("/");
+  const toParts = norm(to).split("/");
+  let i = 0;
+  while (i < fromParts.length && i < toParts.length && fromParts[i] === toParts[i]) i++;
+  return [...Array(fromParts.length - i).fill(".."), ...toParts.slice(i)].join("/");
+}
+
+/** The directory containing `p`, or "." when it has no separator. */
+function dirName(p: string): string {
+  const normalized = p.replace(/[/\\]+/g, "/").replace(/\/$/, "");
+  const cut = normalized.lastIndexOf("/");
+  return cut <= 0 ? "." : normalized.slice(0, cut);
+}
 
 /** Manifest file name inside a pack directory */
 const MANIFEST_FILE = "manifest.yaml";
@@ -54,9 +97,13 @@ export class SciencePackManager implements ISciencePackManager {
   static readonly MAX_VERSION_HISTORY = 5;
 
   constructor(runtimePath: string) {
-    this.packsDir = nodePath.join(runtimePath, "packs");
-    this.historyDir = nodePath.join(runtimePath, "pack-history");
-    this.stateFile = nodePath.join(runtimePath, "pack-state.json");
+    // Plain string joins: the constructor cannot await the lazy `path` import,
+    // and these are the roots every other path is built from. A forward slash
+    // is valid on Windows too, and `runtimeRoot` below already accepts either.
+    const root = runtimePath.replace(/[/\\]+$/, "");
+    this.packsDir = `${root}/packs`;
+    this.historyDir = `${root}/pack-history`;
+    this.stateFile = `${root}/pack-state.json`;
   }
 
   /** Runtime root derived from the packs directory */
@@ -197,7 +244,7 @@ export class SciencePackManager implements ISciencePackManager {
     // Integrity gate: a declared payload hash must match before anything is copied.
     await this.assertPayloadIntegrity(source, manifest);
 
-    const targetPath = nodePath.join(this.packsDir, manifest.id);
+    const targetPath = joinPath(this.packsDir, manifest.id);
     await this.copyDirectory(source, targetPath);
 
     // Guard against a partial or corrupted copy.
@@ -348,7 +395,7 @@ export class SciencePackManager implements ISciencePackManager {
     const fs = await import("fs/promises");
 
     await fs.rm(pack.path, { recursive: true, force: true });
-    await fs.rm(nodePath.join(this.historyDir, packId), {
+    await fs.rm(joinPath(this.historyDir, packId), {
       recursive: true,
       force: true,
     });
@@ -506,7 +553,7 @@ export class SciencePackManager implements ISciencePackManager {
     const previousState = record.state;
     const previousVersions = record.versions.map((v) => ({ ...v }));
 
-    const backupPath = nodePath.join(
+    const backupPath = joinPath(
       this.historyDir,
       packId,
       `${TEMP_PREFIX}${Date.now()}`,
@@ -651,7 +698,7 @@ export class SciencePackManager implements ISciencePackManager {
 
   /** Canonical snapshot directory for a pack version */
   private snapshotPath(packId: string, version: string): string {
-    return nodePath.join(this.historyDir, packId, version);
+    return joinPath(this.historyDir, packId, version);
   }
 
   /** Remove transient backup directories left behind by an interrupted process */
@@ -667,13 +714,13 @@ export class SciencePackManager implements ISciencePackManager {
     }
 
     for (const packId of packDirs) {
-      const dir = nodePath.join(this.historyDir, packId);
+      const dir = joinPath(this.historyDir, packId);
       try {
         const entries = await fs.readdir(dir, { withFileTypes: true });
         for (const entry of entries) {
           if (entry.isDirectory() && entry.name.startsWith(TEMP_PREFIX)) {
             await fs
-              .rm(nodePath.join(dir, entry.name), { recursive: true, force: true })
+              .rm(joinPath(dir, entry.name), { recursive: true, force: true })
               .catch(() => {});
           }
         }
@@ -689,7 +736,7 @@ export class SciencePackManager implements ISciencePackManager {
 
     let raw: string;
     try {
-      raw = await fs.readFile(nodePath.join(dir, MANIFEST_FILE), "utf-8");
+      raw = await fs.readFile(joinPath(dir, MANIFEST_FILE), "utf-8");
     } catch {
       throw new Error(`Invalid pack manifest: ${MANIFEST_FILE} not found in ${dir}`);
     }
@@ -753,12 +800,13 @@ export class SciencePackManager implements ISciencePackManager {
    */
   private async hashDirectory(dir: string, exclude: string | null): Promise<string> {
     const fs = await import("fs/promises");
+    const { createHash } = await nodeCrypto();
     const hash = createHash("sha256");
 
     const files = (await this.listFiles(dir))
       .map((absolute) => ({
         absolute,
-        relative: nodePath.relative(dir, absolute).split(nodePath.sep).join("/"),
+        relative: relativePath(dir, absolute),
       }))
       .filter((f) => f.relative !== exclude)
       .sort((a, b) => (a.relative < b.relative ? -1 : a.relative > b.relative ? 1 : 0));
@@ -779,7 +827,7 @@ export class SciencePackManager implements ISciencePackManager {
 
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
-      const full = nodePath.join(dir, entry.name);
+      const full = joinPath(dir, entry.name);
       if (entry.isDirectory()) {
         files.push(...(await this.listFiles(full)));
       } else {
@@ -833,7 +881,7 @@ export class SciencePackManager implements ISciencePackManager {
       data[packId] = record;
     }
 
-    await fs.mkdir(nodePath.dirname(this.stateFile), { recursive: true });
+    await fs.mkdir(dirName(this.stateFile), { recursive: true });
     await fs.writeFile(this.stateFile, JSON.stringify(data, null, 2), "utf-8");
   }
 
@@ -857,8 +905,8 @@ export class SciencePackManager implements ISciencePackManager {
     const entries = await fs.readdir(src, { withFileTypes: true });
 
     for (const entry of entries) {
-      const srcPath = nodePath.join(src, entry.name);
-      const destPath = nodePath.join(dest, entry.name);
+      const srcPath = joinPath(src, entry.name);
+      const destPath = joinPath(dest, entry.name);
 
       if (entry.isDirectory()) {
         await this.copyDirectory(srcPath, destPath);

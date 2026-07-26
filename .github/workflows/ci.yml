@@ -54,6 +54,14 @@ jobs:
         working-directory: apps/desktop
         run: npx vitest run
 
+      # The production bundle is its own gate, not a duplicate of typecheck.
+      # Tests and tsc run under Node, where a stray `import { createHash } from
+      # "crypto"` in browser-reachable code is perfectly valid; rollup resolves
+      # it to __vite-browser-external and the build dies. That is exactly how
+      # the tree reached 970 green tests while `pnpm build` was broken.
+      - name: Production build
+        run: pnpm build
+
       - name: Brand contract
         run: pnpm run test:brand
 
