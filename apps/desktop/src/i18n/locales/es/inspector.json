@@ -57,7 +57,9 @@
     "producedByRunPrefix": "Producido por la ejecución",
     "commandSeparator": " — ",
     "producedByRunSuffix": ". Este archivo es una salida de la ejecución de código; Reproducir vuelve a ejecutar ese comando y compara el resultado.",
-    "contentNotCaptured": "No se capturó el contenido de esta versión (una escritura binaria, o una edición que solo registró una diferencia)."
+    "contentNotCaptured": "No se capturó el contenido de esta versión (una escritura binaria, o una edición que solo registró una diferencia).",
+    "indexVersions_one": "{{count}} versión",
+    "indexVersions_other": "{{count}} versiones"
   },
   "filePreview": {
     "historyAria": "Historial",

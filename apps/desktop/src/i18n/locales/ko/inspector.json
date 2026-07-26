@@ -56,7 +56,9 @@
     "producedByRunPrefix": "다음 실행으로 생성됨",
     "commandSeparator": " — ",
     "producedByRunSuffix": ". 이 파일은 코드 실행의 결과물입니다. 재현을 누르면 해당 명령을 재실행하고 결과를 비교합니다.",
-    "contentNotCaptured": "이 버전의 콘텐츠가 캡처되지 않았습니다 (바이너리 쓰기 또는 diff만 기록된 수정)."
+    "contentNotCaptured": "이 버전의 콘텐츠가 캡처되지 않았습니다 (바이너리 쓰기 또는 diff만 기록된 수정).",
+    "indexVersions_one": "{{count}}개 버전",
+    "indexVersions_other": "{{count}}개 버전"
   },
   "filePreview": {
     "historyAria": "기록",

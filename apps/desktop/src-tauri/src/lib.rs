@@ -162,6 +162,7 @@ pub fn run() {
             provenance::record_provenance,
             provenance::list_provenance,
             provenance::read_env_lockfile,
+            provenance::provenance_summary,
             review_store::review_sync,
             review_store::review_resolve,
             review_store::review_reopen,

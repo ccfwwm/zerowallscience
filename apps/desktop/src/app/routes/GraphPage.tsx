@@ -1,21 +1,27 @@
 import { useTranslation } from "react-i18next";
 import { ResearchGraphView } from "@/components/inspector/ResearchGraphView";
+import { ProvenanceIndex } from "@/components/inspector/ProvenanceIndex";
 
 /**
- * The research graph for the active workspace: its artifact versions, the
- * review claims raised against them, the annotations anchored to them, and the
- * memories kept from the work — and how those relate.
+ * The project-level view of the work: how the pieces relate (the research
+ * graph) and where each artifact came from (the provenance index).
  *
- * A full page rather than a side pane: the graph is project-scoped (not
- * session-scoped) and needs the width. Desktop only — the view reads the
- * workspace's local science database, so the sidebar hides this entry in the
- * gateway web client.
+ * A full page rather than a side pane: both views are project-scoped (not
+ * session-scoped) and need the width. Desktop only — the graph reads the
+ * workspace's local science database and the index reads
+ * `.zerowall/provenance.jsonl`, so the sidebar hides this entry in the gateway
+ * web client.
+ *
+ * The two are on one page because they answer halves of the same question.
+ * The graph shows what relates to what; the index shows what is traceable and
+ * what has a gap. Split across two routes, a user checking reproducibility
+ * would have to know to visit both.
  */
 export function GraphPage() {
-  const { t } = useTranslation(["pages", "common"]);
+  const { t } = useTranslation(["pages", "inspector", "common"]);
   return (
-    <div className="flex h-full flex-col">
-      <div className="mx-auto w-full max-w-5xl shrink-0 px-8 pb-2 pt-6">
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto w-full max-w-5xl px-8 py-6">
         <h1 className="font-serif text-xl text-text">{t("graph.title", "Research Graph")}</h1>
         <p className="mt-1 text-sm text-muted">
           {t(
@@ -23,10 +29,21 @@ export function GraphPage() {
             "How this project's artifacts, review claims, annotations, and memories relate.",
           )}
         </p>
-      </div>
-      <div className="mx-auto min-h-0 w-full max-w-5xl flex-1 px-8 pb-6">
-        <div className="h-full overflow-hidden rounded-card border border-border bg-surface">
+        <div className="mt-4 h-[420px] overflow-hidden rounded-card border border-border bg-surface">
           <ResearchGraphView />
+        </div>
+
+        <h2 className="mt-8 font-serif text-lg text-text">
+          {t("graph.provenanceTitle", "Artifact provenance")}
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          {t(
+            "graph.provenanceDescription",
+            "Every artifact with recorded history, newest first. Expand one to see the code, environment, and conversation behind each version.",
+          )}
+        </p>
+        <div className="mt-4 max-h-[520px] overflow-hidden rounded-card border border-border bg-surface">
+          <ProvenanceIndex />
         </div>
       </div>
     </div>

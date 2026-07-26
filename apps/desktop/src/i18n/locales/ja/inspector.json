@@ -56,7 +56,9 @@
     "producedByRunPrefix": "実行によって生成",
     "commandSeparator": " — ",
     "producedByRunSuffix": "。このファイルはコード実行の出力です。「再現」はそのコマンドを再実行し、結果を比較します。",
-    "contentNotCaptured": "このバージョンの内容はキャプチャされていません（バイナリの書き込み、または差分のみが記録された編集）。"
+    "contentNotCaptured": "このバージョンの内容はキャプチャされていません（バイナリの書き込み、または差分のみが記録された編集）。",
+    "indexVersions_one": "{{count}} バージョン",
+    "indexVersions_other": "{{count}} バージョン"
   },
   "filePreview": {
     "historyAria": "履歴",

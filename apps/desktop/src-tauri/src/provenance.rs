@@ -646,9 +646,91 @@ pub fn read_env_lockfile(app: AppHandle, hash: String) -> Result<String, String>
     std::fs::read_to_string(&path).map_err(|e| format!("lockfile unavailable: {e}"))
 }
 
+/// One artifact's provenance at a glance, for the project-wide view. Derived
+/// from the same append-only store as `versions_for` — this is a fold over the
+/// records, not a second source of truth, so it cannot disagree with the
+/// per-artifact History.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactSummary {
+    /// Workspace-relative path with `/` separators.
+    pub path: String,
+    /// Number of recorded versions.
+    pub versions: u32,
+    /// Highest version number seen. Normally equal to `versions`, but the store
+    /// is append-only and hand-editable, so a gap is possible; both are reported
+    /// rather than one being inferred from the other.
+    pub latest_version: u32,
+    /// Timestamp of the newest version (seconds since the epoch).
+    pub last_ts: u64,
+    /// Distinct tools that produced versions, sorted — how the file came to be.
+    pub tools: Vec<String>,
+    /// Distinct sessions that touched it, sorted.
+    pub session_ids: Vec<String>,
+    /// Whether any version came from executing code rather than an authored
+    /// write. A file with a run behind it has a re-runnable recipe; one without
+    /// can only be reproduced from its recorded content.
+    pub from_run: bool,
+    /// Whether every version recorded the environment it was produced in.
+    /// False means at least one version cannot be placed in an environment.
+    pub env_complete: bool,
+}
+
+/// Fold the whole store into one row per artifact, newest activity first.
+pub fn summarize(root: &Path) -> Vec<ArtifactSummary> {
+    // Accumulate per path, then sort — the store's line order is append order,
+    // which interleaves artifacts.
+    let mut by_path: HashMap<String, ArtifactSummary> = HashMap::new();
+    // Sets kept beside the summaries; the summary carries sorted Vecs so the
+    // frontend gets a stable order rather than a hash order.
+    let mut tools: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut sessions: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+
+    for r in read_all(&store_file(root)) {
+        tools.entry(r.path.clone()).or_default().insert(r.tool.clone());
+        if let Some(s) = &r.session_id {
+            sessions.entry(r.path.clone()).or_default().insert(s.clone());
+        }
+        let e = by_path.entry(r.path.clone()).or_insert_with(|| ArtifactSummary {
+            path: r.path.clone(),
+            versions: 0,
+            latest_version: 0,
+            last_ts: 0,
+            tools: Vec::new(),
+            session_ids: Vec::new(),
+            from_run: false,
+            env_complete: true,
+        });
+        e.versions += 1;
+        e.latest_version = e.latest_version.max(r.version);
+        e.last_ts = e.last_ts.max(r.ts);
+        e.from_run |= r.run_id.is_some();
+        e.env_complete &= r.env.is_some();
+    }
+
+    let mut out: Vec<ArtifactSummary> = by_path
+        .into_values()
+        .map(|mut s| {
+            s.tools = tools.remove(&s.path).unwrap_or_default().into_iter().collect();
+            s.session_ids = sessions.remove(&s.path).unwrap_or_default().into_iter().collect();
+            s
+        })
+        .collect();
+    // Newest activity first; path breaks ties so the order is total and stable
+    // (two files written in the same second must not swap between calls).
+    out.sort_by(|a, b| b.last_ts.cmp(&a.last_ts).then_with(|| a.path.cmp(&b.path)));
+    out
+}
+
+/// `async`: reads the whole (unbounded) store off the UI thread.
+#[tauri::command(async)]
+pub fn provenance_summary(app: AppHandle) -> Result<Vec<ArtifactSummary>, String> {
+    Ok(summarize(&workspace_dir(&app)?))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{append_record, cap_content, normalize_rel, versions_for, CONTENT_CAP};
+    use super::{append_record, cap_content, normalize_rel, summarize, versions_for, CONTENT_CAP};
 
     fn temp_root(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("zerowall-prov-{tag}-{}", std::process::id()));
@@ -707,6 +789,80 @@ mod tests {
         assert_eq!(env.app, "0.1.0");
         let pkgs = env.packages.as_ref().expect("packages recorded");
         assert_eq!((pkgs.count, pkgs.hash.as_str()), (2, "abc123"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn summary_folds_the_store_into_one_row_per_artifact() {
+        let root = temp_root("summary");
+        // An empty store is not an error — a fresh workspace has no provenance.
+        assert!(summarize(&root).is_empty());
+
+        // plot.py: two versions, two tools, one of them a run, env missing on both.
+        append_record(&root, "fig/plot.py", "write", Some("ses_1".into()), None, Some("print(1)".into()), None, None, None, None).unwrap();
+        append_record(&root, "fig/plot.py", "run", Some("ses_2".into()), None, None, None, None, None, Some("run_abc".into())).unwrap();
+        // report.md: one authored version, env recorded.
+        append_record(
+            &root,
+            "report.md",
+            "write",
+            Some("ses_1".into()),
+            None,
+            Some("# r".into()),
+            None,
+            None,
+            Some(super::EnvInfo {
+                python: Some("3.12.4".into()),
+                platform: "windows-x86_64".into(),
+                app: "0.3.0".into(),
+                packages: None,
+                hardware: None,
+            }),
+            None,
+        )
+        .unwrap();
+
+        let s = summarize(&root);
+        assert_eq!(s.len(), 2, "one row per artifact, not per version");
+
+        let plot = s.iter().find(|a| a.path == "fig/plot.py").expect("plot summarized");
+        assert_eq!((plot.versions, plot.latest_version), (2, 2));
+        assert_eq!(plot.tools, vec!["run", "write"]); // sorted, deduped
+        assert_eq!(plot.session_ids, vec!["ses_1", "ses_2"]);
+        assert!(plot.from_run, "a run produced one version");
+        assert!(!plot.env_complete, "neither version recorded an environment");
+
+        let report = s.iter().find(|a| a.path == "report.md").expect("report summarized");
+        assert_eq!(report.versions, 1);
+        assert_eq!(report.tools, vec!["write"]);
+        assert!(!report.from_run, "an authored write has no run behind it");
+        assert!(report.env_complete);
+
+        // The order is total: every row is newest-activity-first, and equal
+        // timestamps (likely here — all three appends land in the same second)
+        // fall back to path, so repeated calls cannot swap rows.
+        let again = summarize(&root);
+        let order: Vec<&str> = s.iter().map(|a| a.path.as_str()).collect();
+        let order_again: Vec<&str> = again.iter().map(|a| a.path.as_str()).collect();
+        assert_eq!(order, order_again, "summary order is stable across calls");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn summary_survives_a_corrupt_line() {
+        let root = temp_root("summary-corrupt");
+        append_record(&root, "a.md", "write", None, None, Some("a".into()), None, None, None, None).unwrap();
+        // The store is append-only text; a torn write must cost that line only.
+        let file = root.join(".zerowall/provenance.jsonl");
+        let mut text = std::fs::read_to_string(&file).unwrap();
+        text.push_str("{not json\n");
+        std::fs::write(&file, &text).unwrap();
+
+        let s = summarize(&root);
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].versions, 1);
 
         let _ = std::fs::remove_dir_all(root);
     }

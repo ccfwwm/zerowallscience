@@ -56,7 +56,9 @@
     "producedByRunPrefix": "由运行产生",
     "commandSeparator": " — ",
     "producedByRunSuffix": "。此文件是运行代码的输出；“复现”会重新运行该命令并比较结果。",
-    "contentNotCaptured": "此版本的内容未被捕获（可能是二进制写入，或仅记录了差异的编辑）。"
+    "contentNotCaptured": "此版本的内容未被捕获（可能是二进制写入，或仅记录了差异的编辑）。",
+    "indexVersions_one": "{{count}} 个版本",
+    "indexVersions_other": "{{count}} 个版本"
   },
   "filePreview": {
     "historyAria": "历史记录",

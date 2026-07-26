@@ -57,7 +57,9 @@
     "producedByRunPrefix": "Produced by run",
     "commandSeparator": " — ",
     "producedByRunSuffix": ". This file is an output of running code; Reproduce re-runs that command and compares the result.",
-    "contentNotCaptured": "Content not captured for this version (a binary write, or an edit that recorded only a diff)."
+    "contentNotCaptured": "Content not captured for this version (a binary write, or an edit that recorded only a diff).",
+    "indexVersions_one": "{{count}} version",
+    "indexVersions_other": "{{count}} versions"
   },
   "filePreview": {
     "historyAria": "History",

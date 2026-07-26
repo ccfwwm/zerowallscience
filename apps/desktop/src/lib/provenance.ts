@@ -117,6 +117,37 @@ export async function listProvenance(path: string): Promise<ProvenanceRecord[]> 
   }
 }
 
+/** One artifact's provenance at a glance — a fold over the same store
+ *  `listProvenance` reads, so the two can never disagree. */
+export interface ArtifactSummary {
+  path: string;
+  versions: number;
+  /** Highest version seen; normally equal to `versions`, but the store is
+   *  append-only text, so a gap is possible and both are reported. */
+  latestVersion: number;
+  /** Seconds since the epoch (the view formats it). */
+  lastTs: number;
+  /** Distinct producing tools, sorted. */
+  tools: string[];
+  /** Distinct sessions that touched it, sorted. */
+  sessionIds: string[];
+  /** A version came from executing code — there is a re-runnable recipe. */
+  fromRun: boolean;
+  /** Every version recorded the environment it was produced in. */
+  envComplete: boolean;
+}
+
+/** Every artifact with recorded provenance, newest activity first ([] in browser dev). */
+export async function provenanceSummary(): Promise<ArtifactSummary[]> {
+  if (!isTauri) return [];
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<ArtifactSummary[]>("provenance_summary");
+  } catch {
+    return [];
+  }
+}
+
 /** The captured `pip freeze` list for a package snapshot hash (null if unreadable). */
 export async function readEnvLockfile(hash: string): Promise<string | null> {
   if (!isTauri) return null;

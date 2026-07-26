@@ -57,7 +57,9 @@
     "producedByRunPrefix": "Erzeugt durch Durchlauf",
     "commandSeparator": " — ",
     "producedByRunSuffix": ". Diese Datei ist das Ergebnis einer Codeausführung; Reproduzieren führt diesen Befehl erneut aus und vergleicht das Ergebnis.",
-    "contentNotCaptured": "Inhalt für diese Version nicht erfasst (ein binäres Schreiben oder eine Bearbeitung, bei der nur ein Diff aufgezeichnet wurde)."
+    "contentNotCaptured": "Inhalt für diese Version nicht erfasst (ein binäres Schreiben oder eine Bearbeitung, bei der nur ein Diff aufgezeichnet wurde).",
+    "indexVersions_one": "{{count}} Version",
+    "indexVersions_other": "{{count}} Versionen"
   },
   "filePreview": {
     "historyAria": "Verlauf",

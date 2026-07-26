@@ -57,7 +57,9 @@
     "producedByRunPrefix": "Produit par l'exécution",
     "commandSeparator": " — ",
     "producedByRunSuffix": ". Ce fichier est une sortie de l'exécution du code ; Reproduire relance cette commande et compare le résultat.",
-    "contentNotCaptured": "Contenu non capturé pour cette version (écriture binaire, ou modification n'ayant enregistré qu'une différence)."
+    "contentNotCaptured": "Contenu non capturé pour cette version (écriture binaire, ou modification n'ayant enregistré qu'une différence).",
+    "indexVersions_one": "{{count}} version",
+    "indexVersions_other": "{{count}} versions"
   },
   "filePreview": {
     "historyAria": "Historique",
