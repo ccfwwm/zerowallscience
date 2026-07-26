@@ -1,0 +1,12 @@
+{
+  "domain": "single-cell",
+  "version": "1.0.0",
+  "description": "Single-cell RNA-seq, single-cell data contracts",
+  "tools": [
+    {"name": "cellxgene_search_datasets", "inputSchema": {"type": "object", "properties": {"organism": {"type": ["string", "null"]}, "tissue": {"type": ["string", "null"]}}}, "outputSchema": {"type": "object", "required": ["datasets"], "properties": {"datasets": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "cellxgene_get_dataset", "inputSchema": {"type": "object", "required": ["dataset_id"], "properties": {"dataset_id": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["dataset_id"], "properties": {"dataset_id": {"type": "string"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "cellxgene_query_expression", "inputSchema": {"type": "object", "required": ["dataset_id", "gene_ids"], "properties": {"dataset_id": {"type": "string"}, "gene_ids": {"type": "array", "items": {"type": "string"}}}}, "outputSchema": {"type": "object", "required": ["dataset_id", "expression"], "properties": {"dataset_id": {"type": "string"}, "expression": {"type": "object"}}}, "errorCases": [{"case": "dataset_not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "panglao_db_markers", "inputSchema": {"type": "object", "properties": {"cell_type": {"type": ["string", "null"]}, "organism": {"type": ["string", "null"]}}}, "outputSchema": {"type": "object", "required": ["markers"], "properties": {"markers": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "human_cell_atlas_projects", "inputSchema": {"type": "object", "properties": {"organ": {"type": ["string", "null"]}}}, "outputSchema": {"type": "object", "required": ["projects"], "properties": {"projects": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}}
+  ]
+}

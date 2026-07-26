@@ -1,0 +1,17 @@
+{
+  "domain": "ontology",
+  "version": "1.0.0",
+  "description": "GO, OLS, ontology annotation contracts",
+  "tools": [
+    {"name": "quickgo_annotations", "inputSchema": {"type": "object", "required": ["gene_product"], "properties": {"gene_product": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["annotations"], "properties": {"annotations": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "quickgo_search_terms", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["results"], "properties": {"results": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "ols_search_terms", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}, "ontology": {"type": ["string", "null"]}}}, "outputSchema": {"type": "object", "required": ["terms"], "properties": {"terms": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "ols_get_term", "inputSchema": {"type": "object", "required": ["iri"], "properties": {"iri": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["iri", "label"], "properties": {"iri": {"type": "string"}, "label": {"type": "string"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "ols_ontologies", "inputSchema": {"type": "object", "properties": {}}, "outputSchema": {"type": "object", "required": ["ontologies"], "properties": {"ontologies": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "mygene_query", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}, "species": {"type": "string", "default": "human"}}}, "outputSchema": {"type": "object", "required": ["hits"], "properties": {"hits": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "mygene_get_gene", "inputSchema": {"type": "object", "required": ["gene_id"], "properties": {"gene_id": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["_id", "symbol"], "properties": {"_id": {"type": "string"}, "symbol": {"type": "string"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "biomart_query_genes", "inputSchema": {"type": "object", "required": ["filters"], "properties": {"filters": {"type": "object"}, "attributes": {"type": "array", "items": {"type": "string"}}}}, "outputSchema": {"type": "object", "required": ["results"], "properties": {"results": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "biomart_datasets", "inputSchema": {"type": "object", "properties": {}}, "outputSchema": {"type": "object", "required": ["datasets"], "properties": {"datasets": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "hgnc_search_genes", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["docs"], "properties": {"docs": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}}
+  ]
+}

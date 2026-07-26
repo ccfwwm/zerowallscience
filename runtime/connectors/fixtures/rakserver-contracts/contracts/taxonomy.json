@@ -1,0 +1,14 @@
+{
+  "domain": "taxonomy",
+  "version": "1.0.0",
+  "description": "Taxonomy and species classification contracts (NCBI, ITIS, GBIF, Catalog of Life)",
+  "tools": [
+    {"name": "ncbi_taxonomy_search", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["taxa"], "properties": {"taxa": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 3}},
+    {"name": "ncbi_taxonomy_get", "inputSchema": {"type": "object", "required": ["taxon_id"], "properties": {"taxon_id": {"type": "integer"}}}, "outputSchema": {"type": "object", "required": ["taxon_id"], "properties": {"taxon_id": {"type": "integer"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 3}},
+    {"name": "itis_search_taxa", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["taxa"], "properties": {"taxa": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "itis_get_taxon", "inputSchema": {"type": "object", "required": ["tsn"], "properties": {"tsn": {"type": "integer"}}}, "outputSchema": {"type": "object", "required": ["tsn"], "properties": {"tsn": {"type": "integer"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "gbif_species_search", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["species"], "properties": {"species": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "gbif_get_species", "inputSchema": {"type": "object", "required": ["species_key"], "properties": {"species_key": {"type": "integer"}}}, "outputSchema": {"type": "object", "required": ["species_key"], "properties": {"species_key": {"type": "integer"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "catalog_of_life_search", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["results"], "properties": {"results": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}}
+  ]
+}

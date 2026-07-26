@@ -1,0 +1,12 @@
+{
+  "domain": "drug-discovery",
+  "version": "1.0.0",
+  "description": "DrugBank, ChEMBL drug discovery contracts",
+  "tools": [
+    {"name": "drugbank_search_drugs", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["drugs"], "properties": {"drugs": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "drugbank_get_drug", "inputSchema": {"type": "object", "required": ["drugbank_id"], "properties": {"drugbank_id": {"type": "string", "pattern": "^DB\d+$"}}}, "outputSchema": {"type": "object", "required": ["drugbank_id"], "properties": {"drugbank_id": {"type": "string"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "chembl_drug_indications", "inputSchema": {"type": "object", "required": ["chembl_id"], "properties": {"chembl_id": {"type": "string", "pattern": "^CHEMBL\d+$"}}}, "outputSchema": {"type": "object", "required": ["chembl_id", "indications"], "properties": {"chembl_id": {"type": "string"}, "indications": {"type": "array"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "opentargets_drug_mechanisms", "inputSchema": {"type": "object", "required": ["drug_id"], "properties": {"drug_id": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["drug_id", "mechanisms"], "properties": {"drug_id": {"type": "string"}, "mechanisms": {"type": "array"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "dgidb_drug_gene_interactions", "inputSchema": {"type": "object", "properties": {"drug_name": {"type": ["string", "null"]}, "gene_name": {"type": ["string", "null"]}}}, "outputSchema": {"type": "object", "required": ["interactions"], "properties": {"interactions": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}}
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "domain": "regulatory",
+  "version": "1.0.0",
+  "description": "ENCODE, Roadmap Epigenomics, regulatory elements contracts",
+  "tools": [
+    {"name": "encode_search_chip_seq", "inputSchema": {"type": "object", "properties": {"target": {"type": ["string", "null"]}, "organism": {"type": ["string", "null"]}}}, "outputSchema": {"type": "object", "required": ["experiments"], "properties": {"experiments": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "encode_get_peaks", "inputSchema": {"type": "object", "required": ["experiment_id"], "properties": {"experiment_id": {"type": "string", "pattern": "^ENCSR\d+[A-Z]+$"}}}, "outputSchema": {"type": "object", "required": ["experiment_id", "peaks"], "properties": {"experiment_id": {"type": "string"}, "peaks": {"type": "array"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "roadmap_epigenomics_samples", "inputSchema": {"type": "object", "properties": {"tissue": {"type": ["string", "null"]}}}, "outputSchema": {"type": "object", "required": ["samples"], "properties": {"samples": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "roadmap_get_chromatin_states", "inputSchema": {"type": "object", "required": ["sample_id"], "properties": {"sample_id": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["sample_id", "states"], "properties": {"sample_id": {"type": "string"}, "states": {"type": "array"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "ensembl_regulatory_features", "inputSchema": {"type": "object", "required": ["region"], "properties": {"region": {"type": "string", "pattern": "^\w+:\d+-\d+$"}}}, "outputSchema": {"type": "object", "required": ["region", "features"], "properties": {"region": {"type": "string"}, "features": {"type": "array"}}}, "errorCases": [{"case": "invalid_region", "expectedError": {"type": "ValidationError"}}], "rateLimits": {"requestsPerSecond": 15}},
+    {"name": "fantom5_enhancers", "inputSchema": {"type": "object", "properties": {"cell_type": {"type": ["string", "null"]}}}, "outputSchema": {"type": "object", "required": ["enhancers"], "properties": {"enhancers": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "vista_enhancer_browser", "inputSchema": {"type": "object", "properties": {"organism": {"type": ["string", "null"]}}}, "outputSchema": {"type": "object", "required": ["enhancers"], "properties": {"enhancers": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}}
+  ]
+}

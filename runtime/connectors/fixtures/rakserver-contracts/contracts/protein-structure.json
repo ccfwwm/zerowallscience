@@ -1,0 +1,225 @@
+{
+  "domain": "protein-structure",
+  "version": "1.0.0",
+  "description": "PDB, AlphaFold, EMDB structure data contracts",
+  "tools": [
+    {
+      "name": "pdb_search_structures",
+      "description": "Search RCSB PDB entries",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": ["string", "null"] },
+          "method": { "type": ["string", "null"], "enum": [null, "X-RAY DIFFRACTION", "ELECTRON MICROSCOPY", "NMR"] },
+          "resolution_max": { "type": ["number", "null"] },
+          "max_records": { "type": "integer", "default": 50, "maximum": 500 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["total_count", "result_set"],
+        "properties": {
+          "total_count": { "type": "integer" },
+          "result_set": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "identifier": { "type": "string" },
+                "score": { "type": "number" }
+              }
+            }
+          }
+        }
+      },
+      "errorCases": [],
+      "rateLimits": {"requestsPerSecond": 2}
+    },
+    {
+      "name": "pdb_get_structures",
+      "description": "Fetch PDB entry summaries",
+      "inputSchema": {
+        "type": "object",
+        "required": ["pdb_ids"],
+        "properties": {
+          "pdb_ids": { "type": "array", "items": { "type": "string", "pattern": "^[0-9][A-Za-z0-9]{3}$" }, "maxItems": 25 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": { "type": "array" }
+        }
+      },
+      "errorCases": [],
+      "rateLimits": {"requestsPerSecond": 2}
+    },
+    {
+      "name": "pdb_get_entities",
+      "description": "Fetch polymer entity details for PDB entry",
+      "inputSchema": {
+        "type": "object",
+        "required": ["pdb_id"],
+        "properties": {
+          "pdb_id": { "type": "string", "pattern": "^[0-9][A-Za-z0-9]{3}$" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["entities"],
+        "properties": {
+          "entities": { "type": "array" }
+        }
+      },
+      "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}],
+      "rateLimits": {"requestsPerSecond": 2}
+    },
+    {
+      "name": "pdb_get_ligands",
+      "description": "Fetch bound ligands for PDB entry",
+      "inputSchema": {
+        "type": "object",
+        "required": ["pdb_id"],
+        "properties": {
+          "pdb_id": { "type": "string", "pattern": "^[0-9][A-Za-z0-9]{3}$" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["ligands"],
+        "properties": {
+          "ligands": { "type": "array" }
+        }
+      },
+      "errorCases": [],
+      "rateLimits": {"requestsPerSecond": 2}
+    },
+    {
+      "name": "alphafold_get_prediction",
+      "description": "Fetch AlphaFold DB prediction metadata",
+      "inputSchema": {
+        "type": "object",
+        "required": ["uniprot_acc"],
+        "properties": {
+          "uniprot_acc": { "type": "string" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["uniprot_acc", "model_url"],
+        "properties": {
+          "uniprot_acc": { "type": "string" },
+          "model_url": { "type": "string" },
+          "pae_url": { "type": "string" },
+          "plddt_url": { "type": "string" }
+        }
+      },
+      "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}],
+      "rateLimits": {"requestsPerSecond": 2}
+    },
+    {
+      "name": "alphafold_check_coverage",
+      "description": "Batch check AlphaFold DB coverage",
+      "inputSchema": {
+        "type": "object",
+        "required": ["uniprot_accs"],
+        "properties": {
+          "uniprot_accs": { "type": "array", "items": { "type": "string" }, "maxItems": 40 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["coverage"],
+        "properties": {
+          "coverage": { "type": "array" }
+        }
+      },
+      "errorCases": [],
+      "rateLimits": {"requestsPerSecond": 2}
+    },
+    {
+      "name": "emdb_search_entries",
+      "description": "Search EMDB cryo-EM entries",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": ["string", "null"] },
+          "resolution_max": { "type": ["number", "null"] },
+          "max_records": { "type": "integer", "default": 50 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["total", "results"],
+        "properties": {
+          "total": { "type": "integer" },
+          "results": { "type": "array" }
+        }
+      },
+      "errorCases": [],
+      "rateLimits": {"requestsPerSecond": 1}
+    },
+    {
+      "name": "emdb_get_entries",
+      "description": "Fetch EMDB entry metadata",
+      "inputSchema": {
+        "type": "object",
+        "required": ["emdb_ids"],
+        "properties": {
+          "emdb_ids": { "type": "array", "items": { "type": "string", "pattern": "^EMD-\\d+$" }}
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["entries"],
+        "properties": {
+          "entries": { "type": "array" }
+        }
+      },
+      "errorCases": [],
+      "rateLimits": {"requestsPerSecond": 1}
+    },
+    {
+      "name": "emdb_get_entry_section",
+      "description": "Fetch detailed section for EMDB entry",
+      "inputSchema": {
+        "type": "object",
+        "required": ["emdb_id", "section"],
+        "properties": {
+          "emdb_id": { "type": "string", "pattern": "^EMD-\\d+$" },
+          "section": { "type": "string", "enum": ["admin", "sample", "experiment", "processing"] }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": { "type": "object" }
+        }
+      },
+      "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}],
+      "rateLimits": {"requestsPerSecond": 1}
+    },
+    {
+      "name": "emdb_get_validation",
+      "description": "Fetch EMDB validation metrics",
+      "inputSchema": {
+        "type": "object",
+        "required": ["emdb_id"],
+        "properties": {
+          "emdb_id": { "type": "string", "pattern": "^EMD-\\d+$" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["metrics"],
+        "properties": {
+          "metrics": { "type": "object" }
+        }
+      },
+      "errorCases": [],
+      "rateLimits": {"requestsPerSecond": 1}
+    }
+  ]
+}

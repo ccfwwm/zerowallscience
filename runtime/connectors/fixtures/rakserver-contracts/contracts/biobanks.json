@@ -1,0 +1,10 @@
+{
+  "domain": "biobanks",
+  "version": "1.0.0",
+  "description": "BBMRI-ERIC and UK Biobank data access contracts",
+  "tools": [
+    {"name": "bbmri_eric_search", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["biobanks"], "properties": {"biobanks": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "bbmri_eric_get_biobank", "inputSchema": {"type": "object", "required": ["biobank_id"], "properties": {"biobank_id": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["biobank_id"], "properties": {"biobank_id": {"type": "string"}}}, "errorCases": [{"case": "not_found", "expectedError": {"type": "NotFoundError"}}], "rateLimits": {"requestsPerSecond": 1}},
+    {"name": "uk_biobank_data_showcase", "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}, "outputSchema": {"type": "object", "required": ["fields"], "properties": {"fields": {"type": "array"}}}, "errorCases": [], "rateLimits": {"requestsPerSecond": 1}}
+  ]
+}
