@@ -17,8 +17,14 @@ import {
   getProxySetting,
   removeConfigEntry,
   setConnectorSecret,
+  isTauri,
 } from "./tauri";
-import { SCIENCE_CONNECTORS, connectorConfig } from "./scienceConnectors";
+import { isGatewayWeb } from "./webMode";
+import {
+  RECOMMENDED_CONNECTOR_IDS,
+  SCIENCE_CONNECTORS,
+  connectorConfig,
+} from "./scienceConnectors";
 import { BROWSER_MCP_ID, buildBrowserMcpConfig } from "./browser";
 import { toast } from "./toast";
 
@@ -51,6 +57,29 @@ interface SetupState {
   enableJupyter: () => Promise<void>;
   enableConnector: (id: string, apiKey?: string) => Promise<void>;
   enableBrowser: (opts: EnableBrowserOptions) => Promise<void>;
+  /** Provision the default connector set, skipping any already configured.
+   *  Returns the ids it actually enabled. */
+  enableRecommendedConnectors: () => Promise<string[]>;
+}
+
+/** Set once the default connectors have been provisioned (or the attempt was
+ *  made), so a restart doesn't re-run installs the user may have since removed. */
+const DEFAULTS_KEY = "zerowall:connectorDefaults";
+
+function defaultsAttempted(): boolean {
+  try {
+    return localStorage.getItem(DEFAULTS_KEY) === "done";
+  } catch {
+    return true; // no storage ⇒ never auto-install, we couldn't remember not to
+  }
+}
+
+function markDefaultsAttempted(): void {
+  try {
+    localStorage.setItem(DEFAULTS_KEY, "done");
+  } catch {
+    /* ignore */
+  }
 }
 
 export const useSetupStore = create<SetupState>((set, get) => ({
@@ -107,6 +136,31 @@ export const useSetupStore = create<SetupState>((set, get) => ({
     }
   },
 
+  // Sequential on purpose: every connector installs into the SAME shared uv env,
+  // and two concurrent `uv pip install` runs against one env dir collide.
+  enableRecommendedConnectors: async () => {
+    const client = getClient();
+    if (!client) return [];
+    let configured: Set<string>;
+    try {
+      configured = new Set((await client.listMcpServers()).map((s) => s.name));
+    } catch {
+      return []; // can't tell what's already there — don't guess and reinstall
+    }
+    const todo = RECOMMENDED_CONNECTOR_IDS.filter((id) => !configured.has(id));
+    if (todo.length === 0) return [];
+
+    const done: string[] = [];
+    for (const id of todo) {
+      await get().enableConnector(id);
+      // enableConnector reports its own failures; treat "now in the config" as
+      // the only evidence it worked.
+      const now = await client.listMcpServers().catch(() => []);
+      if (now.some((s) => s.name === id)) done.push(id);
+    }
+    return done;
+  },
+
   enableBrowser: async (opts) => {
     if (get().browserBusy) return;
     set({ browserBusy: true, line: null });
@@ -156,6 +210,31 @@ export const useSetupStore = create<SetupState>((set, get) => ({
 // a page unmount can never sever it — the old per-page listener died with
 // SettingsPage and made a running download look frozen.
 let progressUnlisten: (() => void) | null = null;
+
+/**
+ * First run only: bring the default connectors up so a fresh install can search
+ * the literature without a trip to Settings.
+ *
+ * Runs at most once per install, and never in the gateway web client (the host
+ * owns the sidecar and its Python env). It installs Python packages, which is
+ * why it announces itself and why it is remembered even on failure: a user who
+ * removes a default connector must not find it reinstalled on next launch.
+ */
+export function ensureDefaultConnectors(): void {
+  if (isGatewayWeb || !isTauri) return;
+  if (defaultsAttempted()) return;
+  markDefaultsAttempted();
+  void (async () => {
+    toast.success(
+      `Setting up ${RECOMMENDED_CONNECTOR_IDS.length} default connectors in the background — ` +
+        "first run downloads a managed Python. Settings → Connectors shows progress.",
+    );
+    const enabled = await useSetupStore.getState().enableRecommendedConnectors();
+    if (enabled.length > 0) {
+      toast.success(`${enabled.length} connector(s) ready — the agent can use them from chat.`);
+    }
+  })();
+}
 
 /** Start the shared uv-progress listener (idempotent). Call once from AppShell. */
 export function ensureSetupProgressListener(): void {

@@ -140,6 +140,34 @@
     "addEndpoint": "Ajouter un point de terminaison",
     "importLogin": "Vous utilisez déjà le CLI OpenCode ? Importez sa connexion"
   },
+  "sub2api": {
+    "title": "Compte Sub2API",
+    "hint": "Connectez-vous avec un e-mail et un mot de passe pour utiliser Kimi, DeepSeek, GLM et Qwen via un endpoint compatible OpenAI",
+    "signIn": "Se connecter",
+    "register": "Créer un compte",
+    "createAccount": "Créer le compte",
+    "emailPlaceholder": "E-mail",
+    "passwordPlaceholder": "Mot de passe",
+    "codePlaceholder": "Code de vérification par e-mail",
+    "twoFactorPlaceholder": "Code à deux facteurs — seulement s'il est activé",
+    "invitePlaceholder": "Code d'invitation — optionnel",
+    "sendCode": "Envoyer le code",
+    "codeSent": "Code de vérification envoyé. Consultez votre boîte de réception.",
+    "registered": "Compte créé. Connectez-vous pour continuer.",
+    "signedIn": "Connecté en tant que {{email}}",
+    "signOut": "Se déconnecter",
+    "fetchModels": "Récupérer mes modèles",
+    "fetched": "Clé enregistrée dans le gestionnaire d'identifiants · {{count}} modèle(s) disponible(s)",
+    "connectModels": "Connecter {{count}} modèle(s)",
+    "connected": "{{count}} modèle(s) connecté(s). Choisissez-en un dans Modèles.",
+    "pickOne": "Sélectionnez au moins un modèle.",
+    "noModels": "La passerelle n'a renvoyé aucun modèle pour ce compte.",
+    "manualPlaceholder": "Ajouter des ids de modèle à la main — séparés par des virgules",
+    "addModels": "Ajouter",
+    "providerName": "Sub2API",
+    "privacy": "Votre mot de passe n'est envoyé qu'à la passerelle. Le jeton d'accès reste dans cette application pour la session ; la clé API va directement dans le gestionnaire d'identifiants du système — jamais dans les fichiers de configuration, les journaux ou la provenance.",
+    "runtimeOffline": "Connectez d'abord le runtime"
+  },
   "mcp": {
     "title": "Serveurs MCP",
     "hint": "Outils supplémentaires pour l'agent (Model Context Protocol) — p. ex. un MCP Jupyter ou navigateur",
@@ -159,7 +187,25 @@
     "namePlaceholder": "Nom — p. ex. jupyter, playwright",
     "commandPlaceholder": "Commande — p. ex. npx -y @playwright/mcp",
     "urlPlaceholder": "URL — p. ex. https://example.com/mcp",
-    "addServer": "Ajouter un serveur"
+    "addServer": "Ajouter un serveur",
+    "recommended": "recommandé",
+    "enableDefaults": "Activer {{count}} connecteur(s) par défaut"
+  },
+  "workspaceStatus": {
+    "title": "État de l'espace de travail",
+    "hint": "Ce qui est chargé dans cet espace de travail",
+    "database": "Base de données scientifique",
+    "databaseHint": "Migrée sur place à l'ouverture de l'espace de travail — provenance, artefacts, citations et revues",
+    "databaseReady": "schéma v{{version}} · {{tables}} tables · {{migrations}} migrations",
+    "databaseFailed": "ouverture impossible",
+    "checking": "vérification…",
+    "desktopOnly": "disponible dans l'application de bureau",
+    "skills": "Compétences",
+    "skillsHint": "Déployées au démarrage dans le profil d'agent propre à l'application — pas d'installation par espace de travail",
+    "skillsCount": "{{skills}} compétences · {{packs}}/{{total}} packs activés",
+    "connectors": "Connecteurs",
+    "connectorsHint": "Serveurs MCP que l'agent peut appeler depuis le chat",
+    "connectorsCount": "{{count}} configurés"
   },
   "browser": {
     "label": "Contrôle du navigateur",
@@ -242,7 +288,8 @@
     "couldNotSetProxy": "Impossible d’appliquer le réglage du proxy",
     "proxyApplied": "Réglage du proxy appliqué",
     "mirrorSaved": "Réglages de miroir enregistrés",
-    "couldNotSetMirror": "Impossible d’enregistrer les réglages de miroir"
+    "couldNotSetMirror": "Impossible d’enregistrer les réglages de miroir",
+    "noModelSelected": "Choisissez d'abord un modèle — connectez un fournisseur dans les Réglages."
   },
   "dataFlow": {
     "title": "Confidentialité et flux de données",
@@ -389,32 +436,32 @@
       "deleted": "Mémoire supprimée"
     }
   },
-    "annotations": {
-      "title": "Annotations",
-      "subtitle": "Notes rattachées à une version d'un fichier de cet espace de travail. Chaque note enregistre le fichier, la version et les lignes visées, afin de pouvoir être confrontée au texte qu'elle décrit.",
-      "unavailable": "Disponible dans l'application de bureau.",
-      "loading": "Lecture des annotations…",
-      "empty": "Rien n'a encore été annoté dans cet espace de travail.",
-      "authorYou": "Vous",
-      "versionBadge": "v{{number}}",
-      "wholeFile": "fichier entier",
-      "anchorLine": "ligne {{line}}",
-      "anchorLines": "lignes {{start}}–{{end}}",
-      "kindLabel": "Catégorie",
-      "bodyLabel": "Note",
-      "save": "Enregistrer",
-      "editAria": "Modifier cette annotation",
-      "deleteAria": "Supprimer cette annotation",
-      "deleteTitle": "Supprimer définitivement",
-      "refresh": "Actualiser",
-      "confirmDelete": {
-        "title": "Supprimer cette annotation ?",
-        "body": "Elle est supprimée définitivement. Le fichier qu'elle vise n'est pas modifié.",
-        "confirm": "Supprimer"
-      },
-      "toast": {
-        "saved": "Annotation enregistrée",
-        "deleted": "Annotation supprimée"
-      }
+  "annotations": {
+    "title": "Annotations",
+    "subtitle": "Notes rattachées à une version d'un fichier de cet espace de travail. Chaque note enregistre le fichier, la version et les lignes visées, afin de pouvoir être confrontée au texte qu'elle décrit.",
+    "unavailable": "Disponible dans l'application de bureau.",
+    "loading": "Lecture des annotations…",
+    "empty": "Rien n'a encore été annoté dans cet espace de travail.",
+    "authorYou": "Vous",
+    "versionBadge": "v{{number}}",
+    "wholeFile": "fichier entier",
+    "anchorLine": "ligne {{line}}",
+    "anchorLines": "lignes {{start}}–{{end}}",
+    "kindLabel": "Catégorie",
+    "bodyLabel": "Note",
+    "save": "Enregistrer",
+    "editAria": "Modifier cette annotation",
+    "deleteAria": "Supprimer cette annotation",
+    "deleteTitle": "Supprimer définitivement",
+    "refresh": "Actualiser",
+    "confirmDelete": {
+      "title": "Supprimer cette annotation ?",
+      "body": "Elle est supprimée définitivement. Le fichier qu'elle vise n'est pas modifié.",
+      "confirm": "Supprimer"
+    },
+    "toast": {
+      "saved": "Annotation enregistrée",
+      "deleted": "Annotation supprimée"
     }
+  }
 }

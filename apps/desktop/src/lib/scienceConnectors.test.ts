@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { SCIENCE_CONNECTORS, connectorConfig } from "./scienceConnectors";
+import {
+  RECOMMENDED_CONNECTOR_IDS,
+  SCIENCE_CONNECTORS,
+  connectorConfig,
+} from "./scienceConnectors";
 
 const byId = (id: string) => {
   const c = SCIENCE_CONNECTORS.find((x) => x.id === id);
@@ -92,5 +96,37 @@ describe("connectorConfig", () => {
   it("launches USGS water data as a console script (earth, no key)", () => {
     const cfg = connectorConfig(byId("usgs-water"), "/env/bin/python");
     expect(cfg.type === "local" && cfg.command).toEqual(["/env/bin/usgs-mcp"]);
+  });
+});
+
+// The app used to configure no connectors at all, so every install began with an
+// agent that could not search the literature. A default set fixes that, but only
+// if the set is one that can be provisioned with no input from the user.
+describe("the default connector set", () => {
+  it("is derived from the list, so a marked connector can never be left out", () => {
+    expect(RECOMMENDED_CONNECTOR_IDS).toEqual(
+      SCIENCE_CONNECTORS.filter((c) => c.recommended).map((c) => c.id),
+    );
+    expect(RECOMMENDED_CONNECTOR_IDS.length).toBeGreaterThan(0);
+  });
+
+  it("contains no connector that needs an API key", () => {
+    for (const id of RECOMMENDED_CONNECTOR_IDS) {
+      // An enabled server with no key fails every call until the user hunts one
+      // down — worse than leaving it off.
+      expect(byId(id).apiKeyEnv, `${id} requires an API key`).toBeUndefined();
+    }
+  });
+
+  it("contains no connector flagged as a large install", () => {
+    for (const id of RECOMMENDED_CONNECTOR_IDS) {
+      // `installNote` is how the list marks a heavy dependency tree (pymatgen,
+      // mp-api). First run must not silently commit the user to that download.
+      expect(byId(id).installNote, `${id} is a large install`).toBeUndefined();
+    }
+  });
+
+  it("leads with literature search — what the workbench is for", () => {
+    expect(RECOMMENDED_CONNECTOR_IDS[0]).toBe("paper-search");
   });
 });

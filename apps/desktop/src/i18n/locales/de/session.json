@@ -113,25 +113,22 @@
   "starters": {
     "newSession": "Neue Sitzung",
     "heading": "Was sollen wir untersuchen?",
-    "subheading": "Beschreiben Sie Ihre Analyse unten — oder beginnen Sie mit einem dieser Vorschläge.",
-    "demo": {
-      "title": "Eine Demo-Analyse End-to-End ausführen",
-      "description": "Einen Datensatz simulieren, ein Modell anpassen und eine Abbildung sowie einen nachvollziehbaren Bericht erstellen."
+    "subheading": "Beschreiben Sie Ihre Analyse unten — oder beginnen Sie mit einem dieser Punkte.",
+    "reproducible": {
+      "title": "Reproduzierbare Analyse ausführen",
+      "description": "Analyse, Abbildung und Bericht — die Umgebung wird neben den Ergebnissen festgehalten."
     },
     "analyze": {
       "title": "Meine Daten analysieren",
-      "description": "Weisen Sie den Agenten auf eine hinzugefügte Datei hin; erhalten Sie Abbildungen und einen Bericht zurück."
+      "description": "Zeigen Sie dem Agenten eine hinzugefügte Datei; Sie erhalten Abbildungen und einen Bericht."
+    },
+    "literature": {
+      "title": "Literatur mit Zitaten durchsehen",
+      "description": "Über die aktivierten Konnektoren suchen und eine Evidenztabelle mit echten DOIs erstellen."
     },
     "audit": {
       "title": "Bericht auf Nachvollziehbarkeit prüfen",
-      "description": "Zitate, unbelegte Zahlen und die Übereinstimmung von Abbildung und Code prüfen."
-    },
-    "examples": {
-      "title": "Ein Beispielprojekt ansehen",
-      "description": "Fünf mitgelieferte Datensätze, jeder mit vollständigem Workflow."
-    },
-    "error": {
-      "setup": "Das Beispiel konnte nicht eingerichtet werden: {{message}}"
+      "description": "Zitate, Zahlen ohne Quelle und Abbildung-gegen-Code-Konsistenz prüfen."
     }
   },
   "live": {
@@ -339,31 +336,6 @@
       "body": "Dies setzt die Unterhaltung auf diese Nachricht zurück und verwirft sie sowie alle nachfolgenden Nachrichten samt der in diesen Runden vorgenommenen Dateiänderungen. Das lässt sich nicht rückgängig machen.",
       "edit": "Bearbeiten & erneut senden",
       "revert": "Hierher zurücksetzen"
-    }
-  },
-  "examples": {
-    "heading": "Welches Beispiel?",
-    "subheading": "Es wird in den Arbeitsbereich installiert, dann arbeitet der Agent es durch.",
-    "back": "Zurück zu den Schnellstarts",
-    "climate": {
-      "title": "Klimatrends",
-      "description": "Echte NASA-GISTEMP-Daten: Erwärmungsrate, Dekadenmittel, Abbildung, Bericht."
-    },
-    "crispr": {
-      "title": "CRISPR-Screen",
-      "description": "Simulierter Knockout-Screen: Normalisierung, empirische Nullverteilung, FDR, Treffer."
-    },
-    "enzyme": {
-      "title": "Enzym-Engineering",
-      "description": "Simulierte Variantenlandschaft: additives gegen epistatisches Modell."
-    },
-    "extremophile": {
-      "title": "Wachstum von Extremophilen",
-      "description": "Simulierte OD600-Kurven: logistische Fits, dann Kardinaltemperaturen."
-    },
-    "immunotherapy": {
-      "title": "Immuntherapie-Biomarker",
-      "description": "Simulierte Kohorte (keine echten Patienten): Ansprechmodell und Überlebenssplit."
     }
   }
 }

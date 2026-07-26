@@ -1,7 +1,17 @@
 /**
  * Science Pack registry and loader.
  *
- * Discovers, validates, and loads Science Pack manifests from the runtime directory.
+ * Validates and registers Science Pack manifests. Reading them is deliberately
+ * NOT this module's job: the registry is reached from the Tauri webview and the
+ * gateway web client, neither of which can resolve Node's `fs`. It used to call
+ * `fs.readdir` here, so `load()` rejected in both shells and the Packs screen
+ * showed "no packs" while six manifests sat on disk.
+ *
+ * The caller supplies already-read manifest text instead — the desktop app
+ * bundles it at build time with `import.meta.glob`, the same way the agent JSON
+ * under `runtime/agents/` is bundled. That keeps the manifests in
+ * `runtime/packs/` the single source of truth and turns a malformed manifest
+ * into a build failure rather than an empty list at runtime.
  */
 
 import { parse as parseYaml } from "yaml";
@@ -21,62 +31,51 @@ export interface PackRegistryEntry {
   state: PackState;
 }
 
+/** One unparsed manifest plus the directory it came from. */
+export interface PackManifestSource {
+  /** Pack directory, used as the entry's `path` and in error messages. */
+  path: string;
+  /** Raw `manifest.yaml` text. */
+  yaml: string;
+}
+
 /** Pack registry singleton */
 export class PackRegistry {
   private packs = new Map<string, PackRegistryEntry>();
   private loaded = false;
 
-  /** Load all packs from runtime/packs directory */
-  async load(runtimePath: string): Promise<void> {
-    if (this.loaded) return;
+  /**
+   * Parse, validate, and register a set of manifests.
+   *
+   * An individual invalid manifest is skipped and reported rather than failing
+   * the whole load — one bad pack must not cost the user the other five. ID
+   * collisions do throw: two packs answering to one id makes every later lookup
+   * ambiguous.
+   */
+  loadFromSources(sources: PackManifestSource[]): void {
+    const manifests: Array<{ manifest: SciencePackManifestV1; path: string }> = [];
 
-    const fs = await import("fs/promises");
-    const path = await import("path");
-
-    const packsDir = path.join(runtimePath, "packs");
-
-    try {
-      const entries = await fs.readdir(packsDir, { withFileTypes: true });
-      const packDirs = entries.filter((e) => e.isDirectory());
-
-      const manifests: Array<{ manifest: SciencePackManifestV1; path: string }> = [];
-
-      for (const dir of packDirs) {
-        const packPath = path.join(packsDir, dir.name);
-        const manifestPath = path.join(packPath, "manifest.yaml");
-
-        try {
-          const content = await fs.readFile(manifestPath, "utf-8");
-          const data = parseYaml(content);
-
-          if (validatePackManifest(data)) {
-            manifests.push({ manifest: data, path: packPath });
-          }
-        } catch (err) {
-          console.warn(`Failed to load pack ${dir.name}:`, err);
+    for (const source of sources) {
+      try {
+        const data = parseYaml(source.yaml);
+        if (validatePackManifest(data)) {
+          manifests.push({ manifest: data, path: source.path });
         }
+      } catch (err) {
+        console.warn(`Failed to load pack manifest at ${source.path}:`, err);
       }
-
-      // Check for ID collisions
-      const collisions = detectPackCollisions(manifests.map((m) => m.manifest));
-      if (collisions.length > 0) {
-        throw new Error(`Pack ID collisions detected: ${collisions.join(", ")}`);
-      }
-
-      // Register all valid packs
-      for (const { manifest, path } of manifests) {
-        this.packs.set(manifest.id, {
-          manifest,
-          path,
-          state: "installed",
-        });
-      }
-
-      this.loaded = true;
-    } catch (err) {
-      console.error("Failed to load pack registry:", err);
-      throw err;
     }
+
+    const collisions = detectPackCollisions(manifests.map((m) => m.manifest));
+    if (collisions.length > 0) {
+      throw new Error(`Pack ID collisions detected: ${collisions.join(", ")}`);
+    }
+
+    for (const { manifest, path } of manifests) {
+      this.packs.set(manifest.id, { manifest, path, state: "installed" });
+    }
+
+    this.loaded = true;
   }
 
   /** Get all registered packs */
@@ -141,9 +140,9 @@ export class PackRegistry {
 /** Global registry instance */
 export const packRegistry = new PackRegistry();
 
-/** Load packs from runtime directory */
-export async function loadPackRegistry(runtimePath: string): Promise<void> {
-  await packRegistry.load(runtimePath);
+/** Register a set of manifests read by the caller. */
+export function loadPackRegistry(sources: PackManifestSource[]): void {
+  packRegistry.loadFromSources(sources);
 }
 
 /** Get installed packs for UI display */

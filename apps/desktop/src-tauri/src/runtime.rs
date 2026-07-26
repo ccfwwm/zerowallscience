@@ -335,11 +335,25 @@ fn auth_has_provider(text: &str, provider_id: &str) -> bool {
         .is_some_and(|auth| auth.get(provider_id).is_some())
 }
 
+/// Every bundled skill tree, as `(resource dir, ...)`. Kept as one list so the
+/// bundle config, the deploy loop, and the contract test cannot drift: each
+/// entry must appear in `tauri.conf.json`'s `bundle.resources`, and the six
+/// first-party trees are exactly the ones the Science Pack manifests in
+/// `runtime/packs/` reference by relative path.
+pub(crate) const SKILL_RESOURCES: &[&str] = &[
+    "skills",         // external: ai4s-skills
+    "skills-office",  // external: Anthropic document skills
+    "skills-core",    // runtime/skills/core
+    "skills-advanced",
+    "skills-compute",
+    "skills-life-science",
+    "skills-literature",
+    "skills-publishing",
+];
+
 /// Deploy the bundled skill packs (Tauri resources) into the app-private
 /// profile's global skills dir (`<xdg-config>/opencode/skills/`), which OpenCode
-/// scans regardless of project detection: `skills/` is the external ai4s-skills
-/// pack, `skills-office/` Anthropic's document skills (docx/pdf/pptx/xlsx),
-/// `skills-core/` the first-party skills from `runtime/skills/core`. The
+/// scans regardless of project detection. See `SKILL_RESOURCES` for the set. The
 /// workspace's own `.opencode/skills/` stays reserved for skills the user
 /// installs. Runs before every sidecar start so app upgrades refresh the packs.
 fn deploy_bundled_skills(app: &AppHandle) {
@@ -349,7 +363,7 @@ fn deploy_bundled_skills(app: &AppHandle) {
     };
     let mut bundled: std::collections::HashSet<std::ffi::OsString> = std::collections::HashSet::new();
     let mut all_ok = true;
-    for resource in ["skills", "skills-office", "skills-core"] {
+    for resource in SKILL_RESOURCES {
         let src = match app
             .path()
             .resolve(resource, tauri::path::BaseDirectory::Resource)
@@ -372,8 +386,8 @@ fn deploy_bundled_skills(app: &AppHandle) {
     // live in the workspace's `.opencode/skills/`), so any skill dir not in the
     // freshly-bundled set is a stale leftover — e.g. one renamed across an app
     // upgrade (`hpc-slurm` → `remote-compute`) — and must be removed so the
-    // obsolete duplicate can't shadow or confuse the agent. Prune ONLY when all
-    // three packs deployed cleanly: a partial deploy would make `bundled`
+    // obsolete duplicate can't shadow or confuse the agent. Prune ONLY when
+    // EVERY tree deployed cleanly: a partial deploy would make `bundled`
     // incomplete and wrongly delete valid skills.
     if all_ok {
         prune_stale_skills(&dst, &bundled);
@@ -1142,11 +1156,95 @@ mod tests {
     use super::{
         auth_has_provider, legacy_app_data_dir, migrate_legacy_app_data,
         prepare_workspace_dir, prune_stale_skills, random_hex, remove_key_from_config,
-        resolve_proxy_env, sync_skill_pack, validate_proxy_url,
+        resolve_proxy_env, sync_skill_pack, validate_proxy_url, SKILL_RESOURCES,
     };
     #[cfg(target_os = "macos")]
     use super::parse_scutil_proxy;
     use std::fs;
+
+    /// A skill tree that `deploy_bundled_skills` looks for but the bundle never
+    /// ships resolves to nothing, and the deploy silently skips it. That is how
+    /// five of the six first-party trees — every skill the Science Packs in
+    /// `runtime/packs/` reference outside `core` — were absent on user machines
+    /// while the code looked correct.
+    #[test]
+    fn bundle_resources_cover_every_skill_tree() {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let config: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(manifest.join("tauri.conf.json")).unwrap(),
+        )
+        .unwrap();
+        let resources = config["bundle"]["resources"]
+            .as_object()
+            .expect("bundle.resources must be an object");
+
+        for resource in SKILL_RESOURCES {
+            let target = format!("{resource}/");
+            let source = resources
+                .iter()
+                .find(|(_, v)| v.as_str() == Some(target.as_str()))
+                .map(|(k, _)| k.clone());
+            let source = source.unwrap_or_else(|| {
+                panic!(
+                    "skill resource `{resource}` is in SKILL_RESOURCES but no bundle.resources entry maps anything to `{target}`; the tree would be missing from the installer and silently skipped"
+                )
+            });
+            let dir = manifest.join(&source);
+            assert!(
+                dir.is_dir(),
+                "bundle.resources maps `{source}` to `{target}` but that directory does not exist"
+            );
+        }
+    }
+
+    /// Every skill the shipped Science Packs reference must live under a tree the
+    /// bundle actually carries. The manifests use paths relative to their own
+    /// directory, e.g. `../../skills/core/domain-check/SKILL.md`.
+    #[test]
+    fn packs_only_reference_bundled_skill_trees() {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let packs = repo.join("runtime/skills");
+        let bundled: std::collections::HashSet<String> = SKILL_RESOURCES
+            .iter()
+            .filter_map(|r| r.strip_prefix("skills-"))
+            .map(str::to_owned)
+            .collect();
+
+        let manifests = std::fs::read_dir(repo.join("runtime/packs")).unwrap();
+        let mut checked = 0usize;
+        for entry in manifests {
+            let dir = entry.unwrap().path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let text = match std::fs::read_to_string(dir.join("manifest.yaml")) {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            for line in text.lines() {
+                let Some(rest) = line.trim().strip_prefix("path: ") else {
+                    continue;
+                };
+                let Some(tail) = rest.trim().strip_prefix("../../skills/") else {
+                    continue;
+                };
+                let tree = tail.split('/').next().unwrap_or_default();
+                assert!(
+                    tree == "core" || bundled.contains(tree),
+                    "pack manifest in {} references skill tree `{tree}`, which is not in SKILL_RESOURCES and so is not bundled",
+                    dir.display()
+                );
+                assert!(
+                    packs.join(tail).is_file(),
+                    "pack manifest in {} references {tail}, which does not exist",
+                    dir.display()
+                );
+                checked += 1;
+            }
+        }
+        // Guard against the assertions above never running.
+        assert!(checked > 0, "no pack skill paths were checked");
+    }
 
     #[test]
     fn legacy_app_data_path_is_the_previous_bundle_id_sibling() {

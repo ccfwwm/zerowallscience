@@ -139,6 +139,34 @@
     "addEndpoint": "エンドポイントを追加",
     "importLogin": "すでに OpenCode CLI を使っていますか？ そのログインをインポート"
   },
+  "sub2api": {
+    "title": "Sub2API アカウント",
+    "hint": "メールとパスワードでサインインし、OpenAI 互換のエンドポイント経由で Kimi、DeepSeek、GLM、Qwen を利用します",
+    "signIn": "サインイン",
+    "register": "アカウント作成",
+    "createAccount": "アカウントを作成",
+    "emailPlaceholder": "メールアドレス",
+    "passwordPlaceholder": "パスワード",
+    "codePlaceholder": "メール認証コード",
+    "twoFactorPlaceholder": "2 要素認証コード — 有効な場合のみ",
+    "invitePlaceholder": "招待コード — 任意",
+    "sendCode": "コードを送信",
+    "codeSent": "認証コードを送信しました。受信トレイを確認してください。",
+    "registered": "アカウントを作成しました。サインインしてください。",
+    "signedIn": "{{email}} でサインインしました",
+    "signOut": "サインアウト",
+    "fetchModels": "モデルを取得",
+    "fetched": "キーを資格情報マネージャーに保存 · {{count}} 件のモデル",
+    "connectModels": "{{count}} 件のモデルを接続",
+    "connected": "{{count}} 件のモデルを接続しました。「モデル」で選んでください。",
+    "pickOne": "モデルを 1 つ以上選んでください。",
+    "noModels": "このアカウントに対してゲートウェイはモデルを返しませんでした。",
+    "manualPlaceholder": "モデル ID を手動で追加 — コンマ区切り",
+    "addModels": "追加",
+    "providerName": "Sub2API",
+    "privacy": "パスワードはゲートウェイにのみ送信されます。アクセストークンはこのセッション中のアプリ内にとどまり、API キーは OS の資格情報マネージャーに直接保存されます — 設定ファイルやログ、来歴には決して書き込まれません。",
+    "runtimeOffline": "先にランタイムを接続してください"
+  },
   "mcp": {
     "title": "MCP サーバー",
     "hint": "エージェント向けの追加ツール（Model Context Protocol）— 例: Jupyter やブラウザの MCP",
@@ -158,7 +186,25 @@
     "namePlaceholder": "名前 — 例: jupyter、playwright",
     "commandPlaceholder": "コマンド — 例: npx -y @playwright/mcp",
     "urlPlaceholder": "URL — 例: https://example.com/mcp",
-    "addServer": "サーバーを追加"
+    "addServer": "サーバーを追加",
+    "recommended": "推奨",
+    "enableDefaults": "既定のコネクタ {{count}} 件を有効化"
+  },
+  "workspaceStatus": {
+    "title": "ワークスペースの状態",
+    "hint": "このワークスペースに現在読み込まれているもの",
+    "database": "サイエンス データベース",
+    "databaseHint": "ワークスペースを開いた時点でその場でマイグレーション — 来歴、成果物、引用、レビュー",
+    "databaseReady": "スキーマ v{{version}} · {{tables}} テーブル · {{migrations}} マイグレーション",
+    "databaseFailed": "オープンに失敗",
+    "checking": "確認中…",
+    "desktopOnly": "デスクトップ アプリで利用できます",
+    "skills": "スキル",
+    "skillsHint": "起動時にアプリ専用のエージェント プロファイルへ配置 — ワークスペースごとのインストールは不要",
+    "skillsCount": "{{skills}} 個のスキル · {{packs}}/{{total}} パック有効",
+    "connectors": "コネクタ",
+    "connectorsHint": "エージェントがチャットから呼び出せる MCP サーバー",
+    "connectorsCount": "{{count}} 件設定済み"
   },
   "browser": {
     "label": "ブラウザ制御",
@@ -241,7 +287,8 @@
     "couldNotSetProxy": "プロキシ設定を適用できませんでした",
     "proxyApplied": "プロキシ設定を適用しました",
     "mirrorSaved": "ミラー設定を保存しました",
-    "couldNotSetMirror": "ミラー設定を保存できませんでした"
+    "couldNotSetMirror": "ミラー設定を保存できませんでした",
+    "noModelSelected": "先にモデルを選択してください — 設定でプロバイダーを接続します。"
   },
   "dataFlow": {
     "title": "プライバシーとデータフロー",
@@ -387,32 +434,32 @@
       "deleted": "メモリーを削除しました"
     }
   },
-    "annotations": {
-      "title": "注釈",
-      "subtitle": "このワークスペース内のファイルバージョンに紐づけられたメモです。各メモはファイル・バージョン・対象行を記録するため、元のテキストと照らし合わせられます。",
-      "unavailable": "デスクトップアプリでのみ利用できます。",
-      "loading": "注釈を読み込み中…",
-      "empty": "このワークスペースにはまだ注釈がありません。",
-      "authorYou": "あなた",
-      "versionBadge": "v{{number}}",
-      "wholeFile": "ファイル全体",
-      "anchorLine": "{{line}} 行目",
-      "anchorLines": "{{start}}–{{end}} 行目",
-      "kindLabel": "カテゴリ",
-      "bodyLabel": "メモ",
-      "save": "保存",
-      "editAria": "この注釈を編集",
-      "deleteAria": "この注釈を削除",
-      "deleteTitle": "完全に削除",
-      "refresh": "再読み込み",
-      "confirmDelete": {
-        "title": "この注釈を削除しますか？",
-        "body": "完全に削除されます。参照先のファイルは変更されません。",
-        "confirm": "削除"
-      },
-      "toast": {
-        "saved": "注釈を保存しました",
-        "deleted": "注釈を削除しました"
-      }
+  "annotations": {
+    "title": "注釈",
+    "subtitle": "このワークスペース内のファイルバージョンに紐づけられたメモです。各メモはファイル・バージョン・対象行を記録するため、元のテキストと照らし合わせられます。",
+    "unavailable": "デスクトップアプリでのみ利用できます。",
+    "loading": "注釈を読み込み中…",
+    "empty": "このワークスペースにはまだ注釈がありません。",
+    "authorYou": "あなた",
+    "versionBadge": "v{{number}}",
+    "wholeFile": "ファイル全体",
+    "anchorLine": "{{line}} 行目",
+    "anchorLines": "{{start}}–{{end}} 行目",
+    "kindLabel": "カテゴリ",
+    "bodyLabel": "メモ",
+    "save": "保存",
+    "editAria": "この注釈を編集",
+    "deleteAria": "この注釈を削除",
+    "deleteTitle": "完全に削除",
+    "refresh": "再読み込み",
+    "confirmDelete": {
+      "title": "この注釈を削除しますか？",
+      "body": "完全に削除されます。参照先のファイルは変更されません。",
+      "confirm": "削除"
+    },
+    "toast": {
+      "saved": "注釈を保存しました",
+      "deleted": "注釈を削除しました"
     }
+  }
 }

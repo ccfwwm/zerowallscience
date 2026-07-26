@@ -90,6 +90,7 @@ vi.mock("@zerowall/sdk", async () => {
   // session snapshots) is only meaningfully covered if it runs. It is a thin
   // wrapper with type-only imports, so pulling it in costs nothing.
   const { ZeroWallClient } = await import("../../../../packages/sdk/src/ZeroWallClient");
+  const actual = await import("../../../../packages/sdk/src/pack-registry");
   class OpenCodeClient {
     private statusCb: (s: string) => void = () => {};
     constructor(opts: Record<string, unknown>) {
@@ -224,18 +225,21 @@ vi.mock("@zerowall/sdk", async () => {
     OpenCodeClient,
     ZeroWallClient,
     DEFAULT_OPENCODE_URL: "http://127.0.0.1:4096",
-    // P3: Pack management mocks
-    initializePackManager: vi.fn(async () => {}),
-    getPackManager: vi.fn(() => ({
-      enable: vi.fn(async () => {}),
-      disable: vi.fn(async () => {}),
-    })),
-    getInstalledPacks: vi.fn(() => []),
+    // The pack registry is NOT stubbed. It used to return `[]` here, which is
+    // part of why a store that could never load a pack still passed: the mock
+    // agreed with the bug. Only the runtime client needs a double.
+    PackRegistry: actual.PackRegistry,
+    packRegistry: actual.packRegistry,
+    loadPackRegistry: actual.loadPackRegistry,
+    getInstalledPacks: actual.getInstalledPacks,
   };
 });
 
 import type { ArtifactBlock } from "@zerowall/shared";
 import { DRAFT_KEY, rootSessionOf, useRuntimeStore } from "./runtime";
+
+/** The model the fixture ships connected. */
+const FIXTURE_MODEL = "moonshot/kimi-k2-thinking";
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -249,8 +253,14 @@ beforeEach(async () => {
   mocks.failMessages = false;
   mocks.failReverts = 0;
   mocks.approvalMode = "approve";
-  mocks.currentModel = null;
-  mocks.providers = [];
+  // A connected install: one provider, one model, and it IS the default. The
+  // fixture used to leave both empty, which meant every send test exercised a
+  // turn with model=null — the state the app now refuses, because omitting the
+  // model lets the runtime fall back to its vendor's hosted gateway.
+  mocks.currentModel = FIXTURE_MODEL;
+  mocks.providers = [
+    { id: "moonshot", name: "Moonshot", models: [{ id: "kimi-k2-thinking", name: "Kimi K2" }] },
+  ];
   mocks.failSetModel = false;
   mocks.notifyPermissionRequest.mockResolvedValue(true);
   useRuntimeStore.setState({
@@ -1133,6 +1143,18 @@ describe("approval mode", () => {
     // answer with the pre-switch model while OpenCode rebuilds its instance —
     // applying it would visibly bounce the UI back to the previous model.
     try {
+      // Both ids must be live providers, or the self-heal below treats the
+      // read-back as dangling and points it back at the fixture model.
+      mocks.providers = [
+        {
+          id: "moonshot",
+          name: "Moonshot",
+          models: [
+            { id: "kimi-k2-thinking", name: "Kimi K2" },
+            { id: "kimi-k2.7-code", name: "Kimi K2.7 Code" },
+          ],
+        },
+      ];
       useRuntimeStore.setState({ defaultModel: "moonshot/kimi-k2-thinking", switching: true });
       mocks.currentModel = "moonshot/kimi-k2.7-code"; // stale read-back
       await useRuntimeStore.getState().loadCatalog();
@@ -1284,7 +1306,8 @@ describe("model switch failure state", () => {
       useRuntimeStore.getState().setDefaultModel("anthropic/claude-sonnet-5"),
     ).rejects.toThrow("Load failed");
     expect(useRuntimeStore.getState().modelSwitchError).toBe("Load failed");
-    expect(useRuntimeStore.getState().defaultModel).toBe(null); // PATCH never landed
+    // PATCH never landed, so the model in use is untouched.
+    expect(useRuntimeStore.getState().defaultModel).toBe(FIXTURE_MODEL);
   });
 
   it("a later successful model switch clears modelSwitchError", async () => {
@@ -1361,5 +1384,79 @@ describe("plan agent mode", () => {
     ];
     await useRuntimeStore.getState().openSession("ses_hist");
     expect(useRuntimeStore.getState().sessionAgents["ses_hist"]).toBe("plan");
+  });
+});
+
+describe("science packs", () => {
+  beforeEach(() => {
+    window.localStorage.removeItem("zerowall:disabledPacks");
+  });
+
+  it("loads the bundled packs into the store", async () => {
+    await useRuntimeStore.getState().loadPacks();
+
+    const packs = useRuntimeStore.getState().installedPacks;
+    // The shipped set; the empty list this used to return is the defect the
+    // Packs screen showed as "no packs installed".
+    expect(packs.length).toBeGreaterThan(0);
+    expect(packs.every((p) => p.manifest.schema === "zerowall.science/pack/v1")).toBe(true);
+    expect(packs.some((p) => (p.manifest.components.skills ?? []).length > 0)).toBe(true);
+  });
+
+  it("remembers a disabled pack across reloads", async () => {
+    await useRuntimeStore.getState().loadPacks();
+    const first = useRuntimeStore.getState().installedPacks[0].manifest.id;
+
+    await useRuntimeStore.getState().disablePack(first);
+    expect(
+      useRuntimeStore.getState().installedPacks.find((p) => p.manifest.id === first)?.state,
+    ).toBe("disabled");
+
+    // A fresh load must still see the choice — it is persisted, not in-memory.
+    await useRuntimeStore.getState().loadPacks();
+    expect(
+      useRuntimeStore.getState().installedPacks.find((p) => p.manifest.id === first)?.state,
+    ).toBe("disabled");
+
+    await useRuntimeStore.getState().enablePack(first);
+    expect(
+      useRuntimeStore.getState().installedPacks.find((p) => p.manifest.id === first)?.state,
+    ).toBe("installed");
+  });
+});
+
+describe("sending with no model chosen", () => {
+  it("refuses the turn instead of letting the runtime pick its own default", async () => {
+    // Omitting the model on the wire is not neutral: the runtime falls back to
+    // its vendor's hosted gateway, so a fresh install's first message would
+    // leave the machine through an endpoint the user never connected.
+    useRuntimeStore.setState({ defaultModel: null, sessionModels: {} });
+    const id = await useRuntimeStore.getState().sendPrompt("hello");
+    expect(id).toBe(null);
+    expect(mocks.sendPromptSpy).not.toHaveBeenCalled();
+  });
+
+  it("still sends once a model is chosen", async () => {
+    useRuntimeStore.setState({ defaultModel: FIXTURE_MODEL, sessionModels: {} });
+    await useRuntimeStore.getState().sendPrompt("hello");
+    expect(mocks.sendPromptFullSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      "hello",
+      undefined,
+      FIXTURE_MODEL,
+      undefined,
+    );
+  });
+
+  it("a pane's own model satisfies the check when there is no global default", async () => {
+    // Split panes each carry a model; a pane with one must send even when the
+    // global default is unset.
+    const draft = "pane-x";
+    useRuntimeStore.setState({
+      defaultModel: null,
+      sessionModels: { [draft]: FIXTURE_MODEL },
+    });
+    await useRuntimeStore.getState().sendPrompt("hello", undefined, draft);
+    expect(mocks.sendPromptSpy).toHaveBeenCalled();
   });
 });

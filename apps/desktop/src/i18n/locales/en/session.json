@@ -114,24 +114,21 @@
     "newSession": "New session",
     "heading": "What should we look into?",
     "subheading": "Describe your analysis below — or start from one of these.",
-    "demo": {
-      "title": "Run a demo analysis, end to end",
-      "description": "Simulate a dataset, fit a model, and produce a figure and a traceable report."
+    "reproducible": {
+      "title": "Run a reproducible analysis",
+      "description": "Analysis, figure, and report — with the environment recorded alongside the results."
     },
     "analyze": {
       "title": "Analyze my data",
       "description": "Point the agent at a file you added; get figures and a report back."
     },
+    "literature": {
+      "title": "Review the literature with citations",
+      "description": "Search through the enabled connectors and build an evidence table that resolves to real DOIs."
+    },
     "audit": {
       "title": "Audit a report for traceability",
       "description": "Check citations, unsourced numbers, and figure-versus-code consistency."
-    },
-    "examples": {
-      "title": "Explore an example project",
-      "description": "Five bundled datasets with a full workflow each — no setup needed."
-    },
-    "error": {
-      "setup": "Could not set up the example: {{message}}"
     }
   },
   "live": {
@@ -339,31 +336,6 @@
       "body": "This rolls the conversation back to this message and discards it and every message after it, along with the file changes those turns made. This can't be undone.",
       "edit": "Edit & resend",
       "revert": "Revert here"
-    }
-  },
-  "examples": {
-    "heading": "Which example?",
-    "subheading": "Each one installs into your workspace, then the agent works through it.",
-    "back": "Back to starters",
-    "climate": {
-      "title": "Climate trends",
-      "description": "Real NASA GISTEMP data — warming rate, decadal means, figure, report."
-    },
-    "crispr": {
-      "title": "CRISPR screen",
-      "description": "Simulated pooled knockout screen — normalization, empirical null, FDR, hit calling."
-    },
-    "enzyme": {
-      "title": "Enzyme engineering",
-      "description": "Simulated variant landscape — additive vs epistatic model, next designs to build."
-    },
-    "extremophile": {
-      "title": "Extremophile growth",
-      "description": "Simulated OD600 curves — logistic fits, then cardinal temperatures."
-    },
-    "immunotherapy": {
-      "title": "Immunotherapy biomarkers",
-      "description": "Simulated cohort (not real patients) — response model and a survival split."
     }
   }
 }

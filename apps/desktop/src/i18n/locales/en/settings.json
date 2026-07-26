@@ -140,6 +140,34 @@
     "addEndpoint": "Add endpoint",
     "importLogin": "Already use the OpenCode CLI? Import its login"
   },
+  "sub2api": {
+    "title": "Sub2API account",
+    "hint": "Sign in with an email and password to reach Kimi, DeepSeek, GLM and Qwen through one OpenAI-compatible endpoint",
+    "signIn": "Sign in",
+    "register": "Create an account",
+    "createAccount": "Create account",
+    "emailPlaceholder": "Email",
+    "passwordPlaceholder": "Password",
+    "codePlaceholder": "Email verification code",
+    "twoFactorPlaceholder": "Two-factor code — only if your account has one",
+    "invitePlaceholder": "Invitation code — optional",
+    "sendCode": "Send code",
+    "codeSent": "Verification code sent. Check your inbox.",
+    "registered": "Account created. Sign in to continue.",
+    "signedIn": "Signed in as {{email}}",
+    "signOut": "Sign out",
+    "fetchModels": "Fetch my models",
+    "fetched": "Key stored in the OS credential manager · {{count}} model(s) available",
+    "connectModels": "Connect {{count}} model(s)",
+    "connected": "{{count}} model(s) connected. Pick one in Models.",
+    "pickOne": "Select at least one model.",
+    "noModels": "The gateway listed no models for this account.",
+    "manualPlaceholder": "Add model ids by hand — comma-separated",
+    "addModels": "Add",
+    "providerName": "Sub2API",
+    "privacy": "Your password is sent only to the gateway. The access token stays in this app for the session; the API key goes straight into the OS credential manager — never into config files, logs, or provenance.",
+    "runtimeOffline": "Connect the runtime first"
+  },
   "mcp": {
     "title": "MCP servers",
     "hint": "Extra tools for the agent (Model Context Protocol) — e.g. a Jupyter or browser MCP",
@@ -159,7 +187,25 @@
     "namePlaceholder": "Name — e.g. jupyter, playwright",
     "commandPlaceholder": "Command — e.g. npx -y @playwright/mcp",
     "urlPlaceholder": "URL — e.g. https://example.com/mcp",
-    "addServer": "Add server"
+    "addServer": "Add server",
+    "recommended": "recommended",
+    "enableDefaults": "Enable {{count}} default connector(s)"
+  },
+  "workspaceStatus": {
+    "title": "Workspace status",
+    "hint": "What is loaded in this workspace right now",
+    "database": "Science database",
+    "databaseHint": "Migrated in place when the workspace opens — provenance, artifacts, citations, and reviews",
+    "databaseReady": "schema v{{version}} · {{tables}} tables · {{migrations}} migrations",
+    "databaseFailed": "failed to open",
+    "checking": "checking…",
+    "desktopOnly": "available in the desktop app",
+    "skills": "Skills",
+    "skillsHint": "Deployed into the app's own agent profile at startup — no per-workspace install",
+    "skillsCount": "{{skills}} skills · {{packs}}/{{total}} packs enabled",
+    "connectors": "Connectors",
+    "connectorsHint": "MCP servers the agent can call from chat",
+    "connectorsCount": "{{count}} configured"
   },
   "browser": {
     "label": "Browser control",
@@ -242,7 +288,8 @@
     "couldNotSetProxy": "Could not apply the proxy setting",
     "proxyApplied": "Proxy setting applied",
     "mirrorSaved": "Mirror settings saved",
-    "couldNotSetMirror": "Could not save mirror settings"
+    "couldNotSetMirror": "Could not save mirror settings",
+    "noModelSelected": "Choose a model first — connect a provider in Settings."
   },
   "dataFlow": {
     "title": "Privacy & data flow",
@@ -389,32 +436,32 @@
       "deleted": "Memory deleted"
     }
   },
-    "annotations": {
-      "title": "Annotations",
-      "subtitle": "Notes anchored to a version of a file in this workspace. Each note records the file, the version, and the lines it was made against, so it can be checked against the text it describes.",
-      "unavailable": "Available in the desktop app.",
-      "loading": "Reading annotations…",
-      "empty": "Nothing annotated yet in this workspace.",
-      "authorYou": "You",
-      "versionBadge": "v{{number}}",
-      "wholeFile": "whole file",
-      "anchorLine": "line {{line}}",
-      "anchorLines": "lines {{start}}–{{end}}",
-      "kindLabel": "Category",
-      "bodyLabel": "Note",
-      "save": "Save",
-      "editAria": "Edit this annotation",
-      "deleteAria": "Delete this annotation",
-      "deleteTitle": "Delete permanently",
-      "refresh": "Refresh",
-      "confirmDelete": {
-        "title": "Delete this annotation?",
-        "body": "It is removed for good. The file it points at is untouched.",
-        "confirm": "Delete"
-      },
-      "toast": {
-        "saved": "Annotation saved",
-        "deleted": "Annotation deleted"
-      }
+  "annotations": {
+    "title": "Annotations",
+    "subtitle": "Notes anchored to a version of a file in this workspace. Each note records the file, the version, and the lines it was made against, so it can be checked against the text it describes.",
+    "unavailable": "Available in the desktop app.",
+    "loading": "Reading annotations…",
+    "empty": "Nothing annotated yet in this workspace.",
+    "authorYou": "You",
+    "versionBadge": "v{{number}}",
+    "wholeFile": "whole file",
+    "anchorLine": "line {{line}}",
+    "anchorLines": "lines {{start}}–{{end}}",
+    "kindLabel": "Category",
+    "bodyLabel": "Note",
+    "save": "Save",
+    "editAria": "Edit this annotation",
+    "deleteAria": "Delete this annotation",
+    "deleteTitle": "Delete permanently",
+    "refresh": "Refresh",
+    "confirmDelete": {
+      "title": "Delete this annotation?",
+      "body": "It is removed for good. The file it points at is untouched.",
+      "confirm": "Delete"
+    },
+    "toast": {
+      "saved": "Annotation saved",
+      "deleted": "Annotation deleted"
     }
+  }
 }

@@ -112,26 +112,23 @@
   },
   "starters": {
     "newSession": "新建会话",
-    "heading": "我们该研究什么？",
-    "subheading": "在下方描述您的分析——或从以下选项开始。",
-    "demo": {
-      "title": "端到端运行一次演示分析",
-      "description": "模拟一份数据集，拟合模型，并生成图表和可追溯的报告。"
+    "heading": "想研究什么？",
+    "subheading": "在下面描述你的分析，或从这些开始。",
+    "reproducible": {
+      "title": "运行可复现分析",
+      "description": "分析、图表与报告，并连同运行环境一起记录。"
     },
     "analyze": {
       "title": "分析我的数据",
-      "description": "让代理处理您添加的文件；获取图表和报告。"
+      "description": "把智能体指向你添加的文件，得到图表和报告。"
+    },
+    "literature": {
+      "title": "做带引文的文献综述",
+      "description": "通过已启用的连接器检索，并构建可追溯到真实 DOI 的证据表。"
     },
     "audit": {
-      "title": "审查报告的可追溯性",
-      "description": "检查引用、无来源数字，以及图表与代码的一致性。"
-    },
-    "examples": {
-      "title": "浏览示例项目",
-      "description": "五个内置数据集，各自带完整工作流 —— 无需任何准备。"
-    },
-    "error": {
-      "setup": "无法设置示例：{{message}}"
+      "title": "审计报告的可追溯性",
+      "description": "核查引文、无来源的数字，以及图表与代码是否一致。"
     }
   },
   "live": {
@@ -331,31 +328,6 @@
       "body": "这会把对话回退到这条消息，并丢弃这条及其之后的所有消息，以及这几轮产生的文件改动。此操作无法撤销。",
       "edit": "修改并重发",
       "revert": "回退到这里"
-    }
-  },
-  "examples": {
-    "heading": "选择哪个示例？",
-    "subheading": "选中后会安装到你的工作区，然后由智能体完成分析。",
-    "back": "返回快速开始",
-    "climate": {
-      "title": "气候趋势",
-      "description": "真实 NASA GISTEMP 数据 —— 升温速率、十年均值、图表与报告。"
-    },
-    "crispr": {
-      "title": "CRISPR 筛选",
-      "description": "模拟的混合敲除筛选 —— 归一化、经验零分布、FDR、命中判定。"
-    },
-    "enzyme": {
-      "title": "酶工程",
-      "description": "模拟的变体图谱 —— 加性与上位性模型对比，给出下一批设计。"
-    },
-    "extremophile": {
-      "title": "嗜极菌生长",
-      "description": "模拟的 OD600 曲线 —— 先做逻辑斯蒂拟合，再求基点温度。"
-    },
-    "immunotherapy": {
-      "title": "免疫治疗生物标记",
-      "description": "模拟队列（非真实患者）—— 应答模型与生存期分组。"
     }
   }
 }

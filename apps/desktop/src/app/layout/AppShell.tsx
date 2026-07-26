@@ -9,7 +9,7 @@ import { PaneDragGhost } from "@/components/session/PaneDragGhost";
 import { Toaster } from "@/components/ui/Toaster";
 import { mockProject } from "@/lib/mock";
 import { useRuntimeStore } from "@/lib/runtime";
-import { ensureSetupProgressListener } from "@/lib/setup";
+import { ensureDefaultConnectors, ensureSetupProgressListener } from "@/lib/setup";
 import { useOverlayTitlebar, useUiStore } from "@/lib/store";
 import { overlayTitlebarStyle } from "@/lib/titlebar";
 import { ensureJupyter, openExternal, watchFullscreen } from "@/lib/tauri";
@@ -108,6 +108,15 @@ export function AppShell() {
       void useUpdateStore.getState().maybeAutoCheck();
     }
   }, [webReady]);
+
+  // First run: bring the default connectors up once the sidecar is actually
+  // answering. Doing this at mount would race the runtime — the setup store
+  // needs a client to read the existing MCP config, and without one it would
+  // reinstall connectors the user already has.
+  const runtimeReady = useRuntimeStore((s) => s.status) === "ready";
+  useEffect(() => {
+    if (runtimeReady && !import.meta.env.TEST) ensureDefaultConnectors();
+  }, [runtimeReady]);
 
   // Web client: if the gateway rejects the token (rotated/revoked), drop back
   // to the token gate instead of looping on a failed connection.

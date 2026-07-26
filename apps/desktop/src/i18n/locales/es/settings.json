@@ -140,6 +140,34 @@
     "addEndpoint": "Añadir endpoint",
     "importLogin": "¿Ya usas la CLI de OpenCode? Importa su inicio de sesión"
   },
+  "sub2api": {
+    "title": "Cuenta de Sub2API",
+    "hint": "Inicia sesión con correo y contraseña para usar Kimi, DeepSeek, GLM y Qwen a través de un endpoint compatible con OpenAI",
+    "signIn": "Iniciar sesión",
+    "register": "Crear cuenta",
+    "createAccount": "Crear cuenta",
+    "emailPlaceholder": "Correo electrónico",
+    "passwordPlaceholder": "Contraseña",
+    "codePlaceholder": "Código de verificación del correo",
+    "twoFactorPlaceholder": "Código de dos factores — solo si lo tienes activado",
+    "invitePlaceholder": "Código de invitación — opcional",
+    "sendCode": "Enviar código",
+    "codeSent": "Código de verificación enviado. Revisa tu bandeja de entrada.",
+    "registered": "Cuenta creada. Inicia sesión para continuar.",
+    "signedIn": "Sesión iniciada como {{email}}",
+    "signOut": "Cerrar sesión",
+    "fetchModels": "Obtener mis modelos",
+    "fetched": "Clave guardada en el gestor de credenciales · {{count}} modelo(s) disponibles",
+    "connectModels": "Conectar {{count}} modelo(s)",
+    "connected": "{{count}} modelo(s) conectados. Elige uno en Modelos.",
+    "pickOne": "Selecciona al menos un modelo.",
+    "noModels": "El gateway no devolvió modelos para esta cuenta.",
+    "manualPlaceholder": "Añadir ids de modelo a mano — separados por comas",
+    "addModels": "Añadir",
+    "providerName": "Sub2API",
+    "privacy": "Tu contraseña solo se envía al gateway. El token de acceso permanece en esta app durante la sesión; la clave de API va directo al gestor de credenciales del sistema — nunca a archivos de configuración, registros ni procedencia.",
+    "runtimeOffline": "Conecta primero el runtime"
+  },
   "mcp": {
     "title": "Servidores MCP",
     "hint": "Herramientas adicionales para el agente (Model Context Protocol) — p. ej., un MCP de Jupyter o del navegador",
@@ -159,7 +187,25 @@
     "namePlaceholder": "Nombre — p. ej., jupyter, playwright",
     "commandPlaceholder": "Comando — p. ej., npx -y @playwright/mcp",
     "urlPlaceholder": "URL — p. ej., https://example.com/mcp",
-    "addServer": "Añadir servidor"
+    "addServer": "Añadir servidor",
+    "recommended": "recomendado",
+    "enableDefaults": "Activar {{count}} conector(es) por defecto"
+  },
+  "workspaceStatus": {
+    "title": "Estado del espacio de trabajo",
+    "hint": "Lo que está cargado ahora en este espacio de trabajo",
+    "database": "Base de datos científica",
+    "databaseHint": "Migrada en el sitio al abrir el espacio de trabajo — procedencia, artefactos, citas y revisiones",
+    "databaseReady": "esquema v{{version}} · {{tables}} tablas · {{migrations}} migraciones",
+    "databaseFailed": "no se pudo abrir",
+    "checking": "comprobando…",
+    "desktopOnly": "disponible en la app de escritorio",
+    "skills": "Habilidades",
+    "skillsHint": "Se despliegan en el perfil de agente propio de la app al arrancar — sin instalación por espacio de trabajo",
+    "skillsCount": "{{skills}} habilidades · {{packs}}/{{total}} paquetes activos",
+    "connectors": "Conectores",
+    "connectorsHint": "Servidores MCP que el agente puede usar desde el chat",
+    "connectorsCount": "{{count}} configurados"
   },
   "browser": {
     "label": "Control del navegador",
@@ -242,7 +288,8 @@
     "couldNotSetProxy": "No se pudo aplicar la configuración del proxy",
     "proxyApplied": "Configuración del proxy aplicada",
     "mirrorSaved": "Configuración de espejo guardada",
-    "couldNotSetMirror": "No se pudo guardar la configuración de espejo"
+    "couldNotSetMirror": "No se pudo guardar la configuración de espejo",
+    "noModelSelected": "Elige un modelo primero: conecta un proveedor en Ajustes."
   },
   "dataFlow": {
     "title": "Privacidad y flujo de datos",
@@ -389,32 +436,32 @@
       "deleted": "Memoria eliminada"
     }
   },
-    "annotations": {
-      "title": "Anotaciones",
-      "subtitle": "Notas ancladas a una versión de un archivo de este espacio de trabajo. Cada nota registra el archivo, la versión y las líneas a las que se refiere, para poder contrastarla con el texto que describe.",
-      "unavailable": "Disponible en la aplicación de escritorio.",
-      "loading": "Leyendo anotaciones…",
-      "empty": "Todavía no hay nada anotado en este espacio de trabajo.",
-      "authorYou": "Tú",
-      "versionBadge": "v{{number}}",
-      "wholeFile": "archivo completo",
-      "anchorLine": "línea {{line}}",
-      "anchorLines": "líneas {{start}}–{{end}}",
-      "kindLabel": "Categoría",
-      "bodyLabel": "Nota",
-      "save": "Guardar",
-      "editAria": "Editar esta anotación",
-      "deleteAria": "Eliminar esta anotación",
-      "deleteTitle": "Eliminar definitivamente",
-      "refresh": "Actualizar",
-      "confirmDelete": {
-        "title": "¿Eliminar esta anotación?",
-        "body": "Se elimina definitivamente. El archivo al que apunta no se modifica.",
-        "confirm": "Eliminar"
-      },
-      "toast": {
-        "saved": "Anotación guardada",
-        "deleted": "Anotación eliminada"
-      }
+  "annotations": {
+    "title": "Anotaciones",
+    "subtitle": "Notas ancladas a una versión de un archivo de este espacio de trabajo. Cada nota registra el archivo, la versión y las líneas a las que se refiere, para poder contrastarla con el texto que describe.",
+    "unavailable": "Disponible en la aplicación de escritorio.",
+    "loading": "Leyendo anotaciones…",
+    "empty": "Todavía no hay nada anotado en este espacio de trabajo.",
+    "authorYou": "Tú",
+    "versionBadge": "v{{number}}",
+    "wholeFile": "archivo completo",
+    "anchorLine": "línea {{line}}",
+    "anchorLines": "líneas {{start}}–{{end}}",
+    "kindLabel": "Categoría",
+    "bodyLabel": "Nota",
+    "save": "Guardar",
+    "editAria": "Editar esta anotación",
+    "deleteAria": "Eliminar esta anotación",
+    "deleteTitle": "Eliminar definitivamente",
+    "refresh": "Actualizar",
+    "confirmDelete": {
+      "title": "¿Eliminar esta anotación?",
+      "body": "Se elimina definitivamente. El archivo al que apunta no se modifica.",
+      "confirm": "Eliminar"
+    },
+    "toast": {
+      "saved": "Anotación guardada",
+      "deleted": "Anotación eliminada"
     }
+  }
 }

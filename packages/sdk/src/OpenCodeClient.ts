@@ -75,6 +75,11 @@ function parseModel(model?: string | null): { providerID: string; modelID: strin
  *  (OpenAI none/minimal/…/xhigh, Anthropic low/…/max, etc.). Known names sort by
  *  this rank; anything unrecognized keeps its original order after the known set,
  *  so a compact effort control can lay the levels out in a sensible progression. */
+/** The agent runtime vendor's own hosted gateway, reported as a usable provider
+ *  even on an install with no credentials at all. Filtered out of the catalog:
+ *  see `listProviders`. */
+const RUNTIME_VENDOR_PROVIDER = "opencode";
+
 const VARIANT_ORDER = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 function orderVariants(names: string[]): string[] {
   const rank = (n: string) => {
@@ -463,7 +468,15 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
     // applied by the config PATCH; the reconnect picks it up.
   }
 
-  /** Providers OpenCode can use right now, with their models. */
+  /** Providers OpenCode can use right now, with their models.
+   *
+   *  `opencode` — OpenCode Zen, the runtime vendor's own hosted gateway — is
+   *  dropped. A fresh install with zero credentials still reports it with seven
+   *  models and picks `opencode/big-pickle` as the default, so the model menu
+   *  arrived pre-filled with someone else's endpoint and the first message left
+   *  the machine through it. This app is model-agnostic and local-first: the
+   *  user brings the provider, so an empty menu until they connect one is the
+   *  honest state. */
   async listProviders(): Promise<ProviderInfo[]> {
     const res = await this.fetchImpl(`${this.baseUrl}/config/providers`, {
       headers: this.headers(),
@@ -479,15 +492,17 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
         models?: Record<string, { name?: string; variants?: Record<string, unknown> }>;
       }>;
     };
-    return (body.providers ?? []).map((p) => ({
-      id: p.id,
-      name: p.name ?? p.id,
-      models: Object.entries(p.models ?? {}).map(([id, m]) => ({
-        id,
-        name: m.name ?? id,
-        variants: orderVariants(Object.keys(m.variants ?? {})),
-      })),
-    }));
+    return (body.providers ?? [])
+      .filter((p) => p.id !== RUNTIME_VENDOR_PROVIDER)
+      .map((p) => ({
+        id: p.id,
+        name: p.name ?? p.id,
+        models: Object.entries(p.models ?? {}).map(([id, m]) => ({
+          id,
+          name: m.name ?? id,
+          variants: orderVariants(Object.keys(m.variants ?? {})),
+        })),
+      }));
   }
 
   /**

@@ -68,12 +68,14 @@ import { AnnotationsCard } from "@/components/settings/AnnotationsCard";
 import { ModelBrowser } from "@/components/settings/ModelBrowser";
 import { fallbackDefaultModel } from "@/components/settings/modelCatalog";
 import { ProviderManagerCard } from "@/components/settings/ProviderManagerCard";
+import { Sub2ApiCard } from "@/components/settings/Sub2ApiCard";
+import { WorkspaceStatusCard } from "@/components/settings/WorkspaceStatusCard";
 import { Row, Section, Switch } from "@/components/settings/Section";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { PacksSection } from "@/components/settings/PacksSection";
 import { resolveSection } from "@/components/settings/sections";
 import { chipCls, inputCls, selectCls } from "@/components/settings/inputCls";
-import { SCIENCE_CONNECTORS } from "@/lib/scienceConnectors";
+import { RECOMMENDED_CONNECTOR_IDS, SCIENCE_CONNECTORS } from "@/lib/scienceConnectors";
 import {
   BROWSER_MCP_ID,
   BROWSER_DISPLAY_NAMES,
@@ -775,6 +777,16 @@ export function SettingsPage() {
     void useSetupStore.getState().enableConnector(id, key);
   };
 
+  // Which of the default set are not configured yet. Drives the one-click
+  // "enable the defaults" action, so a user who declined or removed them (or
+  // whose first-run provisioning failed) has a way back without clicking
+  // through five rows.
+  const missingDefaults = RECOMMENDED_CONNECTOR_IDS.filter(
+    (id) => !mcpServers.some((s) => s.name === id),
+  );
+
+  const enableDefaults = () => useSetupStore.getState().enableRecommendedConnectors();
+
   const enableBrowserControl = () => {
     const useSystemChrome = browserProfile !== PRIVATE_BROWSER;
     void useSetupStore.getState().enableBrowser({
@@ -1001,6 +1013,10 @@ export function SettingsPage() {
         {/* ---- Models ---- */}
         {section === "models" && (
         <>
+        {/* Sub2API account — the shortest path from a fresh install to a working
+            domestic model. Renders nothing outside the desktop app. */}
+        <Sub2ApiCard />
+
         {/* Agent Selector */}
         <Section title={t("agent.title", "Agent")} hint={t("agent.hint", "Choose the AI agent for different tasks")}>
           <Row title={t("agent.selected", "Current Agent")} control={
@@ -1397,7 +1413,30 @@ export function SettingsPage() {
 
         {/* ---- MCP servers ---- */}
         {section === "connectors" && (
-        <Section title={t("mcp.title")} hint={t("mcp.hint")} flush>
+          <WorkspaceStatusCard connectorCount={mcpServers.length} />
+        )}
+        {section === "connectors" && (
+        <Section
+          title={t("mcp.title")}
+          hint={t("mcp.hint")}
+          flush
+          action={
+            isTauri && connected && missingDefaults.length > 0 ? (
+              <button
+                className={btnGhost("h-8")}
+                onClick={() => void enableDefaults()}
+                disabled={enablingConnector !== null || busy}
+              >
+                {enablingConnector !== null ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Plus size={12} />
+                )}
+                {t("mcp.enableDefaults", { count: missingDefaults.length })}
+              </button>
+            ) : undefined
+          }
+        >
           {!connected ? (
             <p className="px-4 py-3 text-[13px] text-muted">{t("mcp.connectPrompt")}</p>
           ) : (
@@ -1422,6 +1461,11 @@ export function SettingsPage() {
                             <span className="ml-1.5 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
                               {t("mcp.openSource")}
                             </span>
+                            {c.recommended && (
+                              <span className="ml-1.5 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-accent ring-1 ring-accent/40">
+                                {t("mcp.recommended")}
+                              </span>
+                            )}
                             <div className="truncate text-xs text-muted">{c.description}</div>
                             <div className="truncate font-mono text-[11px] text-muted/70">
                               {c.source}

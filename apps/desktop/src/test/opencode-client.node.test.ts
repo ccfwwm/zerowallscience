@@ -103,6 +103,30 @@ describe("OpenCodeClient ↔ OpenCode server", () => {
     expect(models.find((m) => m.id === "gpt-4")?.variants).toEqual([]);
   });
 
+  it("listProviders hides the runtime vendor's own hosted gateway", async () => {
+    // Verified against the pinned sidecar: `opencode serve` with an empty config
+    // dir and no credentials answers /config/providers with the `opencode`
+    // provider (OpenCode Zen), seven models, and default `opencode/big-pickle`.
+    // Left in, the model menu of a fresh install is pre-filled with an endpoint
+    // the user never connected — and the first message goes through it.
+    const body = {
+      providers: [
+        {
+          id: "opencode",
+          name: "OpenCode Zen",
+          models: { "big-pickle": { name: "Big Pickle" }, "mimo-v2.5-free": {} },
+        },
+        { id: "moonshot", name: "Moonshot", models: { "kimi-k2-thinking": { name: "Kimi K2" } } },
+      ],
+    };
+    const fetchImpl: typeof fetch = async () =>
+      new Response(JSON.stringify(body), { status: 200 });
+    const client = new OpenCodeClient({ baseUrl: "http://127.0.0.1:1", fetchImpl });
+
+    const providers = await client.listProviders();
+    expect(providers.map((p) => p.id)).toEqual(["moonshot"]);
+  });
+
   it("runs a shell command: bash tool part + session.idle stream back", async () => {
     const events: OpenCodeEvent[] = [];
     const client = new OpenCodeClient({ baseUrl: `http://127.0.0.1:${server.port}` });

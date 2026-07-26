@@ -35,7 +35,7 @@ pub(crate) struct SecretReference {
 }
 
 impl SecretReference {
-    fn provider(id: &str) -> Result<Self, String> {
+    pub(crate) fn provider(id: &str) -> Result<Self, String> {
         validate_id(id)?;
         Ok(Self {
             kind: SecretKind::Provider,
@@ -257,7 +257,11 @@ fn registry_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
         .map_err(|error| error.to_string())
 }
 
-fn persist_for_app(app: &AppHandle, reference: SecretReference, value: &str) -> Result<(), String> {
+pub(crate) fn persist_for_app(
+    app: &AppHandle,
+    reference: SecretReference,
+    value: &str,
+) -> Result<(), String> {
     let path = registry_path(app)?;
     let backend = KeyringCredentialStore;
     let mut registry = load_registry(&path)?;

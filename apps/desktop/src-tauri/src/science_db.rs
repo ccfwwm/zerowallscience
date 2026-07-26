@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+use tauri::AppHandle;
 
 const DATABASE_FILE: &str = "science.db";
 const BUSY_TIMEOUT_MS: u64 = 5_000;
@@ -362,6 +363,19 @@ pub fn science_db_status(root: &Path) -> Result<ScienceDbStatus, String> {
         applied_migration_ids,
         table_count,
     })
+}
+
+/// Migration state of the ACTIVE workspace's science database, for the settings
+/// page.
+///
+/// The database is created and migrated during workspace preparation, so it is
+/// always present — but nothing in the app said so, which made a working install
+/// indistinguishable from one where the store had failed to open. Opening it here
+/// is also the cheapest honest check: it runs the same `open_science_db` the rest
+/// of the app uses, so a reported version is a version that really applied.
+#[tauri::command]
+pub fn workspace_science_db(app: AppHandle) -> Result<ScienceDbStatus, String> {
+    science_db_status(&crate::runtime::workspace_dir(&app)?)
 }
 
 /// Resolve a SHA-256 object location without allowing user-controlled path parts.

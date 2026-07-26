@@ -107,6 +107,100 @@ export async function removeProviderSecret(providerId: string): Promise<boolean>
   return invoke<boolean>("remove_provider_secret", { providerId });
 }
 
+/** Migration state of the active workspace's science database. */
+export interface ScienceDbStatus {
+  version: number;
+  appliedMigrationIds: string[];
+  tableCount: number;
+}
+
+/** Read the active workspace's science database state. Null off the desktop. */
+export async function workspaceScienceDb(): Promise<ScienceDbStatus | null> {
+  if (!isTauri) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<ScienceDbStatus>("workspace_science_db");
+}
+
+/** The signed-in Sub2API account, identity only — the token stays in the Rust
+ *  process and is never exposed here. */
+export interface Sub2ApiAccount {
+  email: string;
+  baseUrl: string;
+}
+
+/** Result of a one-click provision. Deliberately carries no API key: the key
+ *  went from the gateway's reply straight into the OS credential manager. */
+export interface Sub2ApiProvisioned {
+  providerId: string;
+  baseUrl: string;
+  models: string[];
+}
+
+/** Email the verification code that registration requires. */
+export async function sub2apiSendCode(email: string, baseUrl?: string): Promise<void> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("sub2api_send_code", { baseUrl, email });
+}
+
+/** Create a Sub2API account. */
+export async function sub2apiRegister(opts: {
+  email: string;
+  password: string;
+  code?: string;
+  invitationCode?: string;
+  baseUrl?: string;
+}): Promise<void> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("sub2api_register", {
+    baseUrl: opts.baseUrl,
+    email: opts.email,
+    password: opts.password,
+    code: opts.code,
+    invitationCode: opts.invitationCode,
+  });
+}
+
+/** Sign in. The access token is held in the Rust process for this app run only. */
+export async function sub2apiLogin(opts: {
+  email: string;
+  password: string;
+  code?: string;
+  baseUrl?: string;
+}): Promise<Sub2ApiAccount> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<Sub2ApiAccount>("sub2api_login", {
+    baseUrl: opts.baseUrl,
+    email: opts.email,
+    password: opts.password,
+    code: opts.code,
+  });
+}
+
+/** The account signed in during this app run, or null. */
+export async function sub2apiAccount(): Promise<Sub2ApiAccount | null> {
+  if (!isTauri) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<Sub2ApiAccount | null>("sub2api_account");
+}
+
+/** Forget the in-memory session. An already-provisioned key keeps working. */
+export async function sub2apiLogout(): Promise<void> {
+  if (!isTauri) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("sub2api_logout");
+}
+
+/** Fetch the account's API key into the OS credential manager and report the
+ *  models the gateway serves. */
+export async function sub2apiProvision(): Promise<Sub2ApiProvisioned> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<Sub2ApiProvisioned>("sub2api_provision");
+}
+
 /** Whether the OS credential manager has credentials for a provider. */
 export async function providerSecretExists(providerId: string): Promise<boolean> {
   if (!isTauri) return false;
@@ -764,14 +858,6 @@ export async function modalStatus(): Promise<ModalStatus | null> {
   if (!isTauri) return null;
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<ModalStatus>("modal_status");
-}
-
-/** Copy a bundled example project into the workspace (idempotent; never
- *  overwrites user edits). Returns the workspace directory name. */
-export async function installExample(name: string): Promise<string> {
-  if (!isTauri) throw new Error("not running in the desktop app");
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<string>("install_example", { name });
 }
 
 /** Append a diagnostic line to <app-data>/debug.log (desktop only; no-op in browser). */

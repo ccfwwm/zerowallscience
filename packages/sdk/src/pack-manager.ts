@@ -33,7 +33,7 @@ import type {
   PackVersionOperation,
 } from "@zerowall/shared";
 import { validatePackManifest, compareVersions } from "@zerowall/shared";
-import { packRegistry } from "./pack-registry";
+import { packRegistry, type PackManifestSource } from "./pack-registry";
 import { parse as parseYaml } from "yaml";
 
 /**
@@ -99,22 +99,17 @@ export class SciencePackManager implements ISciencePackManager {
   constructor(runtimePath: string) {
     // Plain string joins: the constructor cannot await the lazy `path` import,
     // and these are the roots every other path is built from. A forward slash
-    // is valid on Windows too, and `runtimeRoot` below already accepts either.
+    // is valid on Windows too.
     const root = runtimePath.replace(/[/\\]+$/, "");
     this.packsDir = `${root}/packs`;
     this.historyDir = `${root}/pack-history`;
     this.stateFile = `${root}/pack-state.json`;
   }
 
-  /** Runtime root derived from the packs directory */
-  private get runtimeRoot(): string {
-    return this.packsDir.replace(/[/\\]packs$/, "");
-  }
-
   /** Initialize manager and load pack states */
   async initialize(): Promise<void> {
     await this.loadPackStates();
-    await packRegistry.load(this.runtimeRoot);
+    await this.loadRegistryFromDisk();
 
     // Adopt packs that are present on disk but absent from the state file.
     // This establishes the tamper-detection baseline for pre-existing packs.
@@ -847,7 +842,44 @@ export class SciencePackManager implements ISciencePackManager {
   /** Reload the pack registry from disk */
   private async reloadRegistry(): Promise<void> {
     packRegistry.clear();
-    await packRegistry.load(this.runtimeRoot);
+    await this.loadRegistryFromDisk();
+  }
+
+  /**
+   * Read each pack's `manifest.yaml` from disk and hand the text to the registry.
+   *
+   * Directory reading lives here rather than in the registry because this class
+   * is Node-only by design (installs, hashes, and snapshots all need real file
+   * I/O), while the registry is also reached from the Tauri webview and the
+   * gateway web client where `fs` does not resolve.
+   */
+  private async loadRegistryFromDisk(): Promise<void> {
+    const fs = await import("fs/promises");
+    const sources: PackManifestSource[] = [];
+
+    let entries: { name: string; isDirectory(): boolean }[];
+    try {
+      entries = await fs.readdir(this.packsDir, { withFileTypes: true });
+    } catch {
+      // No packs directory yet — an empty registry, not an error.
+      packRegistry.loadFromSources([]);
+      return;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const packPath = `${this.packsDir}/${entry.name}`;
+      try {
+        sources.push({
+          path: packPath,
+          yaml: await fs.readFile(`${packPath}/manifest.yaml`, "utf-8"),
+        });
+      } catch (err) {
+        console.warn(`Failed to read pack manifest for ${entry.name}:`, err);
+      }
+    }
+
+    packRegistry.loadFromSources(sources);
   }
 
   /** Load pack states from disk */

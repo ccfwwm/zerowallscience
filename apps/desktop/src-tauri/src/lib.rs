@@ -29,6 +29,7 @@ pub mod science_db;
 mod science_mcp;
 pub mod science_store;
 mod secret_store;
+mod sub2api;
 mod tools;
 #[cfg(target_os = "macos")]
 mod macos;
@@ -65,6 +66,7 @@ pub fn run() {
         .manage(ProvenanceState::default())
         .manage(runs::RunState::default())
         .manage(gateway::GatewayState::default())
+        .manage(sub2api::Sub2ApiState::default())
         .setup(|app| {
             // The bundle identifier changed for ZeroWall, which changes Tauri's
             // app-data directory on every platform. Restore app-private runtime,
@@ -127,6 +129,13 @@ pub fn run() {
             secret_store::provider_secret_exists,
             secret_store::set_connector_secret,
             secret_store::remove_connector_secret,
+            science_db::workspace_science_db,
+            sub2api::sub2api_send_code,
+            sub2api::sub2api_register,
+            sub2api::sub2api_login,
+            sub2api::sub2api_account,
+            sub2api::sub2api_logout,
+            sub2api::sub2api_provision,
             runtime::remove_config_entry,
             jupyter::jupyter_status,
             jupyter::setup_jupyter,
@@ -184,7 +193,6 @@ pub fn run() {
             runs_index::query_runs_cmd,
             science_mcp::science_mcp_python,
             science_mcp::setup_science_mcp,
-            examples::install_example,
             git_snapshot::commit_workspace_snapshot,
             compute::list_ssh_hosts,
             compute::compute_machines,

@@ -139,6 +139,34 @@
     "addEndpoint": "添加端点",
     "importLogin": "已经在使用 OpenCode CLI？导入其登录信息"
   },
+  "sub2api": {
+    "title": "Sub2API 账号",
+    "hint": "使用邮箱和密码登录，通过一个 OpenAI 兼容接口使用 Kimi、DeepSeek、GLM、Qwen",
+    "signIn": "登录",
+    "register": "注册账号",
+    "createAccount": "创建账号",
+    "emailPlaceholder": "邮箱",
+    "passwordPlaceholder": "密码",
+    "codePlaceholder": "邮箱验证码",
+    "twoFactorPlaceholder": "两步验证码 — 如已开启才需填写",
+    "invitePlaceholder": "邀请码 — 可选",
+    "sendCode": "发送验证码",
+    "codeSent": "验证码已发送，请查收邮件。",
+    "registered": "账号已创建，请登录。",
+    "signedIn": "已登录：{{email}}",
+    "signOut": "退出登录",
+    "fetchModels": "一键获取模型",
+    "fetched": "密钥已存入系统凭据管理器 · 共 {{count}} 个模型",
+    "connectModels": "连接 {{count}} 个模型",
+    "connected": "已连接 {{count}} 个模型，请在模型中选择。",
+    "pickOne": "请至少选择一个模型。",
+    "noModels": "网关未为此账号返回任何模型。",
+    "manualPlaceholder": "手动添加模型 ID — 逗号分隔",
+    "addModels": "添加",
+    "providerName": "Sub2API",
+    "privacy": "密码仅发送给网关。访问令牌仅保留在本应用本次运行中；API 密钥直接存入系统凭据管理器 — 不会写入配置文件、日志或溯源记录。",
+    "runtimeOffline": "请先连接运行时"
+  },
   "mcp": {
     "title": "MCP 服务器",
     "hint": "为代理提供额外工具（Model Context Protocol）——例如 Jupyter 或浏览器 MCP",
@@ -158,7 +186,25 @@
     "namePlaceholder": "名称 — 例如 jupyter、playwright",
     "commandPlaceholder": "命令 — 例如 npx -y @playwright/mcp",
     "urlPlaceholder": "URL — 例如 https://example.com/mcp",
-    "addServer": "添加服务器"
+    "addServer": "添加服务器",
+    "recommended": "推荐",
+    "enableDefaults": "启用 {{count}} 个默认连接器"
+  },
+  "workspaceStatus": {
+    "title": "工作区状态",
+    "hint": "当前工作区已加载的内容",
+    "database": "科研数据库",
+    "databaseHint": "打开工作区时就地迁移 — 溯源、产物、引文与评审",
+    "databaseReady": "架构 v{{version}} · {{tables}} 张表 · {{migrations}} 次迁移",
+    "databaseFailed": "打开失败",
+    "checking": "检查中…",
+    "desktopOnly": "仅桌面端可用",
+    "skills": "技能",
+    "skillsHint": "启动时部署到应用自带的智能体配置中 — 无需按工作区安装",
+    "skillsCount": "{{skills}} 个技能 · 已启用 {{packs}}/{{total}} 个技能包",
+    "connectors": "连接器",
+    "connectorsHint": "智能体可在对话中调用的 MCP 服务",
+    "connectorsCount": "已配置 {{count}} 个"
   },
   "browser": {
     "label": "浏览器控制",
@@ -241,7 +287,8 @@
     "couldNotSetProxy": "无法应用代理设置",
     "proxyApplied": "代理设置已生效",
     "mirrorSaved": "镜像设置已保存",
-    "couldNotSetMirror": "无法保存镜像设置"
+    "couldNotSetMirror": "无法保存镜像设置",
+    "noModelSelected": "请先选择模型 — 在设置中连接一个模型提供方。"
   },
   "dataFlow": {
     "title": "隐私与数据流",
@@ -387,32 +434,32 @@
       "deleted": "记忆已删除"
     }
   },
-    "annotations": {
-      "title": "标注",
-      "subtitle": "锚定到本工作区某个文件版本的注释。每条注释都记录文件、版本与所针对的行，便于对照原文核对。",
-      "unavailable": "仅在桌面应用中可用。",
-      "loading": "正在读取标注…",
-      "empty": "此工作区尚无标注。",
-      "authorYou": "你",
-      "versionBadge": "v{{number}}",
-      "wholeFile": "整个文件",
-      "anchorLine": "第 {{line}} 行",
-      "anchorLines": "第 {{start}}–{{end}} 行",
-      "kindLabel": "类别",
-      "bodyLabel": "注释",
-      "save": "保存",
-      "editAria": "编辑此标注",
-      "deleteAria": "删除此标注",
-      "deleteTitle": "永久删除",
-      "refresh": "刷新",
-      "confirmDelete": {
-        "title": "删除此标注？",
-        "body": "将被彻底移除。它指向的文件不会受影响。",
-        "confirm": "删除"
-      },
-      "toast": {
-        "saved": "标注已保存",
-        "deleted": "标注已删除"
-      }
+  "annotations": {
+    "title": "标注",
+    "subtitle": "锚定到本工作区某个文件版本的注释。每条注释都记录文件、版本与所针对的行，便于对照原文核对。",
+    "unavailable": "仅在桌面应用中可用。",
+    "loading": "正在读取标注…",
+    "empty": "此工作区尚无标注。",
+    "authorYou": "你",
+    "versionBadge": "v{{number}}",
+    "wholeFile": "整个文件",
+    "anchorLine": "第 {{line}} 行",
+    "anchorLines": "第 {{start}}–{{end}} 行",
+    "kindLabel": "类别",
+    "bodyLabel": "注释",
+    "save": "保存",
+    "editAria": "编辑此标注",
+    "deleteAria": "删除此标注",
+    "deleteTitle": "永久删除",
+    "refresh": "刷新",
+    "confirmDelete": {
+      "title": "删除此标注？",
+      "body": "将被彻底移除。它指向的文件不会受影响。",
+      "confirm": "删除"
+    },
+    "toast": {
+      "saved": "标注已保存",
+      "deleted": "标注已删除"
     }
+  }
 }

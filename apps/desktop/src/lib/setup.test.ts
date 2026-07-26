@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  addMcpServer: vi.fn(async () => {}),
+  addMcpServer: vi.fn(async (_name: string) => {}),
   loadCatalog: vi.fn(async () => {}),
   connectRetry: vi.fn(async () => true),
   /** Resolves ⇒ an entry existed and was removed; rejects ⇒ nothing to remove. */
@@ -16,21 +16,31 @@ const mocks = vi.hoisted(() => ({
   /** Resolver for the in-flight setupJupyter promise, so tests hold it open. */
   resolveSetup: (() => {}) as () => void,
   setupJupyter: vi.fn(),
-  setupScienceMcp: vi.fn(async () => "/env/bin/python"),
+  setupScienceMcp: vi.fn(async (_pkg: string) => "/env/bin/python"),
   setConnectorSecret: vi.fn(async () => {}),
+  /** MCP entries currently in the config, mutated by addMcpServer below so
+   *  "did it land?" is answered by the config, not by the call succeeding. */
+  configured: [] as { name: string; status: string }[],
+  listMcpServers: vi.fn(),
 }));
+
+mocks.listMcpServers.mockImplementation(async () => mocks.configured);
 
 mocks.setupJupyter.mockImplementation(
   () => new Promise<void>((r) => (mocks.resolveSetup = () => r())),
 );
 
 vi.mock("./runtime", () => ({
-  getClient: () => ({ addMcpServer: mocks.addMcpServer }),
+  getClient: () => ({
+    addMcpServer: mocks.addMcpServer,
+    listMcpServers: mocks.listMcpServers,
+  }),
   useRuntimeStore: {
     getState: () => ({ loadCatalog: mocks.loadCatalog, connectRetry: mocks.connectRetry }),
   },
 }));
 vi.mock("./tauri", () => ({
+  isTauri: true,
   setupJupyter: mocks.setupJupyter,
   startJupyter: async () => ({
     url: "http://127.0.0.1:9",
@@ -48,9 +58,13 @@ vi.mock("./tauri", () => ({
 vi.mock("./scienceConnectors", () => ({
   SCIENCE_CONNECTORS: [
     { id: "papers", label: "Papers", pkg: "paper-search-mcp", apiKeyEnv: "PAPERS_API_KEY" },
+    { id: "weather", label: "Weather", pkg: "mcp-weather-server", recommended: true },
+    { id: "water", label: "Water", pkg: "usgs-mcp", recommended: true },
   ],
+  RECOMMENDED_CONNECTOR_IDS: ["weather", "water"],
   connectorConfig: () => ({ type: "local", command: ["/env/bin/python"], enabled: true }),
 }));
+vi.mock("./webMode", () => ({ isGatewayWeb: false }));
 vi.mock("./toast", () => ({ toast: { success: () => {}, error: () => {} } }));
 
 import { useSetupStore } from "./setup";
@@ -60,6 +74,12 @@ beforeEach(() => {
   mocks.setupJupyter.mockImplementation(
     () => new Promise<void>((r) => (mocks.resolveSetup = () => r())),
   );
+  mocks.configured = [];
+  mocks.listMcpServers.mockImplementation(async () => mocks.configured);
+  mocks.setupScienceMcp.mockImplementation(async () => "/env/bin/python");
+  mocks.addMcpServer.mockImplementation(async (name: string) => {
+    mocks.configured = [...mocks.configured, { name, status: "connected" }];
+  });
   useSetupStore.setState({ jupyterBusy: false, connectorId: null, line: null, generation: 0 });
 });
 
@@ -132,5 +152,58 @@ describe("setup store", () => {
 
     expect(mocks.connectRetry).not.toHaveBeenCalled();
     expect(mocks.addMcpServer).toHaveBeenCalledWith("browser-control", expect.anything());
+  });
+});
+
+// The app used to ship with zero connectors configured: every install started
+// with an agent that could not search the literature until the user found
+// Settings → Connectors and clicked through five rows.
+describe("the default connector set", () => {
+  it("provisions each default once, in list order", async () => {
+    const enabled = await useSetupStore.getState().enableRecommendedConnectors();
+
+    expect(enabled).toEqual(["weather", "water"]);
+    // Sequential and ordered: all connectors install into ONE shared uv env, and
+    // two concurrent `uv pip install` runs against the same env dir collide.
+    expect(mocks.addMcpServer.mock.calls.map((c) => c[0])).toEqual(["weather", "water"]);
+  });
+
+  it("leaves an already-configured connector alone", async () => {
+    mocks.configured = [{ name: "weather", status: "connected" }];
+
+    const enabled = await useSetupStore.getState().enableRecommendedConnectors();
+
+    expect(enabled).toEqual(["water"]);
+    expect(mocks.addMcpServer.mock.calls.map((c) => c[0])).toEqual(["water"]);
+  });
+
+  it("does nothing when they are all present", async () => {
+    mocks.configured = [
+      { name: "weather", status: "connected" },
+      { name: "water", status: "failed" }, // present but broken is still present
+    ];
+
+    expect(await useSetupStore.getState().enableRecommendedConnectors()).toEqual([]);
+    expect(mocks.setupScienceMcp).not.toHaveBeenCalled();
+  });
+
+  // A failed install must not be reported as enabled: the toast would claim the
+  // agent gained a tool it cannot call.
+  it("reports only what actually landed in the config", async () => {
+    mocks.setupScienceMcp.mockImplementation(async (pkg: string) => {
+      if (pkg === "mcp-weather-server") throw new Error("uv pip install failed");
+      return "/env/bin/python";
+    });
+
+    const enabled = await useSetupStore.getState().enableRecommendedConnectors();
+
+    expect(enabled).toEqual(["water"]);
+  });
+
+  it("cannot run without a client — it would reinstall what is already there", async () => {
+    mocks.listMcpServers.mockRejectedValue(new Error("not connected"));
+
+    expect(await useSetupStore.getState().enableRecommendedConnectors()).toEqual([]);
+    expect(mocks.setupScienceMcp).not.toHaveBeenCalled();
   });
 });

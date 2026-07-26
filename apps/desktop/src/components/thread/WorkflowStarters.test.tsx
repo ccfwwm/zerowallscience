@@ -1,105 +1,71 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { EXAMPLE_PROJECTS, WORKFLOW_STARTERS, WorkflowStarters } from "./WorkflowStarters";
+import { describe, expect, it, vi } from "vitest";
+import { WORKFLOW_STARTERS, WorkflowStarters } from "./WorkflowStarters";
 
-// Plain closures instead of vi.fn: tinyspy's result tracking derives an extra
-// promise from a rejecting spy, which vitest then reports as unhandled.
-const installCalls: string[] = [];
-let failInstall = false;
-vi.mock("@/lib/tauri", () => ({
-  isTauri: true,
-  installExample: async (name: string) => {
-    installCalls.push(name);
-    if (failInstall) throw new Error("resource missing");
-    return name;
-  },
-}));
+// The skills the starter prompts ask for by name. A prompt naming a skill the
+// app does not ship would send the agent looking for instructions that are not
+// there, so the last test checks these against the shipped pack manifests.
+const REQUIRED_SKILLS = [
+  "publication-figures",
+  "stats-integrity",
+  "literature-review",
+  "traceability-review",
+];
 
 describe("WorkflowStarters", () => {
-  beforeEach(() => {
-    installCalls.length = 0;
-    failInstall = false;
-  });
-
-  it("renders one card per starter workflow, including the examples row", () => {
+  it("renders one card per capability", () => {
     render(<WorkflowStarters onPick={() => {}} />);
     // Titles are i18n-translated (session:starters.<id>.title); WORKFLOW_STARTERS
-    // itself no longer carries display copy, only ids/prompts — assert the
-    // rendered English text directly.
-    expect(screen.getByText("Run a demo analysis, end to end")).toBeInTheDocument();
+    // itself carries no display copy, only ids/prompts — assert the rendered
+    // English text directly.
+    expect(screen.getByText("Run a reproducible analysis")).toBeInTheDocument();
     expect(screen.getByText("Analyze my data")).toBeInTheDocument();
+    expect(screen.getByText("Review the literature with citations")).toBeInTheDocument();
     expect(screen.getByText("Audit a report for traceability")).toBeInTheDocument();
-    expect(screen.getByText("Explore an example project")).toBeInTheDocument();
     expect(WORKFLOW_STARTERS).toHaveLength(4);
   });
 
-  it("sends the full-workflow prompt on click", async () => {
+  it("sends the starter's prompt on click", async () => {
     const onPick = vi.fn();
     render(<WorkflowStarters onPick={onPick} />);
-    await userEvent.click(screen.getByText("Run a demo analysis, end to end"));
-    await waitFor(() => expect(onPick).toHaveBeenCalledWith(expect.stringContaining("figure1.png")));
+    await userEvent.click(screen.getByText("Run a reproducible analysis"));
+    expect(onPick).toHaveBeenCalledTimes(1);
+    expect(onPick.mock.calls[0][0]).toContain("figure1.png");
     expect(onPick.mock.calls[0][0]).toContain("report.md");
-    expect(installCalls).toHaveLength(0);
   });
 
-  it("opens the example picker instead of sending a prompt", async () => {
-    const onPick = vi.fn();
-    render(<WorkflowStarters onPick={onPick} />);
-
-    // The examples row carries no prompt of its own — it swaps the list. Nothing
-    // may be sent on the way in, or the user would be committed to an example
-    // before choosing one.
-    await userEvent.click(screen.getByText("Explore an example project"));
-    expect(onPick).not.toHaveBeenCalled();
-    expect(installCalls).toHaveLength(0);
-
-    // Every bundled example is reachable, and the starters are gone until the
-    // user comes back.
-    for (const title of [
-      "Climate trends",
-      "CRISPR screen",
-      "Enzyme engineering",
-      "Extremophile growth",
-      "Immunotherapy biomarkers",
+  it("names no bundled example project", () => {
+    // The starters used to lead with five bundled examples. They are gone, and a
+    // prompt still naming one would point the agent at files nothing unpacks.
+    const prompts = WORKFLOW_STARTERS.map((s) => s.prompt).join("\n");
+    for (const dir of [
+      "climate-trends",
+      "crispr-screen",
+      "enzyme-engineering",
+      "extremophile-growth",
+      "immunotherapy",
     ]) {
-      expect(screen.getByText(title)).toBeInTheDocument();
+      expect(prompts).not.toContain(dir);
     }
-    expect(screen.queryByText("Analyze my data")).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByText("Back to starters"));
-    expect(screen.getByText("Analyze my data")).toBeInTheDocument();
   });
 
-  it("installs an example's files before sending its prompt", async () => {
-    const onPick = vi.fn();
-    render(<WorkflowStarters onPick={onPick} />);
+  it("only asks for skills that actually ship", async () => {
+    // Read the manifests rather than trusting a hardcoded list, so removing a
+    // skill from a pack turns this red instead of leaving a starter that asks
+    // the agent for a skill it cannot load.
+    const { readFileSync, readdirSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const packsDir = join(__dirname, "..", "..", "..", "..", "..", "runtime", "packs");
+    const manifests = readdirSync(packsDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => readFileSync(join(packsDir, e.name, "manifest.yaml"), "utf-8"))
+      .join("\n");
 
-    await userEvent.click(screen.getByText("Explore an example project"));
-    await userEvent.click(screen.getByText("CRISPR screen"));
-    await waitFor(() => expect(onPick).toHaveBeenCalledTimes(1));
-    // The install names the directory the prompt then tells the agent to read;
-    // a mismatch would point the agent at files that were never unpacked.
-    expect(installCalls).toEqual(["crispr-screen"]);
-    expect(onPick.mock.calls[0][0]).toContain("crispr-screen/README.md");
-  });
-
-  it("does not send the prompt when the example install fails", async () => {
-    failInstall = true;
-    const onPick = vi.fn();
-    render(<WorkflowStarters onPick={onPick} />);
-
-    await userEvent.click(screen.getByText("Explore an example project"));
-    await userEvent.click(screen.getByText("Climate trends"));
-    await waitFor(() => expect(installCalls).toHaveLength(1));
-    expect(onPick).not.toHaveBeenCalled();
-  });
-
-  it("points every example prompt at its own installed directory", () => {
-    // Each prompt must name the directory that `installExample(dir)` unpacks,
-    // otherwise the agent hunts for files under a path that does not exist.
-    for (const e of EXAMPLE_PROJECTS) {
-      expect(e.prompt).toContain(`${e.dir}/`);
+    const prompts = WORKFLOW_STARTERS.map((s) => s.prompt).join("\n");
+    for (const skill of REQUIRED_SKILLS) {
+      expect(prompts).toContain(skill);
+      expect(manifests).toContain(skill);
     }
   });
 });

@@ -140,6 +140,34 @@
     "addEndpoint": "Endpunkt hinzufügen",
     "importLogin": "Nutzen Sie bereits die OpenCode-CLI? Deren Anmeldung importieren"
   },
+  "sub2api": {
+    "title": "Sub2API-Konto",
+    "hint": "Mit E-Mail und Passwort anmelden, um Kimi, DeepSeek, GLM und Qwen über einen OpenAI-kompatiblen Endpunkt zu nutzen",
+    "signIn": "Anmelden",
+    "register": "Konto erstellen",
+    "createAccount": "Konto erstellen",
+    "emailPlaceholder": "E-Mail",
+    "passwordPlaceholder": "Passwort",
+    "codePlaceholder": "E-Mail-Bestätigungscode",
+    "twoFactorPlaceholder": "Zwei-Faktor-Code — nur wenn aktiviert",
+    "invitePlaceholder": "Einladungscode — optional",
+    "sendCode": "Code senden",
+    "codeSent": "Bestätigungscode gesendet. Prüfe dein Postfach.",
+    "registered": "Konto erstellt. Melde dich an, um fortzufahren.",
+    "signedIn": "Angemeldet als {{email}}",
+    "signOut": "Abmelden",
+    "fetchModels": "Meine Modelle abrufen",
+    "fetched": "Schlüssel im Anmeldeinformationsverwaltung gespeichert · {{count}} Modell(e) verfügbar",
+    "connectModels": "{{count}} Modell(e) verbinden",
+    "connected": "{{count}} Modell(e) verbunden. Wähle eines unter Modelle.",
+    "pickOne": "Wähle mindestens ein Modell.",
+    "noModels": "Das Gateway hat für dieses Konto keine Modelle gemeldet.",
+    "manualPlaceholder": "Modell-IDs manuell hinzufügen — kommagetrennt",
+    "addModels": "Hinzufügen",
+    "providerName": "Sub2API",
+    "privacy": "Dein Passwort geht nur an das Gateway. Das Zugriffstoken bleibt für diese Sitzung in der App; der API-Schlüssel geht direkt in die Anmeldeinformationsverwaltung des Systems — nie in Konfigurationsdateien, Logs oder Provenienz.",
+    "runtimeOffline": "Zuerst die Laufzeit verbinden"
+  },
   "mcp": {
     "title": "MCP-Server",
     "hint": "Zusätzliche Werkzeuge für den Agenten (Model Context Protocol) — z. B. ein Jupyter- oder Browser-MCP",
@@ -159,7 +187,25 @@
     "namePlaceholder": "Name — z. B. jupyter, playwright",
     "commandPlaceholder": "Befehl — z. B. npx -y @playwright/mcp",
     "urlPlaceholder": "URL — z. B. https://example.com/mcp",
-    "addServer": "Server hinzufügen"
+    "addServer": "Server hinzufügen",
+    "recommended": "empfohlen",
+    "enableDefaults": "{{count}} Standard-Konnektor(en) aktivieren"
+  },
+  "workspaceStatus": {
+    "title": "Arbeitsbereich-Status",
+    "hint": "Was in diesem Arbeitsbereich gerade geladen ist",
+    "database": "Wissenschaftsdatenbank",
+    "databaseHint": "Beim Öffnen des Arbeitsbereichs direkt migriert — Provenienz, Artefakte, Zitate und Reviews",
+    "databaseReady": "Schema v{{version}} · {{tables}} Tabellen · {{migrations}} Migrationen",
+    "databaseFailed": "Öffnen fehlgeschlagen",
+    "checking": "prüfe…",
+    "desktopOnly": "in der Desktop-App verfügbar",
+    "skills": "Skills",
+    "skillsHint": "Beim Start in das eigene Agentenprofil der App ausgeliefert — keine Installation pro Arbeitsbereich",
+    "skillsCount": "{{skills}} Skills · {{packs}}/{{total}} Packs aktiv",
+    "connectors": "Konnektoren",
+    "connectorsHint": "MCP-Server, die der Agent aus dem Chat aufrufen kann",
+    "connectorsCount": "{{count}} konfiguriert"
   },
   "browser": {
     "label": "Browsersteuerung",
@@ -242,7 +288,8 @@
     "couldNotSetProxy": "Proxy-Einstellung konnte nicht übernommen werden",
     "proxyApplied": "Proxy-Einstellung übernommen",
     "mirrorSaved": "Spiegel-Einstellungen gespeichert",
-    "couldNotSetMirror": "Spiegel-Einstellungen konnten nicht gespeichert werden"
+    "couldNotSetMirror": "Spiegel-Einstellungen konnten nicht gespeichert werden",
+    "noModelSelected": "Wählen Sie zuerst ein Modell — verbinden Sie einen Anbieter in den Einstellungen."
   },
   "dataFlow": {
     "title": "Datenschutz & Datenfluss",
@@ -389,32 +436,32 @@
       "deleted": "Eintrag gelöscht"
     }
   },
-    "annotations": {
-      "title": "Anmerkungen",
-      "subtitle": "Notizen, die an eine Dateiversion in diesem Arbeitsbereich gebunden sind. Jede Notiz hält Datei, Version und die betreffenden Zeilen fest, damit sie am beschriebenen Text überprüft werden kann.",
-      "unavailable": "In der Desktop-App verfügbar.",
-      "loading": "Anmerkungen werden gelesen…",
-      "empty": "In diesem Arbeitsbereich wurde noch nichts annotiert.",
-      "authorYou": "Sie",
-      "versionBadge": "v{{number}}",
-      "wholeFile": "gesamte Datei",
-      "anchorLine": "Zeile {{line}}",
-      "anchorLines": "Zeilen {{start}}–{{end}}",
-      "kindLabel": "Kategorie",
-      "bodyLabel": "Notiz",
-      "save": "Speichern",
-      "editAria": "Diese Anmerkung bearbeiten",
-      "deleteAria": "Diese Anmerkung löschen",
-      "deleteTitle": "Endgültig löschen",
-      "refresh": "Aktualisieren",
-      "confirmDelete": {
-        "title": "Diese Anmerkung löschen?",
-        "body": "Sie wird endgültig entfernt. Die Datei, auf die sie verweist, bleibt unverändert.",
-        "confirm": "Löschen"
-      },
-      "toast": {
-        "saved": "Anmerkung gespeichert",
-        "deleted": "Anmerkung gelöscht"
-      }
+  "annotations": {
+    "title": "Anmerkungen",
+    "subtitle": "Notizen, die an eine Dateiversion in diesem Arbeitsbereich gebunden sind. Jede Notiz hält Datei, Version und die betreffenden Zeilen fest, damit sie am beschriebenen Text überprüft werden kann.",
+    "unavailable": "In der Desktop-App verfügbar.",
+    "loading": "Anmerkungen werden gelesen…",
+    "empty": "In diesem Arbeitsbereich wurde noch nichts annotiert.",
+    "authorYou": "Sie",
+    "versionBadge": "v{{number}}",
+    "wholeFile": "gesamte Datei",
+    "anchorLine": "Zeile {{line}}",
+    "anchorLines": "Zeilen {{start}}–{{end}}",
+    "kindLabel": "Kategorie",
+    "bodyLabel": "Notiz",
+    "save": "Speichern",
+    "editAria": "Diese Anmerkung bearbeiten",
+    "deleteAria": "Diese Anmerkung löschen",
+    "deleteTitle": "Endgültig löschen",
+    "refresh": "Aktualisieren",
+    "confirmDelete": {
+      "title": "Diese Anmerkung löschen?",
+      "body": "Sie wird endgültig entfernt. Die Datei, auf die sie verweist, bleibt unverändert.",
+      "confirm": "Löschen"
+    },
+    "toast": {
+      "saved": "Anmerkung gespeichert",
+      "deleted": "Anmerkung gelöscht"
     }
+  }
 }

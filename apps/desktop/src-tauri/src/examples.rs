@@ -1,25 +1,15 @@
-// Built-in example projects (P0-1 / P1-1): real, small datasets bundled as
-// Tauri resources and copied into the workspace on demand, so the agent runs a
-// genuine analysis on genuine data — including a non-bio one (climate-trends).
+// Recursive, non-clobbering copy of a bundled resource tree into the workspace.
+//
+// This file used to also own `install_example`, the command behind the "Explore
+// an example project" row on the welcome screen. Both the row and the command
+// are gone: the starters now lead with what the app does rather than with five
+// bundled datasets, and the datasets themselves are no longer shipped in the
+// installer. `examples/` stays in the repo, where CI still runs each one to
+// prove the analyses reproduce.
 use std::path::Path;
-use tauri::{path::BaseDirectory, AppHandle, Manager};
-
-use crate::runtime::workspace_dir;
-
-/// Bundled example projects; the command rejects anything else. Every name here
-/// needs a matching `bundle.resources` entry in `tauri.conf.json`, or
-/// `install_example` fails at runtime with "example not bundled in this build".
-/// `bundle_resources_cover_every_example` is the test that enforces it.
-const EXAMPLES: &[&str] = &[
-    "climate-trends",
-    "crispr-screen",
-    "enzyme-engineering",
-    "extremophile",
-    "immunotherapy",
-];
 
 /// Copy `src` into `dst` recursively WITHOUT overwriting existing files — a
-/// re-installed example must never clobber the user's edited copy.
+/// re-deployed tree must never clobber the user's edited copy.
 pub(crate) fn copy_missing(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
@@ -34,28 +24,9 @@ pub(crate) fn copy_missing(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Copy a bundled example project into the workspace (idempotent, never
-/// overwrites) and return its workspace-relative directory name.
-#[tauri::command(async)]
-pub fn install_example(app: AppHandle, name: String) -> Result<String, String> {
-    if !EXAMPLES.contains(&name.as_str()) {
-        return Err(format!("unknown example: {name}"));
-    }
-    let src = app
-        .path()
-        .resolve(format!("examples/{name}"), BaseDirectory::Resource)
-        .map_err(|e| format!("example resource missing: {e}"))?;
-    if !src.is_dir() {
-        return Err("example not bundled in this build".into());
-    }
-    let dst = workspace_dir(&app)?.join(&name);
-    copy_missing(&src, &dst).map_err(|e| format!("example install failed: {e}"))?;
-    Ok(name)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{copy_missing, EXAMPLES};
+    use super::copy_missing;
 
     #[test]
     fn copies_recursively_but_never_overwrites() {
@@ -64,12 +35,16 @@ mod tests {
         let dst = base.join("dst");
         std::fs::create_dir_all(src.join("data")).unwrap();
         std::fs::write(src.join("README.md"), "bundled readme").unwrap();
-        std::fs::write(src.join("data/x.csv"), "a,b\n1,2\n").unwrap();
+        std::fs::write(src.join("data/x.csv"), "a,b
+1,2
+").unwrap();
 
         copy_missing(&src, &dst).unwrap();
-        assert_eq!(std::fs::read_to_string(dst.join("data/x.csv")).unwrap(), "a,b\n1,2\n");
+        assert_eq!(std::fs::read_to_string(dst.join("data/x.csv")).unwrap(), "a,b
+1,2
+");
 
-        // The user edits a file; re-installing must keep the edit.
+        // The user edits a file; re-copying must keep the edit.
         std::fs::write(dst.join("README.md"), "user edited").unwrap();
         copy_missing(&src, &dst).unwrap();
         assert_eq!(std::fs::read_to_string(dst.join("README.md")).unwrap(), "user edited");
@@ -77,10 +52,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(base);
     }
 
-    /// An example in `EXAMPLES` with no `bundle.resources` entry compiles fine
-    /// and then fails at runtime for the user. Catch it here instead.
+    /// No `examples/` tree may be bundled: the installer must not carry sample
+    /// datasets, and a stray entry would silently add megabytes back.
     #[test]
-    fn bundle_resources_cover_every_example() {
+    fn no_example_datasets_are_bundled() {
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let config: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(manifest.join("tauri.conf.json")).unwrap(),
@@ -90,19 +65,12 @@ mod tests {
             .as_object()
             .expect("bundle.resources must be an object");
 
-        for name in EXAMPLES {
-            let src = format!("../../../examples/{name}");
-            let dst = format!("examples/{name}/");
-            assert_eq!(
-                resources.get(&src).and_then(|v| v.as_str()),
-                Some(dst.as_str()),
-                "example `{name}` is in EXAMPLES but tauri.conf.json has no \
-                 bundle.resources entry mapping `{src}` to `{dst}`; \
-                 install_example would fail with \"example not bundled in this build\""
-            );
+        for (src, dst) in resources {
+            let dst = dst.as_str().unwrap_or_default();
             assert!(
-                manifest.join("../../..").join("examples").join(name).is_dir(),
-                "example `{name}` is in EXAMPLES but examples/{name}/ does not exist"
+                !src.contains("/examples/") && !dst.starts_with("examples/"),
+                "bundle.resources maps `{src}` to `{dst}`; \
+example datasets are deliberately not shipped in the installer"
             );
         }
     }

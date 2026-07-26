@@ -139,6 +139,34 @@
     "addEndpoint": "엔드포인트 추가",
     "importLogin": "이미 OpenCode CLI를 사용 중이신가요? 로그인 정보 가져오기"
   },
+  "sub2api": {
+    "title": "Sub2API 계정",
+    "hint": "이메일과 비밀번호로 로그인해 OpenAI 호환 엔드포인트로 Kimi, DeepSeek, GLM, Qwen을 사용합니다",
+    "signIn": "로그인",
+    "register": "계정 만들기",
+    "createAccount": "계정 만들기",
+    "emailPlaceholder": "이메일",
+    "passwordPlaceholder": "비밀번호",
+    "codePlaceholder": "이메일 인증 코드",
+    "twoFactorPlaceholder": "2단계 인증 코드 — 사용 중인 경우에만",
+    "invitePlaceholder": "초대 코드 — 선택 사항",
+    "sendCode": "코드 발송",
+    "codeSent": "인증 코드를 보냈습니다. 받은 편지함을 확인하세요.",
+    "registered": "계정을 만들었습니다. 로그인해 계속하세요.",
+    "signedIn": "{{email}} 으로 로그인했습니다",
+    "signOut": "로그아웃",
+    "fetchModels": "내 모델 가져오기",
+    "fetched": "키를 OS 자격 증명 관리자에 저장했습니다 · 모델 {{count}}개",
+    "connectModels": "모델 {{count}}개 연결",
+    "connected": "모델 {{count}}개를 연결했습니다. 모델에서 하나를 선택하세요.",
+    "pickOne": "모델을 하나 이상 선택하세요.",
+    "noModels": "게이트웨이가 이 계정에 대해 모델을 반환하지 않았습니다.",
+    "manualPlaceholder": "모델 ID 직접 추가 — 쉼표로 구분",
+    "addModels": "추가",
+    "providerName": "Sub2API",
+    "privacy": "비밀번호는 게이트웨이에만 전송됩니다. 액세스 토큰은 이번 세션 동안 이 앱에만 남고, API 키는 OS 자격 증명 관리자로 바로 저장됩니다 — 설정 파일, 로그, 출처 기록에는 절대 기록되지 않습니다.",
+    "runtimeOffline": "런타임을 먼저 연결하세요"
+  },
   "mcp": {
     "title": "MCP 서버",
     "hint": "에이전트를 위한 추가 도구 (Model Context Protocol) — 예: Jupyter 또는 브라우저 MCP",
@@ -158,7 +186,25 @@
     "namePlaceholder": "이름 — 예: jupyter, playwright",
     "commandPlaceholder": "명령 — 예: npx -y @playwright/mcp",
     "urlPlaceholder": "URL — 예: https://example.com/mcp",
-    "addServer": "서버 추가"
+    "addServer": "서버 추가",
+    "recommended": "권장",
+    "enableDefaults": "기본 커넥터 {{count}}개 사용"
+  },
+  "workspaceStatus": {
+    "title": "워크스페이스 상태",
+    "hint": "현재 이 워크스페이스에 로드된 항목",
+    "database": "사이언스 데이터베이스",
+    "databaseHint": "워크스페이스를 열 때 제자리에서 마이그레이션 — 출처, 산출물, 인용, 검토",
+    "databaseReady": "스키마 v{{version}} · 테이블 {{tables}}개 · 마이그레이션 {{migrations}}건",
+    "databaseFailed": "열기 실패",
+    "checking": "확인 중…",
+    "desktopOnly": "데스크톱 앱에서 사용할 수 있습니다",
+    "skills": "스킬",
+    "skillsHint": "시작 시 앱 전용 에이전트 프로필로 배포됩니다 — 워크스페이스별 설치가 필요 없습니다",
+    "skillsCount": "스킬 {{skills}}개 · 팩 {{packs}}/{{total}}개 사용",
+    "connectors": "커넥터",
+    "connectorsHint": "에이전트가 대화에서 호출할 수 있는 MCP 서버",
+    "connectorsCount": "{{count}}개 구성됨"
   },
   "browser": {
     "label": "브라우저 제어",
@@ -241,7 +287,8 @@
     "couldNotSetProxy": "프록시 설정을 적용할 수 없습니다",
     "proxyApplied": "프록시 설정이 적용되었습니다",
     "mirrorSaved": "미러 설정이 저장되었습니다",
-    "couldNotSetMirror": "미러 설정을 저장할 수 없습니다"
+    "couldNotSetMirror": "미러 설정을 저장할 수 없습니다",
+    "noModelSelected": "먼저 모델을 선택하세요 — 설정에서 제공자를 연결합니다."
   },
   "dataFlow": {
     "title": "개인정보 및 데이터 흐름",
@@ -387,32 +434,32 @@
       "deleted": "메모리를 삭제했습니다"
     }
   },
-    "annotations": {
-      "title": "주석",
-      "subtitle": "이 작업 공간의 파일 버전에 고정된 메모입니다. 각 메모는 파일, 버전, 대상 행을 기록하므로 원문과 대조할 수 있습니다.",
-      "unavailable": "데스크톱 앱에서만 사용할 수 있습니다.",
-      "loading": "주석을 읽는 중…",
-      "empty": "이 작업 공간에는 아직 주석이 없습니다.",
-      "authorYou": "나",
-      "versionBadge": "v{{number}}",
-      "wholeFile": "파일 전체",
-      "anchorLine": "{{line}}행",
-      "anchorLines": "{{start}}–{{end}}행",
-      "kindLabel": "분류",
-      "bodyLabel": "메모",
-      "save": "저장",
-      "editAria": "이 주석 편집",
-      "deleteAria": "이 주석 삭제",
-      "deleteTitle": "영구 삭제",
-      "refresh": "새로 고침",
-      "confirmDelete": {
-        "title": "이 주석을 삭제할까요?",
-        "body": "영구적으로 제거됩니다. 가리키는 파일은 변경되지 않습니다.",
-        "confirm": "삭제"
-      },
-      "toast": {
-        "saved": "주석을 저장했습니다",
-        "deleted": "주석을 삭제했습니다"
-      }
+  "annotations": {
+    "title": "주석",
+    "subtitle": "이 작업 공간의 파일 버전에 고정된 메모입니다. 각 메모는 파일, 버전, 대상 행을 기록하므로 원문과 대조할 수 있습니다.",
+    "unavailable": "데스크톱 앱에서만 사용할 수 있습니다.",
+    "loading": "주석을 읽는 중…",
+    "empty": "이 작업 공간에는 아직 주석이 없습니다.",
+    "authorYou": "나",
+    "versionBadge": "v{{number}}",
+    "wholeFile": "파일 전체",
+    "anchorLine": "{{line}}행",
+    "anchorLines": "{{start}}–{{end}}행",
+    "kindLabel": "분류",
+    "bodyLabel": "메모",
+    "save": "저장",
+    "editAria": "이 주석 편집",
+    "deleteAria": "이 주석 삭제",
+    "deleteTitle": "영구 삭제",
+    "refresh": "새로 고침",
+    "confirmDelete": {
+      "title": "이 주석을 삭제할까요?",
+      "body": "영구적으로 제거됩니다. 가리키는 파일은 변경되지 않습니다.",
+      "confirm": "삭제"
+    },
+    "toast": {
+      "saved": "주석을 저장했습니다",
+      "deleted": "주석을 삭제했습니다"
     }
+  }
 }

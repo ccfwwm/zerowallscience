@@ -27,6 +27,10 @@ export interface ScienceConnector {
   installNote?: string;
   /** Upstream project, shown so users can vet it before enabling. */
   source: string;
+  /** Part of the default set enabled on first run. Only keyless, small-install
+   *  connectors qualify: a default that needs a signup, or that pulls in
+   *  pymatgen, is not a default. */
+  recommended?: boolean;
 }
 
 export const SCIENCE_CONNECTORS: ScienceConnector[] = [
@@ -39,6 +43,7 @@ export const SCIENCE_CONNECTORS: ScienceConnector[] = [
     pkg: "paper-search-mcp",
     module: "paper_search_mcp.server",
     source: "github.com/openags/paper-search-mcp",
+    recommended: true,
   },
   {
     id: "biomcp",
@@ -49,6 +54,7 @@ export const SCIENCE_CONNECTORS: ScienceConnector[] = [
     module: "biomcp",
     args: ["run"],
     source: "github.com/genomoncology/biomcp",
+    recommended: true,
   },
   {
     id: "materials-project",
@@ -84,6 +90,7 @@ export const SCIENCE_CONNECTORS: ScienceConnector[] = [
     pkg: "spaceweather-mcp",
     bin: "spaceweather-mcp",
     source: "github.com/hoon1983/spaceweather-mcp",
+    recommended: true,
   },
   {
     id: "open-meteo",
@@ -94,6 +101,7 @@ export const SCIENCE_CONNECTORS: ScienceConnector[] = [
     pkg: "mcp-weather-server",
     module: "mcp_weather_server",
     source: "github.com/isdaniel/mcp_weather_server",
+    recommended: true,
   },
   {
     id: "usgs-water",
@@ -104,8 +112,15 @@ export const SCIENCE_CONNECTORS: ScienceConnector[] = [
     pkg: "usgs-mcp",
     bin: "usgs-mcp",
     source: "github.com/mansurjisan/ocean-mcp",
+    recommended: true,
   },
 ];
+
+/** Ids of the default set, in list order. Derived rather than hand-maintained so
+ *  a connector can never be marked recommended and then silently left out. */
+export const RECOMMENDED_CONNECTOR_IDS: string[] = SCIENCE_CONNECTORS.filter(
+  (c) => c.recommended,
+).map((c) => c.id);
 
 /** Resolve a console script that sits next to the managed python interpreter
  *  (unix: `<env>/bin/<script>`; Windows: `<env>/Scripts/<script>.exe`). */

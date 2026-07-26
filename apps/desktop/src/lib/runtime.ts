@@ -849,6 +849,53 @@ export function getClient(): OpenCodeClient | null {
   return opencodeClient;
 }
 
+/**
+ * Every pack manifest under `runtime/packs/`, inlined at build time.
+ *
+ * Same reasoning as `BUILT_IN_AGENT_SOURCES` below: nothing serves
+ * `/runtime/packs/*` in the Tauri shell or the gateway web client, and the
+ * webview cannot read the bundled resource directory either, so reading these
+ * at runtime yielded zero packs in both. `eager` keeps them as plain strings in
+ * the bundle, which makes a missing manifest a build error.
+ */
+const PACK_MANIFEST_SOURCES = import.meta.glob("../../../../runtime/packs/*/manifest.yaml", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+/** Manifest text paired with the pack directory it came from. */
+function bundledPackManifests(): { path: string; yaml: string }[] {
+  return Object.entries(PACK_MANIFEST_SOURCES).map(([file, yaml]) => ({
+    // Trim `/manifest.yaml` so `path` names the pack directory, matching what
+    // the Node-side manager reports for the same pack.
+    path: file.replace(/\/manifest\.yaml$/, ""),
+    yaml,
+  }));
+}
+
+/** Packs the user has switched off. Local to the install, like the other prefs. */
+const DISABLED_PACKS_KEY = "zerowall:disabledPacks";
+
+function disabledPackIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(DISABLED_PACKS_KEY);
+    const ids: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function setPackDisabled(packId: string, disabled: boolean): void {
+  if (typeof window === "undefined") return;
+  const ids = disabledPackIds();
+  if (disabled) ids.add(packId);
+  else ids.delete(packId);
+  window.localStorage.setItem(DISABLED_PACKS_KEY, JSON.stringify([...ids]));
+}
+
 /** Raw built-in agent definitions, keyed by id (validated on load). */
 const BUILT_IN_AGENT_SOURCES: Record<string, unknown> = {
   "general-purpose": generalPurposeAgent,
@@ -1016,51 +1063,27 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   installedPacks: [],
   loadPacks: async () => {
     try {
-      // Dynamic import to avoid circular dependencies
-      const { initializePackManager } = await import("@zerowall/sdk");
-      const wsPath = await workspacePath();
-      if (!wsPath) {
-        void logDebug("No workspace path available for pack loading");
-        return;
-      }
-      const runtimePath = `${wsPath}/.zerowall/runtime`;
-      await initializePackManager(runtimePath);
-
-      const { getInstalledPacks } = await import("@zerowall/sdk");
-      const packs = getInstalledPacks();
-      set({ installedPacks: packs });
+      const { loadPackRegistry, getInstalledPacks, packRegistry } = await import("@zerowall/sdk");
+      packRegistry.clear();
+      loadPackRegistry(bundledPackManifests());
+      const disabled = disabledPackIds();
+      set({
+        installedPacks: getInstalledPacks().map((pack) =>
+          disabled.has(pack.manifest.id) ? { ...pack, state: "disabled" as const } : pack,
+        ),
+      });
     } catch (err) {
-      console.error("Failed to load packs:", err);
+      void logDebug(`Failed to load packs: ${err}`);
       set({ installedPacks: [] });
     }
   },
   enablePack: async (packId) => {
-    try {
-      const { getPackManager } = await import("@zerowall/sdk");
-      const wsPath = await workspacePath();
-      if (!wsPath) throw new Error("No workspace path available");
-      const runtimePath = `${wsPath}/.zerowall/runtime`;
-      const manager = getPackManager(runtimePath);
-      await manager.enable(packId);
-      await get().loadPacks();
-    } catch (err) {
-      console.error(`Failed to enable pack ${packId}:`, err);
-      throw err;
-    }
+    setPackDisabled(packId, false);
+    await get().loadPacks();
   },
   disablePack: async (packId) => {
-    try {
-      const { getPackManager } = await import("@zerowall/sdk");
-      const wsPath = await workspacePath();
-      if (!wsPath) throw new Error("No workspace path available");
-      const runtimePath = `${wsPath}/.zerowall/runtime`;
-      const manager = getPackManager(runtimePath);
-      await manager.disable(packId);
-      await get().loadPacks();
-    } catch (err) {
-      console.error(`Failed to disable pack ${packId}:`, err);
-      throw err;
-    }
+    setPackDisabled(packId, true);
+    await get().loadPacks();
   },
 
   setAgentMode: (mode, sessionId) =>
@@ -2115,6 +2138,15 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // This pane's own model + effort (falling back to the global default),
     // captured now so a draft's later graft still sends the pane's choice.
     const { model, variant } = modelForSession(s, key);
+
+    // Refuse the turn with no model chosen. Omitting the model lets the runtime
+    // apply ITS default, which on a fresh install is the runtime vendor's own
+    // hosted gateway — so a first message would silently leave the machine
+    // through an endpoint the user never connected. Say so instead.
+    if (!model) {
+      toast.error(i18n.t("settings:toast.noModelSelected"));
+      return Promise.resolve(null);
+    }
 
     // P2: send through ZeroWallClient when it is up, so the turn is recorded
     // against the selected role — the first turn pins the session's model

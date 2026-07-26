@@ -46,12 +46,12 @@
       "../../../runtime/skills/external/ai4s-skills": "skills/",
       "../../../runtime/skills/external/anthropic-skills": "skills-office/",
       "../../../runtime/skills/core": "skills-core/",
-      "../../../runtime/harness": "harness/",
-      "../../../examples/climate-trends": "examples/climate-trends/",
-      "../../../examples/crispr-screen": "examples/crispr-screen/",
-      "../../../examples/enzyme-engineering": "examples/enzyme-engineering/",
-      "../../../examples/extremophile": "examples/extremophile/",
-      "../../../examples/immunotherapy": "examples/immunotherapy/"
+      "../../../runtime/skills/advanced": "skills-advanced/",
+      "../../../runtime/skills/compute": "skills-compute/",
+      "../../../runtime/skills/life-science": "skills-life-science/",
+      "../../../runtime/skills/literature": "skills-literature/",
+      "../../../runtime/skills/publishing": "skills-publishing/",
+      "../../../runtime/harness": "harness/"
     },
     "icon": [
       "icons/32x32.png",

@@ -112,26 +112,23 @@
   },
   "starters": {
     "newSession": "Nueva sesión",
-    "heading": "¿Qué deberíamos investigar?",
-    "subheading": "Describe tu análisis a continuación, o empieza con una de estas opciones.",
-    "demo": {
-      "title": "Ejecutar un análisis de demostración de principio a fin",
-      "description": "Simula un conjunto de datos, ajusta un modelo y produce una figura y un informe trazable."
+    "heading": "¿Qué investigamos?",
+    "subheading": "Describe tu análisis abajo, o empieza con una de estas opciones.",
+    "reproducible": {
+      "title": "Ejecutar un análisis reproducible",
+      "description": "Análisis, figura e informe, con el entorno registrado junto a los resultados."
     },
     "analyze": {
       "title": "Analizar mis datos",
-      "description": "Indica al agente un archivo que hayas añadido; obtén figuras y un informe."
+      "description": "Señala al agente un archivo que hayas añadido; recibirás figuras y un informe."
+    },
+    "literature": {
+      "title": "Revisar la literatura con citas",
+      "description": "Buscar mediante los conectores activados y construir una tabla de evidencia con DOIs reales."
     },
     "audit": {
-      "title": "Auditar un informe para verificar su trazabilidad",
-      "description": "Comprueba citas, cifras sin fuente y la coherencia entre figuras y código."
-    },
-    "examples": {
-      "title": "Explorar un proyecto de ejemplo",
-      "description": "Cinco conjuntos de datos incluidos, cada uno con su flujo completo."
-    },
-    "error": {
-      "setup": "No se pudo configurar el ejemplo: {{message}}"
+      "title": "Auditar la trazabilidad de un informe",
+      "description": "Revisar citas, cifras sin fuente y la coherencia entre figuras y código."
     }
   },
   "live": {
@@ -339,31 +336,6 @@
       "body": "Esto revierte la conversación a este mensaje y lo descarta junto con todos los mensajes posteriores y los cambios de archivos que hicieron esos turnos. No se puede deshacer.",
       "edit": "Editar y reenviar",
       "revert": "Revertir aquí"
-    }
-  },
-  "examples": {
-    "heading": "¿Qué ejemplo?",
-    "subheading": "Se instala en tu espacio de trabajo y el agente lo desarrolla.",
-    "back": "Volver a los inicios rápidos",
-    "climate": {
-      "title": "Tendencias climáticas",
-      "description": "Datos reales de NASA GISTEMP: tasa de calentamiento, medias decenales, figura, informe."
-    },
-    "crispr": {
-      "title": "Cribado CRISPR",
-      "description": "Cribado simulado: normalización, nulo empírico, FDR y llamada de aciertos."
-    },
-    "enzyme": {
-      "title": "Ingeniería de enzimas",
-      "description": "Paisaje de variantes simulado: modelo aditivo frente a epistático."
-    },
-    "extremophile": {
-      "title": "Crecimiento de extremófilos",
-      "description": "Curvas OD600 simuladas: ajustes logísticos y temperaturas cardinales."
-    },
-    "immunotherapy": {
-      "title": "Biomarcadores de inmunoterapia",
-      "description": "Cohorte simulada (no son pacientes reales): modelo de respuesta y supervivencia."
     }
   }
 }
