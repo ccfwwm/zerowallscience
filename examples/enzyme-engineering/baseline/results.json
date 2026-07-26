@@ -1,0 +1,37 @@
+{
+  "example": "enzyme-engineering",
+  "seed": 20260726,
+  "data_is_simulated": true,
+  "results": {
+    "n_variants": 451,
+    "n_mutations": 20,
+    "n_interaction_terms": 169,
+    "min_pair_observations": 5,
+    "lambda_additive": 1.0,
+    "lambda_epistatic": 0.1,
+    "cv_r2_additive": 0.569763,
+    "cv_r2_epistatic": 0.892128,
+    "cv_r2_gain_from_epistasis": 0.322365,
+    "spearman_fitted_vs_true_additive": 0.986466,
+    "pearson_fitted_vs_true_additive": 0.991258,
+    "n_held_out_doubles": 70,
+    "held_out_pearson": 0.939244,
+    "held_out_rmse": 0.277518,
+    "top10_overlap_with_truth": 9,
+    "best_design": {
+      "variant": "N82P+T228G",
+      "predicted_log2_activity": 2.622817,
+      "true_log2_activity": 2.3542
+    }
+  },
+  "metrics": {
+    "duration_seconds": 0.398,
+    "cost_usd": 0.0,
+    "cost_note": "Runs on the local Python kernel; no model or API calls, so the monetary cost is zero. Only wall-clock duration is meaningful here."
+  },
+  "artifacts": [
+    "results/designs.csv",
+    "results/results.json",
+    "figures/model_and_designs.png"
+  ]
+}

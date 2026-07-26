@@ -1,0 +1,65 @@
+{
+  "example": "crispr-screen",
+  "seed": 20260726,
+  "data_is_simulated": true,
+  "fdr_cutoff": 0.05,
+  "results": {
+    "n_guides": 1240,
+    "n_non_targeting_guides": 40,
+    "n_genes": 300,
+    "non_targeting_lfc_sd": 0.234367,
+    "null_draws_per_guide_count": 50000,
+    "n_called_hits": 22,
+    "n_called_depleted": 14,
+    "n_called_enriched": 8,
+    "n_true_essential": 15,
+    "n_true_resistance": 8,
+    "recall_essential": 0.933333,
+    "recall_resistance": 1.0,
+    "precision": 1.0,
+    "n_false_positives": 0,
+    "spearman_lfc_vs_truth": 0.452828,
+    "top_depleted_genes": [
+      {
+        "gene": "SIMG0208",
+        "gene_lfc": -1.387883,
+        "fdr": 0.000316,
+        "true_class": "essential"
+      },
+      {
+        "gene": "SIMG0125",
+        "gene_lfc": -1.266289,
+        "fdr": 0.000316,
+        "true_class": "essential"
+      },
+      {
+        "gene": "SIMG0285",
+        "gene_lfc": -1.212084,
+        "fdr": 0.000316,
+        "true_class": "essential"
+      },
+      {
+        "gene": "SIMG0166",
+        "gene_lfc": -1.202217,
+        "fdr": 0.000316,
+        "true_class": "essential"
+      },
+      {
+        "gene": "SIMG0245",
+        "gene_lfc": -1.144517,
+        "fdr": 0.000316,
+        "true_class": "essential"
+      }
+    ]
+  },
+  "metrics": {
+    "duration_seconds": 0.342,
+    "cost_usd": 0.0,
+    "cost_note": "Runs on the local Python kernel; no model or API calls, so the monetary cost is zero. Only wall-clock duration is meaningful here."
+  },
+  "artifacts": [
+    "results/gene_scores.csv",
+    "results/results.json",
+    "figures/volcano.png"
+  ]
+}

@@ -6,8 +6,17 @@ use tauri::{path::BaseDirectory, AppHandle, Manager};
 
 use crate::runtime::workspace_dir;
 
-/// Bundled example projects; the command rejects anything else.
-const EXAMPLES: &[&str] = &["climate-trends"];
+/// Bundled example projects; the command rejects anything else. Every name here
+/// needs a matching `bundle.resources` entry in `tauri.conf.json`, or
+/// `install_example` fails at runtime with "example not bundled in this build".
+/// `bundle_resources_cover_every_example` is the test that enforces it.
+const EXAMPLES: &[&str] = &[
+    "climate-trends",
+    "crispr-screen",
+    "enzyme-engineering",
+    "extremophile",
+    "immunotherapy",
+];
 
 /// Copy `src` into `dst` recursively WITHOUT overwriting existing files — a
 /// re-installed example must never clobber the user's edited copy.
@@ -46,7 +55,7 @@ pub fn install_example(app: AppHandle, name: String) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::copy_missing;
+    use super::{copy_missing, EXAMPLES};
 
     #[test]
     fn copies_recursively_but_never_overwrites() {
@@ -66,5 +75,35 @@ mod tests {
         assert_eq!(std::fs::read_to_string(dst.join("README.md")).unwrap(), "user edited");
 
         let _ = std::fs::remove_dir_all(base);
+    }
+
+    /// An example in `EXAMPLES` with no `bundle.resources` entry compiles fine
+    /// and then fails at runtime for the user. Catch it here instead.
+    #[test]
+    fn bundle_resources_cover_every_example() {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let config: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(manifest.join("tauri.conf.json")).unwrap(),
+        )
+        .unwrap();
+        let resources = config["bundle"]["resources"]
+            .as_object()
+            .expect("bundle.resources must be an object");
+
+        for name in EXAMPLES {
+            let src = format!("../../../examples/{name}");
+            let dst = format!("examples/{name}/");
+            assert_eq!(
+                resources.get(&src).and_then(|v| v.as_str()),
+                Some(dst.as_str()),
+                "example `{name}` is in EXAMPLES but tauri.conf.json has no \
+                 bundle.resources entry mapping `{src}` to `{dst}`; \
+                 install_example would fail with \"example not bundled in this build\""
+            );
+            assert!(
+                manifest.join("../../..").join("examples").join(name).is_dir(),
+                "example `{name}` is in EXAMPLES but examples/{name}/ does not exist"
+            );
+        }
     }
 }

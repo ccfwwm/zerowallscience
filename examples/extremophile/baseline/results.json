@@ -1,0 +1,49 @@
+{
+  "example": "extremophile",
+  "seed": 20260726,
+  "data_is_simulated": true,
+  "results": {
+    "n_readings": 2325,
+    "n_curves_total": 75,
+    "n_curves_fitted": 54,
+    "n_curves_skipped_low_od": 21,
+    "min_od_for_fit": 0.15,
+    "median_logistic_fit_r2": 0.987573,
+    "strains": {
+      "ZW-HYPER-02": {
+        "n_temperatures_fitted": 8,
+        "t_min_c": 54.8509,
+        "t_opt_c": 90.1509,
+        "t_max_c": 98.3438,
+        "mu_max_per_h": 0.482559,
+        "cardinal_fit_r2": 0.999227,
+        "t_opt_abs_error_c": 0.1509,
+        "t_max_abs_error_c": 1.3438,
+        "mu_max_abs_error_per_h": 0.007251
+      },
+      "ZW-THERM-01": {
+        "n_temperatures_fitted": 10,
+        "t_min_c": 33.2738,
+        "t_opt_c": 72.1038,
+        "t_max_c": 78.6414,
+        "mu_max_per_h": 1.18599,
+        "cardinal_fit_r2": 0.989201,
+        "t_opt_abs_error_c": 0.0362,
+        "t_max_abs_error_c": 0.3586,
+        "mu_max_abs_error_per_h": 0.060471
+      }
+    },
+    "max_t_opt_abs_error_c": 0.1509
+  },
+  "metrics": {
+    "duration_seconds": 0.498,
+    "cost_usd": 0.0,
+    "cost_note": "Runs on the local Python kernel; no model or API calls, so the monetary cost is zero. Only wall-clock duration is meaningful here."
+  },
+  "artifacts": [
+    "results/growth_rate_fits.csv",
+    "results/mu_by_temperature.csv",
+    "results/results.json",
+    "figures/growth_and_cardinal.png"
+  ]
+}
