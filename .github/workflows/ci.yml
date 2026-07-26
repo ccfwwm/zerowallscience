@@ -1,14 +1,10 @@
 name: ci
 
-# Verification gates for ordinary development: typecheck, frontend tests, the
-# brand contract, agent definitions, and the Rust unit tests + clippy.
+# Verification gates for ordinary development: typecheck, lint, frontend tests,
+# the brand contract, agent definitions, and the Rust unit tests + clippy.
 #
 # Packaging is NOT duplicated here — build.yml owns installer builds on `v*`
 # tags. This workflow only proves the tree is healthy.
-#
-# `eslint` is deliberately not a gate yet: `npx eslint .` in apps/desktop
-# currently reports 5 errors (i18next/no-literal-string, no-control-regex).
-# Add the step once those are fixed rather than shipping a red workflow.
 
 on:
   # Pushes to main (the gap this workflow closes) and every pull request.
@@ -49,6 +45,17 @@ jobs:
       - name: Typecheck
         working-directory: apps/desktop
         run: npx tsc --noEmit -p tsconfig.json
+
+      # Lint earns its place as a gate through i18next/no-literal-string: a
+      # hardcoded English string typechecks fine and renders fine in tests, so
+      # nothing else in this workflow catches untranslated UI text. Warnings
+      # (react-hooks/exhaustive-deps) do not fail the run — only errors do.
+      # Scope is `.` rather than `src` because .eslintrc.cjs already excludes
+      # dist/ and src-tauri/ via ignorePatterns; `.` additionally covers the
+      # root-level configs, and reports the same 0 errors today.
+      - name: Lint
+        working-directory: apps/desktop
+        run: npx eslint .
 
       - name: Frontend tests
         working-directory: apps/desktop

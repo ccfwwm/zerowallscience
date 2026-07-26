@@ -275,6 +275,7 @@ export function MoleculeView({ filename, text }: { filename: string; text: strin
 
         {has2D && (
           <div className="flex rounded bg-surface-2 p-0.5">
+            {/* eslint-disable-next-line i18next/no-literal-string -- internal view-mode keys, not display text (the visible label is t("molecule.badge2D"/"molecule.badge3D")); dimensionality labels are language-invariant anyway */}
             {(["2D", "3D"] as const).map((mode) => (
               <button
                 key={mode}

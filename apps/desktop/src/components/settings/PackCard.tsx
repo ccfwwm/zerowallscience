@@ -52,6 +52,7 @@ export function PackCard({ pack }: PackCardProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <h3 className="font-medium text-foreground">{pack.manifest.name}</h3>
+            {/* eslint-disable-next-line i18next/no-literal-string -- "v" is version-number notation (v1.2.3), not prose */}
             <span className="text-xs text-muted-foreground">v{pack.manifest.version}</span>
             {hasError && (
               <span className="text-xs text-red-600 dark:text-red-400">

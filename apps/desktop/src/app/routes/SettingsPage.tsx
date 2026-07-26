@@ -1050,7 +1050,7 @@ export function SettingsPage() {
               <div className="mt-2 space-y-1.5">
                 {Object.entries(domesticProbeResults).map(([provider, models]) => (
                   <div key={provider} className="text-xs text-muted">
-                    <span className="font-medium">{provider}</span>: {models.length} model(s)
+                    <span className="font-medium">{provider}</span>: {models.length} {t("agent.modelCount", "model(s)")}
                   </div>
                 ))}
               </div>

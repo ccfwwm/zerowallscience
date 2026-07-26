@@ -146,6 +146,7 @@ describe("shipped agent definitions", () => {
 
     const walk = (node: unknown, path: string[]) => {
       if (typeof node === "string") {
+        // eslint-disable-next-line no-control-regex -- \x00 is the deliberate lower bound of the printable-ASCII range this test asserts, not a stray control character
         if (!/^[\x00-\x7F]*$/.test(node)) offenders.push(path.join("."));
         return;
       }
