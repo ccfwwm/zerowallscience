@@ -24,6 +24,8 @@
       "languagePython": "Python",
       "saved": "Enregistré",
       "unsaved": "Non enregistré",
+
+      "figureAlt": "Figure de la cellule {{index}}",
       "openJupyterLabAria": "Ouvrir dans JupyterLab",
       "historyAria": "Historique",
       "historyTitle": "Historique — chaque version enregistrée avec son code et sa conversation",

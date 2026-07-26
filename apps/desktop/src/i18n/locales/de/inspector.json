@@ -28,6 +28,8 @@
     "sharedWithAgent": "Mit dem Agenten geteilt",
     "live": "Live",
     "outputLabel": "> Ausgabe",
+
+    "figureAlt": "Abbildung aus Zelle {{index}}",
     "running": "läuft…",
     "sentToKernel": "→ an den Kernel des Agenten gesendet",
     "localOnly": "(lokaler Kernel nur in der Desktop-App verfügbar)",

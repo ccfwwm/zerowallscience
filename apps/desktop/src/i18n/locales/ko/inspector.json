@@ -28,6 +28,8 @@
     "sharedWithAgent": "에이전트와 공유됨",
     "live": "실시간",
     "outputLabel": "> 출력",
+
+    "figureAlt": "셀 {{index}} 그림",
     "running": "실행 중…",
     "sentToKernel": "→ 에이전트의 커널로 전송됨",
     "localOnly": "(로컬 커널은 데스크톱 앱에서만 사용 가능)",

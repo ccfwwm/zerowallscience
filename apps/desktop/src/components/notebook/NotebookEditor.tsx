@@ -408,7 +408,7 @@ export function NotebookEditor({
               {cell.image && (
                 <img
                   src={`data:image/png;base64,${cell.image}`}
-                  alt={`Cell ${cell.index} figure`}
+                  alt={t("notebooks.editor.figureAlt", { index: cell.index })}
                   className="mt-1.5 max-w-full rounded-input border border-border bg-white p-2"
                 />
               )}

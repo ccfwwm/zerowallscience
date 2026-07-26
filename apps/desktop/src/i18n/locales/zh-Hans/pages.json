@@ -24,6 +24,8 @@
       "languagePython": "Python",
       "saved": "已保存",
       "unsaved": "未保存",
+
+      "figureAlt": "单元格 {{index}} 的图",
       "openJupyterLabAria": "在 JupyterLab 中打开",
       "historyAria": "历史记录",
       "historyTitle": "历史记录 — 每个已记录版本及其代码和对话",

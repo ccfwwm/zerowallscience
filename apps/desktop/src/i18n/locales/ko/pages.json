@@ -24,6 +24,8 @@
       "languagePython": "Python",
       "saved": "저장됨",
       "unsaved": "저장 안 됨",
+
+      "figureAlt": "셀 {{index}} 그림",
       "openJupyterLabAria": "JupyterLab에서 열기",
       "historyAria": "기록",
       "historyTitle": "기록 — 코드와 대화가 포함된 저장된 모든 버전",

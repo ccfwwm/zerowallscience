@@ -28,6 +28,8 @@
     "sharedWithAgent": "Shared with the agent",
     "live": "Live",
     "outputLabel": "> output",
+
+    "figureAlt": "Cell {{index}} figure",
     "running": "running…",
     "sentToKernel": "→ sent to the agent's kernel",
     "localOnly": "(local kernel available only in the desktop app)",

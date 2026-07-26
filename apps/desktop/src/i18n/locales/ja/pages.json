@@ -24,6 +24,8 @@
       "languagePython": "Python",
       "saved": "保存済み",
       "unsaved": "未保存",
+
+      "figureAlt": "セル {{index}} の図",
       "openJupyterLabAria": "JupyterLab で開く",
       "historyAria": "履歴",
       "historyTitle": "履歴 — 記録された各バージョンのコードと会話",

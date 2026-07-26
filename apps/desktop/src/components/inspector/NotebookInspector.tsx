@@ -35,14 +35,14 @@ export function NotebookInspector({
     setCells((c) => [...c, { index: nextIndex, language: "python", code, output: t("notebook.running") }]);
     setExpr("");
 
-    const setOutput = (output: string) =>
-      setCells((c) => c.map((cell) => (cell.index === nextIndex ? { ...cell, output } : cell)));
+    const setOutput = (output: string, image?: string) =>
+      setCells((c) => c.map((cell) => (cell.index === nextIndex ? { ...cell, output, image } : cell)));
 
     setBusy(true);
     try {
       // Run on the real local Python kernel when in the desktop app.
       const res = await kernelExecute(code);
-      if (res) setOutput(formatExecResult(res));
+      if (res) setOutput(formatExecResult(res), res.image ?? undefined);
       else if (onEvaluate) {
         onEvaluate(code);
         setOutput(t("notebook.sentToKernel"));
@@ -105,6 +105,15 @@ export function NotebookInspector({
                   {cell.output}
                 </pre>
               </div>
+            )}
+            {/* A figure IS the output for a plotting cell, which produces no
+                text — without this the cell would appear to have done nothing. */}
+            {cell.image && (
+              <img
+                className="mt-2 max-w-full rounded-input border border-border bg-white"
+                src={`data:image/png;base64,${cell.image}`}
+                alt={t("notebook.figureAlt", { index: cell.index })}
+              />
             )}
           </div>
         ))}

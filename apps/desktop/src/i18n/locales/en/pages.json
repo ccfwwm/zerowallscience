@@ -24,6 +24,8 @@
       "languagePython": "Python",
       "saved": "Saved",
       "unsaved": "Unsaved",
+
+      "figureAlt": "Cell {{index}} figure",
       "openJupyterLabAria": "Open in JupyterLab",
       "historyAria": "History",
       "historyTitle": "History — every recorded version with its code and conversation",

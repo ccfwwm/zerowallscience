@@ -28,6 +28,8 @@
     "sharedWithAgent": "Partagé avec l'agent",
     "live": "En direct",
     "outputLabel": "> sortie",
+
+    "figureAlt": "Figure de la cellule {{index}}",
     "running": "exécution…",
     "sentToKernel": "→ envoyé au noyau de l'agent",
     "localOnly": "(noyau local disponible uniquement dans l'application de bureau)",

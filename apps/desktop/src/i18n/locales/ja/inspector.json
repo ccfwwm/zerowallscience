@@ -28,6 +28,8 @@
     "sharedWithAgent": "エージェントと共有中",
     "live": "ライブ",
     "outputLabel": "> 出力",
+
+    "figureAlt": "セル {{index}} の図",
     "running": "実行中…",
     "sentToKernel": "→ エージェントのカーネルに送信",
     "localOnly": "（ローカルカーネルはデスクトップアプリのみで利用可能）",

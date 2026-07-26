@@ -24,6 +24,8 @@
       "languagePython": "Python",
       "saved": "Gespeichert",
       "unsaved": "Nicht gespeichert",
+
+      "figureAlt": "Abbildung aus Zelle {{index}}",
       "openJupyterLabAria": "In JupyterLab öffnen",
       "historyAria": "Verlauf",
       "historyTitle": "Verlauf — jede aufgezeichnete Version mit Code und Unterhaltung",

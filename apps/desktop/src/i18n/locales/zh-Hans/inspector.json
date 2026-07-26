@@ -28,6 +28,8 @@
     "sharedWithAgent": "与代理共享",
     "live": "实时",
     "outputLabel": "> 输出",
+
+    "figureAlt": "单元格 {{index}} 的图",
     "running": "运行中…",
     "sentToKernel": "→ 已发送到代理的内核",
     "localOnly": "（本地内核仅在桌面应用中可用）",
