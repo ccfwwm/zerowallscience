@@ -126,9 +126,9 @@
       "title": "Audit a report for traceability",
       "description": "Check citations, unsourced numbers, and figure-versus-code consistency."
     },
-    "example-climate": {
-      "title": "Explore an example: climate trends",
-      "description": "Real NASA GISTEMP data — trend, decadal comparison, figure, and report."
+    "examples": {
+      "title": "Explore an example project",
+      "description": "Five bundled datasets with a full workflow each — no setup needed."
     },
     "error": {
       "setup": "Could not set up the example: {{message}}"
@@ -339,6 +339,31 @@
       "body": "This rolls the conversation back to this message and discards it and every message after it, along with the file changes those turns made. This can't be undone.",
       "edit": "Edit & resend",
       "revert": "Revert here"
+    }
+  },
+  "examples": {
+    "heading": "Which example?",
+    "subheading": "Each one installs into your workspace, then the agent works through it.",
+    "back": "Back to starters",
+    "climate": {
+      "title": "Climate trends",
+      "description": "Real NASA GISTEMP data — warming rate, decadal means, figure, report."
+    },
+    "crispr": {
+      "title": "CRISPR screen",
+      "description": "Simulated pooled knockout screen — normalization, empirical null, FDR, hit calling."
+    },
+    "enzyme": {
+      "title": "Enzyme engineering",
+      "description": "Simulated variant landscape — additive vs epistatic model, next designs to build."
+    },
+    "extremophile": {
+      "title": "Extremophile growth",
+      "description": "Simulated OD600 curves — logistic fits, then cardinal temperatures."
+    },
+    "immunotherapy": {
+      "title": "Immunotherapy biomarkers",
+      "description": "Simulated cohort (not real patients) — response model and a survival split."
     }
   }
 }

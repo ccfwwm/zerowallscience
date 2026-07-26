@@ -126,9 +126,9 @@
       "title": "Auditar un informe para verificar su trazabilidad",
       "description": "Comprueba citas, cifras sin fuente y la coherencia entre figuras y código."
     },
-    "example-climate": {
-      "title": "Explorar un ejemplo: tendencias climáticas",
-      "description": "Datos reales de NASA GISTEMP — tendencia, comparación decenal, figura e informe."
+    "examples": {
+      "title": "Explorar un proyecto de ejemplo",
+      "description": "Cinco conjuntos de datos incluidos, cada uno con su flujo completo."
     },
     "error": {
       "setup": "No se pudo configurar el ejemplo: {{message}}"
@@ -339,6 +339,31 @@
       "body": "Esto revierte la conversación a este mensaje y lo descarta junto con todos los mensajes posteriores y los cambios de archivos que hicieron esos turnos. No se puede deshacer.",
       "edit": "Editar y reenviar",
       "revert": "Revertir aquí"
+    }
+  },
+  "examples": {
+    "heading": "¿Qué ejemplo?",
+    "subheading": "Se instala en tu espacio de trabajo y el agente lo desarrolla.",
+    "back": "Volver a los inicios rápidos",
+    "climate": {
+      "title": "Tendencias climáticas",
+      "description": "Datos reales de NASA GISTEMP: tasa de calentamiento, medias decenales, figura, informe."
+    },
+    "crispr": {
+      "title": "Cribado CRISPR",
+      "description": "Cribado simulado: normalización, nulo empírico, FDR y llamada de aciertos."
+    },
+    "enzyme": {
+      "title": "Ingeniería de enzimas",
+      "description": "Paisaje de variantes simulado: modelo aditivo frente a epistático."
+    },
+    "extremophile": {
+      "title": "Crecimiento de extremófilos",
+      "description": "Curvas OD600 simuladas: ajustes logísticos y temperaturas cardinales."
+    },
+    "immunotherapy": {
+      "title": "Biomarcadores de inmunoterapia",
+      "description": "Cohorte simulada (no son pacientes reales): modelo de respuesta y supervivencia."
     }
   }
 }

@@ -126,9 +126,9 @@
       "title": "Bericht auf Nachvollziehbarkeit prüfen",
       "description": "Zitate, unbelegte Zahlen und die Übereinstimmung von Abbildung und Code prüfen."
     },
-    "example-climate": {
-      "title": "Ein Beispiel erkunden: Klimatrends",
-      "description": "Echte NASA-GISTEMP-Daten — Trend, Dekadenvergleich, Abbildung und Bericht."
+    "examples": {
+      "title": "Ein Beispielprojekt ansehen",
+      "description": "Fünf mitgelieferte Datensätze, jeder mit vollständigem Workflow."
     },
     "error": {
       "setup": "Das Beispiel konnte nicht eingerichtet werden: {{message}}"
@@ -339,6 +339,31 @@
       "body": "Dies setzt die Unterhaltung auf diese Nachricht zurück und verwirft sie sowie alle nachfolgenden Nachrichten samt der in diesen Runden vorgenommenen Dateiänderungen. Das lässt sich nicht rückgängig machen.",
       "edit": "Bearbeiten & erneut senden",
       "revert": "Hierher zurücksetzen"
+    }
+  },
+  "examples": {
+    "heading": "Welches Beispiel?",
+    "subheading": "Es wird in den Arbeitsbereich installiert, dann arbeitet der Agent es durch.",
+    "back": "Zurück zu den Schnellstarts",
+    "climate": {
+      "title": "Klimatrends",
+      "description": "Echte NASA-GISTEMP-Daten: Erwärmungsrate, Dekadenmittel, Abbildung, Bericht."
+    },
+    "crispr": {
+      "title": "CRISPR-Screen",
+      "description": "Simulierter Knockout-Screen: Normalisierung, empirische Nullverteilung, FDR, Treffer."
+    },
+    "enzyme": {
+      "title": "Enzym-Engineering",
+      "description": "Simulierte Variantenlandschaft: additives gegen epistatisches Modell."
+    },
+    "extremophile": {
+      "title": "Wachstum von Extremophilen",
+      "description": "Simulierte OD600-Kurven: logistische Fits, dann Kardinaltemperaturen."
+    },
+    "immunotherapy": {
+      "title": "Immuntherapie-Biomarker",
+      "description": "Simulierte Kohorte (keine echten Patienten): Ansprechmodell und Überlebenssplit."
     }
   }
 }

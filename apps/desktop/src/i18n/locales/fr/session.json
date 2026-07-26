@@ -126,9 +126,9 @@
       "title": "Auditer un rapport pour sa traçabilité",
       "description": "Vérifier les citations, les chiffres non sourcés et la cohérence entre figures et code."
     },
-    "example-climate": {
-      "title": "Explorer un exemple : tendances climatiques",
-      "description": "Données réelles NASA GISTEMP — tendance, comparaison décennale, figure et rapport."
+    "examples": {
+      "title": "Explorer un projet d'exemple",
+      "description": "Cinq jeux de données fournis, chacun avec un flux de travail complet."
     },
     "error": {
       "setup": "Impossible de configurer l'exemple : {{message}}"
@@ -339,6 +339,31 @@
       "body": "Cela ramène la conversation à ce message et le supprime, ainsi que tous les messages suivants et les modifications de fichiers effectuées lors de ces tours. Action irréversible.",
       "edit": "Modifier et renvoyer",
       "revert": "Revenir ici"
+    }
+  },
+  "examples": {
+    "heading": "Quel exemple ?",
+    "subheading": "Il s'installe dans votre espace de travail, puis l'agent le déroule.",
+    "back": "Retour aux démarrages rapides",
+    "climate": {
+      "title": "Tendances climatiques",
+      "description": "Données réelles NASA GISTEMP : taux de réchauffement, moyennes décennales, figure, rapport."
+    },
+    "crispr": {
+      "title": "Criblage CRISPR",
+      "description": "Criblage simulé : normalisation, hypothèse nulle empirique, FDR, appel des hits."
+    },
+    "enzyme": {
+      "title": "Ingénierie enzymatique",
+      "description": "Paysage de variants simulé : modèle additif contre épistatique."
+    },
+    "extremophile": {
+      "title": "Croissance d'extrêmophiles",
+      "description": "Courbes OD600 simulées : ajustements logistiques puis températures cardinales."
+    },
+    "immunotherapy": {
+      "title": "Biomarqueurs d'immunothérapie",
+      "description": "Cohorte simulée (pas de vrais patients) : modèle de réponse et survie."
     }
   }
 }
