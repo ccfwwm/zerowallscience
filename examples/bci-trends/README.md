@@ -1,7 +1,10 @@
-# examples/bci-trends
+# examples/bci-trends (planned — spec only)
 
-The built-in end-to-end demo project, used for the README, website, screenshots,
-video, and release marketing.
+A specification for a future end-to-end demo project. Nothing here ships today:
+the directory holds no data, code, or notebooks, the app does not bundle or
+install it, and no workflow starter references it. The current built-in demo is
+`examples/climate-trends`. If this project is built out, it is the one intended
+for the README, website, screenshots, video, and release marketing.
 
 Task:
 
@@ -28,5 +31,5 @@ data/{raw,processed}/   papers/   parsed/   scripts/   notebooks/
 figures/   reports/   artifacts/   reviews/   provenance.jsonl   manifest.json
 ```
 
-Directories are seeded empty for now; the demo content is produced when the workbench
-runs the workflow.
+Directories are seeded empty; the demo content would be produced by the workbench
+once this workflow is implemented.

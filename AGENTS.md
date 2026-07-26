@@ -33,7 +33,8 @@ local workspace + SQLite + JSONL provenance.
 - `packages/` — `ui`, `shared`, `sdk` (the `OpenCodeClient` wrapper).
 - `runtime/` — `manager`, `opencode-profile`, `mcp`, `skills`.
 - `docs/` — product and technical specs.
-- `examples/bci-trends/` — the built-in demo project.
+- `examples/climate-trends/` — the built-in demo project (bundled and installable).
+- `examples/bci-trends/` — a planned demo; spec only, not bundled or installable.
 - `scripts/` — release and dev scripts.
 
 ## Architecture guardrails

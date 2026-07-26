@@ -433,7 +433,7 @@ zerowall-science/
   packages/{ui,shared,sdk}/
   runtime/{manager,opencode-profile,mcp,skills}/
   docs/{PRD.md,TECHNICAL_DESIGN.md}
-  examples/bci-trends/
+  examples/{climate-trends,bci-trends}/
   scripts/{release,dev}/     # dev/fetch-opencode.sh fetches the pinned sidecar
 ```
 
@@ -442,7 +442,8 @@ zerowall-science/
 - `runtime/manager` — local runtime manager (detect deps, workspace, provenance, logs).
 - `runtime/opencode-profile` — the ZeroWall Science OpenCode config/skills bundle.
 - `runtime/skills` — self-authored scientific skills.
-- `examples` — the complete demo project.
+- `examples` — `climate-trends` is the bundled demo project; `bci-trends` is a
+  planned one, spec only so far.
 
 ## 17. v0.1 task breakdown
 

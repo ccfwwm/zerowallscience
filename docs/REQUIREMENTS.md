@@ -72,7 +72,8 @@ competitors.
   end-to-end analysis, analyze-my-data, audit-a-report, and the climate-trends
   example on real bundled data); the demo starter verifiably produces code →
   figure → report → stats in one turn, all files surfaced as artifacts with
-  provenance. Minor gap: bci-trends is still repo-only.
+  provenance. Minor gap: bci-trends is still a spec (empty directories), not a
+  runnable example.
 
 ### P0-2 · Local data + local compute (restricted-environment friendly) — ✅ Done
 
