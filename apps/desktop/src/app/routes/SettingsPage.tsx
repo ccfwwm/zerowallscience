@@ -154,6 +154,11 @@ export function SettingsPage() {
   const [customIds, setCustomIds] = useState<string[]>([]);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [jupyter, setJupyter] = useState<JupyterStatus | null>(null);
+
+  // P2: Domestic model probing state
+  const [probingDomestic, setProbingDomestic] = useState(false);
+  const [domesticProbeResults, setDomesticProbeResults] = useState<Record<string, string[]>>({});
+
   // Browser control (agent-browser): detected Chrome + profiles, and the choices
   // the card collects before enabling.
   const [browserProfiles, setBrowserProfiles] = useState<BrowserProfile[]>([]);
@@ -649,6 +654,38 @@ export function SettingsPage() {
     }
   };
 
+  // P2: Probe domestic model endpoints
+  const probeDomesticModels = async () => {
+    setProbingDomestic(true);
+    try {
+      const { DOMESTIC_MODEL_ENDPOINTS, probeModels } = await import("@zerowall/shared");
+      const results: Record<string, string[]> = {};
+
+      for (const [provider, endpoint] of Object.entries(DOMESTIC_MODEL_ENDPOINTS)) {
+        try {
+          const models = await probeModels(endpoint);
+          if (models.length > 0) {
+            results[provider] = models;
+          }
+        } catch {
+          // Skip unreachable endpoints
+        }
+      }
+
+      setDomesticProbeResults(results);
+      const count = Object.keys(results).length;
+      if (count > 0) {
+        toast.success(t("toast.domesticProbeSuccess", `Found ${count} domestic provider(s)`));
+      } else {
+        toast.success(t("toast.domesticProbeNone", "No domestic providers detected"));
+      }
+    } catch (err) {
+      toast.error(`${t("toast.domesticProbeFailed", "Failed to probe")}: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setProbingDomestic(false);
+    }
+  };
+
   const modelList = (s: string) => s.split(",").map((v) => v.trim()).filter(Boolean);
 
   const toggleDetectedModel = (id: string) => {
@@ -965,6 +1002,43 @@ export function SettingsPage() {
               {agentDefinitions.length} {t("agent.definitionsCount", "agent(s)")}
             </span>
           } />
+          <Row
+            title={t("agent.domesticModels", "Domestic Models")}
+            hint={t("agent.domesticModelsHint", "Probe Kimi, GLM, DeepSeek, Baichuan, MiniMax endpoints")}
+            control={
+              <button
+                onClick={() => void probeDomesticModels()}
+                disabled={probingDomestic}
+                className={cn(
+                  chipCls(),
+                  "inline-flex items-center gap-1.5",
+                  probingDomestic && "cursor-wait opacity-60",
+                )}
+              >
+                {probingDomestic ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" />
+                    {t("agent.probing", "Probing...")}
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={12} />
+                    {t("agent.probe", "Probe")}
+                  </>
+                )}
+              </button>
+            }
+          >
+            {Object.keys(domesticProbeResults).length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                {Object.entries(domesticProbeResults).map(([provider, models]) => (
+                  <div key={provider} className="text-xs text-muted">
+                    <span className="font-medium">{provider}</span>: {models.length} model(s)
+                  </div>
+                ))}
+              </div>
+            )}
+          </Row>
         </Section>
 
         <Section title={t("model.title")} hint={t("model.hint")}>
