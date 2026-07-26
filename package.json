@@ -9,6 +9,7 @@
     "build": "pnpm --filter @zerowall/desktop build",
     "test": "pnpm --filter @zerowall/desktop test",
     "test:brand": "node --test scripts/check-brand-contract.test.mjs && node scripts/check-brand-contract.mjs",
+    "test:version": "node --test scripts/check-version-contract.test.mjs && node scripts/check-version-contract.mjs",
     "test:agents": "node scripts/validate-agents.mjs",
     "typecheck": "pnpm --filter @zerowall/desktop typecheck",
     "lint": "pnpm --filter @zerowall/desktop lint"
