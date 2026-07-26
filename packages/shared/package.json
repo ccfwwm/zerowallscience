@@ -9,6 +9,6 @@
     ".": "./src/index.ts"
   },
   "devDependencies": {
-    "vitest": "^2.1.4"
+    "vitest": "^3.2.6"
   }
 }
