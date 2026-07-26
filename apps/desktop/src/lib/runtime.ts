@@ -637,6 +637,29 @@ async function performTurn(
         }
       }
       id = await withRetry(() => client!.createSession());
+
+      // P2: Create and save session model snapshot for reproducibility
+      const snapshotState = get();
+      const { model, variant } = modelForSession(snapshotState, draftSrc);
+      if (model) {
+        void (async () => {
+          try {
+            const { createModelSnapshot, saveSessionSnapshot } = await import("./model-probe");
+            const snapshot = createModelSnapshot(
+              id!,
+              snapshotState.selectedAgent,
+              model,
+              variant ?? undefined,
+              undefined, // gateway URL can be added when probing is active
+              undefined, // provider base URL from catalog if needed
+            );
+            saveSessionSnapshot(snapshot);
+          } catch (err) {
+            void logDebug(`Failed to save session snapshot: ${err}`);
+          }
+        })();
+      }
+
       set((s) => {
         // Graft this pane's draft conversation (and its pane state) from its own
         // slot (`draftSrc`) onto the real session id.
@@ -1125,6 +1148,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       );
 
       // P2: Initialize ZeroWallClient with loaded agents and bindings
+      // This must happen BEFORE the self-heal logic below, so the client is ready
       if (opencodeClient) {
         const state = get();
         const { DEFAULT_ROLE_BINDINGS } = await import("@zerowall/shared");
@@ -1149,16 +1173,24 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       // switch as "dangling" and points it back at an old model (#37).
       const justSwitched =
         defaultModel === lastSwitchModel && Date.now() - lastSwitchAt < SWITCH_HEAL_GRACE_MS;
+      console.log(`[self-heal] switching=${get().switching} justSwitched=${justSwitched} defaultModel=${defaultModel} providers=${providers.length}`);
       if (!get().switching && !justSwitched && defaultModel) {
         const next = fallbackDefaultModel(providers, defaultModel);
+        console.log(`[self-heal] next=${next}`);
         if (next) {
           try {
-            await get().setDefaultModel(next);
+            // Call the underlying client directly to avoid triggering a reconnect
+            // inside loadCatalog (which would cause infinite recursion). The
+            // reconnect that called loadCatalog is already in progress.
+            console.log(`[self-heal] calling setDefaultModel(${next})`);
+            await client.setDefaultModel(next);
+            set({ defaultModel: next });
             toast.success(
               i18n.t("settings:toast.defaultModelReset", { old: defaultModel, model: next }),
             );
-          } catch {
+          } catch (err) {
             // Leave it stale — the send-time error still guides to Settings.
+            console.log(`[self-heal] FAILED: ${err}`);
           }
         }
       }

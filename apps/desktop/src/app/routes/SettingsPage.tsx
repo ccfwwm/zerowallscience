@@ -160,6 +160,19 @@ export function SettingsPage() {
   const [probingDomestic, setProbingDomestic] = useState(false);
   const [domesticProbeResults, setDomesticProbeResults] = useState<Record<string, string[]>>({});
 
+  // Load persisted role bindings on mount
+  useEffect(() => {
+    const loadBindings = async () => {
+      const { loadRoleBindings } = await import("@/lib/model-probe");
+      const bindings = loadRoleBindings();
+      if (bindings) {
+        // Restore bindings to runtime store if needed
+        // Implementation depends on runtime store structure
+      }
+    };
+    void loadBindings();
+  }, []);
+
   // Browser control (agent-browser): detected Chrome + profiles, and the choices
   // the card collects before enabling.
   const [browserProfiles, setBrowserProfiles] = useState<BrowserProfile[]>([]);
@@ -655,28 +668,31 @@ export function SettingsPage() {
     }
   };
 
-  // P2: Probe domestic model endpoints
+  // P2: Probe domestic model endpoints with primary/backup gateway switching
   const probeDomesticModels = async () => {
     setProbingDomestic(true);
     try {
-      const { DOMESTIC_MODEL_ENDPOINTS, probeModels } = await import("@zerowall/shared");
-      const results: Record<string, string[]> = {};
+      const { probeDomesticModels: probeFunc, DEFAULT_GATEWAYS } = await import("@/lib/model-probe");
 
-      for (const [provider, endpoint] of Object.entries(DOMESTIC_MODEL_ENDPOINTS)) {
-        try {
-          const models = await probeModels(endpoint);
-          if (models.length > 0) {
-            results[provider] = models;
-          }
-        } catch {
-          // Skip unreachable endpoints
-        }
+      // Probe with gateway failover
+      const results = await probeFunc(DEFAULT_GATEWAYS);
+
+      // Transform results for display
+      const displayResults: Record<string, string[]> = {};
+      for (const [provider, result] of Object.entries(results)) {
+        displayResults[provider] = result.models;
       }
 
-      setDomesticProbeResults(results);
+      setDomesticProbeResults(displayResults);
       const count = Object.keys(results).length;
+
       if (count > 0) {
-        toast.success(t("toast.domesticProbeSuccess", `Found ${count} domestic provider(s)`));
+        // Show which gateway was used
+        const gateways = new Set(Object.values(results).map(r => r.gateway));
+        const gatewayInfo = gateways.size === 1
+          ? ` via ${Array.from(gateways)[0]}`
+          : " via mixed gateways";
+        toast.success(t("toast.domesticProbeSuccess", `Found ${count} domestic provider(s)${gatewayInfo}`));
       } else {
         toast.success(t("toast.domesticProbeNone", "No domestic providers detected"));
       }
