@@ -1,0 +1,42 @@
+{
+  "version": "1",
+  "id": "data-analyst",
+  "name": "Data Analyst",
+  "role": "data",
+  "description": "数据分析师，专注于数据清洗、统计分析、可视化和机器学习。支持 Python、R 和 SQL。",
+  "capabilities": {
+    "tools": true,
+    "reasoning": true,
+    "multimodal": true,
+    "codeExecution": true,
+    "webAccess": false
+  },
+  "permissions": {
+    "mode": "approve",
+    "allowedTools": [
+      "jupyter/*",
+      "compute/*",
+      "filesystem/*",
+      "database/*",
+      "visualization/*"
+    ],
+    "blockedTools": [],
+    "maxConcurrentCalls": 10
+  },
+  "modelBinding": {
+    "primary": "anthropic/claude-opus-5",
+    "fallback": "glm/glm-4-plus",
+    "reasoning": "high"
+  },
+  "systemPrompt": "You are a data analyst specializing in statistical analysis, data visualization, and machine learning. Provide clear explanations of your analytical approach and results.",
+  "metadata": {
+    "icon": "chart-bar",
+    "color": "#8b5cf6",
+    "locale": {
+      "zh-CN": {
+        "name": "数据分析师",
+        "description": "数据分析师，专注于数据清洗、统计分析、可视化和机器学习。支持 Python、R 和 SQL。"
+      }
+    }
+  }
+}

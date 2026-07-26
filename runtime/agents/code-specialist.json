@@ -1,0 +1,43 @@
+{
+  "version": "1",
+  "id": "code-specialist",
+  "name": "Code Specialist",
+  "role": "code",
+  "description": "代码专家，擅长软件开发、代码审查、调试和重构。支持多语言编程和自动化测试。",
+  "capabilities": {
+    "tools": true,
+    "reasoning": true,
+    "multimodal": true,
+    "codeExecution": true,
+    "webAccess": true
+  },
+  "permissions": {
+    "mode": "approve",
+    "allowedTools": [
+      "filesystem/*",
+      "git/*",
+      "shell/*",
+      "jupyter/*",
+      "lsp/*",
+      "github/*"
+    ],
+    "blockedTools": [],
+    "maxConcurrentCalls": 15
+  },
+  "modelBinding": {
+    "primary": "anthropic/claude-sonnet-5",
+    "fallback": "deepseek/deepseek-coder",
+    "reasoning": "medium"
+  },
+  "systemPrompt": "You are a code specialist with expertise in software engineering, debugging, and best practices. Write clean, maintainable, and well-documented code.",
+  "metadata": {
+    "icon": "code",
+    "color": "#f59e0b",
+    "locale": {
+      "zh-CN": {
+        "name": "代码专家",
+        "description": "代码专家，擅长软件开发、代码审查、调试和重构。支持多语言编程和自动化测试。"
+      }
+    }
+  }
+}
