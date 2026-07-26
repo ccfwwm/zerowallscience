@@ -796,6 +796,67 @@ mod tests {
     }
 
     #[test]
+    fn review_tables_reject_states_outside_their_vocabulary() {
+        let workspace = TestWorkspace::new("review-states");
+        let conn = open_science_db(workspace.path()).unwrap();
+        insert_project_and_session(&conn, "project-1", "session-1");
+
+        conn.execute(
+            "INSERT INTO reviewer_runs (id, session_id, status, created_at, updated_at) \
+             VALUES ('run-1', 'session-1', 'complete', 'now', 'now')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO claims (id, reviewer_run_id, claim_ref, status, created_at, updated_at) \
+             VALUES ('claim-1', 'run-1', 'report.md#p3', 'open', 'now', 'now')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO verification_checks \
+             (id, claim_id, check_kind, result, created_at, updated_at) \
+             VALUES ('check-1', 'claim-1', 'citation', 'warn', 'now', 'now')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO resolutions \
+             (id, claim_id, verification_check_id, action, resolved_by, created_at, updated_at) \
+             VALUES ('res-1', 'claim-1', 'check-1', 'inconclusive', 'reviewer', 'now', 'now')",
+            [],
+        )
+        .unwrap();
+
+        // Each rejected value is plausible — a neighbouring vocabulary's word or
+        // the reviewer prompt's uppercase spelling — so the vocabularies are
+        // proven closed rather than merely non-empty.
+        for statement in [
+            "INSERT INTO reviewer_runs (id, session_id, status, created_at, updated_at) \
+             VALUES ('run-2', 'session-1', 'reviewed', 'now', 'now')",
+            "INSERT INTO claims (id, reviewer_run_id, claim_ref, status, created_at, updated_at) \
+             VALUES ('claim-2', 'run-1', 'report.md#p4', 'checked', 'now', 'now')",
+            "INSERT INTO verification_checks \
+             (id, claim_id, check_kind, result, created_at, updated_at) \
+             VALUES ('check-2', 'claim-1', 'citation', 'pass', 'now', 'now')",
+            "INSERT INTO resolutions \
+             (id, claim_id, action, resolved_by, created_at, updated_at) \
+             VALUES ('res-2', 'claim-1', 'VERIFIED', 'reviewer', 'now', 'now')",
+        ] {
+            let error = conn.execute(statement, []).unwrap_err();
+            assert!(
+                error.to_string().contains("CHECK constraint failed"),
+                "{statement} -> {error}"
+            );
+        }
+
+        let error = conn
+            .execute("UPDATE claims SET status = 'dismissed' WHERE id = 'claim-1'", [])
+            .unwrap_err();
+        assert!(error.to_string().contains("CHECK constraint failed"), "{error}");
+    }
+
+    #[test]
     fn concurrency_and_leases_enforce_their_limits() {
         let workspace = TestWorkspace::new("concurrency");
         let conn = open_science_db(workspace.path()).unwrap();

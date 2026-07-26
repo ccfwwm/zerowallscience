@@ -14,6 +14,10 @@ export * from "./science-pack";
 // P3: MCP Server Configuration
 export * from "./mcp-config";
 
+// Review state vocabularies, shared with the M006 schema.
+import type { VerificationResult } from "./review-state";
+export * from "./review-state";
+
 export interface Project {
   id: string;
   name: string;
@@ -125,7 +129,9 @@ export interface ToolCallBlock {
   childSessionId?: string;
 }
 
-export type FindingLevel = "warn" | "ok" | "error";
+/** A rendered finding and a stored `verification_checks.result` are the same
+ *  verdict, so they share one declaration and cannot drift. */
+export type FindingLevel = VerificationResult;
 
 /**
  * Which check produced a finding: P0-4's three traceability audits, `domain`

@@ -1,7 +1,13 @@
-import type { FindingLevel, ReviewCheck, ReviewerBlock } from "@zerowall/shared";
+import {
+  VERIFICATION_RESULTS,
+  type FindingLevel,
+  type ReviewCheck,
+  type ReviewerBlock,
+} from "@zerowall/shared";
 
 const FENCE = /```review\s*\n([\s\S]*?)\n```/;
-const LEVELS: FindingLevel[] = ["ok", "warn", "error"];
+// Reuse the persisted vocabulary rather than a second copy of the literals.
+const LEVELS: readonly string[] = VERIFICATION_RESULTS;
 const CHECKS: ReviewCheck[] = ["citation", "number", "figure", "domain", "integrity"];
 
 /**
@@ -27,7 +33,7 @@ export function splitReview(markdown: string): { clean: string; review: Reviewer
     const findings = (parsed.findings ?? [])
       .filter((f) => f.title)
       .map((f) => ({
-        level: (LEVELS as string[]).includes(f.level ?? "") ? (f.level as FindingLevel) : "warn",
+        level: LEVELS.includes(f.level ?? "") ? (f.level as FindingLevel) : "warn",
         title: String(f.title),
         evidence: f.evidence ? String(f.evidence) : undefined,
         check: (CHECKS as string[]).includes(f.check ?? "") ? (f.check as ReviewCheck) : undefined,
