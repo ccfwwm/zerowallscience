@@ -1,5 +1,7 @@
 # Progress
 
+2026-07-26 12:15 · feat(p3): runtime integration for Science Packs — added installedPacks state, loadPacks/enablePack/disablePack methods to RuntimeState, placeholder implementations with TODO comments for full integration; establishes state management hooks for pack lifecycle in desktop runtime; typecheck passes.
+
 2026-07-26 12:00 · feat(p3): SciencePackManager lifecycle operations — implemented install/upgrade/enable/disable/uninstall/verify/inspect methods with pack-state.json persistence, directory copying for installation, state transitions (installed/upgrading/disabled/error), 16 unit tests with memfs mocking; manager handles local directory sources, validates manifests during install, persists enabled/disabled state across restarts; establishes Phase 2 pack management infrastructure.
 
 2026-07-26 11:30 · feat(p3): Science Pack foundation — created SciencePackManifestV1 schema with validation, 6 pack manifests covering 42 skills (core-research, life-science, literature-evidence, figure-publishing, compute-environments, advanced-capabilities), PackRegistry with load/list/filter operations, unit tests for validation/collisions/versioning and registry operations; packs use YAML format with source provenance (repo/commit/path/SHA/modified), components (skills/MCP/agents/connectors), dependencies, platform assets; establishes P3 catalog infrastructure.

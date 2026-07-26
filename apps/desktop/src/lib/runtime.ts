@@ -218,6 +218,16 @@ interface RuntimeState {
   /** Update role-model bindings and persist to localStorage. */
   setAgentBindings: (bindings: Record<AgentRole, RoleModelBinding>) => void;
 
+  /** P3: Science Pack state */
+  /** Installed science packs. */
+  installedPacks: any[]; // TODO: Import InstalledPack type from @zerowall/shared
+  /** Load packs from runtime directory. */
+  loadPacks: () => Promise<void>;
+  /** Enable a pack. */
+  enablePack: (packId: string) => Promise<void>;
+  /** Disable a pack. */
+  disablePack: (packId: string) => Promise<void>;
+
   // The pane/agent setters and turn actions below take an optional `sessionId`
   // so a split pane acts on its OWN session; omitted, they fall back to the
   // focused session (`currentId ?? DRAFT_KEY`) — the single-pane behavior.
@@ -939,6 +949,30 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       window.localStorage.setItem(AGENT_BINDINGS_KEY, JSON.stringify(bindings));
     }
     set({ agentBindings: bindings });
+  },
+
+  // P3: Science Pack state
+  installedPacks: [],
+  loadPacks: async () => {
+    // TODO: Implement pack loading from runtime directory
+    // const { initializePackManager, getInstalledPacks } = await import("@zerowall/sdk");
+    // await initializePackManager(runtimePath);
+    // const packs = getInstalledPacks();
+    // set({ installedPacks: packs });
+  },
+  enablePack: async (_packId) => {
+    // TODO: Implement pack enable
+    // const { getPackManager } = await import("@zerowall/sdk");
+    // const manager = getPackManager(runtimePath);
+    // await manager.enable(packId);
+    // await get().loadPacks();
+  },
+  disablePack: async (_packId) => {
+    // TODO: Implement pack disable
+    // const { getPackManager } = await import("@zerowall/sdk");
+    // const manager = getPackManager(runtimePath);
+    // await manager.disable(packId);
+    // await get().loadPacks();
   },
 
   setAgentMode: (mode, sessionId) =>
