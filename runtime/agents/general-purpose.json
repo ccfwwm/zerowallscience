@@ -1,0 +1,36 @@
+{
+  "version": "1",
+  "id": "general-purpose",
+  "name": "General Purpose",
+  "role": "general",
+  "description": "通用 AI 助手，适用于日常对话、文本生成、翻译、总结等通用任务。",
+  "capabilities": {
+    "tools": true,
+    "reasoning": true,
+    "multimodal": true,
+    "codeExecution": false,
+    "webAccess": true
+  },
+  "permissions": {
+    "mode": "approve",
+    "allowedTools": ["*"],
+    "blockedTools": [],
+    "maxConcurrentCalls": 10
+  },
+  "modelBinding": {
+    "primary": "anthropic/claude-sonnet-5",
+    "fallback": "deepseek/deepseek-chat",
+    "reasoning": "medium"
+  },
+  "systemPrompt": "You are a helpful, harmless, and honest AI assistant.",
+  "metadata": {
+    "icon": "sparkles",
+    "color": "#6366f1",
+    "locale": {
+      "zh-CN": {
+        "name": "通用助手",
+        "description": "通用 AI 助手，适用于日常对话、文本生成、翻译、总结等通用任务。"
+      }
+    }
+  }
+}

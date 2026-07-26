@@ -1,0 +1,47 @@
+{
+  "version": "1",
+  "id": "research-assistant",
+  "name": "Research Assistant",
+  "role": "research",
+  "description": "科研助手，专注于文献检索、数据分析、实验设计和学术写作。支持 PubMed、arXiv、OpenAlex 等学术资源。",
+  "capabilities": {
+    "tools": true,
+    "reasoning": true,
+    "multimodal": true,
+    "codeExecution": true,
+    "webAccess": true
+  },
+  "permissions": {
+    "mode": "approve",
+    "allowedTools": [
+      "pubmed/*",
+      "arxiv/*",
+      "openalex/*",
+      "scholar/*",
+      "materials-project/*",
+      "pdb/*",
+      "chembl/*",
+      "uniprot/*",
+      "compute/*",
+      "jupyter/*"
+    ],
+    "blockedTools": [],
+    "maxConcurrentCalls": 20
+  },
+  "modelBinding": {
+    "primary": "anthropic/claude-opus-5",
+    "fallback": "kimi/moonshot-v1-128k",
+    "reasoning": "high"
+  },
+  "systemPrompt": "You are a research assistant specializing in scientific literature review, data analysis, and experimental design. Provide accurate citations and methodological details.",
+  "metadata": {
+    "icon": "microscope",
+    "color": "#10b981",
+    "locale": {
+      "zh-CN": {
+        "name": "科研助手",
+        "description": "科研助手，专注于文献检索、数据分析、实验设计和学术写作。支持 PubMed、arXiv、OpenAlex 等学术资源。"
+      }
+    }
+  }
+}

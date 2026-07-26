@@ -39,9 +39,11 @@ import {
   logDebug,
   openWorkspaceBase,
   pickFolder,
-  providerAuthExists,
+  providerSecretExists,
   pythonInterpreter,
   removeConfigEntry,
+  removeProviderSecret,
+  setProviderSecret,
   setPythonPath,
   setWorkspaceBase,
   workspaceBase,
@@ -106,6 +108,12 @@ export function SettingsPage() {
   const defaultModel = useRuntimeStore((s) => s.defaultModel);
   const loadCatalog = useRuntimeStore((s) => s.loadCatalog);
   const connected = status === "ready";
+
+  // P2: Agent system state
+  const selectedAgent = useRuntimeStore((s) => s.selectedAgent);
+  const setSelectedAgent = useRuntimeStore((s) => s.setSelectedAgent);
+  const agentDefinitions = useRuntimeStore((s) => s.agentDefinitions);
+
   const updateEnabled = useUpdateStore((s) => s.enabled);
   const setUpdateEnabled = useUpdateStore((s) => s.setEnabled);
   const updateBadgeEnabled = useUpdateStore((s) => s.badgeEnabled);
@@ -142,11 +150,15 @@ export function SettingsPage() {
   // failures (keep the last good list); a server-URL change resets it so a
   // different runtime can never render the previous runtime's catalog.
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "unavailable">("loading");
-  const [authMethods, setAuthMethods] = useState<Record<string, ProviderAuthMethod[]>>({});
   const [catalog, setCatalog] = useState<ProviderCatalogEntry[]>([]);
   const [customIds, setCustomIds] = useState<string[]>([]);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [jupyter, setJupyter] = useState<JupyterStatus | null>(null);
+
+  // P2: Domestic model probing state
+  const [probingDomestic, setProbingDomestic] = useState(false);
+  const [domesticProbeResults, setDomesticProbeResults] = useState<Record<string, string[]>>({});
+
   // Browser control (agent-browser): detected Chrome + profiles, and the choices
   // the card collects before enabling.
   const [browserProfiles, setBrowserProfiles] = useState<BrowserProfile[]>([]);
@@ -226,13 +238,11 @@ export function SettingsPage() {
       setCatalogState((s) => (s === "ready" ? s : "unavailable"));
     }
     try {
-      const [m, c, custom, mcp] = await Promise.all([
-        client.listAuthMethods(),
+      const [c, custom, mcp] = await Promise.all([
         client.listProviderCatalog(),
         client.listCustomProviderIds(),
         client.listMcpServers().catch(() => []),
       ]);
-      setAuthMethods(m);
       setCatalog(c.all);
       setCustomIds(custom);
       setMcpServers(mcp);
@@ -442,7 +452,7 @@ export function SettingsPage() {
       if (providerID === "amazon-bedrock") {
         await getClient()!.setProviderRegion(providerID, bedrockRegion.trim());
       }
-      await getClient()!.setProviderApiKey(providerID, keyInput.trim());
+      await setProviderSecret(providerID, keyInput.trim());
       cancelOAuth(); // a pending browser login for this panel is now moot
       setKeyInput("");
       setConnectQuery("");
@@ -489,8 +499,8 @@ export function SettingsPage() {
     // collision, proxy, dropped redirect). The browser then shows "success"
     // while the app looks frozen (#17). Only conclusive for a provider that
     // had no credentials when the wait began.
-    const hadAuth = await providerAuthExists(providerID);
-    const loginLanded = async () => !hadAuth && (await providerAuthExists(providerID));
+    const hadAuth = await providerSecretExists(providerID);
+    const loginLanded = async () => !hadAuth && (await providerSecretExists(providerID));
 
     // The callback POST hangs open until the browser redirect lands, but the
     // webview's native fetch enforces its own idle timeout (~60s in WKWebView)
@@ -603,9 +613,9 @@ export function SettingsPage() {
         // exactly" — the stale key silently re-attaches (#37). Clear it too.
         // Best-effort: most custom providers carry their key inline (no auth
         // entry), and DELETE on a missing one is expected to fail.
-        await getClient()!.removeProviderAuth(providerID).catch(() => undefined);
+        await removeProviderSecret(providerID).catch(() => false);
       } else {
-        await getClient()!.removeProviderAuth(providerID);
+        await removeProviderSecret(providerID);
       }
       try {
         const provs = await getClient()!.listProviders();
@@ -644,6 +654,38 @@ export function SettingsPage() {
     }
   };
 
+  // P2: Probe domestic model endpoints
+  const probeDomesticModels = async () => {
+    setProbingDomestic(true);
+    try {
+      const { DOMESTIC_MODEL_ENDPOINTS, probeModels } = await import("@zerowall/shared");
+      const results: Record<string, string[]> = {};
+
+      for (const [provider, endpoint] of Object.entries(DOMESTIC_MODEL_ENDPOINTS)) {
+        try {
+          const models = await probeModels(endpoint);
+          if (models.length > 0) {
+            results[provider] = models;
+          }
+        } catch {
+          // Skip unreachable endpoints
+        }
+      }
+
+      setDomesticProbeResults(results);
+      const count = Object.keys(results).length;
+      if (count > 0) {
+        toast.success(t("toast.domesticProbeSuccess", `Found ${count} domestic provider(s)`));
+      } else {
+        toast.success(t("toast.domesticProbeNone", "No domestic providers detected"));
+      }
+    } catch (err) {
+      toast.error(`${t("toast.domesticProbeFailed", "Failed to probe")}: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setProbingDomestic(false);
+    }
+  };
+
   const modelList = (s: string) => s.split(",").map((v) => v.trim()).filter(Boolean);
 
   const toggleDetectedModel = (id: string) => {
@@ -671,10 +713,10 @@ export function SettingsPage() {
         name: cName.trim(),
         npm: cNpm,
         baseURL: cUrl.trim(),
-        apiKey: cKey.trim() || undefined,
         models,
         contexts,
       });
+      if (cKey.trim()) await setProviderSecret(id, cKey.trim());
       toast.success(t("toast.endpointAdded", { name: cName.trim() }));
       setShowCustom(false);
       setCName("");
@@ -796,11 +838,9 @@ export function SettingsPage() {
   // authorize call is by that index, and filtering re-numbers positions (a
   // provider whose api method precedes an oauth one would authorize the wrong
   // method).
-  const oauthMethods: Array<{ method: ProviderAuthMethod; index: number }> = selected
-    ? (authMethods[selected.id] ?? [])
-        .map((method, index) => ({ method, index }))
-        .filter(({ method }) => method.type === "oauth")
-    : [];
+  // OpenCode's OAuth callback persists auth.json. Keep browser OAuth hidden
+  // until the callback is adapted to return credentials directly to Keychain.
+  const oauthMethods: Array<{ method: ProviderAuthMethod; index: number }> = [];
 
   return (
     <div className="h-full overflow-y-auto">
@@ -941,6 +981,66 @@ export function SettingsPage() {
 
         {/* ---- Models ---- */}
         {section === "models" && (
+        <>
+        {/* Agent Selector */}
+        <Section title={t("agent.title", "Agent")} hint={t("agent.hint", "Choose the AI agent for different tasks")}>
+          <Row title={t("agent.selected", "Current Agent")} control={
+            <select
+              value={selectedAgent}
+              onChange={(e) => setSelectedAgent(e.target.value as any)}
+              className={selectCls()}
+              disabled={!connected}
+            >
+              <option value="general">{t("agent.general", "General Purpose")}</option>
+              <option value="research">{t("agent.research", "Research Assistant")}</option>
+              <option value="code">{t("agent.code", "Code Specialist")}</option>
+              <option value="data">{t("agent.data", "Data Analyst")}</option>
+            </select>
+          } />
+          <Row title={t("agent.definitions", "Loaded Agents")} control={
+            <span className="text-[13px] text-muted">
+              {agentDefinitions.length} {t("agent.definitionsCount", "agent(s)")}
+            </span>
+          } />
+          <Row
+            title={t("agent.domesticModels", "Domestic Models")}
+            hint={t("agent.domesticModelsHint", "Probe Kimi, GLM, DeepSeek, Baichuan, MiniMax endpoints")}
+            control={
+              <button
+                onClick={() => void probeDomesticModels()}
+                disabled={probingDomestic}
+                className={cn(
+                  chipCls(),
+                  "inline-flex items-center gap-1.5",
+                  probingDomestic && "cursor-wait opacity-60",
+                )}
+              >
+                {probingDomestic ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" />
+                    {t("agent.probing", "Probing...")}
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={12} />
+                    {t("agent.probe", "Probe")}
+                  </>
+                )}
+              </button>
+            }
+          >
+            {Object.keys(domesticProbeResults).length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                {Object.entries(domesticProbeResults).map(([provider, models]) => (
+                  <div key={provider} className="text-xs text-muted">
+                    <span className="font-medium">{provider}</span>: {models.length} model(s)
+                  </div>
+                ))}
+              </div>
+            )}
+          </Row>
+        </Section>
+
         <Section title={t("model.title")} hint={t("model.hint")}>
           {!modelSurfaceAvailable ? (
             <p className="text-[13px] text-muted">{t("model.connectPrompt")}</p>
@@ -958,6 +1058,7 @@ export function SettingsPage() {
             />
           )}
         </Section>
+        </>
         )}
 
         {/* ---- Providers ---- */}

@@ -1,5 +1,21 @@
 # Progress
 
+2026-07-26 11:00 · test(p2): ZeroWallClient unit tests — added comprehensive test suite covering initialization, provider refresh, AgentRuntime interface forwarding, handoff logging, and session snapshots; mock OpenCodeClient with all required methods; establishes test infrastructure for P2 agent system.
+
+2026-07-26 10:55 · feat(p2): session creation integration — modified sendPrompt() to route new sessions through ZeroWallClient when available, preserves existing OpenCodeClient fallback for ongoing sessions and uninitialized state; enables P2 agent routing on session creation with backward compatibility.
+
+2026-07-26 10:45 · feat(p2): domestic model probing in Settings — added probeDomesticModels() to detect Kimi/GLM/DeepSeek/Baichuan/MiniMax endpoints, Probe button with loading state in Agent section, displays found providers and model counts; users can discover available domestic models without manual configuration.
+
+2026-07-26 10:40 · feat(p2): agent selector UI in Settings — added Agent section to models tab with role dropdown (general/research/code/data), loaded agent count display, reads from runtime store (selectedAgent, agentDefinitions), follows existing Settings patterns with Row components.
+
+2026-07-26 10:30 · feat(p2): frontend runtime integration for agent system — added agent state to RuntimeState (selectedAgent, agentDefinitions, agentBindings, zeroWallClient), loadAgentDefinitions() fetches from /runtime/agents/*.json on bootstrap, initializeZeroWallClient() called in loadCatalog with provider set, ZeroWallClient implements full AgentRuntime interface forwarding to OpenCodeClient, localStorage persistence for agent selection and bindings; typecheck and build pass.
+
+2026-07-26 10:07 · feat(agents): ZeroWallClient routing + 4 Agents (P2 phases 1-2) — created ZeroWallClient unified entry point, 4 Agent definitions (general/research/code/data) with JSON Schema v1, 7 role-model binding slots, primary→fallback resolution, session snapshot capture, handoff logging, domestic model endpoints (Kimi/GLM/DeepSeek/Baichuan/MiniMax), probeModels() detection; routing by agent role injects model+reasoning, logs every handoff for replay; SDK/shared modules exported.
+
+2026-07-26 09:52 · feat(security): moved runtime secrets to OS keychain — provider credentials and connector secrets now live exclusively in Windows Credential Manager / macOS Keychain / Linux Secret Service via `keyring` 4.1.5; startup migrates legacy `auth.json` + `opencode.json(c)` (idempotent, fail-closed); sidecar injects `OPENCODE_AUTH_CONTENT` + connector env vars from keychain; `import_opencode_login` reads CLI auth.json without modifying it; removed `provider_auth_exists` (disk read); SDK `addCustomProvider` apiKey is optional and frontend separated to `setProviderSecret`; SQLite/JSON/JSONL/logs/export store only `secret_ref`, never raw values; 158 Rust tests GREEN, clippy clean, `git diff --check` clean.
+
+2026-07-26 01:31 · feat(data): added lifecycle-initialized per-workspace `science.db` storage with transactional fingerprinted M000-M008 migrations, 40 indexed relational tables, keychain-only secret references, scoped relationship constraints, safe SHA-256 content paths, and startup schema-integrity checks; 147 Rust tests, build, Clippy, and the brand contract pass.
+
 2026-07-26 00:15 · fix(security): legacy app-data migration now rejects source and destination symlinks, Windows reparse points, and file/directory type conflicts at every recursive boundary, preventing writes outside the new app-data tree; 129 Rust tests, build, Clippy, and the brand contract pass.
 
 2026-07-25 23:56 · fix(compatibility): fresh project imports now discard both current and legacy workspace metadata, startup non-destructively restores legacy bundle app-data, snapshot refs retain legacy ancestry, and the exact brand allowlist is self-tested; 634 frontend and 128 Rust tests, typecheck, lint, Clippy, and production builds pass.

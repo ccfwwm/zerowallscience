@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://zerowall.science/schemas/agent-v1.json",
+  "title": "AgentDefinitionV1",
+  "description": "ZeroWall Science Agent definition schema v1. Describes an Agent's role, capabilities, permission policy, and model bindings.",
+  "type": "object",
+  "required": ["version", "id", "name", "role", "capabilities", "permissions"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1",
+      "description": "Schema version (always '1' for v1)"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Unique agent identifier (kebab-case, e.g., 'general-purpose', 'research-assistant')"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Human-readable agent name (e.g., 'General Purpose', '研究助手')"
+    },
+    "role": {
+      "type": "string",
+      "enum": ["general", "research", "code", "data"],
+      "description": "Agent role determines default model binding and permission policy"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Short description of the agent's purpose and capabilities"
+    },
+    "capabilities": {
+      "type": "object",
+      "required": ["tools", "reasoning", "multimodal"],
+      "properties": {
+        "tools": {
+          "type": "boolean",
+          "description": "Whether the agent can call tools (MCP servers, skills)"
+        },
+        "reasoning": {
+          "type": "boolean",
+          "description": "Whether the agent supports extended reasoning (o1/o3 style)"
+        },
+        "multimodal": {
+          "type": "boolean",
+          "description": "Whether the agent accepts image/file inputs"
+        },
+        "codeExecution": {
+          "type": "boolean",
+          "description": "Whether the agent can execute code in kernels"
+        },
+        "webAccess": {
+          "type": "boolean",
+          "description": "Whether the agent can browse the web"
+        }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "required": ["mode", "allowedTools"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["off", "approve", "full"],
+          "description": "Permission mode: off (no execution), approve (prompt), full (auto-approve)"
+        },
+        "allowedTools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tool patterns this agent is allowed to use (glob, e.g., 'pubmed/*', 'compute/slurm')"
+        },
+        "blockedTools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tool patterns this agent is explicitly blocked from using"
+        },
+        "maxConcurrentCalls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Maximum concurrent tool calls per turn"
+        }
+      }
+    },
+    "modelBinding": {
+      "type": "object",
+      "description": "Default model binding for this agent (can be overridden per session)",
+      "properties": {
+        "primary": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]+/[a-z0-9_.:/-]+$",
+          "description": "Primary model (provider/model format, e.g., 'anthropic/claude-opus-5')"
+        },
+        "fallback": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]+/[a-z0-9_.:/-]+$",
+          "description": "Fallback model when primary is unavailable"
+        },
+        "reasoning": {
+          "type": "string",
+          "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+          "description": "Default reasoning effort level"
+        }
+      }
+    },
+    "systemPrompt": {
+      "type": "string",
+      "maxLength": 10000,
+      "description": "System prompt injected before every conversation (optional)"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Arbitrary metadata (display hints, locale-specific fields, etc.)"
+    }
+  }
+}

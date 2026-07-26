@@ -105,6 +105,48 @@ export async function importOpenCodeLogin(): Promise<boolean> {
   return invoke<boolean>("import_opencode_login");
 }
 
+/** Store provider credentials in the OS credential manager and restart the sidecar. */
+export async function setProviderSecret(providerId: string, value: string): Promise<void> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("set_provider_secret", { providerId, value });
+}
+
+/** Remove provider credentials from the OS credential manager. */
+export async function removeProviderSecret(providerId: string): Promise<boolean> {
+  if (!isTauri) return false;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<boolean>("remove_provider_secret", { providerId });
+}
+
+/** Whether the OS credential manager has credentials for a provider. */
+export async function providerSecretExists(providerId: string): Promise<boolean> {
+  if (!isTauri) return false;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<boolean>("provider_secret_exists", { providerId });
+}
+
+/** Store one connector environment secret in the OS credential manager. */
+export async function setConnectorSecret(
+  connectorId: string,
+  environment: string,
+  value: string,
+): Promise<void> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("set_connector_secret", { connectorId, environment, value });
+}
+
+/** Remove one connector environment secret from the OS credential manager. */
+export async function removeConnectorSecret(
+  connectorId: string,
+  environment: string,
+): Promise<boolean> {
+  if (!isTauri) return false;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<boolean>("remove_connector_secret", { connectorId, environment });
+}
+
 /** How agent actions get approved — the composer's Codex-style switch.
  *  "approve": dangerous shell commands (delete / install / remote / privilege)
  *  and web fetches prompt first. "full": everything in-workspace just runs. */

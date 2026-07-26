@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   resolveSetup: (() => {}) as () => void,
   setupJupyter: vi.fn(),
   setupScienceMcp: vi.fn(async () => "/env/bin/python"),
+  setConnectorSecret: vi.fn(async () => {}),
 }));
 
 mocks.setupJupyter.mockImplementation(
@@ -42,10 +43,11 @@ vi.mock("./tauri", () => ({
   agentBrowserBin: mocks.agentBrowserBin,
   detectChrome: mocks.detectChrome,
   getProxySetting: mocks.getProxySetting,
+  setConnectorSecret: mocks.setConnectorSecret,
 }));
 vi.mock("./scienceConnectors", () => ({
   SCIENCE_CONNECTORS: [
-    { id: "papers", label: "Papers", pkg: "paper-search-mcp" },
+    { id: "papers", label: "Papers", pkg: "paper-search-mcp", apiKeyEnv: "PAPERS_API_KEY" },
   ],
   connectorConfig: () => ({ type: "local", command: ["/env/bin/python"], enabled: true }),
 }));
@@ -93,7 +95,12 @@ describe("setup store", () => {
     expect(useSetupStore.getState().connectorId).toBe("papers");
     await run;
     expect(useSetupStore.getState().connectorId).toBeNull();
+    expect(mocks.setConnectorSecret).toHaveBeenCalledWith("papers", "PAPERS_API_KEY", "key123");
     expect(mocks.addMcpServer).toHaveBeenCalledWith("papers", expect.anything());
+    expect(mocks.setConnectorSecret.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.addMcpServer.mock.invocationCallOrder[0],
+    );
+    expect(JSON.stringify(mocks.addMcpServer.mock.calls[0])).not.toContain("key123");
   });
 
   // The config PATCH deep-merges the nested `environment`, so a re-add can only

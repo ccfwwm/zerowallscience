@@ -16,6 +16,7 @@ import {
   detectChrome,
   getProxySetting,
   removeConfigEntry,
+  setConnectorSecret,
 } from "./tauri";
 import { SCIENCE_CONNECTORS, connectorConfig } from "./scienceConnectors";
 import { BROWSER_MCP_ID, buildBrowserMcpConfig } from "./browser";
@@ -92,7 +93,11 @@ export const useSetupStore = create<SetupState>((set, get) => ({
     try {
       toast.success(`Setting up ${c.label} — first run downloads a managed Python, please wait…`);
       const python = await setupScienceMcp(c.pkg);
-      await getClient()!.addMcpServer(c.id, connectorConfig(c, python, apiKey));
+      const key = apiKey?.trim();
+      if (c.apiKeyEnv && key) {
+        await setConnectorSecret(c.id, c.apiKeyEnv, key);
+      }
+      await getClient()!.addMcpServer(c.id, connectorConfig(c, python));
       toast.success(`${c.label} enabled — the agent can now use it from chat.`);
       await useRuntimeStore.getState().loadCatalog();
     } catch (e) {

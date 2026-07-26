@@ -42,9 +42,10 @@ describe("connectorConfig", () => {
     ]);
   });
 
-  it("passes an API key via environment, trimmed", () => {
+  it("never serializes an API key into the MCP config", () => {
     const cfg = connectorConfig(byId("materials-project"), "/env/bin/python", "  mp-secret  ");
-    expect(cfg.type === "local" && cfg.environment).toEqual({ MP_API_KEY: "mp-secret" });
+    expect(cfg.type === "local" && cfg.environment).toBeUndefined();
+    expect(JSON.stringify(cfg)).not.toContain("mp-secret");
   });
 
   it("omits environment when the key is blank", () => {

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   OpenCodeClient,
+  ZeroWallClient,
   DEFAULT_OPENCODE_URL,
   type AgentInfo,
   type AgentRuntime,
@@ -15,7 +16,15 @@ import {
   type SkillInfo,
   type ToolCallStatus,
 } from "@zerowall/sdk";
-import type { ArtifactBlock, RuntimeStatus, ThreadBlock, ToolVerb } from "@zerowall/shared";
+import type {
+  ArtifactBlock,
+  RuntimeStatus,
+  ThreadBlock,
+  ToolVerb,
+  AgentRole,
+  RoleModelBinding,
+  AgentDefinition,
+} from "@zerowall/shared";
 import {
   detectTools as probeTools,
   commitWorkspaceSnapshot,
@@ -64,6 +73,8 @@ const REASONING_KEY = "zerowall.models.variant.v1";
  *  which survives across runs). */
 const SESSION_MODELS_KEY = "zerowall.session.models.v1";
 const SESSION_VARIANTS_KEY = "zerowall.session.variants.v1";
+const SELECTED_AGENT_KEY = "zerowall.agent.selected.v1";
+const AGENT_BINDINGS_KEY = "zerowall.agent.bindings.v1";
 function loadRecord<V>(key: string): Record<string, V> {
   if (typeof window === "undefined") return {};
   try {
@@ -97,6 +108,20 @@ function initialHidden(): string[] {
 function initialReasoningVariant(): string | null {
   if (typeof window === "undefined") return null;
   return window.localStorage.getItem(REASONING_KEY) || null;
+}
+function initialSelectedAgent(): AgentRole {
+  if (typeof window === "undefined") return "general";
+  return (window.localStorage.getItem(SELECTED_AGENT_KEY) as AgentRole) || "general";
+}
+function initialAgentBindings(): Record<AgentRole, RoleModelBinding> {
+  if (typeof window === "undefined") return {} as Record<AgentRole, RoleModelBinding>;
+  try {
+    const stored = window.localStorage.getItem(AGENT_BINDINGS_KEY);
+    if (!stored) return {} as Record<AgentRole, RoleModelBinding>;
+    return JSON.parse(stored);
+  } catch {
+    return {} as Record<AgentRole, RoleModelBinding>;
+  }
 }
 
 export interface Thread {
@@ -178,6 +203,21 @@ interface RuntimeState {
   setSessionModel: (sessionId: string, model: string) => void;
   /** Set a session's reasoning effort (per-pane). */
   setSessionVariant: (sessionId: string, variant: string | null) => void;
+
+  /** P2: Agent system state */
+  /** Currently selected agent role (general/research/code/data). */
+  selectedAgent: AgentRole;
+  /** Loaded agent definitions from runtime/agents/*.json. */
+  agentDefinitions: AgentDefinition[];
+  /** Role-to-model bindings (primary + fallback per role). */
+  agentBindings: Record<AgentRole, RoleModelBinding>;
+  /** ZeroWallClient instance (wraps OpenCodeClient with agent routing). */
+  zeroWallClient: ZeroWallClient | null;
+  /** Set the active agent role and persist to localStorage. */
+  setSelectedAgent: (role: AgentRole) => void;
+  /** Update role-model bindings and persist to localStorage. */
+  setAgentBindings: (bindings: Record<AgentRole, RoleModelBinding>) => void;
+
   // The pane/agent setters and turn actions below take an optional `sessionId`
   // so a split pane acts on its OWN session; omitted, they fall back to the
   // focused session (`currentId ?? DRAFT_KEY`) — the single-pane behavior.
@@ -767,6 +807,48 @@ export function getClient(): OpenCodeClient | null {
   return opencodeClient;
 }
 
+/** Load agent definitions from runtime/agents/*.json files. */
+async function loadAgentDefinitions(): Promise<AgentDefinition[]> {
+  const { BUILT_IN_AGENTS, validateAgentDefinition } = await import("@zerowall/shared");
+  const agents: AgentDefinition[] = [];
+
+  for (const agentId of BUILT_IN_AGENTS) {
+    try {
+      const response = await fetch(`/runtime/agents/${agentId}.json`);
+      if (!response.ok) continue;
+      const json = await response.json();
+      if (validateAgentDefinition(json)) {
+        agents.push(json as AgentDefinition);
+      }
+    } catch {
+      /* skip unreadable agent definitions */
+    }
+  }
+
+  return agents;
+}
+
+/** Initialize ZeroWallClient with loaded agents and bindings. */
+function initializeZeroWallClient(
+  client: OpenCodeClient,
+  agentDefs: AgentDefinition[],
+  bindings: Record<AgentRole, RoleModelBinding>,
+  providers: Set<string>,
+): ZeroWallClient {
+  const agents = new Map<string, AgentDefinition>();
+  for (const def of agentDefs) {
+    agents.set(def.id, def);
+  }
+  const zwClient = new ZeroWallClient({
+    opencode: client,
+    agents,
+    roleBindings: bindings,
+  });
+  // Sync available providers immediately
+  zwClient['availableProviders'] = providers;
+  return zwClient;
+}
+
 /** The reasoning variant to send with a turn: the user's pick, but only when the
  *  current default model actually exposes it. Variant vocabularies differ per
  *  model (OpenAI has "minimal", Anthropic has "max", many models have none), so
@@ -840,6 +922,25 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       saveRecord(SESSION_VARIANTS_KEY, sessionVariants);
       return { sessionVariants };
     }),
+
+  // P2: Agent system state
+  selectedAgent: initialSelectedAgent(),
+  agentDefinitions: [],
+  agentBindings: initialAgentBindings(),
+  zeroWallClient: null,
+  setSelectedAgent: (role) => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SELECTED_AGENT_KEY, role);
+    }
+    set({ selectedAgent: role });
+  },
+  setAgentBindings: (bindings) => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(AGENT_BINDINGS_KEY, JSON.stringify(bindings));
+    }
+    set({ agentBindings: bindings });
+  },
+
   setAgentMode: (mode, sessionId) =>
     set((s) => ({ sessionAgents: { ...s.sessionAgents, [sessionId ?? s.currentId ?? DRAFT_KEY]: mode } })),
   projects: [],
@@ -960,6 +1061,19 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           ? { agents, commands, providers }
           : { agents, defaultModel, commands, providers },
       );
+
+      // P2: Initialize ZeroWallClient with loaded agents and bindings
+      if (opencodeClient) {
+        const state = get();
+        const { DEFAULT_ROLE_BINDINGS } = await import("@zerowall/shared");
+        const bindings = Object.keys(state.agentBindings).length > 0
+          ? state.agentBindings
+          : DEFAULT_ROLE_BINDINGS;
+        const providerSet = new Set(providers.map((p) => p.id));
+        const zwClient = initializeZeroWallClient(opencodeClient, state.agentDefinitions, bindings, providerSet);
+        set({ zeroWallClient: zwClient, agentBindings: bindings });
+      }
+
       // Self-heal a dangling default model. It can go stale out-of-band — its
       // provider removed, its id renamed, or the config edited outside the app
       // — and then every send fails with "model not found". Settings only
@@ -1515,6 +1629,15 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     if (bootstrapInFlight) return bootstrapInFlight;
     const run = (async () => {
       void get().detectTools();
+
+      // Load agent definitions (works in both Tauri and web)
+      try {
+        const agentDefinitions = await loadAgentDefinitions();
+        set({ agentDefinitions });
+      } catch (err) {
+        void logDebug(`Failed to load agent definitions: ${err}`);
+      }
+
       // Web client (served by the gateway): the sidecar already runs on the host
       // — just connect to the gateway (same origin), no Tauri runtime to start.
       if (isGatewayWeb) {
@@ -1844,6 +1967,28 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // This pane's own model + effort (falling back to the global default),
     // captured now so a draft's later graft still sends the pane's choice.
     const { model, variant } = modelForSession(s, key);
+
+    // P2: Use ZeroWallClient if available, passing selectedAgent as role
+    // ZeroWallClient handles agent routing, model fallback, and handoff logging
+    const zwClient = s.zeroWallClient;
+    if (zwClient && !sessionId) {
+      // New session: use ZeroWallClient with role-based routing
+      return performTurn(
+        set,
+        get,
+        text,
+        async (sid) => {
+          await zwClient.sendPrompt(sid, text, agent, model, variant);
+          return;
+        },
+        false,
+        false,
+        sessionId,
+        draftKey,
+      );
+    }
+
+    // Fallback to OpenCodeClient for existing sessions or when ZeroWallClient unavailable
     return performTurn(
       set,
       get,

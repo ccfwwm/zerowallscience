@@ -297,23 +297,35 @@ pub fn import_opencode_login(app: AppHandle, state: State<'_, RuntimeState>) -> 
     let Some(src) = user_auth_source() else {
         return Ok(false);
     };
-    let dst = runtime_root(&app)?.join("xdg-data").join("opencode").join("auth.json");
-    if let Some(parent) = dst.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    std::fs::copy(&src, &dst).map_err(|e| format!("copy failed: {e}"))?;
+    // Read the user's CLI auth.json (read-only — never modify their file).
+    let content = std::fs::read_to_string(&src)
+        .map_err(|e| format!("read CLI auth.json: {e}"))?;
 
-    // Restart the running sidecar so /config/providers reflects the login.
+    // Import into the OS keychain via the secret store.
+    let root = runtime_root(&app)?;
+    let registry_path = root.join("secret-refs.json");
+    let backend = crate::secret_store::KeyringCredentialStore;
+    let mut registry = crate::secret_store::load_registry(&registry_path).unwrap_or_default();
+    let count = crate::secret_store::import_auth_document(&backend, &mut registry, &content)?;
+
+    if count > 0 {
+        crate::secret_store::save_registry(&registry_path, &registry)?;
+    }
+
+    // Restart the running sidecar so /config/providers reflects the new logins.
     restart_sidecar_if_running(&app, &state)?;
-    Ok(true)
+    Ok(count > 0)
 }
 
 /// Whether the bundled runtime's credential store (its auth.json) has an entry
 /// for this provider. The sidecar writes the token there the moment a browser
 /// login completes, so the UI can fall back on it when the pending OAuth
 /// callback request is lost (loopback port collision, proxy) — issue #17.
-#[tauri::command(async)]
-pub fn provider_auth_exists(app: AppHandle, provider_id: String) -> Result<bool, String> {
+///
+/// REMOVED in P1B: secrets now live only in the OS keychain, never on disk.
+/// OAuth UI remains hidden; this dead function is kept for reference only.
+#[allow(dead_code)]
+fn provider_auth_exists_legacy(app: AppHandle, provider_id: String) -> Result<bool, String> {
     let path = runtime_root(&app)?
         .join("xdg-data")
         .join("opencode")
@@ -769,6 +781,7 @@ fn system_proxy_url() -> Option<String> {
 }
 
 /// Parse `scutil --proxy` output (`  Key : value` lines) into a proxy URL.
+#[cfg(target_os = "macos")]
 fn parse_scutil_proxy(text: &str) -> Option<String> {
     let get = |key: &str| -> Option<String> {
         let prefix = format!("{key} : ");
@@ -832,12 +845,22 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
             std::fs::write(&cfg_file, updated).map_err(|e| e.to_string())?;
         }
     }
-    // Secrets live under the runtime root (provider/connector keys in
-    // opencode.jsonc, OpenCode's auth.json) — owner-only on every start, so
-    // existing installs are repaired and whatever the sidecar later rewrites
-    // inside stays unreachable to other users regardless of its umask.
+    // Migrate legacy auth.json + opencode.json(c) to OS keychain before starting
+    // the sidecar. Idempotent — safe to call on every launch.
+    crate::secret_store::migrate_legacy_secrets(&root)?;
+    // The runtime root still holds app-private OpenCode state (its config, the
+    // logs, any auth.json the sidecar itself writes) — keep it owner-only on
+    // every start so those files stay unreachable to other users regardless of
+    // the umask the sidecar rewrites them with. Provider/connector secrets no
+    // longer live here: they are materialized from the OS keychain into the
+    // sidecar's environment just below.
     tighten_private(&root);
     tighten_private(&cfg_file);
+    // Materialize provider credentials and connector secrets from the OS
+    // keychain. OPENCODE_AUTH_CONTENT is always set (to `{}` when empty) so it
+    // takes precedence over any on-disk auth.json, and local MCP servers
+    // inherit connector secrets from this process environment.
+    let secrets = crate::secret_store::sidecar_secrets(app)?;
     let home = std::env::var("HOME").unwrap_or_default();
     let port_str = port.to_string();
 
@@ -870,6 +893,11 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
     let (proxy_mode, proxy_url) = read_proxy_setting(app);
     for (k, v) in resolve_proxy_env(&proxy_mode, &proxy_url) {
         cmd = cmd.env(k, v);
+    }
+    // Inject keychain-backed secrets: OPENCODE_AUTH_CONTENT (provider logins)
+    // plus one variable per connector secret, which local MCP servers inherit.
+    for (name, value) in crate::secret_store::sidecar_environment(&secrets) {
+        cmd = cmd.env(name, value);
     }
 
     let (mut rx, child) = cmd.spawn().map_err(|e| format!("failed to spawn opencode: {e}"))?;
@@ -912,7 +940,7 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
 /// Kill and respawn a running sidecar on its stable port. The lifecycle lock
 /// covers the complete state transition, and URL is cleared before spawning so
 /// a failed restart can never leave a stale "running" marker behind.
-fn restart_sidecar_if_running(
+pub(crate) fn restart_sidecar_if_running(
     app: &AppHandle,
     state: &RuntimeState,
 ) -> Result<Option<String>, String> {
@@ -1000,6 +1028,16 @@ pub fn open_workspace_base(app: AppHandle) -> Result<(), String> {
 /// stream with `?directory=` and creates sessions with it (a bare `/event`
 /// stream would not see other folders' instances, so the scoped stream is
 /// required). `path` must be absolute.
+fn prepare_workspace_dir(dir: &Path) -> Result<PathBuf, String> {
+    if !dir.is_absolute() {
+        return Err("workspace path must be absolute".into());
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("could not create folder: {e}"))?;
+    let canonical = dir.canonicalize().map_err(|e| e.to_string())?;
+    crate::science_db::open_science_db(&canonical)?;
+    Ok(canonical)
+}
+
 #[tauri::command(async)]
 pub fn set_workspace(
     app: AppHandle,
@@ -1007,11 +1045,7 @@ pub fn set_workspace(
     path: String,
 ) -> Result<String, String> {
     let dir = PathBuf::from(&path);
-    if !dir.is_absolute() {
-        return Err("workspace path must be absolute".into());
-    }
-    std::fs::create_dir_all(&dir).map_err(|e| format!("could not create folder: {e}"))?;
-    let canon = dir.canonicalize().map_err(|e| e.to_string())?;
+    let canon = prepare_workspace_dir(&dir)?;
     std::fs::write(active_workspace_file(&app)?, canon.to_string_lossy().as_bytes())
         .map_err(|e| e.to_string())?;
 
@@ -1113,8 +1147,8 @@ pub fn kill_child(state: &RuntimeState) {
 mod tests {
     use super::{
         auth_has_provider, legacy_app_data_dir, migrate_legacy_app_data, parse_scutil_proxy,
-        prune_stale_skills, random_hex, remove_key_from_config, resolve_proxy_env,
-        sync_skill_pack, validate_proxy_url,
+        prepare_workspace_dir, prune_stale_skills, random_hex, remove_key_from_config,
+        resolve_proxy_env, sync_skill_pack, validate_proxy_url,
     };
     use std::fs;
 
@@ -1127,6 +1161,24 @@ mod tests {
             Some(std::path::Path::new("app-data-root").join(legacy_id))
         );
         assert_eq!(legacy_app_data_dir(std::path::Path::new("com.zerowall.science")), None);
+    }
+
+    #[test]
+    fn preparing_a_workspace_initializes_its_science_database() {
+        let root = std::env::temp_dir().join(format!(
+            "zerowall-prepare-science-workspace-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+
+        let prepared = prepare_workspace_dir(&root).unwrap();
+
+        assert_eq!(prepared, root.canonicalize().unwrap());
+        assert!(prepared.join(".zerowall/science.db").is_file());
+        let status = crate::science_db::science_db_status(&prepared).unwrap();
+        assert_eq!(status.version, 8);
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

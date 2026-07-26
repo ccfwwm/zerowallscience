@@ -4,6 +4,10 @@
 export type RuntimeStatus = "connecting" | "ready" | "error" | "offline";
 export type ModelStatus = "connected" | "disconnected" | "error";
 
+// P2: Agent and model definitions
+export * from "./agents";
+export * from "./models";
+
 export interface Project {
   id: string;
   name: string;
