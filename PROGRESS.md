@@ -1,5 +1,9 @@
 # Progress
 
+2026-07-26 11:00 · test(p2): ZeroWallClient unit tests — added comprehensive test suite covering initialization, provider refresh, AgentRuntime interface forwarding, handoff logging, and session snapshots; mock OpenCodeClient with all required methods; establishes test infrastructure for P2 agent system.
+
+2026-07-26 10:55 · feat(p2): session creation integration — modified sendPrompt() to route new sessions through ZeroWallClient when available, preserves existing OpenCodeClient fallback for ongoing sessions and uninitialized state; enables P2 agent routing on session creation with backward compatibility.
+
 2026-07-26 10:45 · feat(p2): domestic model probing in Settings — added probeDomesticModels() to detect Kimi/GLM/DeepSeek/Baichuan/MiniMax endpoints, Probe button with loading state in Agent section, displays found providers and model counts; users can discover available domestic models without manual configuration.
 
 2026-07-26 10:40 · feat(p2): agent selector UI in Settings — added Agent section to models tab with role dropdown (general/research/code/data), loaded agent count display, reads from runtime store (selectedAgent, agentDefinitions), follows existing Settings patterns with Row components.
