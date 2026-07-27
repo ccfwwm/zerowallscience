@@ -211,6 +211,124 @@ pub fn ensure_session(
     Ok(())
 }
 
+/// A coarse artifact class from the file extension — the free-text
+/// `artifacts.artifact_type`. Mirrors the shared `ArtifactKind` vocabulary so
+/// the SQLite projection agrees with what the thread already labels.
+fn artifact_type_for(logical_path: &str) -> &'static str {
+    let ext = logical_path.rsplit('.').next().unwrap_or("").to_lowercase();
+    match ext.as_str() {
+        "py" | "r" | "jl" | "sh" | "js" | "ts" => "script",
+        "ipynb" => "notebook",
+        "csv" | "tsv" | "parquet" | "json" | "jsonl" => "data",
+        "png" | "jpg" | "jpeg" | "svg" | "pdf" => "figure",
+        "md" | "txt" | "rst" => "report",
+        _ => "data",
+    }
+}
+
+/// Best-effort media type for `artifact_versions.media_type` (nullable). Only
+/// the text kinds we can content-address land here; unknown → None.
+fn media_type_for(logical_path: &str) -> Option<&'static str> {
+    let ext = logical_path.rsplit('.').next().unwrap_or("").to_lowercase();
+    match ext.as_str() {
+        "md" | "txt" | "rst" => Some("text/markdown"),
+        "csv" => Some("text/csv"),
+        "tsv" => Some("text/tab-separated-values"),
+        "json" | "jsonl" => Some("application/json"),
+        "py" => Some("text/x-python"),
+        "r" => Some("text/x-r"),
+        "js" | "ts" => Some("text/javascript"),
+        "ipynb" => Some("application/x-ipynb+json"),
+        _ => None,
+    }
+}
+
+/// Materialize the latest content-bearing provenance version of `logical_path`
+/// into an `artifact_versions` row, returning its id — the bridge that lets a
+/// reviewer claim bind to the artifact it is about.
+///
+/// This is a projection of the live JSONL log (`provenance.rs`), not a second
+/// source of truth: the row is built on demand from `versions_for`, so nothing
+/// is duplicated in the background. Returns `Ok(None)` when the artifact has no
+/// recorded version, or only binary/indirect writes (`content` absent) that
+/// cannot be content-addressed. Idempotent: the same version maps to one row.
+pub fn ensure_artifact_version(
+    conn: &Connection,
+    root: &Path,
+    project_id: &str,
+    logical_path: &str,
+) -> Result<Option<String>, String> {
+    let versions = crate::provenance::versions_for(root, logical_path)?;
+    // Newest content-bearing version. Binary/indirect writes carry no `content`
+    // and are content-addressed nowhere, so they can't be bound.
+    let record = match versions.iter().rev().find(|r| r.content.is_some()) {
+        Some(record) => record,
+        None => return Ok(None),
+    };
+    let content = record.content.as_deref().unwrap_or_default();
+    let hash = put_text(root, content)?;
+    let byte_size = content.len() as i64;
+    let version_number = record.version as i64;
+
+    // Get-or-create the artifacts row. INSERT OR IGNORE then SELECT, because the
+    // id is random but UNIQUE(project_id, logical_path) is the real identity.
+    conn.execute(
+        &format!(
+            "INSERT OR IGNORE INTO artifacts \
+             (id, project_id, logical_path, artifact_type, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, {NOW}, {NOW})"
+        ),
+        params![
+            new_id("art"),
+            project_id,
+            logical_path,
+            artifact_type_for(logical_path)
+        ],
+    )
+    .map_err(|error| format!("insert artifact row: {error}"))?;
+    let artifact_id: String = conn
+        .query_row(
+            "SELECT id FROM artifacts WHERE project_id = ?1 AND logical_path = ?2",
+            params![project_id, logical_path],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("look up artifact row: {error}"))?;
+
+    // Get-or-create the version row for this provenance version number.
+    let existing: Option<String> = conn
+        .query_row(
+            "SELECT id FROM artifact_versions WHERE artifact_id = ?1 AND version_number = ?2",
+            params![&artifact_id, version_number],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| format!("look up artifact version: {error}"))?;
+    if let Some(id) = existing {
+        return Ok(Some(id));
+    }
+
+    let version_id = new_id("av");
+    conn.execute(
+        &format!(
+            "INSERT INTO artifact_versions \
+             (id, project_id, artifact_id, version_number, content_sha256, content_ref, \
+              media_type, byte_size, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6, ?7, {NOW}, {NOW})"
+        ),
+        params![
+            &version_id,
+            project_id,
+            &artifact_id,
+            version_number,
+            &hash,
+            media_type_for(logical_path),
+            byte_size
+        ],
+    )
+    .map_err(|error| format!("insert artifact version: {error}"))?;
+    Ok(Some(version_id))
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -408,5 +526,80 @@ mod tests {
             [],
         );
         assert!(result.is_err(), "foreign_keys must reject an orphan memory");
+    }
+
+    #[test]
+    fn ensure_artifact_version_needs_a_content_bearing_record() {
+        let ws = TestWorkspace::new("bridge-none");
+        let conn = open(ws.path()).unwrap();
+        let project = ensure_project(&conn, ws.path()).unwrap();
+
+        // No provenance for the path at all → nothing to bind.
+        assert_eq!(
+            ensure_artifact_version(&conn, ws.path(), &project, "out/fig.png").unwrap(),
+            None
+        );
+
+        // A binary/indirect write carries no `content`, so it can't be
+        // content-addressed and must not fabricate a row.
+        crate::provenance::append_record(
+            ws.path(),
+            "out/fig.png",
+            "write",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            ensure_artifact_version(&conn, ws.path(), &project, "out/fig.png").unwrap(),
+            None
+        );
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM artifact_versions", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "a binary write must not create a version row");
+    }
+
+    #[test]
+    fn ensure_artifact_version_binds_the_latest_content_version() {
+        let ws = TestWorkspace::new("bridge-latest");
+        let conn = open(ws.path()).unwrap();
+        let project = ensure_project(&conn, ws.path()).unwrap();
+
+        for body in ["v1 body\n", "v2 body\n"] {
+            crate::provenance::append_record(
+                ws.path(),
+                "notes.md",
+                "write",
+                None,
+                None,
+                Some(body.to_owned()),
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        }
+        let id = ensure_artifact_version(&conn, ws.path(), &project, "notes.md")
+            .unwrap()
+            .expect("a content-bearing artifact must bind");
+
+        // The bound version is the newest (version_number 2), and its stored
+        // content is that version's body.
+        let (version_number, content_ref): (i64, String) = conn
+            .query_row(
+                "SELECT version_number, content_ref FROM artifact_versions WHERE id = ?1",
+                params![&id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(version_number, 2);
+        assert_eq!(read_text(ws.path(), &content_ref).unwrap(), "v2 body\n");
     }
 }

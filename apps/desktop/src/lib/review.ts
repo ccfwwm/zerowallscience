@@ -12,7 +12,16 @@ import { isGatewayWeb } from "./webMode";
 const FENCE = /```review\s*\n([\s\S]*?)\n```/;
 // Reuse the persisted vocabulary rather than a second copy of the literals.
 const LEVELS: readonly string[] = VERIFICATION_RESULTS;
-const CHECKS: ReviewCheck[] = ["citation", "number", "figure", "domain", "integrity"];
+const CHECKS: ReviewCheck[] = [
+  "citation",
+  "number",
+  "figure",
+  "domain",
+  "integrity",
+  "method_choice",
+  "reasoning_trace",
+  "bio_plausibility",
+];
 
 /**
  * Extract a structured reviewer result the agent was asked to emit as a
@@ -31,6 +40,7 @@ export function splitReview(markdown: string): { clean: string; review: Reviewer
         evidence?: string;
         check?: string;
         tag?: string;
+        artifactPath?: string;
       }>;
       note?: string;
     };
@@ -42,6 +52,7 @@ export function splitReview(markdown: string): { clean: string; review: Reviewer
         evidence: f.evidence ? String(f.evidence) : undefined,
         check: (CHECKS as string[]).includes(f.check ?? "") ? (f.check as ReviewCheck) : undefined,
         tag: f.tag ? String(f.tag) : undefined,
+        artifactPath: f.artifactPath ? String(f.artifactPath) : undefined,
       }));
     if (findings.length > 0 || parsed.note) {
       review = { kind: "reviewer", findings, note: parsed.note };

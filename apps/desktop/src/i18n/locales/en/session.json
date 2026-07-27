@@ -250,7 +250,10 @@
       "number": "number",
       "figure": "figure ↔ code",
       "domain": "domain",
-      "integrity": "integrity"
+      "integrity": "integrity",
+      "method_choice": "method fit",
+      "reasoning_trace": "trace",
+      "bio_plausibility": "bio check"
     },
     "findingCount_one": "· {{count}} finding",
     "findingCount_other": "· {{count}} findings",

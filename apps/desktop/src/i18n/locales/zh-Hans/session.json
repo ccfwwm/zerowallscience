@@ -243,7 +243,10 @@
       "number": "数字",
       "figure": "图表 ↔ 代码",
       "domain": "领域",
-      "integrity": "完整性"
+      "integrity": "完整性",
+      "method_choice": "方法适配",
+      "reasoning_trace": "溯源",
+      "bio_plausibility": "生物学核查"
     },
     "findingCount_other": "· {{count}} 项发现",
     "dismissedCount": "· {{count}} 项已忽略",

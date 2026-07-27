@@ -7,6 +7,7 @@ mod debug_log;
 mod examples;
 mod gateway;
 mod git_snapshot;
+mod bio_check;
 mod goal;
 mod harness;
 mod compute;
@@ -14,6 +15,7 @@ mod jupyter;
 mod kernel;
 mod large_file;
 mod memory_store;
+mod method_check;
 mod modal;
 mod model_probe;
 mod opencode_config;
@@ -230,6 +232,8 @@ pub fn run() {
             review_store::review_sync,
             review_store::review_resolve,
             review_store::review_reopen,
+            method_check::method_check_evaluate,
+            bio_check::bio_check_evaluate,
             memory_store::create_memory,
             memory_store::list_memories,
             memory_store::set_memory_disabled,

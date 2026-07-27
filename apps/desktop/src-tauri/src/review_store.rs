@@ -62,6 +62,12 @@ pub struct FindingInput {
     pub check: Option<String>,
     #[serde(default)]
     pub tag: Option<String>,
+    /// Workspace-relative path of the artifact this finding is about. Bound to
+    /// that artifact's latest provenance version so the claim draws a graph
+    /// edge. Last field and skipped when absent, so a review block written
+    /// before this existed serializes — and fingerprints — identically.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_path: Option<String>,
 }
 
 /// One persisted finding: the claim row, its current state, and the resolution
@@ -193,15 +199,30 @@ fn insert_run(
     for finding in findings {
         let claim_id = science_store::new_id("claim");
         let claim_ref = science_store::put_text(root, &finding.title)?;
-        // `message_id` / `artifact_version_id` stay NULL: nothing writes
-        // `messages` or `artifact_versions`, and fabricating a parent row to
-        // satisfy the foreign key would invent provenance.
+        // `message_id` stays NULL — nothing writes `messages`. `artifact_version_id`
+        // is bound when the finding names an artifact: the bridge projects that
+        // file's latest provenance version into an `artifact_versions` row and
+        // returns its id, so the claim→artifact `Assesses` edge fires in the
+        // research graph. It stays NULL when no path is given or the artifact has
+        // no content-addressable version (binary/indirect writes) — never faked.
+        let artifact_version_id = match finding
+            .artifact_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            Some(path) => {
+                science_store::ensure_artifact_version(&tx, root, project_id, path)?
+            }
+            None => None,
+        };
         tx.execute(
             &format!(
-                "INSERT INTO claims (id, reviewer_run_id, claim_ref, status, created_at, updated_at) \
-                 VALUES (?1, ?2, ?3, ?4, {NOW}, {NOW})"
+                "INSERT INTO claims \
+                 (id, reviewer_run_id, claim_ref, artifact_version_id, status, created_at, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, {NOW}, {NOW})"
             ),
-            params![&claim_id, &run_id, &claim_ref, CLAIM_OPEN],
+            params![&claim_id, &run_id, &claim_ref, &artifact_version_id, CLAIM_OPEN],
         )
         .map_err(|error| format!("insert claim: {error}"))?;
 
@@ -457,6 +478,7 @@ mod tests {
             evidence: evidence.map(str::to_owned),
             check: check.map(str::to_owned),
             tag: None,
+            artifact_path: None,
         }
     }
 
@@ -562,6 +584,7 @@ mod tests {
             evidence: None,
             check: None,
             tag: Some("earth · crs".into()),
+            artifact_path: None,
         };
         let bare = finding("ok", "Nothing else to flag", None, None);
         let review = ensure_run(&conn, ws.path(), &project, "ses_1", &[tagged, bare], None).unwrap();
@@ -681,9 +704,10 @@ mod tests {
     }
 
     #[test]
-    fn claims_reference_no_message_or_artifact_row() {
-        // Those foreign keys point at tables nothing writes; a fabricated parent
-        // row would invent provenance, so both columns stay NULL.
+    fn claims_without_a_cited_artifact_stay_unbound() {
+        // `message_id` points at a table nothing writes, so it is always NULL.
+        // `artifact_version_id` is only bound when a finding names an artifact;
+        // the sample findings name none, so it too stays NULL — never faked.
         let (ws, conn, project) = fixture("nulls");
         let review = ensure_run(&conn, ws.path(), &project, "ses_1", &sample(), None).unwrap();
         let dangling: i64 = conn
@@ -695,5 +719,59 @@ mod tests {
             )
             .unwrap();
         assert_eq!(dangling, 0);
+    }
+
+    #[test]
+    fn a_finding_that_cites_an_artifact_binds_to_its_version() {
+        // The evidence-binding path end to end: a recorded provenance version →
+        // a claim whose artifact_version_id points at a real artifact_versions
+        // row, which is what lights the graph's claim→artifact edge.
+        let (ws, conn, project) = fixture("bind");
+        crate::provenance::append_record(
+            ws.path(),
+            "analysis/trend.py",
+            "write",
+            None,
+            None,
+            Some("import numpy as np\n".to_owned()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        let mut f = finding("warn", "Slope not significant", None, Some("number"));
+        f.artifact_path = Some("analysis/trend.py".to_owned());
+        let review = ensure_run(&conn, ws.path(), &project, "ses_1", &[f], None).unwrap();
+
+        let version_id: Option<String> = conn
+            .query_row(
+                "SELECT artifact_version_id FROM claims WHERE id = ?1",
+                params![&review.findings[0].claim_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let version_id = version_id.expect("claim should bind to an artifact version");
+
+        // The bound row is a real artifact_versions row for that logical path.
+        let logical: String = conn
+            .query_row(
+                "SELECT a.logical_path FROM artifact_versions v \
+                 JOIN artifacts a ON a.id = v.artifact_id WHERE v.id = ?1",
+                params![&version_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(logical, "analysis/trend.py");
+
+        // Re-running the same block reuses the version row, not a duplicate.
+        let mut f2 = finding("warn", "Slope not significant", None, Some("number"));
+        f2.artifact_path = Some("analysis/trend.py".to_owned());
+        ensure_run(&conn, ws.path(), &project, "ses_1", &[f2], None).unwrap();
+        let versions: i64 = conn
+            .query_row("SELECT COUNT(*) FROM artifact_versions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(versions, 1, "the same provenance version maps to one row");
     }
 }

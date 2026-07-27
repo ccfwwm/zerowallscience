@@ -48,6 +48,8 @@ export type ThreadBlock =
   | StepSummaryBlock
   | ToolCallBlock
   | ReviewerBlock
+  | MethodContextBlock
+  | BioClaimsBlock
   | DataTableBlock
   | FigureBlock
   | ArtifactBlock
@@ -138,8 +140,22 @@ export type FindingLevel = VerificationResult;
  * for P0-5's domain-correctness gates, and `integrity` for P1-6's
  * analysis-integrity gate. `domain`/`integrity` findings carry their own `tag`
  * (e.g. "physics · units", "stats · prereg") so new checks need no UI change.
+ *
+ * RV-Loop adds two verifier kinds Claude Science's Reviewer explicitly declines:
+ * `method_choice` (was the analysis method the right one for the data?) and
+ * `reasoning_trace` (does every substantive claim trace to an artifact/run?).
+ * The persisted `verification_checks.check_kind` is free text, so these need no
+ * migration — only a card label.
  */
-export type ReviewCheck = "citation" | "number" | "figure" | "domain" | "integrity";
+export type ReviewCheck =
+  | "citation"
+  | "number"
+  | "figure"
+  | "domain"
+  | "integrity"
+  | "method_choice"
+  | "reasoning_trace"
+  | "bio_plausibility";
 
 export interface ReviewFinding {
   level: FindingLevel;
@@ -150,11 +166,91 @@ export interface ReviewFinding {
   /** Freeform label shown on the card, overriding the check name (used by
    *  domain-correctness findings, e.g. "earth · crs"). */
   tag?: string;
+  /** Workspace-relative path (with `/` separators) of the artifact this finding
+   *  is about. When present, the persisted claim binds to that artifact's latest
+   *  provenance version, so the research graph draws a claim→artifact edge. */
+  artifactPath?: string;
 }
 
 export interface ReviewerBlock {
   kind: "reviewer";
   findings: ReviewFinding[];
+  note?: string;
+}
+
+/**
+ * A structured description of one analysis — the *input* to RV-Loop's
+ * MethodChoiceVerifier. kimi-k3 extracts this from a free-text plan/report and
+ * emits it as a ```method fenced block; the deterministic Rust engine
+ * (`method_check_evaluate`) turns it into `method_choice` findings. Separating
+ * the model's job (extraction) from the verdict (deterministic rules) is what
+ * keeps the check reproducible. Every field is optional: the rules that apply to
+ * what is known still fire.
+ */
+export interface MethodContext {
+  /** Study design, e.g. "paired", "repeated measures", "independent groups". */
+  design?: string;
+  /** Outcome/data type, e.g. "continuous", "binary", "count", "categorical". */
+  outcomeType?: string;
+  /** Number of groups/conditions compared, when known. */
+  groups?: number;
+  /** Total sample size, when known. */
+  sampleSize?: number;
+  /** Distribution status: "assumed" | "unknown" | "tested_normal" | "tested_nonnormal". */
+  normality?: string;
+  /** The test or model actually used, e.g. "independent t-test". */
+  testUsed?: string;
+  /** Number of hypothesis tests / comparisons made, when known. */
+  nComparisons?: number;
+  /** Whether a multiple-comparison correction was applied, when known. */
+  correctionApplied?: boolean;
+}
+
+/** A method context the agent emitted, evaluated by the deterministic engine and
+ *  rendered as reviewer findings (see `MethodCheckCard`). */
+export interface MethodContextBlock {
+  kind: "method-context";
+  context: MethodContext;
+  /** kimi-k3's prose framing of what it extracted, shown under the findings. */
+  note?: string;
+}
+
+/**
+ * One biological claim extracted from a report — the *input* to RV-Loop's
+ * BioPlausibilityVerifier. kimi-k3 extracts these from free text and emits them
+ * as a ```bio fenced block; the deterministic Rust engine (`bio_check_evaluate`)
+ * re-checks each against a live, license-clear registry (UniProt / QuickGO /
+ * Reactome) and turns them into `bio_plausibility` findings. The lookup is the
+ * verdict, not the model's opinion — which is the check Claude Science declines.
+ */
+export interface BioClaim {
+  /** `protein` | `gene` (UniProt existence), `go_term` (a GO term via QuickGO),
+   *  `gene_pathway` (membership via Reactome). */
+  kind: string;
+  /** Gene/protein symbol or name, e.g. "TP53". */
+  symbol?: string;
+  /** NCBI taxon id; the engine defaults to human (9606) when absent. */
+  organismId?: number;
+  /** A Gene Ontology id, e.g. "GO:0006915" (for `go_term`). */
+  goId?: string;
+  /** Human-readable term/label the report used; carried into evidence. */
+  term?: string;
+  /** The pathway a gene is claimed to belong to (name or Reactome stId). */
+  pathway?: string;
+  /** A source the report leaned on; used to detect license-gated databases
+   *  (KEGG/DisGeNET/…), which are reported rather than queried silently. */
+  source?: string;
+  /** The report sentence this claim came from, echoed into evidence. */
+  statement?: string;
+}
+
+/** A set of biological claims the agent emitted, re-checked against live sources
+ *  by the deterministic engine and rendered as reviewer findings (see
+ *  `BioCheckCard`). */
+export interface BioClaimsBlock {
+  kind: "bio-claims";
+  claims: BioClaim[];
+  /** kimi-k3's prose framing of what it extracted, shown under the findings. */
   note?: string;
 }
 

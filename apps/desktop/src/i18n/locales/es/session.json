@@ -250,7 +250,10 @@
       "number": "número",
       "figure": "figura ↔ código",
       "domain": "dominio",
-      "integrity": "integridad"
+      "integrity": "integridad",
+      "method_choice": "método",
+      "reasoning_trace": "trazabilidad",
+      "bio_plausibility": "verificación bio"
     },
     "findingCount_one": "· {{count}} hallazgo",
     "findingCount_other": "· {{count}} hallazgos",

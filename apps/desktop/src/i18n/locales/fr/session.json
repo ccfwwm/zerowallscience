@@ -250,7 +250,10 @@
       "number": "chiffre",
       "figure": "figure ↔ code",
       "domain": "domaine",
-      "integrity": "intégrité"
+      "integrity": "intégrité",
+      "method_choice": "méthode",
+      "reasoning_trace": "traçabilité",
+      "bio_plausibility": "vérif. bio"
     },
     "findingCount_one": "· {{count}} constat",
     "findingCount_other": "· {{count}} constats",

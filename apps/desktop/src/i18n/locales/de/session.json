@@ -250,7 +250,10 @@
       "number": "Zahl",
       "figure": "Abbildung ↔ Code",
       "domain": "Fachgebiet",
-      "integrity": "Integrität"
+      "integrity": "Integrität",
+      "method_choice": "Methodenwahl",
+      "reasoning_trace": "Nachweiskette",
+      "bio_plausibility": "Bio-Prüfung"
     },
     "findingCount_one": "· {{count}} Befund",
     "findingCount_other": "· {{count}} Befunde",

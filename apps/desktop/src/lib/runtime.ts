@@ -65,6 +65,8 @@ import { deriveArtifact } from "./artifacts";
 import { provenanceInputsFromEvent, recordProvenance } from "./provenance";
 import { recordRun, runInputFromEvent } from "./runs";
 import { splitReview } from "./review";
+import { splitMethodContext } from "./methodCheck";
+import { splitBioClaims } from "./bioCheck";
 import { notifyPermissionRequest } from "./systemNotification";
 import { fallbackDefaultModel } from "@/components/settings/modelCatalog";
 import { toast } from "@/lib/toast";
@@ -2502,8 +2504,13 @@ export function foldEvent(
   const index = { ...state.index };
   switch (event.type) {
     case "text.updated": {
-      // A ```review fence in the agent's text becomes a structured reviewer card.
-      const { clean, review } = splitReview(event.text);
+      // A ```review fence becomes a reviewer card; a ```method fence becomes a
+      // method-context card and a ```bio fence a bio-claims card, both evaluated
+      // by their deterministic engines. All three are stripped from the agent
+      // text so only prose remains.
+      const { clean: afterReview, review } = splitReview(event.text);
+      const { clean: afterMethod, method } = splitMethodContext(afterReview);
+      const { clean, bio } = splitBioClaims(afterMethod);
       const key = `text:${event.partId}`;
       if (key in index) blocks[index[key]] = { kind: "agent", markdown: clean };
       else {
@@ -2516,6 +2523,22 @@ export function foldEvent(
         else {
           blocks.push(review);
           index[rkey] = blocks.length - 1;
+        }
+      }
+      if (method) {
+        const mkey = `method:${event.partId}`;
+        if (mkey in index) blocks[index[mkey]] = method;
+        else {
+          blocks.push(method);
+          index[mkey] = blocks.length - 1;
+        }
+      }
+      if (bio) {
+        const bkey = `bio:${event.partId}`;
+        if (bkey in index) blocks[index[bkey]] = bio;
+        else {
+          blocks.push(bio);
+          index[bkey] = blocks.length - 1;
         }
       }
       return { blocks, index };
@@ -2711,9 +2734,13 @@ export function historyToThread(messages: HistoryMessage[], commands?: CommandIn
     } else {
       for (const p of m.parts) {
         if (p.type === "text" && p.text?.trim()) {
-          const { clean, review } = splitReview(p.text);
+          const { clean: afterReview, review } = splitReview(p.text);
+          const { clean: afterMethod, method } = splitMethodContext(afterReview);
+          const { clean, bio } = splitBioClaims(afterMethod);
           if (clean) blocks.push({ kind: "agent", markdown: clean });
           if (review) blocks.push(review);
+          if (method) blocks.push(method);
+          if (bio) blocks.push(bio);
         }
         else if (p.type === "reasoning" && p.text?.trim()) {
           blocks.push({ kind: "reasoning", text: p.text });

@@ -243,7 +243,10 @@
       "number": "数値",
       "figure": "図 ↔ コード",
       "domain": "ドメイン",
-      "integrity": "整合性"
+      "integrity": "整合性",
+      "method_choice": "手法選択",
+      "reasoning_trace": "追跡性",
+      "bio_plausibility": "生物学的検証"
     },
     "findingCount_other": "· {{count}} 件の指摘",
     "dismissedCount": "· {{count}} 件却下済み",

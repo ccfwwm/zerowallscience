@@ -243,7 +243,10 @@
       "number": "수치",
       "figure": "그림 ↔ 코드",
       "domain": "도메인",
-      "integrity": "정합성"
+      "integrity": "정합성",
+      "method_choice": "방법 적합",
+      "reasoning_trace": "추적성",
+      "bio_plausibility": "생물학 검증"
     },
     "findingCount_other": "· 발견 사항 {{count}}개",
     "dismissedCount": "· {{count}}개 해제됨",

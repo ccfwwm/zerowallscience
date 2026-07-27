@@ -4,6 +4,8 @@ import { AgentMessage, DataTable, RunningJobsOverlay, StatusLine, UserMessage } 
 import { ToolCallRow } from "./ToolCallRow";
 import { ToolGroup, groupToolBlocks } from "./ToolGroup";
 import { ReviewerCard } from "./ReviewerCard";
+import { MethodCheckCard } from "./MethodCheckCard";
+import { BioCheckCard } from "./BioCheckCard";
 import { ReasoningRow } from "./ReasoningRow";
 import { StepSummaryRow } from "./StepSummaryRow";
 import { FigureBlock } from "./FigureBlock";
@@ -50,6 +52,10 @@ export function renderBlock(
       return <ToolCallRow key={i} block={block} />;
     case "reviewer":
       return <ReviewerCard key={i} block={block} sessionId={sessionId} />;
+    case "method-context":
+      return <MethodCheckCard key={i} block={block} sessionId={sessionId} />;
+    case "bio-claims":
+      return <BioCheckCard key={i} block={block} sessionId={sessionId} />;
     case "table":
       return <DataTable key={i} block={block} />;
     case "figure":
