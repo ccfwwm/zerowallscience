@@ -159,10 +159,6 @@ export function SettingsPage() {
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [jupyter, setJupyter] = useState<JupyterStatus | null>(null);
 
-  // P2: Domestic model probing state
-  const [probingDomestic, setProbingDomestic] = useState(false);
-  const [domesticProbeResults, setDomesticProbeResults] = useState<Record<string, string[]>>({});
-
   // Load persisted role bindings on mount
   useEffect(() => {
     const loadBindings = async () => {
@@ -671,41 +667,6 @@ export function SettingsPage() {
     }
   };
 
-  // P2: Probe domestic model endpoints with primary/backup gateway switching
-  const probeDomesticModels = async () => {
-    setProbingDomestic(true);
-    try {
-      const { probeDomesticModels: probeFunc, DEFAULT_GATEWAYS } = await import("@/lib/model-probe");
-
-      // Probe with gateway failover
-      const results = await probeFunc(DEFAULT_GATEWAYS);
-
-      // Transform results for display
-      const displayResults: Record<string, string[]> = {};
-      for (const [provider, result] of Object.entries(results)) {
-        displayResults[provider] = result.models;
-      }
-
-      setDomesticProbeResults(displayResults);
-      const count = Object.keys(results).length;
-
-      if (count > 0) {
-        // Show which gateway was used
-        const gateways = new Set(Object.values(results).map(r => r.gateway));
-        const gatewayInfo = gateways.size === 1
-          ? ` via ${Array.from(gateways)[0]}`
-          : " via mixed gateways";
-        toast.success(t("toast.domesticProbeSuccess", `Found ${count} domestic provider(s)${gatewayInfo}`));
-      } else {
-        toast.success(t("toast.domesticProbeNone", "No domestic providers detected"));
-      }
-    } catch (err) {
-      toast.error(`${t("toast.domesticProbeFailed", "Failed to probe")}: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setProbingDomestic(false);
-    }
-  };
-
   const modelList = (s: string) => s.split(",").map((v) => v.trim()).filter(Boolean);
 
   const toggleDetectedModel = (id: string) => {
@@ -1033,46 +994,9 @@ export function SettingsPage() {
           } />
           <Row title={t("agent.definitions", "Loaded Agents")} control={
             <span className="text-[13px] text-muted">
-              {agentDefinitions.length} {t("agent.definitionsCount", "agent(s)")}
+              {t("agent.definitionsCount", { count: agentDefinitions.length, defaultValue: "{{count}} agent(s)" })}
             </span>
           } />
-          <Row
-            title={t("agent.domesticModels", "Domestic Models")}
-            hint={t("agent.domesticModelsHint", "Probe Kimi, GLM, DeepSeek, Baichuan, MiniMax endpoints")}
-            control={
-              <button
-                onClick={() => void probeDomesticModels()}
-                disabled={probingDomestic}
-                className={cn(
-                  chipCls(),
-                  "inline-flex items-center gap-1.5",
-                  probingDomestic && "cursor-wait opacity-60",
-                )}
-              >
-                {probingDomestic ? (
-                  <>
-                    <Loader2 size={12} className="animate-spin" />
-                    {t("agent.probing", "Probing...")}
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw size={12} />
-                    {t("agent.probe", "Probe")}
-                  </>
-                )}
-              </button>
-            }
-          >
-            {Object.keys(domesticProbeResults).length > 0 && (
-              <div className="mt-2 space-y-1.5">
-                {Object.entries(domesticProbeResults).map(([provider, models]) => (
-                  <div key={provider} className="text-xs text-muted">
-                    <span className="font-medium">{provider}</span>: {models.length} {t("agent.modelCount", "model(s)")}
-                  </div>
-                ))}
-              </div>
-            )}
-          </Row>
         </Section>
 
         <Section title={t("model.title")} hint={t("model.hint")}>

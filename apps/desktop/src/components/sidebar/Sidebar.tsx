@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
@@ -23,7 +23,7 @@ import {
 import type { Project } from "@zerowall/shared";
 import { cn } from "@/lib/cn";
 import { rootSessionOf, useRuntimeStore } from "@/lib/runtime";
-import { pickFolder, renameProject, isTauri, sub2apiAccount, type ProjectInfo } from "@/lib/tauri";
+import { pickFolder, renameProject, isTauri, sub2apiAccount, sub2apiBalance, type ProjectInfo } from "@/lib/tauri";
 import {
   SIDEBAR_MAX,
   SIDEBAR_MIN,
@@ -40,6 +40,7 @@ import { startPaneDrag } from "@/lib/dragPane";
 import { isGatewayWeb } from "@/lib/webMode";
 import { StatusPills } from "./StatusPills";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { RechargeDialog } from "@/components/settings/RechargeDialog";
 import logo from "@/assets/logo.webp";
 
 interface Row {
@@ -66,40 +67,95 @@ function initialCollapsedProjects(): string[] {
 }
 
 /** Sidebar pill showing Sub2API account state.
- *  Not logged in → "Sign in" link.  Logged in → truncated email.
+ *  Not logged in → "Sign in" link.  Logged in → truncated email + balance.
+ *  When the balance runs out we tint it red and pop the recharge dialog once.
  *  Desktop only (the web gateway has its own auth). */
 function AccountPill({ navigate }: { navigate: (to: string) => void }) {
   const { t } = useTranslation("nav");
   const [email, setEmail] = useState<string | null>(null);
+  const [balance, setBalance] = useState<string | null>(null);
+  const [rechargeOpen, setRechargeOpen] = useState(false);
+  const promptedLow = useRef(false);
   const location = useLocation();
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     if (!isTauri || isGatewayWeb) return;
     void sub2apiAccount()
-      .then((acct) => setEmail(acct?.email ?? null))
-      .catch(() => setEmail(null));
-  }, [location.pathname]); // re-check after navigating (e.g. from Settings)
+      .then((acct) => {
+        setEmail(acct?.email ?? null);
+        if (!acct) {
+          setBalance(null);
+          return;
+        }
+        void sub2apiBalance()
+          .then(({ balance }) => {
+            setBalance(balance);
+            // Insufficient balance → surface the recharge dialog once, so we
+            // don't reopen it on every navigation.
+            if (Number(balance) <= 0 && !promptedLow.current) {
+              promptedLow.current = true;
+              setRechargeOpen(true);
+            }
+          })
+          .catch(() => setBalance(null));
+      })
+      .catch(() => {
+        setEmail(null);
+        setBalance(null);
+      });
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [location.pathname, refresh]); // re-check after navigating (e.g. from Settings)
 
   if (!isTauri || isGatewayWeb) return null;
 
+  if (!email) {
+    return (
+      <button
+        className="flex items-center gap-2 rounded-input px-2 py-1 text-[13px] text-muted hover:bg-surface-2 hover:text-text"
+        onClick={() => navigate("/settings/models")}
+        aria-label={t("sidebar.signIn")}
+      >
+        <UserRound size={15} />
+        <span>{t("sidebar.signIn")}</span>
+      </button>
+    );
+  }
+
+  const low = balance !== null && Number(balance) <= 0;
+
   return (
-    <button
-      className="flex items-center gap-2 rounded-input px-2 py-1 text-[13px] text-muted hover:bg-surface-2 hover:text-text"
-      onClick={() => navigate("/settings/models")}
-      aria-label={email ? t("sidebar.account") : t("sidebar.signIn")}
-    >
-      {email ? (
-        <>
+    <>
+      <div className="flex items-center gap-2 rounded-input px-2 py-1 text-[13px] text-muted">
+        <button
+          className="flex min-w-0 flex-1 items-center gap-2 hover:text-text"
+          onClick={() => navigate("/settings/models")}
+          aria-label={t("sidebar.account")}
+        >
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
           <span className="min-w-0 truncate">{email}</span>
-        </>
-      ) : (
-        <>
-          <UserRound size={15} />
-          <span>{t("sidebar.signIn")}</span>
-        </>
-      )}
-    </button>
+        </button>
+        {balance !== null && (
+          <button
+            className={cn(
+              "shrink-0 font-mono text-xs transition-colors hover:text-text",
+              low ? "text-error" : "text-muted",
+            )}
+            onClick={() => setRechargeOpen(true)}
+            title={low ? t("sidebar.lowBalance") : t("sidebar.recharge")}
+          >
+            ¥ {Number(balance).toFixed(2)}
+          </button>
+        )}
+      </div>
+      <RechargeDialog
+        open={rechargeOpen}
+        onClose={() => setRechargeOpen(false)}
+        onPaid={refresh}
+      />
+    </>
   );
 }
 

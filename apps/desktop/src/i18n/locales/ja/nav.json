@@ -7,7 +7,9 @@
     "settings": "設定",
     "home": "ホームへ戻る",
     "signIn": "ログイン",
-    "account": "アカウント"
+    "account": "アカウント",
+    "recharge": "チャージ",
+    "lowBalance": "残高不足 — チャージしてください"
   },
   "items": {
     "new": "新規",

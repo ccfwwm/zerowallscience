@@ -555,6 +555,319 @@ fn list_models(base_url: &str, api_key: &str) -> Result<Vec<String>, String> {
     parse_models(&text)
 }
 
+// ---------------------------------------------------------------------------
+// Account balance + recharge (mirrors cscience-cloud's payment client).
+// ---------------------------------------------------------------------------
+
+/// The account balance the renderer may display. Kept as a string to avoid
+/// float rounding — the UI formats it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Balance {
+    pub balance: String,
+}
+
+/// A payment method the gateway offers at checkout.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PaymentMethod {
+    pub code: String,
+    pub label: String,
+    pub available: bool,
+    pub min_amount: Option<String>,
+    pub max_amount: Option<String>,
+}
+
+/// Checkout parameters: which methods are available, and any amount bounds.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutInfo {
+    pub methods: Vec<PaymentMethod>,
+    pub global_min: Option<String>,
+    pub global_max: Option<String>,
+    pub help_text: Option<String>,
+}
+
+/// A recharge order. `qr_code` and `pay_url` are payment pointers, not secrets —
+/// the renderer needs them to render the QR and open the pay page.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PaymentOrder {
+    pub id: String,
+    pub payment_type: Option<String>,
+    pub status: String,
+    pub amount: Option<String>,
+    pub pay_amount: Option<String>,
+    pub pay_url: Option<String>,
+    pub qr_code: Option<String>,
+    pub created_at: Option<String>,
+    pub expires_at: Option<String>,
+}
+
+/// Unwrap the gateway's `{code, data}` envelope, returning the inner `data`
+/// when present, else the value itself.
+fn envelope(v: &serde_json::Value) -> &serde_json::Value {
+    if v.get("code").is_some() && v.get("data").is_some() {
+        v.get("data").unwrap_or(v)
+    } else {
+        v
+    }
+}
+
+/// First non-empty value among `keys`, as an owned string. Numbers are
+/// stringified so `amount: 100` and `amount: "100"` both read.
+fn first_str(obj: &serde_json::Value, keys: &[&str]) -> Option<String> {
+    for k in keys {
+        match obj.get(k) {
+            Some(serde_json::Value::String(s)) if !s.trim().is_empty() => {
+                return Some(s.trim().to_string());
+            }
+            Some(serde_json::Value::Number(n)) => return Some(n.to_string()),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Keep a numeric limit only when it parses to a positive number.
+fn positive_limit(v: Option<String>) -> Option<String> {
+    v.filter(|s| s.parse::<f64>().map(|n| n > 0.0).unwrap_or(false))
+}
+
+/// Localized label for the common payment channels; unknown codes pass through.
+fn payment_label(code: &str) -> String {
+    match code.trim().to_lowercase().as_str() {
+        "alipay" | "ali_pay" => "支付宝".to_string(),
+        "wechat" | "wxpay" | "wechat_pay" => "微信支付".to_string(),
+        _ => code.to_string(),
+    }
+}
+
+/// A method's availability, tolerating bool / number / string shapes. Defaults
+/// to available so a gateway that omits the flag still lets the user pay.
+fn method_available(v: &serde_json::Value) -> bool {
+    let flag = v
+        .get("available")
+        .or_else(|| v.get("enabled"))
+        .or_else(|| v.get("status"));
+    match flag {
+        Some(serde_json::Value::Bool(b)) => *b,
+        Some(serde_json::Value::Number(n)) => n.as_f64().map(|f| f != 0.0).unwrap_or(true),
+        Some(serde_json::Value::String(s)) => !matches!(
+            s.trim().to_lowercase().as_str(),
+            "false" | "0" | "no" | "inactive" | "disabled" | "unavailable"
+        ),
+        _ => true,
+    }
+}
+
+fn parse_method(v: &serde_json::Value, fallback_code: &str) -> Option<PaymentMethod> {
+    let code = first_str(v, &["code", "payment_type", "paymentType", "method", "type", "name"])
+        .or_else(|| (!fallback_code.is_empty()).then(|| fallback_code.to_string()))?;
+    let label = first_str(v, &["label", "display_name", "displayName"])
+        .unwrap_or_else(|| payment_label(&code));
+    Some(PaymentMethod {
+        available: method_available(v),
+        min_amount: first_str(v, &["min", "min_amount", "minAmount", "minimum_amount"]),
+        max_amount: first_str(v, &["max", "max_amount", "maxAmount", "maximum_amount"]),
+        code,
+        label,
+    })
+}
+
+/// Balance from `GET /auth/me`, tolerating a nested `user`/`account` object.
+pub(crate) fn parse_balance(body: &str) -> Result<String, String> {
+    let root: serde_json::Value =
+        serde_json::from_str(body).map_err(|e| format!("the balance reply was not JSON: {e}"))?;
+    let data = envelope(&root);
+    let user = data.get("user").or_else(|| data.get("account")).unwrap_or(data);
+    Ok(first_str(user, &["balance", "credit", "amount"]).unwrap_or_else(|| "0".to_string()))
+}
+
+/// Checkout methods + bounds from `GET /payment/checkout-info`. Methods may
+/// arrive as an array or as a code-keyed object.
+pub(crate) fn parse_checkout(body: &str) -> Result<CheckoutInfo, String> {
+    let root: serde_json::Value =
+        serde_json::from_str(body).map_err(|e| format!("the checkout reply was not JSON: {e}"))?;
+    let data = envelope(&root);
+    let methods_val = ["methods", "payment_methods", "paymentMethods", "channels", "payments"]
+        .iter()
+        .find_map(|k| data.get(*k));
+    let mut methods = Vec::new();
+    match methods_val {
+        Some(serde_json::Value::Array(arr)) => {
+            methods.extend(arr.iter().filter_map(|m| parse_method(m, "")));
+        }
+        Some(serde_json::Value::Object(map)) => {
+            methods.extend(map.iter().filter_map(|(code, v)| parse_method(v, code)));
+        }
+        _ => {}
+    }
+    Ok(CheckoutInfo {
+        methods,
+        global_min: positive_limit(first_str(data, &["global_min", "globalMin", "min", "min_amount"])),
+        global_max: positive_limit(first_str(data, &["global_max", "globalMax", "max", "max_amount"])),
+        help_text: first_str(data, &["help_text", "helpText", "description", "remark"]),
+    })
+}
+
+/// A recharge order from `POST /payment/orders` or `GET /payment/orders/:id`,
+/// tolerating a nested `order`/`payment`/`item` object and the id/qr/url aliases.
+pub(crate) fn parse_order(body: &str) -> Result<PaymentOrder, String> {
+    let root: serde_json::Value =
+        serde_json::from_str(body).map_err(|e| format!("the order reply was not JSON: {e}"))?;
+    let data = envelope(&root);
+    let raw = data
+        .get("order")
+        .or_else(|| data.get("payment"))
+        .or_else(|| data.get("item"))
+        .unwrap_or(data);
+    let id = first_str(raw, &["order_id", "orderId", "id", "trade_no", "tradeNo", "out_trade_no"])
+        .ok_or("the gateway returned an order with no id")?;
+    Ok(PaymentOrder {
+        id,
+        payment_type: first_str(
+            raw,
+            &["payment_type", "paymentType", "method", "pay_method", "channel", "type"],
+        ),
+        status: first_str(raw, &["status", "state", "order_status", "orderStatus"])
+            .unwrap_or_else(|| "unknown".to_string()),
+        amount: first_str(raw, &["amount", "money", "total", "total_amount", "totalAmount"]),
+        pay_amount: first_str(raw, &["pay_amount", "payAmount", "actual_amount", "actualAmount"]),
+        pay_url: first_str(
+            raw,
+            &["pay_url", "payUrl", "payment_url", "paymentUrl", "checkout_url", "url"],
+        ),
+        qr_code: first_str(raw, &["qr_code", "qrCode", "qrcode", "qr", "code_url"]),
+        created_at: first_str(raw, &["created_at", "createdAt", "create_time", "createTime"]),
+        expires_at: first_str(raw, &["expires_at", "expiresAt", "expire_time", "expireTime"]),
+    })
+}
+
+/// POST JSON with an `idempotency-key` header. Order creation must be idempotent
+/// so a retried request never opens a second charge.
+fn post_json_idem(
+    base_url: &str,
+    path: &str,
+    body: serde_json::Value,
+    bearer: &str,
+    idempotency_key: &str,
+) -> Result<String, String> {
+    let res = client()?
+        .post(api(base_url, path))
+        .header("content-type", "application/json")
+        .header("idempotency-key", idempotency_key)
+        .bearer_auth(bearer)
+        .body(body.to_string())
+        .send()
+        .map_err(|e| format!("{UNREACHABLE}{e}"))?;
+    let status = res.status();
+    let text = res.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(error_message(status.as_u16(), &text));
+    }
+    Ok(text)
+}
+
+/// Session base + token, with the candidate bases reordered so the gateway that
+/// answered sign-in is tried first. Shared by the account/payment commands.
+fn session_context(sub2api: &State<'_, Sub2ApiState>) -> Result<(Vec<String>, String), String> {
+    let (session_base, token) = {
+        let guard = sub2api.session.lock().map_err(|_| "session lock poisoned")?;
+        let session = guard.as_ref().ok_or("sign in to the AI platform first")?;
+        (session.base_url.clone(), session.access_token.clone())
+    };
+    let mut bases = candidate_bases();
+    if let Some(pos) = bases.iter().position(|b| b == &session_base) {
+        if pos != 0 {
+            bases.swap(0, pos);
+        }
+    }
+    Ok((bases, token))
+}
+
+/// The signed-in account's balance, as a display string.
+#[tauri::command]
+pub async fn sub2api_balance(sub2api: State<'_, Sub2ApiState>) -> Result<Balance, String> {
+    let (bases, token) = session_context(&sub2api)?;
+    let (_base, balance) = blocking(move || {
+        with_failover(&bases, |base| parse_balance(&get_json(base, "/auth/me", &token)?))
+    })
+    .await?;
+    Ok(Balance { balance })
+}
+
+/// Checkout parameters for the recharge dialog: available methods + bounds.
+#[tauri::command]
+pub async fn sub2api_checkout_info(sub2api: State<'_, Sub2ApiState>) -> Result<CheckoutInfo, String> {
+    let (bases, token) = session_context(&sub2api)?;
+    let (_base, info) = blocking(move || {
+        with_failover(&bases, |base| {
+            parse_checkout(&get_json(base, "/payment/checkout-info", &token)?)
+        })
+    })
+    .await?;
+    Ok(info)
+}
+
+/// Create a balance-recharge order. Returns the QR payload and pay URL so the
+/// renderer can show a QR and an "open pay page" button.
+#[tauri::command]
+pub async fn sub2api_create_order(
+    sub2api: State<'_, Sub2ApiState>,
+    payment_type: String,
+    amount: f64,
+) -> Result<PaymentOrder, String> {
+    let (bases, token) = session_context(&sub2api)?;
+    let payment_type = payment_type.trim().to_string();
+    if payment_type.is_empty() {
+        return Err("choose a payment method".into());
+    }
+    if !(amount.is_finite() && amount > 0.0) {
+        return Err("enter a valid amount".into());
+    }
+    // A fresh key per attempt: idempotency guards accidental double-submits of
+    // one order, not two deliberate top-ups.
+    let idempotency_key = crate::runtime::random_hex(16);
+    let (_base, order) = blocking(move || {
+        let body = serde_json::json!({
+            "payment_type": payment_type,
+            "amount": amount,
+            "order_type": "balance",
+        });
+        with_failover(&bases, |base| {
+            parse_order(&post_json_idem(
+                base,
+                "/payment/orders",
+                body.clone(),
+                &token,
+                &idempotency_key,
+            )?)
+        })
+    })
+    .await?;
+    Ok(order)
+}
+
+/// Poll a recharge order's status (paid / pending / …).
+#[tauri::command]
+pub async fn sub2api_order_status(
+    sub2api: State<'_, Sub2ApiState>,
+    order_id: String,
+) -> Result<PaymentOrder, String> {
+    let (bases, token) = session_context(&sub2api)?;
+    let order_id = order_id.trim().to_string();
+    if order_id.is_empty() {
+        return Err("missing order id".into());
+    }
+    let (_base, order) = blocking(move || {
+        let path = format!("/payment/orders/{order_id}");
+        with_failover(&bases, |base| parse_order(&get_json(base, &path, &token)?))
+    })
+    .await?;
+    Ok(order)
+}
+
 /// Run a blocking HTTP call off the command thread. `reqwest::blocking` cannot
 /// run inside the async runtime's worker, and the surrounding commands hold no
 /// lock across the await — the session mutex is always released first.
@@ -733,5 +1046,68 @@ mod tests {
     #[test]
     fn api_paths_are_versioned_once() {
         assert_eq!(api("https://x.test/", "/auth/login"), "https://x.test/api/v1/auth/login");
+    }
+
+    #[test]
+    fn balance_is_read_from_the_envelope_and_nested_user() {
+        assert_eq!(parse_balance(r#"{"balance":"12.34"}"#).unwrap(), "12.34");
+        assert_eq!(
+            parse_balance(r#"{"code":0,"data":{"user":{"balance":88.5}}}"#).unwrap(),
+            "88.5"
+        );
+        // credit/amount fallbacks, and a missing balance reads as zero.
+        assert_eq!(parse_balance(r#"{"credit":"5"}"#).unwrap(), "5");
+        assert_eq!(parse_balance(r#"{"email":"a@b.co"}"#).unwrap(), "0");
+        assert!(parse_balance("not json").is_err());
+    }
+
+    #[test]
+    fn checkout_reads_methods_as_array_or_object_with_bounds() {
+        let arr = parse_checkout(
+            r#"{"code":0,"data":{"global_min":"1","global_max":"5000","methods":[
+                {"code":"alipay"},
+                {"code":"wechat","available":false,"min_amount":"10"}
+            ]}}"#,
+        )
+        .unwrap();
+        assert_eq!(arr.global_min.as_deref(), Some("1"));
+        assert_eq!(arr.global_max.as_deref(), Some("5000"));
+        assert_eq!(arr.methods.len(), 2);
+        assert_eq!(arr.methods[0].code, "alipay");
+        assert_eq!(arr.methods[0].label, "支付宝");
+        assert!(arr.methods[0].available);
+        assert!(!arr.methods[1].available);
+        assert_eq!(arr.methods[1].min_amount.as_deref(), Some("10"));
+
+        // Object-keyed methods; a zero/absent bound is dropped.
+        let obj = parse_checkout(r#"{"methods":{"wechat":{"enabled":true}},"global_min":"0"}"#).unwrap();
+        assert_eq!(obj.methods.len(), 1);
+        assert_eq!(obj.methods[0].code, "wechat");
+        assert_eq!(obj.methods[0].label, "微信支付");
+        assert!(obj.global_min.is_none());
+    }
+
+    #[test]
+    fn order_reads_id_qr_and_url_across_aliases() {
+        let order = parse_order(
+            r#"{"code":0,"data":{"order":{
+                "trade_no":"T-1","status":"pending","amount":100,
+                "code_url":"weixin://wxpay/xxx","payment_url":"https://pay.example/x"
+            }}}"#,
+        )
+        .unwrap();
+        assert_eq!(order.id, "T-1");
+        assert_eq!(order.status, "pending");
+        assert_eq!(order.amount.as_deref(), Some("100"));
+        assert_eq!(order.qr_code.as_deref(), Some("weixin://wxpay/xxx"));
+        assert_eq!(order.pay_url.as_deref(), Some("https://pay.example/x"));
+
+        // Flat shape, unknown status default, and a missing id is an error.
+        let flat = parse_order(r#"{"id":"7","qr":"data:image/png;base64,AA"}"#).unwrap();
+        assert_eq!(flat.id, "7");
+        assert_eq!(flat.status, "unknown");
+        assert_eq!(flat.qr_code.as_deref(), Some("data:image/png;base64,AA"));
+        assert!(parse_order(r#"{"status":"paid"}"#).is_err());
+        assert!(parse_order("not json").is_err());
     }
 }

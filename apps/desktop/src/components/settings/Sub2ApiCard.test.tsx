@@ -14,9 +14,15 @@ const mocks = vi.hoisted(() => ({
   logout: vi.fn(),
   fetchGroups: vi.fn(),
   provisionGroup: vi.fn(),
+  balance: vi.fn(),
+  checkoutInfo: vi.fn(),
+  createOrder: vi.fn(),
+  orderStatus: vi.fn(),
+  openExternal: vi.fn(),
   addCustomProvider: vi.fn(),
   setDefaultModel: vi.fn(),
   loadCatalog: vi.fn(),
+  connectRetry: vi.fn(),
 }));
 
 vi.mock("@/lib/tauri", () => ({
@@ -30,6 +36,11 @@ vi.mock("@/lib/tauri", () => ({
   sub2apiLogout: mocks.logout,
   sub2apiFetchGroups: mocks.fetchGroups,
   sub2apiProvisionGroup: mocks.provisionGroup,
+  sub2apiBalance: mocks.balance,
+  sub2apiCheckoutInfo: mocks.checkoutInfo,
+  sub2apiCreateOrder: mocks.createOrder,
+  sub2apiOrderStatus: mocks.orderStatus,
+  openExternal: mocks.openExternal,
 }));
 
 vi.mock("@/lib/webMode", () => ({
@@ -38,14 +49,18 @@ vi.mock("@/lib/webMode", () => ({
   },
 }));
 
-vi.mock("@/lib/runtime", () => ({
-  getClient: () => ({
-    addCustomProvider: mocks.addCustomProvider,
-    setDefaultModel: mocks.setDefaultModel,
-  }),
-  useRuntimeStore: (select: (s: { status: string; loadCatalog: unknown }) => unknown) =>
-    select({ status: "ready", loadCatalog: mocks.loadCatalog }),
-}));
+vi.mock("@/lib/runtime", () => {
+  const state = { status: "ready", loadCatalog: mocks.loadCatalog, connectRetry: mocks.connectRetry };
+  const useRuntimeStore = (select: (s: typeof state) => unknown) => select(state);
+  useRuntimeStore.getState = () => state;
+  return {
+    getClient: () => ({
+      addCustomProvider: mocks.addCustomProvider,
+      setDefaultModel: mocks.setDefaultModel,
+    }),
+    useRuntimeStore,
+  };
+});
 
 vi.mock("@/lib/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -76,6 +91,7 @@ beforeEach(() => {
   });
   mocks.login.mockResolvedValue({ email: "a@b.co", baseUrl: "https://code.aicodeme.cn" });
   mocks.register.mockResolvedValue(undefined);
+  mocks.balance.mockResolvedValue({ balance: "12.34" });
   mocks.addCustomProvider.mockResolvedValue(undefined);
   mocks.setDefaultModel.mockResolvedValue(undefined);
 });
@@ -126,8 +142,9 @@ describe("Sub2API panel", () => {
     expect(mocks.login).toHaveBeenCalledWith({
       email: "a@b.co",
       password: "secret1",
-      code: undefined,
     });
+    // Sign-in must not render the verification-code field — that belongs to register only.
+    expect(screen.queryByPlaceholderText("Email verification code")).not.toBeInTheDocument();
     expect(await screen.findByText("a@b.co")).toBeInTheDocument();
   });
 
@@ -186,14 +203,14 @@ describe("Sub2API panel", () => {
       "true",
       "false",
     ]);
-    expect(screen.getByRole("button", { name: "Connect 4 model(s)" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save 4 model(s)" })).toBeEnabled();
   });
 
   it("registers the provider with no apiKey and auto-sets a domestic default model", async () => {
     mocks.account = { email: "a@b.co", baseUrl: "https://code.aicodeme.cn" };
     render(<Sub2ApiCard />);
     await userEvent.click(await screen.findByRole("button", { name: /Fetch my models/ }));
-    await userEvent.click(await screen.findByRole("button", { name: "Connect 4 model(s)" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save 4 model(s)" }));
 
     expect(mocks.addCustomProvider).toHaveBeenCalledTimes(1);
     const [id, opts] = mocks.addCustomProvider.mock.calls[0];
@@ -206,7 +223,7 @@ describe("Sub2API panel", () => {
     });
     expect(opts).not.toHaveProperty("apiKey");
     // Auto-set the default model to the first domestic model.
-    expect(mocks.setDefaultModel).toHaveBeenCalledWith("sub2api/deepseek-v3");
+    expect(mocks.setDefaultModel).toHaveBeenCalledWith("sub2api/kimi-k2-thinking");
     expect(mocks.loadCatalog).toHaveBeenCalled();
   });
 
@@ -224,7 +241,7 @@ describe("Sub2API panel", () => {
       "aria-pressed",
       "true",
     );
-    expect(screen.getByRole("button", { name: "Connect 6 model(s)" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save 6 model(s)" })).toBeEnabled();
   });
 
   it("surfaces the gateway's own error text instead of a generic failure", async () => {

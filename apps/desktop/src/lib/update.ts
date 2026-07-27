@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { latestRelease } from "./tauri";
 
-const RELEASE_URL = "https://api.github.com/repos/ccfwwm/zerowallscience/releases/latest";
+// The public downloads repo that actually holds the releases (see build.yml).
+const RELEASE_URL = "https://api.github.com/repos/ccfwwm/zerowallscience-releases/releases/latest";
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const ENABLED_KEY = "zerowall.update.enabled";
 const BADGE_KEY = "zerowall.update.badge";

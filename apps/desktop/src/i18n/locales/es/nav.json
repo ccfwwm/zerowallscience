@@ -7,7 +7,9 @@
     "settings": "Configuración",
     "home": "Inicio",
     "signIn": "Iniciar sesión",
-    "account": "Cuenta"
+    "account": "Cuenta",
+    "recharge": "Recargar",
+    "lowBalance": "Saldo agotado: recarga"
   },
   "items": {
     "new": "Nuevo",

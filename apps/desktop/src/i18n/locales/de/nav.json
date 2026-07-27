@@ -7,7 +7,9 @@
     "settings": "Einstellungen",
     "home": "Startseite",
     "signIn": "Sign in",
-    "account": "Account"
+    "account": "Account",
+    "recharge": "Aufladen",
+    "lowBalance": "Guthaben leer – aufladen"
   },
   "items": {
     "new": "Neu",

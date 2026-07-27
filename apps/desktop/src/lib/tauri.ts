@@ -214,6 +214,73 @@ export async function sub2apiProvisionGroup(groupId: number): Promise<Sub2ApiPro
   return invoke<Sub2ApiProvisioned>("sub2api_provision_group", { groupId });
 }
 
+/** The signed-in account's balance, as a display string (kept as a string to
+ *  avoid float rounding — the UI formats it). */
+export interface Sub2ApiBalance {
+  balance: string;
+}
+
+/** One payment channel offered at checkout. */
+export interface Sub2ApiPaymentMethod {
+  code: string;
+  label: string;
+  available: boolean;
+  minAmount: string | null;
+  maxAmount: string | null;
+}
+
+/** Checkout parameters for the recharge dialog. */
+export interface Sub2ApiCheckoutInfo {
+  methods: Sub2ApiPaymentMethod[];
+  globalMin: string | null;
+  globalMax: string | null;
+  helpText: string | null;
+}
+
+/** A recharge order. `qrCode` and `payUrl` are payment pointers, not secrets. */
+export interface Sub2ApiPaymentOrder {
+  id: string;
+  paymentType: string | null;
+  status: string;
+  amount: string | null;
+  payAmount: string | null;
+  payUrl: string | null;
+  qrCode: string | null;
+  createdAt: string | null;
+  expiresAt: string | null;
+}
+
+/** The signed-in account's balance. */
+export async function sub2apiBalance(): Promise<Sub2ApiBalance> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<Sub2ApiBalance>("sub2api_balance");
+}
+
+/** Checkout parameters: available methods + amount bounds. */
+export async function sub2apiCheckoutInfo(): Promise<Sub2ApiCheckoutInfo> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<Sub2ApiCheckoutInfo>("sub2api_checkout_info");
+}
+
+/** Create a balance-recharge order. Returns the QR payload and pay URL. */
+export async function sub2apiCreateOrder(
+  paymentType: string,
+  amount: number,
+): Promise<Sub2ApiPaymentOrder> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<Sub2ApiPaymentOrder>("sub2api_create_order", { paymentType, amount });
+}
+
+/** Poll a recharge order's status. */
+export async function sub2apiOrderStatus(orderId: string): Promise<Sub2ApiPaymentOrder> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<Sub2ApiPaymentOrder>("sub2api_order_status", { orderId });
+}
+
 /** Whether the OS credential manager has credentials for a provider. */
 export async function providerSecretExists(providerId: string): Promise<boolean> {
   if (!isTauri) return false;

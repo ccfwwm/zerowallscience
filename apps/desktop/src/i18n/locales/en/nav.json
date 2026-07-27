@@ -7,7 +7,9 @@
     "settings": "Settings",
     "home": "Home",
     "signIn": "Sign in",
-    "account": "Account"
+    "account": "Account",
+    "recharge": "Recharge",
+    "lowBalance": "Balance empty — recharge"
   },
   "items": {
     "new": "New",

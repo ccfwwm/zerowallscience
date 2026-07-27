@@ -1,6 +1,8 @@
 use serde::Serialize;
 
-const RELEASES_ATOM_URL: &str = "https://github.com/ccfwwm/zerowallscience/releases.atom";
+// Releases are published to the SEPARATE public downloads repo (see
+// `.github/workflows/build.yml` DOWNLOADS_REPO), not this private source repo.
+const RELEASES_ATOM_URL: &str = "https://github.com/ccfwwm/zerowallscience-releases/releases.atom";
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -97,7 +99,7 @@ mod tests {
 <feed>
   <entry>
     <updated>2026-07-09T13:59:12Z</updated>
-    <link rel="alternate" type="text/html" href="https://github.com/ccfwwm/zerowallscience/releases/tag/v0.1.8"/>
+    <link rel="alternate" type="text/html" href="https://github.com/ccfwwm/zerowallscience-releases/releases/tag/v0.1.8"/>
     <title>ZeroWall Science v0.1.8</title>
   </entry>
 </feed>
@@ -107,7 +109,7 @@ mod tests {
             parse_latest_release(atom).unwrap(),
             ReleaseInfo {
                 version: "v0.1.8".into(),
-                url: "https://github.com/ccfwwm/zerowallscience/releases/tag/v0.1.8".into(),
+                url: "https://github.com/ccfwwm/zerowallscience-releases/releases/tag/v0.1.8".into(),
                 name: Some("ZeroWall Science v0.1.8".into()),
                 published_at: Some("2026-07-09T13:59:12Z".into()),
             },

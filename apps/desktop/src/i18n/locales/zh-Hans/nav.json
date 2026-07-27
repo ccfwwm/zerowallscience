@@ -7,7 +7,9 @@
     "settings": "设置",
     "home": "回到首页",
     "signIn": "登录",
-    "account": "账号"
+    "account": "账号",
+    "recharge": "充值",
+    "lowBalance": "余额不足，请充值"
   },
   "items": {
     "new": "新建",

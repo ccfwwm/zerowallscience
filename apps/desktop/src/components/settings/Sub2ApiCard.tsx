@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, KeyRound, Loader2, LogOut, RefreshCw, Sparkles } from "lucide-react";
+import { Check, KeyRound, Loader2, LogOut, RefreshCw, Sparkles, Wallet } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   isTauri,
   sub2apiAccount,
+  sub2apiBalance,
   sub2apiFetchGroups,
   sub2apiLogin,
   sub2apiLogout,
@@ -15,6 +16,7 @@ import {
 import { isGatewayWeb } from "@/lib/webMode";
 import { getClient, useRuntimeStore } from "@/lib/runtime";
 import { Section } from "./Section";
+import { RechargeDialog } from "./RechargeDialog";
 import { inputCls } from "./inputCls";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
@@ -42,6 +44,20 @@ export function orderModels(models: string[]): string[] {
   });
 }
 
+/** The model the app defaults to after provisioning. The product leads with
+ *  Kimi, so prefer the newest Kimi the account actually has, then any Kimi,
+ *  then any other domestic model, then whatever is first. Exported for the
+ *  test — the preference is the feature. */
+const DEFAULT_MODEL_PREFERENCE = ["kimi-k3", "kimi"];
+
+export function pickDefaultModel(models: string[]): string | undefined {
+  for (const pref of DEFAULT_MODEL_PREFERENCE) {
+    const hit = models.find((m) => m.toLowerCase().includes(pref));
+    if (hit) return hit;
+  }
+  return models.find(isDomesticModel) ?? models[0];
+}
+
 type Mode = "signIn" | "register";
 
 const MODES: Mode[] = ["signIn", "register"];
@@ -65,7 +81,6 @@ const DOMESTIC_MARK = "★";
 export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: boolean } = {}) {
   const { t } = useTranslation(["settings", "common"]);
   const loadCatalog = useRuntimeStore((s) => s.loadCatalog);
-  const connected = useRuntimeStore((s) => s.status) === "ready";
 
   const [mode, setMode] = useState<Mode>("signIn");
   const [email, setEmail] = useState("");
@@ -81,12 +96,25 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [baseUrl, setBaseUrl] = useState("");
   const [manual, setManual] = useState("");
+  const [balance, setBalance] = useState<string | null>(null);
+  const [rechargeOpen, setRechargeOpen] = useState(false);
+
+  // Best-effort balance fetch — a gateway that has no billing surface just
+  // leaves the amount hidden rather than surfacing an error to the user.
+  const refreshBalance = () => {
+    void sub2apiBalance()
+      .then((b) => setBalance(b.balance))
+      .catch(() => setBalance(null));
+  };
 
   // A session survives navigating away from Settings, so ask on mount.
   useEffect(() => {
     if (!isTauri || isGatewayWeb) return;
     void sub2apiAccount()
-      .then(setAccount)
+      .then((acct) => {
+        setAccount(acct);
+        if (acct) refreshBalance();
+      })
       .catch(() => setAccount(null));
   }, []);
 
@@ -96,6 +124,53 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
 
   const fail = (err: unknown) =>
     toast.error(err instanceof Error ? err.message : String(err));
+
+  // After a fresh sign-in, stand up the AI 平台 provider without making the
+  // user click through Fetch → Save → pick a model: fetch the account's
+  // groups, provision the domestic-leaning one, register the provider, and
+  // default to Kimi. Best-effort — a failure leaves the account signed in and
+  // the manual Fetch/Save controls available.
+  const autoSetup = async () => {
+    setBusy("fetch");
+    try {
+      const res = await sub2apiFetchGroups();
+      setGroups(res.groups);
+      setExistingKeyGroupIds(res.existingKeyGroupIds);
+      const pick =
+        res.groups.find((g) => /国产|domestic/i.test(g.name)) ??
+        res.groups.find((g) => /default/i.test(g.name)) ??
+        res.groups[0];
+      if (!pick) return;
+      setSelectedGroupId(pick.id);
+      const prov = await sub2apiProvisionGroup(pick.id);
+      setBaseUrl(prov.baseUrl);
+      setModels(prov.models);
+      const domestic = prov.models.filter(isDomesticModel);
+      const chosen = orderModels(domestic.length > 0 ? domestic : prov.models);
+      setPicked(new Set(chosen));
+      if (chosen.length === 0) return;
+      // Start the runtime if it is not up yet — provisioning must not depend on
+      // the sidecar already being ready.
+      if (useRuntimeStore.getState().status !== "ready") {
+        const ok = await useRuntimeStore.getState().connectRetry();
+        if (!ok) return; // leave the models staged; the 保存 button still works
+      }
+      await getClient()!.addCustomProvider(PROVIDER_ID, {
+        name: t("sub2api.providerName"),
+        npm: "@ai-sdk/openai-compatible",
+        baseURL: prov.baseUrl,
+        models: chosen,
+      });
+      const def = pickDefaultModel(chosen);
+      if (def) await getClient()!.setDefaultModel(`${PROVIDER_ID}/${def}`);
+      await loadCatalog();
+      toast.success(t("sub2api.connected", { count: chosen.length }));
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const sendCode = async () => {
     if (!email.trim()) return;
@@ -139,13 +214,16 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       const acct = await sub2apiLogin({
         email: email.trim(),
         password,
-        code: code.trim() || undefined,
       });
       setAccount(acct);
       setPassword("");
       setCode("");
+      refreshBalance();
       toast.success(t("sub2api.signedIn", { email: acct.email }));
       onLogin?.();
+      // Provision the channel + default model automatically so the user does
+      // not have to configure anything after logging in.
+      await autoSetup();
     } catch (err) {
       fail(err);
     } finally {
@@ -158,6 +236,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
     setAccount(null);
     setModels(null);
     setPicked(new Set());
+    setBalance(null);
   };
 
   // Step 1: fetch groups + existing key info, then auto-select the best group.
@@ -221,16 +300,25 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
     }
     setBusy("connect");
     try {
+      // The runtime need not already be up to save: start it first so the
+      // Save button is never greyed out just because the sidecar is offline.
+      if (useRuntimeStore.getState().status !== "ready") {
+        const ok = await useRuntimeStore.getState().connectRetry();
+        if (!ok) {
+          toast.error(t("sub2api.runtimeOffline"));
+          return;
+        }
+      }
       await getClient()!.addCustomProvider(PROVIDER_ID, {
         name: t("sub2api.providerName"),
         npm: "@ai-sdk/openai-compatible",
         baseURL: baseUrl,
         models: chosen,
       });
-      // Auto-set the default model to a domestic one, preventing the
-      // "Anthropic API key is missing" error for users who only have
-      // an AI 平台 key.
-      const first = chosen.find(isDomesticModel) ?? chosen[0];
+      // Auto-set the default model to a domestic one (preferring Kimi),
+      // preventing the "Anthropic API key is missing" error for users who
+      // only have an AI 平台 key.
+      const first = pickDefaultModel(chosen);
       if (first) {
         await getClient()!.setDefaultModel(`${PROVIDER_ID}/${first}`);
       }
@@ -255,6 +343,17 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
             </span>
             <span className="min-w-0 break-all font-mono text-xs text-muted">{account.baseUrl}</span>
             <div className="hidden flex-1 sm:block" />
+            {balance !== null && (
+              <span className="shrink-0 font-mono text-xs text-muted" title={t("sub2api.balance")}>
+                ¥ {Number(balance).toFixed(2)}
+              </span>
+            )}
+            <button
+              className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-text"
+              onClick={() => setRechargeOpen(true)}
+            >
+              <Wallet size={12} /> {t("sub2api.recharge")}
+            </button>
             <button
               className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-text"
               onClick={() => void signOut()}
@@ -280,8 +379,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
               <button
                 className={btn("ghost")}
                 onClick={() => void connect()}
-                disabled={busy !== null || !connected || picked.size === 0}
-                title={connected ? undefined : t("sub2api.runtimeOffline")}
+                disabled={busy !== null || picked.size === 0}
               >
                 {busy === "connect" ? (
                   <Loader2 size={13} className="animate-spin" />
@@ -424,16 +522,14 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
             placeholder={t("sub2api.passwordPlaceholder")}
             className={inputCls("w-full font-mono")}
           />
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder={t(
-                mode === "register" ? "sub2api.codePlaceholder" : "sub2api.twoFactorPlaceholder",
-              )}
-              className={inputCls("min-w-0 flex-1 font-mono")}
-            />
-            {mode === "register" && (
+          {mode === "register" && (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder={t("sub2api.codePlaceholder")}
+                className={inputCls("min-w-0 flex-1 font-mono")}
+              />
               <button
                 className={btn("ghost")}
                 onClick={() => void sendCode()}
@@ -446,8 +542,8 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
                 )}
                 {t("sub2api.sendCode")}
               </button>
-            )}
-          </div>
+            </div>
+          )}
           {mode === "register" && (
             <input
               value={invite}
@@ -475,12 +571,29 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
         </div>
       );
 
-  if (bare) return content;
+  const recharge = account ? (
+    <RechargeDialog
+      open={rechargeOpen}
+      onClose={() => setRechargeOpen(false)}
+      onPaid={refreshBalance}
+    />
+  ) : null;
+
+  if (bare)
+    return (
+      <>
+        {content}
+        {recharge}
+      </>
+    );
 
   return (
-    <Section title={t("sub2api.title")} hint={t("sub2api.hint")}>
-      {content}
-    </Section>
+    <>
+      <Section title={t("sub2api.title")} hint={t("sub2api.hint")}>
+        {content}
+      </Section>
+      {recharge}
+    </>
   );
 }
 
