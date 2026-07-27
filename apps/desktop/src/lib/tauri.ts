@@ -136,11 +136,12 @@ export interface Sub2ApiProvisioned {
   models: string[];
 }
 
-/** Email the verification code that registration requires. */
-export async function sub2apiSendCode(email: string, baseUrl?: string): Promise<void> {
+/** Email the verification code that registration requires. The gateway host is
+ *  compiled into the Rust side — there is no base URL to pass. */
+export async function sub2apiSendCode(email: string): Promise<void> {
   if (!isTauri) throw new Error("not running in the desktop app");
   const { invoke } = await import("@tauri-apps/api/core");
-  await invoke("sub2api_send_code", { baseUrl, email });
+  await invoke("sub2api_send_code", { email });
 }
 
 /** Create a Sub2API account. */
@@ -149,12 +150,10 @@ export async function sub2apiRegister(opts: {
   password: string;
   code?: string;
   invitationCode?: string;
-  baseUrl?: string;
 }): Promise<void> {
   if (!isTauri) throw new Error("not running in the desktop app");
   const { invoke } = await import("@tauri-apps/api/core");
   await invoke("sub2api_register", {
-    baseUrl: opts.baseUrl,
     email: opts.email,
     password: opts.password,
     code: opts.code,
@@ -167,12 +166,10 @@ export async function sub2apiLogin(opts: {
   email: string;
   password: string;
   code?: string;
-  baseUrl?: string;
 }): Promise<Sub2ApiAccount> {
   if (!isTauri) throw new Error("not running in the desktop app");
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<Sub2ApiAccount>("sub2api_login", {
-    baseUrl: opts.baseUrl,
     email: opts.email,
     password: opts.password,
     code: opts.code,

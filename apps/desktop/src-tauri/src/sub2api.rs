@@ -211,17 +211,11 @@ pub(crate) fn parse_models(body: &str) -> Result<Vec<String>, String> {
     Ok(models)
 }
 
-/// Bases to try in order: the caller's (or the default) first, then the backup
-/// — but only when the caller did not name one. An explicit base is honored
-/// exactly, so a self-hosted gateway never silently falls back to ours.
-fn candidate_bases(base_url: Option<String>) -> Vec<String> {
-    let explicit = base_url
-        .map(|b| b.trim().trim_end_matches('/').to_string())
-        .filter(|b| !b.is_empty());
-    match explicit {
-        Some(base) => vec![base],
-        None => vec![DEFAULT_BASE_URL.to_string(), BACKUP_BASE_URL.to_string()],
-    }
+/// Bases to try in order: the primary gateway, then the backup. Both are
+/// compiled in — the renderer cannot point auth at another host, so a hostile
+/// or mistaken base URL can never collect a user's password.
+fn candidate_bases() -> Vec<String> {
+    vec![DEFAULT_BASE_URL.to_string(), BACKUP_BASE_URL.to_string()]
 }
 
 /// Run `attempt` against each candidate base, moving on ONLY when the gateway
@@ -249,8 +243,8 @@ fn with_failover<T>(
 
 /// Send the email verification code registration requires.
 #[tauri::command]
-pub async fn sub2api_send_code(base_url: Option<String>, email: String) -> Result<(), String> {
-    let bases = candidate_bases(base_url);
+pub async fn sub2api_send_code(email: String) -> Result<(), String> {
+    let bases = candidate_bases();
     let email = email.trim().to_string();
     if email.is_empty() {
         return Err("enter an email address".into());
@@ -270,13 +264,12 @@ pub async fn sub2api_send_code(base_url: Option<String>, email: String) -> Resul
 /// gateway's own message.
 #[tauri::command]
 pub async fn sub2api_register(
-    base_url: Option<String>,
     email: String,
     password: String,
     code: Option<String>,
     invitation_code: Option<String>,
 ) -> Result<(), String> {
-    let bases = candidate_bases(base_url);
+    let bases = candidate_bases();
     let email = email.trim().to_string();
     if email.is_empty() {
         return Err("enter an email address".into());
@@ -307,12 +300,11 @@ pub async fn sub2api_register(
 #[tauri::command]
 pub async fn sub2api_login(
     state: State<'_, Sub2ApiState>,
-    base_url: Option<String>,
     email: String,
     password: String,
     code: Option<String>,
 ) -> Result<Account, String> {
-    let bases = candidate_bases(base_url);
+    let bases = candidate_bases();
     let email = email.trim().to_string();
     if email.is_empty() || password.is_empty() {
         return Err("enter your email and password".into());
@@ -509,11 +501,12 @@ mod tests {
     }
 
     #[test]
-    fn candidate_bases_add_the_backup_only_when_none_was_named() {
-        assert_eq!(candidate_bases(None), vec![DEFAULT_BASE_URL, BACKUP_BASE_URL]);
-        assert_eq!(candidate_bases(Some("  ".into())), vec![DEFAULT_BASE_URL, BACKUP_BASE_URL]);
-        // A self-hosted gateway is honored exactly — never silently ours.
-        assert_eq!(candidate_bases(Some("https://x.test/".into())), vec!["https://x.test"]);
+    fn candidate_bases_are_the_compiled_in_primary_then_the_backup() {
+        // Both hosts are hard-coded and there is no input to override them: the
+        // renderer cannot aim auth at a host of its choosing.
+        assert_eq!(candidate_bases(), vec![DEFAULT_BASE_URL, BACKUP_BASE_URL]);
+        assert_eq!(DEFAULT_BASE_URL, "https://code.aicodeme.cn");
+        assert_eq!(BACKUP_BASE_URL, "https://code.aicodeme.xyz");
     }
 
     #[test]

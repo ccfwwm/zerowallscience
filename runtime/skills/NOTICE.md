@@ -132,13 +132,12 @@ No file in these directories matches any file in either sibling tree by content
 hash (empty `.gitkeep` files excluded), so they are treated as first-party
 material under the repository's MIT `LICENSE`:
 
-- `core/` — `domain-check`, `large-file`, `modal-run`, `publication-figures`,
-  `remote-compute`, `stats-integrity`, `traceability-review`. Several carry
+- `core/` — `bibliometric-analysis`, `citation-reviewer`, `domain-check`,
+  `figure-provenance`, `large-file`, `modal-run`, `paper-to-report`,
+  `publication-figures`, `remote-compute`, `reproducible-research`,
+  `stats-integrity`, `traceability-review`. Several carry
   ZeroWall-specific code and assets (`zerowall.mplstyle`, `record_run.py`,
-  `domain_check.py`).
-- `core/` roadmap placeholders holding only `.gitkeep`, with no `SKILL.md`:
-  `bibliometric-analysis`, `citation-reviewer`, `figure-provenance`,
-  `literature-review`, `paper-to-report`, `reproducible-research`.
+  `domain_check.py`, `bibliometrics.py`, `report_scaffold.py`).
 - `advanced/browser-use`, `compute/local-env-setup`,
   `compute/probe-compute-environment`, `publishing/journal-club-ppt` —
   short placeholder stubs.

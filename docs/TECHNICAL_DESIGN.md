@@ -144,8 +144,9 @@ to pick it up. Keys never enter the user's global OpenCode config, logs, or git.
 
 ```text
 skills/
-  core/      # reproducible-research, literature-review, figure-provenance,
-             # citation-reviewer, paper-to-report
+  core/      # reproducible-research, bibliometric-analysis, figure-provenance,
+             # citation-reviewer, paper-to-report, and the review/compute skills
+  literature/ # literature-review and the bear-* extractors
   external/  # K-Dense scientific-agent-skills
   user/      # custom skills
 ```
@@ -155,7 +156,7 @@ skills/
 | Skill | Purpose |
 | --- | --- |
 | `reproducible-research` | Standardize project structure, artifacts, logs, reproducibility |
-| `literature-review` | Search, filter, summarize literature |
+| `literature-review` | Search, filter, summarize literature (ships under `literature/`) |
 | `bibliometric-analysis` | Year trends, keywords, journal distribution, clustering |
 | `figure-provenance` | Figures must trace to code and data |
 | `citation-reviewer` | Check citation format and sources |

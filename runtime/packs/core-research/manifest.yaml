@@ -19,11 +19,32 @@ license: MIT
 
 components:
   skills:
+    - id: bibliometric-analysis
+      name: Bibliometric Analysis
+      description: Year trends, venue/author/keyword counts, and coverage over a literature corpus
+      path: ../../skills/core/bibliometric-analysis/SKILL.md
+      whenToUse: When quantifying a BibTeX, CSV, or JSON literature corpus
+      enabled: true
+
+    - id: citation-reviewer
+      name: Citation Reviewer
+      description: Offline consistency check of citation keys, bibliography fields, and identifiers
+      path: ../../skills/core/citation-reviewer/SKILL.md
+      whenToUse: Before sharing a manuscript to catch undefined keys and malformed DOIs
+      enabled: true
+
     - id: domain-check
       name: Domain Correctness Check
       description: Validate domain-specific correctness (units, CRS, statistical methods)
       path: ../../skills/core/domain-check/SKILL.md
       whenToUse: After completing analysis to verify domain-specific correctness
+      enabled: true
+
+    - id: figure-provenance
+      name: Figure Provenance
+      description: Trace every figure back to the script that writes it and the data it reads
+      path: ../../skills/core/figure-provenance/SKILL.md
+      whenToUse: When a figure's origin is unclear or before publishing a figure set
       enabled: true
 
     - id: large-file
@@ -40,6 +61,13 @@ components:
       whenToUse: For heavy computation requiring GPUs or distributed processing
       enabled: true
 
+    - id: paper-to-report
+      name: Paper to Report
+      description: Build a Markdown report scaffold from the workspace's figures, data, and environment
+      path: ../../skills/core/paper-to-report/SKILL.md
+      whenToUse: When writing up a finished analysis or handing a workspace to a collaborator
+      enabled: true
+
     - id: publication-figures
       name: Publication Figures
       description: Create publication-ready figures with proper styling and export
@@ -52,6 +80,13 @@ components:
       description: Configure and manage remote compute resources (SSH, HPC, cloud)
       path: ../../skills/core/remote-compute/SKILL.md
       whenToUse: Setting up remote compute environments
+      enabled: true
+
+    - id: reproducible-research
+      name: Reproducible Research Check
+      description: Check project layout, dependency pinning, hard-coded paths, and artifact provenance
+      path: ../../skills/core/reproducible-research/SKILL.md
+      whenToUse: Before archiving or sharing a project that someone else must rerun
       enabled: true
 
     - id: stats-integrity
