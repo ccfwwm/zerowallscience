@@ -121,7 +121,7 @@ patent-disclosure-skill/
 │   ├── correction_handler.md
 │   └── template_reference.md
 ├── tools/                      # mermaid_render、md_to_docx、docx_to_md、pptx_to_md；国知局 cnipa_epub_*（查新）；iteration_dialog_log 等
-├── docs/                       # PRD、仓库结构说明、运行效果截图（效果例-*.jpg）
+├── docs/                       # PRD、仓库结构说明、运行效果截图（example-*.jpg）
 ├── examples/                   # 原材料示例（如 example_batch_job_scheduler/knowledge/）
 ├── outputs/                    # 用户产出，整目录 .gitignore
 ├── requirements.txt
@@ -143,11 +143,11 @@ patent-disclosure-skill/
 
 **初版生成**（首次落盘交付）
 
-![初版生成：outputs 目录下的时间戳交底书、mermaid 图目录等](docs/效果例-初版生成.jpg)
+![初版生成：outputs 目录下的时间戳交底书、mermaid 图目录等](docs/example-first-draft.jpg)
 
 **迭代更新**（合并/纠正后再交付，多版本并存 + 对话记录）
 
-![迭代更新：新时间戳文件与交底书修订对话记录](docs/效果例-迭代更新.jpg)
+![迭代更新：新时间戳文件与交底书修订对话记录](docs/example-iterative-update.jpg)
 
 ---
 

@@ -18,7 +18,7 @@
 | `examples/example_batch_job_scheduler/` | 示例案件：仅 **`knowledge/`** 虚构原材料（专利点 / 交底书等由流程生成到 `outputs/`） |
 | `docs/PRD.md` | 流程与约束摘要 |
 | `docs/skill-structure.md` | 本仓库结构说明 |
-| `docs/效果例-*.jpg` | README「运行效果」配图 |
+| `docs/example-*.jpg` | README「运行效果」配图 |
 
 ## 环境变量 `CLAUDE_SKILL_DIR`
 
