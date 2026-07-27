@@ -161,13 +161,17 @@
     "connected": "모델 {{count}}개를 연결했습니다. 모델에서 하나를 선택하세요.",
     "pickOne": "모델을 하나 이상 선택하세요.",
     "noModels": "게이트웨이가 이 계정에 대해 모델을 반환하지 않았습니다.",
+    "selectGroup": "그룹 선택",
+    "groupHint": "그룹마다 사용 가능한 모델이 다를 수 있습니다",
+    "creatingKey": "키 생성 중…",
+    "keyExists": "키 있음",
     "manualPlaceholder": "모델 ID 직접 추가 — 쉼표로 구분",
     "addModels": "추가",
     "providerName": "AI 플랫폼",
     "privacy": "비밀번호는 게이트웨이에만 전송됩니다. 액세스 토큰은 이번 세션 동안 이 앱에만 남고, API 키는 OS 자격 증명 관리자로 바로 저장됩니다 — 설정 파일, 로그, 출처 기록에는 절대 기록되지 않습니다.",
     "runtimeOffline": "런타임을 먼저 연결하세요",
     "welcomeTitle": "ZeroWall Science에 오신 것을 환영합니다",
-    "welcomeHint": "로그인하면 하나의 엔드포인트를 통해 국내 AI 모델(Kimi, DeepSeek, GLM, Qwen)을 사용할 수 있습니다.",
+    "welcomeHint": "로그인하여 시작하세요.",
     "skipForNow": "나중에 하기"
   },
   "mcp": {

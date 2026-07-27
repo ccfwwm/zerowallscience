@@ -110,9 +110,7 @@ export function PackCard({ pack }: PackCardProps) {
                 {pack.manifest.components.skills.map((skill) => (
                   <div key={skill.id} className="flex items-center gap-1">
                     <span
-                      className={`inline-block w-1.5 h-1.5 rounded-full ${
-                        skill.enabled !== false ? "bg-green-500" : "bg-gray-400"
-                      }`}
+                      className="inline-block w-1.5 h-1.5 rounded-full bg-green-500"
                     />
                     {skill.name}
                   </div>

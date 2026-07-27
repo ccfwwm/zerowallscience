@@ -162,13 +162,17 @@
     "connected": "{{count}} modèle(s) connecté(s). Choisissez-en un dans Modèles.",
     "pickOne": "Sélectionnez au moins un modèle.",
     "noModels": "La passerelle n'a renvoyé aucun modèle pour ce compte.",
+    "selectGroup": "Sélectionner un groupe",
+    "groupHint": "Différents groupes peuvent proposer différents modèles",
+    "creatingKey": "Création de la clé…",
+    "keyExists": "Clé existante",
     "manualPlaceholder": "Ajouter des ids de modèle à la main — séparés par des virgules",
     "addModels": "Ajouter",
     "providerName": "AI Platform",
     "privacy": "Votre mot de passe n'est envoyé qu'à la passerelle. Le jeton d'accès reste dans cette application pour la session ; la clé API va directement dans le gestionnaire d'identifiants du système — jamais dans les fichiers de configuration, les journaux ou la provenance.",
     "runtimeOffline": "Connectez d'abord le runtime",
     "welcomeTitle": "Bienvenue dans ZeroWall Science",
-    "welcomeHint": "Connectez-vous pour accéder aux modèles d'IA domestiques (Kimi, DeepSeek, GLM, Qwen) via un seul endpoint.",
+    "welcomeHint": "Connectez-vous pour commencer.",
     "skipForNow": "Passer pour l'instant"
   },
   "mcp": {

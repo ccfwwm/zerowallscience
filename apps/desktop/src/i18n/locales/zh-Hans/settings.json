@@ -161,13 +161,17 @@
     "connected": "已连接 {{count}} 个模型，请在模型中选择。",
     "pickOne": "请至少选择一个模型。",
     "noModels": "网关未为此账号返回任何模型。",
+    "selectGroup": "选择分组",
+    "groupHint": "不同分组可能包含不同的模型",
+    "creatingKey": "正在创建密钥…",
+    "keyExists": "已有密钥",
     "manualPlaceholder": "手动添加模型 ID — 逗号分隔",
     "addModels": "添加",
     "providerName": "AI 平台",
     "privacy": "密码仅发送给网关。访问令牌仅保留在本应用本次运行中；API 密钥直接存入系统凭据管理器 — 不会写入配置文件、日志或溯源记录。",
     "runtimeOffline": "请先连接运行时",
     "welcomeTitle": "欢迎使用 ZeroWall Science",
-    "welcomeHint": "登录即可通过一个接口使用 Kimi、DeepSeek、GLM、Qwen 等国产模型。",
+    "welcomeHint": "登录开始使用",
     "skipForNow": "暂时跳过"
   },
   "mcp": {

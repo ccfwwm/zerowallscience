@@ -7,7 +7,6 @@ import { Sidebar } from "@/components/sidebar/Sidebar";
 import { CommandPalette } from "@/components/command-palette/CommandPalette";
 import { PaneDragGhost } from "@/components/session/PaneDragGhost";
 import { Toaster } from "@/components/ui/Toaster";
-import { mockProject } from "@/lib/mock";
 import { useRuntimeStore } from "@/lib/runtime";
 import { ensureDefaultConnectors, ensureSetupProgressListener } from "@/lib/setup";
 import { useOverlayTitlebar, useUiStore } from "@/lib/store";
@@ -186,7 +185,7 @@ export function AppShell() {
     {/* The window background lives on <main>, not the shell: under vibrancy
         the area behind the (translucent) sidebar must stay transparent. */}
     <div className="flex h-screen w-screen overflow-hidden text-text">
-      <Sidebar project={mockProject} />
+      <Sidebar project={{ id: "", name: "", sessions: [] }} />
       {/* Mobile: dim + close the overlay drawer by tapping outside it. */}
       {isMobile && !sidebarCollapsed && (
         <div

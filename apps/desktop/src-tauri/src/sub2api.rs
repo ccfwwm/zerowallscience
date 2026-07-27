@@ -74,6 +74,23 @@ pub struct Group {
     pub name: String,
 }
 
+/// Result of the first provisioning step: the groups the account has access to,
+/// and which ones already have an API key. The frontend shows a group selector
+/// and then calls `sub2api_provision_group` for the chosen group.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupsAndKeys {
+    pub groups: Vec<Group>,
+    pub existing_key_group_ids: Vec<i64>,
+}
+
+/// Internal representation of a parsed API key with its group association.
+#[derive(Debug, Clone)]
+pub(crate) struct KeyInfo {
+    pub key: String,
+    pub group_id: Option<i64>,
+}
+
 /// Prefix marking an error as "could not reach this host", the only condition
 /// that justifies trying the backup gateway. A rejected password or a missing
 /// verification code answers over HTTP and must NOT be retried elsewhere — the
@@ -181,7 +198,10 @@ pub(crate) fn parse_access_token(body: &str) -> Result<String, String> {
 /// list under `data` (sometimes `data.items`), so probe both. The secret can
 /// appear under `key`, `token`, or `api_key` depending on the gateway version —
 /// try all three, matching transit-hub's `firstString` fallback.
-pub(crate) fn parse_api_keys(body: &str) -> Vec<String> {
+///
+/// Each key carries an optional `group_id` (top-level numeric, or nested inside
+/// a `group` object) so the caller can match keys to groups.
+pub(crate) fn parse_api_keys(body: &str) -> Vec<KeyInfo> {
     let Ok(root) = serde_json::from_str::<serde_json::Value>(body) else {
         return Vec::new();
     };
@@ -199,10 +219,16 @@ pub(crate) fn parse_api_keys(body: &str) -> Vec<String> {
             if k.get("enabled").and_then(|e| e.as_bool()) == Some(false) {
                 return None;
             }
-            ["key", "token", "api_key"]
+            let key = ["key", "token", "api_key"]
                 .iter()
                 .find_map(|field| k.get(*field)?.as_str().filter(|s| !s.is_empty()))
-                .map(String::from)
+                .map(String::from)?;
+            // group_id: try top-level first, then nested `group.id`
+            let group_id = k
+                .get("group_id")
+                .and_then(|v| v.as_i64())
+                .or_else(|| k.get("group").and_then(|g| g.get("id")).and_then(|v| v.as_i64()));
+            Some(KeyInfo { key, group_id })
         })
         .collect()
 }
@@ -241,6 +267,23 @@ pub(crate) fn parse_groups(body: &str) -> Vec<Group> {
             Some(Group { id, name: name.to_string() })
         })
         .collect()
+}
+
+/// Create an API key on the gateway for a specific group. Mirrors transit-hub's
+/// `CreateSub2APIKey`: `POST /api/v1/keys` with `{"name", "group_id"}`.
+fn create_key(base_url: &str, token: &str, name: &str, group_id: i64) -> Result<String, String> {
+    let body = serde_json::json!({ "name": name, "group_id": group_id });
+    let reply = post_json(base_url, "/keys", body, Some(token))?;
+    // The response nests the new key under `data` — same shape as a single key
+    // record. Use the same field-name fallback as parse_api_keys.
+    let root: serde_json::Value =
+        serde_json::from_str(&reply).map_err(|e| format!("key-creation reply was not JSON: {e}"))?;
+    let record = root.get("data").unwrap_or(&root);
+    ["key", "token", "api_key"]
+        .iter()
+        .find_map(|field| record.get(*field)?.as_str().filter(|s| !s.is_empty()))
+        .map(String::from)
+        .ok_or_else(|| "the gateway created the key but did not return it".into())
 }
 
 /// Bases to try in order: the primary gateway, then the backup. Both are
@@ -385,17 +428,61 @@ pub fn sub2api_logout(state: State<'_, Sub2ApiState>) -> Result<(), String> {
     Ok(())
 }
 
-/// One-click provision: read the account's API key, store it in the OS
-/// credential manager, fetch groups, and report the models the gateway serves.
+/// Step 1 of two-step provisioning: fetch the account's available groups and
+/// which ones already have an API key. The frontend shows a group selector,
+/// then calls `sub2api_provision_group` for the chosen group.
 ///
-/// The key never crosses into the renderer. The caller registers the provider
-/// with the returned base URL and models, and the runtime picks the key up from
-/// the credential manager the same way every other provider key is injected.
+/// No key is stored and no sidecar is restarted — that happens in step 2.
 #[tauri::command]
-pub async fn sub2api_provision(
+pub async fn sub2api_fetch_groups(
+    sub2api: State<'_, Sub2ApiState>,
+) -> Result<GroupsAndKeys, String> {
+    let (session_base, token) = {
+        let guard = sub2api.session.lock().map_err(|_| "session lock poisoned")?;
+        let session = guard.as_ref().ok_or("sign in to the AI platform first")?;
+        (session.base_url.clone(), session.access_token.clone())
+    };
+
+    let mut bases = candidate_bases();
+    if let Some(pos) = bases.iter().position(|b| b == &session_base) {
+        if pos != 0 {
+            bases.swap(0, pos);
+        }
+    }
+
+    let (_base, (groups, existing_key_group_ids)) = blocking(move || {
+        with_failover(&bases, |base| {
+            let groups = parse_groups(
+                &get_json(base, "/groups/available", &token)?,
+            );
+            let keys = parse_api_keys(&get_json(
+                base,
+                "/keys?page=1&page_size=100&sort_by=created_at&sort_order=desc",
+                &token,
+            )?);
+            let existing_key_group_ids: Vec<i64> = keys
+                .iter()
+                .filter_map(|k| k.group_id)
+                .collect();
+            Ok((groups, existing_key_group_ids))
+        })
+    })
+    .await?;
+
+    Ok(GroupsAndKeys { groups, existing_key_group_ids })
+}
+
+/// Step 2: provision a specific group — find or create a key, list models, and
+/// store the key in the OS credential manager.
+///
+/// If the account already has a key for the requested group, it is reused.
+/// Otherwise a new key is created via `POST /api/v1/keys`.
+#[tauri::command]
+pub async fn sub2api_provision_group(
     app: AppHandle,
     sub2api: State<'_, Sub2ApiState>,
     runtime: State<'_, crate::runtime::RuntimeState>,
+    group_id: i64,
 ) -> Result<Provisioned, String> {
     let (session_base, token) = {
         let guard = sub2api.session.lock().map_err(|_| "session lock poisoned")?;
@@ -403,8 +490,6 @@ pub async fn sub2api_provision(
         (session.base_url.clone(), session.access_token.clone())
     };
 
-    // Prefer the gateway the login succeeded against, but fall back to the
-    // backup on a transport failure — same as the login flow itself.
     let mut bases = candidate_bases();
     if let Some(pos) = bases.iter().position(|b| b == &session_base) {
         if pos != 0 {
@@ -414,14 +499,23 @@ pub async fn sub2api_provision(
 
     let (base, (api_key, models, groups)) = blocking(move || {
         with_failover(&bases, |base| {
+            // Fetch existing keys and look for one tied to the requested group.
             let keys = parse_api_keys(&get_json(
                 base,
                 "/keys?page=1&page_size=100&sort_by=created_at&sort_order=desc",
                 &token,
             )?);
-            let api_key = keys.into_iter().next().ok_or(
-                "this account has no API key yet — create one in the AI platform dashboard",
-            )?;
+            let api_key = keys
+                .iter()
+                .find(|k| k.group_id == Some(group_id))
+                .map(|k| k.key.clone());
+
+            // Reuse the existing key or create a new one for this group.
+            let api_key = match api_key {
+                Some(k) => k,
+                None => create_key(base, &token, "ZeroWall Science", group_id)?,
+            };
+
             let models = list_models(base, &api_key)?;
             let groups = parse_groups(
                 &get_json(base, "/groups/available", &token).unwrap_or_default(),
@@ -432,7 +526,7 @@ pub async fn sub2api_provision(
     .await?;
 
     // Straight into the credential manager, then restart the sidecar so it
-    // picks the key up. `value` is dropped here and never returned.
+    // picks the key up. `api_key` is dropped here and never returned.
     secret_store::persist_for_app(&app, SecretReference::provider(PROVIDER_ID)?, &api_key)?;
     crate::runtime::restart_sidecar_if_running(&app, &runtime)?;
 
@@ -505,13 +599,26 @@ mod tests {
     #[test]
     fn api_keys_are_read_from_the_nested_shapes_and_skip_disabled() {
         let body = r#"{"data":{"items":[
-            {"api_key":"sk-a","name":"first"},
+            {"api_key":"sk-a","name":"first","group_id":1},
             {"api_key":"sk-off","enabled":false},
-            {"api_key":"sk-b"}
+            {"api_key":"sk-b","group":{"id":2,"name":"VIP"}}
         ]}}"#;
-        assert_eq!(parse_api_keys(body), vec!["sk-a", "sk-b"]);
-        assert_eq!(parse_api_keys(r#"{"data":[{"api_key":"sk-flat"}]}"#), vec!["sk-flat"]);
-        assert_eq!(parse_api_keys(r#"[{"api_key":"sk-bare"}]"#), vec!["sk-bare"]);
+        let keys = parse_api_keys(body);
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys[0].key, "sk-a");
+        assert_eq!(keys[0].group_id, Some(1));
+        assert_eq!(keys[1].key, "sk-b");
+        assert_eq!(keys[1].group_id, Some(2));
+
+        let flat = parse_api_keys(r#"{"data":[{"api_key":"sk-flat"}]}"#);
+        assert_eq!(flat.len(), 1);
+        assert_eq!(flat[0].key, "sk-flat");
+        assert_eq!(flat[0].group_id, None);
+
+        let bare = parse_api_keys(r#"[{"api_key":"sk-bare"}]"#);
+        assert_eq!(bare.len(), 1);
+        assert_eq!(bare[0].key, "sk-bare");
+
         assert!(parse_api_keys(r#"{"data":[]}"#).is_empty());
         assert!(parse_api_keys("not json").is_empty());
     }
@@ -520,13 +627,16 @@ mod tests {
     fn api_keys_accept_key_and_token_field_names() {
         // The gateway may return the secret under `key`, `token`, or `api_key`
         // depending on the platform version — matching transit-hub's firstString.
-        assert_eq!(parse_api_keys(r#"[{"key":"sk-via-key"}]"#), vec!["sk-via-key"]);
-        assert_eq!(parse_api_keys(r#"[{"token":"sk-via-tok"}]"#), vec!["sk-via-tok"]);
+        let k = parse_api_keys(r#"[{"key":"sk-via-key","group_id":3}]"#);
+        assert_eq!(k[0].key, "sk-via-key");
+        assert_eq!(k[0].group_id, Some(3));
+
+        let t = parse_api_keys(r#"[{"token":"sk-via-tok"}]"#);
+        assert_eq!(t[0].key, "sk-via-tok");
+
         // `key` wins over `api_key` when both are present.
-        assert_eq!(
-            parse_api_keys(r#"[{"key":"sk-primary","api_key":"sk-fallback"}]"#),
-            vec!["sk-primary"]
-        );
+        let both = parse_api_keys(r#"[{"key":"sk-primary","api_key":"sk-fallback"}]"#);
+        assert_eq!(both[0].key, "sk-primary");
     }
 
     #[test]

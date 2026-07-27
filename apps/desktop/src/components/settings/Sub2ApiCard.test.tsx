@@ -12,8 +12,10 @@ const mocks = vi.hoisted(() => ({
   register: vi.fn(),
   sendCode: vi.fn(),
   logout: vi.fn(),
-  provision: vi.fn(),
+  fetchGroups: vi.fn(),
+  provisionGroup: vi.fn(),
   addCustomProvider: vi.fn(),
+  setDefaultModel: vi.fn(),
   loadCatalog: vi.fn(),
 }));
 
@@ -26,7 +28,8 @@ vi.mock("@/lib/tauri", () => ({
   sub2apiRegister: mocks.register,
   sub2apiSendCode: mocks.sendCode,
   sub2apiLogout: mocks.logout,
-  sub2apiProvision: mocks.provision,
+  sub2apiFetchGroups: mocks.fetchGroups,
+  sub2apiProvisionGroup: mocks.provisionGroup,
 }));
 
 vi.mock("@/lib/webMode", () => ({
@@ -36,7 +39,10 @@ vi.mock("@/lib/webMode", () => ({
 }));
 
 vi.mock("@/lib/runtime", () => ({
-  getClient: () => ({ addCustomProvider: mocks.addCustomProvider }),
+  getClient: () => ({
+    addCustomProvider: mocks.addCustomProvider,
+    setDefaultModel: mocks.setDefaultModel,
+  }),
   useRuntimeStore: (select: (s: { status: string; loadCatalog: unknown }) => unknown) =>
     select({ status: "ready", loadCatalog: mocks.loadCatalog }),
 }));
@@ -52,15 +58,26 @@ beforeEach(() => {
   mocks.isTauri = true;
   mocks.web = false;
   mocks.account = null;
-  mocks.provision.mockResolvedValue({
+  mocks.fetchGroups.mockResolvedValue({
+    groups: [
+      { id: 1, name: "Default" },
+      { id: 2, name: "国产模型" },
+    ],
+    existingKeyGroupIds: [1],
+  });
+  mocks.provisionGroup.mockResolvedValue({
     providerId: "sub2api",
     baseUrl: "https://code.aicodeme.cn/v1",
     models: ["gpt-4o", "kimi-k2-thinking", "deepseek-v3", "glm-4.6", "qwen3-max"],
-    groups: [{ id: 1, name: "Default" }],
+    groups: [
+      { id: 1, name: "Default" },
+      { id: 2, name: "国产模型" },
+    ],
   });
   mocks.login.mockResolvedValue({ email: "a@b.co", baseUrl: "https://code.aicodeme.cn" });
   mocks.register.mockResolvedValue(undefined);
   mocks.addCustomProvider.mockResolvedValue(undefined);
+  mocks.setDefaultModel.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -139,17 +156,22 @@ describe("Sub2API panel", () => {
     expect(screen.getByRole("button", { name: "Create account" })).toBeDisabled();
   });
 
-  it("fetches models in one click and pre-selects the domestic ones", async () => {
+  it("fetches groups then auto-provisions domestic group with pre-selected models", async () => {
     mocks.account = { email: "a@b.co", baseUrl: "https://code.aicodeme.cn" };
     render(<Sub2ApiCard />);
     await userEvent.click(await screen.findByRole("button", { name: /Fetch my models/ }));
 
-    // Domestic first, and every domestic model already selected — the openai
-    // model is listed but left off.
+    // The two-step flow: fetchGroups auto-selects the domestic group and provisions it.
+    // Wait for the final state — model chips appear after provisionGroup resolves.
     await waitFor(() => expect(screen.getByRole("button", { name: /gpt-4o/ })).toBeInTheDocument());
+
+    expect(mocks.fetchGroups).toHaveBeenCalledTimes(1);
+    expect(mocks.provisionGroup).toHaveBeenCalledWith(2); // 国产模型 group
+
+    // Group buttons also have aria-pressed; model chips have font-mono class.
     const chips = screen
       .getAllByRole("button")
-      .filter((b) => b.getAttribute("aria-pressed") !== null);
+      .filter((b) => b.getAttribute("aria-pressed") !== null && b.className.includes("font-mono"));
     expect(chips.map((c) => c.textContent?.replace("★", ""))).toEqual([
       "deepseek-v3",
       "glm-4.6",
@@ -167,7 +189,7 @@ describe("Sub2API panel", () => {
     expect(screen.getByRole("button", { name: "Connect 4 model(s)" })).toBeEnabled();
   });
 
-  it("registers the provider with no apiKey — the key is already in the keychain", async () => {
+  it("registers the provider with no apiKey and auto-sets a domestic default model", async () => {
     mocks.account = { email: "a@b.co", baseUrl: "https://code.aicodeme.cn" };
     render(<Sub2ApiCard />);
     await userEvent.click(await screen.findByRole("button", { name: /Fetch my models/ }));
@@ -183,6 +205,8 @@ describe("Sub2API panel", () => {
       models: ["deepseek-v3", "glm-4.6", "kimi-k2-thinking", "qwen3-max"],
     });
     expect(opts).not.toHaveProperty("apiKey");
+    // Auto-set the default model to the first domestic model.
+    expect(mocks.setDefaultModel).toHaveBeenCalledWith("sub2api/deepseek-v3");
     expect(mocks.loadCatalog).toHaveBeenCalled();
   });
 

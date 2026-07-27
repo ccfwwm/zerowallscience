@@ -162,13 +162,17 @@
     "connected": "{{count}} Modell(e) verbunden. Wähle eines unter Modelle.",
     "pickOne": "Wähle mindestens ein Modell.",
     "noModels": "Das Gateway hat für dieses Konto keine Modelle gemeldet.",
+    "selectGroup": "Gruppe auswählen",
+    "groupHint": "Verschiedene Gruppen können unterschiedliche Modelle haben",
+    "creatingKey": "Schlüssel wird erstellt…",
+    "keyExists": "Schlüssel vorhanden",
     "manualPlaceholder": "Modell-IDs manuell hinzufügen — kommagetrennt",
     "addModels": "Hinzufügen",
     "providerName": "AI Platform",
     "privacy": "Dein Passwort geht nur an das Gateway. Das Zugriffstoken bleibt für diese Sitzung in der App; der API-Schlüssel geht direkt in die Anmeldeinformationsverwaltung des Systems — nie in Konfigurationsdateien, Logs oder Provenienz.",
     "runtimeOffline": "Zuerst die Laufzeit verbinden",
     "welcomeTitle": "Willkommen bei ZeroWall Science",
-    "welcomeHint": "Melden Sie sich an, um über einen Endpunkt auf inländische KI-Modelle (Kimi, DeepSeek, GLM, Qwen) zuzugreifen.",
+    "welcomeHint": "Melden Sie sich an, um loszulegen.",
     "skipForNow": "Vorerst überspringen"
   },
   "mcp": {

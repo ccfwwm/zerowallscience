@@ -4,9 +4,10 @@ import { useTranslation } from "react-i18next";
 import {
   isTauri,
   sub2apiAccount,
+  sub2apiFetchGroups,
   sub2apiLogin,
   sub2apiLogout,
-  sub2apiProvision,
+  sub2apiProvisionGroup,
   sub2apiRegister,
   sub2apiSendCode,
   type Sub2ApiAccount,
@@ -73,6 +74,9 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
   const [invite, setInvite] = useState("");
   const [account, setAccount] = useState<Sub2ApiAccount | null>(null);
   const [busy, setBusy] = useState<null | "auth" | "code" | "fetch" | "connect">(null);
+  const [groups, setGroups] = useState<Array<{ id: number; name: string }>>([]);
+  const [existingKeyGroupIds, setExistingKeyGroupIds] = useState<number[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [models, setModels] = useState<string[] | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [baseUrl, setBaseUrl] = useState("");
@@ -156,12 +160,33 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
     setPicked(new Set());
   };
 
-  // One click: fetch the account's key into the credential manager and list the
-  // models the gateway serves. Everything domestic is pre-selected.
-  const fetchModels = async () => {
+  // Step 1: fetch groups + existing key info, then auto-select the best group.
+  const fetchGroups = async () => {
     setBusy("fetch");
     try {
-      const res = await sub2apiProvision();
+      const res = await sub2apiFetchGroups();
+      setGroups(res.groups);
+      setExistingKeyGroupIds(res.existingKeyGroupIds);
+      // Auto-select: prefer domestic-sounding group, else "default", else first.
+      const domestic = res.groups.find((g) =>
+        /国产|domestic/i.test(g.name),
+      );
+      const fallback = domestic ?? res.groups.find((g) => /default/i.test(g.name));
+      const pick = fallback ?? res.groups[0] ?? null;
+      setSelectedGroupId(pick?.id ?? null);
+      if (pick) void provisionGroup(pick.id);
+      else setBusy(null);
+    } catch (err) {
+      fail(err);
+      setBusy(null);
+    }
+  };
+
+  // Step 2: provision a specific group — find or create a key, list models.
+  const provisionGroup = async (groupId: number) => {
+    setBusy("fetch");
+    try {
+      const res = await sub2apiProvisionGroup(groupId);
       setBaseUrl(res.baseUrl);
       setModels(res.models);
       setPicked(new Set(res.models.filter(isDomesticModel)));
@@ -186,7 +211,8 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
 
   // Register the provider WITHOUT an apiKey: the key already sits in the OS
   // credential manager, and writing it into the config file would put a secret
-  // on disk in cleartext.
+  // on disk in cleartext. After connecting, auto-set the default model to the
+  // first domestic model so the user is not stuck on an Anthropic fallback.
   const connect = async () => {
     const chosen = ordered.filter((m) => picked.has(m));
     if (chosen.length === 0) {
@@ -201,6 +227,13 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
         baseURL: baseUrl,
         models: chosen,
       });
+      // Auto-set the default model to a domestic one, preventing the
+      // "Anthropic API key is missing" error for users who only have
+      // an AI 平台 key.
+      const first = chosen.find(isDomesticModel) ?? chosen[0];
+      if (first) {
+        await getClient()!.setDefaultModel(`${PROVIDER_ID}/${first}`);
+      }
       await loadCatalog();
       toast.success(t("sub2api.connected", { count: chosen.length }));
     } catch (err) {
@@ -233,7 +266,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
           <div className="flex flex-wrap gap-2">
             <button
               className={btn("accent")}
-              onClick={() => void fetchModels()}
+              onClick={() => void fetchGroups()}
               disabled={busy !== null}
             >
               {busy === "fetch" ? (
@@ -259,6 +292,48 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
               </button>
             )}
           </div>
+
+          {/* Group selector — always shown once groups are loaded */}
+          {groups.length > 0 && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted">
+                {t("sub2api.selectGroup")}
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {groups.map((g) => {
+                  const on = selectedGroupId === g.id;
+                  const hasKey = existingKeyGroupIds.includes(g.id);
+                  return (
+                    <button
+                      key={g.id}
+                      aria-pressed={on}
+                      onClick={() => {
+                        setSelectedGroupId(g.id);
+                        setModels(null);
+                        setPicked(new Set());
+                        void provisionGroup(g.id);
+                      }}
+                      disabled={busy !== null}
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                        on
+                          ? "border-accent bg-accent/10 font-medium text-text"
+                          : "border-faint text-muted hover:text-text",
+                      )}
+                    >
+                      {g.name}
+                      {hasKey && (
+                        <span className="ml-1 text-[10px] text-ok" title={t("sub2api.keyExists")}>
+                          ✓
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-muted">{t("sub2api.groupHint")}</p>
+            </div>
+          )}
 
           {models !== null && (
             <>
@@ -394,7 +469,9 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
             )}
             {t(mode === "register" ? "sub2api.createAccount" : "sub2api.signIn")}
           </button>
-          <p className="text-xs leading-relaxed text-muted">{t("sub2api.privacy")}</p>
+          {!bare && (
+            <p className="text-xs leading-relaxed text-muted">{t("sub2api.privacy")}</p>
+          )}
         </div>
       );
 

@@ -162,13 +162,17 @@
     "connected": "{{count}} modelo(s) conectados. Elige uno en Modelos.",
     "pickOne": "Selecciona al menos un modelo.",
     "noModels": "El gateway no devolvió modelos para esta cuenta.",
+    "selectGroup": "Seleccionar un grupo",
+    "groupHint": "Diferentes grupos pueden tener diferentes modelos",
+    "creatingKey": "Creando clave…",
+    "keyExists": "Clave existente",
     "manualPlaceholder": "Añadir ids de modelo a mano — separados por comas",
     "addModels": "Añadir",
     "providerName": "AI Platform",
     "privacy": "Tu contraseña solo se envía al gateway. El token de acceso permanece en esta app durante la sesión; la clave de API va directo al gestor de credenciales del sistema — nunca a archivos de configuración, registros ni procedencia.",
     "runtimeOffline": "Conecta primero el runtime",
     "welcomeTitle": "Bienvenido a ZeroWall Science",
-    "welcomeHint": "Inicia sesión para acceder a modelos de IA domésticos (Kimi, DeepSeek, GLM, Qwen) a través de un solo endpoint.",
+    "welcomeHint": "Inicia sesión para empezar.",
     "skipForNow": "Omitir por ahora"
   },
   "mcp": {

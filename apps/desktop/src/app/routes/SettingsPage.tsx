@@ -69,7 +69,6 @@ import { ModelBrowser } from "@/components/settings/ModelBrowser";
 import { fallbackDefaultModel } from "@/components/settings/modelCatalog";
 import { ProviderManagerCard } from "@/components/settings/ProviderManagerCard";
 import { Sub2ApiCard } from "@/components/settings/Sub2ApiCard";
-import { WorkspaceStatusCard } from "@/components/settings/WorkspaceStatusCard";
 import { Row, Section, Switch } from "@/components/settings/Section";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { PacksSection } from "@/components/settings/PacksSection";
@@ -1412,9 +1411,6 @@ export function SettingsPage() {
         )}
 
         {/* ---- MCP servers ---- */}
-        {section === "connectors" && (
-          <WorkspaceStatusCard connectorCount={mcpServers.length} />
-        )}
         {section === "connectors" && (
         <Section
           title={t("mcp.title")}

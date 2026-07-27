@@ -128,8 +128,15 @@ export interface Sub2ApiAccount {
   baseUrl: string;
 }
 
-/** Result of a one-click provision. Deliberately carries no API key: the key
- *  went from the gateway's reply straight into the OS credential manager. */
+/** Result of fetching groups and existing key info. No API key — only metadata. */
+export interface Sub2ApiGroupsAndKeys {
+  groups: Array<{ id: number; name: string }>;
+  existingKeyGroupIds: number[];
+}
+
+/** Result of provisioning a specific group. Deliberately carries no API key:
+ *  the key went from the gateway's reply straight into the OS credential
+ *  manager. */
 export interface Sub2ApiProvisioned {
   providerId: string;
   baseUrl: string;
@@ -191,12 +198,20 @@ export async function sub2apiLogout(): Promise<void> {
   await invoke("sub2api_logout");
 }
 
-/** Fetch the account's API key into the OS credential manager and report the
- *  models the gateway serves. */
-export async function sub2apiProvision(): Promise<Sub2ApiProvisioned> {
+/** Fetch the account's groups and which groups already have keys. No key is
+ *  stored or sidecar restarted — this is the read-only first step. */
+export async function sub2apiFetchGroups(): Promise<Sub2ApiGroupsAndKeys> {
   if (!isTauri) throw new Error("not running in the desktop app");
   const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<Sub2ApiProvisioned>("sub2api_provision");
+  return invoke<Sub2ApiGroupsAndKeys>("sub2api_fetch_groups");
+}
+
+/** Provision a specific group: find or create a key, list models, store the
+ *  key in the OS credential manager, and restart the sidecar. */
+export async function sub2apiProvisionGroup(groupId: number): Promise<Sub2ApiProvisioned> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<Sub2ApiProvisioned>("sub2api_provision_group", { groupId });
 }
 
 /** Whether the OS credential manager has credentials for a provider. */
