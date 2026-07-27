@@ -5,7 +5,9 @@
     "expand": "Expand sidebar",
     "expandTitle": "Expand sidebar ({{shortcut}})",
     "settings": "Settings",
-    "home": "Home"
+    "home": "Home",
+    "signIn": "Sign in",
+    "account": "Account"
   },
   "items": {
     "new": "New",

@@ -5,7 +5,9 @@
     "expand": "展开侧边栏",
     "expandTitle": "展开侧边栏（{{shortcut}}）",
     "settings": "设置",
-    "home": "回到首页"
+    "home": "回到首页",
+    "signIn": "登录",
+    "account": "账号"
   },
   "items": {
     "new": "新建",

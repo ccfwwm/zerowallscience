@@ -5,7 +5,9 @@
     "expand": "Expandir barra lateral",
     "expandTitle": "Expandir barra lateral ({{shortcut}})",
     "settings": "Configuración",
-    "home": "Inicio"
+    "home": "Inicio",
+    "signIn": "Iniciar sesión",
+    "account": "Cuenta"
   },
   "items": {
     "new": "Nuevo",

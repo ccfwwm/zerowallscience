@@ -166,7 +166,10 @@
     "addModels": "Ajouter",
     "providerName": "Sub2API",
     "privacy": "Votre mot de passe n'est envoyé qu'à la passerelle. Le jeton d'accès reste dans cette application pour la session ; la clé API va directement dans le gestionnaire d'identifiants du système — jamais dans les fichiers de configuration, les journaux ou la provenance.",
-    "runtimeOffline": "Connectez d'abord le runtime"
+    "runtimeOffline": "Connectez d'abord le runtime",
+    "welcomeTitle": "Bienvenue dans ZeroWall Science",
+    "welcomeHint": "Connectez-vous pour accéder aux modèles d'IA domestiques (Kimi, DeepSeek, GLM, Qwen) via un seul endpoint.",
+    "skipForNow": "Passer pour l'instant"
   },
   "mcp": {
     "title": "Serveurs MCP",

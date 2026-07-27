@@ -61,7 +61,7 @@ const DOMESTIC_MARK = "★";
  * straight into the OS credential manager. All this component ever sees is an
  * email, a base URL, and a list of model ids.
  */
-export function Sub2ApiCard() {
+export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: boolean } = {}) {
   const { t } = useTranslation(["settings", "common"]);
   const loadCatalog = useRuntimeStore((s) => s.loadCatalog);
   const connected = useRuntimeStore((s) => s.status) === "ready";
@@ -141,6 +141,7 @@ export function Sub2ApiCard() {
       setPassword("");
       setCode("");
       toast.success(t("sub2api.signedIn", { email: acct.email }));
+      onLogin?.();
     } catch (err) {
       fail(err);
     } finally {
@@ -212,9 +213,7 @@ export function Sub2ApiCard() {
   const canAuth =
     email.trim().length > 0 && password.length >= (mode === "register" ? 6 : 1) && busy === null;
 
-  return (
-    <Section title={t("sub2api.title")} hint={t("sub2api.hint")}>
-      {account ? (
+  const content = account ? (
         <div className="space-y-3">
           <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
@@ -397,7 +396,13 @@ export function Sub2ApiCard() {
           </button>
           <p className="text-xs leading-relaxed text-muted">{t("sub2api.privacy")}</p>
         </div>
-      )}
+      );
+
+  if (bare) return content;
+
+  return (
+    <Section title={t("sub2api.title")} hint={t("sub2api.hint")}>
+      {content}
     </Section>
   );
 }

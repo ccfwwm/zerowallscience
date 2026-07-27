@@ -166,7 +166,10 @@
     "addModels": "Add",
     "providerName": "Sub2API",
     "privacy": "Your password is sent only to the gateway. The access token stays in this app for the session; the API key goes straight into the OS credential manager — never into config files, logs, or provenance.",
-    "runtimeOffline": "Connect the runtime first"
+    "runtimeOffline": "Connect the runtime first",
+    "welcomeTitle": "Welcome to ZeroWall Science",
+    "welcomeHint": "Sign in for access to domestic AI models (Kimi, DeepSeek, GLM, Qwen) through one endpoint.",
+    "skipForNow": "Skip for now"
   },
   "mcp": {
     "title": "MCP servers",

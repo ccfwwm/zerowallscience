@@ -89,6 +89,62 @@ components:
       whenToUse: Extracting tabular data for meta-analysis
       enabled: true
 
+    - id: bear-counter
+      name: BEAR Counter-Evidence
+      description: Find real academic papers that oppose a given claim
+      path: ../../skills/literature/bear-counter/SKILL.md
+      whenToUse: Stress-testing a hypothesis by finding opposing evidence
+      enabled: true
+
+    - id: bear-map
+      name: BEAR Concept Map
+      description: Build a knowledge map around a concept anchored to real papers
+      path: ../../skills/literature/bear-map/SKILL.md
+      whenToUse: Exploring the landscape of related concepts via literature
+      enabled: true
+
+    - id: bear-onboard
+      name: BEAR Domain Onboard
+      description: Get a panoramic view of an unfamiliar research domain
+      path: ../../skills/literature/bear-onboard/SKILL.md
+      whenToUse: Rapid onboarding into a new research field
+      enabled: true
+
+    - id: bear-propose
+      name: BEAR Proposal Check
+      description: Pre-submission evidence check for a research idea
+      path: ../../skills/literature/bear-propose/SKILL.md
+      whenToUse: Evaluating a research idea before committing resources
+      enabled: true
+
+    - id: bear-review
+      name: BEAR Evidence Review
+      description: Balanced pro-and-con evidence review for a claim
+      path: ../../skills/literature/bear-review/SKILL.md
+      whenToUse: Building a balanced evidence landscape for a scientific claim
+      enabled: true
+
+    - id: bear-scoop
+      name: BEAR Scoop Check
+      description: Detect prior work that overlaps with your research idea
+      path: ../../skills/literature/bear-scoop/SKILL.md
+      whenToUse: Checking for scooping risks before starting new research
+      enabled: true
+
+    - id: bear-support
+      name: BEAR Supporting Evidence
+      description: Find real academic papers that support a given claim
+      path: ../../skills/literature/bear-support/SKILL.md
+      whenToUse: Gathering literature support for a hypothesis or statement
+      enabled: true
+
+    - id: bear-trace
+      name: BEAR Historical Trace
+      description: Trace the evolution of a topic from precursors to latest advances
+      path: ../../skills/literature/bear-trace/SKILL.md
+      whenToUse: Understanding the historical development of a research topic
+      enabled: true
+
 dependencies:
   core-research: ^1.0.0
 

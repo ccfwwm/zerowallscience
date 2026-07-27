@@ -1,0 +1,21 @@
+# 用户产出（整目录不提交）
+outputs/
+disclosures/
+*.tmp
+~$*
+
+# 国知局抓取结果缓存（tools/）
+tools/_last_result*.html
+
+# Python / tools
+tools/node_modules/
+__pycache__/
+*.py[cod]
+.pyo
+.venv/
+venv/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db

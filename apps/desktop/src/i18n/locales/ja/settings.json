@@ -165,7 +165,10 @@
     "addModels": "追加",
     "providerName": "Sub2API",
     "privacy": "パスワードはゲートウェイにのみ送信されます。アクセストークンはこのセッション中のアプリ内にとどまり、API キーは OS の資格情報マネージャーに直接保存されます — 設定ファイルやログ、来歴には決して書き込まれません。",
-    "runtimeOffline": "先にランタイムを接続してください"
+    "runtimeOffline": "先にランタイムを接続してください",
+    "welcomeTitle": "ZeroWall Science へようこそ",
+    "welcomeHint": "ログインすると、一つのエンドポイントで国内AIモデル（Kimi、DeepSeek、GLM、Qwen）を利用できます。",
+    "skipForNow": "今はスキップ"
   },
   "mcp": {
     "title": "MCP サーバー",

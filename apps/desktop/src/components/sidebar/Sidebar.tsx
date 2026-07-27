@@ -18,11 +18,12 @@ import {
   Settings,
   Share2,
   Trash2,
+  UserRound,
 } from "lucide-react";
 import type { Project } from "@zerowall/shared";
 import { cn } from "@/lib/cn";
 import { rootSessionOf, useRuntimeStore } from "@/lib/runtime";
-import { pickFolder, renameProject, type ProjectInfo } from "@/lib/tauri";
+import { pickFolder, renameProject, isTauri, sub2apiAccount, type ProjectInfo } from "@/lib/tauri";
 import {
   SIDEBAR_MAX,
   SIDEBAR_MIN,
@@ -62,6 +63,44 @@ function initialCollapsedProjects(): string[] {
   } catch {
     return [];
   }
+}
+
+/** Sidebar pill showing Sub2API account state.
+ *  Not logged in → "Sign in" link.  Logged in → truncated email.
+ *  Desktop only (the web gateway has its own auth). */
+function AccountPill({ navigate }: { navigate: (to: string) => void }) {
+  const { t } = useTranslation("nav");
+  const [email, setEmail] = useState<string | null>(null);
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!isTauri || isGatewayWeb) return;
+    void sub2apiAccount()
+      .then((acct) => setEmail(acct?.email ?? null))
+      .catch(() => setEmail(null));
+  }, [location.pathname]); // re-check after navigating (e.g. from Settings)
+
+  if (!isTauri || isGatewayWeb) return null;
+
+  return (
+    <button
+      className="flex items-center gap-2 rounded-input px-2 py-1 text-[13px] text-muted hover:bg-surface-2 hover:text-text"
+      onClick={() => navigate("/settings/models")}
+      aria-label={email ? t("sidebar.account") : t("sidebar.signIn")}
+    >
+      {email ? (
+        <>
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
+          <span className="min-w-0 truncate">{email}</span>
+        </>
+      ) : (
+        <>
+          <UserRound size={15} />
+          <span>{t("sidebar.signIn")}</span>
+        </>
+      )}
+    </button>
+  );
 }
 
 export function Sidebar({ project }: { project: Project }) {
@@ -702,6 +741,7 @@ export function Sidebar({ project }: { project: Project }) {
 
         <div className="border-t border-border px-3 py-3">
           <StatusPills />
+          <AccountPill navigate={navigate} />
           <button
             className="relative mt-2 flex items-center gap-2 rounded-input px-2 py-1 text-[13px] text-muted hover:bg-surface-2 hover:text-text"
             onClick={() => navigate("/settings")}

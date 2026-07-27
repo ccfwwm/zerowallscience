@@ -16,6 +16,7 @@ import { ensureJupyter, openExternal, watchFullscreen } from "@/lib/tauri";
 import { useUpdateStore } from "@/lib/update";
 import { isGatewayWeb, gatewayToken, setUnauthorizedHandler } from "@/lib/webMode";
 import { WebTokenGate } from "@/components/web/WebTokenGate";
+import { DesktopLoginGate } from "@/components/auth/DesktopLoginGate";
 import { useIsMobile } from "@/lib/useIsMobile";
 import { leaves, useLayoutStore, type SplitDir } from "@/lib/layout";
 
@@ -181,8 +182,9 @@ export function AppShell() {
   }
 
   return (
-    // The window background lives on <main>, not the shell: under vibrancy
-    // the area behind the (translucent) sidebar must stay transparent.
+    <DesktopLoginGate>
+    {/* The window background lives on <main>, not the shell: under vibrancy
+        the area behind the (translucent) sidebar must stay transparent. */}
     <div className="flex h-screen w-screen overflow-hidden text-text">
       <Sidebar project={mockProject} />
       {/* Mobile: dim + close the overlay drawer by tapping outside it. */}
@@ -241,5 +243,6 @@ export function AppShell() {
       <Toaster />
       <PaneDragGhost />
     </div>
+    </DesktopLoginGate>
   );
 }

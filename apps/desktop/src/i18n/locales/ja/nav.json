@@ -5,7 +5,9 @@
     "expand": "サイドバーを展開する",
     "expandTitle": "サイドバーを展開する ({{shortcut}})",
     "settings": "設定",
-    "home": "ホームへ戻る"
+    "home": "ホームへ戻る",
+    "signIn": "ログイン",
+    "account": "アカウント"
   },
   "items": {
     "new": "新規",

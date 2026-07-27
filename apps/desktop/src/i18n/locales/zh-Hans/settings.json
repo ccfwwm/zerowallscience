@@ -165,7 +165,10 @@
     "addModels": "添加",
     "providerName": "Sub2API",
     "privacy": "密码仅发送给网关。访问令牌仅保留在本应用本次运行中；API 密钥直接存入系统凭据管理器 — 不会写入配置文件、日志或溯源记录。",
-    "runtimeOffline": "请先连接运行时"
+    "runtimeOffline": "请先连接运行时",
+    "welcomeTitle": "欢迎使用 ZeroWall Science",
+    "welcomeHint": "登录即可通过一个接口使用 Kimi、DeepSeek、GLM、Qwen 等国产模型。",
+    "skipForNow": "暂时跳过"
   },
   "mcp": {
     "title": "MCP 服务器",

@@ -94,27 +94,12 @@ export function PackCard({ pack }: PackCardProps) {
 
       {isExpanded && (
         <div className="mt-4 pt-4 border-t border-border space-y-3">
-          {pack.manifest.author && (
-            <div className="text-xs">
-              <span className="text-muted-foreground">{t("packs.author")}: </span>
-              <span className="text-foreground">{pack.manifest.author.name}</span>
-            </div>
-          )}
-
           {pack.manifest.license && (
             <div className="text-xs">
               <span className="text-muted-foreground">{t("packs.license")}: </span>
               <span className="text-foreground">{pack.manifest.license}</span>
             </div>
           )}
-
-          <div className="text-xs">
-            <span className="text-muted-foreground">{t("packs.source")}: </span>
-            <span className="font-mono text-xs text-foreground">
-              {pack.manifest.source.repo.split("/").slice(-2).join("/")}@
-              {pack.manifest.source.commit.slice(0, 7)}
-            </span>
-          </div>
 
           {pack.manifest.components.skills && pack.manifest.components.skills.length > 0 && (
             <div className="space-y-1">

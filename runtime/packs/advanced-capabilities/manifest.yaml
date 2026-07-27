@@ -75,6 +75,34 @@ components:
       whenToUse: Debugging or understanding agent behavior
       enabled: true
 
+    - id: baoyu-compress-image
+      name: Image Compressor
+      description: Compress images to WebP or PNG with automatic tool selection
+      path: ../../skills/advanced/baoyu-compress-image/SKILL.md
+      whenToUse: Compressing, optimizing, or converting images
+      enabled: true
+
+    - id: baoyu-xhs-images
+      name: Infographic Card Generator
+      description: Generate infographic image card series in multiple visual styles
+      path: ../../skills/advanced/baoyu-xhs-images/SKILL.md
+      whenToUse: Creating social-media-ready infographic cards from content
+      enabled: true
+
+    - id: patent-disclosure-skill
+      name: Patent Disclosure
+      description: Patent mining, disclosure drafting, prior-art search, and self-check
+      path: ../../skills/advanced/patent-disclosure-skill/SKILL.md
+      whenToUse: Drafting patent disclosures or conducting prior-art searches
+      enabled: true
+
+    - id: local-release-test
+      name: Local Release Test
+      description: Publish prerelease test builds from development branches
+      path: ../../skills/advanced/local-release-test/SKILL.md
+      whenToUse: Testing release workflows locally before publishing
+      enabled: false
+
 dependencies:
   core-research: ^1.0.0
 

@@ -5,7 +5,9 @@
     "expand": "Seitenleiste ausklappen",
     "expandTitle": "Seitenleiste ausklappen ({{shortcut}})",
     "settings": "Einstellungen",
-    "home": "Startseite"
+    "home": "Startseite",
+    "signIn": "Sign in",
+    "account": "Account"
   },
   "items": {
     "new": "Neu",

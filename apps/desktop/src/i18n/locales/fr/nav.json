@@ -5,7 +5,9 @@
     "expand": "Développer la barre latérale",
     "expandTitle": "Développer la barre latérale ({{shortcut}})",
     "settings": "Paramètres",
-    "home": "Accueil"
+    "home": "Accueil",
+    "signIn": "Se connecter",
+    "account": "Compte"
   },
   "items": {
     "new": "Nouveau",
