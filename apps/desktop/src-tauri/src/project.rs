@@ -74,7 +74,6 @@ fn now_ms() -> u64 {
 /// A corrupt or missing project.json makes the folder a plain workspace again
 /// — never an error the UI has to handle.
 fn read_meta(dir: &Path) -> Option<ProjectMeta> {
-    crate::runtime::migrate_legacy_workspace_store(dir).ok()?;
     let text = std::fs::read_to_string(meta_file(dir)).ok()?;
     serde_json::from_str(&text).ok()
 }
@@ -836,27 +835,6 @@ mod tests {
             "the source snapshot opt-out must not survive the import"
         );
         assert_eq!(fs::read_to_string(destination.join("paper.md")).unwrap(), "research\n");
-
-        let _ = fs::remove_dir_all(&base);
-    }
-
-    #[test]
-    fn legacy_project_metadata_moves_to_zerowall_store_on_read() {
-        let base = std::env::temp_dir().join(format!("zerowall-project-legacy-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&base);
-        let dir = base.join("legacy-project");
-        let legacy = dir.join(".openscience");
-        fs::create_dir_all(&legacy).unwrap();
-        fs::write(
-            legacy.join("project.json"),
-            r#"{"id":"legacy-id","name":"Legacy","createdAt":1,"version":1}"#,
-        )
-        .unwrap();
-
-        let meta = read_meta(&dir).expect("legacy project metadata should remain readable");
-        assert_eq!(meta.id, "legacy-id");
-        assert!(dir.join(".zerowall").join("project.json").is_file());
-        assert!(!legacy.exists());
 
         let _ = fs::remove_dir_all(&base);
     }

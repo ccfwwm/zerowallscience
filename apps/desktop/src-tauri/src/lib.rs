@@ -68,11 +68,6 @@ pub fn run() {
         .manage(gateway::GatewayState::default())
         .manage(sub2api::Sub2ApiState::default())
         .setup(|app| {
-            // The bundle identifier changed for ZeroWall, which changes Tauri's
-            // app-data directory on every platform. Restore app-private runtime,
-            // provider, and workspace-selection state before any consumer reads it.
-            let app_data = app.path().app_data_dir()?;
-            runtime::migrate_legacy_app_data(&app_data).map_err(std::io::Error::other)?;
             // Watch the active workspace so changes made outside the app (an
             // external editor, a detached process) still enqueue a debounced
             // snapshot. Re-pointed on every workspace switch in set_workspace.

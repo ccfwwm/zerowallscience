@@ -32,142 +32,11 @@ pub(crate) fn runtime_root(app: &AppHandle) -> Result<PathBuf, String> {
         .join("runtime"))
 }
 
-/// Resolve the app-data directory used by releases with the previous bundle id.
-/// Tauri app-data paths end in the configured identifier on Windows, macOS, and
-/// Linux, so the legacy installation is a sibling of the current directory.
-fn legacy_app_data_dir(current: &Path) -> Option<PathBuf> {
-    current
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .map(|parent| parent.join("com.ai4s.workbench"))
-}
-
-/// Copy a legacy app-data tree into the current tree without replacing anything
-/// already created by ZeroWall. `create_new` makes the new installation win even
-/// if two startup paths race. Symlinks and type conflicts are skipped: following
-/// a legacy link could escape app-data, while an existing destination is always
-/// authoritative.
-fn copy_missing_tree(source: &Path, destination: &Path) -> Result<(), String> {
-    let source_metadata = std::fs::symlink_metadata(source)
-        .map_err(|e| format!("could not inspect {}: {e}", source.display()))?;
-    if !source_metadata.is_dir() || metadata_is_link_or_reparse_point(&source_metadata) {
-        return Ok(());
-    }
-    match std::fs::symlink_metadata(destination) {
-        Ok(metadata) => {
-            if !metadata.is_dir() || metadata_is_link_or_reparse_point(&metadata) {
-                return Ok(());
-            }
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            if let Err(e) = std::fs::create_dir(destination) {
-                if e.kind() != std::io::ErrorKind::AlreadyExists {
-                    return Err(format!("could not create {}: {e}", destination.display()));
-                }
-            }
-            let metadata = std::fs::symlink_metadata(destination)
-                .map_err(|e| format!("could not inspect {}: {e}", destination.display()))?;
-            if !metadata.is_dir() || metadata_is_link_or_reparse_point(&metadata) {
-                return Ok(());
-            }
-        }
-        Err(e) => return Err(format!("could not inspect {}: {e}", destination.display())),
-    }
-    for entry in std::fs::read_dir(source)
-        .map_err(|e| format!("could not read {}: {e}", source.display()))?
-    {
-        let entry = entry.map_err(|e| format!("could not read legacy app-data entry: {e}"))?;
-        let source_path = entry.path();
-        let destination_path = destination.join(entry.file_name());
-        let file_type = entry
-            .file_type()
-            .map_err(|e| format!("could not inspect {}: {e}", source_path.display()))?;
-        if file_type.is_dir() {
-            copy_missing_tree(&source_path, &destination_path)?;
-        } else if file_type.is_file() {
-            match std::fs::symlink_metadata(&destination_path) {
-                Ok(_) => continue,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => {
-                    return Err(format!(
-                        "could not inspect {}: {e}",
-                        destination_path.display()
-                    ));
-                }
-            }
-            use std::io::Write;
-            let mut input = std::fs::File::open(&source_path)
-                .map_err(|e| format!("could not open {}: {e}", source_path.display()))?;
-            let mut output = match std::fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&destination_path)
-            {
-                Ok(file) => file,
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(e) => return Err(format!("could not create {}: {e}", destination_path.display())),
-            };
-            if let Err(e) = std::io::copy(&mut input, &mut output).and_then(|_| output.flush()) {
-                drop(output);
-                let _ = std::fs::remove_file(&destination_path);
-                return Err(format!("could not copy {}: {e}", source_path.display()));
-            }
-            if let Ok(metadata) = std::fs::metadata(&source_path) {
-                let _ = std::fs::set_permissions(&destination_path, metadata.permissions());
-            }
-        }
-    }
-    Ok(())
-}
-
-fn metadata_is_link_or_reparse_point(metadata: &std::fs::Metadata) -> bool {
-    if metadata.file_type().is_symlink() {
-        return true;
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
-        metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-    }
-    #[cfg(not(windows))]
-    false
-}
-
-/// Import app-private state from the old bundle-id directory. The source is kept
-/// for rollback, missing files are copied recursively, and current files always
-/// win. The destination is app-data itself, never a tracked research workspace.
-pub(crate) fn migrate_legacy_app_data(current: &Path) -> Result<(), String> {
-    let Some(legacy) = legacy_app_data_dir(current) else {
-        return Ok(());
-    };
-    let Ok(metadata) = std::fs::symlink_metadata(&legacy) else {
-        return Ok(());
-    };
-    if !metadata.is_dir() || metadata_is_link_or_reparse_point(&metadata) {
-        return Ok(());
-    }
-    copy_missing_tree(&legacy, current)
-}
-
 /// The running sidecar's base URL (`http://127.0.0.1:<port>`), or None when the
 /// runtime is not started yet. The gateway proxies agent calls here, adding the
 /// per-run Basic-auth password (`server_password`) itself.
 pub(crate) fn sidecar_url(state: &RuntimeState) -> Option<String> {
     state.lifecycle.lock().unwrap().url.clone()
-}
-
-/// Move the workspace metadata directory written by pre-ZeroWall releases.
-/// The rename is same-volume and only runs when the new store does not exist,
-/// so an interrupted or mixed-version workspace is never overwritten.
-pub(crate) fn migrate_legacy_workspace_store(workspace: &Path) -> Result<(), String> {
-    let current = workspace.join(".zerowall");
-    let legacy = workspace.join(".openscience");
-    if current.exists() || !legacy.is_dir() {
-        return Ok(());
-    }
-    std::fs::rename(&legacy, &current)
-        .map_err(|e| format!("failed to migrate workspace metadata: {e}"))
 }
 
 fn xdg_config_home(app: &AppHandle) -> Result<PathBuf, String> {
@@ -199,7 +68,6 @@ pub fn workspace_dir(app: &AppHandle) -> Result<PathBuf, String> {
         if let Ok(s) = std::fs::read_to_string(&f) {
             let dir = PathBuf::from(s.trim());
             if dir.is_dir() {
-                migrate_legacy_workspace_store(&dir)?;
                 return Ok(dir);
             }
         }
@@ -230,25 +98,7 @@ pub fn base_workspace_dir(app: &AppHandle) -> Result<PathBuf, String> {
         }
     };
     let dir = docs.join("ZeroWallScience");
-
-    // One-time migrations, newest legacy name first. A failed rename (e.g. cross-volume)
-    // keeps the existing location rather than splitting the user's files.
-    if !dir.exists() {
-        for old in [
-            docs.join("OpenScience"),
-            docs.join("Open Science"),
-            runtime_root(app)?.join("workspace"),
-        ] {
-            if old.is_dir() {
-                if std::fs::rename(&old, &dir).is_ok() {
-                    break;
-                }
-                return Ok(old);
-            }
-        }
-    }
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    migrate_legacy_workspace_store(&dir)?;
     Ok(dir)
 }
 
@@ -1154,9 +1004,9 @@ pub fn kill_child(state: &RuntimeState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        auth_has_provider, legacy_app_data_dir, migrate_legacy_app_data,
-        prepare_workspace_dir, prune_stale_skills, random_hex, remove_key_from_config,
-        resolve_proxy_env, sync_skill_pack, validate_proxy_url, SKILL_RESOURCES,
+        auth_has_provider, prepare_workspace_dir, prune_stale_skills, random_hex,
+        remove_key_from_config, resolve_proxy_env, sync_skill_pack, validate_proxy_url,
+        SKILL_RESOURCES,
     };
     #[cfg(target_os = "macos")]
     use super::parse_scutil_proxy;
@@ -1247,17 +1097,6 @@ mod tests {
     }
 
     #[test]
-    fn legacy_app_data_path_is_the_previous_bundle_id_sibling() {
-        let current = std::path::Path::new("app-data-root").join("com.zerowall.science");
-        let legacy_id = ["com", "ai4s", "workbench"].join(".");
-        assert_eq!(
-            legacy_app_data_dir(&current),
-            Some(std::path::Path::new("app-data-root").join(legacy_id))
-        );
-        assert_eq!(legacy_app_data_dir(std::path::Path::new("com.zerowall.science")), None);
-    }
-
-    #[test]
     fn preparing_a_workspace_initializes_its_science_database() {
         let root = std::env::temp_dir().join(format!(
             "zerowall-prepare-science-workspace-{}",
@@ -1272,106 +1111,6 @@ mod tests {
         let status = crate::science_db::science_db_status(&prepared).unwrap();
         assert_eq!(status.version, 8);
 
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn legacy_app_data_migration_preserves_runtime_and_workspace_selection() {
-        let root = std::env::temp_dir().join(format!("zerowall-app-data-legacy-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        let current = root.join("com.zerowall.science");
-        let legacy = root.join(["com", "ai4s", "workbench"].join("."));
-        fs::create_dir_all(legacy.join("runtime/xdg-config/opencode")).unwrap();
-        fs::create_dir_all(legacy.join("runtime/xdg-data/opencode")).unwrap();
-        fs::write(legacy.join("runtime/active-workspace.txt"), "C:/research/active").unwrap();
-        fs::write(legacy.join("runtime/base-workspace.txt"), "C:/research/base").unwrap();
-        fs::write(legacy.join("runtime/xdg-config/opencode/opencode.jsonc"), "provider-state").unwrap();
-        fs::write(legacy.join("runtime/xdg-data/opencode/auth.json"), "private-runtime-state").unwrap();
-
-        migrate_legacy_app_data(&current).unwrap();
-
-        assert_eq!(fs::read_to_string(current.join("runtime/active-workspace.txt")).unwrap(), "C:/research/active");
-        assert_eq!(fs::read_to_string(current.join("runtime/base-workspace.txt")).unwrap(), "C:/research/base");
-        assert_eq!(fs::read_to_string(current.join("runtime/xdg-config/opencode/opencode.jsonc")).unwrap(), "provider-state");
-        assert_eq!(fs::read_to_string(current.join("runtime/xdg-data/opencode/auth.json")).unwrap(), "private-runtime-state");
-        assert!(legacy.is_dir(), "the compatibility copy must preserve the legacy source");
-
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn legacy_app_data_migration_is_non_overwriting_and_idempotent() {
-        let root = std::env::temp_dir().join(format!("zerowall-app-data-mixed-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        let current = root.join("com.zerowall.science");
-        let legacy = root.join(["com", "ai4s", "workbench"].join("."));
-        fs::create_dir_all(legacy.join("runtime/xdg-config/opencode")).unwrap();
-        fs::create_dir_all(current.join("runtime/xdg-config/opencode")).unwrap();
-        fs::write(legacy.join("runtime/active-workspace.txt"), "legacy-active").unwrap();
-        fs::write(legacy.join("runtime/base-workspace.txt"), "legacy-base").unwrap();
-        fs::write(legacy.join("runtime/xdg-config/opencode/opencode.jsonc"), "legacy-provider").unwrap();
-        fs::write(current.join("runtime/active-workspace.txt"), "current-active").unwrap();
-        fs::write(current.join("runtime/xdg-config/opencode/opencode.jsonc"), "current-provider").unwrap();
-
-        migrate_legacy_app_data(&current).unwrap();
-        migrate_legacy_app_data(&current).unwrap();
-
-        assert_eq!(fs::read_to_string(current.join("runtime/active-workspace.txt")).unwrap(), "current-active");
-        assert_eq!(fs::read_to_string(current.join("runtime/xdg-config/opencode/opencode.jsonc")).unwrap(), "current-provider");
-        assert_eq!(fs::read_to_string(current.join("runtime/base-workspace.txt")).unwrap(), "legacy-base");
-
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[cfg(unix)]
-    fn create_directory_link(target: &std::path::Path, link: &std::path::Path) {
-        std::os::unix::fs::symlink(target, link).expect("create destination directory symlink");
-    }
-
-    #[cfg(windows)]
-    fn create_directory_link(target: &std::path::Path, link: &std::path::Path) {
-        if std::os::windows::fs::symlink_dir(target, link).is_ok() {
-            return;
-        }
-        let status = std::process::Command::new("cmd")
-            .args(["/c", "mklink", "/J"])
-            .arg(link)
-            .arg(target)
-            .status()
-            .expect("start mklink junction fallback");
-        assert!(status.success(), "create destination directory junction");
-    }
-
-    #[test]
-    fn legacy_app_data_migration_does_not_follow_destination_directory_links() {
-        let root = std::env::temp_dir().join(format!(
-            "zerowall-app-data-destination-link-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        let current = root.join("com.zerowall.science");
-        let legacy = legacy_app_data_dir(&current).unwrap();
-        let outside = root.join("outside");
-        fs::create_dir_all(legacy.join("runtime/xdg-config/opencode")).unwrap();
-        fs::write(
-            legacy.join("runtime/xdg-config/opencode/opencode.jsonc"),
-            "legacy-provider",
-        )
-        .unwrap();
-        fs::create_dir_all(&current).unwrap();
-        fs::create_dir_all(&outside).unwrap();
-        let linked_runtime = current.join("runtime");
-        create_directory_link(&outside, &linked_runtime);
-
-        migrate_legacy_app_data(&current).unwrap();
-
-        assert!(
-            !outside.join("xdg-config/opencode/opencode.jsonc").exists(),
-            "migration must not write through a destination directory link"
-        );
-        assert!(fs::symlink_metadata(&linked_runtime).is_ok());
-
-        fs::remove_dir(&linked_runtime).unwrap();
         let _ = fs::remove_dir_all(&root);
     }
 

@@ -50,41 +50,6 @@ const allowedLegacyOccurrences = [
     context: "assert!(!destination.join(\".openscience\").exists());",
     expectedCount: 1,
   },
-  {
-    path: "apps/desktop/src-tauri/src/project.rs",
-    pattern: "\\.openscience",
-    literal: ".openscience",
-    context: "let legacy = dir.join(\".openscience\");",
-    expectedCount: 1,
-  },
-  {
-    path: "apps/desktop/src-tauri/src/runtime.rs",
-    pattern: "com\\.ai4s\\.workbench",
-    literal: "com.ai4s.workbench",
-    context: ".map(|parent| parent.join(\"com.ai4s.workbench\"))",
-    expectedCount: 1,
-  },
-  {
-    path: "apps/desktop/src-tauri/src/runtime.rs",
-    pattern: "\\.openscience",
-    literal: ".openscience",
-    context: "let legacy = workspace.join(\".openscience\");",
-    expectedCount: 1,
-  },
-  {
-    path: "apps/desktop/src-tauri/src/runtime.rs",
-    pattern: "[\"']OpenScience[\"']",
-    literal: "\"OpenScience\"",
-    context: "docs.join(\"OpenScience\"),",
-    expectedCount: 1,
-  },
-  {
-    path: "apps/desktop/src-tauri/src/runtime.rs",
-    pattern: "Open Science",
-    literal: "Open Science",
-    context: "docs.join(\"Open Science\"),",
-    expectedCount: 1,
-  },
   // Provenance: these four name the predecessor product this repository was
   // forked from. The lineage is a fact about where the code came from, so it
   // cannot be renamed away — but it is pinned per line and counted, so a new
