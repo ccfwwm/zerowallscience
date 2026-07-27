@@ -19,6 +19,7 @@ import {
   Share2,
   Trash2,
   UserRound,
+  Wallet,
 } from "lucide-react";
 import type { Project } from "@zerowall/shared";
 import { cn } from "@/lib/cn";
@@ -140,13 +141,27 @@ function AccountPill({ navigate }: { navigate: (to: string) => void }) {
         {balance !== null && (
           <button
             className={cn(
-              "shrink-0 font-mono text-xs transition-colors hover:text-text",
-              low ? "text-error" : "text-muted",
+              "flex shrink-0 items-center gap-1 rounded-input border px-1.5 py-0.5 font-mono text-xs transition-colors",
+              low
+                ? "border-error/50 text-error hover:bg-error/10"
+                : "border-faint text-muted hover:border-accent hover:text-accent",
             )}
             onClick={() => setRechargeOpen(true)}
+            aria-label={t("sidebar.recharge")}
             title={low ? t("sidebar.lowBalance") : t("sidebar.recharge")}
           >
-            ¥ {Number(balance).toFixed(2)}
+            <Wallet size={11} className="shrink-0" />¥ {Number(balance).toFixed(2)}
+          </button>
+        )}
+        {balance === null && (
+          // The balance call can fail (offline gateway); the recharge entry stays.
+          <button
+            className="shrink-0 rounded-input border border-faint p-1 text-muted transition-colors hover:border-accent hover:text-accent"
+            onClick={() => setRechargeOpen(true)}
+            aria-label={t("sidebar.recharge")}
+            title={t("sidebar.recharge")}
+          >
+            <Wallet size={11} />
           </button>
         )}
       </div>

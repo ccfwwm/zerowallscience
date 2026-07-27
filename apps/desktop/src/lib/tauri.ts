@@ -281,6 +281,13 @@ export async function sub2apiOrderStatus(orderId: string): Promise<Sub2ApiPaymen
   return invoke<Sub2ApiPaymentOrder>("sub2api_order_status", { orderId });
 }
 
+/** Recent recharge orders — used to recover a still-unpaid order's QR. */
+export async function sub2apiListOrders(): Promise<Sub2ApiPaymentOrder[]> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<Sub2ApiPaymentOrder[]>("sub2api_list_orders");
+}
+
 /** Whether the OS credential manager has credentials for a provider. */
 export async function providerSecretExists(providerId: string): Promise<boolean> {
   if (!isTauri) return false;

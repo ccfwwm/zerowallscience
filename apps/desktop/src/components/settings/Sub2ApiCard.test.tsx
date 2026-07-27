@@ -40,6 +40,7 @@ vi.mock("@/lib/tauri", () => ({
   sub2apiCheckoutInfo: mocks.checkoutInfo,
   sub2apiCreateOrder: mocks.createOrder,
   sub2apiOrderStatus: mocks.orderStatus,
+  sub2apiListOrders: () => Promise.resolve([]),
   openExternal: mocks.openExternal,
 }));
 

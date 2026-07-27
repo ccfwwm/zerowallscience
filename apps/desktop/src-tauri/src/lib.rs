@@ -136,6 +136,7 @@ pub fn run() {
             sub2api::sub2api_checkout_info,
             sub2api::sub2api_create_order,
             sub2api::sub2api_order_status,
+            sub2api::sub2api_list_orders,
             runtime::remove_config_entry,
             jupyter::jupyter_status,
             jupyter::setup_jupyter,

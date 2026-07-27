@@ -722,9 +722,31 @@ pub(crate) fn parse_order(body: &str) -> Result<PaymentOrder, String> {
         .or_else(|| data.get("payment"))
         .or_else(|| data.get("item"))
         .unwrap_or(data);
-    let id = first_str(raw, &["order_id", "orderId", "id", "trade_no", "tradeNo", "out_trade_no"])
-        .ok_or("the gateway returned an order with no id")?;
-    Ok(PaymentOrder {
+    order_from_value(raw).ok_or_else(|| "the gateway returned an order with no id".to_string())
+}
+
+/// The order list from `GET /payment/orders/my`, tolerating the usual container
+/// keys. Items without an id are skipped rather than failing the whole list.
+pub(crate) fn parse_orders(body: &str) -> Result<Vec<PaymentOrder>, String> {
+    let root: serde_json::Value =
+        serde_json::from_str(body).map_err(|e| format!("the order list was not JSON: {e}"))?;
+    let data = envelope(&root);
+    if let serde_json::Value::Array(arr) = data {
+        return Ok(arr.iter().filter_map(order_from_value).collect());
+    }
+    let items = ["items", "orders", "data", "list", "records"]
+        .iter()
+        .find_map(|k| data.get(*k).and_then(|v| v.as_array()));
+    Ok(match items {
+        Some(arr) => arr.iter().filter_map(order_from_value).collect(),
+        None => Vec::new(),
+    })
+}
+
+/// One order object → `PaymentOrder`, or `None` when it carries no id.
+fn order_from_value(raw: &serde_json::Value) -> Option<PaymentOrder> {
+    let id = first_str(raw, &["order_id", "orderId", "id", "trade_no", "tradeNo", "out_trade_no"])?;
+    Some(PaymentOrder {
         id,
         payment_type: first_str(
             raw,
@@ -866,6 +888,22 @@ pub async fn sub2api_order_status(
     })
     .await?;
     Ok(order)
+}
+
+/// The account's recent recharge orders. Used to recover a pending order after
+/// the dialog was closed or the app reloaded, so an unscanned QR is never lost.
+#[tauri::command]
+pub async fn sub2api_list_orders(
+    sub2api: State<'_, Sub2ApiState>,
+) -> Result<Vec<PaymentOrder>, String> {
+    let (bases, token) = session_context(&sub2api)?;
+    let (_base, orders) = blocking(move || {
+        with_failover(&bases, |base| {
+            parse_orders(&get_json(base, "/payment/orders/my?page=1&page_size=20", &token)?)
+        })
+    })
+    .await?;
+    Ok(orders)
 }
 
 /// Run a blocking HTTP call off the command thread. `reqwest::blocking` cannot
@@ -1109,5 +1147,27 @@ mod tests {
         assert_eq!(flat.qr_code.as_deref(), Some("data:image/png;base64,AA"));
         assert!(parse_order(r#"{"status":"paid"}"#).is_err());
         assert!(parse_order("not json").is_err());
+    }
+
+    #[test]
+    fn order_list_reads_the_container_keys_and_skips_idless_items() {
+        let wrapped = parse_orders(
+            r#"{"code":0,"data":{"items":[
+                {"order_id":"A","status":"pending","qr_code":"weixin://a"},
+                {"status":"paid"},
+                {"id":"B","status":"paid"}
+            ],"total":2}}"#,
+        )
+        .unwrap();
+        assert_eq!(wrapped.len(), 2);
+        assert_eq!(wrapped[0].id, "A");
+        assert_eq!(wrapped[0].qr_code.as_deref(), Some("weixin://a"));
+        assert_eq!(wrapped[1].id, "B");
+
+        // A bare array, an alternate container key, and a shape with no list.
+        assert_eq!(parse_orders(r#"[{"id":"C"}]"#).unwrap().len(), 1);
+        assert_eq!(parse_orders(r#"{"orders":[{"id":"D"}]}"#).unwrap()[0].id, "D");
+        assert!(parse_orders(r#"{"total":0}"#).unwrap().is_empty());
+        assert!(parse_orders("not json").is_err());
     }
 }

@@ -343,19 +343,24 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
             </span>
             <span className="min-w-0 break-all font-mono text-xs text-muted">{account.baseUrl}</span>
             <div className="hidden flex-1 sm:block" />
-            {balance !== null && (
-              <span className="shrink-0 font-mono text-xs text-muted" title={t("sub2api.balance")}>
-                ¥ {Number(balance).toFixed(2)}
-              </span>
-            )}
+            {/* Balance + 充值 belong together; the divider keeps them clear of the
+                destructive sign-out so neither is clicked by mistake. */}
+            <div className="flex shrink-0 items-center gap-2">
+              {balance !== null && (
+                <span className="font-mono text-xs text-muted" title={t("sub2api.balance")}>
+                  ¥ {Number(balance).toFixed(2)}
+                </span>
+              )}
+              <button
+                className="flex items-center gap-1 rounded-input border border-faint px-2 py-1 text-xs text-text transition-colors hover:border-accent hover:text-accent"
+                onClick={() => setRechargeOpen(true)}
+              >
+                <Wallet size={12} /> {t("sub2api.recharge")}
+              </button>
+            </div>
+            <span className="hidden h-4 w-px shrink-0 bg-border sm:block" />
             <button
-              className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-text"
-              onClick={() => setRechargeOpen(true)}
-            >
-              <Wallet size={12} /> {t("sub2api.recharge")}
-            </button>
-            <button
-              className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-text"
+              className="flex shrink-0 items-center gap-1 text-xs text-muted transition-colors hover:text-text sm:ml-1"
               onClick={() => void signOut()}
             >
               <LogOut size={12} /> {t("sub2api.signOut")}
