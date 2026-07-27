@@ -7,7 +7,7 @@ describe("DataFlowCard", () => {
     render(<DataFlowCard model="anthropic/claude" workspace="/Users/x/ZeroWallScience" />);
     expect(screen.getByText("Stays on this machine")).toBeInTheDocument();
     expect(screen.getByText(/Sent to your model provider/)).toBeInTheDocument();
-    expect(screen.getByText("anthropic/claude")).toBeInTheDocument();
+    expect(screen.getByText("claude")).toBeInTheDocument();
     expect(screen.getByText(/\/Users\/x\/ZeroWallScience/)).toBeInTheDocument();
     // The copy must never promise perfection — it states scope, not guarantees.
     expect(screen.queryByText(/no errors|zero hallucination/i)).not.toBeInTheDocument();

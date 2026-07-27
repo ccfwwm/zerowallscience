@@ -103,10 +103,10 @@ describe("ModelBrowser", () => {
     const onManageProviders = vi.fn();
     const { rerender } = render(<ModelBrowser providers={providers} defaultModel="gone/model" busy={false}
       onSelect={vi.fn()} onManageProviders={onManageProviders} />);
-    expect(screen.getByText(/Configured model unavailable: gone\/model/)).toBeInTheDocument();
+    expect(screen.getByText(/Configured model unavailable: model/)).toBeInTheDocument();
     rerender(<ModelBrowser providers={[]} defaultModel="gone/model" busy={false}
       onSelect={vi.fn()} onManageProviders={onManageProviders} />);
-    expect(screen.getByText(/Configured model unavailable: gone\/model/)).toBeInTheDocument();
+    expect(screen.getByText(/Configured model unavailable: model/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Manage providers" })).toBeInTheDocument();
   });
 

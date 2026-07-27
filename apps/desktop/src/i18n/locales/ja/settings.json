@@ -225,7 +225,8 @@
     "urlPlaceholder": "URL — 例: https://example.com/mcp",
     "addServer": "サーバーを追加",
     "recommended": "推奨",
-    "enableDefaults": "既定のコネクタ {{count}} 件を有効化"
+    "enableDefaults": "既定のコネクタ {{count}} 件を有効化",
+    "reconnect": "再接続"
   },
   "workspaceStatus": {
     "title": "ワークスペースの状態",
@@ -318,6 +319,8 @@
     "mcpAdded": "MCP サーバー {{name}} を追加しました",
     "couldNotRemoveMcp": "MCP サーバーを削除できませんでした",
     "mcpRemoved": "MCP サーバー {{name}} を削除しました",
+    "couldNotReconnectMcp": "MCPサーバーに再接続できませんでした",
+    "mcpReconnected": "MCPサーバー {{name}} を再接続しました",
     "importFailed": "インポートに失敗しました",
     "noOpenCodeLoginFound": "このマシンで OpenCode CLI のログインが見つかりませんでした。",
     "importedLogin": "OpenCode CLI のログインをインポートしました。",

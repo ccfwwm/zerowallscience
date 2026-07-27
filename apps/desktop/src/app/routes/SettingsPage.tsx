@@ -13,6 +13,7 @@ import {
   Search,
 } from "lucide-react";
 import type {
+  McpConfig,
   McpServer,
   OAuthAuthorization,
   ProviderAuthMethod,
@@ -82,6 +83,10 @@ import {
 } from "@/lib/browser";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
+
+/** Strip the "provider/" prefix from a model key for display. */
+const displayModel = (key: string | null | undefined) =>
+  key?.includes("/") ? key.split("/").slice(1).join("/") : (key ?? null);
 
 /**
  * Settings. ONE configuration surface: everything talks to the bundled
@@ -421,7 +426,7 @@ export function SettingsPage() {
     if (!next) return;
     try {
       await setDefaultModel(next);
-      toast.success(t("toast.defaultModelReset", { old: current, model: next }));
+      toast.success(t("toast.defaultModelReset", { old: displayModel(current), model: displayModel(next) }));
     } catch (e) {
       toast.error(`${t("toast.couldNotSetModel")}: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -452,7 +457,7 @@ export function SettingsPage() {
     // in `modelSwitchError`; this page only presents the outcome.
     try {
       await useRuntimeStore.getState().setDefaultModel(model);
-      toast.success(t("toast.defaultModelSet", { model }));
+      toast.success(t("toast.defaultModelSet", { model: displayModel(model) }));
       return true;
     } catch (error) {
       toast.error(`${t("toast.couldNotSetModel")}: ${error instanceof Error ? error.message : String(error)}`);
@@ -784,6 +789,14 @@ export function SettingsPage() {
       toast.success(t("toast.mcpRemoved", { name }));
     });
 
+  const reconnectMcp = (name: string, config: McpConfig) =>
+    run(t("toast.couldNotReconnectMcp"), async () => {
+      await removeConfigEntry("mcp", name);
+      await getClient()!.addMcpServer(name, config);
+      await useRuntimeStore.getState().connectRetry();
+      toast.success(t("toast.mcpReconnected", { name }));
+    });
+
   const importLogin = () =>
     run(t("toast.importFailed"), async () => {
       const found = await importOpenCodeLogin();
@@ -858,7 +871,7 @@ export function SettingsPage() {
                   {connected && defaultModel && (
                     <>
                       <span className="text-border">·</span>
-                      <span className="font-mono">{defaultModel}</span>
+                      <span className="font-mono">{displayModel(defaultModel)}</span>
                     </>
                   )}
                 </span>
@@ -1500,6 +1513,16 @@ export function SettingsPage() {
                         ? s.config.url
                         : ""}
                   </span>
+                  {s.config && s.status !== "connected" && (
+                    <button
+                      className="flex shrink-0 items-center gap-1 text-xs text-accent transition-colors hover:text-accent/80"
+                      onClick={() => void reconnectMcp(s.name, s.config!)}
+                      disabled={busy}
+                    >
+                      <RefreshCw size={11} />
+                      {t("mcp.reconnect")}
+                    </button>
+                  )}
                   <button
                     className="shrink-0 text-xs text-muted transition-colors hover:text-error"
                     onClick={() => void removeMcp(s.name)}

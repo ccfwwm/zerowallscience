@@ -1,6 +1,6 @@
 [package]
 name = "zerowall-science"
-version = "0.3.5"
+version = "0.3.6"
 description = "ZeroWall Science"
 authors = ["ZeroWall Science contributors"]
 edition = "2021"

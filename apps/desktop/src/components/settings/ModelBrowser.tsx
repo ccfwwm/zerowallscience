@@ -86,7 +86,7 @@ export function ModelBrowser({ providers, defaultModel, busy, onSelect, onManage
     <div>
       {unavailableDefault && (
         <div className="mb-3 rounded-input border border-warn/30 bg-warn/10 px-3 py-2 font-mono text-xs text-warn">
-          {t("model.unavailableDefault", { model: defaultModel })}
+          {t("model.unavailableDefault", { model: defaultModel?.includes("/") ? defaultModel.split("/").slice(1).join("/") : defaultModel })}
         </div>
       )}
       {defaultModel === null && options.length > 0 && (

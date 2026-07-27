@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "prototype",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "../zerowallscience-web/prototype", "-l", "3847", "--no-clipboard"],
+      "port": 3847
+    }
+  ]
+}

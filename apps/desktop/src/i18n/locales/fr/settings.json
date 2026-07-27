@@ -226,7 +226,8 @@
     "urlPlaceholder": "URL — p. ex. https://example.com/mcp",
     "addServer": "Ajouter un serveur",
     "recommended": "recommandé",
-    "enableDefaults": "Activer {{count}} connecteur(s) par défaut"
+    "enableDefaults": "Activer {{count}} connecteur(s) par défaut",
+    "reconnect": "Reconnecter"
   },
   "workspaceStatus": {
     "title": "État de l'espace de travail",
@@ -319,6 +320,8 @@
     "mcpAdded": "Serveur MCP {{name}} ajouté",
     "couldNotRemoveMcp": "Impossible de supprimer le serveur MCP",
     "mcpRemoved": "Serveur MCP {{name}} supprimé",
+    "couldNotReconnectMcp": "Impossible de reconnecter le serveur MCP",
+    "mcpReconnected": "Serveur MCP {{name}} reconnecté",
     "importFailed": "Échec de l'importation",
     "noOpenCodeLoginFound": "Aucune connexion CLI OpenCode trouvée sur cette machine.",
     "importedLogin": "Votre connexion CLI OpenCode a été importée.",

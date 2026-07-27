@@ -39,7 +39,7 @@ export function DataFlowCard({ model, workspace }: { model: string | null; works
           </div>
           <div className="mb-1 mt-1.5">
             <span className="inline-block max-w-full break-all rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted">
-              {model ?? t("dataFlow.remote.noModel")}
+              {model ? (model.includes("/") ? model.split("/").slice(1).join("/") : model) : t("dataFlow.remote.noModel")}
             </span>
           </div>
           <Item tone="warn">{t("dataFlow.remote.messages")}</Item>
