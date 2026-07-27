@@ -140,7 +140,7 @@
     "importLogin": "已经在使用 OpenCode CLI？导入其登录信息"
   },
   "sub2api": {
-    "title": "Sub2API 账号",
+    "title": "AI 平台",
     "hint": "使用邮箱和密码登录，通过一个 OpenAI 兼容接口使用 Kimi、DeepSeek、GLM、Qwen",
     "signIn": "登录",
     "register": "注册账号",
@@ -163,7 +163,7 @@
     "noModels": "网关未为此账号返回任何模型。",
     "manualPlaceholder": "手动添加模型 ID — 逗号分隔",
     "addModels": "添加",
-    "providerName": "Sub2API",
+    "providerName": "AI 平台",
     "privacy": "密码仅发送给网关。访问令牌仅保留在本应用本次运行中；API 密钥直接存入系统凭据管理器 — 不会写入配置文件、日志或溯源记录。",
     "runtimeOffline": "请先连接运行时",
     "welcomeTitle": "欢迎使用 ZeroWall Science",

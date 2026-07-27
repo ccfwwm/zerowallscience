@@ -134,6 +134,7 @@ export interface Sub2ApiProvisioned {
   providerId: string;
   baseUrl: string;
   models: string[];
+  groups: Array<{ id: number; name: string }>;
 }
 
 /** Email the verification code that registration requires. The gateway host is

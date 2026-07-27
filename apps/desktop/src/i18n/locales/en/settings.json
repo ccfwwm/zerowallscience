@@ -141,7 +141,7 @@
     "importLogin": "Already use the OpenCode CLI? Import its login"
   },
   "sub2api": {
-    "title": "Sub2API account",
+    "title": "AI Platform",
     "hint": "Sign in with an email and password to reach Kimi, DeepSeek, GLM and Qwen through one OpenAI-compatible endpoint",
     "signIn": "Sign in",
     "register": "Create an account",
@@ -164,7 +164,7 @@
     "noModels": "The gateway listed no models for this account.",
     "manualPlaceholder": "Add model ids by hand — comma-separated",
     "addModels": "Add",
-    "providerName": "Sub2API",
+    "providerName": "AI Platform",
     "privacy": "Your password is sent only to the gateway. The access token stays in this app for the session; the API key goes straight into the OS credential manager — never into config files, logs, or provenance.",
     "runtimeOffline": "Connect the runtime first",
     "welcomeTitle": "Welcome to ZeroWall Science",

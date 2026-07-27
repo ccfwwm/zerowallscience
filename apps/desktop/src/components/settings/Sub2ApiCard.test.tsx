@@ -56,6 +56,7 @@ beforeEach(() => {
     providerId: "sub2api",
     baseUrl: "https://code.aicodeme.cn/v1",
     models: ["gpt-4o", "kimi-k2-thinking", "deepseek-v3", "glm-4.6", "qwen3-max"],
+    groups: [{ id: 1, name: "Default" }],
   });
   mocks.login.mockResolvedValue({ email: "a@b.co", baseUrl: "https://code.aicodeme.cn" });
   mocks.register.mockResolvedValue(undefined);
@@ -176,7 +177,7 @@ describe("Sub2API panel", () => {
     const [id, opts] = mocks.addCustomProvider.mock.calls[0];
     expect(id).toBe("sub2api");
     expect(opts).toEqual({
-      name: "Sub2API",
+      name: "AI Platform",
       npm: "@ai-sdk/openai-compatible",
       baseURL: "https://code.aicodeme.cn/v1",
       models: ["deepseek-v3", "glm-4.6", "kimi-k2-thinking", "qwen3-max"],

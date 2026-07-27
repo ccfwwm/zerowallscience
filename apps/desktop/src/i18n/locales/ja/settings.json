@@ -140,7 +140,7 @@
     "importLogin": "すでに OpenCode CLI を使っていますか？ そのログインをインポート"
   },
   "sub2api": {
-    "title": "Sub2API アカウント",
+    "title": "AI プラットフォーム",
     "hint": "メールとパスワードでサインインし、OpenAI 互換のエンドポイント経由で Kimi、DeepSeek、GLM、Qwen を利用します",
     "signIn": "サインイン",
     "register": "アカウント作成",
@@ -163,7 +163,7 @@
     "noModels": "このアカウントに対してゲートウェイはモデルを返しませんでした。",
     "manualPlaceholder": "モデル ID を手動で追加 — コンマ区切り",
     "addModels": "追加",
-    "providerName": "Sub2API",
+    "providerName": "AI プラットフォーム",
     "privacy": "パスワードはゲートウェイにのみ送信されます。アクセストークンはこのセッション中のアプリ内にとどまり、API キーは OS の資格情報マネージャーに直接保存されます — 設定ファイルやログ、来歴には決して書き込まれません。",
     "runtimeOffline": "先にランタイムを接続してください",
     "welcomeTitle": "ZeroWall Science へようこそ",
