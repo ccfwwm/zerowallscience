@@ -378,6 +378,13 @@ const SWITCH_HEAL_GRACE_MS = 15_000;
 /** React StrictMode mounts effects twice in development. Share the same boot
  *  promise so duplicate AppShell effects cannot start dueling connect loops. */
 let bootstrapInFlight: Promise<void> | null = null;
+/** While a connectRetry loop owns the connection, connect() must not paint the
+ *  raw error: the loop keeps retrying (first boot can take minutes on macOS TCC)
+ *  and a flash of "fetch failed" mid-boot reads as breakage. connect() stashes
+ *  the last message in `lastConnectError`; connectRetry surfaces it only if the
+ *  whole retry budget is exhausted. */
+let retryLoopActive = false;
+let lastConnectError: string | null = null;
 /** Registered once: the remote-access gateway tells us when a LAN/CLI client
  *  created or deleted a session so the sidebar re-lists (no OpenCode event for
  *  session create/delete). See docs/rfc/remote-access-gateway.md. */
@@ -1757,7 +1764,12 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       void logDebug(`connect FAILED: ${msg}`);
-      set({ error: msg, status: "error" });
+      lastConnectError = msg;
+      // Inside a retry loop (boot or a workspace switch), stay calm and let
+      // connectRetry decide whether to surface this — a mid-boot flash of the
+      // raw error reads as breakage. A direct connect() still surfaces at once.
+      if (retryLoopActive) set({ status: "connecting" });
+      else set({ error: msg, status: "error" });
     }
   },
 
@@ -1770,23 +1782,28 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   // event stream" at the user mid-switch reads as breakage. The last error is
   // surfaced only if the whole retry window is exhausted.
   connectRetry: async (tries = 120) => {
-    set({ status: "connecting" });
-    let lastError: string | null = null;
-    for (let i = 0; i < tries; i++) {
-      await get().connect();
-      if (get().status === "ready") {
-        set({ modelSwitchError: null });
-        return true;
+    set({ status: "connecting", error: null });
+    retryLoopActive = true;
+    lastConnectError = null;
+    try {
+      for (let i = 0; i < tries; i++) {
+        await get().connect();
+        if (get().status === "ready") {
+          set({ modelSwitchError: null });
+          return true;
+        }
+        set({ status: "connecting", error: null });
+        // Quick retries first — the server is usually up within a second (a
+        // reconnect finds it already listening); back off to 1 s for the long
+        // tail (first boot blocked on macOS TCC can take minutes).
+        await sleep(i < 8 ? 250 : 1000);
       }
-      lastError = get().error ?? lastError;
-      set({ status: "connecting", error: null });
-      // Quick retries first — the server is usually up within a second (a
-      // reconnect finds it already listening); back off to 1 s for the long
-      // tail (first boot blocked on macOS TCC can take minutes).
-      await sleep(i < 8 ? 250 : 1000);
+      // Budget exhausted — now surface the real reason (not masked).
+      set({ status: "error", error: lastConnectError });
+      return false;
+    } finally {
+      retryLoopActive = false;
     }
-    set({ status: "error", error: lastError });
-    return false;
   },
 
   bootstrap: () => {

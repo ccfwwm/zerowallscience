@@ -365,8 +365,8 @@ export function RechargeDialog({
                       className={cn(
                         "rounded-full border px-2.5 py-1 text-xs transition-colors",
                         Number(amount) === p
-                          ? "border-accent bg-accent/10 font-medium text-text"
-                          : "border-faint text-muted hover:text-text",
+                          ? "border-accent bg-accent font-semibold text-white shadow-sm"
+                          : "border-faint text-muted hover:border-border hover:text-text",
                       )}
                     >
                       ¥{p}
@@ -402,12 +402,13 @@ export function RechargeDialog({
                         aria-pressed={on}
                         onClick={() => setMethod(m.code)}
                         className={cn(
-                          "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                          "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs transition-colors",
                           on
-                            ? "border-accent bg-accent/10 font-medium text-text"
-                            : "border-faint text-muted hover:text-text",
+                            ? "border-accent bg-accent font-semibold text-white shadow-sm"
+                            : "border-faint text-muted hover:border-border hover:text-text",
                         )}
                       >
+                        {on && <CheckCircle2 size={13} />}
                         {m.label}
                       </button>
                     );

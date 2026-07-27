@@ -9,8 +9,8 @@ Implements automatic detection of Chinese domestic model providers (Kimi, GLM, D
 ### Gateway Switching Logic
 
 **Primary/Backup Gateway Failover:**
-- Primary gateway: `https://code.aicodeme.cn`
-- Backup gateway: `https://code.aicodeme.xyz`
+- Primary gateway: `https://code.aicodeme.xyz`
+- Backup gateway: `https://code.aicodeme.cn`
 - Failover triggers ONLY on network errors (timeout, 5xx, connection failures)
 - Auth errors (401, 403) and quota errors (429, balance) do NOT trigger failover
 

@@ -1,6 +1,6 @@
 [package]
 name = "zerowall-science"
-version = "0.3.6"
+version = "0.3.7"
 description = "ZeroWall Science"
 authors = ["ZeroWall Science contributors"]
 edition = "2021"
@@ -15,7 +15,8 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # macos-private-api: transparent webview background for the vibrancy sidebar
 # (tauri.macos.conf.json); no-op on other platforms.
-tauri = { version = "2", features = [] }
+# tray-icon + image-png: minimize-to-tray on window close (src/lib.rs).
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-shell = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }

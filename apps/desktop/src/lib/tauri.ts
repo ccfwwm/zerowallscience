@@ -184,6 +184,14 @@ export async function sub2apiLogin(opts: {
   });
 }
 
+/** On launch, silently restore a session from keychain-saved credentials.
+ *  Returns the account when a stored login still works, or null otherwise. */
+export async function sub2apiRestoreSession(): Promise<Sub2ApiAccount | null> {
+  if (!isTauri) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<Sub2ApiAccount | null>("sub2api_restore_session");
+}
+
 /** The account signed in during this app run, or null. */
 export async function sub2apiAccount(): Promise<Sub2ApiAccount | null> {
   if (!isTauri) return null;

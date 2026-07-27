@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   register: vi.fn(),
   sendCode: vi.fn(),
   logout: vi.fn(),
+  restoreSession: vi.fn(),
   fetchGroups: vi.fn(),
   provisionGroup: vi.fn(),
   balance: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock("@/lib/tauri", () => ({
   sub2apiRegister: mocks.register,
   sub2apiSendCode: mocks.sendCode,
   sub2apiLogout: mocks.logout,
+  sub2apiRestoreSession: mocks.restoreSession,
   sub2apiFetchGroups: mocks.fetchGroups,
   sub2apiProvisionGroup: mocks.provisionGroup,
   sub2apiBalance: mocks.balance,
@@ -95,6 +97,9 @@ beforeEach(() => {
   mocks.balance.mockResolvedValue({ balance: "12.34" });
   mocks.addCustomProvider.mockResolvedValue(undefined);
   mocks.setDefaultModel.mockResolvedValue(undefined);
+  mocks.connectRetry.mockResolvedValue(true);
+  mocks.restoreSession.mockResolvedValue(null);
+  localStorage.clear();
 });
 
 afterEach(() => {
@@ -254,5 +259,58 @@ describe("Sub2API panel", () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("invalid email or password"));
     expect(screen.getByPlaceholderText("Email")).toBeInTheDocument();
+  });
+
+  it("restores a saved session on mount when no live one exists", async () => {
+    // No live account, but keychain-saved credentials re-log in behind the scenes.
+    mocks.account = null;
+    mocks.restoreSession.mockResolvedValue({ email: "saved@b.co", baseUrl: "https://code.aicodeme.xyz" });
+    render(<Sub2ApiCard />);
+
+    // The panel shows the restored account without the user touching the form.
+    expect(await screen.findByText("saved@b.co")).toBeInTheDocument();
+    expect(mocks.login).not.toHaveBeenCalled();
+  });
+});
+
+describe("upstream protocol toggle", () => {
+  beforeEach(() => {
+    mocks.account = { email: "a@b.co", baseUrl: "https://code.aicodeme.cn" };
+  });
+
+  it("defaults to Chat Completions and picks the openai-compatible adapter on save", async () => {
+    render(<Sub2ApiCard />);
+    await userEvent.click(await screen.findByRole("button", { name: /Fetch my models/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save 4 model(s)" }));
+
+    expect(screen.getByRole("radio", { name: "Chat Completions" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(mocks.addCustomProvider.mock.calls[0][1].npm).toBe("@ai-sdk/openai-compatible");
+  });
+
+  it("switches to Responses, persists the choice, and re-registers the provider", async () => {
+    render(<Sub2ApiCard />);
+    await userEvent.click(await screen.findByRole("button", { name: /Fetch my models/ }));
+    // Have a registered provider first so the switch re-registers it.
+    await userEvent.click(await screen.findByRole("button", { name: "Save 4 model(s)" }));
+    mocks.addCustomProvider.mockClear();
+
+    await userEvent.click(screen.getByRole("radio", { name: "Responses" }));
+
+    expect(localStorage.getItem("sub2api.protocol")).toBe("responses");
+    await waitFor(() =>
+      expect(mocks.addCustomProvider.mock.calls[0][1].npm).toBe("@ai-sdk/openai"),
+    );
+  });
+
+  it("restores the persisted protocol on mount", async () => {
+    localStorage.setItem("sub2api.protocol", "responses");
+    render(<Sub2ApiCard />);
+    expect(await screen.findByRole("radio", { name: "Responses" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
   });
 });

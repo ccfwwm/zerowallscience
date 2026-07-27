@@ -1254,6 +1254,7 @@ export function SettingsPage() {
                           className={selectCls("w-[190px]")}
                         >
                           <option value="@ai-sdk/openai-compatible">{t("providers.openaiCompatible")}</option>
+                          <option value="@ai-sdk/openai">{t("providers.openaiResponses")}</option>
                           <option value="@ai-sdk/anthropic">{t("providers.anthropicCompatible")}</option>
                         </select>
                       </div>
@@ -1385,28 +1386,32 @@ export function SettingsPage() {
                         className="border-b border-faint bg-surface px-3 py-2.5 text-[13px]"
                       >
                         <div className="flex items-center gap-2.5">
-                          <Search size={14} className="shrink-0 text-muted" />
+                          <span className="flex w-3.5 shrink-0 justify-center">
+                            <Search size={14} className="text-muted" />
+                          </span>
                           <div className="min-w-0 flex-1">
-                            <span className="font-medium text-text">{c.label}</span>
-                            <span className="ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
-                              {c.discipline}
-                            </span>
-                            <span className="ml-1.5 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
-                              {t("mcp.openSource")}
-                            </span>
-                            {c.recommended && (
-                              <span className="ml-1.5 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-accent ring-1 ring-accent/40">
-                                {t("mcp.recommended")}
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="font-medium text-text">{c.label}</span>
+                              <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
+                                {c.discipline}
                               </span>
-                            )}
-                            <div className="truncate text-xs text-muted">{c.description}</div>
-                            <div className="truncate font-mono text-[11px] text-muted/70">
+                              <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
+                                {t("mcp.openSource")}
+                              </span>
+                              {c.recommended && (
+                                <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-accent ring-1 ring-accent/40">
+                                  {t("mcp.recommended")}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted">{c.description}</div>
+                            <div className="break-all font-mono text-[11px] text-muted/70">
                               {c.source}
                               {c.installNote ? ` · ${c.installNote}` : ""}
                             </div>
                           </div>
                           <button
-                            className={btnAccent("h-8")}
+                            className={btnAccent("h-8 shrink-0")}
                             onClick={() => void enableConnector(c.id)}
                             disabled={enablingConnector !== null || busy || keyMissing}
                             title={keyMissing ? t("mcp.enterKeyFirstTitle") : undefined}
@@ -1449,29 +1454,36 @@ export function SettingsPage() {
                 )}
               {/* Featured: one-click Jupyter (shown until its MCP entry exists). */}
               {isTauri && !mcpServers.some((s) => s.name === "jupyter") && (
-                <div className="flex items-center gap-2.5 border-b border-faint bg-surface px-3 py-2.5 text-[13px]">
-                  <NotebookPen size={14} className="shrink-0 text-muted" />
-                  <div className="min-w-0 flex-1">
-                    <span className="font-medium text-text">{t("mcp.jupyterLabel")}</span>
-                    <span className="ml-2 text-xs text-muted">
-                      {t("mcp.jupyterDescription")}
+                <div className="border-b border-faint bg-surface px-3 py-2.5 text-[13px]">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex w-3.5 shrink-0 justify-center">
+                      <NotebookPen size={14} className="text-muted" />
                     </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="font-medium text-text">{t("mcp.jupyterLabel")}</span>
+                        <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-accent ring-1 ring-accent/40">
+                          {t("mcp.recommended")}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted">{t("mcp.jupyterDescription")}</div>
+                    </div>
+                    <button
+                      className={btnAccent("h-8 shrink-0")}
+                      onClick={() => void useSetupStore.getState().enableJupyter()}
+                      disabled={jupyterBusy || busy}
+                    >
+                      {jupyterBusy ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" /> {t("mcp.settingUp")}
+                        </>
+                      ) : jupyter?.installed ? (
+                        t("mcp.enable")
+                      ) : (
+                        t("mcp.setUpAndEnable")
+                      )}
+                    </button>
                   </div>
-                  <button
-                    className={btnAccent("h-8")}
-                    onClick={() => void useSetupStore.getState().enableJupyter()}
-                    disabled={jupyterBusy || busy}
-                  >
-                    {jupyterBusy ? (
-                      <>
-                        <Loader2 size={12} className="animate-spin" /> {t("mcp.settingUp")}
-                      </>
-                    ) : jupyter?.installed ? (
-                      t("mcp.enable")
-                    ) : (
-                      t("mcp.setUpAndEnable")
-                    )}
-                  </button>
                 </div>
               )}
               {/* Live uv output while a provisioning run is in flight — a
@@ -1484,61 +1496,83 @@ export function SettingsPage() {
                   </span>
                 </div>
               )}
-              {mcpServers.map((s, i) => (
-                <div
-                  key={s.name}
-                  className={cn(
-                    "flex h-10 items-center gap-2.5 bg-surface px-3 text-[13px]",
-                    i > 0 && "border-t border-faint",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "h-1.5 w-1.5 shrink-0 rounded-full",
-                      s.status === "connected"
-                        ? "bg-ok"
-                        : s.status === "failed"
-                          ? "bg-error"
-                          : "bg-muted",
-                    )}
-                  />
-                  <span className="font-medium text-text">{s.name}</span>
-                  <span className="text-xs text-muted">
-                    {s.config?.type ?? "?"} · {s.status}
-                  </span>
-                  <span className="max-w-[260px] flex-1 truncate text-right font-mono text-[11px] text-muted/70">
-                    {s.config?.type === "local"
-                      ? s.config.command.join(" ")
-                      : s.config?.type === "remote"
-                        ? s.config.url
-                        : ""}
-                  </span>
-                  {s.config && s.status !== "connected" && (
-                    <button
-                      className="flex shrink-0 items-center gap-1 text-xs text-accent transition-colors hover:text-accent/80"
-                      onClick={() => void reconnectMcp(s.name, s.config!)}
-                      disabled={busy}
-                    >
-                      <RefreshCw size={11} />
-                      {t("mcp.reconnect")}
-                    </button>
-                  )}
-                  <button
-                    className="shrink-0 text-xs text-muted transition-colors hover:text-error"
-                    onClick={() => void removeMcp(s.name)}
-                    disabled={busy}
+              {/* Installed servers — same shell as the featured cards above:
+                  a leading indicator, a title line with badges, a legible
+                  (wrapping, never truncated) target line, and a trailing action
+                  cluster. */}
+              {mcpServers.map((s) => {
+                const target =
+                  s.config?.type === "local"
+                    ? s.config.command.join(" ")
+                    : s.config?.type === "remote"
+                      ? s.config.url
+                      : "";
+                return (
+                  <div
+                    key={s.name}
+                    className="border-b border-faint bg-surface px-3 py-2.5 text-[13px]"
                   >
-                    {t("common:actions.remove")}
-                  </button>
-                </div>
-              ))}
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex w-3.5 shrink-0 justify-center">
+                        <span
+                          className={cn(
+                            "h-1.5 w-1.5 rounded-full",
+                            s.status === "connected"
+                              ? "bg-ok"
+                              : s.status === "failed"
+                                ? "bg-error"
+                                : "bg-muted",
+                          )}
+                        />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="font-medium text-text">{s.name}</span>
+                          <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
+                            {s.config?.type ?? "?"}
+                          </span>
+                          <span
+                            className={cn(
+                              "text-xs",
+                              s.status === "failed" ? "text-error" : "text-muted",
+                            )}
+                          >
+                            {s.status}
+                          </span>
+                        </div>
+                        {target && (
+                          <div className="break-all font-mono text-[11px] text-muted/70">
+                            {target}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {s.config && s.status !== "connected" && (
+                          <button
+                            className="flex items-center gap-1 text-xs text-accent transition-colors hover:text-accent/80"
+                            onClick={() => void reconnectMcp(s.name, s.config!)}
+                            disabled={busy}
+                          >
+                            <RefreshCw size={11} />
+                            {t("mcp.reconnect")}
+                          </button>
+                        )}
+                        <button
+                          className="text-xs text-muted transition-colors hover:text-error"
+                          onClick={() => void removeMcp(s.name)}
+                          disabled={busy}
+                        >
+                          {t("common:actions.remove")}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
 
-              <div
-                className={cn(
-                  "space-y-2 p-3",
-                  mcpServers.length > 0 && "border-t border-faint",
-                )}
-              >
+              {/* Add-server form. Rows above always end with border-b, so this
+                  block adds no separator of its own to avoid a double rule. */}
+              <div className="space-y-2 p-3">
                 <div className="flex gap-2">
                   <input
                     value={mName}

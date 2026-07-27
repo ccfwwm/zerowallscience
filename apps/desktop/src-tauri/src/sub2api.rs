@@ -22,16 +22,17 @@ use crate::secret_store::{self, SecretReference};
 
 /// Default gateway. Mirrors `DEFAULT_GATEWAYS` on the TypeScript side; the
 /// backup is tried only on a transport failure, never on a rejected password.
-pub const DEFAULT_BASE_URL: &str = "https://code.aicodeme.cn";
-pub const BACKUP_BASE_URL: &str = "https://code.aicodeme.xyz";
+pub const DEFAULT_BASE_URL: &str = "https://code.aicodeme.xyz";
+pub const BACKUP_BASE_URL: &str = "https://code.aicodeme.cn";
 
 /// Provider id the provisioned models are registered under, and the keychain
 /// account the API key is stored against.
 pub const PROVIDER_ID: &str = "sub2api";
 
-/// The signed-in session. Lives only in this process's memory — deliberately
-/// not persisted, so closing the app ends it and no token is ever written to
-/// disk, provenance, or an exported project.
+/// The signed-in session. Lives only in this process's memory — the access
+/// token is never written to disk, provenance, or an exported project. The
+/// account's email + password are stored separately in the OS keychain (see
+/// `save_credentials`) so a relaunch can re-run the login and rebuild this state.
 #[derive(Default)]
 pub struct Sub2ApiState {
     session: Mutex<Option<Session>>,
@@ -371,24 +372,54 @@ pub async fn sub2api_register(
     .await
 }
 
-/// Sign in and keep the token in memory. Returns only the account identity.
-#[tauri::command]
-pub async fn sub2api_login(
-    state: State<'_, Sub2ApiState>,
+/// Keychain account the AI-platform credentials live under. Email + password go
+/// into the OS credential manager (never provenance, logs, or git) so a relaunch
+/// can silently restore the session — the user's explicit request. The access
+/// token itself is still never persisted; it is re-fetched on restore.
+const CREDENTIALS_ACCOUNT: &str = "sub2api:credentials";
+
+#[derive(Serialize, Deserialize)]
+struct StoredCredentials {
+    email: String,
+    password: String,
+}
+
+/// Remember credentials for auto-login. Best-effort: a keychain failure must not
+/// block a successful sign-in.
+fn save_credentials(email: &str, password: &str) {
+    use crate::secret_store::{CredentialStore, KeyringCredentialStore};
+    if let Ok(json) = serde_json::to_string(&StoredCredentials {
+        email: email.to_owned(),
+        password: password.to_owned(),
+    }) {
+        let _ = KeyringCredentialStore.set(CREDENTIALS_ACCOUNT, &json);
+    }
+}
+
+/// Forget any saved credentials (on logout, or when a stored login stops working).
+fn clear_credentials() {
+    use crate::secret_store::{CredentialStore, KeyringCredentialStore};
+    let _ = KeyringCredentialStore.delete(CREDENTIALS_ACCOUNT);
+}
+
+fn load_credentials() -> Option<StoredCredentials> {
+    use crate::secret_store::{CredentialStore, KeyringCredentialStore};
+    let raw = KeyringCredentialStore.get(CREDENTIALS_ACCOUNT).ok()??;
+    serde_json::from_str(&raw).ok()
+}
+
+/// Sign in against the gateway (with failover) and return the base URL that
+/// answered plus the access token. Shared by `sub2api_login` and the restore path.
+async fn perform_login(
     email: String,
     password: String,
     code: Option<String>,
-) -> Result<Account, String> {
+) -> Result<(String, String), String> {
     let bases = candidate_bases();
-    let email = email.trim().to_string();
-    if email.is_empty() || password.is_empty() {
-        return Err("enter your email and password".into());
-    }
-    let request_email = email.clone();
-    let (base, token) = blocking(move || {
+    blocking(move || {
         let code = code.filter(|c| !c.trim().is_empty());
         let path = if code.is_some() { "/auth/login/2fa" } else { "/auth/login" };
-        let mut body = serde_json::json!({ "email": request_email, "password": password });
+        let mut body = serde_json::json!({ "email": email, "password": password });
         if let Some(code) = code {
             body.as_object_mut()
                 .expect("json object")
@@ -399,14 +430,57 @@ pub async fn sub2api_login(
             parse_access_token(&reply)
         })
     })
-    .await?;
+    .await
+}
+
+/// Sign in and keep the token in memory. Returns only the account identity, and
+/// remembers the credentials in the OS keychain for auto-login on next launch.
+#[tauri::command]
+pub async fn sub2api_login(
+    state: State<'_, Sub2ApiState>,
+    email: String,
+    password: String,
+    code: Option<String>,
+) -> Result<Account, String> {
+    let email = email.trim().to_string();
+    if email.is_empty() || password.is_empty() {
+        return Err("enter your email and password".into());
+    }
+    let (base, token) = perform_login(email.clone(), password.clone(), code).await?;
 
     *state.session.lock().map_err(|_| "session lock poisoned")? = Some(Session {
         base_url: base.clone(),
         email: email.clone(),
         access_token: token,
     });
+    save_credentials(&email, &password);
     Ok(Account { email, base_url: base })
+}
+
+/// On launch, silently restore a session from saved credentials. Returns the
+/// account when a stored login still works, or None when nothing is saved. A
+/// failed re-login clears the stale credentials so the user is prompted to sign in.
+#[tauri::command]
+pub async fn sub2api_restore_session(
+    state: State<'_, Sub2ApiState>,
+) -> Result<Option<Account>, String> {
+    let Some(creds) = load_credentials() else {
+        return Ok(None);
+    };
+    match perform_login(creds.email.clone(), creds.password.clone(), None).await {
+        Ok((base, token)) => {
+            *state.session.lock().map_err(|_| "session lock poisoned")? = Some(Session {
+                base_url: base.clone(),
+                email: creds.email.clone(),
+                access_token: token,
+            });
+            Ok(Some(Account { email: creds.email, base_url: base }))
+        }
+        Err(_) => {
+            clear_credentials();
+            Ok(None)
+        }
+    }
 }
 
 /// The signed-in account, or None. Never exposes the token.
@@ -425,6 +499,7 @@ pub fn sub2api_account(state: State<'_, Sub2ApiState>) -> Result<Option<Account>
 #[tauri::command(async)]
 pub fn sub2api_logout(state: State<'_, Sub2ApiState>) -> Result<(), String> {
     *state.session.lock().map_err(|_| "session lock poisoned")? = None;
+    clear_credentials();
     Ok(())
 }
 
@@ -948,6 +1023,20 @@ mod tests {
     }
 
     #[test]
+    fn stored_credentials_round_trip_through_json() {
+        // The keychain holds credentials as this JSON; a shape change would
+        // silently break auto-login on the next launch.
+        let creds = StoredCredentials {
+            email: "user@example.com".into(),
+            password: "s3cret".into(),
+        };
+        let json = serde_json::to_string(&creds).unwrap();
+        let back: StoredCredentials = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.email, "user@example.com");
+        assert_eq!(back.password, "s3cret");
+    }
+
+    #[test]
     fn api_keys_are_read_from_the_nested_shapes_and_skip_disabled() {
         let body = r#"{"data":{"items":[
             {"api_key":"sk-a","name":"first","group_id":1},
@@ -1042,8 +1131,8 @@ mod tests {
         // Both hosts are hard-coded and there is no input to override them: the
         // renderer cannot aim auth at a host of its choosing.
         assert_eq!(candidate_bases(), vec![DEFAULT_BASE_URL, BACKUP_BASE_URL]);
-        assert_eq!(DEFAULT_BASE_URL, "https://code.aicodeme.cn");
-        assert_eq!(BACKUP_BASE_URL, "https://code.aicodeme.xyz");
+        assert_eq!(DEFAULT_BASE_URL, "https://code.aicodeme.xyz");
+        assert_eq!(BACKUP_BASE_URL, "https://code.aicodeme.cn");
     }
 
     #[test]

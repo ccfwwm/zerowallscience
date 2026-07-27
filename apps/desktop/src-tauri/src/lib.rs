@@ -43,6 +43,15 @@ use provenance::ProvenanceState;
 use runtime::RuntimeState;
 use tauri::Manager;
 
+/// Bring the main window back from the tray: show, unminimize, and focus it.
+fn reveal_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -77,20 +86,64 @@ pub fn run() {
             }
             // Bring the remote-access gateway back up if the user left it enabled.
             gateway::autostart(app.handle());
+
+            // System tray. Closing the window hides to the tray (see the
+            // CloseRequested handler); left-click or the "Show" item restores it,
+            // and "Quit" is the explicit exit.
+            {
+                use tauri::menu::{Menu, MenuItem};
+                use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+                let show = MenuItem::with_id(app, "tray_show", "Show ZeroWall Science", true, None::<&str>)?;
+                let quit = MenuItem::with_id(app, "tray_quit", "Quit", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&show, &quit])?;
+
+                let mut builder = TrayIconBuilder::new()
+                    .tooltip("ZeroWall Science")
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "tray_show" => reveal_main_window(app),
+                        "tray_quit" => app.exit(0),
+                        _ => {}
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            reveal_main_window(tray.app_handle());
+                        }
+                    });
+                if let Some(icon) = app.default_window_icon().cloned() {
+                    builder = builder.icon(icon);
+                }
+                builder.build(app)?;
+            }
             Ok(())
         })
         // The transparent + vibrancy window loses tao's traffic-light inset on
         // some machines (tao only re-applies it from drawRect). Re-pin on the
         // events that cover launch, resize, and the in-app theme switch.
-        .on_window_event(|_window, _event| {
+        .on_window_event(|window, event| {
+            // Closing the window hides it to the system tray instead of quitting;
+            // the tray menu's "Quit" is the only way to actually exit. Keeps the
+            // app (and the sidecar) alive so relaunch is instant.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+                return;
+            }
             #[cfg(target_os = "macos")]
             if matches!(
-                _event,
+                event,
                 tauri::WindowEvent::Focused(true)
                     | tauri::WindowEvent::Resized(_)
                     | tauri::WindowEvent::ThemeChanged(_)
             ) {
-                macos::reapply_traffic_light_inset(_window);
+                macos::reapply_traffic_light_inset(window);
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -128,6 +181,7 @@ pub fn run() {
             sub2api::sub2api_send_code,
             sub2api::sub2api_register,
             sub2api::sub2api_login,
+            sub2api::sub2api_restore_session,
             sub2api::sub2api_account,
             sub2api::sub2api_logout,
             sub2api::sub2api_fetch_groups,

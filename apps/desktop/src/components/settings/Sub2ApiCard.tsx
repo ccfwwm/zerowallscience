@@ -10,6 +10,7 @@ import {
   sub2apiLogout,
   sub2apiProvisionGroup,
   sub2apiRegister,
+  sub2apiRestoreSession,
   sub2apiSendCode,
   type Sub2ApiAccount,
 } from "@/lib/tauri";
@@ -62,6 +63,28 @@ type Mode = "signIn" | "register";
 
 const MODES: Mode[] = ["signIn", "register"];
 
+/** Upstream API protocol the provider speaks. OpenCode picks the wire format
+ *  from the AI-SDK adapter (`npm`): the openai-compatible adapter calls
+ *  `/v1/chat/completions`, the openai adapter calls `/v1/responses`. The user
+ *  chooses which their gateway expects. */
+type Protocol = "chat" | "responses";
+
+const PROTOCOL_KEY = "sub2api.protocol";
+const PROTOCOLS: Protocol[] = ["chat", "responses"];
+
+function loadProtocol(): Protocol {
+  try {
+    return localStorage.getItem(PROTOCOL_KEY) === "responses" ? "responses" : "chat";
+  } catch {
+    return "chat";
+  }
+}
+
+/** The AI-SDK adapter that speaks the chosen protocol. */
+function npmForProtocol(p: Protocol): string {
+  return p === "responses" ? "@ai-sdk/openai" : "@ai-sdk/openai-compatible";
+}
+
 /** Marks a domestic model in the chip list. Decorative — the label is the id. */
 const DOMESTIC_MARK = "★";
 
@@ -98,6 +121,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
   const [manual, setManual] = useState("");
   const [balance, setBalance] = useState<string | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
+  const [protocol, setProtocol] = useState<Protocol>(loadProtocol);
 
   // Best-effort balance fetch — a gateway that has no billing surface just
   // leaves the amount hidden rather than surfacing an error to the user.
@@ -107,15 +131,26 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       .catch(() => setBalance(null));
   };
 
-  // A session survives navigating away from Settings, so ask on mount.
+  // A session survives navigating away from Settings, so ask on mount. If none
+  // is live yet, try restoring one from keychain-saved credentials so the user
+  // is not asked to sign in again after quitting and relaunching.
   useEffect(() => {
     if (!isTauri || isGatewayWeb) return;
-    void sub2apiAccount()
-      .then((acct) => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const live = await sub2apiAccount();
+        const acct = live ?? (await sub2apiRestoreSession());
+        if (cancelled) return;
         setAccount(acct);
         if (acct) refreshBalance();
-      })
-      .catch(() => setAccount(null));
+      } catch {
+        if (!cancelled) setAccount(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const ordered = useMemo(() => (models ? orderModels(models) : []), [models]);
@@ -149,15 +184,15 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       const chosen = orderModels(domestic.length > 0 ? domestic : prov.models);
       setPicked(new Set(chosen));
       if (chosen.length === 0) return;
-      // Start the runtime if it is not up yet — provisioning must not depend on
-      // the sidecar already being ready.
-      if (useRuntimeStore.getState().status !== "ready") {
-        const ok = await useRuntimeStore.getState().connectRetry();
-        if (!ok) return; // leave the models staged; the 保存 button still works
-      }
+      // Provisioning restarts the sidecar in Rust, so the store's "ready" may be
+      // stale. Always re-establish the connection before registering — otherwise
+      // the config PATCH races a restarting sidecar and the catalog comes back
+      // empty ("未连接供应商" / no models).
+      const ok = await useRuntimeStore.getState().connectRetry();
+      if (!ok) return; // leave the models staged; the 保存 button still works
       await getClient()!.addCustomProvider(PROVIDER_ID, {
         name: t("sub2api.providerName"),
-        npm: "@ai-sdk/openai-compatible",
+        npm: npmForProtocol(protocol),
         baseURL: prov.baseUrl,
         models: chosen,
       });
@@ -292,7 +327,10 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
   // credential manager, and writing it into the config file would put a secret
   // on disk in cleartext. After connecting, auto-set the default model to the
   // first domestic model so the user is not stuck on an Anthropic fallback.
-  const connect = async () => {
+  // `proto` lets a caller (the protocol toggle) pass the just-chosen value
+  // explicitly: switching calls this before React re-renders, so the `protocol`
+  // state would still read stale here.
+  const connect = async (proto: Protocol = protocol) => {
     const chosen = ordered.filter((m) => picked.has(m));
     if (chosen.length === 0) {
       toast.error(t("sub2api.pickOne"));
@@ -300,18 +338,18 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
     }
     setBusy("connect");
     try {
-      // The runtime need not already be up to save: start it first so the
-      // Save button is never greyed out just because the sidecar is offline.
-      if (useRuntimeStore.getState().status !== "ready") {
-        const ok = await useRuntimeStore.getState().connectRetry();
-        if (!ok) {
-          toast.error(t("sub2api.runtimeOffline"));
-          return;
-        }
+      // Provisioning restarts the sidecar, and the runtime need not already be up
+      // to save: always re-establish the connection first, so the Save button is
+      // never greyed out because of an offline or stale-ready sidecar, and the
+      // config write never races a restart.
+      const ok = await useRuntimeStore.getState().connectRetry();
+      if (!ok) {
+        toast.error(t("sub2api.runtimeOffline"));
+        return;
       }
       await getClient()!.addCustomProvider(PROVIDER_ID, {
         name: t("sub2api.providerName"),
-        npm: "@ai-sdk/openai-compatible",
+        npm: npmForProtocol(proto),
         baseURL: baseUrl,
         models: chosen,
       });
@@ -329,6 +367,20 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
     } finally {
       setBusy(null);
     }
+  };
+
+  // Switch the upstream protocol. Persist the choice and, if a provider is
+  // already registered, re-register it under the new adapter so the change takes
+  // effect without a manual re-save.
+  const changeProtocol = (p: Protocol) => {
+    if (p === protocol || busy !== null) return;
+    setProtocol(p);
+    try {
+      localStorage.setItem(PROTOCOL_KEY, p);
+    } catch {
+      /* storage may be unavailable; the in-memory choice still applies */
+    }
+    if (models !== null && baseUrl && picked.size > 0) void connect(p);
   };
 
   const canAuth =
@@ -365,6 +417,35 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
             >
               <LogOut size={12} /> {t("sub2api.signOut")}
             </button>
+          </div>
+
+          {/* Upstream protocol. Some gateways expect /v1/chat/completions,
+              others /v1/responses; the adapter OpenCode loads decides the wire
+              format. Switching re-registers an already-connected provider. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted">{t("sub2api.protocolLabel")}</span>
+            <div className="flex gap-1.5" role="radiogroup" aria-label={t("sub2api.protocolLabel")}>
+              {PROTOCOLS.map((p) => {
+                const on = protocol === p;
+                return (
+                  <button
+                    key={p}
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => changeProtocol(p)}
+                    disabled={busy !== null}
+                    className={cn(
+                      "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                      on
+                        ? "border-accent bg-accent font-semibold text-white shadow-sm"
+                        : "border-faint text-muted hover:border-border hover:text-text",
+                    )}
+                  >
+                    {t(p === "responses" ? "sub2api.protocolResponses" : "sub2api.protocolChat")}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">

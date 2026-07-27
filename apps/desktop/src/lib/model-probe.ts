@@ -20,8 +20,8 @@ export interface GatewayConfig {
  * Default gateways for domestic model probing.
  */
 export const DEFAULT_GATEWAYS: GatewayConfig[] = [
-  { url: "https://code.aicodeme.cn", priority: "primary" },
-  { url: "https://code.aicodeme.xyz", priority: "backup" },
+  { url: "https://code.aicodeme.xyz", priority: "primary" },
+  { url: "https://code.aicodeme.cn", priority: "backup" },
 ];
 
 /**

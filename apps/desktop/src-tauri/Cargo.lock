@@ -4101,6 +4101,7 @@ dependencies = [
  "gtk",
  "heck 0.5.0",
  "http",
+ "image",
  "jni",
  "libc",
  "log",
@@ -6104,7 +6105,7 @@ dependencies = [
 
 [[package]]
 name = "zerowall-science"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "getrandom 0.4.3",
  "keyring",
