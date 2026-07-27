@@ -236,6 +236,113 @@ def centered(art: Image.Image, size: tuple[int, int], bg: tuple[int, int, int], 
     return canvas
 
 
+# Brand gradient: blue (#3B82F6) → purple (#8B5CF6), the same accent pair used
+# in the desktop app's UI.  Applied to the NSIS installer sidebar and header
+# bitmaps so the installer looks professional rather than stock-white.
+GRAD_TOP = (59, 130, 246)     # #3B82F6  — brand blue
+GRAD_BOT = (139, 92, 246)     # #8B5CF6  — brand purple
+
+
+def _gradient_canvas(size: tuple[int, int]) -> Image.Image:
+    """Vertical linear gradient from GRAD_TOP to GRAD_BOT."""
+    w, h = size
+    canvas = Image.new("RGB", (w, h))
+    px = canvas.load()
+    for y in range(h):
+        t = y / max(1, h - 1)
+        r = round(GRAD_TOP[0] + (GRAD_BOT[0] - GRAD_TOP[0]) * t)
+        g = round(GRAD_TOP[1] + (GRAD_BOT[1] - GRAD_TOP[1]) * t)
+        b = round(GRAD_TOP[2] + (GRAD_BOT[2] - GRAD_TOP[2]) * t)
+        for x in range(w):
+            px[x, y] = (r, g, b)
+    return canvas
+
+
+def gradient_sidebar(
+    mark: Image.Image,
+    size: tuple[int, int],
+    *,
+    fill: float = 0.72,
+) -> Image.Image:
+    """NSIS sidebar: gradient background with the mark centered in the upper
+    60% of the panel and a subtle white glow behind it.
+
+    The mark's near-white Z body blends into the gradient rather than
+    disappearing, because the gradient is dark enough to provide contrast.
+    """
+    w, h = size
+    canvas = _gradient_canvas(size)
+
+    # Place mark in the upper portion, vertically centered in the top 65%.
+    region_h = int(h * 0.65)
+    scale = (min(w, region_h) * fill) / max(mark.size)
+    resized = mark.resize(
+        (max(1, round(mark.width * scale)), max(1, round(mark.height * scale))),
+        Image.LANCZOS,
+    )
+
+    # Soft white glow: a blurred white ellipse behind the art.
+    from PIL import ImageFilter
+    glow = Image.new("L", (w, region_h), 0)
+    gd = ImageDraw.Draw(glow)
+    cx, cy = w // 2, region_h // 2
+    rx, ry = resized.width // 2 + 8, resized.height // 2 + 8
+    gd.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=60)
+    glow = glow.filter(ImageFilter.GaussianBlur(radius=12))
+    # Blend glow: lighten the gradient toward white.
+    for y in range(region_h):
+        for x in range(w):
+            a = glow.getpixel((x, y)) / 255.0
+            pr, pg, pb = canvas.getpixel((x, y))
+            canvas.putpixel((x, y), (
+                min(255, round(pr + (255 - pr) * a)),
+                min(255, round(pg + (255 - pg) * a)),
+                min(255, round(pb + (255 - pb) * a)),
+            ))
+
+    ox = (w - resized.width) // 2
+    oy = (region_h - resized.height) // 2
+    canvas.paste(resized, (ox, oy))
+    return canvas
+
+
+def gradient_header(
+    mark: Image.Image,
+    wordmark: Image.Image,
+    size: tuple[int, int],
+    *,
+    pad: float = 0.12,
+    word_height: float = 0.40,
+    gap: float = 0.15,
+) -> Image.Image:
+    """NSIS header: gradient background with mark + wordmark side by side.
+
+    Same layout logic as horizontal_lockup but on the brand gradient instead
+    of paper white.
+    """
+    w, h = size
+    canvas = _gradient_canvas(size)
+    inner = max(1, int(h * (1 - 2 * pad)))
+
+    ms = inner / mark.height
+    m = mark.resize((max(1, round(mark.width * ms)), inner), Image.LANCZOS)
+    wh = max(1, int(h * word_height))
+    ws = wh / wordmark.height
+    wm = wordmark.resize((max(1, round(wordmark.width * ws)), wh), Image.LANCZOS)
+
+    x = int(h * pad)
+    total = m.width + int(h * gap) + wm.width
+    avail = w - 2 * x
+    if total > avail:
+        k = avail / total
+        m = m.resize((max(1, round(m.width * k)), max(1, round(m.height * k))), Image.LANCZOS)
+        wm = wm.resize((max(1, round(wm.width * k)), max(1, round(wm.height * k))), Image.LANCZOS)
+
+    canvas.paste(m, (x, (h - m.height) // 2))
+    canvas.paste(wm, (x + m.width + int(h * gap), (h - wm.height) // 2))
+    return canvas
+
+
 def write_icns(path: Path, art: Image.Image, bg: tuple[int, int, int]) -> None:
     """Write a minimal ICNS container of PNG entries.
 
@@ -372,10 +479,13 @@ def main() -> int:
     tile(mark, 512, bg).save(APP_ASSETS / "logo.webp", format="WEBP", quality=92, method=6)
 
     # --- Windows installer bitmaps (24-bit BMP; no alpha) -------------------
-    # The 150px header is too narrow for mark + wordmark, so it carries the mark
-    # alone; the 493px banner has room for both side by side.
-    banner(mark, (150, 57), bg, pad=0.08).save(INSTALLER / "nsis-header.bmp")
-    centered(mark, (164, 314), bg).save(INSTALLER / "nsis-sidebar.bmp")
+    # NSIS sidebar + header: brand gradient (blue→purple) background with the
+    # mark and wordmark composited on top — a huge visual upgrade over the old
+    # stock-white bitmaps.
+    gradient_sidebar(mark, (164, 314)).save(INSTALLER / "nsis-sidebar.bmp")
+    gradient_header(mark, wordmark, (150, 57)).save(INSTALLER / "nsis-header.bmp")
+    # The 493px WiX strips keep the paper-white background — they are wide
+    # enough for mark + wordmark side by side without looking cramped.
     horizontal_lockup(mark, wordmark, (493, 58), bg).save(INSTALLER / "wix-banner.bmp")
     centered(lockup, (493, 312), bg, fill=0.62).save(INSTALLER / "wix-dialog.bmp")
 
