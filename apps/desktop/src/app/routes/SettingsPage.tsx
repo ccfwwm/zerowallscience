@@ -213,7 +213,9 @@ export function SettingsPage() {
   // Custom endpoint form (self-hosted / Ollama / OpenAI- or Anthropic-compatible).
   const [showCustom, setShowCustom] = useState(false);
   const [cName, setCName] = useState("");
-  const [cNpm, setCNpm] = useState("@ai-sdk/openai-compatible");
+  // Default to the current OpenAI Responses protocol; the legacy Chat
+  // Completions adapter stays available for gateways that only speak it.
+  const [cNpm, setCNpm] = useState("@ai-sdk/openai");
   const [cUrl, setCUrl] = useState("");
   const [cKey, setCKey] = useState("");
   const [cModels, setCModels] = useState("");
@@ -1253,9 +1255,10 @@ export function SettingsPage() {
                           onChange={(e) => setCNpm(e.target.value)}
                           className={selectCls("w-[190px]")}
                         >
-                          <option value="@ai-sdk/openai-compatible">{t("providers.openaiCompatible")}</option>
+                          {/* Current protocols first, legacy Chat Completions last. */}
                           <option value="@ai-sdk/openai">{t("providers.openaiResponses")}</option>
                           <option value="@ai-sdk/anthropic">{t("providers.anthropicCompatible")}</option>
+                          <option value="@ai-sdk/openai-compatible">{t("providers.openaiCompatible")}</option>
                         </select>
                       </div>
                       <input

@@ -64,19 +64,21 @@ type Mode = "signIn" | "register";
 const MODES: Mode[] = ["signIn", "register"];
 
 /** Upstream API protocol the provider speaks. OpenCode picks the wire format
- *  from the AI-SDK adapter (`npm`): the openai-compatible adapter calls
- *  `/v1/chat/completions`, the openai adapter calls `/v1/responses`. The user
- *  chooses which their gateway expects. */
+ *  from the AI-SDK adapter (`npm`): the openai-compatible adapter calls the
+ *  legacy `/v1/chat/completions`, the openai adapter calls the current
+ *  `/v1/responses`. Default to the current one; the user can fall back to the
+ *  legacy protocol for a gateway that only speaks Chat Completions. */
 type Protocol = "chat" | "responses";
 
 const PROTOCOL_KEY = "sub2api.protocol";
-const PROTOCOLS: Protocol[] = ["chat", "responses"];
+// Current protocol first so the toggle reads latest → legacy left-to-right.
+const PROTOCOLS: Protocol[] = ["responses", "chat"];
 
 function loadProtocol(): Protocol {
   try {
-    return localStorage.getItem(PROTOCOL_KEY) === "responses" ? "responses" : "chat";
+    return localStorage.getItem(PROTOCOL_KEY) === "chat" ? "chat" : "responses";
   } catch {
-    return "chat";
+    return "responses";
   }
 }
 

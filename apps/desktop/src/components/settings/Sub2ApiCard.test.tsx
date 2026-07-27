@@ -223,7 +223,8 @@ describe("Sub2API panel", () => {
     expect(id).toBe("sub2api");
     expect(opts).toEqual({
       name: "AI Platform",
-      npm: "@ai-sdk/openai-compatible",
+      // Default is the current Responses protocol (@ai-sdk/openai).
+      npm: "@ai-sdk/openai",
       baseURL: "https://code.aicodeme.cn/v1",
       models: ["deepseek-v3", "glm-4.6", "kimi-k2-thinking", "qwen3-max"],
     });
@@ -278,37 +279,37 @@ describe("upstream protocol toggle", () => {
     mocks.account = { email: "a@b.co", baseUrl: "https://code.aicodeme.cn" };
   });
 
-  it("defaults to Chat Completions and picks the openai-compatible adapter on save", async () => {
+  it("defaults to Responses and picks the openai adapter on save", async () => {
     render(<Sub2ApiCard />);
     await userEvent.click(await screen.findByRole("button", { name: /Fetch my models/ }));
     await userEvent.click(await screen.findByRole("button", { name: "Save 4 model(s)" }));
 
-    expect(screen.getByRole("radio", { name: "Chat Completions" })).toHaveAttribute(
+    expect(screen.getByRole("radio", { name: "Responses" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
-    expect(mocks.addCustomProvider.mock.calls[0][1].npm).toBe("@ai-sdk/openai-compatible");
+    expect(mocks.addCustomProvider.mock.calls[0][1].npm).toBe("@ai-sdk/openai");
   });
 
-  it("switches to Responses, persists the choice, and re-registers the provider", async () => {
+  it("falls back to Chat Completions, persists the choice, and re-registers the provider", async () => {
     render(<Sub2ApiCard />);
     await userEvent.click(await screen.findByRole("button", { name: /Fetch my models/ }));
     // Have a registered provider first so the switch re-registers it.
     await userEvent.click(await screen.findByRole("button", { name: "Save 4 model(s)" }));
     mocks.addCustomProvider.mockClear();
 
-    await userEvent.click(screen.getByRole("radio", { name: "Responses" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Chat Completions" }));
 
-    expect(localStorage.getItem("sub2api.protocol")).toBe("responses");
+    expect(localStorage.getItem("sub2api.protocol")).toBe("chat");
     await waitFor(() =>
-      expect(mocks.addCustomProvider.mock.calls[0][1].npm).toBe("@ai-sdk/openai"),
+      expect(mocks.addCustomProvider.mock.calls[0][1].npm).toBe("@ai-sdk/openai-compatible"),
     );
   });
 
-  it("restores the persisted protocol on mount", async () => {
-    localStorage.setItem("sub2api.protocol", "responses");
+  it("restores the persisted legacy protocol on mount", async () => {
+    localStorage.setItem("sub2api.protocol", "chat");
     render(<Sub2ApiCard />);
-    expect(await screen.findByRole("radio", { name: "Responses" })).toHaveAttribute(
+    expect(await screen.findByRole("radio", { name: "Chat Completions" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
