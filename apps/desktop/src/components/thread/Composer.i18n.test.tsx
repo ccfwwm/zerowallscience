@@ -18,15 +18,10 @@ describe("Composer strings (i18n)", () => {
 });
 
 describe("WorkflowStarters strings (i18n)", () => {
-  it("renders the welcome copy and a starter card's title/description in English", () => {
+  it("renders the welcome copy in English", () => {
     render(<WorkflowStarters onPick={() => {}} />);
     expect(screen.getByText("What should we look into?")).toBeInTheDocument();
-    expect(screen.getByText("Run a reproducible analysis")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Analysis, figure, and report — with the environment recorded alongside the results.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Describe your analysis below to get started.")).toBeInTheDocument();
   });
 });
 

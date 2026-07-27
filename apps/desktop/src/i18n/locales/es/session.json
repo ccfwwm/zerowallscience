@@ -113,7 +113,7 @@
   "starters": {
     "newSession": "Nueva sesión",
     "heading": "¿Qué investigamos?",
-    "subheading": "Describe tu análisis abajo, o empieza con una de estas opciones.",
+    "subheading": "Describe tu análisis abajo para empezar.",
     "reproducible": {
       "title": "Ejecutar un análisis reproducible",
       "description": "Análisis, figura e informe, con el entorno registrado junto a los resultados."

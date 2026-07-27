@@ -202,6 +202,10 @@ export function SettingsPage() {
   const [mTarget, setMTarget] = useState("");
   const [wsPath, setWsPath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Name of the MCP server whose reconnect is in flight — drives a per-row
+  // spinner. A local reconnect never restarts the runtime, so it must not use
+  // the global `busy` flag (which greys out the whole page).
+  const [reconnecting, setReconnecting] = useState<string | null>(null);
   // The store owns "a model switch failed" (modelSwitchError): after a failed
   // apply the browser stays on screen for a retry instead of collapsing into
   // the connect prompt, no matter how the attempt failed.
@@ -791,12 +795,24 @@ export function SettingsPage() {
       toast.success(t("toast.mcpRemoved", { name }));
     });
 
+  // Reconnect a single server WITHOUT touching the rest of the runtime. The
+  // old path removed the config entry (a Rust command that restarts the whole
+  // sidecar) and then ran connectRetry — a full reload the user experienced as
+  // the page flashing. Instead, toggle just this server off→on via a live
+  // config PATCH (applied without a restart) and re-poll only the MCP list.
   const reconnectMcp = (name: string, config: McpConfig) =>
     run(t("toast.couldNotReconnectMcp"), async () => {
-      await removeConfigEntry("mcp", name);
-      await getClient()!.addMcpServer(name, config);
-      await useRuntimeStore.getState().connectRetry();
-      toast.success(t("toast.mcpReconnected", { name }));
+      const client = getClient();
+      if (!client) return;
+      setReconnecting(name);
+      try {
+        await client.addMcpServer(name, { ...config, enabled: false });
+        await client.addMcpServer(name, { ...config, enabled: true });
+        setMcpServers(await client.listMcpServers());
+        toast.success(t("toast.mcpReconnected", { name }));
+      } finally {
+        setReconnecting(null);
+      }
     });
 
   const importLogin = () =>
@@ -1550,20 +1566,24 @@ export function SettingsPage() {
                         )}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        {s.config && s.status !== "connected" && (
+                        {s.config && (
                           <button
-                            className="flex items-center gap-1 text-xs text-accent transition-colors hover:text-accent/80"
+                            className="flex items-center gap-1 text-xs text-accent transition-colors hover:text-accent/80 disabled:opacity-50"
                             onClick={() => void reconnectMcp(s.name, s.config!)}
-                            disabled={busy}
+                            disabled={busy || reconnecting !== null}
                           >
-                            <RefreshCw size={11} />
+                            {reconnecting === s.name ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : (
+                              <RefreshCw size={11} />
+                            )}
                             {t("mcp.reconnect")}
                           </button>
                         )}
                         <button
                           className="text-xs text-muted transition-colors hover:text-error"
                           onClick={() => void removeMcp(s.name)}
-                          disabled={busy}
+                          disabled={busy || reconnecting !== null}
                         >
                           {t("common:actions.remove")}
                         </button>

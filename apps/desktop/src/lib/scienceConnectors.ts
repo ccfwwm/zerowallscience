@@ -114,6 +114,26 @@ export const SCIENCE_CONNECTORS: ScienceConnector[] = [
     source: "github.com/mansurjisan/ocean-mcp",
     recommended: true,
   },
+  {
+    id: "uniprot",
+    label: "UniProt proteins",
+    discipline: "biology",
+    description:
+      "UniProt protein knowledgebase — search entries, sequences, functions, and cross-references — no key",
+    pkg: "uniprot-mcp-server",
+    bin: "uniprot-mcp",
+    source: "github.com/smaniches/uniprot-mcp",
+  },
+  {
+    id: "wikipedia",
+    label: "Wikipedia",
+    discipline: "reference",
+    description:
+      "Search Wikipedia and fetch article summaries, sections, and links for background & definitions — no key",
+    pkg: "wikipedia-mcp",
+    bin: "wikipedia-mcp",
+    source: "github.com/rudra-ravi/wikipedia-mcp",
+  },
 ];
 
 /** Ids of the default set, in list order. Derived rather than hand-maintained so

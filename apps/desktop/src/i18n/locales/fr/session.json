@@ -113,7 +113,7 @@
   "starters": {
     "newSession": "Nouvelle session",
     "heading": "Qu'allons-nous examiner ?",
-    "subheading": "Décrivez votre analyse ci-dessous, ou partez de l'une de ces options.",
+    "subheading": "Décrivez votre analyse ci-dessous pour commencer.",
     "reproducible": {
       "title": "Lancer une analyse reproductible",
       "description": "Analyse, figure et rapport — l'environnement est consigné avec les résultats."

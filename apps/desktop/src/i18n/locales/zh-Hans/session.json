@@ -113,7 +113,7 @@
   "starters": {
     "newSession": "新建会话",
     "heading": "想研究什么？",
-    "subheading": "在下面描述你的分析，或从这些开始。",
+    "subheading": "在下面描述你的分析即可开始。",
     "reproducible": {
       "title": "运行可复现分析",
       "description": "分析、图表与报告，并连同运行环境一起记录。"

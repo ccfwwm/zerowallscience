@@ -113,7 +113,7 @@
   "starters": {
     "newSession": "Neue Sitzung",
     "heading": "Was sollen wir untersuchen?",
-    "subheading": "Beschreiben Sie Ihre Analyse unten — oder beginnen Sie mit einem dieser Punkte.",
+    "subheading": "Beschreiben Sie Ihre Analyse unten, um zu beginnen.",
     "reproducible": {
       "title": "Reproduzierbare Analyse ausführen",
       "description": "Analyse, Abbildung und Bericht — die Umgebung wird neben den Ergebnissen festgehalten."

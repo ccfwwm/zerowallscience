@@ -113,7 +113,7 @@
   "starters": {
     "newSession": "새 세션",
     "heading": "무엇을 살펴볼까요?",
-    "subheading": "아래에 분석을 설명하거나 다음 중 하나로 시작하세요.",
+    "subheading": "아래에 분석을 설명하여 시작하세요.",
     "reproducible": {
       "title": "재현 가능한 분석 실행",
       "description": "분석, 그림, 보고서를 실행 환경 기록과 함께 남깁니다."

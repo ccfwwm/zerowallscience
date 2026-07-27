@@ -113,7 +113,7 @@
   "starters": {
     "newSession": "New session",
     "heading": "What should we look into?",
-    "subheading": "Describe your analysis below — or start from one of these.",
+    "subheading": "Describe your analysis below to get started.",
     "reproducible": {
       "title": "Run a reproducible analysis",
       "description": "Analysis, figure, and report — with the environment recorded alongside the results."

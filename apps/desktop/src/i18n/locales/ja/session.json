@@ -113,7 +113,7 @@
   "starters": {
     "newSession": "新規セッション",
     "heading": "何を調べますか？",
-    "subheading": "下に分析内容を記述するか、以下から始めてください。",
+    "subheading": "下に分析内容を記述して始めましょう。",
     "reproducible": {
       "title": "再現可能な分析を実行",
       "description": "分析・図・レポートを、実行環境の記録と併せて出力します。"

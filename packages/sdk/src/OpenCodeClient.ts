@@ -627,8 +627,13 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
       this.fetchImpl(`${this.baseUrl}/mcp`, { headers: this.headers() }),
       this.fetchImpl(`${this.baseUrl}/global/config`, { headers: this.headers() }),
     ]);
-    if (!statusRes.ok) throw await this.apiError(statusRes, "Failed to list MCP servers");
-    const status = (await statusRes.json()) as Record<string, { status?: string }>;
+    // The status endpoint (/mcp) can be transiently unavailable while the
+    // sidecar is still wiring up MCP connections. Do not throw away the whole
+    // list when that happens — a server the user has configured must still
+    // appear (as "pending") so its row and reconnect button are reachable.
+    const status = statusRes.ok
+      ? ((await statusRes.json()) as Record<string, { status?: string }>)
+      : {};
     const cfg = cfgRes.ok
       ? ((await cfgRes.json()) as { mcp?: Record<string, McpConfig> })
       : { mcp: {} };
