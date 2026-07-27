@@ -6,6 +6,11 @@ name: build
 # installers are published as a draft Release in the SEPARATE PUBLIC downloads
 # repository named by the `DOWNLOADS_REPO` env below.
 #
+# Architecture: the `create-release` job creates (or confirms) the draft
+# release, then each `build` job uploads its installers directly to that
+# release via `gh release upload`. This avoids GitHub Actions artifact
+# storage entirely — no upload-artifact / download-artifact / publish job.
+#
 # Why a second repository: GitHub visibility is per-repository. A private repo's
 # releases and their assets require authentication to download, and there is no
 # setting that exposes a single release, tag, or branch. Keeping the source
@@ -30,7 +35,65 @@ env:
   DOWNLOADS_REPO: ccfwwm/zerowallscience-releases
 
 jobs:
+  # Create the draft release before the build matrix starts, so every runner
+  # can upload into an existing release without racing on creation.
+  create-release:
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      # Standing install/first-launch notes — every draft is born with these
+      # (the builds are unsigned/un-notarized, so users must clear Gatekeeper /
+      # SmartScreen once). Prepend the per-version changelog before publishing.
+      - name: Write release notes
+        run: |
+          cat > notes.md <<'NOTES'
+          ## ⚠️ Install & first launch — unsigned builds
+
+          These installers are **not code-signed or notarized**, so your OS warns on first launch. This is expected; clear it once:
+
+          **macOS** — Apple Silicon: `…_aarch64.dmg` · Intel: `…_x64.dmg` (requires macOS 13+)
+          1. Open the DMG and drag **ZeroWall Science** into Applications.
+          2. If you see *"… is damaged and can't be opened"* or *"unidentified developer"*, clear the quarantine attribute in Terminal, then open normally:
+             ```
+             xattr -cr "/Applications/ZeroWall Science.app"
+             ```
+
+          **Windows** — `…_x64-setup.exe` or `…_x64_en-US.msi`
+          - SmartScreen shows *"Windows protected your PC"* → **More info** → **Run anyway**.
+
+          **Linux** — `.deb` / `.rpm`
+          - `sudo apt install ./…_amd64.deb`  or  `sudo rpm -i …x86_64.rpm`
+
+          > **No in-app auto-update** — download new versions from this Releases page. (The `.app.tar.gz` assets are build artifacts, not an update channel.)
+
+          ---
+
+          <!-- Prepend this release's changelog above this line before publishing. -->
+          NOTES
+
+      - name: Create or confirm draft release
+        env:
+          GH_TOKEN: ${{ secrets.DOWNLOADS_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$DOWNLOADS_REPO" >/dev/null 2>&1; then
+            echo "release $TAG already exists — builds will --clobber assets"
+          else
+            gh release create "$TAG" \
+              --repo "$DOWNLOADS_REPO" \
+              --title "ZeroWall Science $TAG" \
+              --notes-file notes.md \
+              --draft \
+              --target main
+            echo "created draft release $TAG"
+          fi
+
   build:
+    # On a tag push, wait for the draft release to exist before building.
+    # On workflow_dispatch (no tag), create-release is skipped — build anyway.
+    needs: [create-release]
+    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
@@ -106,107 +169,32 @@ jobs:
           # sidecar, aborting the whole bundle (tauri-apps/tauri#8929).
           args: --target ${{ matrix.target }} ${{ startsWith(matrix.platform, 'ubuntu') && '--bundles deb,rpm' || '' }}
           # No tagName / releaseName: this action must NOT create a release here.
-          # Releases are published to the public downloads repo by the `publish`
-          # job below, from the artifacts uploaded in the next step.
+          # Releases are published to the public downloads repo by the upload
+          # step below, from the bundles on disk (no artifact storage needed).
 
-      - name: Upload installers
-        uses: actions/upload-artifact@v4
-        with:
-          name: zerowall-science-${{ matrix.target }}
-          path: |
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.rpm
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
-          if-no-files-found: warn
-
-  # Publishes the installers as a DRAFT release in the public downloads repo.
-  # Draft, so the per-version changelog can be prepended and the assets checked
-  # before anything becomes publicly visible — publishing is a manual click.
-  publish:
-    needs: build
-    # Tag pushes only. A workflow_dispatch run builds and keeps the artifacts
-    # without touching the public repo.
-    if: github.ref_type == 'tag'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download every platform's installers
-        uses: actions/download-artifact@v4
-        with:
-          path: installers
-          pattern: zerowall-science-*
-          merge-multiple: true
-
-      # Bundles land in per-format subdirectories (nsis/, msi/, dmg/, deb/, …).
-      # Flatten so `gh release create` receives plain file paths, and fail loudly
-      # if a build silently produced nothing.
-      - name: Collect installer files
-        id: collect
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          find installers -type f \
-            \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' \
-               -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) \
-            -exec cp -n {} dist/ \;
-          count=$(find dist -type f | wc -l)
-          echo "collected $count installer(s):"
-          ls -la dist
-          if [ "$count" -eq 0 ]; then
-            echo "::error::no installers were produced; refusing to create an empty release"
-            exit 1
-          fi
-
-      # Standing install/first-launch notes — every draft is born with these
-      # (the builds are unsigned/un-notarized, so users must clear Gatekeeper /
-      # SmartScreen once). Prepend the per-version changelog before publishing.
-      - name: Write release notes
-        run: |
-          cat > notes.md <<'NOTES'
-          ## ⚠️ Install & first launch — unsigned builds
-
-          These installers are **not code-signed or notarized**, so your OS warns on first launch. This is expected; clear it once:
-
-          **macOS** — Apple Silicon: `…_aarch64.dmg` · Intel: `…_x64.dmg` (requires macOS 13+)
-          1. Open the DMG and drag **ZeroWall Science** into Applications.
-          2. If you see *"… is damaged and can't be opened"* or *"unidentified developer"*, clear the quarantine attribute in Terminal, then open normally:
-             ```
-             xattr -cr "/Applications/ZeroWall Science.app"
-             ```
-
-          **Windows** — `…_x64-setup.exe` or `…_x64_en-US.msi`
-          - SmartScreen shows *"Windows protected your PC"* → **More info** → **Run anyway**.
-
-          **Linux** — `.deb` / `.rpm`
-          - `sudo apt install ./…_amd64.deb`  or  `sudo rpm -i …x86_64.rpm`
-
-          > **No in-app auto-update** — download new versions from this Releases page. (The `.app.tar.gz` assets are build artifacts, not an update channel.)
-
-          ---
-
-          <!-- Prepend this release's changelog above this line before publishing. -->
-          NOTES
-
-      # The downloads repo has no source history, so the tag is created there on
-      # its default branch (--target). Re-running the same tag replaces assets
-      # rather than failing.
-      - name: Publish draft release to the public downloads repo
+      # Upload each installer directly to the draft release in the public
+      # downloads repo. No actions/upload-artifact — avoids the artifact
+      # storage quota entirely.
+      - name: Upload installers to release
+        if: github.ref_type == 'tag'
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.DOWNLOADS_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if gh release view "$TAG" --repo "$DOWNLOADS_REPO" >/dev/null 2>&1; then
-            echo "release $TAG exists; uploading assets with --clobber"
-            gh release upload "$TAG" dist/* --repo "$DOWNLOADS_REPO" --clobber
-          else
-            gh release create "$TAG" dist/* \
-              --repo "$DOWNLOADS_REPO" \
-              --title "ZeroWall Science $TAG" \
-              --notes-file notes.md \
-              --draft \
-              --target main
+          target="${{ matrix.target }}"
+          bundle_dir="apps/desktop/src-tauri/target/$target/release/bundle"
+          found=0
+          for ext in dmg exe msi deb rpm AppImage; do
+            while IFS= read -r f; do
+              echo "uploading $(basename "$f") ..."
+              gh release upload "$TAG" "$f" \
+                --repo "$DOWNLOADS_REPO" --clobber
+              found=$((found + 1))
+            done < <(find "$bundle_dir" -name "*.$ext" 2>/dev/null || true)
+          done
+          echo "uploaded $found installer(s) for $target"
+          if [ "$found" -eq 0 ]; then
+            echo "::warning::no installers found for $target"
           fi
-          gh release view "$TAG" --repo "$DOWNLOADS_REPO"
