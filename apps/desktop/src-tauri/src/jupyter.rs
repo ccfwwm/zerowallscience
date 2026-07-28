@@ -18,7 +18,10 @@ use crate::runtime::{free_port, workspace_dir};
 const PIP_SPEC: &[&str] = &[
     "jupyterlab==4.4.1",
     "jupyter-collaboration==4.0.2",
-    "jupyter-mcp-server",
+    // Pinned: an unpinned range silently pulled 1.1.2, whose `serve` defaults
+    // START_NEW_RUNTIME=true and starts a kernel synchronously at launch,
+    // blocking the stdio MCP handshake (see setup.ts, where we set it false).
+    "jupyter-mcp-server==1.1.2",
     "ipykernel",
     "numpy",
     "pandas",

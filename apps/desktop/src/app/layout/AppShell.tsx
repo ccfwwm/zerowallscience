@@ -8,7 +8,7 @@ import { CommandPalette } from "@/components/command-palette/CommandPalette";
 import { PaneDragGhost } from "@/components/session/PaneDragGhost";
 import { Toaster } from "@/components/ui/Toaster";
 import { useRuntimeStore } from "@/lib/runtime";
-import { ensureDefaultConnectors, ensureSetupProgressListener } from "@/lib/setup";
+import { ensureDefaultConnectors, ensureSetupProgressListener, healJupyterMcpEnv } from "@/lib/setup";
 import { useOverlayTitlebar, useUiStore } from "@/lib/store";
 import { overlayTitlebarStyle } from "@/lib/titlebar";
 import { ensureJupyter, openExternal, watchFullscreen } from "@/lib/tauri";
@@ -115,7 +115,12 @@ export function AppShell() {
   // reinstall connectors the user already has.
   const runtimeReady = useRuntimeStore((s) => s.status) === "ready";
   useEffect(() => {
-    if (runtimeReady && !import.meta.env.TEST) ensureDefaultConnectors();
+    if (runtimeReady && !import.meta.env.TEST) {
+      ensureDefaultConnectors();
+      // Heal pre-fix Jupyter MCP entries so they stop starting a kernel at
+      // launch (which blocked the handshake and showed the server "failed").
+      void healJupyterMcpEnv();
+    }
   }, [runtimeReady]);
 
   // Web client: if the gateway rejects the token (rotated/revoked), drop back

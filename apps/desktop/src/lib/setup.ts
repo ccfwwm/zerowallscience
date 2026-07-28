@@ -103,7 +103,17 @@ export const useSetupStore = create<SetupState>((set, get) => ({
         type: "local",
         command: [s.mcp_command],
         enabled: true,
-        environment: { JUPYTER_URL: s.url, JUPYTER_TOKEN: s.token, ALLOW_IMG_OUTPUT: "true" },
+        // START_NEW_RUNTIME=false: jupyter-mcp-server's `serve` defaults it to
+        // true, which starts a kernel SYNCHRONOUSLY at launch — before the stdio
+        // MCP handshake — so a slow/wedged kernel makes `initialize` never return
+        // and OpenCode marks the connector "failed". Off, it answers the
+        // handshake immediately and connects the kernel lazily on first tool use.
+        environment: {
+          JUPYTER_URL: s.url,
+          JUPYTER_TOKEN: s.token,
+          START_NEW_RUNTIME: "false",
+          ALLOW_IMG_OUTPUT: "true",
+        },
       });
       toast.success("Jupyter MCP enabled — the agent can now drive notebooks.");
       await useRuntimeStore.getState().loadCatalog();
@@ -234,6 +244,38 @@ export function ensureDefaultConnectors(): void {
       toast.success(`${enabled.length} connector(s) ready — the agent can use them from chat.`);
     }
   })();
+}
+
+/**
+ * Heal installs whose Jupyter MCP entry predates the START_NEW_RUNTIME fix.
+ * Those entries let jupyter-mcp-server start a kernel synchronously at launch,
+ * which blocks the stdio MCP handshake and leaves the connector stuck "failed".
+ * Patch the env in place (additive deep-merge, so command/token are preserved)
+ * without forcing the user back through Setup. No-op when Jupyter isn't
+ * configured, isn't local, or the flag is already present.
+ */
+export async function healJupyterMcpEnv(): Promise<void> {
+  if (isGatewayWeb || !isTauri) return;
+  const client = getClient();
+  if (!client) return;
+  let config;
+  try {
+    config = (await client.listMcpServers()).find((s) => s.name === "jupyter")?.config;
+  } catch {
+    return; // can't read the config — don't guess
+  }
+  if (!config || config.type !== "local") return;
+  const env = config.environment ?? {};
+  if ("START_NEW_RUNTIME" in env) return; // already healed
+  try {
+    await client.addMcpServer("jupyter", {
+      ...config,
+      environment: { ...env, START_NEW_RUNTIME: "false" },
+    });
+    await useRuntimeStore.getState().loadCatalog();
+  } catch {
+    /* best-effort: a failed heal must not block startup */
+  }
 }
 
 /** Start the shared uv-progress listener (idempotent). Call once from AppShell. */
