@@ -49,6 +49,23 @@ describe("groupToolBlocks", () => {
     expect(items[0]).toMatchObject({ kind: "block", index: 0 });
   });
 
+  it("merges many reasoning parts of one turn into a single Thought card", () => {
+    const items = groupToolBlocks([
+      { kind: "reasoning", text: "first" },
+      { kind: "reasoning", text: "second" },
+      { kind: "reasoning", text: "third" },
+      { kind: "agent", markdown: "the answer" },
+    ]);
+    expect(items.map((i) => i.kind)).toEqual(["block", "block"]);
+    // One merged reasoning card, indexed at the run's LAST block (live-stream fires).
+    expect(items[0]).toMatchObject({
+      kind: "block",
+      index: 2,
+      block: { kind: "reasoning", text: "first\n\nsecond\n\nthird" },
+    });
+    expect(items[1]).toMatchObject({ kind: "block", index: 3 });
+  });
+
   it("failures stay in the group (routine agent trial-and-error, counted in the summary)", () => {
     const items = groupToolBlocks([
       tool({ title: "a" }),

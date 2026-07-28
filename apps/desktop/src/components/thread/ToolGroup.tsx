@@ -37,8 +37,21 @@ export function groupToolBlocks(blocks: ThreadBlock[]): BlockListItem[] {
     if (g.blocks.some((b) => b.kind === "tool-call")) {
       items.push({ kind: "group", start: g.start, blocks: g.blocks });
     } else {
-      // Reasoning-only run: no tools to summarize — render each on its own.
-      g.blocks.forEach((b, k) => items.push({ kind: "block", index: g.start + k, block: b }));
+      // Reasoning-only run: one turn can stream reasoning as many parts (each a
+      // distinct partId → a distinct block). Merge them into ONE "Thought" card
+      // instead of stacking N. Empty segments drop out; the card takes the run's
+      // LAST index so the live-streaming highlight (last block is reasoning) fires.
+      const text = g.blocks
+        .map((b) => (b.kind === "reasoning" ? b.text.trim() : ""))
+        .filter(Boolean)
+        .join("\n\n");
+      if (text) {
+        items.push({
+          kind: "block",
+          index: g.start + g.blocks.length - 1,
+          block: { kind: "reasoning", text },
+        });
+      }
     }
   };
   blocks.forEach((b, i) => {

@@ -6105,7 +6105,7 @@ dependencies = [
 
 [[package]]
 name = "zerowall-science"
-version = "0.4.7"
+version = "0.4.8"
 dependencies = [
  "getrandom 0.4.3",
  "keyring",
