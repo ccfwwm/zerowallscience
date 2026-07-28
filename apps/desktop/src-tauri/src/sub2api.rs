@@ -25,9 +25,18 @@ use crate::secret_store::{self, SecretReference};
 pub const DEFAULT_BASE_URL: &str = "https://code.aicodeme.xyz";
 pub const BACKUP_BASE_URL: &str = "https://code.aicodeme.cn";
 
-/// Provider id the provisioned models are registered under, and the keychain
-/// account the API key is stored against.
-pub const PROVIDER_ID: &str = "sub2api";
+/// Namespace prefix every gateway-provisioned provider id shares. Kept in sync
+/// with the `PROVIDER_NAMESPACE` constant in `Sub2ApiCard.tsx`: each open group
+/// becomes its own provider (`zerowall-<groupId>`), so one group's key never
+/// overwrites another and the fully-qualified model ref never leaks the
+/// internal gateway name into the assistant's reply.
+pub const PROVIDER_NAMESPACE: &str = "zerowall";
+
+/// Provider id a group's key is stored under. Uniform rule — no bare special
+/// case — matching `providerIdForGroup` on the TypeScript side.
+pub fn provider_id_for_group(group_id: i64) -> String {
+    format!("{PROVIDER_NAMESPACE}-{group_id}")
+}
 
 /// The signed-in session. Lives only in this process's memory — the access
 /// token is never written to disk, provenance, or an exported project. The
@@ -630,13 +639,16 @@ pub async fn sub2api_provision_group(
     })
     .await?;
 
-    // Straight into the credential manager, then restart the sidecar so it
-    // picks the key up. `api_key` is dropped here and never returned.
-    secret_store::persist_for_app(&app, SecretReference::provider(PROVIDER_ID)?, &api_key)?;
+    // Per-group provider id so this group's key does not overwrite another
+    // group's when the user switches. Straight into the credential manager,
+    // then restart the sidecar so it picks the key up. `api_key` is dropped
+    // here and never returned.
+    let provider_id = provider_id_for_group(group_id);
+    secret_store::persist_for_app(&app, SecretReference::provider(&provider_id)?, &api_key)?;
     crate::runtime::restart_sidecar_if_running(&app, &runtime)?;
 
     Ok(Provisioned {
-        provider_id: PROVIDER_ID.to_string(),
+        provider_id,
         base_url: format!("{base}/v1"),
         models,
         groups,
@@ -1123,6 +1135,19 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn provider_id_uses_neutral_namespace_uniformly() {
+        // Every group — including the primary domestic one — gets a
+        // `zerowall-<id>` provider id. No bare special case: the old scheme
+        // that collapsed group 2 onto `"sub2api"` and suffixed the rest let
+        // one group's key overwrite another's in the OS keychain and leaked
+        // the gateway name into the fully-qualified model ref. This must
+        // stay in lock-step with `providerIdForGroup` in Sub2ApiCard.tsx.
+        assert_eq!(provider_id_for_group(2), "zerowall-2");
+        assert_eq!(provider_id_for_group(3), "zerowall-3");
+        assert!(!provider_id_for_group(2).contains("sub2api"));
+    }
 
     #[test]
     fn access_token_is_read_from_either_shape() {

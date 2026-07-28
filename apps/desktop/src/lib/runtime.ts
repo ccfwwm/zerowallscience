@@ -401,6 +401,10 @@ let gatewayListenerBound = false;
 /** Custom-model context-limit cleanup (#52) runs once per app run — every
  *  reconnect re-enters connect(), and the check is a config round-trip. */
 let contextLimitsCleaned = false;
+/** One-shot legacy `sub2api` provider migration — see
+ *  `migrateLegacySub2apiProviders()`. Same rationale as contextLimitsCleaned:
+ *  reconnects re-enter connect(), but the check only makes sense once per run. */
+let legacySub2apiMigrated = false;
 /** Unhook the current client's status listener BEFORE closing it — teardown
  *  emits "offline", and a reconnect attempt must not flash that at the user. */
 let clientStatusUnsub: (() => void) | null = null;
@@ -475,6 +479,29 @@ export const draftKeyFor = (leafId: string): string => `draft:${leafId}`;
 /** The composer's agent switch: "build" edits and runs; "plan" is OpenCode's
  *  read-only planning agent (edits denied except its plan .md file). */
 export type AgentMode = "build" | "plan";
+/** Sweep 0.4.8's `sub2api` / `sub2api-<n>` provider entries out of the
+ *  OpenCode config. The 0.4.9 rewrite moved every group to `zerowall-<id>`
+ *  (see providerIdForGroup in Sub2ApiCard); leaving the old entries visible
+ *  strands stale models in the picker and lets the assistant recover the
+ *  `sub2api/<model>` fully-qualified reference from an old cached completion.
+ *  Best-effort — a failure here just leaves the picker slightly noisy until
+ *  the next launch. Idempotent: a second run finds nothing to remove. */
+async function migrateLegacySub2apiProviders(c: OpenCodeClient): Promise<void> {
+  const ids = await c.listCustomProviderIds();
+  const stale = ids.filter((id) => id === "sub2api" || id.startsWith("sub2api-"));
+  if (stale.length === 0) return;
+  for (const id of stale) {
+    try {
+      await c.removeCustomProvider(id);
+      void logDebug(`已清理旧 AI 平台条目 ${id}`);
+    } catch (err) {
+      void logDebug(
+        `清理旧 AI 平台条目 ${id} 失败：${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+}
+
 /** One bounded retry for the first POSTs after a sidecar restart — the old
  *  connection occasionally dies mid-handshake ("Load failed"). */
 async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
@@ -1768,6 +1795,20 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           .then(() => c.clearDefaultCustomModelContextLimits())
           .catch((err) =>
             logDebug(`context-limit cleanup skipped: ${err instanceof Error ? err.message : String(err)}`),
+          );
+      }
+      // v0.4.9: the gateway provider id changed from the bare `sub2api` (and
+      // any older `sub2api-<n>`) to `zerowall-<groupId>`. An installed 0.4.8
+      // still has the old entry sitting in `/global/config` with a model list
+      // that will never be refreshed — autoSetup writes to the new id and
+      // leaves the old one visible in the picker. Sweep them out once so the
+      // model list users see comes strictly from the new per-group entries.
+      if (!isGatewayWeb && !legacySub2apiMigrated) {
+        legacySub2apiMigrated = true;
+        void Promise.resolve()
+          .then(() => migrateLegacySub2apiProviders(c))
+          .catch((err) =>
+            logDebug(`legacy sub2api migration skipped: ${err instanceof Error ? err.message : String(err)}`),
           );
       }
     } catch (err) {

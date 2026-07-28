@@ -95,7 +95,7 @@ beforeEach(() => {
     existingKeyGroupIds: [2],
   });
   mocks.provisionGroup.mockResolvedValue({
-    providerId: "sub2api",
+    providerId: "zerowall-2",
     baseUrl: "https://code.aicodeme.cn/v1",
     models: ["gpt-4o", "kimi-k2-thinking", "deepseek-v3", "glm-4.6", "qwen3-max"],
     groups: [
@@ -103,17 +103,18 @@ beforeEach(() => {
       { id: 2, name: "国产模型" },
     ],
   });
-  // The sign-in auto-setup provisions every open group at once: the domestic
-  // group under the bare provider id, the GPT group under a suffixed id.
+  // The sign-in auto-setup provisions every open group at once. Each group gets
+  // its own neutral-namespace provider id (no bare special case) so keys stay
+  // per-group and the fully-qualified model ref never leaks the gateway name.
   mocks.provisionGroups.mockResolvedValue([
     {
-      providerId: "sub2api",
+      providerId: "zerowall-2",
       groupId: 2,
       baseUrl: "https://code.aicodeme.cn/v1",
       models: ["kimi-k2-thinking", "deepseek-v3", "glm-4.6", "qwen3-max", "gpt-4o"],
     },
     {
-      providerId: "sub2api-3",
+      providerId: "zerowall-3",
       groupId: 3,
       baseUrl: "https://code.aicodeme.cn/v1",
       models: ["gpt-4o", "gpt-5.4", "o3"],
@@ -172,12 +173,16 @@ describe("group allowlist", () => {
     expect(openGroups(renamed)).toEqual(renamed);
   });
 
-  it("keeps the primary group on the bare provider id and suffixes the rest", () => {
+  it("gives every group its own neutral-namespace provider id, no bare special case", () => {
     // A gateway key is scoped to one group, so each open group is its own
-    // provider. The primary (domestic) group must stay "sub2api" so kimi-k3
-    // remains the default and existing config keeps resolving.
-    expect(providerIdForGroup(2, 2)).toBe("sub2api");
-    expect(providerIdForGroup(3, 2)).toBe("sub2api-3");
+    // provider. All groups — including the primary — get a `zerowall-<id>` id,
+    // so switching between them switches the keychain entry and the fully-
+    // qualified model ref never leaks the internal gateway name.
+    expect(providerIdForGroup(2, 2)).toBe("zerowall-2");
+    expect(providerIdForGroup(3, 2)).toBe("zerowall-3");
+    // The primary group id argument is retained for call-site stability but
+    // must not affect the mapping — same id in, same id out.
+    expect(providerIdForGroup(5, 7)).toBe("zerowall-5");
   });
 });
 
@@ -292,9 +297,12 @@ describe("Sub2API panel", () => {
 
     expect(mocks.addCustomProvider).toHaveBeenCalledTimes(1);
     const [id, opts] = mocks.addCustomProvider.mock.calls[0];
-    expect(id).toBe("sub2api");
+    expect(id).toBe("zerowall-2");
     expect(opts).toEqual({
-      name: "AI Platform",
+      // Provider name carries the group so both groups' providers are
+      // distinguishable in the model picker — the primary is no longer
+      // special-cased into the bare "AI Platform" label.
+      name: "AI Platform · 国产模型",
       // Default is the Chat Completions protocol (@ai-sdk/openai-compatible);
       // the gateway only carries image parts on Chat Completions.
       npm: "@ai-sdk/openai-compatible",
@@ -302,8 +310,9 @@ describe("Sub2API panel", () => {
       models: ["deepseek-v3", "glm-4.6", "kimi-k2-thinking", "qwen3-max"],
     });
     expect(opts).not.toHaveProperty("apiKey");
-    // Auto-set the default model to the first domestic model.
-    expect(mocks.setDefaultModel).toHaveBeenCalledWith("sub2api/kimi-k2-thinking");
+    // Auto-set the default model to the first domestic model, under the
+    // per-group provider id (no bare `sub2api/`).
+    expect(mocks.setDefaultModel).toHaveBeenCalledWith("zerowall-2/kimi-k2-thinking");
     expect(mocks.loadCatalog).toHaveBeenCalled();
   });
 
@@ -341,25 +350,27 @@ describe("Sub2API panel", () => {
     await userEvent.type(screen.getByPlaceholderText("Password"), "secret1");
     await userEvent.click(screen.getByRole("button", { name: /Sign in/ }));
 
-    // Both open groups are provisioned in one batch: the domestic group under the
-    // bare provider id (so a missing key is created, not errored), the GPT group
-    // under a suffixed id so its key never overwrites the domestic one.
+    // Both open groups are provisioned in one batch. Each group gets its own
+    // per-group provider id under the neutral namespace: switching between
+    // them switches the keychain entry, and the fully-qualified model ref
+    // (`zerowall-<n>/<model>`) never leaks the internal gateway name.
     await waitFor(() =>
       expect(mocks.provisionGroups).toHaveBeenCalledWith([
-        { groupId: 2, providerId: "sub2api" },
-        { groupId: 3, providerId: "sub2api-3" },
+        { groupId: 2, providerId: "zerowall-2" },
+        { groupId: 3, providerId: "zerowall-3" },
       ]),
     );
     await waitFor(() => expect(mocks.addCustomProvider).toHaveBeenCalledTimes(2));
     expect(mocks.addCustomProvider.mock.calls.map((c) => c[0])).toEqual([
-      "sub2api",
-      "sub2api-3",
+      "zerowall-2",
+      "zerowall-3",
     ]);
     // GPT-family models from the second group are now registered, so a model
     // like gpt-5.4 resolves to a configured account instead of erroring.
     expect(mocks.addCustomProvider.mock.calls[1][1].models).toContain("gpt-5.4");
-    // The default model stays a domestic one under the primary provider.
-    expect(mocks.setDefaultModel).toHaveBeenCalledWith("sub2api/kimi-k2-thinking");
+    // The default model stays a domestic one, under the primary group's
+    // per-group provider id — no bare `sub2api/` prefix leaks out.
+    expect(mocks.setDefaultModel).toHaveBeenCalledWith("zerowall-2/kimi-k2-thinking");
   });
 
   it("restores a saved session on mount when no live one exists", async () => {

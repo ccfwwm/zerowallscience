@@ -539,6 +539,13 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
         return [m, limit ? { name: m, limit } : { name: m }];
       }),
     );
+    // Clear the stale model map first. `PATCH /global/config` deep-merges
+    // (remeda mergeDeep), so an omitted or renamed model id would otherwise
+    // linger — the user re-fetches the gateway's model list and last time's
+    // ids stay visible in the picker. Setting `models: null` on the leaf
+    // replaces the object wholesale (non-object right side wins), so the
+    // second PATCH below repopulates the map from scratch.
+    await this.clearProviderModels(id);
     const provider = {
       [id]: {
         name: opts.name,
@@ -553,6 +560,23 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
       body: JSON.stringify({ provider }),
     });
     if (!res.ok) throw await this.apiError(res, "Failed to add the provider");
+  }
+
+  /** Empty a custom provider's model map so a follow-up write starts fresh.
+   *  See `addCustomProvider` for why: OpenCode's PATCH merges deeply, so
+   *  omitted model ids from a previous PATCH would otherwise persist.
+   *  Best-effort — a 404 on an unknown provider is not an error. */
+  private async clearProviderModels(id: string): Promise<void> {
+    const res = await this.fetchImpl(`${this.baseUrl}/global/config`, {
+      method: "PATCH",
+      headers: this.headers(true),
+      body: JSON.stringify({ provider: { [id]: { models: null } } }),
+    });
+    // Never throw here — a fresh provider has no models to clear, and callers
+    // rely on this being a soft prelude to the real write.
+    if (!res.ok) {
+      // swallow: the follow-up PATCH will surface any real config error.
+    }
   }
 
   /** Context limits already configured for a custom provider's models, keyed by
@@ -619,6 +643,20 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
     if (!res.ok) return [];
     const cfg = (await res.json()) as { provider?: Record<string, unknown> };
     return Object.keys(cfg.provider ?? {});
+  }
+
+  /** Delete a custom provider entry from the global config. Uses the same
+   *  PATCH-with-null trick as `clearProviderModels`: assigning a non-object at
+   *  a leaf replaces (rather than merges into) the existing value, so the
+   *  provider vanishes cleanly and its stale model ids can never resurrect.
+   *  Best-effort — a missing provider is not an error. */
+  async removeCustomProvider(id: string): Promise<void> {
+    const res = await this.fetchImpl(`${this.baseUrl}/global/config`, {
+      method: "PATCH",
+      headers: this.headers(true),
+      body: JSON.stringify({ provider: { [id]: null } }),
+    });
+    if (!res.ok) throw await this.apiError(res, "Failed to remove the provider");
   }
 
   /** Configured MCP servers with live status, joined with their config. */

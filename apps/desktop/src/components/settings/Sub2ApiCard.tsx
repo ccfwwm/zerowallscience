@@ -23,8 +23,12 @@ import { inputCls } from "./inputCls";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
 
-/** Provider id the gateway's key is stored under, matching `sub2api.rs`. */
-const PROVIDER_ID = "sub2api";
+/** Namespace every gateway-provisioned provider lives under. The old
+ *  `"sub2api"` id leaked the internal gateway name into fully-qualified model
+ *  refs the model then echoed back at the user ("sub2api/gpt-5.5"). A neutral
+ *  brand prefix keeps the assistant's identity clean while a per-group suffix
+ *  keeps one group's key from overwriting another. See `providerIdForGroup`. */
+const PROVIDER_NAMESPACE = "zerowall";
 
 /** Substrings that mark a model as one of the domestic families this app leads
  *  with. Used only for ordering and a badge — nothing is hidden. */
@@ -76,13 +80,17 @@ export function pickDefaultModel(models: string[]): string | undefined {
 }
 
 /** Provider id a group's key is registered under. A gateway key is scoped to a
- *  single group, so each open group becomes its own OpenCode provider. The
- *  primary (domestic) group keeps the bare `PROVIDER_ID` — that preserves the
- *  default kimi-k3, the balance/test paths, and any saved config — while every
- *  other group gets a `sub2api-<id>` suffix so its key never overwrites the
- *  primary one. Exported for the test — the namespacing is the fix. */
-export function providerIdForGroup(groupId: number, primaryGroupId: number): string {
-  return groupId === primaryGroupId ? PROVIDER_ID : `${PROVIDER_ID}-${groupId}`;
+ *  single group, so each open group becomes its own OpenCode provider. Every
+ *  group — including the primary — gets a `zerowall-<groupId>` id: one uniform
+ *  rule, no bare special case. The old bare `"sub2api"` id collapsed all groups
+ *  onto one keychain entry (so switching from a domestic key to the GPT key
+ *  overwrote it and `list_models` came back for the wrong group), and it leaked
+ *  the internal gateway name into fully-qualified model refs the model echoed
+ *  back at the user. `primaryGroupId` is kept in the signature to preserve the
+ *  call sites — it no longer affects the mapping. Exported for the test. */
+export function providerIdForGroup(groupId: number, _primaryGroupId: number): string {
+  void _primaryGroupId;
+  return `${PROVIDER_NAMESPACE}-${groupId}`;
 }
 
 type Mode = "signIn" | "register";
@@ -248,8 +256,14 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
           models: orderModels(p.models),
         });
       }
+      // Default model belongs to the primary provider, so it stays alive when
+      // the user switches groups: the primary provider id is derived from the
+      // primary group id, matching the addCustomProvider call above.
       const def = pickDefaultModel(chosen);
-      if (def) await getClient()!.setDefaultModel(`${PROVIDER_ID}/${def}`);
+      if (def) {
+        const primaryProviderId = providerIdForGroup(primary.id, primary.id);
+        await getClient()!.setDefaultModel(`${primaryProviderId}/${def}`);
+      }
       await loadCatalog();
       const total = provisioned.reduce((n, p) => n + p.models.length, 0);
       toast.success(t("sub2api.connected", { count: total }));
@@ -388,6 +402,16 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       toast.error(t("sub2api.pickOne"));
       return;
     }
+    // A group must be selected before Save: the provider id is scoped to that
+    // group so the key stays namespaced and the fully-qualified model ref never
+    // leaks the internal gateway name into the assistant's reply.
+    if (selectedGroupId == null) {
+      toast.error(t("sub2api.pickOne"));
+      return;
+    }
+    const providerId = providerIdForGroup(selectedGroupId, selectedGroupId);
+    const groupName =
+      groups.find((g) => g.id === selectedGroupId)?.name ?? String(selectedGroupId);
     setBusy("connect");
     try {
       // Provisioning restarts the sidecar, and the runtime need not already be up
@@ -399,8 +423,8 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
         toast.error(t("sub2api.runtimeOffline"));
         return;
       }
-      await getClient()!.addCustomProvider(PROVIDER_ID, {
-        name: t("sub2api.providerName"),
+      await getClient()!.addCustomProvider(providerId, {
+        name: `${t("sub2api.providerName")} · ${groupName}`,
         npm: npmForProtocol(proto),
         baseURL: baseUrl,
         models: chosen,
@@ -410,7 +434,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       // only have an AI 平台 key.
       const first = pickDefaultModel(chosen);
       if (first) {
-        await getClient()!.setDefaultModel(`${PROVIDER_ID}/${first}`);
+        await getClient()!.setDefaultModel(`${providerId}/${first}`);
       }
       await loadCatalog();
       toast.success(t("sub2api.connected", { count: chosen.length }));
