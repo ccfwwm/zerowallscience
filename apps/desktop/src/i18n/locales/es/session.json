@@ -345,5 +345,8 @@
       "edit": "Editar y reenviar",
       "revert": "Revertir aquí"
     }
+  },
+  "toast": {
+    "visionAutoRoute": "El modelo actual no admite imágenes; este turno se dirigió a {{model}}."
   }
 }
