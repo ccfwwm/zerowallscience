@@ -34,7 +34,15 @@ const LEGACY_BLIND_CONTEXT = 128_000;
 type CustomProviderConfig = Record<
   string,
   {
-    models?: Record<string, { name?: string; limit?: { context: number; output: number } }>;
+    models?: Record<
+      string,
+      {
+        name?: string;
+        limit?: { context: number; output: number };
+        attachment?: boolean;
+        modalities?: { input?: string[]; output?: string[] };
+      }
+    >;
     [key: string]: unknown;
   }
 >;
@@ -531,12 +539,28 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
     // (Ollama/vLLM/LM Studio report their window) or the user; when both are
     // absent, leaving context 0 makes OpenCode skip the accounting entirely.
     const existing = await this.customProviderModelLimits(id);
+    // Declare image + text input on every custom model. OpenCode's pre-flight
+    // filter reads `capabilities.input.image` (fed by `modalities.input`) and,
+    // when unset, rewrites every file part into
+    //   "ERROR: Cannot read '<name>' (this model does not support image input)"
+    // before the request ever leaves the sidecar (#0.4.9 regression). Neutral
+    // provider ids like `zerowall-<group>` have no models.dev match, so nothing
+    // seeds `modalities` for us — we have to seed it here. `attachment: true`
+    // pairs with it so the client accepts the file part upstream too. The
+    // real per-model capability check happens at the gateway; declaring image
+    // broadly is what v0.4.5/0.4.6 effectively did by inheriting models.dev.
     const models = Object.fromEntries(
       opts.models.map((m) => {
         const context = opts.contexts?.[m];
         const limit =
           context && context > 0 ? { context, output: existing[m]?.output ?? 0 } : existing[m];
-        return [m, limit ? { name: m, limit } : { name: m }];
+        const entry: Record<string, unknown> = {
+          name: m,
+          attachment: true,
+          modalities: { input: ["text", "image"], output: ["text"] },
+        };
+        if (limit) entry.limit = limit;
+        return [m, entry];
       }),
     );
     // Clear the stale model map first. `PATCH /global/config` deep-merges
@@ -635,6 +659,50 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
       body: JSON.stringify({ provider: patch }),
     });
     if (!res.ok) throw await this.apiError(res, "Failed to reset default model context limits");
+  }
+
+  /** Backfill `attachment: true` + `modalities: {input:["text","image"],
+   *  output:["text"]}` onto every model of every already-registered custom
+   *  provider. addCustomProvider seeds these fields on new writes (v0.4.13),
+   *  but installs that signed in on ≤0.4.12 already have provider entries in
+   *  /global/config with no modality declaration — OpenCode's pre-flight
+   *  filter then rewrites every attached image into
+   *  "ERROR: Cannot read '…' (this model does not support image input)"
+   *  before the request ever leaves the sidecar. Runs once per boot, no-op if
+   *  every model is already declared image-capable. */
+  async ensureCustomProvidersImageCapable(): Promise<void> {
+    const cfg = await this.customProviderConfig();
+    const patch: CustomProviderConfig = {};
+    for (const [pid, entry] of Object.entries(cfg)) {
+      const models = entry.models ?? {};
+      const updated: typeof models = {};
+      let touched = false;
+      for (const [mid, m] of Object.entries(models)) {
+        const hasImage = m.modalities?.input?.includes("image") ?? false;
+        const hasAttachment = m.attachment === true;
+        if (hasImage && hasAttachment) {
+          updated[mid] = m;
+          continue;
+        }
+        touched = true;
+        updated[mid] = {
+          ...m,
+          attachment: true,
+          modalities: {
+            input: ["text", "image"],
+            output: m.modalities?.output ?? ["text"],
+          },
+        };
+      }
+      if (touched) patch[pid] = { ...entry, models: updated };
+    }
+    if (Object.keys(patch).length === 0) return;
+    const res = await this.fetchImpl(`${this.baseUrl}/global/config`, {
+      method: "PATCH",
+      headers: this.headers(true),
+      body: JSON.stringify({ provider: patch }),
+    });
+    if (!res.ok) throw await this.apiError(res, "Failed to declare image capability");
   }
 
   /** Ids of custom providers defined in the global config (removable via the app). */

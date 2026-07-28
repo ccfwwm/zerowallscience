@@ -405,6 +405,10 @@ let contextLimitsCleaned = false;
  *  `migrateLegacySub2apiProviders()`. Same rationale as contextLimitsCleaned:
  *  reconnects re-enter connect(), but the check only makes sense once per run. */
 let legacySub2apiMigrated = false;
+/** One-shot backfill of `attachment: true` + `modalities.input:["text","image"]`
+ *  on custom providers registered by ≤0.4.12 autoSetup, which never seeded
+ *  those fields (v0.4.13). Same reasoning as the two flags above. */
+let imageCapabilityBackfilled = false;
 /** Unhook the current client's status listener BEFORE closing it — teardown
  *  emits "offline", and a reconnect attempt must not flash that at the user. */
 let clientStatusUnsub: (() => void) | null = null;
@@ -1823,6 +1827,21 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           .then(() => migrateLegacySub2apiProviders(c))
           .catch((err) =>
             logDebug(`legacy sub2api migration skipped: ${err instanceof Error ? err.message : String(err)}`),
+          );
+      }
+      // v0.4.13: backfill image capability on providers that were registered by
+      // an older autoSetup. Without `modalities.input:["image"]` OpenCode's
+      // pre-flight filter refuses every attached image with a "this model does
+      // not support image input" ERROR — new sign-ins get the flag from
+      // addCustomProvider, but installs upgrading in place never re-run that
+      // path and stay broken. One PATCH is a no-op if every model already
+      // declares image, so this is safe to run every boot.
+      if (!isGatewayWeb && !imageCapabilityBackfilled) {
+        imageCapabilityBackfilled = true;
+        void Promise.resolve()
+          .then(() => c.ensureCustomProvidersImageCapable())
+          .catch((err) =>
+            logDebug(`image capability backfill skipped: ${err instanceof Error ? err.message : String(err)}`),
           );
       }
     } catch (err) {

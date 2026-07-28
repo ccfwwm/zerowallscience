@@ -468,7 +468,11 @@ describe("custom-model context limits (#52: never pin a guessed window)", () => 
       baseURL: "https://example.test/v1",
       models: ["sol"],
     });
-    expect(patches[patches.length - 1].provider.custom.models!.sol).toEqual({ name: "sol" });
+    expect(patches[patches.length - 1].provider.custom.models!.sol).toEqual({
+      name: "sol",
+      attachment: true,
+      modalities: { input: ["text", "image"], output: ["text"] },
+    });
   });
 
   it("pins a probed/typed context window exactly", async () => {
@@ -483,6 +487,8 @@ describe("custom-model context limits (#52: never pin a guessed window)", () => 
     });
     expect(patches[patches.length - 1].provider.custom.models!.sol).toEqual({
       name: "sol",
+      attachment: true,
+      modalities: { input: ["text", "image"], output: ["text"] },
       limit: { context: 1_500_000, output: 0 },
     });
   });
@@ -500,6 +506,8 @@ describe("custom-model context limits (#52: never pin a guessed window)", () => 
     });
     expect(patches[patches.length - 1].provider.custom.models!.sol).toEqual({
       name: "sol",
+      attachment: true,
+      modalities: { input: ["text", "image"], output: ["text"] },
       limit: { context: 64_000, output: 0 },
     });
   });
