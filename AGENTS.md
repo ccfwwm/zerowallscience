@@ -20,8 +20,7 @@ Keep it **simple, explicit, clear, complete**.
 ## What this project is
 
 An open-source, local-first, model-agnostic, reproducible AI research desktop
-for macOS, Windows, and Linux. See `README.md`, `docs/PRD.md`, and
-`docs/TECHNICAL_DESIGN.md`.
+for macOS, Windows, and Linux. See `README.md`.
 
 Recommended stack: **Tauri 2 + React + TypeScript + Vite**, Tailwind + Radix UI,
 **OpenCode** as the agent runtime (bundled single-binary sidecar; HTTP + SSE API),
@@ -32,9 +31,6 @@ local workspace + SQLite + JSONL provenance.
 - `apps/desktop/` — Tauri + React desktop shell (`src/` frontend, `src-tauri/` Rust).
 - `packages/` — `ui`, `shared`, `sdk` (the `OpenCodeClient` wrapper).
 - `runtime/` — `manager`, `opencode-profile`, `mcp`, `skills`.
-- `docs/` — product and technical specs.
-- `examples/climate-trends/` — the built-in demo project (bundled and installable).
-- `examples/bci-trends/` — a planned demo; spec only, not bundled or installable.
 - `scripts/` — release and dev scripts.
 
 ## Architecture guardrails

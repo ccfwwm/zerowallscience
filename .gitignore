@@ -37,7 +37,6 @@ venv/
 .eslintcache
 .superpowers/
 .worktrees/
-docs/superpowers/
 
 # Local runtime & secrets (never commit)
 .zerowall/
@@ -67,7 +66,3 @@ videos/
 # Local video-production tooling (fetched hyperframes skill packs)
 .agents/
 skills-lock.json
-
-# Example workflow output. `scripts/verify-examples.py` writes to a temp dir,
-# but running an example's workflow.py in place writes here.
-examples/*/results/

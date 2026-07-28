@@ -1,5 +1,0 @@
-# The example datasets are produced by seeded generators that write LF-only
-# text, and `scripts/verify-examples.py` asserts the committed files are
-# byte-identical to a fresh regeneration. Without this, `core.autocrlf=true`
-# rewrites them to CRLF on checkout and the byte comparison fails on Windows.
-examples/*/data/*.csv text eol=lf

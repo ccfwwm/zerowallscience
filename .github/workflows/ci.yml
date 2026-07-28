@@ -81,29 +81,6 @@ jobs:
       - name: Version contract
         run: pnpm run test:version
 
-  examples:
-    name: reproducible examples
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      # Pinned: the harness compares floats at 1e-6 relative tolerance, so an
-      # unpinned scientific stack would make this gate flaky rather than strict.
-      - name: Install example dependencies
-        run: python -m pip install -r examples/requirements.txt
-
-      # Reruns each seeded generator and asserts the regenerated data is
-      # byte-identical to what is committed, then reruns each workflow and
-      # compares its results against the committed baseline. This is what keeps
-      # the reproducibility claim in the README true.
-      - name: Verify examples
-        run: python scripts/verify-examples.py
-
   rust:
     name: rust (${{ matrix.platform }})
     strategy:

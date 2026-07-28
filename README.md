@@ -1,64 +1,40 @@
 <div align="center">
 
-[![ZeroWall Science — Local-first AI research workbench](./docs/assets/banner.webp)](https://github.com/ccfwwm/zerowallscience)
-
 # ZeroWall Science
+
+**ZeroWall: Science Without Walls.**
 
 **Local-first, model-agnostic AI research workbench for macOS, Windows & Linux.**
 
-An open-source desktop alternative to Claude Science and
-similar AI-for-science workbenches — built with Tauri, MCP, agent skills, and
+An open-source desktop research workbench built with Tauri, MCP, agent skills, and
 reproducible artifacts. It connects agents, notebooks, files, figures, reports,
 runs, and review into one auditable desktop workflow.
 
 <p>
-  <b>English</b> ·
-  <a href="./README.zh.md">简体中文</a> ·
-  <a href="./README.ja.md">日本語</a> ·
-  <a href="./README.es.md">Español</a> ·
-  <a href="./README.de.md">Deutsch</a> ·
-  <a href="./README.fr.md">Français</a> ·
-  <a href="./README.ko.md">한국어</a>
-</p>
-
-<p>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="https://internscience.github.io/ResearchClawBench-Home/"><img src="https://img.shields.io/badge/%F0%9F%8F%86%20%231-ResearchClawBench-FFB300" alt="#1 on ResearchClawBench"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue" alt="Platforms">
-  <img src="https://img.shields.io/badge/i18n-7%20languages-5B8DEF" alt="7 interface languages">
   <img src="https://img.shields.io/badge/built%20with-Tauri%202%20%2B%20React-24C8DB" alt="Built with Tauri + React">
   <img src="https://img.shields.io/badge/runtime-OpenCode-success" alt="OpenCode runtime">
-  <a href="https://discord.gg/fWNMDKcd5P"><img src="https://img.shields.io/badge/Join-Discord-5865F2" alt="Join Discord"></a>
   <a href="http://makeapullrequest.com"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
-  <a href="https://linux.do"><img src="https://img.shields.io/badge/Join-linux.do-orange" alt="linux.do"></a>
 </p>
 
 </div>
 
 ---
 
-## News
-
-- **2026-07-21** — 🌐 **Access from anywhere — even your phone.** A token-authenticated gateway serves the *real* desktop UI to a CLI, a browser on your LAN, or your phone (loopback by default; LAN is opt-in). Start a run at your desk and read the finished figure and report on your phone. *(v0.2.3)*
-- **2026-07-21** — 🧭 **Browser control.** The agent can drive your own Chrome — profile and logins intact — to read the live web the way you do, or an isolated private browser on demand. *(v0.2.3)*
-- **2026-07-09** — 🎉 **#1 on ResearchClawBench.** ZeroWall Science ranks #1 by scored-task average on [ResearchClawBench](https://internscience.github.io/ResearchClawBench-Home/), an end-to-end benchmark for autonomous scientific research agents (Pass@1 leaderboard).
-
----
-
 ## Contents
 
-- [✨ What it does](#what-it-does)
-- [🎬 See it in action](#see-it-in-action)
-- [🧪 Current capabilities](#current-capabilities)
-- [🔌 Skills and connectors](#skills-and-connectors)
-- [📦 Install](#install)
-- [🚀 Build from source](#build-from-source)
-- [🔒 Safety and privacy](#safety-and-privacy)
-- [🗂️ Repository layout](#repository-layout)
-- [📌 Status](#status)
-- [🤝 Contributing](#contributing)
-- [📖 Citation](#citation)
-- [⚖️ License](#license)
+- [What it does](#what-it-does)
+- [Current capabilities](#current-capabilities)
+- [Skills and connectors](#skills-and-connectors)
+- [Install](#install)
+- [Build from source](#build-from-source)
+- [Safety and privacy](#safety-and-privacy)
+- [Repository layout](#repository-layout)
+- [Status](#status)
+- [Contributing](#contributing)
+- [Citation](#citation)
+- [License](#license)
 
 ## What it does
 
@@ -88,48 +64,6 @@ write-up, in one continuous, auditable session.
   private browser when you'd rather it not.
 - **Extensible** — agent skills, MCP servers and one-click science connectors,
   `/` commands, `!` shell mode, and a model-agnostic SDK.
-
-## See it in action
-
-**One prompt -> a publication-grade figure, and every point traces to the exact code
-and inputs that made it.** No black boxes: open any artifact to see its generating
-script, its data files, and the conversation that produced it.
-
-![A rendered cross-species atlas figure beside its generating script and input files in the artifact inspector](./docs/assets/showcase-provenance.webp)
-
-**Literature -> a verifiable report.** Fan the search out across sources, draft a
-manuscript rendered as a PDF, and gate it on a citation review — DOIs resolved,
-unsourced numbers and figure/code inconsistencies flagged — before anything ships.
-
-![A protein-language-model literature survey compiled into a PDF manuscript, with a citation reviewer confirming every DOI resolves](./docs/assets/showcase-literature.webp)
-
-**Drives your own Chrome.** The agent reads the live web through your real browser
-profile — logins and all — then turns what it finds into a figure and a sortable CSV.
-
-![The agent driving the user's own Chrome via browser-control to harvest bioRxiv preprints into a chart and CSV](./docs/assets/showcase-browser.webp)
-
-**Research from anywhere — even your phone.** A built-in authenticated gateway serves
-the *real* desktop UI to a browser on your LAN (or a tunnel), so you can kick off a run
-at your desk and read the finished figure and report on your phone.
-
-<table align="center">
-  <tr>
-    <td align="center" width="33%"><img src="./docs/assets/showcase-mobile-home.webp" width="240" alt="The workbench in a phone browser: the new-session screen with starter analyses"><br><sub>New session</sub></td>
-    <td align="center" width="33%"><img src="./docs/assets/showcase-mobile-run.webp" width="240" alt="A completed dose-response analysis — script, results, figure, and report — on a phone"><br><sub>A finished analysis</sub></td>
-    <td align="center" width="33%"><img src="./docs/assets/showcase-mobile-reproduce.webp" width="240" alt="Reproducing an scVI benchmark, with its ARI-vs-epoch figure, viewed on a phone"><br><sub>A reproduced benchmark</sub></td>
-  </tr>
-</table>
-
-<details>
-<summary><b>More screenshots</b></summary>
-
-<br>
-
-![Reproducing an scVI integration benchmark on a remote A100 with a pinned environment, execution log, and provenance](./docs/assets/showcase-remote.webp)
-
-![An 8-arm scVI hyperparameter sweep table beside a live analysis notebook sharing the agent's kernel](./docs/assets/showcase-experiment.webp)
-
-</details>
 
 ## Current capabilities
 
@@ -164,6 +98,7 @@ office/document skills below.
 | Runs | Append-only run logs, global SQLite run index, search/facets/pagination, local/remote surfaces, output links, logs, and reproduce prompts. |
 | Provenance | `.zerowall/provenance.jsonl` tracks file versions and links produced artifacts back to the run or edit that created them. |
 | Review | Traceability, statistics-integrity, domain-check, large-file, publication-figure, remote-compute, and Modal run skills are bundled as first-party skills. |
+| Verification | Research-verification checks (method-choice, reasoning-trace, and biological-plausibility) persist as auditable, re-runnable nodes in the research graph. |
 | Viewers | PDF, image, video, HTML, Markdown, code, CSV/TSV tables with charts, DOCX, XLSX, PPTX, molecules, 3D meshes, genome tracks, FITS, DOS/DOSCAR, EIGENVAL bands, qcode, anomaly maps, and phase files. |
 | Models | OpenCode provider catalog, OAuth/API-key provider flows, custom OpenAI-compatible endpoints, and local/provider-specific options supported by OpenCode. |
 | Interface languages | English, Simplified Chinese, Japanese, Spanish, German, French, and Korean. Portuguese (Brazil) and Arabic are registered but not selectable yet. |
@@ -183,23 +118,20 @@ git history:
 One-click science MCP connectors currently include:
 
 - Literature search: arXiv, PubMed, Crossref, Semantic Scholar, bioRxiv/medRxiv.
-- Biomedical databases: PubMed, ClinicalTrials.gov, MyVariant/ClinVar.
+- Biomedical databases: PubMed, ClinicalTrials.gov, MyVariant/ClinVar, UniProt.
 - Materials Project.
 - FRED economic data.
 - Space weather.
 - Open-Meteo weather and climate.
 - USGS water data.
+- Wikipedia.
 
-You can also add any local or remote MCP server from Settings. See
-[`docs/CONNECT_YOUR_TOOLS.md`](./docs/CONNECT_YOUR_TOOLS.md).
-
-For a neutral positioning note, see
-[`ZeroWall Science vs OpenScience`](./docs/zerowall-science-vs-openscience.md).
+You can also add any local or remote MCP server from Settings.
 
 ## Install
 
 Download the latest installer from the
-[Releases page](https://github.com/ccfwwm/zerowallscience/releases/latest).
+[Releases page](https://github.com/ccfwwm/zerowallscience-releases/releases/latest).
 
 - **macOS**: `.dmg` / `.app`, Apple Silicon and Intel, macOS 13 Ventura or later.
 - **Windows**: NSIS `.exe` and `.msi`, Windows 10/11 x64.
@@ -279,17 +211,13 @@ pnpm lint
 | `runtime/skills/external/` | Build-fetched external skills. |
 | `runtime/harness/` | Runtime harness knowledge and operator context. |
 | `runtime/mcp/` | MCP runtime notes/configuration. |
-| `examples/` | Built-in example workspaces. |
 | `scripts/dev/` | Sidecar, `uv`, skill fetchers, and focused regression probes. |
-| `docs/` | Product, technical, operator, connector, and research notes. |
 
 ## Status
 
 The project is a working desktop MVP in active development. The most reliable current
-implementation log is [`PROGRESS.md`](./PROGRESS.md). Product and architecture notes
-live in [`docs/PRD.md`](./docs/PRD.md) and
-[`docs/TECHNICAL_DESIGN.md`](./docs/TECHNICAL_DESIGN.md), but those documents include
-target design as well as historical status notes.
+implementation log is [`PROGRESS.md`](./PROGRESS.md). Project rules and working
+context for contributors and AI agents live in [`AGENTS.md`](./AGENTS.md).
 
 Near-term work is focused on signed/notarized releases, broader Windows/Linux
 verification, auto-update, richer connector hardening, and continued reproducibility
@@ -298,20 +226,17 @@ review.
 ## Contributing
 
 Issues and PRs are welcome. Keep changes minimal and verifiable, follow
-[`AGENTS.md`](./AGENTS.md), and run the checks before opening a PR. For discussion,
-join the [ZeroWall Science Discord](https://discord.gg/fWNMDKcd5P) or the
-[linux.do](https://linux.do) community.
+[`AGENTS.md`](./AGENTS.md), and run the checks before opening a PR.
 
 ## Citation
 
 If you use ZeroWall Science in your research, please cite it:
 
 ```bibtex
-@software{open_science_desktop,
+@software{zerowall_science,
   author  = {{The ZeroWall Science Contributors}},
   title   = {ZeroWall Science: a local-first, model-agnostic AI research workbench},
   year    = {2026},
-  version = {0.3.0},
   url     = {https://github.com/ccfwwm/zerowallscience},
   license = {MIT}
 }
