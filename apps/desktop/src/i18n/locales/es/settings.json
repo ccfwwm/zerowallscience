@@ -151,7 +151,6 @@
     "passwordPlaceholder": "Contraseña",
     "codePlaceholder": "Código de verificación del correo",
     "twoFactorPlaceholder": "Código de dos factores — solo si lo tienes activado",
-    "invitePlaceholder": "Código de invitación — opcional",
     "sendCode": "Enviar código",
     "codeSent": "Código de verificación enviado. Revisa tu bandeja de entrada.",
     "registered": "Cuenta creada. Inicia sesión para continuar.",

@@ -157,7 +157,6 @@ export async function sub2apiRegister(opts: {
   email: string;
   password: string;
   code?: string;
-  invitationCode?: string;
 }): Promise<void> {
   if (!isTauri) throw new Error("not running in the desktop app");
   const { invoke } = await import("@tauri-apps/api/core");
@@ -165,7 +164,6 @@ export async function sub2apiRegister(opts: {
     email: opts.email,
     password: opts.password,
     code: opts.code,
-    invitationCode: opts.invitationCode,
   });
 }
 

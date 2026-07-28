@@ -150,7 +150,6 @@
     "passwordPlaceholder": "パスワード",
     "codePlaceholder": "メール認証コード",
     "twoFactorPlaceholder": "2 要素認証コード — 有効な場合のみ",
-    "invitePlaceholder": "招待コード — 任意",
     "sendCode": "コードを送信",
     "codeSent": "認証コードを送信しました。受信トレイを確認してください。",
     "registered": "アカウントを作成しました。サインインしてください。",

@@ -335,15 +335,17 @@ pub async fn sub2api_send_code(email: String) -> Result<(), String> {
     .await
 }
 
-/// Create an account. The gateway requires an emailed verification code; it
-/// answers `EMAIL_VERIFY_REQUIRED` when one is missing, which surfaces as the
-/// gateway's own message.
+/// Create an account. The gateway requires an emailed verification code, sent
+/// in the `verify_code` field; it answers `EMAIL_VERIFY_REQUIRED` when the field
+/// is missing (surfaced as the gateway's own message). Register failures — the
+/// gateway's own reason, never the password or the code — are appended to
+/// debug.log so a rejected sign-up leaves a local trace.
 #[tauri::command]
 pub async fn sub2api_register(
+    app: AppHandle,
     email: String,
     password: String,
     code: Option<String>,
-    invitation_code: Option<String>,
 ) -> Result<(), String> {
     let bases = candidate_bases();
     let email = email.trim().to_string();
@@ -355,21 +357,28 @@ pub async fn sub2api_register(
     if password.len() < 6 {
         return Err("the password must be at least 6 characters".into());
     }
-    blocking(move || {
+    let has_code = code.as_ref().is_some_and(|c| !c.trim().is_empty());
+    let log_email = email.clone();
+    let result = blocking(move || {
         let mut body = serde_json::json!({ "email": email, "password": password });
         let obj = body.as_object_mut().expect("json object");
         if let Some(code) = code.filter(|c| !c.trim().is_empty()) {
-            obj.insert("code".into(), serde_json::json!(code.trim()));
-        }
-        if let Some(invite) = invitation_code.filter(|c| !c.trim().is_empty()) {
-            obj.insert("invitation_code".into(), serde_json::json!(invite.trim()));
+            obj.insert("verify_code".into(), serde_json::json!(code.trim()));
         }
         with_failover(&bases, |base| {
             post_json(base, "/auth/register", body.clone(), None).map(|_| ())
         })
         .map(|_| ())
     })
-    .await
+    .await;
+    match &result {
+        Ok(()) => crate::debug_log::append(&app, &format!("sub2api register ok: {log_email}")),
+        Err(err) => crate::debug_log::append(
+            &app,
+            &format!("sub2api register failed (email={log_email}, code_provided={has_code}): {err}"),
+        ),
+    }
+    result
 }
 
 /// Keychain account the AI-platform credentials live under. Email + password go

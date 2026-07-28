@@ -166,7 +166,6 @@ describe("Sub2API panel", () => {
       email: "new@b.co",
       password: "secret1",
       code: "123456",
-      invitationCode: undefined,
     });
     expect(mocks.login).not.toHaveBeenCalled();
   });

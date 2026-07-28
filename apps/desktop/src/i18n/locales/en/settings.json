@@ -151,7 +151,6 @@
     "passwordPlaceholder": "Password",
     "codePlaceholder": "Email verification code",
     "twoFactorPlaceholder": "Two-factor code — only if your account has one",
-    "invitePlaceholder": "Invitation code — optional",
     "sendCode": "Send code",
     "codeSent": "Verification code sent. Check your inbox.",
     "registered": "Account created. Sign in to continue.",

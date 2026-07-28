@@ -150,7 +150,6 @@
     "passwordPlaceholder": "密码",
     "codePlaceholder": "邮箱验证码",
     "twoFactorPlaceholder": "两步验证码 — 如已开启才需填写",
-    "invitePlaceholder": "邀请码 — 可选",
     "sendCode": "发送验证码",
     "codeSent": "验证码已发送，请查收邮件。",
     "registered": "账号已创建，请登录。",

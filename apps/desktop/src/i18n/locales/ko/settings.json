@@ -150,7 +150,6 @@
     "passwordPlaceholder": "비밀번호",
     "codePlaceholder": "이메일 인증 코드",
     "twoFactorPlaceholder": "2단계 인증 코드 — 사용 중인 경우에만",
-    "invitePlaceholder": "초대 코드 — 선택 사항",
     "sendCode": "코드 발송",
     "codeSent": "인증 코드를 보냈습니다. 받은 편지함을 확인하세요.",
     "registered": "계정을 만들었습니다. 로그인해 계속하세요.",

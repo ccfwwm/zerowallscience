@@ -136,7 +136,6 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
-                return;
             }
             #[cfg(target_os = "macos")]
             if matches!(

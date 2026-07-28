@@ -151,7 +151,6 @@
     "passwordPlaceholder": "Passwort",
     "codePlaceholder": "E-Mail-Bestätigungscode",
     "twoFactorPlaceholder": "Zwei-Faktor-Code — nur wenn aktiviert",
-    "invitePlaceholder": "Einladungscode — optional",
     "sendCode": "Code senden",
     "codeSent": "Bestätigungscode gesendet. Prüfe dein Postfach.",
     "registered": "Konto erstellt. Melde dich an, um fortzufahren.",

@@ -111,7 +111,6 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
-  const [invite, setInvite] = useState("");
   const [account, setAccount] = useState<Sub2ApiAccount | null>(null);
   const [busy, setBusy] = useState<null | "auth" | "code" | "fetch" | "connect">(null);
   const [groups, setGroups] = useState<Array<{ id: number; name: string }>>([]);
@@ -232,12 +231,10 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
         email: email.trim(),
         password,
         code: code.trim() || undefined,
-        invitationCode: invite.trim() || undefined,
       });
       toast.success(t("sub2api.registered"));
       setMode("signIn");
       setCode("");
-      setInvite("");
     } catch (err) {
       fail(err);
     } finally {
@@ -631,14 +628,6 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
                 {t("sub2api.sendCode")}
               </button>
             </div>
-          )}
-          {mode === "register" && (
-            <input
-              value={invite}
-              onChange={(e) => setInvite(e.target.value)}
-              placeholder={t("sub2api.invitePlaceholder")}
-              className={inputCls("w-full font-mono")}
-            />
           )}
 
           <button
