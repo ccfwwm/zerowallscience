@@ -221,6 +221,7 @@ pub fn run() {
             artifact_file::add_text_to_workspace,
             artifact_file::add_binary_to_workspace,
             artifact_file::add_paths_to_workspace,
+            artifact_file::read_workspace_file_base64,
             artifact_file::list_notebooks,
             artifact_file::list_dir,
             artifact_file::write_workspace_file,

@@ -18,10 +18,12 @@ import {
   addFilesToWorkspace,
   addPathsToWorkspace,
   addTextToWorkspace,
+  readWorkspaceFileBase64,
   isTauri,
   logDebug,
   type ApprovalMode,
 } from "@/lib/tauri";
+import type { PromptAttachment } from "@zerowall/sdk";
 import { useRuntimeStore, type AgentMode } from "@/lib/runtime";
 import { ModelPicker } from "@/components/thread/ModelPicker";
 import { WorkspaceChip } from "@/components/thread/WorkspaceChip";
@@ -33,6 +35,14 @@ import { isGatewayWeb } from "@/lib/webMode";
 /** A paste longer than this becomes a workspace file chip instead of raw text. */
 const PASTE_AS_FILE_CHARS = 2000;
 const PASTE_AS_FILE_LINES = 25;
+
+/** Raster image extensions a vision model can actually read. These attach as
+ *  inline image parts; other files (incl. svg) fall back to the workspace note
+ *  and the agent's read tool. */
+const RASTER_IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
+function isRasterImage(name: string): boolean {
+  return RASTER_IMAGE_EXT.has(name.split(".").pop()?.toLowerCase() ?? "");
+}
 /** Max composer height before it scrolls internally. */
 const MAX_HEIGHT_PX = 160;
 
@@ -129,7 +139,7 @@ export function Composer({
   showWorkspaceChip = true,
   onInteract,
 }: {
-  onSend?: (text: string) => void;
+  onSend?: (text: string, attachments?: PromptAttachment[]) => void;
   onRunShell?: (command: string) => void;
   onRunCommand?: (name: string, args: string) => void;
   commands?: ComposerCommand[];
@@ -187,6 +197,10 @@ export function Composer({
   };
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<string[]>([]);
+  // Image attachments loaded for the pending turn, keyed by their workspace file
+  // name (a subset of `files`). Sent as inline image parts so the model can see
+  // them — the read tool can't surface image bytes.
+  const [attachments, setAttachments] = useState<PromptAttachment[]>([]);
   const [adding, setAdding] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   /** Highlighted palette row; clamped to the current matches. */
@@ -334,12 +348,20 @@ export function Composer({
       }
     }
     if (!text && files.length === 0) return;
+    // Images ride along as inline parts (the model sees them directly), so they
+    // are dropped from the workspace note — only non-image files still need it
+    // (the agent reaches those through its read tool).
+    const imageNames = new Set(attachments.map((a) => a.filename));
+    const noteFiles = files.filter((n) => !imageNames.has(n));
     const fileNote =
-      files.length > 0 ? `Files added to the workspace: ${files.join(", ")}` : "";
-    onSend?.(text && fileNote ? `${text}\n\n${fileNote}` : text || fileNote);
+      noteFiles.length > 0 ? `Files added to the workspace: ${noteFiles.join(", ")}` : "";
+    const body = text && fileNote ? `${text}\n\n${fileNote}` : text || fileNote;
+    if (attachments.length > 0) onSend?.(body, attachments);
+    else onSend?.(body);
     if (text) recordHistory(text);
     setValue("");
     setFiles([]);
+    setAttachments([]);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -446,6 +468,19 @@ export function Composer({
       const res = await write();
       const names = Array.isArray(res) ? res : [res];
       if (names.length > 0) setFiles((f) => [...f, ...names]);
+      // Load image bytes so the turn can carry them as inline image parts — the
+      // agent's read tool treats an image as an opaque binary, so this is the
+      // only way the model can actually analyze it.
+      for (const name of names.filter(isRasterImage)) {
+        try {
+          const { mime, base64 } = await readWorkspaceFileBase64(name);
+          setAttachments((a) => [...a, { filename: name, mime, base64 }]);
+        } catch (err) {
+          void logDebug(
+            `composer: could not load image ${name} for analysis: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
     } catch (err) {
       toast.error(
         t("composer.error.paste", {
@@ -594,7 +629,10 @@ export function Composer({
               <button
                 className="rounded p-0.5 text-muted hover:bg-border hover:text-text"
                 aria-label={t("composer.file.removeAria", { name })}
-                onClick={() => setFiles((f) => f.filter((n) => n !== name))}
+                onClick={() => {
+                  setFiles((f) => f.filter((n) => n !== name));
+                  setAttachments((a) => a.filter((at) => at.filename !== name));
+                }}
               >
                 <X size={11} />
               </button>

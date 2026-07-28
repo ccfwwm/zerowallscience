@@ -9,6 +9,7 @@ vi.mock("@/lib/tauri", () => ({
   addTextToWorkspace: vi.fn(async () => "pasted.txt"),
   addBinaryToWorkspace: vi.fn(async () => "pasted.png"),
   addPathsToWorkspace: vi.fn(async () => ["dropped.csv"]),
+  readWorkspaceFileBase64: vi.fn(async () => ({ mime: "image/png", base64: "aGVsbG8=" })),
   logDebug: vi.fn(async () => {}),
 }));
 
@@ -81,5 +82,35 @@ describe("Composer attachments (desktop)", () => {
     });
     await waitFor(() => expect(screen.getByText("pasted.png")).toBeTruthy());
     expect(input.value).toBe(""); // the image never lands as text
+  });
+
+  it("forwards a pasted image to onSend as an inline attachment, not a file note", async () => {
+    const onSend = vi.fn();
+    render(<Composer onSend={onSend} />);
+    const input = screen.getByLabelText("Ask anything") as HTMLTextAreaElement;
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        getData: () => "",
+        items: [
+          {
+            type: "image/png",
+            getAsFile: () => new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" }),
+          },
+        ],
+      },
+    });
+    await waitFor(() => expect(screen.getByText("pasted.png")).toBeTruthy());
+
+    fireEvent.change(input, { target: { value: "what is in this image" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // The image rides as a real attachment; it is NOT named in a workspace note
+    // (the read tool can't surface image bytes, so a note would be useless).
+    await waitFor(() =>
+      expect(onSend).toHaveBeenCalledWith("what is in this image", [
+        { filename: "pasted.png", mime: "image/png", base64: "aGVsbG8=" },
+      ]),
+    );
   });
 });

@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import type { RuntimeStatus } from "@zerowall/shared";
+import type { PromptAttachment } from "@zerowall/sdk";
 import { draftKeyFor, rootSessionOf, useRuntimeStore } from "@/lib/runtime";
 import { useLayoutStore } from "@/lib/layout";
 import { startPaneDrag } from "@/lib/dragPane";
@@ -150,9 +151,9 @@ export function SessionView({
   const onSplit = (edge: "right" | "bottom") => {
     dockSession(leafId, edge, null);
   };
-  const onSend = async (text: string) => {
+  const onSend = async (text: string, attachments?: PromptAttachment[]) => {
     pinEphemeral();
-    bindIfCreated(await sendPrompt(text, sid ?? undefined, draftKey));
+    bindIfCreated(await sendPrompt(text, sid ?? undefined, draftKey, attachments));
   };
   const onRunShell = async (command: string) => {
     pinEphemeral();

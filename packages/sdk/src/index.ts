@@ -1,6 +1,6 @@
 export { OpenCodeClient } from "./OpenCodeClient";
 export { ZeroWallClient } from "./ZeroWallClient";
-export type { AgentRuntime } from "./runtime";
+export type { AgentRuntime, PromptAttachment } from "./runtime";
 export { BaseAgentRuntime } from "./base-runtime";
 export {
   PackRegistry,

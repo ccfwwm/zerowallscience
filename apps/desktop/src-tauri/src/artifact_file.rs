@@ -567,6 +567,36 @@ pub fn add_binary_to_workspace(
     Ok(name)
 }
 
+/// A workspace file's bytes, base64-encoded, with its MIME type — returned by
+/// `read_workspace_file_base64` so the composer can attach a workspace image to
+/// a prompt as an inline image part.
+#[derive(serde::Serialize)]
+pub struct WorkspaceFileBytes {
+    pub mime: String,
+    pub base64: String,
+}
+
+/// Read a workspace file (by workspace-relative name) as base64 plus its MIME
+/// type. The agent runtime's `read` tool treats an image as an opaque binary
+/// ("Binary file — content cannot be displayed"), so for the model to actually
+/// see an attached image its bytes must ride along with the prompt as an inline
+/// image part. This hands those bytes to the composer for exactly that.
+#[tauri::command(async)]
+pub fn read_workspace_file_base64(
+    app: AppHandle,
+    name: String,
+) -> Result<WorkspaceFileBytes, String> {
+    let ws = workspace_dir(&app)?;
+    let path = resolve_under(&ws, &name)?;
+    let bytes = std::fs::read(&path).map_err(|e| format!("read failed: {e}"))?;
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let (mime, _) = mime_for(ext);
+    Ok(WorkspaceFileBytes {
+        mime: mime.to_string(),
+        base64: base64_encode(&bytes),
+    })
+}
+
 /// If `src` resolves to a location inside `ws_canon` (an already-canonicalized
 /// workspace root), returns its workspace-relative path with `/` separators;
 /// otherwise `None`. Lets a dropped workspace file attach in place instead of

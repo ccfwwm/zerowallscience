@@ -28,6 +28,19 @@ import type {
  * today is `OpenCodeClient`; no second runtime is planned. This is Phase 1 —
  * formalize the seam, change no behavior.
  */
+/**
+ * An inline file (today: an image) attached to a prompt turn, carried to the
+ * model as a real image part rather than a text mention. `base64` is the raw
+ * bytes with no data-URI prefix; the runtime wraps it as `data:<mime>;base64,…`.
+ * The runtime's `read` tool cannot surface image bytes to the model, so an
+ * attached image must ride along with the prompt this way to be analyzable.
+ */
+export interface PromptAttachment {
+  filename: string;
+  mime: string;
+  base64: string;
+}
+
 export interface AgentRuntime {
   // ---- lifecycle ----
   connect(): Promise<void>;
@@ -46,13 +59,15 @@ export interface AgentRuntime {
    *  turn to the current default, overriding a session's stale creation-time
    *  binding; omit to use the session/runtime default. `variant` picks a
    *  per-turn reasoning-effort level (a name from the model's `variants`); omit
-   *  for the model's default effort. See lib/runtime.ts. */
+   *  for the model's default effort. `attachments` are inline files (images)
+   *  sent as real image parts alongside the text. See lib/runtime.ts. */
   sendPrompt(
     sessionId: string,
     text: string,
     agent?: string,
     model?: string | null,
     variant?: string | null,
+    attachments?: PromptAttachment[],
   ): Promise<void>;
   abortSession(sessionId: string): Promise<void>;
   /** Revert the session to (and including) `messageID`, dropping it and every

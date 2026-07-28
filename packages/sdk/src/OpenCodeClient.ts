@@ -19,7 +19,7 @@ import type {
   ToolCallStatus,
 } from "./types";
 import { DEFAULT_OPENCODE_URL } from "./types";
-import type { AgentRuntime } from "./runtime";
+import type { AgentRuntime, PromptAttachment } from "./runtime";
 import { BaseAgentRuntime } from "./base-runtime";
 
 /** The blind context window earlier versions wrote for custom-endpoint models
@@ -880,15 +880,28 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
     agent?: string,
     model?: string | null,
     variant?: string | null,
+    attachments?: PromptAttachment[],
   ): Promise<void> {
     const m = parseModel(model);
+    // Attached images ride along as real file parts (data URLs) — the runtime's
+    // `read` tool treats an image as an opaque binary, so bytes in the prompt
+    // are the only way the model can actually see it. A text-only turn keeps a
+    // single text part; a turn with attachments keeps the text part only when
+    // there is text (an image-only turn sends just the file parts).
+    const fileParts = (attachments ?? []).map((a) => ({
+      type: "file",
+      mime: a.mime,
+      filename: a.filename,
+      url: `data:${a.mime};base64,${a.base64}`,
+    }));
+    const textParts = text || fileParts.length === 0 ? [{ type: "text", text }] : [];
     const res = await this.fetchWithTimeout(
       `${this.baseUrl}/session/${encodeURIComponent(sessionId)}/prompt_async`,
       {
         method: "POST",
         headers: this.headers(true),
         body: JSON.stringify({
-          parts: [{ type: "text", text }],
+          parts: [...textParts, ...fileParts],
           ...(agent ? { agent } : {}),
           ...(m ? { model: m } : {}),
           // Per-turn reasoning effort; OpenCode maps the variant name to the

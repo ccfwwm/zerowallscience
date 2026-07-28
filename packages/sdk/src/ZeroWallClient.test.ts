@@ -192,6 +192,7 @@ describe("ZeroWallClient", () => {
         "general",
         "anthropic/claude-opus-5",
         undefined,
+        undefined,
       );
     });
 

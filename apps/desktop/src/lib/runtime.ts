@@ -10,6 +10,7 @@ import {
   type OpenCodeEvent,
   type PermissionAskedEvent,
   type PermissionReply,
+  type PromptAttachment,
   type ProviderInfo,
   type QuestionAskedEvent,
   type SessionMeta,
@@ -325,7 +326,12 @@ interface RuntimeState {
   /** `draftKey` (a `draft:<leafId>` slot) is the per-pane draft this send may
    *  lazily create a session from — passed by tiled panes so each unbound pane
    *  keeps its own draft/thread and creates its own session on first send. */
-  sendPrompt: (text: string, sessionId?: string, draftKey?: string) => Promise<string | null>;
+  sendPrompt: (
+    text: string,
+    sessionId?: string,
+    draftKey?: string,
+    attachments?: PromptAttachment[],
+  ) => Promise<string | null>;
   /** Run a "!" shell command directly in the session's workspace folder —
    *  no model turn; the output folds into the thread as a bash tool row. */
   runShell: (command: string, sessionId?: string, draftKey?: string) => Promise<string | null>;
@@ -2143,7 +2149,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
 
   // The send lifecycle (new → input → send → response) is shared by plain
   // prompts, "!" shell commands and "/" slash commands — see performTurn.
-  sendPrompt: (text, sessionId, draftKey) => {
+  sendPrompt: (text, sessionId, draftKey, attachments) => {
     // Capture the mode BEFORE performTurn: on a draft, currentId is still null
     // here (the session is created inside), so this reads the pane's draft slot
     // correctly. Pin "plan" only when the catalog actually has it — a stale mode
@@ -2183,7 +2189,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       get,
       text,
       async (sid) => {
-        await withRetry(() => runtime.sendPrompt(sid, text, agent, model, variant));
+        await withRetry(() => runtime.sendPrompt(sid, text, agent, model, variant, attachments));
         // Only after the runtime accepted the turn — a failed send is not a handoff.
         zwClient?.recordTurn(sid, role, model);
       },

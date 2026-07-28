@@ -1,5 +1,5 @@
 import type { OpenCodeClient } from "./OpenCodeClient";
-import type { AgentRuntime } from "./runtime";
+import type { AgentRuntime, PromptAttachment } from "./runtime";
 import type {
   AgentDefinition,
   AgentHandoff,
@@ -250,8 +250,9 @@ export class ZeroWallClient implements AgentRuntime {
     agent?: string,
     model?: string | null,
     variant?: string | null,
+    attachments?: PromptAttachment[],
   ): Promise<void> {
-    return this.opencode.sendPrompt(sessionId, text, agent, model, variant);
+    return this.opencode.sendPrompt(sessionId, text, agent, model, variant, attachments);
   }
 
   async abortSession(sessionId: string): Promise<void> {

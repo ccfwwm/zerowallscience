@@ -82,6 +82,22 @@ export async function addPathsToWorkspace(paths: string[]): Promise<string[]> {
   return invoke<string[]>("add_paths_to_workspace", { paths });
 }
 
+/** A workspace file's bytes as base64 plus its detected MIME type. */
+export interface WorkspaceFileBytes {
+  mime: string;
+  base64: string;
+}
+
+/** Read a workspace file (by workspace-relative name) as base64 + MIME. Used to
+ *  attach a workspace image to a prompt as an inline image part — the runtime's
+ *  `read` tool treats an image as an opaque binary, so the model can only see it
+ *  when the bytes ride along with the prompt. */
+export async function readWorkspaceFileBase64(name: string): Promise<WorkspaceFileBytes> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<WorkspaceFileBytes>("read_workspace_file_base64", { name });
+}
+
 /**
  * Explicitly import the user's OpenCode CLI login into the app's private
  * runtime (desktop only). Returns false when no CLI login exists; the sidecar
