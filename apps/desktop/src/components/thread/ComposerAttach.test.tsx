@@ -7,10 +7,21 @@ vi.mock("@/lib/tauri", () => ({
   isTauri: true,
   addFilesToWorkspace: vi.fn(async () => ["data.csv"]),
   addTextToWorkspace: vi.fn(async () => "pasted.txt"),
-  addBinaryToWorkspace: vi.fn(async () => "pasted.png"),
   addPathsToWorkspace: vi.fn(async () => ["dropped.csv"]),
   readWorkspaceFileBase64: vi.fn(async () => ({ mime: "image/png", base64: "aGVsbG8=" })),
+  readLocalFileBase64: vi.fn(async () => ({ mime: "image/png", base64: "aGVsbG8=" })),
   logDebug: vi.fn(async () => {}),
+}));
+
+// Image compression — in a test environment createImageBitmap is unavailable,
+// so we mock compressImage to return a predictable result.
+vi.mock("@/lib/imageCompress", () => ({
+  compressImage: vi.fn(async (_blob: Blob, hintName: string) => ({
+    mime: "image/jpeg",
+    base64: "Y29tcHJlc3NlZA==",
+    filename: hintName.replace(/\.\w+$/, ".jpg"),
+  })),
+  blobToBase64: vi.fn(async () => "aGVsbG8="),
 }));
 
 // The composer subscribes to the webview's native drag-drop event on mount.
@@ -70,11 +81,10 @@ describe("Composer attachments (desktop)", () => {
     expect(screen.getAllByText("pasted.txt")).toHaveLength(1);
   });
 
-  it("turns a pasted image (screenshot) into an image file chip", async () => {
+  it("pasted image does NOT call addBinaryToWorkspace — goes through compress + attach only", async () => {
     render(<Composer onSend={vi.fn()} />);
     const input = screen.getByLabelText("Ask anything") as HTMLTextAreaElement;
 
-    // A clipboard image item, as macOS/Windows/Linux webviews expose it.
     fireEvent.paste(input, {
       clipboardData: {
         getData: () => "",
@@ -86,11 +96,16 @@ describe("Composer attachments (desktop)", () => {
         ],
       },
     });
-    await waitFor(() => expect(screen.getByText("pasted.png")).toBeTruthy());
+    // The compressed filename replaces .png → .jpg via the mock.
+    await waitFor(() => expect(screen.getByText("pasted.jpg")).toBeTruthy());
     expect(input.value).toBe(""); // the image never lands as text
+
+    // Crucially: workspace functions were NOT called for the image.
+    const { addPathsToWorkspace } = await import("@/lib/tauri");
+    expect(addPathsToWorkspace).not.toHaveBeenCalled();
   });
 
-  it("forwards a pasted image to onSend as an inline attachment, not a file note", async () => {
+  it("forwards a pasted image to onSend as a compressed JPEG attachment", async () => {
     const onSend = vi.fn();
     render(<Composer onSend={onSend} />);
     const input = screen.getByLabelText("Ask anything") as HTMLTextAreaElement;
@@ -106,16 +121,15 @@ describe("Composer attachments (desktop)", () => {
         ],
       },
     });
-    await waitFor(() => expect(screen.getByText("pasted.png")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("pasted.jpg")).toBeTruthy());
 
     fireEvent.change(input, { target: { value: "what is in this image" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    // The image rides as a real attachment; it is NOT named in a workspace note
-    // (the read tool can't surface image bytes, so a note would be useless).
+    // The image rides as a compressed JPEG attachment.
     await waitFor(() =>
       expect(onSend).toHaveBeenCalledWith("what is in this image", [
-        { filename: "pasted.png", mime: "image/png", base64: "aGVsbG8=" },
+        { filename: "pasted.jpg", mime: "image/jpeg", base64: "Y29tcHJlc3NlZA==" },
       ]),
     );
   });

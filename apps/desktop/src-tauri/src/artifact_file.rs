@@ -570,7 +570,7 @@ pub fn add_binary_to_workspace(
 /// A workspace file's bytes, base64-encoded, with its MIME type — returned by
 /// `read_workspace_file_base64` so the composer can attach a workspace image to
 /// a prompt as an inline image part.
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 pub struct WorkspaceFileBytes {
     pub mime: String,
     pub base64: String,
@@ -590,6 +590,25 @@ pub fn read_workspace_file_base64(
     let path = resolve_under(&ws, &name)?;
     let bytes = std::fs::read(&path).map_err(|e| format!("read failed: {e}"))?;
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let (mime, _) = mime_for(ext);
+    Ok(WorkspaceFileBytes {
+        mime: mime.to_string(),
+        base64: base64_encode(&bytes),
+    })
+}
+
+/// Read an absolute local file as base64 + MIME. Unlike
+/// `read_workspace_file_base64`, this touches paths OUTSIDE the workspace —
+/// used for image drops so the composer can compress + attach the image without
+/// duplicating it into the workspace.
+#[tauri::command(async)]
+pub fn read_local_file_base64(path: String) -> Result<WorkspaceFileBytes, String> {
+    let p = Path::new(&path);
+    if !p.is_absolute() || !p.is_file() {
+        return Err("path is not an absolute file".into());
+    }
+    let bytes = std::fs::read(p).map_err(|e| format!("read failed: {e}"))?;
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
     let (mime, _) = mime_for(ext);
     Ok(WorkspaceFileBytes {
         mime: mime.to_string(),
@@ -710,7 +729,8 @@ fn base64_encode(input: &[u8]) -> String {
 mod tests {
     use super::{
         base64_decode, base64_encode, dir_entries, encode_for_preview, exceeds_preview_cap,
-        locate_under, mime_for, open_url, unique_name, workspace_relative,
+        locate_under, mime_for, open_url, read_local_file_base64, unique_name,
+        workspace_relative,
     };
     use std::path::Path;
 
@@ -926,5 +946,25 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn read_local_file_base64_rejects_relative_path() {
+        let err = read_local_file_base64("relative/path.txt".into()).unwrap_err();
+        assert!(err.contains("not an absolute file"), "got: {err}");
+    }
+
+    #[test]
+    fn read_local_file_base64_reads_absolute_file() {
+        let dir = std::env::temp_dir().join(format!("zerowall-local-b64-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("test.png"), b"fakepng").unwrap();
+
+        let abs = dir.join("test.png").to_string_lossy().to_string();
+        let result = read_local_file_base64(abs).unwrap();
+        assert_eq!(result.mime, "image/png");
+        assert_eq!(result.base64, base64_encode(b"fakepng"));
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

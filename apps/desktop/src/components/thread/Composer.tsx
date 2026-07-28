@@ -15,10 +15,10 @@ import {
   Zap,
 } from "lucide-react";
 import {
-  addBinaryToWorkspace,
   addFilesToWorkspace,
   addPathsToWorkspace,
   addTextToWorkspace,
+  readLocalFileBase64,
   readWorkspaceFileBase64,
   isTauri,
   logDebug,
@@ -31,6 +31,7 @@ import {
   extractDocText,
   isDocTextExt,
 } from "@/lib/textExtract";
+import { compressImage } from "@/lib/imageCompress";
 import { useRuntimeStore, type AgentMode } from "@/lib/runtime";
 import { ModelPicker } from "@/components/thread/ModelPicker";
 import { WorkspaceChip } from "@/components/thread/WorkspaceChip";
@@ -50,6 +51,27 @@ const RASTER_IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
 function isRasterImage(name: string): boolean {
   return RASTER_IMAGE_EXT.has(name.split(".").pop()?.toLowerCase() ?? "");
 }
+
+/** Generate a display-unique name given the current `files` list. Used for
+ *  attachment-only images that don't touch the workspace disk — Rust's
+ *  `unique_name()` isn't reachable, so we replicate the suffix pattern here. */
+function uniqueDisplayName(existingFiles: string[], base: string): string {
+  if (!existingFiles.includes(base)) return base;
+  const dot = base.lastIndexOf(".");
+  const stem = dot > 0 ? base.slice(0, dot) : base;
+  const ext = dot > 0 ? base.slice(dot) : "";
+  for (let n = 1; ; n++) {
+    const candidate = `${stem}-${n}${ext}`;
+    if (!existingFiles.includes(candidate)) return candidate;
+  }
+}
+
+/** Extract the file name from an OS path (`/a/b/photo.png` → `photo.png`). */
+function basename(p: string): string {
+  const parts = p.replace(/\\/g, "/").split("/");
+  return parts[parts.length - 1] || p;
+}
+
 /** Max composer height before it scrolls internally. */
 const MAX_HEIGHT_PX = 160;
 
@@ -59,17 +81,6 @@ function imageExt(mime: string): string {
   const sub = mime.split("/")[1]?.split(";")[0]?.replace("+xml", "") ?? "";
   const mapped = ({ jpeg: "jpg" } as Record<string, string>)[sub];
   return mapped ?? (sub || "png");
-}
-
-/** A Blob's bytes as base64 (no data-URI prefix). FileReader handles large
- *  images without the call-stack limit that spreading into btoa hits. */
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
-    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
-    reader.readAsDataURL(blob);
-  });
 }
 
 // Terminal-style input history: every sent input (prompt, "!cmd", "/name args")
@@ -449,10 +460,23 @@ export function Composer({
     const blob = imageItem?.getAsFile();
     if (blob) {
       e.preventDefault();
-      void addWorkspaceFile(async () => {
-        const base64 = await blobToBase64(blob);
-        return addBinaryToWorkspace(`pasted.${imageExt(blob.type)}`, base64);
-      });
+      void (async () => {
+        try {
+          const compressed = await compressImage(blob, `pasted.${imageExt(blob.type)}`);
+          const displayName = uniqueDisplayName(files, compressed.filename);
+          setFiles((f) => [...f, displayName]);
+          setAttachments((a) => [
+            ...a,
+            { filename: displayName, mime: compressed.mime, base64: compressed.base64 },
+          ]);
+        } catch (err) {
+          toast.error(
+            t("composer.error.paste", {
+              message: err instanceof Error ? err.message : String(err),
+            }),
+          );
+        }
+      })();
       return;
     }
     const text = e.clipboardData.getData("text/plain");
@@ -527,7 +551,41 @@ export function Composer({
   onDropRef.current =
     isTauri && onSend
       ? (paths) => {
-          if (paths.length > 0) void addWorkspaceFile(() => addPathsToWorkspace(paths));
+          if (paths.length === 0) return;
+          // Split raster images from everything else. Images are compressed and
+          // attached directly (no workspace copy); other files still enter the
+          // workspace so the agent's `read` tool can reach them.
+          const imagePaths = paths.filter((p) => isRasterImage(p));
+          const otherPaths = paths.filter((p) => !isRasterImage(p));
+
+          // Images — read, compress, attach (no disk copy).
+          if (imagePaths.length > 0) {
+            void (async () => {
+              for (const p of imagePaths) {
+                try {
+                  const { mime, base64 } = await readLocalFileBase64(p);
+                  const raw = base64ToBytes(base64);
+                  const blob = new Blob([raw.buffer as ArrayBuffer], { type: mime });
+                  const compressed = await compressImage(blob, basename(p));
+                  const name = uniqueDisplayName(files, compressed.filename);
+                  setFiles((f) => [...f, name]);
+                  setAttachments((a) => [
+                    ...a,
+                    { filename: name, mime: compressed.mime, base64: compressed.base64 },
+                  ]);
+                } catch (err) {
+                  void logDebug(
+                    `image drop attach failed for ${basename(p)}: ${err instanceof Error ? err.message : String(err)}`,
+                  );
+                }
+              }
+            })();
+          }
+
+          // Non-images — workspace copy + doc-text extraction (existing path).
+          if (otherPaths.length > 0) {
+            void addWorkspaceFile(() => addPathsToWorkspace(otherPaths));
+          }
         }
       : null;
 

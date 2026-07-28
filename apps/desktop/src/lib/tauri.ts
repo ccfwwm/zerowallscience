@@ -98,6 +98,16 @@ export async function readWorkspaceFileBase64(name: string): Promise<WorkspaceFi
   return invoke<WorkspaceFileBytes>("read_workspace_file_base64", { name });
 }
 
+/** Read an absolute local file as base64 + MIME. Unlike
+ *  `readWorkspaceFileBase64`, this touches paths outside the workspace — used
+ *  for drag-dropped images so the composer can compress + attach them without
+ *  copying them into the workspace first. */
+export async function readLocalFileBase64(path: string): Promise<WorkspaceFileBytes> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<WorkspaceFileBytes>("read_local_file_base64", { path });
+}
+
 /**
  * Explicitly import the user's OpenCode CLI login into the app's private
  * runtime (desktop only). Returns false when no CLI login exists; the sidecar
