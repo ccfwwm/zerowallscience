@@ -345,8 +345,5 @@
       "edit": "Bearbeiten & erneut senden",
       "revert": "Hierher zurücksetzen"
     }
-  },
-  "toast": {
-    "visionAutoRoute": "Das aktuelle Modell akzeptiert keine Bilder — diese Runde wurde zu {{model}} geleitet."
   }
 }

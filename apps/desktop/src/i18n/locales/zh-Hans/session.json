@@ -337,8 +337,5 @@
       "edit": "修改并重发",
       "revert": "回退到这里"
     }
-  },
-  "toast": {
-    "visionAutoRoute": "当前模型不支持图像输入，本轮已临时切换到 {{model}}。"
   }
 }

@@ -345,8 +345,5 @@
       "edit": "Edit & resend",
       "revert": "Revert here"
     }
-  },
-  "toast": {
-    "visionAutoRoute": "Current model doesn't accept images — routed this turn to {{model}}."
   }
 }

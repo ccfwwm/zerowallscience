@@ -72,7 +72,6 @@ import { splitThink } from "./think";
 import { notifyPermissionRequest } from "./systemNotification";
 import { fallbackDefaultModel } from "@/components/settings/modelCatalog";
 import { toast } from "@/lib/toast";
-import { attachmentsHaveImage, pickVisionModel } from "@/lib/visionModels";
 import i18n from "@/i18n";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -2230,20 +2229,6 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       return Promise.resolve(null);
     }
 
-    // Vision auto-route: if the turn carries an image but the selected model
-    // is text-only, swap this ONE turn to a vision-capable model from the
-    // catalog. Leave defaultModel / sessionModels untouched so the user's
-    // choice sticks for text-only follow-ups.
-    let effectiveModel = model;
-    if (attachmentsHaveImage(attachments)) {
-      const swap = pickVisionModel(s.providers, model);
-      if (swap && swap !== model) {
-        effectiveModel = swap;
-        const [, ...rest] = swap.split("/");
-        toast.success(i18n.t("session:toast.visionAutoRoute", { model: rest.join("/") }));
-      }
-    }
-
     // P2: send through ZeroWallClient when it is up, so the turn is recorded
     // against the selected role — the first turn pins the session's model
     // snapshot and logs the opening handoff, and a later turn under a different
@@ -2261,10 +2246,10 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       text,
       async (sid) => {
         await withRetry(() =>
-          runtime.sendPrompt(sid, text, agent, effectiveModel, variant, attachments),
+          runtime.sendPrompt(sid, text, agent, model, variant, attachments),
         );
         // Only after the runtime accepted the turn — a failed send is not a handoff.
-        zwClient?.recordTurn(sid, role, effectiveModel);
+        zwClient?.recordTurn(sid, role, model);
       },
       false,
       false,
