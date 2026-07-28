@@ -9,6 +9,7 @@ import {
   sub2apiLogin,
   sub2apiLogout,
   sub2apiProvisionGroup,
+  sub2apiProvisionGroups,
   sub2apiRegister,
   sub2apiRestoreSession,
   sub2apiSendCode,
@@ -72,6 +73,16 @@ export function pickDefaultModel(models: string[]): string | undefined {
     if (hit) return hit;
   }
   return models.find(isDomesticModel) ?? models[0];
+}
+
+/** Provider id a group's key is registered under. A gateway key is scoped to a
+ *  single group, so each open group becomes its own OpenCode provider. The
+ *  primary (domestic) group keeps the bare `PROVIDER_ID` — that preserves the
+ *  default kimi-k3, the balance/test paths, and any saved config — while every
+ *  other group gets a `sub2api-<id>` suffix so its key never overwrites the
+ *  primary one. Exported for the test — the namespacing is the fix. */
+export function providerIdForGroup(groupId: number, primaryGroupId: number): string {
+  return groupId === primaryGroupId ? PROVIDER_ID : `${PROVIDER_ID}-${groupId}`;
 }
 
 type Mode = "signIn" | "register";
@@ -189,35 +200,59 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       const visible = openGroups(res.groups);
       setGroups(visible);
       setExistingKeyGroupIds(res.existingKeyGroupIds);
-      const pick =
+      const primary =
         visible.find((g) => /国产|domestic/i.test(g.name)) ??
         visible.find((g) => /default/i.test(g.name)) ??
         visible[0];
-      if (!pick) return;
-      setSelectedGroupId(pick.id);
-      const prov = await sub2apiProvisionGroup(pick.id);
-      setBaseUrl(prov.baseUrl);
-      setModels(prov.models);
-      const domestic = prov.models.filter(isDomesticModel);
-      const chosen = orderModels(domestic.length > 0 ? domestic : prov.models);
+      if (!primary) return;
+      setSelectedGroupId(primary.id);
+      // Provision every open group in one pass — one key + one provider each — so
+      // a model from any open group (e.g. a GPT-family id) resolves to a
+      // configured key instead of "not supported by any configured account".
+      // Missing keys are created gateway-side; the domestic group keeps the bare
+      // provider id so kimi-k3 stays the default.
+      const requests = visible.map((g) => ({
+        groupId: g.id,
+        providerId: providerIdForGroup(g.id, primary.id),
+      }));
+      const provisioned = await sub2apiProvisionGroups(requests);
+      if (provisioned.length === 0) return;
+      // Reflect the primary group's models in the picker so the manual controls
+      // stay populated; the auto-registration below covers every group.
+      const primaryProv =
+        provisioned.find((p) => p.groupId === primary.id) ?? provisioned[0];
+      setBaseUrl(primaryProv.baseUrl);
+      setModels(primaryProv.models);
+      const domestic = primaryProv.models.filter(isDomesticModel);
+      const chosen = orderModels(domestic.length > 0 ? domestic : primaryProv.models);
       setPicked(new Set(chosen));
-      if (chosen.length === 0) return;
       // Provisioning restarts the sidecar in Rust, so the store's "ready" may be
       // stale. Always re-establish the connection before registering — otherwise
       // the config PATCH races a restarting sidecar and the catalog comes back
       // empty ("未连接供应商" / no models).
       const ok = await useRuntimeStore.getState().connectRetry();
       if (!ok) return; // leave the models staged; the 保存 button still works
-      await getClient()!.addCustomProvider(PROVIDER_ID, {
-        name: t("sub2api.providerName"),
-        npm: npmForProtocol(protocol),
-        baseURL: prov.baseUrl,
-        models: chosen,
-      });
+      // One provider per provisioned group. Non-primary providers are labelled
+      // with their group name so they are distinguishable in the model picker.
+      for (const p of provisioned) {
+        const name =
+          p.groupId === primary.id
+            ? t("sub2api.providerName")
+            : `${t("sub2api.providerName")} · ${
+                visible.find((g) => g.id === p.groupId)?.name ?? p.groupId
+              }`;
+        await getClient()!.addCustomProvider(p.providerId, {
+          name,
+          npm: npmForProtocol(protocol),
+          baseURL: p.baseUrl,
+          models: orderModels(p.models),
+        });
+      }
       const def = pickDefaultModel(chosen);
       if (def) await getClient()!.setDefaultModel(`${PROVIDER_ID}/${def}`);
       await loadCatalog();
-      toast.success(t("sub2api.connected", { count: chosen.length }));
+      const total = provisioned.reduce((n, p) => n + p.models.length, 0);
+      toast.success(t("sub2api.connected", { count: total }));
     } catch (err) {
       fail(err);
     } finally {

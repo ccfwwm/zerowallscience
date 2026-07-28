@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   restoreSession: vi.fn(),
   fetchGroups: vi.fn(),
   provisionGroup: vi.fn(),
+  provisionGroups: vi.fn(),
   balance: vi.fn(),
   checkoutInfo: vi.fn(),
   createOrder: vi.fn(),
@@ -38,6 +39,7 @@ vi.mock("@/lib/tauri", () => ({
   sub2apiRestoreSession: mocks.restoreSession,
   sub2apiFetchGroups: mocks.fetchGroups,
   sub2apiProvisionGroup: mocks.provisionGroup,
+  sub2apiProvisionGroups: mocks.provisionGroups,
   sub2apiBalance: mocks.balance,
   sub2apiCheckoutInfo: mocks.checkoutInfo,
   sub2apiCreateOrder: mocks.createOrder,
@@ -69,7 +71,13 @@ vi.mock("@/lib/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-import { Sub2ApiCard, isDomesticModel, openGroups, orderModels } from "./Sub2ApiCard";
+import {
+  Sub2ApiCard,
+  isDomesticModel,
+  openGroups,
+  orderModels,
+  providerIdForGroup,
+} from "./Sub2ApiCard";
 import { toast } from "@/lib/toast";
 
 beforeEach(() => {
@@ -95,6 +103,22 @@ beforeEach(() => {
       { id: 2, name: "国产模型" },
     ],
   });
+  // The sign-in auto-setup provisions every open group at once: the domestic
+  // group under the bare provider id, the GPT group under a suffixed id.
+  mocks.provisionGroups.mockResolvedValue([
+    {
+      providerId: "sub2api",
+      groupId: 2,
+      baseUrl: "https://code.aicodeme.cn/v1",
+      models: ["kimi-k2-thinking", "deepseek-v3", "glm-4.6", "qwen3-max", "gpt-4o"],
+    },
+    {
+      providerId: "sub2api-3",
+      groupId: 3,
+      baseUrl: "https://code.aicodeme.cn/v1",
+      models: ["gpt-4o", "gpt-5.4", "o3"],
+    },
+  ]);
   mocks.login.mockResolvedValue({ email: "a@b.co", baseUrl: "https://code.aicodeme.cn" });
   mocks.register.mockResolvedValue(undefined);
   mocks.balance.mockResolvedValue({ balance: "12.34" });
@@ -146,6 +170,14 @@ describe("group allowlist", () => {
       { id: 2, name: "channel-b" },
     ];
     expect(openGroups(renamed)).toEqual(renamed);
+  });
+
+  it("keeps the primary group on the bare provider id and suffixes the rest", () => {
+    // A gateway key is scoped to one group, so each open group is its own
+    // provider. The primary (domestic) group must stay "sub2api" so kimi-k3
+    // remains the default and existing config keeps resolving.
+    expect(providerIdForGroup(2, 2)).toBe("sub2api");
+    expect(providerIdForGroup(3, 2)).toBe("sub2api-3");
   });
 });
 
@@ -301,6 +333,33 @@ describe("Sub2API panel", () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("invalid email or password"));
     expect(screen.getByPlaceholderText("Email")).toBeInTheDocument();
+  });
+
+  it("provisions every open group and registers one provider each on sign-in", async () => {
+    render(<Sub2ApiCard />);
+    await userEvent.type(screen.getByPlaceholderText("Email"), "a@b.co");
+    await userEvent.type(screen.getByPlaceholderText("Password"), "secret1");
+    await userEvent.click(screen.getByRole("button", { name: /Sign in/ }));
+
+    // Both open groups are provisioned in one batch: the domestic group under the
+    // bare provider id (so a missing key is created, not errored), the GPT group
+    // under a suffixed id so its key never overwrites the domestic one.
+    await waitFor(() =>
+      expect(mocks.provisionGroups).toHaveBeenCalledWith([
+        { groupId: 2, providerId: "sub2api" },
+        { groupId: 3, providerId: "sub2api-3" },
+      ]),
+    );
+    await waitFor(() => expect(mocks.addCustomProvider).toHaveBeenCalledTimes(2));
+    expect(mocks.addCustomProvider.mock.calls.map((c) => c[0])).toEqual([
+      "sub2api",
+      "sub2api-3",
+    ]);
+    // GPT-family models from the second group are now registered, so a model
+    // like gpt-5.4 resolves to a configured account instead of erroring.
+    expect(mocks.addCustomProvider.mock.calls[1][1].models).toContain("gpt-5.4");
+    // The default model stays a domestic one under the primary provider.
+    expect(mocks.setDefaultModel).toHaveBeenCalledWith("sub2api/kimi-k2-thinking");
   });
 
   it("restores a saved session on mount when no live one exists", async () => {

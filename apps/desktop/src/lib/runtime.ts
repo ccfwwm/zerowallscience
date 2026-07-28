@@ -68,6 +68,7 @@ import { recordRun, runInputFromEvent } from "./runs";
 import { splitReview } from "./review";
 import { splitMethodContext } from "./methodCheck";
 import { splitBioClaims } from "./bioCheck";
+import { splitThink } from "./think";
 import { notifyPermissionRequest } from "./systemNotification";
 import { fallbackDefaultModel } from "@/components/settings/modelCatalog";
 import { toast } from "@/lib/toast";
@@ -2510,16 +2511,33 @@ export function foldEvent(
   const index = { ...state.index };
   switch (event.type) {
     case "text.updated": {
+      // Chat Completions models stream reasoning inline as <think>…</think>;
+      // pull it out first so it renders as a reasoning block, not raw tags.
       // A ```review fence becomes a reviewer card; a ```method fence becomes a
       // method-context card and a ```bio fence a bio-claims card, both evaluated
-      // by their deterministic engines. All three are stripped from the agent
-      // text so only prose remains.
-      const { clean: afterReview, review } = splitReview(event.text);
+      // by their deterministic engines. All are stripped from the agent text so
+      // only prose remains.
+      const { clean: afterThink, reasoning } = splitThink(event.text);
+      const { clean: afterReview, review } = splitReview(afterThink);
       const { clean: afterMethod, method } = splitMethodContext(afterReview);
       const { clean, bio } = splitBioClaims(afterMethod);
+      // Emit the reasoning block first so it sits above the answer and — while
+      // it is still the last block — auto-expands as the live thinking row.
+      if (reasoning) {
+        const tkey = `think:${event.partId}`;
+        const tblock: ThreadBlock = { kind: "reasoning", text: reasoning };
+        if (tkey in index) blocks[index[tkey]] = tblock;
+        else {
+          blocks.push(tblock);
+          index[tkey] = blocks.length - 1;
+        }
+      }
+      // Suppress an empty agent bubble during the pure-thinking phase (only a
+      // <think> span so far): creating it would strand an empty answer block as
+      // the last row and collapse the live reasoning.
       const key = `text:${event.partId}`;
       if (key in index) blocks[index[key]] = { kind: "agent", markdown: clean };
-      else {
+      else if (clean) {
         blocks.push({ kind: "agent", markdown: clean });
         index[key] = blocks.length - 1;
       }
@@ -2740,9 +2758,12 @@ export function historyToThread(messages: HistoryMessage[], commands?: CommandIn
     } else {
       for (const p of m.parts) {
         if (p.type === "text" && p.text?.trim()) {
-          const { clean: afterReview, review } = splitReview(p.text);
+          const { clean: afterThink, reasoning } = splitThink(p.text);
+          const { clean: afterReview, review } = splitReview(afterThink);
           const { clean: afterMethod, method } = splitMethodContext(afterReview);
           const { clean, bio } = splitBioClaims(afterMethod);
+          // Reasoning first, so it renders above the answer it produced.
+          if (reasoning) blocks.push({ kind: "reasoning", text: reasoning });
           if (clean) blocks.push({ kind: "agent", markdown: clean });
           if (review) blocks.push(review);
           if (method) blocks.push(method);

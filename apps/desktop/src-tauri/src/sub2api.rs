@@ -92,6 +92,27 @@ pub(crate) struct KeyInfo {
     pub group_id: Option<i64>,
 }
 
+/// One group to provision in a batch: which gateway group, and which provider id
+/// the resulting key should be stored under. A gateway key is scoped to a single
+/// group, so reaching models from N groups needs N keys under N provider ids.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisionRequest {
+    pub group_id: i64,
+    pub provider_id: String,
+}
+
+/// Outcome of provisioning one group in a batch. Carries no key — the secret went
+/// straight to the OS credential manager, same as the single-group path.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisionedGroup {
+    pub provider_id: String,
+    pub group_id: i64,
+    pub base_url: String,
+    pub models: Vec<String>,
+}
+
 /// Prefix marking an error as "could not reach this host", the only condition
 /// that justifies trying the backup gateway. A rejected password or a missing
 /// verification code answers over HTTP and must NOT be retried elsewhere — the
@@ -620,6 +641,102 @@ pub async fn sub2api_provision_group(
         models,
         groups,
     })
+}
+
+/// Provision several groups at once — find or create a key per group, list its
+/// models, and store each key under its own provider id. One key is scoped to one
+/// group on the gateway, so a model in a different group needs a separate key: the
+/// caller passes one `ProvisionRequest` per open group and each becomes its own
+/// OpenCode provider. The sidecar is restarted once, after every key is stored.
+///
+/// A group that fails to provision (no models, key creation rejected) is skipped
+/// rather than failing the whole batch, so one dud group never blocks the rest.
+/// At least one group must succeed, or the gateway's error surfaces.
+#[tauri::command]
+pub async fn sub2api_provision_groups(
+    app: AppHandle,
+    sub2api: State<'_, Sub2ApiState>,
+    runtime: State<'_, crate::runtime::RuntimeState>,
+    requests: Vec<ProvisionRequest>,
+) -> Result<Vec<ProvisionedGroup>, String> {
+    if requests.is_empty() {
+        return Err("no groups to provision".into());
+    }
+    let (session_base, token) = {
+        let guard = sub2api.session.lock().map_err(|_| "session lock poisoned")?;
+        let session = guard.as_ref().ok_or("sign in to the AI platform first")?;
+        (session.base_url.clone(), session.access_token.clone())
+    };
+
+    let mut bases = candidate_bases();
+    if let Some(pos) = bases.iter().position(|b| b == &session_base) {
+        if pos != 0 {
+            bases.swap(0, pos);
+        }
+    }
+
+    // One failover pass: fetch the key list once, then find-or-create and
+    // list-models per group. Each entry is (provider_id, group_id, key, models);
+    // the key stays inside this closure's result and is persisted below, never
+    // returned to the renderer.
+    let (base, provisioned) = blocking(move || {
+        with_failover(&bases, |base| {
+            let keys = parse_api_keys(&get_json(
+                base,
+                "/keys?page=1&page_size=100&sort_by=created_at&sort_order=desc",
+                &token,
+            )?);
+            let mut out: Vec<(String, i64, String, Vec<String>)> = Vec::new();
+            let mut last_err = String::new();
+            for req in &requests {
+                let existing = keys
+                    .iter()
+                    .find(|k| k.group_id == Some(req.group_id))
+                    .map(|k| k.key.clone());
+                let key = match existing {
+                    Some(k) => k,
+                    None => match create_key(base, &token, "ZeroWall Science", req.group_id) {
+                        Ok(k) => k,
+                        Err(e) => {
+                            last_err = e;
+                            continue;
+                        }
+                    },
+                };
+                match list_models(base, &key) {
+                    Ok(models) => {
+                        out.push((req.provider_id.clone(), req.group_id, key, models))
+                    }
+                    Err(e) => last_err = e,
+                }
+            }
+            if out.is_empty() {
+                return Err(if last_err.is_empty() {
+                    "no groups could be provisioned".into()
+                } else {
+                    last_err
+                });
+            }
+            Ok(out)
+        })
+    })
+    .await?;
+
+    // Every key into the credential manager first, then one sidecar restart so it
+    // reloads all of them together. Keys are dropped as this Vec goes out of scope.
+    let mut result = Vec::with_capacity(provisioned.len());
+    for (provider_id, group_id, api_key, models) in provisioned {
+        secret_store::persist_for_app(&app, SecretReference::provider(&provider_id)?, &api_key)?;
+        result.push(ProvisionedGroup {
+            provider_id,
+            group_id,
+            base_url: format!("{base}/v1"),
+            models,
+        });
+    }
+    crate::runtime::restart_sidecar_if_running(&app, &runtime)?;
+
+    Ok(result)
 }
 
 /// `GET /v1/models` with the API key. The gateway's OpenAI-compatible surface

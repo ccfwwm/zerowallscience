@@ -160,6 +160,22 @@ export interface Sub2ApiProvisioned {
   groups: Array<{ id: number; name: string }>;
 }
 
+/** One group to provision in a batch: which gateway group, and which provider id
+ *  its key should be stored under. */
+export interface Sub2ApiProvisionRequest {
+  groupId: number;
+  providerId: string;
+}
+
+/** Outcome of provisioning one group in a batch. No API key — the secret went
+ *  straight into the OS credential manager. */
+export interface Sub2ApiProvisionedGroup {
+  providerId: string;
+  groupId: number;
+  baseUrl: string;
+  models: string[];
+}
+
 /** Email the verification code that registration requires. The gateway host is
  *  compiled into the Rust side — there is no base URL to pass. */
 export async function sub2apiSendCode(email: string): Promise<void> {
@@ -234,6 +250,17 @@ export async function sub2apiProvisionGroup(groupId: number): Promise<Sub2ApiPro
   if (!isTauri) throw new Error("not running in the desktop app");
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<Sub2ApiProvisioned>("sub2api_provision_group", { groupId });
+}
+
+/** Provision several groups at once: one key per group, each stored under its own
+ *  provider id, sidecar restarted once. Lets models from different gateway groups
+ *  be reached without a manual per-group setup. */
+export async function sub2apiProvisionGroups(
+  requests: Sub2ApiProvisionRequest[],
+): Promise<Sub2ApiProvisionedGroup[]> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<Sub2ApiProvisionedGroup[]>("sub2api_provision_groups", { requests });
 }
 
 /** The signed-in account's balance, as a display string (kept as a string to

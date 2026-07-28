@@ -187,6 +187,7 @@ pub fn run() {
             sub2api::sub2api_logout,
             sub2api::sub2api_fetch_groups,
             sub2api::sub2api_provision_group,
+            sub2api::sub2api_provision_groups,
             sub2api::sub2api_balance,
             sub2api::sub2api_checkout_info,
             sub2api::sub2api_create_order,
