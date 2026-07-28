@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { Check, Copy, Loader2, Paperclip, Pencil, RotateCcw } from "lucide-react";
+import { Check, Copy, FileText, Loader2, Paperclip, Pencil, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
@@ -9,6 +9,8 @@ import type {
   DataTableBlock,
   RunningJobsBlock,
   StatusLineBlock,
+  UserAttachment,
+  UserAttachmentsBlock,
   UserMessageBlock,
 } from "@zerowall/shared";
 import { cn } from "@/lib/cn";
@@ -170,6 +172,91 @@ export const UserMessage = memo(function UserMessage({
         )}
       </div>
       {confirmDialog}
+    </div>
+  );
+});
+
+// A user turn's attachments — the images/files the composer sent alongside the
+// prompt. Rendered right-aligned above the text bubble so a reader sees WHAT
+// the model saw, not just "[Attached file: foo.pdf]". Click opens the right
+// pane's FilePreviewInspector via the same handler artifacts use.
+function isImageMime(mime: string): boolean {
+  return mime.startsWith("image/");
+}
+
+export const UserAttachments = memo(function UserAttachments({
+  block,
+  onOpen,
+}: {
+  block: UserAttachmentsBlock;
+  onOpen?: (a: ArtifactBlock) => void;
+}) {
+  const { t } = useTranslation(["session", "common"]);
+  const openAttachment = (att: UserAttachment) => {
+    if (!onOpen || !att.path) return;
+    // Attachment paths are workspace-relative (composer files always land on
+    // disk); FilePreviewInspector reads from the workspace root by name.
+    const artifact = refToArtifactBlock(att.path);
+    onOpen(artifact);
+  };
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex max-w-[85%] flex-wrap justify-end gap-2">
+        {block.attachments.map((att, k) => {
+          const clickable = !!onOpen && !!att.path;
+          const label = t("attachment.previewAria", { name: att.filename, defaultValue: `预览附件 ${att.filename}` });
+          const commonBtnClass =
+            "group/att flex items-center gap-2 rounded-card border border-border bg-surface px-2.5 py-1.5 text-xs text-text transition-colors";
+          if (isImageMime(att.mime)) {
+            const content = (
+              <>
+                <img
+                  src={att.url}
+                  alt={att.filename}
+                  className="h-16 w-16 rounded-input object-cover"
+                  loading="lazy"
+                />
+                <span className="max-w-[10rem] truncate text-muted group-hover/att:text-text">{att.filename}</span>
+              </>
+            );
+            return clickable ? (
+              <button
+                key={k}
+                type="button"
+                onClick={() => openAttachment(att)}
+                aria-label={label}
+                title={label}
+                className={cn(commonBtnClass, "cursor-pointer hover:bg-surface-2")}
+              >
+                {content}
+              </button>
+            ) : (
+              <div key={k} className={commonBtnClass}>{content}</div>
+            );
+          }
+          // Document chip: icon + filename; hover only when clickable.
+          const chipContent = (
+            <>
+              <FileText size={16} className="shrink-0 text-muted" />
+              <span className="max-w-[16rem] truncate">{att.filename}</span>
+            </>
+          );
+          return clickable ? (
+            <button
+              key={k}
+              type="button"
+              onClick={() => openAttachment(att)}
+              aria-label={label}
+              title={label}
+              className={cn(commonBtnClass, "cursor-pointer hover:bg-surface-2")}
+            >
+              {chipContent}
+            </button>
+          ) : (
+            <div key={k} className={commonBtnClass}>{chipContent}</div>
+          );
+        })}
+      </div>
     </div>
   );
 });

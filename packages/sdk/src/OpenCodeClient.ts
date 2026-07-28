@@ -923,15 +923,25 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
     const m = parseModel(model);
     // Attached images ride along as real file parts (data URLs) — the runtime's
     // `read` tool treats an image as an opaque binary, so bytes in the prompt
-    // are the only way the model can actually see it. A text-only turn keeps a
-    // single text part; a turn with attachments keeps the text part only when
-    // there is text (an image-only turn sends just the file parts).
-    const fileParts = (attachments ?? []).map((a) => ({
+    // are the only way the model can actually see it.
+    // Documents (pdf/docx/txt/md/csv) also ride as a file part, but the desktop
+    // extracts their UTF-8 text locally and appends it as an extra text part —
+    // the model sees the content without waiting on a skill kernel to cold-
+    // start. A text-only turn keeps a single text part; a turn with only
+    // attachments still sends the user's text when there is text.
+    const atts = attachments ?? [];
+    const fileParts = atts.map((a) => ({
       type: "file",
       mime: a.mime,
       filename: a.filename,
       url: `data:${a.mime};base64,${a.base64}`,
     }));
+    const extractedParts = atts
+      .filter((a) => a.extractedText && a.extractedText.trim().length > 0)
+      .map((a) => ({
+        type: "text",
+        text: `[Attached file: ${a.filename}]\n${a.extractedText}`,
+      }));
     const textParts = text || fileParts.length === 0 ? [{ type: "text", text }] : [];
     const res = await this.fetchWithTimeout(
       `${this.baseUrl}/session/${encodeURIComponent(sessionId)}/prompt_async`,
@@ -939,7 +949,7 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
         method: "POST",
         headers: this.headers(true),
         body: JSON.stringify({
-          parts: [...textParts, ...fileParts],
+          parts: [...textParts, ...fileParts, ...extractedParts],
           ...(agent ? { agent } : {}),
           ...(m ? { model: m } : {}),
           // Per-turn reasoning effort; OpenCode maps the variant name to the

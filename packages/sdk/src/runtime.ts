@@ -29,16 +29,26 @@ import type {
  * formalize the seam, change no behavior.
  */
 /**
- * An inline file (today: an image) attached to a prompt turn, carried to the
- * model as a real image part rather than a text mention. `base64` is the raw
- * bytes with no data-URI prefix; the runtime wraps it as `data:<mime>;base64,…`.
- * The runtime's `read` tool cannot surface image bytes to the model, so an
- * attached image must ride along with the prompt this way to be analyzable.
+ * An inline file attached to a prompt turn, carried to the model as a real
+ * `file` part rather than a text mention. `base64` is the raw bytes with no
+ * data-URI prefix; the runtime wraps it as `data:<mime>;base64,…`.
+ *
+ * Two roles:
+ * - Images (raster) — the runtime's `read` tool cannot surface image bytes to
+ *   the model, so an attached image must ride along with the prompt this way
+ *   to be analyzable.
+ * - Documents (pdf / docx / txt / md / csv) — the desktop extracts UTF-8 text
+ *   locally and puts it in `extractedText`; the runtime sends the bytes as a
+ *   `file` part AND the extracted text as an extra `text` part, so the model
+ *   sees the content without waiting on a skill kernel.
  */
 export interface PromptAttachment {
   filename: string;
   mime: string;
   base64: string;
+  /** Locally-extracted UTF-8 text for text-bearing documents (pdf/docx/txt/md/
+   *  csv). Omitted for images and for bytes we can't cheaply read on-device. */
+  extractedText?: string;
 }
 
 export interface AgentRuntime {

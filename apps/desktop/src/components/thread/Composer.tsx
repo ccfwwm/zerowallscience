@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   ClipboardList,
+  FileText,
   Hammer,
   Hand,
   Paperclip,
@@ -24,6 +25,12 @@ import {
   type ApprovalMode,
 } from "@/lib/tauri";
 import type { PromptAttachment } from "@zerowall/sdk";
+import {
+  base64ToBytes,
+  docMime,
+  extractDocText,
+  isDocTextExt,
+} from "@/lib/textExtract";
 import { useRuntimeStore, type AgentMode } from "@/lib/runtime";
 import { ModelPicker } from "@/components/thread/ModelPicker";
 import { WorkspaceChip } from "@/components/thread/WorkspaceChip";
@@ -348,16 +355,12 @@ export function Composer({
       }
     }
     if (!text && files.length === 0) return;
-    // Images ride along as inline parts (the model sees them directly), so they
-    // are dropped from the workspace note — only non-image files still need it
-    // (the agent reaches those through its read tool).
-    const imageNames = new Set(attachments.map((a) => a.filename));
-    const noteFiles = files.filter((n) => !imageNames.has(n));
-    const fileNote =
-      noteFiles.length > 0 ? `Files added to the workspace: ${noteFiles.join(", ")}` : "";
-    const body = text && fileNote ? `${text}\n\n${fileNote}` : text || fileNote;
-    if (attachments.length > 0) onSend?.(body, attachments);
-    else onSend?.(body);
+    // Everything rides along as real parts: images as inline `file` parts (the
+    // model sees them directly), documents as a `file` part plus an extra
+    // `text` part carrying the locally-extracted UTF-8 text. No more
+    // "Files added to the workspace: …" note in the prompt body.
+    if (attachments.length > 0) onSend?.(text, attachments);
+    else onSend?.(text);
     if (text) recordHistory(text);
     setValue("");
     setFiles([]);
@@ -468,16 +471,41 @@ export function Composer({
       const res = await write();
       const names = Array.isArray(res) ? res : [res];
       if (names.length > 0) setFiles((f) => [...f, ...names]);
-      // Load image bytes so the turn can carry them as inline image parts — the
-      // agent's read tool treats an image as an opaque binary, so this is the
-      // only way the model can actually analyze it.
-      for (const name of names.filter(isRasterImage)) {
+      // Load bytes for anything the model can consume directly:
+      //  - raster images → inline `file` part (the read tool can't surface
+      //    image bytes, so the prompt itself must carry them);
+      //  - pdf/docx/txt/md/csv → `file` part + locally-extracted UTF-8 text as
+      //    an extra `text` part (model reads immediately, no skill cold-start).
+      for (const name of names) {
+        const image = isRasterImage(name);
+        const doc = !image && isDocTextExt(name);
+        if (!image && !doc) continue;
         try {
           const { mime, base64 } = await readWorkspaceFileBase64(name);
-          setAttachments((a) => [...a, { filename: name, mime, base64 }]);
+          if (image) {
+            setAttachments((a) => [...a, { filename: name, mime, base64 }]);
+            continue;
+          }
+          // Doc branch: extract text on-device. An image-only PDF returns "";
+          // we still attach the bytes and a short fallback hint so the agent
+          // knows to reach for the pdf-explore skill.
+          let extractedText: string | undefined;
+          try {
+            const bytes = base64ToBytes(base64);
+            const { text, fallback } = await extractDocText(name, bytes);
+            extractedText = text || fallback || undefined;
+          } catch (err) {
+            void logDebug(
+              `已尝试解析文档 ${name} 失败:${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+          setAttachments((a) => [
+            ...a,
+            { filename: name, mime: mime || docMime(name), base64, extractedText },
+          ]);
         } catch (err) {
           void logDebug(
-            `composer: could not load image ${name} for analysis: ${err instanceof Error ? err.message : String(err)}`,
+            `已尝试加载附件 ${name} 失败:${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }
@@ -538,20 +566,15 @@ export function Composer({
     };
   }, []);
 
-  // Copy local files into the agent workspace; they appear as chips.
+  // Copy local files into the agent workspace; they appear as chips. Route
+  // through addWorkspaceFile so raster images / doc-text files also get their
+  // base64 + locally-extracted text loaded — otherwise picked files land as
+  // name-only chips and lose the inline preview + fast-read behavior that
+  // paste and drop already have (bug #NN).
   const addFiles = async () => {
     setAdding(true);
     try {
-      // Same as paste: give the draft its folder before copying files in.
-      await useRuntimeStore.getState().ensureDraftWorkspace();
-      const names = await addFilesToWorkspace();
-      if (names.length > 0) setFiles((f) => [...f, ...names]);
-    } catch (err) {
-      toast.error(
-        t("composer.error.addFiles", {
-          message: err instanceof Error ? err.message : String(err),
-        }),
-      );
+      await addWorkspaceFile(() => addFilesToWorkspace());
     } finally {
       setAdding(false);
     }
@@ -619,25 +642,51 @@ export function Composer({
       )}
       {files.length > 0 && (
         <div className="flex flex-wrap gap-1.5 px-1 pb-2">
-          {files.map((name) => (
-            <span
-              key={name}
-              className="flex items-center gap-1.5 rounded-input bg-surface-2 py-1 pl-2 pr-1 font-mono text-xs text-text ring-1 ring-border"
-            >
-              <Paperclip size={11} className="shrink-0 text-muted" />
-              <span className="max-w-[220px] truncate">{name}</span>
-              <button
-                className="rounded p-0.5 text-muted hover:bg-border hover:text-text"
-                aria-label={t("composer.file.removeAria", { name })}
-                onClick={() => {
-                  setFiles((f) => f.filter((n) => n !== name));
-                  setAttachments((a) => a.filter((at) => at.filename !== name));
-                }}
+          {files.map((name) => {
+            const att = attachments.find((a) => a.filename === name);
+            const isImage = !!att && att.mime.startsWith("image/");
+            const isDoc = !!att && !isImage;
+            const wordCount = isDoc && att?.extractedText
+              ? att.extractedText.trim().split(/\s+/).filter(Boolean).length
+              : 0;
+            return (
+              <span
+                key={name}
+                className="flex items-center gap-1.5 rounded-input bg-surface-2 py-1 pl-1.5 pr-1 font-mono text-xs text-text ring-1 ring-border"
               >
-                <X size={11} />
-              </button>
-            </span>
-          ))}
+                {isImage && att ? (
+                  <img
+                    src={`data:${att.mime};base64,${att.base64}`}
+                    alt={name}
+                    className="h-6 w-6 shrink-0 rounded object-cover ring-1 ring-border"
+                  />
+                ) : isDoc ? (
+                  <FileText size={12} className="shrink-0 text-muted" />
+                ) : (
+                  <Paperclip size={11} className="shrink-0 text-muted" />
+                )}
+                <span className="max-w-[220px] truncate">{name}</span>
+                {isDoc && wordCount > 0 && (
+                  <span
+                    className="shrink-0 text-[10px] text-muted"
+                    title={t("composer.attach.summaryTitle", { count: wordCount })}
+                  >
+                    {t("composer.attach.summaryWords", { count: wordCount })}
+                  </span>
+                )}
+                <button
+                  className="rounded p-0.5 text-muted hover:bg-border hover:text-text"
+                  aria-label={t("composer.file.removeAria", { name })}
+                  onClick={() => {
+                    setFiles((f) => f.filter((n) => n !== name));
+                    setAttachments((a) => a.filter((at) => at.filename !== name));
+                  }}
+                >
+                  <X size={11} />
+                </button>
+              </span>
+            );
+          })}
         </div>
       )}
       <textarea

@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { ArtifactBlock, FigureAnnotation, ThreadBlock } from "@zerowall/shared";
-import { AgentMessage, DataTable, RunningJobsOverlay, StatusLine, UserMessage } from "./atoms";
+import { AgentMessage, DataTable, RunningJobsOverlay, StatusLine, UserAttachments, UserMessage } from "./atoms";
 import { ToolCallRow } from "./ToolCallRow";
 import { ToolGroup, groupToolBlocks } from "./ToolGroup";
 import { ReviewerCard } from "./ReviewerCard";
@@ -42,6 +42,8 @@ export function renderBlock(
           onRevert={handlers?.onRevertMessage}
         />
       );
+    case "user-attachments":
+      return <UserAttachments key={i} block={block} onOpen={handlers?.onArtifactOpen} />;
     case "agent":
       return <AgentMessage key={i} markdown={block.markdown} onOpenArtifact={handlers?.onArtifactOpen} />;
     case "reasoning":

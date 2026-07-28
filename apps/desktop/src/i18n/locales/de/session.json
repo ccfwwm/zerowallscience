@@ -3,6 +3,9 @@
     "title": "Sitzung nicht gefunden",
     "hint": "Wählen Sie eine Sitzung aus der Seitenleiste."
   },
+  "attachment": {
+    "previewAria": "Anhang {{name}} anzeigen"
+  },
   "group": {
     "defaultName": "Bildschirm {{n}}",
     "newTab": "Neuer Bildschirm",
@@ -35,7 +38,9 @@
     },
     "attach": {
       "addAria": "Dateien hinzufügen",
-      "title": "Lokale Dateien zum Arbeitsbereich hinzufügen"
+      "title": "Lokale Dateien zum Arbeitsbereich hinzufügen",
+      "summaryWords": "{{count}} Wörter",
+      "summaryTitle": "Lokal {{count}} Wörter extrahiert; das Modell liest den Text direkt."
     },
     "command": {
       "chipTitle": "Führt diesen Befehl aus — Argumente eingeben oder Rücktaste drücken, um den Namen zu bearbeiten",

@@ -3,6 +3,9 @@
     "title": "Sesión no encontrada",
     "hint": "Elige una sesión en la barra lateral."
   },
+  "attachment": {
+    "previewAria": "Vista previa del adjunto {{name}}"
+  },
   "group": {
     "defaultName": "Pantalla {{n}}",
     "newTab": "Nueva pantalla",
@@ -35,7 +38,9 @@
     },
     "attach": {
       "addAria": "Añadir archivos",
-      "title": "Añadir archivos locales al espacio de trabajo"
+      "title": "Añadir archivos locales al espacio de trabajo",
+      "summaryWords": "{{count}} palabras",
+      "summaryTitle": "Se extrajeron {{count}} palabras localmente; el modelo lee el texto directamente."
     },
     "command": {
       "chipTitle": "Ejecuta este comando — escribe argumentos o pulsa Retroceso para editar el nombre",

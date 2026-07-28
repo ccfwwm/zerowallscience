@@ -3,6 +3,9 @@
     "title": "Session introuvable",
     "hint": "Choisissez une session dans la barre latérale."
   },
+  "attachment": {
+    "previewAria": "Aperçu de la pièce jointe {{name}}"
+  },
   "group": {
     "defaultName": "Écran {{n}}",
     "newTab": "Nouvel écran",
@@ -35,7 +38,9 @@
     },
     "attach": {
       "addAria": "Ajouter des fichiers",
-      "title": "Ajouter des fichiers locaux à l'espace de travail"
+      "title": "Ajouter des fichiers locaux à l'espace de travail",
+      "summaryWords": "{{count}} mots",
+      "summaryTitle": "{{count}} mots extraits localement ; le modèle lit le texte directement."
     },
     "command": {
       "chipTitle": "Exécute cette commande — saisissez des arguments, ou appuyez sur Retour arrière pour modifier le nom",

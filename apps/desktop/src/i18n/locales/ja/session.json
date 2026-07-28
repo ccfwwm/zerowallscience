@@ -3,6 +3,9 @@
     "title": "セッションが見つかりません",
     "hint": "サイドバーからセッションを選択してください。"
   },
+  "attachment": {
+    "previewAria": "添付ファイル {{name}} をプレビュー"
+  },
   "group": {
     "defaultName": "画面 {{n}}",
     "newTab": "新しい画面",
@@ -35,7 +38,9 @@
     },
     "attach": {
       "addAria": "ファイルを追加",
-      "title": "ローカルファイルをワークスペースに追加"
+      "title": "ローカルファイルをワークスペースに追加",
+      "summaryWords": "{{count}} 語",
+      "summaryTitle": "ローカルで {{count}} 語を抽出しました。モデルは本文を直接読み取ります。"
     },
     "command": {
       "chipTitle": "このコマンドを実行 — 引数を入力するか、Backspace で名前を編集",

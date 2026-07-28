@@ -21,21 +21,27 @@ vi.mock("@tauri-apps/api/webview", () => ({
 }));
 
 describe("Composer attachments (desktop)", () => {
-  it("adds picked files as removable chips and sends them as a file note", async () => {
+  it("adds picked files as removable chips and sends them as real attachment parts (no workspace note)", async () => {
     const onSend = vi.fn();
     render(<Composer onSend={onSend} />);
 
     fireEvent.click(screen.getByLabelText("Add files"));
     await waitFor(() => expect(screen.getByText("data.csv")).toBeTruthy());
+    // Wait for the async readWorkspaceFileBase64 + on-device text extraction
+    // to settle — the chip renders an <img> once the mock's image/png mime is
+    // in state, giving us a stable signal that attachments is non-empty.
+    await screen.findByAltText("data.csv", {}, { timeout: 5000 });
 
     // Chip is outside the textarea — typing text is independent of the file.
     const input = screen.getByLabelText("Ask anything");
     fireEvent.change(input, { target: { value: "analyze this" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(onSend).toHaveBeenCalledWith(
-      "analyze this\n\nFiles added to the workspace: data.csv",
-    );
+    // No more "Files added to the workspace: …" note. The file rides as a real
+    // attachment part (base64 + locally-extracted UTF-8 text).
+    expect(onSend).toHaveBeenCalledWith("analyze this", [
+      { filename: "data.csv", mime: "image/png", base64: "aGVsbG8=", extractedText: "hello" },
+    ]);
     // Chips are cleared after sending.
     expect(screen.queryByText("data.csv")).toBeNull();
   });

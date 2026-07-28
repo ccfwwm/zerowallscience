@@ -625,6 +625,10 @@ async function performTurn(
   // one global DRAFT_KEY. Legacy single-pane sends omit it → fall back to
   // currentId/DRAFT_KEY exactly as before.
   draftKey?: string,
+  // Attachments the composer picked. Surfaced above the echoed text bubble as
+  // an attachments block so the live view matches what the reload renderer
+  // produces from history. Images inline, docs as filename chips.
+  attachments?: PromptAttachment[],
 ): Promise<string | null> {
   if (!client) {
     set({ error: "Not connected to the OpenCode runtime." });
@@ -641,12 +645,22 @@ async function performTurn(
   let lockKey = echoKey;
   set((s) => {
     const cur = s.threads[echoKey] ?? emptyThread();
+    const atts = (attachments ?? [])
+      .map((a) => ({
+        filename: a.filename,
+        mime: a.mime,
+        url: `data:${a.mime};base64,${a.base64}`,
+        path: a.filename,
+      }));
+    const nextBlocks: ThreadBlock[] = [...cur.blocks];
+    if (atts.length > 0) nextBlocks.push({ kind: "user-attachments", attachments: atts });
+    nextBlocks.push({ kind: "user", text: echo });
     return {
       sending: true,
       sendingSessions: { ...s.sendingSessions, [echoKey]: true },
       threads: {
         ...s.threads,
-        [echoKey]: { ...cur, loaded: true, blocks: [...cur.blocks, { kind: "user", text: echo }] },
+        [echoKey]: { ...cur, loaded: true, blocks: nextBlocks },
       },
     };
   });
@@ -2239,6 +2253,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       false,
       sessionId,
       draftKey,
+      attachments,
     );
   },
 
@@ -2785,17 +2800,36 @@ export function historyToThread(messages: HistoryMessage[], commands?: CommandIn
     if (m.role === "user") {
       shellTurn = m.parts.some((p) => p.type === "text" && p.synthetic);
       if (shellTurn) continue;
+      // Composer-sent documents ride as a `file` part PLUS an extra `text` part
+      // carrying "[Attached file: <name>]\n<extractedText>" for the model. That
+      // extra text is machine context, not the user's prompt — strip it here so
+      // the visible bubble shows only what the user typed. The user's prompt
+      // itself is the first text part, or (for a plain attachment-only turn)
+      // simply empty.
+      const isExtractedAttachment = (t: string) => /^\[Attached file: [^\]]+\]\n/.test(t);
       const text = m.parts
-        .filter((p) => p.type === "text")
+        .filter((p) => p.type === "text" && !isExtractedAttachment(p.text ?? ""))
         .map((p) => p.text ?? "")
         .join("")
         .trim();
+      // Files the user attached (composer chips): image thumbnails inline,
+      // docs as filename chips — click opens the right-pane preview.
+      const atts = m.parts
+        .filter((p) => p.type === "file" && p.url && p.filename)
+        .map((p) => ({
+          filename: String(p.filename),
+          mime: String(p.mime ?? "application/octet-stream"),
+          url: String(p.url),
+          path: String(p.filename),
+        }));
       const command = asTypedCommand(text);
       // Tag with the message id so the row can be edited (revert + resend).
       // A "/command" echo keeps the id too — editing re-runs the command.
       const id = m.id ? { messageID: m.id } : {};
+      if (atts.length > 0) blocks.push({ kind: "user-attachments", attachments: atts });
       if (command) blocks.push({ kind: "user", text: command, ...id });
       else if (text) blocks.push({ kind: "user", text, ...id });
+      else if (atts.length > 0) blocks.push({ kind: "user", text: "", ...id });
     } else {
       for (const p of m.parts) {
         if (p.type === "text" && p.text?.trim()) {

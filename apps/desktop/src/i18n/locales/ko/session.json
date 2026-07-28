@@ -3,6 +3,9 @@
     "title": "세션을 찾을 수 없습니다",
     "hint": "사이드바에서 세션을 선택하세요."
   },
+  "attachment": {
+    "previewAria": "첨부파일 미리보기: {{name}}"
+  },
   "group": {
     "defaultName": "화면 {{n}}",
     "newTab": "새 화면",
@@ -35,7 +38,9 @@
     },
     "attach": {
       "addAria": "파일 추가",
-      "title": "워크스페이스에 로컬 파일 추가"
+      "title": "워크스페이스에 로컬 파일 추가",
+      "summaryWords": "{{count}}단어",
+      "summaryTitle": "로컬에서 {{count}}단어를 추출했습니다. 모델이 본문을 직접 읽습니다."
     },
     "command": {
       "chipTitle": "이 명령을 실행합니다 — 인자를 입력하거나 Backspace를 눌러 이름을 수정하세요",

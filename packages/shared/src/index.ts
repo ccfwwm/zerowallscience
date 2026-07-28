@@ -43,6 +43,7 @@ export interface Session {
 
 export type ThreadBlock =
   | UserMessageBlock
+  | UserAttachmentsBlock
   | AgentMessageBlock
   | ReasoningBlock
   | StepSummaryBlock
@@ -63,6 +64,27 @@ export interface UserMessageBlock {
    *  (revert + resend). Absent on synthetic echoes (shell/command) and until
    *  the server confirms a freshly-sent message. No id ⇒ not editable. */
   messageID?: string;
+}
+
+/** Files the user attached to a turn — rendered as a right-aligned strip of
+ *  thumbnails above their prompt bubble (images inline; docs get an icon +
+ *  filename). A click opens the file in the right-pane preview. Kept in-memory
+ *  only: base64 payloads are heavy, so on reload we surface the same chrome
+ *  from history parts without persisting anything ourselves. */
+export interface UserAttachmentsBlock {
+  kind: "user-attachments";
+  attachments: UserAttachment[];
+}
+
+export interface UserAttachment {
+  filename: string;
+  mime: string;
+  /** Data URL (`data:<mime>;base64,…`) — carries the bytes the model saw. */
+  url: string;
+  /** Workspace-relative path when the file lives on disk (composer-added files
+   *  and pasted uploads always do). Absent for synthetic parts. Used to open
+   *  the right-pane `FilePreviewInspector`, which reads from the workspace. */
+  path?: string;
 }
 
 export interface AgentMessageBlock {

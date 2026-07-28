@@ -236,6 +236,13 @@ export interface HistoryPart {
     /** Tool-specific extras (bash stdout tail, edit diff, task session link). */
     metadata?: { output?: string; diff?: string };
   };
+  /** File part fields (type === "file"): the sidecar echoes the same shape back
+   *  in history that we sent — a base64 data URL plus its filename and MIME.
+   *  The composer surfaces images inline and lets the user click for a preview,
+   *  so reloading a session must be able to reconstruct that chrome. */
+  mime?: string;
+  filename?: string;
+  url?: string;
 }
 
 export interface OpenCodeClientOptions {

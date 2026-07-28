@@ -3,6 +3,9 @@
     "title": "未找到会话",
     "hint": "从侧边栏选择一个会话。"
   },
+  "attachment": {
+    "previewAria": "预览附件 {{name}}"
+  },
   "group": {
     "defaultName": "屏幕 {{n}}",
     "newTab": "新建屏幕",
@@ -35,7 +38,9 @@
     },
     "attach": {
       "addAria": "添加文件",
-      "title": "将本地文件添加到工作区"
+      "title": "将本地文件添加到工作区",
+      "summaryWords": "{{count}} 词",
+      "summaryTitle": "已在本地抽出 {{count}} 词,模型将直接读取正文。"
     },
     "command": {
       "chipTitle": "运行此命令 — 输入参数，或按 Backspace 编辑名称",

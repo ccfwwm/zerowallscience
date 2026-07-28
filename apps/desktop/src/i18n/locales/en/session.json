@@ -3,6 +3,9 @@
     "title": "Session not found",
     "hint": "Pick a session from the sidebar."
   },
+  "attachment": {
+    "previewAria": "Preview attachment {{name}}"
+  },
   "group": {
     "defaultName": "Screen {{n}}",
     "newTab": "New screen",
@@ -35,7 +38,9 @@
     },
     "attach": {
       "addAria": "Add files",
-      "title": "Add local files to the workspace"
+      "title": "Add local files to the workspace",
+      "summaryWords": "{{count}} words",
+      "summaryTitle": "Extracted {{count}} words locally; the model sees the text directly."
     },
     "command": {
       "chipTitle": "Runs this command — type arguments, or press Backspace to edit the name",
