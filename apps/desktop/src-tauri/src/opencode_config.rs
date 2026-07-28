@@ -118,6 +118,68 @@ pub fn ensure_goal_plugin(existing: &str, plugin_path: &str) -> Option<String> {
     serde_json::to_string_pretty(&root).ok()
 }
 
+/// The built-in ZeroWall Science identity + RV-Loop workflow prompt, embedded at
+/// build time from the editable profile file. Inlining it (rather than pointing
+/// the config at a `{file:...}` path) keeps the generated config self-contained
+/// and side-steps cross-platform path-resolution quirks.
+pub const IDENTITY_PROMPT: &str =
+    include_str!("../../../../runtime/opencode-profile/identity.md");
+
+/// Prefix of the marker line in our identity prompt. An app-seeded prompt carries
+/// it (so newer versions may refresh it); a prompt without it was customized by
+/// the user and is never overwritten.
+const IDENTITY_MARKER_PREFIX: &str = "ZW-IDENTITY-";
+
+/// Set the default interactive agent's system prompt to the ZeroWall Science
+/// identity + RV-Loop workflow, replacing the runtime's stock identity so the
+/// assistant introduces itself as ZeroWall Science — not the underlying engine.
+/// OpenCode's built-in `build` agent is customizable by name, and a per-agent
+/// `prompt` replaces the base "you are ..." provider prompt for that agent.
+///
+/// Non-clobbering: if `agent.build.prompt` already equals `prompt`, returns None
+/// (no rewrite, no sidecar churn). If it holds a prompt WITHOUT our marker, the
+/// user customized it — left untouched. An older app-seeded prompt (marker
+/// present) is refreshed to the current text. Other agent entries, other
+/// `build` fields, and unrelated config keys are all preserved.
+pub fn ensure_agent_prompt(existing: &str, prompt: &str) -> Option<String> {
+    let mut root: Value = if existing.trim().is_empty() {
+        json!({})
+    } else {
+        serde_json::from_str(existing).ok()?
+    };
+    if !root.is_object() {
+        root = json!({});
+    }
+    let agent = root
+        .as_object_mut()
+        .unwrap()
+        .entry("agent")
+        .or_insert_with(|| json!({}));
+    if !agent.is_object() {
+        *agent = json!({});
+    }
+    let build = agent
+        .as_object_mut()
+        .unwrap()
+        .entry("build")
+        .or_insert_with(|| json!({}));
+    if !build.is_object() {
+        *build = json!({});
+    }
+    let build = build.as_object_mut().unwrap();
+    if let Some(current) = build.get("prompt").and_then(|v| v.as_str()) {
+        if current == prompt {
+            return None; // already exactly right
+        }
+        if !current.contains(IDENTITY_MARKER_PREFIX) {
+            return None; // user-customized — never overwrite
+        }
+        // else: our older seed → fall through and refresh to the current text
+    }
+    build.insert("prompt".to_string(), json!(prompt));
+    serde_json::to_string_pretty(&root).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,5 +275,57 @@ mod tests {
         assert_eq!(permission_mode_of(&approved), Some(MODE_APPROVE));
         let full = set_permission_mode(&approved, MODE_FULL).unwrap();
         assert_eq!(permission_mode_of(&full), Some(MODE_FULL));
+    }
+
+    #[test]
+    fn identity_prompt_declares_zerowall_not_stock_engine() {
+        // The bundled prompt must own the identity and carry the refresh marker,
+        // and must not leave the runtime's stock "you are opencode" identity in
+        // place (that's the whole point of overriding agent.build.prompt).
+        assert!(IDENTITY_PROMPT.contains("ZeroWall Science"));
+        assert!(IDENTITY_PROMPT.contains("科研无界"));
+        assert!(IDENTITY_PROMPT.contains(IDENTITY_MARKER_PREFIX));
+        assert!(IDENTITY_PROMPT.contains("Research Verification Loop"));
+        assert!(!IDENTITY_PROMPT.to_lowercase().contains("you are opencode"));
+    }
+
+    #[test]
+    fn ensure_agent_prompt_sets_identity_on_empty_config() {
+        let out = ensure_agent_prompt("", IDENTITY_PROMPT).unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["agent"]["build"]["prompt"], IDENTITY_PROMPT);
+    }
+
+    #[test]
+    fn ensure_agent_prompt_is_idempotent() {
+        let seeded = ensure_agent_prompt("", IDENTITY_PROMPT).unwrap();
+        assert!(ensure_agent_prompt(&seeded, IDENTITY_PROMPT).is_none());
+    }
+
+    #[test]
+    fn ensure_agent_prompt_never_overwrites_a_user_prompt() {
+        // A prompt without our marker is the user's own — leave it untouched.
+        let existing = r#"{"agent":{"build":{"prompt":"You are Bob, a lab helper."}}}"#;
+        assert!(ensure_agent_prompt(existing, IDENTITY_PROMPT).is_none());
+    }
+
+    #[test]
+    fn ensure_agent_prompt_refreshes_our_older_seed() {
+        let old = "Old ZeroWall prompt. ZW-IDENTITY-V0 marker.";
+        let existing = format!(r#"{{"agent":{{"build":{{"prompt":{}}}}}}}"#, json!(old));
+        let out = ensure_agent_prompt(&existing, IDENTITY_PROMPT).unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["agent"]["build"]["prompt"], IDENTITY_PROMPT);
+    }
+
+    #[test]
+    fn ensure_agent_prompt_preserves_other_fields_and_keys() {
+        let existing = r#"{"model":"kimi/kimi-k3","agent":{"build":{"temperature":0.3},"plan":{"prompt":"p"}}}"#;
+        let out = ensure_agent_prompt(existing, IDENTITY_PROMPT).unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["agent"]["build"]["prompt"], IDENTITY_PROMPT);
+        assert_eq!(v["agent"]["build"]["temperature"], 0.3); // sibling field kept
+        assert_eq!(v["agent"]["plan"]["prompt"], "p"); // other agent untouched
+        assert_eq!(v["model"], "kimi/kimi-k3"); // unrelated key preserved
     }
 }

@@ -702,6 +702,20 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
             std::fs::write(&cfg_file, updated).map_err(|e| e.to_string())?;
         }
     }
+    // Built-in identity: override the default `build` agent's system prompt so
+    // the assistant introduces itself as ZeroWall Science (科研无界) and runs the
+    // RV-Loop research-verification workflow — never the underlying engine's
+    // stock "you are ..." identity. Non-clobbering: an app-seeded prompt is
+    // refreshed across versions, a user-customized one is left untouched.
+    {
+        let existing = std::fs::read_to_string(&cfg_file).unwrap_or_default();
+        if let Some(updated) = crate::opencode_config::ensure_agent_prompt(
+            &existing,
+            crate::opencode_config::IDENTITY_PROMPT,
+        ) {
+            std::fs::write(&cfg_file, updated).map_err(|e| e.to_string())?;
+        }
+    }
     // Migrate legacy auth.json + opencode.json(c) to OS keychain before starting
     // the sidecar. Idempotent — safe to call on every launch.
     crate::secret_store::migrate_legacy_secrets(&root)?;
