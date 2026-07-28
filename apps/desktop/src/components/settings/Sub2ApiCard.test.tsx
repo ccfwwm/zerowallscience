@@ -69,7 +69,7 @@ vi.mock("@/lib/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-import { Sub2ApiCard, isDomesticModel, orderModels } from "./Sub2ApiCard";
+import { Sub2ApiCard, isDomesticModel, openGroups, orderModels } from "./Sub2ApiCard";
 import { toast } from "@/lib/toast";
 
 beforeEach(() => {
@@ -77,11 +77,14 @@ beforeEach(() => {
   mocks.web = false;
   mocks.account = null;
   mocks.fetchGroups.mockResolvedValue({
+    // The gateway exposes many channels; only 国产模型 and GPT模型分组 are open.
+    // codex-pro分组 stands in for the locked-down rest — it must never render.
     groups: [
-      { id: 1, name: "Default" },
+      { id: 1, name: "codex-pro分组" },
       { id: 2, name: "国产模型" },
+      { id: 3, name: "GPT模型分组" },
     ],
-    existingKeyGroupIds: [1],
+    existingKeyGroupIds: [2],
   });
   mocks.provisionGroup.mockResolvedValue({
     providerId: "sub2api",
@@ -122,6 +125,27 @@ describe("model ordering", () => {
       "qwen3-max",
       "gpt-4o",
     ]);
+  });
+});
+
+describe("group allowlist", () => {
+  it("keeps only 国产模型 and GPT模型分组, hiding every other channel", () => {
+    const all = [
+      { id: 1, name: "codex-pro分组" },
+      { id: 2, name: "国产模型" },
+      { id: 3, name: "claude-science-稳定专属分组" },
+      { id: 4, name: "GPT模型分组" },
+      { id: 5, name: "测试分组-不要使用" },
+    ];
+    expect(openGroups(all).map((g) => g.name)).toEqual(["国产模型", "GPT模型分组"]);
+  });
+
+  it("falls back to the full list if the gateway renamed both open groups away", () => {
+    const renamed = [
+      { id: 1, name: "channel-a" },
+      { id: 2, name: "channel-b" },
+    ];
+    expect(openGroups(renamed)).toEqual(renamed);
   });
 });
 
@@ -209,6 +233,23 @@ describe("Sub2API panel", () => {
       "false",
     ]);
     expect(screen.getByRole("button", { name: "Save 4 model(s)" })).toBeEnabled();
+  });
+
+  it("renders only the open groups, never the locked-down channels", async () => {
+    mocks.account = { email: "a@b.co", baseUrl: "https://code.aicodeme.cn" };
+    render(<Sub2ApiCard />);
+    await userEvent.click(await screen.findByRole("button", { name: /Fetch my models/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /gpt-4o/ })).toBeInTheDocument());
+
+    // Group chips carry aria-pressed but are not font-mono (that marks model chips).
+    const groupChips = screen
+      .getAllByRole("button")
+      .filter((b) => b.getAttribute("aria-pressed") !== null && !b.className.includes("font-mono"));
+    expect(groupChips.map((c) => c.textContent?.replace("✓", ""))).toEqual([
+      "国产模型",
+      "GPT模型分组",
+    ]);
+    expect(screen.queryByRole("button", { name: /codex-pro分组/ })).not.toBeInTheDocument();
   });
 
   it("registers the provider with no apiKey and auto-sets a domestic default model", async () => {

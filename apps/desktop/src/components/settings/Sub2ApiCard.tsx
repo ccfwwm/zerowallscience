@@ -34,6 +34,21 @@ export function isDomesticModel(id: string): boolean {
   return DOMESTIC.some((needle) => lower.includes(needle));
 }
 
+/** Only these groups are open to users right now. The gateway exposes many more
+ *  channels (codex, claude-reverse, test, science, …), but the product
+ *  deliberately ships just the domestic-model channel and the GPT channel so a
+ *  customer cannot switch into an unsupported or unpriced group by hand. Match is
+ *  by name: "国产模型" and "GPT模型分组". Domestic stays first — it holds the
+ *  default kimi-k3. Exported for the test — the allowlist is the feature. */
+const OPEN_GROUP = /国产|GPT/i;
+
+export function openGroups<T extends { name: string }>(groups: T[]): T[] {
+  const open = groups.filter((g) => OPEN_GROUP.test(g.name));
+  // If the gateway ever renames both away, fall back to the full list so a
+  // signed-in user is never stranded with no channel at all.
+  return open.length > 0 ? open : groups;
+}
+
 /** Domestic models first, then everything else, alphabetical within each group.
  *  Exported for the test — the ordering is the feature, not decoration. */
 export function orderModels(models: string[]): string[] {
@@ -170,12 +185,13 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
     setBusy("fetch");
     try {
       const res = await sub2apiFetchGroups();
-      setGroups(res.groups);
+      const visible = openGroups(res.groups);
+      setGroups(visible);
       setExistingKeyGroupIds(res.existingKeyGroupIds);
       const pick =
-        res.groups.find((g) => /国产|domestic/i.test(g.name)) ??
-        res.groups.find((g) => /default/i.test(g.name)) ??
-        res.groups[0];
+        visible.find((g) => /国产|domestic/i.test(g.name)) ??
+        visible.find((g) => /default/i.test(g.name)) ??
+        visible[0];
       if (!pick) return;
       setSelectedGroupId(pick.id);
       const prov = await sub2apiProvisionGroup(pick.id);
@@ -278,14 +294,15 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
     setBusy("fetch");
     try {
       const res = await sub2apiFetchGroups();
-      setGroups(res.groups);
+      const visible = openGroups(res.groups);
+      setGroups(visible);
       setExistingKeyGroupIds(res.existingKeyGroupIds);
       // Auto-select: prefer domestic-sounding group, else "default", else first.
-      const domestic = res.groups.find((g) =>
+      const domestic = visible.find((g) =>
         /国产|domestic/i.test(g.name),
       );
-      const fallback = domestic ?? res.groups.find((g) => /default/i.test(g.name));
-      const pick = fallback ?? res.groups[0] ?? null;
+      const fallback = domestic ?? visible.find((g) => /default/i.test(g.name));
+      const pick = fallback ?? visible[0] ?? null;
       setSelectedGroupId(pick?.id ?? null);
       if (pick) void provisionGroup(pick.id);
       else setBusy(null);
