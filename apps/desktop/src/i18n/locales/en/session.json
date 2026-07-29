@@ -113,7 +113,8 @@
   "localCommand": {
     "newDescription": "Clear chat context in this folder",
     "clearDescription": "Same as /new; files stay in this folder",
-    "cleared": "Chat context cleared. Files stay in the same folder."
+    "cleared": "Chat context cleared. Files stay in the same folder.",
+    "reviewDescription": "Review this session's science and file findings"
   },
   "starters": {
     "newSession": "New session",
@@ -156,6 +157,10 @@
     "runsToggle": {
       "label": "Runs",
       "title": "This session's experiment runs — beside the chat"
+    },
+    "reviewToggle": {
+      "label": "Review",
+      "title": "This session's review runs — beside the chat"
     },
     "notebook": {
       "chooseTitle": "Choose a notebook",
@@ -265,6 +270,8 @@
     "dismissedCount": "· {{count}} dismissed",
     "dismissAria": "Dismiss finding: {{title}}",
     "dismissTitle": "Dismiss this finding",
+    "autoFixAria": "Auto-fix finding: {{title}}",
+    "autoFixTitle": "Ask the agent to fix this finding",
     "allDismissed": "All findings dismissed.",
     "resolve": {
       "prompt": "Resolve…",

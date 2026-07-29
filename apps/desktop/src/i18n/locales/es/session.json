@@ -113,7 +113,8 @@
   "localCommand": {
     "newDescription": "Borrar el contexto del chat en esta carpeta",
     "clearDescription": "Igual que /new; los archivos permanecen aquí",
-    "cleared": "Contexto del chat borrado. Los archivos permanecen en la misma carpeta."
+    "cleared": "Contexto del chat borrado. Los archivos permanecen en la misma carpeta.",
+    "reviewDescription": "Revisar la ciencia y los archivos de esta sesión"
   },
   "starters": {
     "newSession": "Nueva sesión",
@@ -156,6 +157,10 @@
     "runsToggle": {
       "label": "Ejecuciones",
       "title": "Las ejecuciones de experimentos de esta sesión — junto al chat"
+    },
+    "reviewToggle": {
+      "label": "Revisión",
+      "title": "Las revisiones de esta sesión — junto al chat"
     },
     "notebook": {
       "chooseTitle": "Elegir un cuaderno",
@@ -265,6 +270,8 @@
     "dismissedCount": "· {{count}} descartados",
     "dismissAria": "Descartar hallazgo: {{title}}",
     "dismissTitle": "Descartar este hallazgo",
+    "autoFixAria": "Corregir hallazgo automáticamente: {{title}}",
+    "autoFixTitle": "Pedir al agente que corrija este hallazgo",
     "allDismissed": "Todos los hallazgos han sido descartados.",
     "resolve": {
       "prompt": "Resolver…",

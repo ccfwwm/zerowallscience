@@ -960,18 +960,37 @@ describe("per-session right pane", () => {
     expect(useRuntimeStore.getState().panes["ses_1"]?.artifact).toBe(null);
   });
 
-  it("the artifact inspector, Files browser, and Runs pane are mutually exclusive", () => {
+  it("the artifact inspector, Files browser, Runs pane, and Review pane are mutually exclusive", () => {
     useRuntimeStore.setState({ currentId: "ses_1" });
     useRuntimeStore.getState().openArtifact(artifact("report.pdf"));
     useRuntimeStore.getState().setShowFiles(true);
-    expect(useRuntimeStore.getState().panes["ses_1"]).toEqual({ artifact: null, showFiles: true, showRuns: false });
-    // Opening Runs closes Files; opening an artifact closes Runs.
+    expect(useRuntimeStore.getState().panes["ses_1"]).toEqual({
+      artifact: null,
+      showFiles: true,
+      showRuns: false,
+      showReview: false,
+    });
+    // Opening Runs closes Files; opening Review closes Runs; opening an artifact closes Review.
     useRuntimeStore.getState().setShowRuns(true);
-    expect(useRuntimeStore.getState().panes["ses_1"]).toEqual({ artifact: null, showFiles: false, showRuns: true });
+    expect(useRuntimeStore.getState().panes["ses_1"]).toEqual({
+      artifact: null,
+      showFiles: false,
+      showRuns: true,
+      showReview: false,
+    });
+    useRuntimeStore.getState().setShowReview(true);
+    expect(useRuntimeStore.getState().panes["ses_1"]).toEqual({
+      artifact: null,
+      showFiles: false,
+      showRuns: false,
+      showReview: true,
+    });
     useRuntimeStore.getState().openArtifact(artifact("report.pdf"));
     const p = useRuntimeStore.getState().panes["ses_1"];
     expect(p?.showFiles).toBe(false);
     expect(p?.showRuns).toBe(false);
+    expect(p?.showReview).toBe(false);
+    expect(p?.artifact?.path).toBe("report.pdf");
   });
 
   it("grafts the draft's pane onto the session created by the first message", async () => {

@@ -113,7 +113,8 @@
   "localCommand": {
     "newDescription": "このフォルダでチャット文脈を消去",
     "clearDescription": "/new と同じ。ファイルはこのフォルダに残ります",
-    "cleared": "チャット文脈を消去しました。ファイルは同じフォルダに残ります。"
+    "cleared": "チャット文脈を消去しました。ファイルは同じフォルダに残ります。",
+    "reviewDescription": "このセッションの科学的成果とファイルをレビュー"
   },
   "starters": {
     "newSession": "新規セッション",
@@ -156,6 +157,10 @@
     "runsToggle": {
       "label": "実行",
       "title": "このセッションの実験実行 — チャットの横に表示"
+    },
+    "reviewToggle": {
+      "label": "レビュー",
+      "title": "このセッションのレビュー — チャットの横に表示"
     },
     "notebook": {
       "chooseTitle": "ノートブックを選択",
@@ -257,6 +262,8 @@
     "dismissedCount": "· {{count}} 件却下済み",
     "dismissAria": "指摘を却下: {{title}}",
     "dismissTitle": "この指摘を却下",
+    "autoFixAria": "指摘を自動修正: {{title}}",
+    "autoFixTitle": "エージェントにこの指摘の修正を依頼",
     "allDismissed": "すべての指摘が却下されました。",
     "resolve": {
       "prompt": "対応…",

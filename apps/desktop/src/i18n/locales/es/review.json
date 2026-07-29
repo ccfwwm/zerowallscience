@@ -1,0 +1,16 @@
+{
+  "title": "Revisión",
+  "description": "Cada revisión registrada en esta sesión, con el veredicto y la resolución de cada hallazgo.",
+  "noSession": "Abre una sesión para ver sus revisiones.",
+  "unavailable": "El historial de revisiones no está disponible en el cliente web.",
+  "loading": "Cargando revisiones…",
+  "runReview": "Ejecutar revisión",
+  "runOn": "Revisado el {{when}}",
+  "findingCount_one": "{{count}} hallazgo",
+  "findingCount_other": "{{count}} hallazgos",
+  "closeAria": "Cerrar el panel de revisión",
+  "empty": {
+    "title": "Aún no hay revisiones",
+    "body": "Ejecuta una revisión y sus hallazgos se archivarán aquí, con veredictos incluidos, para consultarlos más tarde."
+  }
+}

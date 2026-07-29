@@ -4,6 +4,7 @@ import {
   type FindingLevel,
   type ResolutionAction,
   type ReviewCheck,
+  type ReviewFinding,
   type ReviewerBlock,
 } from "@zerowall/shared";
 import { isTauri } from "./tauri";
@@ -63,6 +64,81 @@ export function splitReview(markdown: string): { clean: string; review: Reviewer
   const clean = review ? markdown.replace(FENCE, "").trim() : markdown;
   return { clean, review };
 }
+
+// ---- review prompts (Claude-Code style /review) ----------------------------
+// The active-review and auto-fix triggers reuse the ordinary sendPrompt path:
+// no new pipeline. The agent audits (or fixes) with these instructions and
+// emits its verdict as the same ```review fenced JSON that splitReview parses.
+
+/**
+ * Instruction for the current agent to audit this session's research output and
+ * report findings as a ```review fenced JSON block. The fields it asks for match
+ * `splitReview` exactly, so the emitted block renders as a ReviewerCard and
+ * persists through review_sync unchanged. Read-only: the agent must not edit
+ * files during a review.
+ */
+export function buildReviewPrompt(): string {
+  return [
+    "Perform a rigorous self-review of the scientific work produced in this",
+    "session so far — claims, methods, statistics, code, figures, and results.",
+    "This is a READ-ONLY audit: inspect the artifacts and reasoning, but do NOT",
+    "edit any files or re-run anything as part of this review.",
+    "",
+    "For each issue you find, judge its severity as one of:",
+    '  - "ok"    — verified correct / no concern',
+    '  - "warn"  — questionable, needs attention or a caveat',
+    '  - "error" — likely wrong, unsupported, or reproducibility-breaking',
+    "",
+    "Report every finding in a single fenced code block tagged `review`,",
+    "containing JSON of this exact shape:",
+    "",
+    "```review",
+    "{",
+    '  "findings": [',
+    "    {",
+    '      "level": "ok" | "warn" | "error",',
+    '      "title": "<one-line statement of the finding>",',
+    '      "evidence": "<optional: file:line, numbers, or quoted text>",',
+    '      "check": "<optional: citation|number|figure|domain|integrity|method_choice|reasoning_trace|bio_plausibility>",',
+    '      "tag": "<optional: freeform label, e.g. \\"stats · prereg\\">",',
+    '      "artifactPath": "<optional: workspace-relative path this finding is about>"',
+    "    }",
+    "  ],",
+    '  "note": "<optional: overall summary>"',
+    "}",
+    "```",
+    "",
+    "If a method or biological claim warrants a deterministic check, you may also",
+    "emit a `method` or `bio` block alongside the `review` block. Be specific and",
+    "cite concrete evidence; do not invent findings when the work is sound.",
+  ].join("\n");
+}
+
+/**
+ * Instruction for the current agent to fix one specific finding. Unlike the
+ * review prompt this is NOT read-only: the agent edits files / re-runs work to
+ * address the issue — through the normal approval flow, never bypassing it.
+ */
+export function buildAutoFixPrompt(finding: ReviewFinding): string {
+  const lines = [
+    "Fix the following review finding, and only this finding:",
+    "",
+    `- Severity: ${finding.level}`,
+    `- Finding: ${finding.title}`,
+  ];
+  if (finding.artifactPath) lines.push(`- Artifact: ${finding.artifactPath}`);
+  if (finding.tag) lines.push(`- Tag: ${finding.tag}`);
+  if (finding.check) lines.push(`- Check: ${finding.check}`);
+  if (finding.evidence) lines.push("- Evidence:", "", "```", finding.evidence, "```");
+  lines.push(
+    "",
+    "Make the smallest correct change that resolves it. Edit files or re-run work",
+    "as needed, going through the normal approval flow. When done, briefly state",
+    "what you changed so the finding can be marked resolved.",
+  );
+  return lines.join("\n");
+}
+
 
 // ---- persisted review state (M006, via src-tauri/src/review_store.rs) -------
 // The science database lives inside the workspace folder, so only the desktop
@@ -125,4 +201,29 @@ export async function reopenClaim(claimId: string): Promise<StoredReview | null>
   if (!canPersistReview) return null;
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<StoredReview>("review_reopen", { claimId });
+}
+
+// ---- aggregate review browsing (review_list) --------------------------------
+
+/** One persisted finding enriched with the block content needed to render it
+ *  outside the live thread (the aggregate panel has no ReviewerBlock in hand). */
+export interface StoredReviewFinding extends StoredFinding {
+  level: FindingLevel;
+  title: string;
+  evidence: string | null;
+  checkKind: string | null;
+}
+
+/** A persisted reviewer run with its findings, for the aggregate panel. */
+export interface StoredReviewRun {
+  runId: string;
+  createdAt: string;
+  findings: StoredReviewFinding[];
+}
+
+/** All reviewer runs for a session, newest first. Null off-desktop. */
+export async function listReviews(sessionId: string): Promise<StoredReviewRun[] | null> {
+  if (!canPersistReview) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<StoredReviewRun[]>("review_list", { sessionId });
 }

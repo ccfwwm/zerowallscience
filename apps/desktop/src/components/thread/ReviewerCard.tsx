@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useState } from "react";
-import { ChevronDown, RotateCcw, ShieldCheck, X } from "lucide-react";
+import { ChevronDown, RotateCcw, ShieldCheck, Wrench, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { RESOLUTION_ACTIONS, type FindingLevel, type ResolutionAction, type ReviewerBlock } from "@zerowall/shared";
+import { RESOLUTION_ACTIONS, type FindingLevel, type ResolutionAction, type ReviewFinding, type ReviewerBlock } from "@zerowall/shared";
 import { cn } from "@/lib/cn";
 import {
   canPersistReview,
@@ -25,6 +25,7 @@ const BADGE: Record<FindingLevel, { className: string }> = {
 export const ReviewerCard = memo(function ReviewerCard({
   block,
   sessionId,
+  onAutoFix,
 }: {
   block: ReviewerBlock;
   /** The session this card's thread belongs to. Claims hang off a session row,
@@ -34,6 +35,9 @@ export const ReviewerCard = memo(function ReviewerCard({
    *  session, not under whichever pane happens to have focus. Persistence is
    *  off when absent (an unsent draft has no session row yet). */
   sessionId?: string | null;
+  /** Send a focused correction prompt for a finding. Absent on read-only web,
+   *  where the Auto-fix button is hidden. */
+  onAutoFix?: (finding: ReviewFinding) => void;
 }) {
   const { t } = useTranslation(["session", "common"]);
   const [open, setOpen] = useState(true);
@@ -108,14 +112,26 @@ export const ReviewerCard = memo(function ReviewerCard({
                     </span>
                   )}
                   <span className="text-sm font-medium text-text">{f.title}</span>
-                  <button
-                    className="ml-auto shrink-0 text-muted opacity-0 hover:text-text group-hover:opacity-100"
-                    aria-label={t("reviewer.dismissAria", { title: f.title })}
-                    title={t("reviewer.dismissTitle")}
-                    onClick={() => setDismissed(new Set([...dismissed, i]))}
-                  >
-                    <X size={14} />
-                  </button>
+                  <div className="ml-auto flex shrink-0 items-center gap-1">
+                    {onAutoFix && (
+                      <button
+                        className="text-muted opacity-0 hover:text-text group-hover:opacity-100"
+                        aria-label={t("reviewer.autoFixAria", { title: f.title })}
+                        title={t("reviewer.autoFixTitle")}
+                        onClick={() => onAutoFix(f)}
+                      >
+                        <Wrench size={13} />
+                      </button>
+                    )}
+                    <button
+                      className="text-muted opacity-0 hover:text-text group-hover:opacity-100"
+                      aria-label={t("reviewer.dismissAria", { title: f.title })}
+                      title={t("reviewer.dismissTitle")}
+                      onClick={() => setDismissed(new Set([...dismissed, i]))}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 </div>
                 {f.evidence && (
                   <p className="whitespace-pre-wrap font-mono text-[12.5px] leading-relaxed text-muted">

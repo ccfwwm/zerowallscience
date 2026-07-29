@@ -189,3 +189,23 @@ describe("ReviewerCard persistence", () => {
     expect(screen.getByLabelText("Reopen finding: Duplicate PMID in plan")).toBeInTheDocument();
   });
 });
+
+describe("ReviewerCard auto-fix", () => {
+  it("calls onAutoFix with the finding when the wrench is clicked", async () => {
+    const onAutoFix = vi.fn();
+    render(<ReviewerCard block={block} onAutoFix={onAutoFix} />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Auto-fix finding: Duplicate PMID in plan" }),
+    );
+    expect(onAutoFix).toHaveBeenCalledTimes(1);
+    expect(onAutoFix).toHaveBeenCalledWith(block.findings[0]);
+  });
+
+  it("hides the Auto-fix button when onAutoFix is absent (read-only web)", () => {
+    render(<ReviewerCard block={block} />);
+    expect(
+      screen.queryByRole("button", { name: "Auto-fix finding: Duplicate PMID in plan" }),
+    ).toBeNull();
+  });
+});

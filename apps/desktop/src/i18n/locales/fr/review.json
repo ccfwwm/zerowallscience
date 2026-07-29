@@ -1,0 +1,16 @@
+{
+  "title": "Revue",
+  "description": "Chaque revue effectuée dans cette session, avec le verdict et la résolution de chaque constat.",
+  "noSession": "Ouvrez une session pour voir ses revues.",
+  "unavailable": "L'historique des revues n'est pas disponible dans le client web.",
+  "loading": "Chargement des revues…",
+  "runReview": "Lancer une revue",
+  "runOn": "Revu le {{when}}",
+  "findingCount_one": "{{count}} constat",
+  "findingCount_other": "{{count}} constats",
+  "closeAria": "Fermer le panneau de revue",
+  "empty": {
+    "title": "Aucune revue pour l'instant",
+    "body": "Lancez une revue et ses constats seront archivés ici, verdicts compris, pour les reconsulter plus tard."
+  }
+}

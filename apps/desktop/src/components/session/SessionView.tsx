@@ -12,6 +12,7 @@ import {
   PanelLeft,
   PanelRight,
   PlugZap,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import type { RuntimeStatus } from "@zerowall/shared";
@@ -37,6 +38,8 @@ import { InspectorShell } from "@/components/inspector/InspectorShell";
 import { MaximizePaneButton, RightPane } from "@/components/inspector/RightPane";
 import { SessionFilesPane } from "@/app/routes/FilesPage";
 import { RunsPane } from "@/app/routes/RunsPage";
+import { ReviewPane } from "@/app/routes/ReviewPage";
+import { buildReviewPrompt, buildAutoFixPrompt } from "@/lib/review";
 import { cn } from "@/lib/cn";
 
 /**
@@ -114,6 +117,7 @@ export function SessionView({
   const closeArtifact = useRuntimeStore((s) => s.closeArtifact);
   const setShowFiles = useRuntimeStore((s) => s.setShowFiles);
   const setShowRuns = useRuntimeStore((s) => s.setShowRuns);
+  const setShowReview = useRuntimeStore((s) => s.setShowReview);
   const answerQuestion = useRuntimeStore((s) => s.answerQuestion);
   const rejectQuestion = useRuntimeStore((s) => s.rejectQuestion);
   const replyPermission = useRuntimeStore((s) => s.replyPermission);
@@ -161,6 +165,12 @@ export function SessionView({
   };
   const onRunCommand = async (name: string, args: string) => {
     pinEphemeral();
+    // /review runs an active self-review through the ordinary send path — no
+    // runtime command, so it works with whatever agent is selected.
+    if (name === "review") {
+      void onSend(buildReviewPrompt());
+      return;
+    }
     const localClear = name === "new" || name === "clear";
     const created = await runCommand(name, args, sid ?? undefined, draftKey);
     if (localClear) {
@@ -175,6 +185,7 @@ export function SessionView({
     const local = [
       { name: "new", description: t("localCommand.newDescription"), source: "local" },
       { name: "clear", description: t("localCommand.clearDescription"), source: "local" },
+      { name: "review", description: t("localCommand.reviewDescription"), source: "local" },
     ];
     const localNames = new Set(local.map((c) => c.name));
     return [...local, ...commands.filter((c) => !localNames.has(c.name))];
@@ -195,8 +206,14 @@ export function SessionView({
       onRevertMessage: async (id, text) => {
         if (await revertMessage(id, sid ?? undefined)) setComposerDraft(text);
       },
+      // Auto-fix one finding: send a focused correction prompt on the normal
+      // path. Read-only web has no composer, so this is left unset there (the
+      // card hides the button when the handler is absent).
+      onAutoFix: webReadOnly
+        ? undefined
+        : (finding) => void sendPrompt(buildAutoFixPrompt(finding), sid ?? undefined),
     }),
-    [openArtifact, sendPrompt, editMessage, revertMessage, setComposerDraft, sid, pinEphemeral],
+    [openArtifact, sendPrompt, editMessage, revertMessage, setComposerDraft, sid, pinEphemeral, webReadOnly],
   );
   const onEvaluate = (expr: string) =>
     void sendPrompt(`Evaluate in the notebook kernel:\n\`\`\`python\n${expr}\n\`\`\``, sid ?? undefined);
@@ -259,7 +276,8 @@ export function SessionView({
   const activeArtifact = pane?.artifact ?? null;
   const showFiles = !activeArtifact && !!pane?.showFiles;
   const showRuns = !activeArtifact && !showFiles && !!pane?.showRuns;
-  const inspectorActive = !!activeArtifact || showFiles || showRuns;
+  const showReview = !activeArtifact && !showFiles && !showRuns && !!pane?.showReview;
+  const inspectorActive = !!activeArtifact || showFiles || showRuns || showReview;
   const compactNotebooks = !solo || isMobile;
   const openNotebook = (notebook: (typeof uniqueNotebooks)[number]) => {
     pinEphemeral();
@@ -336,6 +354,13 @@ export function SessionView({
     />
   ) : showRuns ? (
     <RunsPane sessionId={eid!} onClose={() => setShowRuns(false, sid ?? undefined)} controls={<MaximizePaneButton />} />
+  ) : showReview ? (
+    <ReviewPane
+      sessionId={eid!}
+      onRunReview={() => void onSend(buildReviewPrompt())}
+      onClose={() => setShowReview(false, sid ?? undefined)}
+      controls={<MaximizePaneButton />}
+    />
   ) : showFiles ? (
     <SessionFilesPane
       key={`files:${eid}`}
@@ -429,6 +454,23 @@ export function SessionView({
             >
               <FlaskConical size={13} />
               {solo && <span>{t("live.runsToggle.label")}</span>}
+            </button>
+          )}
+          {eid && !isGatewayWeb && (
+            <button
+              onClick={() => {
+                pinEphemeral();
+                setShowReview(!showReview, sid ?? undefined);
+              }}
+              className={cn(
+                "flex items-center gap-1 rounded-md px-1.5 py-1 text-xs transition-colors hover:bg-surface-2",
+                showReview ? "bg-surface-2 text-text" : "text-muted",
+              )}
+              title={t("live.reviewToggle.title")}
+              aria-pressed={showReview}
+            >
+              <ShieldCheck size={13} />
+              {solo && <span>{t("live.reviewToggle.label")}</span>}
             </button>
           )}
           {/* Split this pane — the visible, discoverable way to tile (no

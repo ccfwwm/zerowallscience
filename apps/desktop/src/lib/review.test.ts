@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { splitReview } from "./review";
+import { buildAutoFixPrompt, buildReviewPrompt, splitReview } from "./review";
+import type { ReviewFinding } from "@zerowall/shared";
 
 describe("splitReview", () => {
   it("extracts a review fence into a reviewer block and cleans the text", () => {
@@ -78,5 +79,59 @@ describe("splitReview", () => {
     const r = splitReview(malformed);
     expect(r.review).toBeNull();
     expect(r.clean).toBe(malformed);
+  });
+});
+
+describe("buildReviewPrompt", () => {
+  it("asks for a read-only audit and a ```review block splitReview can parse", () => {
+    const prompt = buildReviewPrompt();
+    expect(prompt).toContain("READ-ONLY");
+    expect(prompt).toMatch(/claims, methods, statistics, code, figures, and results/);
+    // Advertises the exact three levels and the fence tag.
+    expect(prompt).toContain('"level": "ok" | "warn" | "error"');
+    expect(prompt).toContain("```review");
+    // What it instructs the agent to emit must round-trip through splitReview.
+    const emitted =
+      "Here is my review.\n\n```review\n" +
+      JSON.stringify({
+        findings: [{ level: "warn", title: "No random seed set", check: "integrity" }],
+        note: "Otherwise sound.",
+      }) +
+      "\n```";
+    const { review } = splitReview(emitted);
+    expect(review!.findings[0]).toMatchObject({ level: "warn", check: "integrity" });
+  });
+});
+
+describe("buildAutoFixPrompt", () => {
+  const finding: ReviewFinding = {
+    level: "error",
+    title: "Euclidean distance on latitude/longitude",
+    evidence: "analysis.py:9",
+    check: "domain",
+    tag: "earth · crs",
+    artifactPath: "src/analysis.py",
+  };
+
+  it("scopes the fix to one finding and carries its title and evidence", () => {
+    const prompt = buildAutoFixPrompt(finding);
+    expect(prompt).toContain("only this finding");
+    expect(prompt).toContain(finding.title);
+    expect(prompt).toContain(finding.evidence!);
+    expect(prompt).toContain(finding.artifactPath!);
+    expect(prompt).toContain(finding.tag!);
+    expect(prompt).toContain(finding.check!);
+    expect(prompt).toContain(finding.level);
+    // Not a read-only audit: it edits through the normal approval flow.
+    expect(prompt).toContain("normal approval flow");
+  });
+
+  it("omits optional lines when the finding carries only a title", () => {
+    const prompt = buildAutoFixPrompt({ level: "warn", title: "Vague claim" });
+    expect(prompt).toContain("Vague claim");
+    expect(prompt).not.toContain("- Artifact:");
+    expect(prompt).not.toContain("- Evidence:");
+    expect(prompt).not.toContain("- Tag:");
+    expect(prompt).not.toContain("- Check:");
   });
 });

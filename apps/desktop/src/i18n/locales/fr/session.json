@@ -113,7 +113,8 @@
   "localCommand": {
     "newDescription": "Effacer le contexte du chat dans ce dossier",
     "clearDescription": "Identique à /new ; les fichiers restent dans ce dossier",
-    "cleared": "Contexte du chat effacé. Les fichiers restent dans le même dossier."
+    "cleared": "Contexte du chat effacé. Les fichiers restent dans le même dossier.",
+    "reviewDescription": "Passer en revue la science et les fichiers de cette session"
   },
   "starters": {
     "newSession": "Nouvelle session",
@@ -156,6 +157,10 @@
     "runsToggle": {
       "label": "Exécutions",
       "title": "Les exécutions d'expériences de cette session — à côté du chat"
+    },
+    "reviewToggle": {
+      "label": "Revue",
+      "title": "Les revues de cette session — à côté du chat"
     },
     "notebook": {
       "chooseTitle": "Choisir un notebook",
@@ -265,6 +270,8 @@
     "dismissedCount": "· {{count}} ignorés",
     "dismissAria": "Ignorer le constat : {{title}}",
     "dismissTitle": "Ignorer ce constat",
+    "autoFixAria": "Corriger automatiquement le constat : {{title}}",
+    "autoFixTitle": "Demander à l'agent de corriger ce constat",
     "allDismissed": "Tous les constats ont été ignorés.",
     "resolve": {
       "prompt": "Traiter…",

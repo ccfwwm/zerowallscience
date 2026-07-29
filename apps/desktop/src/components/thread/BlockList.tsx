@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { ArtifactBlock, FigureAnnotation, ThreadBlock } from "@zerowall/shared";
+import type { ArtifactBlock, FigureAnnotation, ReviewFinding, ThreadBlock } from "@zerowall/shared";
 import { AgentMessage, DataTable, RunningJobsOverlay, StatusLine, UserAttachments, UserMessage } from "./atoms";
 import { ToolCallRow } from "./ToolCallRow";
 import { ToolGroup, groupToolBlocks } from "./ToolGroup";
@@ -22,6 +22,10 @@ export interface BlockHandlers {
   /** Revert to a past user message (drop it + everything after) and prefill the
    *  composer with its text. Present only in the live session. */
   onRevertMessage?: (messageID: string, text: string) => void | Promise<void>;
+  /** Send a focused correction prompt for one reviewer finding. Present only in
+   *  the live session (desktop, not read-only web); its absence hides the
+   *  reviewer card's Auto-fix button. */
+  onAutoFix?: (finding: ReviewFinding) => void;
 }
 
 export function renderBlock(
@@ -53,7 +57,7 @@ export function renderBlock(
     case "tool-call":
       return <ToolCallRow key={i} block={block} />;
     case "reviewer":
-      return <ReviewerCard key={i} block={block} sessionId={sessionId} />;
+      return <ReviewerCard key={i} block={block} sessionId={sessionId} onAutoFix={handlers?.onAutoFix} />;
     case "method-context":
       return <MethodCheckCard key={i} block={block} sessionId={sessionId} />;
     case "bio-claims":

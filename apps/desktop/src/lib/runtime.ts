@@ -144,11 +144,13 @@ export interface Thread {
 }
 
 /** What a session's right pane shows: an artifact inspector, the Files
- *  browser, the Runs ledger, or nothing. Mutually exclusive — one pane. */
+ *  browser, the Runs ledger, the Review panel, or nothing. Mutually
+ *  exclusive — one pane. */
 export interface PaneState {
   artifact: ArtifactBlock | null;
   showFiles: boolean;
   showRuns: boolean;
+  showReview: boolean;
 }
 
 interface RuntimeState {
@@ -249,6 +251,7 @@ interface RuntimeState {
   closeArtifact: (sessionId?: string) => void;
   setShowFiles: (show: boolean, sessionId?: string) => void;
   setShowRuns: (show: boolean, sessionId?: string) => void;
+  setShowReview: (show: boolean, sessionId?: string) => void;
   answerQuestion: (requestId: string, answers: string[][]) => Promise<void>;
   rejectQuestion: (requestId: string) => Promise<void>;
   replyPermission: (requestId: string, reply: PermissionReply) => Promise<void>;
@@ -1166,13 +1169,13 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   // — one pane at a time.
   openArtifact: (artifact, sessionId) =>
     set((s) => ({
-      panes: { ...s.panes, [sessionId ?? s.currentId ?? DRAFT_KEY]: { artifact, showFiles: false, showRuns: false } },
+      panes: { ...s.panes, [sessionId ?? s.currentId ?? DRAFT_KEY]: { artifact, showFiles: false, showRuns: false, showReview: false } },
     })),
   closeArtifact: (sessionId) =>
     set((s) => {
       const key = sessionId ?? s.currentId ?? DRAFT_KEY;
       const p = s.panes[key];
-      return { panes: { ...s.panes, [key]: { artifact: null, showFiles: p?.showFiles ?? false, showRuns: p?.showRuns ?? false } } };
+      return { panes: { ...s.panes, [key]: { artifact: null, showFiles: p?.showFiles ?? false, showRuns: p?.showRuns ?? false, showReview: p?.showReview ?? false } } };
     }),
   setShowFiles: (show, sessionId) =>
     set((s) => {
@@ -1181,7 +1184,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       return {
         panes: {
           ...s.panes,
-          [key]: { artifact: show ? null : (p?.artifact ?? null), showFiles: show, showRuns: show ? false : (p?.showRuns ?? false) },
+          [key]: { artifact: show ? null : (p?.artifact ?? null), showFiles: show, showRuns: show ? false : (p?.showRuns ?? false), showReview: show ? false : (p?.showReview ?? false) },
         },
       };
     }),
@@ -1192,7 +1195,18 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       return {
         panes: {
           ...s.panes,
-          [key]: { artifact: show ? null : (p?.artifact ?? null), showFiles: show ? false : (p?.showFiles ?? false), showRuns: show },
+          [key]: { artifact: show ? null : (p?.artifact ?? null), showFiles: show ? false : (p?.showFiles ?? false), showRuns: show, showReview: show ? false : (p?.showReview ?? false) },
+        },
+      };
+    }),
+  setShowReview: (show, sessionId) =>
+    set((s) => {
+      const key = sessionId ?? s.currentId ?? DRAFT_KEY;
+      const p = s.panes[key];
+      return {
+        panes: {
+          ...s.panes,
+          [key]: { artifact: show ? null : (p?.artifact ?? null), showFiles: show ? false : (p?.showFiles ?? false), showRuns: show ? false : (p?.showRuns ?? false), showReview: show },
         },
       };
     }),

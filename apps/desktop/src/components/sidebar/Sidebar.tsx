@@ -17,6 +17,7 @@ import {
   Plus,
   Settings,
   Share2,
+  ShieldCheck,
   Trash2,
   UserRound,
   Wallet,
@@ -600,6 +601,15 @@ export function Sidebar({ project }: { project: Project }) {
               icon={<Share2 size={16} />}
               label={t("items.graph")}
               onClick={() => navigate("/graph")}
+            />
+          )}
+          {/* Review runs live in the same local science database as the graph —
+              unreachable over HTTP, so hidden in the web client. */}
+          {!isGatewayWeb && (
+            <NavRow
+              icon={<ShieldCheck size={16} />}
+              label={t("items.review")}
+              onClick={() => navigate("/review")}
             />
           )}
           <NavRow

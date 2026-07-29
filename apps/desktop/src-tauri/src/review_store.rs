@@ -95,6 +95,37 @@ pub struct StoredReview {
     pub findings: Vec<StoredFinding>,
 }
 
+/// One persisted finding enriched with the content needed to render it outside
+/// the live thread — the aggregate panel has no ```review``` block in hand, so
+/// the title/evidence/level/check are read back from the store rather than
+/// carried by the caller.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredReviewFinding {
+    pub claim_id: String,
+    pub status: String,
+    pub resolution: Option<String>,
+    pub resolved_at: Option<String>,
+    /// `verification_checks.result` — the reviewer's verdict (ok/warn/error).
+    pub level: String,
+    /// The claim's statement, resolved from `claim_ref`.
+    pub title: String,
+    /// The check's evidence, resolved from `evidence_ref`, or null when none.
+    pub evidence: Option<String>,
+    /// `verification_checks.check_kind` — a `check` name, a tag, or "review".
+    pub check_kind: Option<String>,
+}
+
+/// A persisted reviewer run with its findings, for the aggregate panel. Ordered
+/// newest-run-first by the caller; findings keep insertion (positional) order.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredReviewRun {
+    pub run_id: String,
+    pub created_at: String,
+    pub findings: Vec<StoredReviewFinding>,
+}
+
 /// The canonical JSON body of a run: its findings and note.
 ///
 /// This doubles as the run's identity. `serde_json` emits struct fields in
@@ -287,6 +318,110 @@ pub fn read_run(conn: &Connection, run_id: &str) -> Result<StoredReview, String>
     })
 }
 
+/// Every reviewer run for a session, newest first, each with its findings
+/// resolved to renderable content. This is the read behind the aggregate panel,
+/// which has no ```review``` block to render from — so it reads title, evidence,
+/// level, and check kind back out of the store.
+///
+/// `claim_ref` and `evidence_ref` are content hashes; their bodies are read from
+/// the workspace content store. A finding's newest `verification_check` supplies
+/// its level and evidence, matching what the inline card and `read_run` show.
+pub fn list_runs(
+    conn: &Connection,
+    root: &Path,
+    session_id: &str,
+) -> Result<Vec<StoredReviewRun>, String> {
+    let mut runs_stmt = conn
+        .prepare(
+            "SELECT id, created_at FROM reviewer_runs WHERE session_id = ?1 \
+             ORDER BY created_at DESC, rowid DESC",
+        )
+        .map_err(|error| format!("prepare run list: {error}"))?;
+    let run_rows = runs_stmt
+        .query_map(params![session_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|error| format!("read run list: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("read run list: {error}"))?;
+
+    let mut runs = Vec::with_capacity(run_rows.len());
+    for (run_id, created_at) in run_rows {
+        let findings = list_run_findings(conn, root, &run_id)?;
+        runs.push(StoredReviewRun {
+            run_id,
+            created_at,
+            findings,
+        });
+    }
+    Ok(runs)
+}
+
+/// One run's findings in positional order, each carrying the content the
+/// aggregate panel renders (title/evidence/level/check kind + resolution state).
+fn list_run_findings(
+    conn: &Connection,
+    root: &Path,
+    run_id: &str,
+) -> Result<Vec<StoredReviewFinding>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT c.id, c.status, c.claim_ref, \
+                    (SELECT r.action FROM resolutions r WHERE r.claim_id = c.id \
+                     ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1), \
+                    (SELECT r.created_at FROM resolutions r WHERE r.claim_id = c.id \
+                     ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1), \
+                    (SELECT v.result FROM verification_checks v WHERE v.claim_id = c.id \
+                     ORDER BY v.created_at DESC, v.rowid DESC LIMIT 1), \
+                    (SELECT v.evidence_ref FROM verification_checks v WHERE v.claim_id = c.id \
+                     ORDER BY v.created_at DESC, v.rowid DESC LIMIT 1), \
+                    (SELECT v.check_kind FROM verification_checks v WHERE v.claim_id = c.id \
+                     ORDER BY v.created_at DESC, v.rowid DESC LIMIT 1) \
+             FROM claims c WHERE c.reviewer_run_id = ?1 ORDER BY c.rowid",
+        )
+        .map_err(|error| format!("prepare finding read: {error}"))?;
+    let rows = stmt
+        .query_map(params![run_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+            ))
+        })
+        .map_err(|error| format!("read findings: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("read findings: {error}"))?;
+
+    let mut findings = Vec::with_capacity(rows.len());
+    for (claim_id, status, claim_ref, resolution, resolved_at, level, evidence_ref, check_kind) in
+        rows
+    {
+        let title = science_store::read_text(root, &claim_ref)?;
+        let evidence = match evidence_ref {
+            Some(ref hash) => Some(science_store::read_text(root, hash)?),
+            None => None,
+        };
+        findings.push(StoredReviewFinding {
+            claim_id,
+            status,
+            resolution,
+            resolved_at,
+            // A finding always has exactly one check (see `insert_run`), so the
+            // level is present in practice; default guards a hand-broken row.
+            level: level.unwrap_or_else(|| "warn".to_owned()),
+            title,
+            evidence,
+            check_kind,
+        });
+    }
+    Ok(findings)
+}
+
 /// Resolve a claim: append a `resolutions` row and flip `claims.status`.
 ///
 /// The resolution is attached to the claim's newest `verification_check`, which
@@ -429,6 +564,12 @@ pub fn review_resolve(
 pub fn review_reopen(app: AppHandle, claim_id: String) -> Result<StoredReview, String> {
     let (_, conn, _) = open(&app)?;
     reopen_claim(&conn, &claim_id)
+}
+
+#[tauri::command(async)]
+pub fn review_list(app: AppHandle, session_id: String) -> Result<Vec<StoredReviewRun>, String> {
+    let (root, conn, _) = open(&app)?;
+    list_runs(&conn, &root, &session_id)
 }
 
 #[cfg(test)]
@@ -719,6 +860,48 @@ mod tests {
             )
             .unwrap();
         assert_eq!(dangling, 0);
+    }
+
+    #[test]
+    fn listing_an_empty_session_returns_no_runs() {
+        let (ws, conn, _) = fixture("list-empty");
+        let runs = list_runs(&conn, ws.path(), "ses_1").unwrap();
+        assert!(runs.is_empty());
+    }
+
+    #[test]
+    fn listing_returns_runs_newest_first_with_rendered_findings() {
+        let (ws, conn, project) = fixture("list-order");
+        let first = ensure_run(&conn, ws.path(), &project, "ses_1", &sample(), None).unwrap();
+        let mut second_findings = vec![finding("ok", "Second run finding", Some("looks good"), Some("domain"))];
+        second_findings.push(finding("warn", "And another", None, None));
+        let second = ensure_run(&conn, ws.path(), &project, "ses_1", &second_findings, None).unwrap();
+        // A different session's run must not leak in.
+        ensure_run(&conn, ws.path(), &project, "ses_other", &sample(), None).unwrap();
+
+        let runs = list_runs(&conn, ws.path(), "ses_1").unwrap();
+        assert_eq!(runs.len(), 2, "only this session's runs, both of them");
+        // created_at ties (same-ms inserts) fall back to rowid DESC, so the
+        // later-inserted run sorts first.
+        assert_eq!(runs[0].run_id, second.run_id);
+        assert_eq!(runs[1].run_id, first.run_id);
+
+        // Findings render from the store: title, level, evidence, check kind.
+        let head = &runs[0].findings;
+        assert_eq!(head.len(), 2);
+        assert_eq!(head[0].title, "Second run finding");
+        assert_eq!(head[0].level, "ok");
+        assert_eq!(head[0].evidence.as_deref(), Some("looks good"));
+        assert_eq!(head[0].check_kind.as_deref(), Some("domain"));
+        assert_eq!(head[0].status, "open");
+        assert!(head[1].evidence.is_none(), "a finding without evidence has none");
+
+        // Resolution state flows through the list read, too.
+        let claim = runs[1].findings[0].claim_id.clone();
+        resolve_claim(&conn, ws.path(), &claim, "verified", None).unwrap();
+        let after = list_runs(&conn, ws.path(), "ses_1").unwrap();
+        assert_eq!(after[1].findings[0].status, "resolved");
+        assert_eq!(after[1].findings[0].resolution.as_deref(), Some("verified"));
     }
 
     #[test]

@@ -113,7 +113,8 @@
   "localCommand": {
     "newDescription": "Chat-Kontext in diesem Ordner leeren",
     "clearDescription": "Wie /new; Dateien bleiben in diesem Ordner",
-    "cleared": "Chat-Kontext geleert. Dateien bleiben im selben Ordner."
+    "cleared": "Chat-Kontext geleert. Dateien bleiben im selben Ordner.",
+    "reviewDescription": "Wissenschaft und Dateien dieser Sitzung prüfen"
   },
   "starters": {
     "newSession": "Neue Sitzung",
@@ -156,6 +157,10 @@
     "runsToggle": {
       "label": "Durchläufe",
       "title": "Die Experimentdurchläufe dieser Sitzung — neben dem Chat"
+    },
+    "reviewToggle": {
+      "label": "Prüfung",
+      "title": "Die Prüfläufe dieser Sitzung — neben dem Chat"
     },
     "notebook": {
       "chooseTitle": "Notebook auswählen",
@@ -265,6 +270,8 @@
     "dismissedCount": "· {{count}} verworfen",
     "dismissAria": "Befund verwerfen: {{title}}",
     "dismissTitle": "Diesen Befund verwerfen",
+    "autoFixAria": "Befund automatisch beheben: {{title}}",
+    "autoFixTitle": "Den Agenten bitten, diesen Befund zu beheben",
     "allDismissed": "Alle Befunde verworfen.",
     "resolve": {
       "prompt": "Klären…",

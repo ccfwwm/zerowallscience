@@ -113,7 +113,8 @@
   "localCommand": {
     "newDescription": "在当前文件夹内清空聊天上下文",
     "clearDescription": "等同于 /new；文件仍保留在当前文件夹",
-    "cleared": "聊天记录已清空。文件内容仍保留在同一个文件夹下。"
+    "cleared": "聊天记录已清空。文件内容仍保留在同一个文件夹下。",
+    "reviewDescription": "审查本 session 的科研产出与文件"
   },
   "starters": {
     "newSession": "新建会话",
@@ -156,6 +157,10 @@
     "runsToggle": {
       "label": "运行",
       "title": "此会话的实验运行——在聊天旁显示"
+    },
+    "reviewToggle": {
+      "label": "审查",
+      "title": "此会话的审查记录——在聊天旁显示"
     },
     "notebook": {
       "chooseTitle": "选择笔记本",
@@ -257,6 +262,8 @@
     "dismissedCount": "· {{count}} 项已忽略",
     "dismissAria": "忽略发现：{{title}}",
     "dismissTitle": "忽略此项发现",
+    "autoFixAria": "自动修正发现：{{title}}",
+    "autoFixTitle": "让代理修正此项发现",
     "allDismissed": "所有发现均已忽略。",
     "resolve": {
       "prompt": "处理…",

@@ -1,0 +1,16 @@
+{
+  "title": "Review",
+  "description": "Every review this session filed, with each finding's verdict and resolution.",
+  "noSession": "Open a session to see its review runs.",
+  "unavailable": "Review history isn't available in the web client.",
+  "loading": "Loading reviews…",
+  "runReview": "Run review",
+  "runOn": "Reviewed {{when}}",
+  "findingCount_one": "{{count}} finding",
+  "findingCount_other": "{{count}} findings",
+  "closeAria": "Close review panel",
+  "empty": {
+    "title": "No reviews yet",
+    "body": "Run a review and its findings will be filed here — verdicts and all — so you can revisit them later."
+  }
+}

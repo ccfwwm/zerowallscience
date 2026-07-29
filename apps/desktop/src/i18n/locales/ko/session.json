@@ -113,7 +113,8 @@
   "localCommand": {
     "newDescription": "이 폴더에서 채팅 컨텍스트 지우기",
     "clearDescription": "/new와 동일합니다. 파일은 이 폴더에 남습니다",
-    "cleared": "채팅 컨텍스트를 지웠습니다. 파일은 같은 폴더에 남아 있습니다."
+    "cleared": "채팅 컨텍스트를 지웠습니다. 파일은 같은 폴더에 남아 있습니다.",
+    "reviewDescription": "이 세션의 연구 결과와 파일을 검토"
   },
   "starters": {
     "newSession": "새 세션",
@@ -156,6 +157,10 @@
     "runsToggle": {
       "label": "실행",
       "title": "이 세션의 실험 실행 — 대화 옆에 표시"
+    },
+    "reviewToggle": {
+      "label": "검토",
+      "title": "이 세션의 검토 기록 — 대화 옆에 표시"
     },
     "notebook": {
       "chooseTitle": "노트북 선택",
@@ -257,6 +262,8 @@
     "dismissedCount": "· {{count}}개 해제됨",
     "dismissAria": "발견 사항 해제: {{title}}",
     "dismissTitle": "이 발견 사항 해제",
+    "autoFixAria": "발견 사항 자동 수정: {{title}}",
+    "autoFixTitle": "에이전트에게 이 발견 사항 수정 요청",
     "allDismissed": "모든 발견 사항이 해제되었습니다.",
     "resolve": {
       "prompt": "처리…",
