@@ -89,6 +89,33 @@ export interface SessionRetryEvent {
   nextAt: number;
 }
 
+/** Token counts and cost stamped on an assistant message by OpenCode. The
+ *  runtime emits one per `message.updated` that carries `tokens`; because a
+ *  single reply is many assistant steps, the same `messageID` is emitted
+ *  repeatedly with growing totals — the fold layer keeps the latest per id.
+ *
+ *  Every field is a plain number (0 when the provider omitted it), except
+ *  `cost`, which is left `undefined` when the provider reported no price — a
+ *  local model, say — so the UI can show "—" rather than a fabricated $0. */
+export interface UsageEvent {
+  type: "usage";
+  sessionId: string;
+  /** The assistant message these totals belong to (the fold key). */
+  messageID: string;
+  /** Prompt tokens sent to the model this step. */
+  input: number;
+  /** Completion tokens generated this step. */
+  output: number;
+  /** Reasoning tokens, when the model bills them separately (0 otherwise). */
+  reasoning: number;
+  /** Prompt-cache read tokens (0 when the provider reports none). */
+  cacheRead: number;
+  /** Prompt-cache write tokens (0 when the provider reports none). */
+  cacheWrite: number;
+  /** Cost in USD, or undefined when the provider priced nothing. */
+  cost?: number;
+}
+
 // ---- Interactive requests (the agent asks; the user must answer) ----
 // OpenCode blocks the run until answered. Two kinds: a `question` (pick from
 // options) and a `permission` (approve a command / file write / etc.).
@@ -147,6 +174,7 @@ export type OpenCodeEvent =
   | SessionIdleEvent
   | MessageAgentEvent
   | SessionRetryEvent
+  | UsageEvent
   | RuntimeErrorEvent
   | QuestionAskedEvent
   | QuestionResolvedEvent
@@ -217,7 +245,23 @@ export interface HistoryMessage {
    *  on user messages; the app derives a session's agent mode from the last
    *  user message when (re)opening it. */
   agent?: string;
+  /** Token totals for this assistant message, when OpenCode recorded them.
+   *  Only assistant messages carry them; a user message leaves this unset.
+   *  Reconstructs per-reply usage after a reload without re-streaming. */
+  usage?: MessageUsage;
   parts: HistoryPart[];
+}
+
+/** The `tokens` + `cost` OpenCode stamps on an assistant message, in the same
+ *  shape `UsageEvent` carries (minus the routing fields). `cost` is undefined
+ *  when the provider priced nothing. */
+export interface MessageUsage {
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost?: number;
 }
 export interface HistoryPart {
   type: string;
@@ -277,6 +321,11 @@ export interface ProviderModelInfo {
    *  native param (OpenAI reasoningEffort, Anthropic thinking, …). `listProviders`
    *  always sets it (possibly []); optional so terse fixtures can omit it. */
   variants?: string[];
+  /** The model's context-window size in tokens, when OpenCode knows it (from
+   *  models.dev or a probed/hand-set custom limit). Drives the status bar's
+   *  `ctx %` fill; omitted (or 0) when the window is unknown, in which case the
+   *  UI drops the ctx segment rather than guessing. */
+  context?: number;
 }
 
 /** A provider OpenCode can use right now (auth present or public). */

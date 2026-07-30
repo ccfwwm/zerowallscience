@@ -1,0 +1,43 @@
+{
+  "tail": {
+    "title": "Tokens and cost for this reply",
+    "in": "{{value}} in",
+    "out": "{{value}} out",
+    "cached": "{{value}} cached",
+    "reasoning": "{{value}} reasoning"
+  },
+  "status": {
+    "in": "{{value}} in",
+    "out": "{{value}} out",
+    "ctx": "ctx {{pct}}%",
+    "title": "Live tokens · context window used"
+  },
+  "settings": {
+    "title": "Usage",
+    "description": "Tokens and cost recorded for this workspace, per session.",
+    "loading": "Loading usage…",
+    "unavailable": "Usage is unavailable here.",
+    "untitled": "Untitled session",
+    "tiles": {
+      "input": "Input",
+      "output": "Output",
+      "reasoning": "Reasoning",
+      "cached": "Cached",
+      "cost": "Cost",
+      "replies": "Replies"
+    },
+    "table": {
+      "session": "Session",
+      "input": "Input",
+      "output": "Output",
+      "reasoning": "Reasoning",
+      "cached": "Cached",
+      "cost": "Cost",
+      "replies": "Replies"
+    },
+    "empty": {
+      "title": "No usage yet",
+      "body": "Once a model replies, its token counts and cost land here — per reply and totalled per session."
+    }
+  }
+}

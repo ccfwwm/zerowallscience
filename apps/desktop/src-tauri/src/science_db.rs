@@ -67,6 +67,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 8,
         sql: include_str!("../migrations/M008__compute_egress.sql"),
     },
+    Migration {
+        id: "M009",
+        version: 9,
+        sql: include_str!("../migrations/M009__usage.sql"),
+    },
 ];
 
 const REQUIRED_TABLES: &[&str] = &[
@@ -109,6 +114,7 @@ const REQUIRED_TABLES: &[&str] = &[
     "skills",
     "termination_queue",
     "tool_policies",
+    "usage_events",
     "verification_checks",
 ];
 
@@ -462,15 +468,15 @@ mod tests {
     }
 
     #[test]
-    fn new_database_reaches_version_eight_with_the_complete_table_set() {
+    fn new_database_reaches_version_nine_with_the_complete_table_set() {
         let workspace = TestWorkspace::new("fresh");
         let conn = open_science_db(workspace.path()).unwrap();
 
         let status = science_db_status(workspace.path()).unwrap();
-        assert_eq!(status.version, 8);
+        assert_eq!(status.version, 9);
         assert_eq!(
             status.applied_migration_ids,
-            (0..=8).map(|n| format!("M{n:03}")).collect::<Vec<_>>()
+            (0..=9).map(|n| format!("M{n:03}")).collect::<Vec<_>>()
         );
         assert_eq!(status.table_count, REQUIRED_TABLES.len() as u32);
         assert_eq!(
@@ -521,7 +527,7 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         assert_eq!(applied_after, applied_before);
-        assert_eq!(applied_after.len(), 9);
+        assert_eq!(applied_after.len(), 10);
     }
 
     #[test]

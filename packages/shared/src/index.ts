@@ -55,7 +55,8 @@ export type ThreadBlock =
   | FigureBlock
   | ArtifactBlock
   | RunningJobsBlock
-  | StatusLineBlock;
+  | StatusLineBlock
+  | UsageBlock;
 
 export interface UserMessageBlock {
   kind: "user";
@@ -341,6 +342,69 @@ export interface StatusLineBlock {
   text: string; // e.g. "8 running · 16m 2s"
   tone?: "running" | "done" | "review" | "error";
   divider?: boolean;
+}
+
+/** Token/cost tail for one assistant reply, e.g. "123 in · 456 out · $0.0021".
+ *  Counts are cumulative for the reply (OpenCode restamps growing totals per
+ *  message id; the fold keeps the latest). cost is USD, omitted when the
+ *  provider priced nothing (show "—", never "$0"). */
+export interface UsageBlock {
+  kind: "usage";
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost?: number;
+}
+
+/** One persisted assistant reply's usage, as the Usage panel renders it (the
+ *  wire shape of the Rust `StoredUsage`). Counts are final-cumulative for the
+ *  reply; `cost` is null/undefined when the provider priced nothing. */
+export interface StoredUsage {
+  messageId: string;
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost?: number | null;
+  createdAt: string;
+}
+
+/** Grand totals across a session's replies. `cost` is null when NO reply was
+ *  priced (all unpriced); a mix sums the priced ones and ignores the rest. */
+export interface UsageTotals {
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost?: number | null;
+  replies: number;
+}
+
+/** A session's usage rollup: its per-reply rows (newest first) and grand totals
+ *  — the return shape of the `usage_by_session` command / `/v1/usage?session=…`
+ *  route. */
+export interface SessionUsage {
+  replies: StoredUsage[];
+  total: UsageTotals;
+}
+
+/** One session's totals for the workspace-wide Usage panel — the grand totals
+ *  plus the session id and title so the table can label each row. */
+export interface SessionRollup extends UsageTotals {
+  sessionId: string;
+  title: string;
+}
+
+/** The whole workspace's usage: one row per session (busiest first) and the
+ *  grand total across every session — the return shape of `usage_by_workspace`
+ *  / `/v1/usage` (no `session` param). */
+export interface WorkspaceUsage {
+  sessions: SessionRollup[];
+  total: UsageTotals;
 }
 
 // ---- Inspector (right pane) ----

@@ -60,6 +60,22 @@ describe("OpenCodeClient ↔ OpenCode server", () => {
     );
     expect(toolDone?.title).toContain("literature-search");
 
+    // The assistant message's token/cost totals surface as a usage event, keyed
+    // to the message id so the fold layer can attribute them to the reply.
+    const usage = events.find(
+      (e): e is Extract<OpenCodeEvent, { type: "usage" }> => e.type === "usage",
+    );
+    expect(usage).toMatchObject({
+      sessionId,
+      messageID: "m1",
+      input: 1200,
+      output: 340,
+      reasoning: 20,
+      cacheRead: 800,
+      cacheWrite: 100,
+      cost: 0.0123,
+    });
+
     client.close();
     expect(client.getStatus()).toBe("offline");
   });
@@ -169,6 +185,16 @@ describe("OpenCodeClient ↔ OpenCode server", () => {
     const last = messages[messages.length - 1];
     expect(last.role).toBe("assistant");
     expect(last.completed).toBe(2); // the turn is over — the reconcile signal
+    // History carries the same token totals the live stream did, so a reload
+    // reconstructs per-reply usage without re-streaming the turn.
+    expect(last.usage).toEqual({
+      input: 1200,
+      output: 340,
+      reasoning: 20,
+      cacheRead: 800,
+      cacheWrite: 100,
+      cost: 0.0123,
+    });
     await expect(client.abortSession(sessionId)).resolves.toBeUndefined();
     client.close();
   });

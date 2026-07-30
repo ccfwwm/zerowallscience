@@ -1,0 +1,43 @@
+{
+  "tail": {
+    "title": "此次回复的 Token 与费用",
+    "in": "输入 {{value}}",
+    "out": "输出 {{value}}",
+    "cached": "缓存 {{value}}",
+    "reasoning": "推理 {{value}}"
+  },
+  "status": {
+    "in": "输入 {{value}}",
+    "out": "输出 {{value}}",
+    "ctx": "上下文 {{pct}}%",
+    "title": "实时 Token · 已用上下文窗口"
+  },
+  "settings": {
+    "title": "用量",
+    "description": "本工作区按会话记录的 Token 与费用。",
+    "loading": "正在加载用量…",
+    "unavailable": "此处无法查看用量。",
+    "untitled": "未命名会话",
+    "tiles": {
+      "input": "输入",
+      "output": "输出",
+      "reasoning": "推理",
+      "cached": "缓存",
+      "cost": "费用",
+      "replies": "回复数"
+    },
+    "table": {
+      "session": "会话",
+      "input": "输入",
+      "output": "输出",
+      "reasoning": "推理",
+      "cached": "缓存",
+      "cost": "费用",
+      "replies": "回复数"
+    },
+    "empty": {
+      "title": "暂无用量",
+      "body": "模型回复后，其 Token 数与费用将显示在此处——逐条回复列出，并按会话汇总。"
+    }
+  }
+}

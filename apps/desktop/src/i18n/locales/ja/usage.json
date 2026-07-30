@@ -1,0 +1,43 @@
+{
+  "tail": {
+    "title": "この返信のトークンとコスト",
+    "in": "入力 {{value}}",
+    "out": "出力 {{value}}",
+    "cached": "キャッシュ {{value}}",
+    "reasoning": "推論 {{value}}"
+  },
+  "status": {
+    "in": "入力 {{value}}",
+    "out": "出力 {{value}}",
+    "ctx": "コンテキスト {{pct}}%",
+    "title": "リアルタイムのトークン · 使用中のコンテキストウィンドウ"
+  },
+  "settings": {
+    "title": "使用状況",
+    "description": "このワークスペースでセッションごとに記録されたトークンとコスト。",
+    "loading": "使用状況を読み込み中…",
+    "unavailable": "ここでは使用状況を表示できません。",
+    "untitled": "無題のセッション",
+    "tiles": {
+      "input": "入力",
+      "output": "出力",
+      "reasoning": "推論",
+      "cached": "キャッシュ",
+      "cost": "コスト",
+      "replies": "返信数"
+    },
+    "table": {
+      "session": "セッション",
+      "input": "入力",
+      "output": "出力",
+      "reasoning": "推論",
+      "cached": "キャッシュ",
+      "cost": "コスト",
+      "replies": "返信数"
+    },
+    "empty": {
+      "title": "使用状況はまだありません",
+      "body": "モデルが返信すると、そのトークン数とコストがここに表示されます — 返信ごと、そしてセッション単位の合計で。"
+    }
+  }
+}

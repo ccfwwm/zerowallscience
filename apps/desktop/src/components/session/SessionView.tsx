@@ -15,8 +15,9 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import type { RuntimeStatus } from "@zerowall/shared";
+import type { RuntimeStatus, UsageBlock } from "@zerowall/shared";
 import type { PromptAttachment } from "@zerowall/sdk";
+import { formatCount, contextPercent } from "@/lib/usageFormat";
 import { draftKeyFor, rootSessionOf, useRuntimeStore } from "@/lib/runtime";
 import { useLayoutStore } from "@/lib/layout";
 import { startPaneDrag } from "@/lib/dragPane";
@@ -129,6 +130,11 @@ export function SessionView({
   const setApprovalMode = useRuntimeStore((s) => s.setApprovalMode);
   const agents = useRuntimeStore((s) => s.agents);
   const sessionAgents = useRuntimeStore((s) => s.sessionAgents);
+  // For the live status bar's ctx% — the pane's model (own override or default)
+  // and the providers catalog that carries each model's context-window size.
+  const sessionModels = useRuntimeStore((s) => s.sessionModels);
+  const defaultModel = useRuntimeStore((s) => s.defaultModel);
+  const providers = useRuntimeStore((s) => s.providers);
   const setAgentMode = useRuntimeStore((s) => s.setAgentMode);
   const bindSession = useLayoutStore((s) => s.bindSession);
   const dockSession = useLayoutStore((s) => s.dockSession);
@@ -239,6 +245,29 @@ export function SessionView({
   const lastBlock = thread?.blocks[thread.blocks.length - 1];
   const liveReasoningIndex =
     running && thread && lastBlock?.kind === "reasoning" ? thread.blocks.length - 1 : undefined;
+
+  // Live token status: the latest folded usage block (OpenCode restamps it with
+  // growing cumulative totals as the reply streams) and the pane model's context
+  // window, so the bar can show `{in} in / {out} out · ctx {pct}%`. The window is
+  // resolved from the providers catalog (per-model `limit.context`); unknown ⇒
+  // the caller drops the ctx segment rather than guessing (see contextPercent).
+  const liveUsage = useMemo(() => {
+    for (let i = (thread?.blocks.length ?? 0) - 1; i >= 0; i--) {
+      const b = thread!.blocks[i];
+      if (b.kind === "usage") return b;
+    }
+    return undefined;
+  }, [thread]);
+  const modelId = sessionModels[key] ?? defaultModel;
+  const contextWindow = useMemo(() => {
+    if (!modelId) return undefined;
+    const slash = modelId.indexOf("/");
+    if (slash <= 0) return undefined;
+    const model = providers
+      .find((p) => p.id === modelId.slice(0, slash))
+      ?.models.find((m) => m.id === modelId.slice(slash + 1));
+    return model?.context;
+  }, [providers, modelId]);
 
   // Esc interrupts the running turn — but only in the FOCUSED pane, so a split
   // layout doesn't broadcast one Esc to every running session.
@@ -743,6 +772,7 @@ export function SessionView({
                 onPermission={(id, reply) => void replyPermission(id, reply)}
               />
             )}
+            {liveUsage && <LiveUsageBar block={liveUsage} contextWindow={contextWindow} />}
             <Composer
               onSend={onSend}
               onRunShell={(c) => void onRunShell(c)}
@@ -881,5 +911,29 @@ function ConnBadge({ status }: { status: RuntimeStatus }) {
       />
       {status !== "ready" && t("live.connBadge.title", { status: t(`live.connBadge.status.${status}`) })}
     </span>
+  );
+}
+
+/** Live token status above the composer: "{in} in · {out} out · ctx {pct}%".
+ *  Reads the latest folded usage block (OpenCode restamps it with growing
+ *  cumulative totals as the reply streams). The ctx segment appears only when
+ *  the pane model's context window is known — otherwise the counts stand alone,
+ *  never a guessed percentage (see contextPercent / AGENTS.md: fail honestly). */
+function LiveUsageBar({ block, contextWindow }: { block: UsageBlock; contextWindow: number | undefined }) {
+  const { t, i18n } = useTranslation(["usage"]);
+  const locale = i18n.language;
+  const parts = [
+    t("status.in", { value: formatCount(block.input, locale) }),
+    t("status.out", { value: formatCount(block.output, locale) }),
+  ];
+  const pct = contextPercent(block.input, contextWindow);
+  if (pct !== null) parts.push(t("status.ctx", { pct }));
+  return (
+    <div
+      className="pointer-events-none flex items-center gap-1 pl-0.5 font-mono text-[11px] text-muted/80"
+      title={t("status.title")}
+    >
+      {parts.join(" · ")}
+    </div>
   );
 }

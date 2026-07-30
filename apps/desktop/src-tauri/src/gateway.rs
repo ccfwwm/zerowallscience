@@ -432,6 +432,22 @@ fn v1(stream: &mut TcpStream, req: &Request, ctx: &Ctx, rest: &str) {
                 Err(e) => respond_json(stream, 404, &err_json(&e)),
             }
         }
+        ("GET", ["usage"]) => {
+            // With ?session=… → that session's per-reply rollup; without it →
+            // the workspace-wide per-session table for Settings → Usage.
+            let session = req.query_get("session").unwrap_or_default();
+            if session.trim().is_empty() {
+                match crate::usage_store::usage_by_workspace(ctx.app.clone()) {
+                    Ok(rollup) => respond_json(stream, 200, &serde_json::to_string(&rollup).unwrap_or_else(|_| "{}".into())),
+                    Err(e) => respond_json(stream, 500, &err_json(&e)),
+                }
+            } else {
+                match crate::usage_store::usage_by_session(ctx.app.clone(), session) {
+                    Ok(rollup) => respond_json(stream, 200, &serde_json::to_string(&rollup).unwrap_or_else(|_| "{}".into())),
+                    Err(e) => respond_json(stream, 500, &err_json(&e)),
+                }
+            }
+        }
         ("GET", ["events"]) => {
             let dir = ws_dir(ctx);
             events(stream, ctx, &dir);

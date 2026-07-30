@@ -6,7 +6,8 @@ describe("i18n instance", () => {
     expect(i18n.language).toBe("en");
     expect(NAMESPACES).toContain("common");
     expect(NAMESPACES).toContain("review");
-    expect(NAMESPACES.length).toBe(9);
+    expect(NAMESPACES).toContain("usage");
+    expect(NAMESPACES.length).toBe(10);
   });
 
   it("resolves a seeded key", () => {

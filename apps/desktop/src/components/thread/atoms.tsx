@@ -9,11 +9,13 @@ import type {
   DataTableBlock,
   RunningJobsBlock,
   StatusLineBlock,
+  UsageBlock,
   UserAttachment,
   UserAttachmentsBlock,
   UserMessageBlock,
 } from "@zerowall/shared";
 import { cn } from "@/lib/cn";
+import { formatCount, formatCost } from "@/lib/usageFormat";
 import { MarkdownViewer } from "@/components/markdown-viewer/MarkdownViewer";
 import { extractArtifactRefs, refToArtifactBlock } from "@/lib/artifacts";
 import { resolveArtifactPath } from "@/lib/artifactFile";
@@ -419,6 +421,28 @@ export const StatusLine = memo(function StatusLine({ block }: { block: StatusLin
         />
         <span>{block.text}</span>
       </div>
+    </div>
+  );
+});
+
+/** Per-reply token/cost tail, e.g. "123 in · 456 out · $0.0021". The reasoning
+ *  and cached segments appear only when non-zero (most replies have neither);
+ *  cost renders "—" when the provider priced nothing, never a fabricated "$0". */
+export const UsageTail = memo(function UsageTail({ block }: { block: UsageBlock }) {
+  const { t, i18n } = useTranslation(["usage"]);
+  const locale = i18n.language;
+  const parts = [
+    t("tail.in", { count: block.input, value: formatCount(block.input, locale) }),
+    t("tail.out", { count: block.output, value: formatCount(block.output, locale) }),
+  ];
+  const cached = block.cacheRead + block.cacheWrite;
+  if (cached > 0) parts.push(t("tail.cached", { value: formatCount(cached, locale) }));
+  if (block.reasoning > 0)
+    parts.push(t("tail.reasoning", { value: formatCount(block.reasoning, locale) }));
+  parts.push(formatCost(block.cost));
+  return (
+    <div className="flex items-center gap-1 pl-0.5 font-mono text-xs text-muted" title={t("tail.title")}>
+      {parts.join(" · ")}
     </div>
   );
 });

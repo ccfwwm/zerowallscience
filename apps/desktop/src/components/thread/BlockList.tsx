@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { ArtifactBlock, FigureAnnotation, ReviewFinding, ThreadBlock } from "@zerowall/shared";
-import { AgentMessage, DataTable, RunningJobsOverlay, StatusLine, UserAttachments, UserMessage } from "./atoms";
+import { AgentMessage, DataTable, RunningJobsOverlay, StatusLine, UsageTail, UserAttachments, UserMessage } from "./atoms";
 import { ToolCallRow } from "./ToolCallRow";
 import { ToolGroup, groupToolBlocks } from "./ToolGroup";
 import { ReviewerCard } from "./ReviewerCard";
@@ -72,6 +72,8 @@ export function renderBlock(
       return <RunningJobsOverlay key={i} block={block} />;
     case "status-line":
       return <StatusLine key={i} block={block} />;
+    case "usage":
+      return <UsageTail key={i} block={block} />;
   }
 }
 

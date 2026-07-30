@@ -1,0 +1,43 @@
+{
+  "tail": {
+    "title": "이 응답의 토큰 및 비용",
+    "in": "입력 {{value}}",
+    "out": "출력 {{value}}",
+    "cached": "캐시 {{value}}",
+    "reasoning": "추론 {{value}}"
+  },
+  "status": {
+    "in": "입력 {{value}}",
+    "out": "출력 {{value}}",
+    "ctx": "컨텍스트 {{pct}}%",
+    "title": "실시간 토큰 · 사용 중인 컨텍스트 창"
+  },
+  "settings": {
+    "title": "사용량",
+    "description": "이 작업 공간에 세션별로 기록된 토큰 및 비용입니다.",
+    "loading": "사용량 불러오는 중…",
+    "unavailable": "여기서는 사용량을 볼 수 없습니다.",
+    "untitled": "제목 없는 세션",
+    "tiles": {
+      "input": "입력",
+      "output": "출력",
+      "reasoning": "추론",
+      "cached": "캐시",
+      "cost": "비용",
+      "replies": "응답 수"
+    },
+    "table": {
+      "session": "세션",
+      "input": "입력",
+      "output": "출력",
+      "reasoning": "추론",
+      "cached": "캐시",
+      "cost": "비용",
+      "replies": "응답 수"
+    },
+    "empty": {
+      "title": "아직 사용량이 없습니다",
+      "body": "모델이 응답하면 토큰 수와 비용이 여기에 표시됩니다 — 응답별로, 그리고 세션별 합계로."
+    }
+  }
+}

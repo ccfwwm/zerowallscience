@@ -68,6 +68,42 @@ function errorText(error: unknown): string | undefined {
   return typeof full === "string" && full ? full.split("\n")[0] : undefined;
 }
 
+/** Project OpenCode's `tokens`/`cost` onto the usage shape both the live event
+ *  and history carry. Returns undefined when no token counts are present at all
+ *  — an assistant step before its first usage report — so callers never emit or
+ *  store a zero-usage record that would clobber real totals. A missing count is
+ *  0; a missing/non-finite `cost` stays undefined (a local model priced nothing,
+ *  and "—" is honest where "$0.00" is not). */
+function usageFromTokens(
+  tokens:
+    | {
+        input?: number;
+        output?: number;
+        reasoning?: number;
+        cache?: { read?: number; write?: number };
+      }
+    | undefined,
+  cost: number | undefined,
+): {
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost?: number;
+} | undefined {
+  if (!tokens) return undefined;
+  const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  return {
+    input: num(tokens.input),
+    output: num(tokens.output),
+    reasoning: num(tokens.reasoning),
+    cacheRead: num(tokens.cache?.read),
+    cacheWrite: num(tokens.cache?.write),
+    ...(typeof cost === "number" && Number.isFinite(cost) ? { cost } : {}),
+  };
+}
+
 /** Split a "provider/model" default-model string into the `{providerID, modelID}`
  *  shape the prompt API expects. Returns undefined when the string is empty or
  *  has no provider prefix (so the caller omits the key and the server falls back
@@ -382,17 +418,28 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
         time?: { completed?: number };
         error?: unknown;
         agent?: string;
+        tokens?: {
+          input?: number;
+          output?: number;
+          reasoning?: number;
+          cache?: { read?: number; write?: number };
+        };
+        cost?: number;
       };
       parts: HistoryMessage["parts"];
     }>;
     return arr.map((m) => {
       const error = errorText(m.info.error);
+      // Only assistant messages are billed; a user message never carries usage.
+      const usage =
+        m.info.role === "assistant" ? usageFromTokens(m.info.tokens, m.info.cost) : undefined;
       return {
         role: m.info.role,
         ...(m.info.id ? { id: m.info.id } : {}),
         completed: m.info.time?.completed,
         ...(error ? { error } : {}),
         ...(m.info.agent ? { agent: m.info.agent } : {}),
+        ...(usage ? { usage } : {}),
         parts: m.parts ?? [],
       };
     });
@@ -497,7 +544,10 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
         // OpenCode carries a per-model `variants` map (variant name → provider
         // options) built from models.dev + config; a model with no reasoning
         // levels has none. We surface just the ordered names.
-        models?: Record<string, { name?: string; variants?: Record<string, unknown> }>;
+        models?: Record<
+          string,
+          { name?: string; variants?: Record<string, unknown>; limit?: { context?: number } }
+        >;
       }>;
     };
     return (body.providers ?? [])
@@ -509,6 +559,9 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
           id,
           name: m.name ?? id,
           variants: orderVariants(Object.keys(m.variants ?? {})),
+          // Only when known (>0) — a 0/absent window means "unknown", and the
+          // UI must drop the ctx% rather than divide by a guessed ceiling.
+          ...(m.limit?.context && m.limit.context > 0 ? { context: m.limit.context } : {}),
         })),
       }));
   }
@@ -1167,7 +1220,19 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
       case "message.updated": {
         // Learn each message's role so we can skip the echoed user message parts.
         const info = props.info as
-          | { id?: string; role?: string; sessionID?: string; agent?: string }
+          | {
+              id?: string;
+              role?: string;
+              sessionID?: string;
+              agent?: string;
+              tokens?: {
+                input?: number;
+                output?: number;
+                reasoning?: number;
+                cache?: { read?: number; write?: number };
+              };
+              cost?: number;
+            }
           | undefined;
         if (info?.id && info.role) this.roles.set(info.id, info.role);
         // A user message surfaces its id (so the app can tag the live block for
@@ -1180,6 +1245,20 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
             sessionId: String(info.sessionID),
             ...(info.id ? { messageID: info.id } : {}),
             ...(typeof info.agent === "string" ? { agent: info.agent } : {}),
+          });
+        }
+        // Assistant messages carry running token/cost totals. OpenCode restamps
+        // the same message id every step with growing totals, so this fires
+        // repeatedly per reply; the fold layer keeps the latest per id. Only
+        // emitted once tokens exist — an assistant step before its first usage
+        // report has none, and a zero-usage event would clobber a real one.
+        const usage = usageFromTokens(info?.tokens, info?.cost);
+        if (info?.role === "assistant" && info.id && info.sessionID && usage) {
+          this.emit({
+            type: "usage",
+            sessionId: String(info.sessionID),
+            messageID: String(info.id),
+            ...usage,
           });
         }
         break;

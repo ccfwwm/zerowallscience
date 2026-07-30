@@ -12,6 +12,7 @@ describe("Settings navigation", () => {
       "general",
       "appearance",
       "models",
+      "usage",
       "runtime",
       "connectors",
       "packs",
@@ -23,7 +24,8 @@ describe("Settings navigation", () => {
   });
 
   it("drops the sections a browser cannot act on, and keeps the rest usable", () => {
-    expect(keys(true)).toEqual(["general", "appearance", "models", "privacy"]);
+    // Usage is pure display (no local IPC), so it stays in the web client.
+    expect(keys(true)).toEqual(["general", "appearance", "models", "usage", "privacy"]);
     for (const key of DESKTOP_ONLY) expect(keys(true)).not.toContain(key);
     // Every desktop-only key really exists on desktop — so this test fails if a
     // section is renamed on one side only.

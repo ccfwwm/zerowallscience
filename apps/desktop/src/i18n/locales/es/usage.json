@@ -1,0 +1,43 @@
+{
+  "tail": {
+    "title": "Tokens y coste de esta respuesta",
+    "in": "{{value}} entrada",
+    "out": "{{value}} salida",
+    "cached": "{{value}} en caché",
+    "reasoning": "{{value}} razonamiento"
+  },
+  "status": {
+    "in": "{{value}} entrada",
+    "out": "{{value}} salida",
+    "ctx": "ctx {{pct}} %",
+    "title": "Tokens en vivo · ventana de contexto usada"
+  },
+  "settings": {
+    "title": "Uso",
+    "description": "Tokens y coste registrados para este espacio de trabajo, por sesión.",
+    "loading": "Cargando uso…",
+    "unavailable": "El uso no está disponible aquí.",
+    "untitled": "Sesión sin título",
+    "tiles": {
+      "input": "Entrada",
+      "output": "Salida",
+      "reasoning": "Razonamiento",
+      "cached": "En caché",
+      "cost": "Coste",
+      "replies": "Respuestas"
+    },
+    "table": {
+      "session": "Sesión",
+      "input": "Entrada",
+      "output": "Salida",
+      "reasoning": "Razonamiento",
+      "cached": "En caché",
+      "cost": "Coste",
+      "replies": "Respuestas"
+    },
+    "empty": {
+      "title": "Aún no hay uso",
+      "body": "Cuando un modelo responda, sus tokens y coste aparecerán aquí — por respuesta y sumados por sesión."
+    }
+  }
+}

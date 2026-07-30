@@ -1,6 +1,7 @@
 import {
   Cloud,
   Cpu,
+  Gauge,
   Globe,
   Palette,
   Plug,
@@ -20,6 +21,7 @@ export const SETTINGS_SECTIONS = [
   { key: "general", icon: Settings },
   { key: "appearance", icon: Palette },
   { key: "models", icon: Shapes },
+  { key: "usage", icon: Gauge },
   { key: "runtime", icon: Cpu, desktopOnly: true },
   { key: "connectors", icon: Plug, desktopOnly: true },
   { key: "packs", icon: Package, desktopOnly: true },

@@ -36,6 +36,7 @@ mod tools;
 #[cfg(target_os = "macos")]
 mod macos;
 mod updates;
+mod usage_store;
 mod uv;
 
 use jupyter::JupyterState;
@@ -235,6 +236,9 @@ pub fn run() {
             review_store::review_resolve,
             review_store::review_reopen,
             review_store::review_list,
+            usage_store::usage_record,
+            usage_store::usage_by_session,
+            usage_store::usage_by_workspace,
             method_check::method_check_evaluate,
             bio_check::bio_check_evaluate,
             memory_store::create_memory,

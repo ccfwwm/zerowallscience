@@ -225,6 +225,44 @@ describe("foldEvent", () => {
     ]);
     expect(s.blocks.filter((b) => b.kind === "status-line" && b.tone === "done")).toHaveLength(1);
   });
+
+  it("upserts usage by message id — one tail with the latest cumulative totals", () => {
+    // OpenCode restamps the same assistant message with growing totals; the tail
+    // must upsert (not append a row per stamp).
+    const s = foldAll([
+      { type: "usage", sessionId: S, messageID: "m1", input: 100, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0.001 },
+      { type: "usage", sessionId: S, messageID: "m1", input: 100, output: 42, reasoning: 8, cacheRead: 0, cacheWrite: 0, cost: 0.0021 },
+    ]);
+    const usage = s.blocks.filter((b) => b.kind === "usage");
+    expect(usage).toHaveLength(1);
+    expect(usage[0]).toEqual({
+      kind: "usage",
+      input: 100,
+      output: 42,
+      reasoning: 8,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost: 0.0021,
+    });
+  });
+
+  it("keeps two assistant messages' usage as separate tails", () => {
+    const s = foldAll([
+      { type: "usage", sessionId: S, messageID: "m1", input: 10, output: 1, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0.0001 },
+      { type: "usage", sessionId: S, messageID: "m2", input: 20, output: 2, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0.0002 },
+    ]);
+    expect(s.blocks.filter((b) => b.kind === "usage")).toHaveLength(2);
+  });
+
+  it("omits cost from the usage block when the provider priced nothing", () => {
+    // A local model reports no cost → the block carries no `cost` key, so the UI
+    // renders "—" rather than a fabricated $0 (see AGENTS.md: fail honestly).
+    const s = foldAll([
+      { type: "usage", sessionId: S, messageID: "m1", input: 30, output: 4, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+    ]);
+    const usage = s.blocks.find((b) => b.kind === "usage");
+    expect(usage).not.toHaveProperty("cost");
+  });
 });
 
 describe("subagent activity", () => {
@@ -448,5 +486,41 @@ describe("historyToThread", () => {
     ];
     const t = historyToThread(msgs);
     expect(t.blocks.every((b) => b.kind !== "status-line")).toBe(true);
+  });
+
+  it("reconstructs a per-reply usage tail from a stored assistant message on reload", () => {
+    const msgs: HistoryMessage[] = [
+      { role: "user", parts: [{ type: "text", text: "hi" }] },
+      {
+        role: "assistant",
+        parts: [{ type: "text", text: "hello" }],
+        usage: { input: 120, output: 34, reasoning: 8, cacheRead: 16, cacheWrite: 0, cost: 0.0021 },
+      },
+    ];
+    const t = historyToThread(msgs);
+    expect(t.blocks.map((b) => b.kind)).toEqual(["user", "agent", "usage"]);
+    expect(t.blocks[2]).toEqual({
+      kind: "usage",
+      input: 120,
+      output: 34,
+      reasoning: 8,
+      cacheRead: 16,
+      cacheWrite: 0,
+      cost: 0.0021,
+    });
+  });
+
+  it("reconstructs an unpriced usage tail with no cost key", () => {
+    const msgs: HistoryMessage[] = [
+      {
+        role: "assistant",
+        parts: [{ type: "text", text: "hi" }],
+        usage: { input: 10, output: 2, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      },
+    ];
+    const t = historyToThread(msgs);
+    const usage = t.blocks.find((b) => b.kind === "usage");
+    expect(usage).toBeDefined();
+    expect(usage).not.toHaveProperty("cost");
   });
 });

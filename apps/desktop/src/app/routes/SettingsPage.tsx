@@ -66,6 +66,7 @@ import { ModalCard } from "@/components/settings/ModalCard";
 import { DataFlowCard } from "@/components/settings/DataFlowCard";
 import { MemoryCard } from "@/components/settings/MemoryCard";
 import { AnnotationsCard } from "@/components/settings/AnnotationsCard";
+import { UsageCard } from "@/components/settings/UsageCard";
 import { ModelBrowser } from "@/components/settings/ModelBrowser";
 import { fallbackDefaultModel } from "@/components/settings/modelCatalog";
 import { ProviderManagerCard } from "@/components/settings/ProviderManagerCard";
@@ -1366,6 +1367,9 @@ export function SettingsPage() {
           )}
         </ProviderManagerCard>
         )}
+
+        {/* ---- Usage (tokens & cost) — pure display; works over the gateway ---- */}
+        {section === "usage" && <UsageCard />}
 
         {/* ---- MCP servers ---- */}
         {section === "connectors" && (

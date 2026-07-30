@@ -65,6 +65,7 @@ import { moveScrollMemory } from "./scrollMemory";
 import { deriveArtifact } from "./artifacts";
 import { provenanceInputsFromEvent, recordProvenance } from "./provenance";
 import { recordRun, runInputFromEvent } from "./runs";
+import { recordUsage, usageInputFromEvent } from "./usage";
 import { splitReview } from "./review";
 import { splitMethodContext } from "./methodCheck";
 import { splitBioClaims } from "./bioCheck";
@@ -1785,6 +1786,13 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           void recordRun(run, sid, get().defaultModel);
         }
       }
+      // A usage stamp (cumulative token/cost totals for an assistant reply)
+      // persists latest-wins per message id — the durable rollup the Usage
+      // surfaces read. Best-effort; the fold already reflected it in the UI.
+      if (event.type === "usage") {
+        const rec = usageInputFromEvent(event);
+        if (rec) void recordUsage(rec.sessionId, rec.messageId, rec.usage);
+      }
       if (event.type === "session.idle") {
         void get().refreshSessions();
         // Name the session in the snapshot: a project folder is shared by many
@@ -2741,6 +2749,27 @@ export function foldEvent(
       }
       return { blocks, index };
     }
+    case "usage": {
+      // OpenCode restamps the same assistant message id with growing totals as
+      // the reply progresses; key by message id so the tail upserts to the
+      // latest cumulative counts instead of appending a row per stamp.
+      const key = `usage:${event.messageID}`;
+      const block: ThreadBlock = {
+        kind: "usage",
+        input: event.input,
+        output: event.output,
+        reasoning: event.reasoning,
+        cacheRead: event.cacheRead,
+        cacheWrite: event.cacheWrite,
+        ...(event.cost !== undefined ? { cost: event.cost } : {}),
+      };
+      if (key in index) blocks[index[key]] = block;
+      else {
+        blocks.push(block);
+        index[key] = blocks.length - 1;
+      }
+      return { blocks, index };
+    }
     case "session.idle": {
       const last = blocks[blocks.length - 1];
       if (last?.kind === "status-line" && last.tone === "done") {
@@ -2934,6 +2963,19 @@ export function historyToThread(messages: HistoryMessage[], commands?: CommandIn
           });
           if (artifact) blocks.push(artifact);
         }
+      }
+      // Per-reply token/cost tail, reconstructed from the stored assistant
+      // usage (OpenCode's final message stamp). Sits after the reply's content.
+      if (m.usage) {
+        blocks.push({
+          kind: "usage",
+          input: m.usage.input,
+          output: m.usage.output,
+          reasoning: m.usage.reasoning,
+          cacheRead: m.usage.cacheRead,
+          cacheWrite: m.usage.cacheWrite,
+          ...(m.usage.cost !== undefined ? { cost: m.usage.cost } : {}),
+        });
       }
       // A turn that ended in a provider/runtime error must say so on reload —
       // its live session.error is gone (SSE reconnect, app restart) and an

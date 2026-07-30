@@ -38,10 +38,32 @@ export function startMockOpenCode(port = 0): Promise<MockOpenCode> {
     P({ id: "c1", type: "tool", callID: "c1", tool: "literature-search", state: { status: "running", title: "literature-search (OpenAlex)" } });
     P({ id: "c1", type: "tool", callID: "c1", tool: "literature-search", state: { status: "completed", title: "literature-search (OpenAlex, PubMed)" } });
     P({ id: "p2", type: "text", text: "Wrote data/corpus.csv and drafted report.md." });
+    // OpenCode restamps the assistant message with growing token/cost totals as
+    // the reply progresses; the final stamp is what history keeps.
+    push({
+      type: "message.updated",
+      properties: {
+        info: {
+          id: "m1",
+          role: "assistant",
+          sessionID,
+          tokens: { input: 1200, output: 340, reasoning: 20, cache: { read: 800, write: 100 } },
+          cost: 0.0123,
+        },
+      },
+    });
     push({ type: "session.idle", properties: { sessionID } });
     messages[sessionID] = [
       { info: { role: "user" }, parts: [{ type: "text", text: "run a literature review" }] },
-      { info: { role: "assistant", time: { created: 1, completed: 2 } }, parts: [{ type: "text", text: "Planning the analysis. Wrote data/corpus.csv." }] },
+      {
+        info: {
+          role: "assistant",
+          time: { created: 1, completed: 2 },
+          tokens: { input: 1200, output: 340, reasoning: 20, cache: { read: 800, write: 100 } },
+          cost: 0.0123,
+        },
+        parts: [{ type: "text", text: "Planning the analysis. Wrote data/corpus.csv." }],
+      },
     ];
   };
 

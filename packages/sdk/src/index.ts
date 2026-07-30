@@ -24,6 +24,8 @@ export {
   type ToolUpdatedEvent,
   type SessionIdleEvent,
   type RuntimeErrorEvent,
+  type UsageEvent,
+  type MessageUsage,
   type OpenCodeClientOptions,
   type RuntimeStatus,
   type ToolCallStatus,

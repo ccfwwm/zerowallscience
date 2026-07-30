@@ -1,0 +1,43 @@
+{
+  "tail": {
+    "title": "Tokens und Kosten dieser Antwort",
+    "in": "{{value}} Eingabe",
+    "out": "{{value}} Ausgabe",
+    "cached": "{{value}} zwischengespeichert",
+    "reasoning": "{{value}} Reasoning"
+  },
+  "status": {
+    "in": "{{value}} Eingabe",
+    "out": "{{value}} Ausgabe",
+    "ctx": "Kontext {{pct}} %",
+    "title": "Live-Tokens · genutztes Kontextfenster"
+  },
+  "settings": {
+    "title": "Nutzung",
+    "description": "Für diesen Arbeitsbereich erfasste Tokens und Kosten, pro Sitzung.",
+    "loading": "Nutzung wird geladen…",
+    "unavailable": "Nutzung ist hier nicht verfügbar.",
+    "untitled": "Unbenannte Sitzung",
+    "tiles": {
+      "input": "Eingabe",
+      "output": "Ausgabe",
+      "reasoning": "Reasoning",
+      "cached": "Zwischengespeichert",
+      "cost": "Kosten",
+      "replies": "Antworten"
+    },
+    "table": {
+      "session": "Sitzung",
+      "input": "Eingabe",
+      "output": "Ausgabe",
+      "reasoning": "Reasoning",
+      "cached": "Zwischengespeichert",
+      "cost": "Kosten",
+      "replies": "Antworten"
+    },
+    "empty": {
+      "title": "Noch keine Nutzung",
+      "body": "Sobald ein Modell antwortet, erscheinen hier seine Tokenzahlen und Kosten — pro Antwort und pro Sitzung summiert."
+    }
+  }
+}

@@ -1,16 +1,20 @@
 # ZeroWall Science — Capability Expansion Plan
 
-Date: 2026-07-28
+Date: 2026-07-28 (Part T + Part O added 2026-07-31)
 Status: Plan for review (no code written yet)
-Scope: One consolidated plan covering three workstreams evaluated against
+Scope: One consolidated plan covering the workstreams evaluated against
 wisp-science's capabilities and ZeroWall's real code:
 
+- **Part T — Token / cost / context-window accounting**: capture, persist, and
+  display per-turn/session token usage, USD cost, and context-window fill.
 - **Part A — Engine internals**: 3-tier context compaction, RoutedProvider tiered
   routing, Reader cross-session retrieval with citations.
 - **Part B — Deep computational-biology skills**: AlphaFold2, OpenFold3, ESMFold2,
   Boltz, Chai-1, DiffDock, ProteinMPNN, Evo2, scGPT, scvi-tools, …
 - **Part C — ACP external coding agents**: driving Codex / Claude Code / any
   ACP-compliant agent as a switchable second runtime.
+- **Part O — Other wisp→ZeroWall fusion candidates**: WSL contexts, turn undo,
+  interactive terminals, encrypted project sync, global library.
 
 All findings below are grounded in source (ZeroWall + wisp), not assumed.
 
@@ -31,15 +35,127 @@ This single fact decides most verdicts below.
 
 | # | Workstream | Verdict | Effort | Touches OpenCode loop? | Priority |
 |---|---|---|---|---|---|
-| A3 | Reader (retrieval + citations) | **Build** | 2–3 wk | No — native | **1 (highest value/effort)** |
-| B1 | Comp-bio: wire existing 15 skills to real compute substrate | **Build, incremental** | 3–4 wk | No | **2** |
-| C | ACP external coding agents (desktop) | **Build** | ~4–4.5 wk | Adds a runtime | **3** |
+| **T** | **Token / cost / context-window accounting** | **Build** | **3–5 d** | No — data already emitted | **1 (do first)** |
+| A3 | Reader (retrieval + citations) | **Build** | 2–3 wk | No — native | 3 |
+| B1 | Comp-bio: wire existing 15 skills to real compute substrate | **Build, incremental** | 3–4 wk | No | 4 |
+| C | ACP external coding agents (desktop) | **Build** | ~4–4.5 wk | Adds a runtime | **2** |
+| O | Other fusion candidates (WSL / undo / terminal / sync / library) | **Build, à la carte** | small→large | No | Interleave |
 | A2 | Tiered provider routing (thin) | Partial | ~1 wk | Delegated | Slot-in anytime |
 | A1 | 3-tier context compaction | **Don't rebuild** | — | Owned by OpenCode | — |
 | B2 | Comp-bio: operon-style managed compute daemon | Defer | large | No | After B1 proves value |
 
-Reader (A3) is fully independent and can start immediately. B1 and C both harden
+Part **T** is the highest-ROI item and comes first: the user asked for it, and the
+data is **already produced by OpenCode and currently discarded by ZeroWall** — no
+loop control needed. Reader (A3) is fully independent. B1 and C both harden
 ZeroWall's subprocess/sandbox layer and can share that work. A1 requires no build.
+
+Chosen execution order: **T → C → (O:WSL, O:turn-undo interleaved) → A3 → rest.**
+
+---
+
+# Part T — Token / cost / context-window accounting ★ do first
+
+## T.0 Why this is the cheapest high-value item
+
+The user asked for token-usage statistics. Unlike wisp — which had to parse each
+provider's raw usage JSON inside its own Rust agent loop (`crates/wisp-llm/src/
+message.rs:226` `Usage`, per-provider parsing in `openai.rs`/`anthropic.rs`/
+`responses.rs`) — **ZeroWall gets the numbers for free from OpenCode and currently
+throws them away.** OpenCode stamps every assistant message's `info` object with
+`tokens {input, output, reasoning, cache:{read,write}}` and `cost` (USD), delivered
+both live (SSE `message.updated`) and historically (`GET /session/{id}/message`).
+
+Grounded gaps in ZeroWall today:
+- `OpenCodeClient.normalize` `message.updated` branch (`packages/sdk/src/
+  OpenCodeClient.ts:1169`) reads only `info.id/role/sessionID/agent` — `tokens`/
+  `cost` are dropped.
+- `OpenCodeClient.getMessages` (`packages/sdk/src/OpenCodeClient.ts:378`) types
+  `info` with only `id/role/time/error/agent` — `tokens`/`cost` never surface.
+- No token/cost/context-fill display anywhere in the thread UI (verified: every
+  `token` hit in the app is an auth token). Only static per-model context-window
+  **discovery** exists (`src-tauri/src/model_probe.rs`) for the Settings form.
+
+**ZeroWall advantages over wisp's design:**
+- **Real USD cost, no pricing table.** wisp shows no per-session cost and has no
+  model price data; OpenCode reports `cost` directly, so we get dollars with zero
+  maintenance.
+- **Accurate context %.** wisp estimates context fill as `len/4`
+  (`crates/wisp-core/src/context.rs:244`); we use OpenCode's real input-token count
+  ÷ the model's true window (already probed in `model_probe.rs`).
+
+## T.1 Design (reuse the M006 review pattern: emit event → persist → aggregate)
+
+The Review subsystem already established the idiom "structured signal folded in the
+thread + persisted to SQLite + read back by an aggregate query." Token accounting
+follows the same shape; **no OpenCode loop insertion needed.**
+
+**1. SDK — capture (`packages/sdk/src/OpenCodeClient.ts`, `types.ts`)**
+- Extend the `message.updated` `info` read to also pull `tokens` and `cost`; emit a
+  new `UsageEvent { type:"usage", sessionId, messageID, input, output, reasoning,
+  cacheRead, cacheWrite, cost }`. Emit only when tokens are present (final assistant
+  info), not on every partial.
+- Extend `getMessages` `info` typing + `HistoryMessage` to carry `tokens`/`cost` so
+  history rebuild backfills the same rows.
+- Add `UsageEvent` to the event union in `types.ts`.
+
+**2. Frontend fold (`apps/desktop/src/lib/runtime.ts`)**
+- `foldEvent` handles `"usage"`: sum all steps within the current turn into one
+  "this reply" usage record floated to the reply tail — mirror how `groupToolBlocks`
+  folds multi-step reasoning into one card. Live status also updates from it.
+- `historyToThread` reconstructs per-reply usage from `getMessages` info.
+
+**3. Persist + aggregate (Rust)**
+- Migration `M009__usage.sql`: `usage_events(session_id, message_id PRIMARY KEY,
+  input, output, reasoning, cache_read, cache_write, cost_usd REAL, created_at)`.
+  `message_id` PK makes re-recording idempotent (history reload upserts, never
+  double-counts).
+- `ZeroWallClient.recordTurn` (or a sibling `recordUsage`) writes the row.
+- Read-only Tauri command `usage_by_session` → `SUM(...) GROUP BY session`, plus a
+  grand-total roll-up. Mirrors wisp's `token_usage_by_session`
+  (`crates/wisp-store/src/sessions.rs:1342`) but adds `cost_usd`.
+
+**4. UI — three surfaces (borrow wisp's proven shapes)**
+- **Live status bar**: `{in} in / {out} out · ctx {pct}%` where `pct = input ÷
+  window` (window from `model_probe`). wisp equivalent: `ui/src/main.rs:2080`.
+- **Per-reply tail line**: `123 in · 456 out · $0.0021` (append `· {n} cached` /
+  `· {n} reasoning` only when non-zero). wisp equivalent: `ui/src/main.rs:12996`.
+- **Settings → Usage tab**: cumulative summary tiles (input/output/reasoning/cached/
+  **cost**) + per-session table. wisp equivalent: `ui/src/settings_view.rs:1252`.
+
+**5. Web/gateway**: pure display — works over the gateway; **not** hidden by
+`isGatewayWeb`. Phone-width: usage tab collapses tiles to a stacked list.
+
+**6. i18n**: add a `usage` namespace across the 7 selectable locales (parity gate).
+
+## T.2 Edge cases (fail honestly, per AGENTS.md)
+
+- **Provider returns no `cost`** (e.g. the sub2api gateway may omit it): show tokens,
+  render cost as `—`. Never fabricate a price. If `tokens` is also absent, show no
+  usage row rather than zeros.
+- **Cache fields absent**: treat as 0, omit the `cached` suffix.
+- **Context window unknown for a model** (probe failed): omit the `ctx %` segment,
+  keep in/out counts.
+- **Subagent turns**: attribute usage to the child session; the Settings roll-up
+  folds sub-sessions to their root (as wisp does via `root_frame_id`).
+- **ACP runtime (Part C)**: `AcpRuntime` emits the same `UsageEvent` from the ACP
+  `AcpUsageUpdate {used, size, cost}` (`crates/wisp-acp/src/lib.rs:818`), USD cost —
+  same table, unified display across both runtimes.
+
+## T.3 Verification
+
+- Vitest: `OpenCodeClient` emits `usage` with the right fields from a mock
+  `message.updated`; drops it when tokens absent; `getMessages` backfills.
+- Vitest: `foldEvent` folds multi-step usage into one per-reply record; cost `—`
+  path; context-% omitted when window unknown.
+- cargo: `usage_by_session` sums correctly and is idempotent on re-insert of the
+  same `message_id`.
+- i18n parity test (7 locales × new `usage` keys).
+
+## T.4 Milestone
+
+Send a prompt on a paid provider → live status shows `in/out · ctx%`, the reply
+carries a `… · $x.xxxx` line, and Settings → Usage lists the session with a running
+cumulative cost. On the sub2api gateway (no cost), tokens show and cost reads `—`.
 
 ---
 
@@ -238,7 +354,10 @@ external agent (stdio JSON-RPC): codex-acp | claude-code-acp | any ACP agent
   `ANTHROPIC_API_KEY` / generic), reusing the `runtime.rs` secret-materialization path;
   never logged.
 - **Phase 5 — Runtime factory + `AcpRuntime` (3–4 d):** replace hardcoded `OpenCodeClient`
-  with a selector; implement `AcpRuntime`; UI runtime switcher.
+  with a selector; implement `AcpRuntime`; UI runtime switcher. `AcpRuntime` also
+  emits Part T's `UsageEvent` from the ACP `AcpUsageUpdate {used, size, cost}`
+  (`crates/wisp-acp/src/lib.rs:818`, USD) so token/cost accounting is unified across
+  both runtimes on one table and one UI.
 - **Phase 6 — Config surface + presets (2–3 d):** Settings pane for profiles
   (`command`/`args`) following the `proxy.txt`/`mirrors.txt` file pattern; keychain for
   keys; Codex + Claude Code presets.
@@ -247,6 +366,70 @@ external agent (stdio JSON-RPC): codex-acp | claude-code-acp | any ACP agent
 - **Phase 8 — Conformance tests (2–3 d):** fake-agent lifecycle test + opt-in real-binary
   tests for `codex-acp` / `claude-code-acp` (handshake, prompt streaming, permission
   round-trip, fs/terminal round-trip, cancellation, clean exit).
+
+---
+
+---
+
+# Part O — Other wisp→ZeroWall fusion candidates
+
+Features wisp ships and ZeroWall lacks, worth fusing à la carte. None touch the
+OpenCode loop. Ordered by ROI; interleave the small ones with T/C.
+
+## O.1 WSL execution contexts — small, high Windows value ★
+- **Gap:** ZeroWall has SSH + Slurm + Modal (`src-tauri/src/compute.rs`, `modal.rs`)
+  but **no WSL** (verified: no `wsl` refs in the Rust backend). wisp models WSL as a
+  first-class execution context (`src-tauri/src/wsl_contexts.rs`).
+- **Build:** discover distros via `wsl -l -v`; add a `wsl:` context alongside the
+  SSH host registry; route the existing remote-compute skill through `wsl.exe`.
+  Reuse `compute.rs`'s probe/status framing. Windows-only; hidden elsewhere.
+- **Effort:** small–medium.
+
+## O.2 Turn undo (preview + rollback) — small, high safety value ★
+- **Gap:** ZeroWall has best-effort git snapshots (`src-tauri/src/git_snapshot.rs`)
+  but no user-facing "undo this turn." wisp's `turn_undo.rs` previews exactly which
+  files/artifacts a turn wrote, then restores text files and removes artifacts owned
+  by that turn.
+- **Build:** wrap `git_snapshot` + `provenance.jsonl` (which already attributes each
+  file write to its turn) into a "preview → confirm → rollback" command; add an Undo
+  action beside Copy on the latest assistant reply.
+- **Effort:** small.
+
+## O.3 Interactive terminals (PTY/ConPTY) — medium
+- **Gap:** none in ZeroWall. wisp has `src-tauri/src/terminal_sessions.rs` (PTY on
+  Unix, ConPTY on Windows) for local/WSL/SSH shells.
+- **Build:** a Tauri PTY bridge + xterm.js pane. Composes with O.1 (WSL) and SSH.
+  Desktop-only (gate via `isGatewayWeb`).
+- **Effort:** medium.
+
+## O.4 Encrypted project sync / project export ZIP — large
+- **Gap:** none in ZeroWall. wisp has cross-OS export/import ZIP
+  (`project_transfer.rs`) and encrypted incremental sync via self-hosted relay or a
+  Baidu/Nutstore folder (`crates/wisp-sync`, `project_sync.rs`), foreground-only,
+  refuses to run mid-task.
+- **Build:** start with export/import ZIP (self-contained, no server); defer the
+  encrypted relay sync until there's demand. Respect AGENTS.md "never set a remote or
+  push" — this is out-of-band sync, not git remotes.
+- **Effort:** ZIP small–medium; relay sync large. **Defer relay.**
+
+## O.5 Global library (cross-project reuse) — medium
+- **Gap:** none in ZeroWall. wisp's `library_commands.rs` keeps immutable copies of
+  code cells and image artifacts reusable across projects.
+- **Build:** a content-addressed library table over the existing artifact store;
+  "save to library" / "insert from library" actions. Lower priority than T/C/O.1/O.2.
+- **Effort:** medium.
+
+## O.6 Tiered provider routing (= Part A2) — thin, optional
+- Cross-reference A2: surface a "task-class → agent/model profile" map in config,
+  delegate actual switching to OpenCode agent profiles. Do not attempt in-loop
+  routing. ~1 wk, slot in anytime.
+
+**Deliberately NOT fused** (already present, or out of scope): Plan mode, Review
+(M006), MCP connectors, Skills+Packs, subagent/specialist catalog (M004), SSH+Slurm+
+Modal, provenance, research graph, gateway remote access, real-browser control, local
+Jupyter kernels, command palette, i18n — all verified present in ZeroWall. wisp's
+IM channels (Feishu/WeChat), StickS3 device bridge, and desktop pet are product
+choices out of ZeroWall's research-workbench scope.
 
 ---
 
@@ -267,3 +450,6 @@ external agent (stdio JSON-RPC): codex-acp | claude-code-acp | any ACP agent
 - ACP transport is **stdio only** (matches wisp); remote agents out of scope.
 - Whether Reader (A3) later adds vector search vs staying BM25 — decide after v1.
 - Whether B2 (operon daemon) is ever needed — decide after B1.
+- Part T: whether to also expose a **budget cap** (warn/stop at $ or token threshold)
+  — wisp only does this for delegated sub-agents; decide after the display ships.
+- Part O: relay-based encrypted sync (O.4) and global library (O.5) are demand-gated.
