@@ -22,6 +22,11 @@ const PIP_SPEC: &[&str] = &[
     // START_NEW_RUNTIME=true and starts a kernel synchronously at launch,
     // blocking the stdio MCP handshake (see setup.ts, where we set it false).
     "jupyter-mcp-server==1.1.2",
+    // Cap the MCP SDK below 2.0: jupyter-mcp-server 1.1.2 imports
+    // `mcp.server.fastmcp`, a submodule mcp 2.0.0 removed. Left uncapped, a
+    // fresh install resolves mcp 2.x and the Jupyter MCP server dies at launch
+    // with `No module named 'mcp.server.fastmcp'`.
+    "mcp<2",
     "ipykernel",
     "numpy",
     "pandas",
