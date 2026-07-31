@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -580,6 +580,20 @@ fn ensure_snapshot_repo(root: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
+/// Stage the whole working tree into the DEDICATED snapshot index (never the
+/// user's `.git/index`), drop oversized/bulk paths, and write the resulting tree
+/// object. Returns the tree SHA. Shared by `commit` (which parents a commit onto
+/// it) and the turn-undo preview (which diffs it without committing), so both see
+/// the exact same set of snapshot-eligible files.
+fn write_working_tree(root: &Path, index: &Path) -> Result<String, String> {
+    run_indexed(root, index, &["add", "-A", "--", "."])?;
+    unstage_oversized(root, index)?;
+    unstage_bulk_dirs(root, index)?;
+    Ok(String::from_utf8_lossy(&capture_indexed(root, index, &["write-tree"])?)
+        .trim()
+        .to_string())
+}
+
 /// Record a snapshot of the workspace onto `SNAPSHOT_REF` without touching the
 /// user's branches, HEAD, working tree, or index. Stages the working tree into a
 /// dedicated index, drops oversized/bulk paths, writes a tree, and commits it as
@@ -604,13 +618,7 @@ pub fn commit(root: &Path, message: &str) -> Result<bool, String> {
         }
     }
 
-    // Stage the whole working tree into the DEDICATED index (never the user's).
-    run_indexed(root, &index, &["add", "-A", "--", "."])?;
-    unstage_oversized(root, &index)?;
-    unstage_bulk_dirs(root, &index)?;
-    let tree = String::from_utf8_lossy(&capture_indexed(root, &index, &["write-tree"])?)
-        .trim()
-        .to_string();
+    let tree = write_working_tree(root, &index)?;
 
     // Parent: continue this branch's snapshot chain if it exists; otherwise root
     // the first snapshot on the branch's current tip (HEAD) so the history reads
@@ -647,6 +655,158 @@ pub fn commit_best_effort(root: &Path, message: &str) {
     if let Err(e) = commit(root, message) {
         eprintln!("workspace git snapshot skipped: {e}");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Turn undo (preview + rollback)
+//
+// A turn's file effects are bracketed by two snapshot tips: the tip the caller
+// records at turn START (the baseline) and the tip that exists once the turn's
+// changes have been snapshotted (the current tip, committed on `session.idle`).
+// Undo diffs baseline→current on the snapshot ref — never the user's branch —
+// so it restores exactly what the turn touched and nothing else:
+//   • a file that existed at the baseline and changed  → restore the baseline blob
+//   • a file the turn created (absent at baseline)      → remove it
+//   • a file the turn deleted (present only at baseline)→ recreate the baseline blob
+// A safety snapshot is taken before any file changes, so an undo is itself
+// undoable (redo = the snapshot chain still holds the post-turn tip). Only the
+// working tree is written; the user's branches, HEAD, and index are untouched.
+// ---------------------------------------------------------------------------
+
+/// One file a turn-undo would change, for the confirmation preview. `status` is
+/// what undo WOULD DO to the file, from the user's point of view.
+#[derive(Clone, serde::Serialize, serde::Deserialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnUndoEntry {
+    /// Workspace-relative path with `/` separators (git's own output form).
+    pub path: String,
+    /// `"restore"` (revert an in-place change), `"remove"` (delete a file the
+    /// turn created), or `"recreate"` (bring back a file the turn deleted).
+    pub status: String,
+}
+
+/// The set of file changes an undo of the current turn would apply.
+#[derive(Clone, serde::Serialize, serde::Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnUndoPreview {
+    pub entries: Vec<TurnUndoEntry>,
+}
+
+/// The current snapshot tip for the workspace's branch, or `None` when nothing
+/// has been snapshotted yet. Callers record this at turn start as the baseline
+/// to diff against later. Never creates a commit — a pure read of the ref.
+pub fn snapshot_tip(root: &Path) -> Option<String> {
+    let _lock = git_lock().lock().ok()?;
+    rev_parse(root, &snapshot_ref(root))
+}
+
+/// Map git's `diff --name-status` letter (baseline → target direction) to what
+/// UNDOing back to the baseline would do. Diff runs baseline→current, so:
+///   A (added by the turn)   → undo removes it
+///   D (deleted by the turn) → undo recreates it
+///   M/C/R/T (modified)      → undo restores the baseline content
+fn undo_status_for(diff_letter: u8) -> Option<&'static str> {
+    match diff_letter {
+        b'A' => Some("remove"),
+        b'D' => Some("recreate"),
+        b'M' | b'C' | b'R' | b'T' => Some("restore"),
+        _ => None,
+    }
+}
+
+/// Files changed between the `baseline` snapshot commit and the workspace's
+/// CURRENT state (staged into the dedicated snapshot index, so uncommitted
+/// working-tree edits made after the last snapshot are included). Compares
+/// trees only — never the user's branch, HEAD, or index. `baseline` must be a
+/// snapshot commit previously returned by `snapshot_tip`.
+pub fn preview_turn_undo(root: &Path, baseline: &str) -> Result<TurnUndoPreview, String> {
+    let _lock = git_lock().lock().map_err(|_| "git snapshot lock poisoned".to_string())?;
+    if !git_available() {
+        return Err("git is not available".into());
+    }
+    // Resolve the baseline's tree; a bad/garbage-collected id is a clear error
+    // rather than a silent empty preview.
+    let base_tree = rev_parse(root, &format!("{baseline}^{{tree}}"))
+        .ok_or_else(|| "the turn's starting snapshot is no longer available".to_string())?;
+
+    // Stage the live working tree so edits since the last snapshot count too.
+    let index = root.join(".git").join(SNAPSHOT_INDEX);
+    let cur_tree = write_working_tree(root, &index)?;
+
+    let out = capture(
+        root,
+        &["diff-tree", "-r", "-z", "--no-renames", "--name-status", &base_tree, &cur_tree],
+    )?;
+    // `-z` output: NUL-separated, alternating <status>\0<path>\0. A status like
+    // "M100" is possible with scores, but --name-status emits a bare letter.
+    let mut entries = Vec::new();
+    let mut fields = out.split(|b| *b == 0).filter(|f| !f.is_empty());
+    while let (Some(status), Some(path)) = (fields.next(), fields.next()) {
+        let Some(&letter) = status.first() else { continue };
+        let Some(kind) = undo_status_for(letter) else { continue };
+        entries.push(TurnUndoEntry {
+            path: String::from_utf8_lossy(path).into_owned(),
+            status: kind.to_string(),
+        });
+    }
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(TurnUndoPreview { entries })
+}
+
+/// Roll the workspace's tracked files back to the `baseline` snapshot for
+/// exactly the files the turn touched. Takes a safety snapshot first (so the
+/// undo is itself recoverable), then, for each changed path: restores/recreates
+/// the baseline blob, or removes a file the turn created. Only the working tree
+/// is written — never the user's branch, HEAD, or index. Returns the count of
+/// files changed. A no-op (nothing differs) returns 0 without touching disk.
+pub fn undo_turn(root: &Path, baseline: &str) -> Result<usize, String> {
+    let preview = preview_turn_undo(root, baseline)?;
+    if preview.entries.is_empty() {
+        return Ok(0);
+    }
+    // Snapshot the pre-undo state so the undo can itself be undone. Best-effort:
+    // a snapshot failure must not block a recovery the user asked for.
+    commit_best_effort(root, "Before turn undo");
+
+    let _lock = git_lock().lock().map_err(|_| "git snapshot lock poisoned".to_string())?;
+    let base_tree = rev_parse(root, &format!("{baseline}^{{tree}}"))
+        .ok_or_else(|| "the turn's starting snapshot is no longer available".to_string())?;
+
+    let mut changed = 0usize;
+    for entry in &preview.entries {
+        // Every path came from git's own diff output against the workspace root,
+        // so it is already workspace-relative with forward slashes; join maps it
+        // to the host path. Reject any path that would escape (defense in depth).
+        let rel = Path::new(&entry.path);
+        if rel.components().any(|c| !matches!(c, Component::Normal(_))) {
+            return Err(format!("refusing to undo an out-of-workspace path: {}", entry.path));
+        }
+        let abs = root.join(rel);
+        match entry.status.as_str() {
+            "remove" => {
+                // The turn created this file; undo deletes it. A missing file
+                // (user already removed it) is fine — the end state matches.
+                match std::fs::remove_file(&abs) {
+                    Ok(()) => changed += 1,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(format!("could not remove {}: {e}", entry.path)),
+                }
+            }
+            // "restore" or "recreate": write the baseline blob back to disk.
+            _ => {
+                let blob = capture(root, &["cat-file", "blob", &format!("{base_tree}:{}", entry.path)])
+                    .map_err(|e| format!("could not read baseline of {}: {e}", entry.path))?;
+                if let Some(parent) = abs.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| format!("could not create dir for {}: {e}", entry.path))?;
+                }
+                std::fs::write(&abs, &blob)
+                    .map_err(|e| format!("could not restore {}: {e}", entry.path))?;
+                changed += 1;
+            }
+        }
+    }
+    Ok(changed)
 }
 
 // ---------------------------------------------------------------------------
@@ -804,6 +964,31 @@ pub fn watch_workspace(root: &Path) {
 pub fn commit_workspace_snapshot(app: AppHandle, message: String) -> Result<bool, String> {
     let root = crate::runtime::workspace_dir(&app)?;
     commit(&root, &message)
+}
+
+/// The current snapshot tip for the active workspace, recorded by the frontend
+/// at turn start as the baseline for a later turn undo. `null` when nothing has
+/// been snapshotted yet (a brand-new, unchanged workspace).
+#[tauri::command(async)]
+pub fn workspace_snapshot_tip(app: AppHandle) -> Result<Option<String>, String> {
+    let root = crate::runtime::workspace_dir(&app)?;
+    Ok(snapshot_tip(&root))
+}
+
+/// Preview which files an undo back to `baseline` would change, for the
+/// confirmation dialog. Reads only — no file is touched.
+#[tauri::command(async)]
+pub fn preview_turn_undo_cmd(app: AppHandle, baseline: String) -> Result<TurnUndoPreview, String> {
+    let root = crate::runtime::workspace_dir(&app)?;
+    preview_turn_undo(&root, &baseline)
+}
+
+/// Roll the workspace's tracked files back to `baseline` for exactly the files
+/// the turn touched. Takes a safety snapshot first. Returns the count changed.
+#[tauri::command(async)]
+pub fn undo_turn_cmd(app: AppHandle, baseline: String) -> Result<usize, String> {
+    let root = crate::runtime::workspace_dir(&app)?;
+    undo_turn(&root, &baseline)
 }
 
 #[cfg(test)]
@@ -1092,6 +1277,128 @@ mod tests {
         assert_eq!(rev_parse(&root, &legacy_ref), Some(legacy_tip.clone()));
         super::run(&root, &["merge-base", "--is-ancestor", &legacy_tip, &new_tip]).unwrap();
 
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    // --- Turn undo ---------------------------------------------------------
+
+    /// Set up a workspace with one snapshotted turn (a baseline), then a second
+    /// turn that modifies one file, creates another, and deletes a third.
+    /// Returns (root, baseline tip). Panics-skips if git is unavailable.
+    fn undo_fixture(tag: &str) -> Option<(std::path::PathBuf, String)> {
+        if !git_available() {
+            eprintln!("git unavailable; skipping turn-undo test");
+            return None;
+        }
+        let root = std::env::temp_dir().join(format!("zerowall-undo-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        // Turn 1: three files, snapshotted → this is the pre-turn-2 baseline.
+        fs::write(root.join("keep.txt"), "original\n").unwrap();
+        fs::write(root.join("gone.txt"), "delete me later\n").unwrap();
+        assert!(commit(&root, "turn 1").unwrap());
+        let baseline = super::snapshot_tip(&root).expect("baseline exists");
+        // Turn 2: modify keep, delete gone, create new. Snapshotted as the tip.
+        fs::write(root.join("keep.txt"), "changed by the turn\n").unwrap();
+        fs::remove_file(root.join("gone.txt")).unwrap();
+        fs::write(root.join("new.txt"), "created by the turn\n").unwrap();
+        assert!(commit(&root, "turn 2").unwrap());
+        Some((root, baseline))
+    }
+
+    #[test]
+    fn preview_classifies_modified_created_and_deleted_files() {
+        let Some((root, baseline)) = undo_fixture("preview") else { return };
+        let preview = super::preview_turn_undo(&root, &baseline).unwrap();
+        let by_path: std::collections::HashMap<&str, &str> = preview
+            .entries
+            .iter()
+            .map(|e| (e.path.as_str(), e.status.as_str()))
+            .collect();
+        assert_eq!(by_path.get("keep.txt"), Some(&"restore"));
+        assert_eq!(by_path.get("new.txt"), Some(&"remove"));
+        assert_eq!(by_path.get("gone.txt"), Some(&"recreate"));
+        assert_eq!(preview.entries.len(), 3);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn undo_restores_modified_removes_created_and_recreates_deleted() {
+        let Some((root, baseline)) = undo_fixture("apply") else { return };
+        let changed = super::undo_turn(&root, &baseline).unwrap();
+        assert_eq!(changed, 3);
+        // The modified file is back to its baseline content…
+        assert_eq!(fs::read_to_string(root.join("keep.txt")).unwrap(), "original\n");
+        // …the turn's new file is gone…
+        assert!(!root.join("new.txt").exists());
+        // …and the deleted file is recreated with its baseline content.
+        assert_eq!(fs::read_to_string(root.join("gone.txt")).unwrap(), "delete me later\n");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn undo_takes_a_safety_snapshot_so_it_is_itself_recoverable() {
+        let Some((root, baseline)) = undo_fixture("safety") else { return };
+        let post_turn_tip = super::snapshot_tip(&root).unwrap();
+        // A live edit not yet snapshotted: the pre-undo safety snapshot captures
+        // it, so it advances the tip past the post-turn state before undo runs.
+        fs::write(root.join("keep.txt"), "unsnapshotted work at undo time\n").unwrap();
+        super::undo_turn(&root, &baseline).unwrap();
+        let after = super::snapshot_tip(&root).unwrap();
+        // The safety snapshot added a commit (the tip moved)…
+        assert_ne!(after, post_turn_tip);
+        // …and the post-turn tip is still reachable from it, so the turn's work
+        // was never lost — a redo can restore back to post_turn_tip.
+        super::run(&root, &["merge-base", "--is-ancestor", &post_turn_tip, &after]).unwrap();
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn undo_of_an_unchanged_workspace_is_a_no_op() {
+        if !git_available() {
+            eprintln!("git unavailable; skipping turn-undo test");
+            return;
+        }
+        let root = std::env::temp_dir().join(format!("zerowall-undo-noop-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("a.txt"), "x\n").unwrap();
+        assert!(commit(&root, "base").unwrap());
+        let baseline = super::snapshot_tip(&root).unwrap();
+        // No changes since the baseline → preview empty, undo changes nothing.
+        assert!(super::preview_turn_undo(&root, &baseline).unwrap().entries.is_empty());
+        assert_eq!(super::undo_turn(&root, &baseline).unwrap(), 0);
+        assert_eq!(fs::read_to_string(root.join("a.txt")).unwrap(), "x\n");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn undo_reverts_uncommitted_edits_made_after_the_last_snapshot() {
+        let Some((root, baseline)) = undo_fixture("uncommitted") else { return };
+        // An edit made AFTER the post-turn snapshot (never itself snapshotted)
+        // is still staged into the diff, so undo reverts it to the baseline too.
+        fs::write(root.join("keep.txt"), "live edit not yet snapshotted\n").unwrap();
+        let preview = super::preview_turn_undo(&root, &baseline).unwrap();
+        assert!(preview.entries.iter().any(|e| e.path == "keep.txt" && e.status == "restore"));
+        super::undo_turn(&root, &baseline).unwrap();
+        assert_eq!(fs::read_to_string(root.join("keep.txt")).unwrap(), "original\n");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn preview_errors_when_the_baseline_snapshot_is_gone() {
+        if !git_available() {
+            eprintln!("git unavailable; skipping turn-undo test");
+            return;
+        }
+        let root = std::env::temp_dir().join(format!("zerowall-undo-badbase-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("a.txt"), "x\n").unwrap();
+        assert!(commit(&root, "base").unwrap());
+        // A garbage baseline id (never a real snapshot) is a clear error, not an
+        // empty preview that would look like "nothing to undo".
+        assert!(super::preview_turn_undo(&root, "0000000000000000000000000000000000000000").is_err());
         let _ = fs::remove_dir_all(&root);
     }
 }

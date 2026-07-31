@@ -798,6 +798,41 @@ export async function commitWorkspaceSnapshot(message: string): Promise<boolean>
   return invoke<boolean>("commit_workspace_snapshot", { message });
 }
 
+/** The current workspace snapshot tip, recorded at turn start as the baseline
+ *  for a later turn undo. `null` when nothing has been snapshotted yet, or off
+ *  the desktop (turn undo is desktop-only). */
+export async function workspaceSnapshotTip(): Promise<string | null> {
+  if (!isTauri) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string | null>("workspace_snapshot_tip", {});
+}
+
+/** What undo of the turn would change to each file: revert an in-place edit,
+ *  delete a file the turn created, or bring back one the turn deleted. */
+export type TurnUndoStatus = "restore" | "remove" | "recreate";
+export interface TurnUndoEntry {
+  path: string;
+  status: TurnUndoStatus;
+}
+export interface TurnUndoPreview {
+  entries: TurnUndoEntry[];
+}
+
+/** Preview which files an undo back to `baseline` would change (read-only). */
+export async function previewTurnUndo(baseline: string): Promise<TurnUndoPreview> {
+  if (!isTauri) return { entries: [] };
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<TurnUndoPreview>("preview_turn_undo_cmd", { baseline });
+}
+
+/** Roll the workspace's files back to `baseline` for exactly the files the turn
+ *  touched (takes a safety snapshot first). Returns the count of files changed. */
+export async function undoTurn(baseline: string): Promise<number> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<number>("undo_turn_cmd", { baseline });
+}
+
 /** Create a new dated folder under the base workspace and switch to it. */
 export async function newDatedWorkspace(name: string): Promise<string> {
   if (!isTauri) throw new Error("not running in the desktop app");

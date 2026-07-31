@@ -41,6 +41,9 @@ import { SessionFilesPane } from "@/app/routes/FilesPage";
 import { RunsPane } from "@/app/routes/RunsPage";
 import { ReviewPane } from "@/app/routes/ReviewPage";
 import { buildReviewPrompt, buildAutoFixPrompt } from "@/lib/review";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { toast } from "@/lib/toast";
+import type { TurnUndoEntry } from "@/lib/tauri";
 import { cn } from "@/lib/cn";
 
 /**
@@ -125,6 +128,9 @@ export function SessionView({
   const interrupt = useRuntimeStore((s) => s.interrupt);
   const editMessage = useRuntimeStore((s) => s.editMessage);
   const revertMessage = useRuntimeStore((s) => s.revertMessage);
+  const previewLastTurnUndo = useRuntimeStore((s) => s.previewLastTurnUndo);
+  const undoLastTurn = useRuntimeStore((s) => s.undoLastTurn);
+  const turnUndoBaseline = useRuntimeStore((s) => s.turnUndoBaseline);
   const setComposerDraft = useUiStore((s) => s.setComposerDraft);
   const approvalMode = useRuntimeStore((s) => s.approvalMode);
   const setApprovalMode = useRuntimeStore((s) => s.setApprovalMode);
@@ -218,8 +224,36 @@ export function SessionView({
       onAutoFix: webReadOnly
         ? undefined
         : (finding) => void sendPrompt(buildAutoFixPrompt(finding), sid ?? undefined),
+      // Undo the last turn's file changes. Desktop-only (git plumbing lives in
+      // the Tauri host), live session, and only when a pre-turn baseline was
+      // captured. Opens a preview → confirm dialog rather than acting inline.
+      onUndoLastTurn:
+        webReadOnly || isGatewayWeb || !eid || !turnUndoBaseline[eid]
+          ? undefined
+          : () => {
+              void previewLastTurnUndo(eid).then((entries) => {
+                if (entries.length === 0) {
+                  toast.success(t("message.undoNothing"));
+                  return;
+                }
+                setPendingUndo(entries);
+              });
+            },
     }),
-    [openArtifact, sendPrompt, editMessage, revertMessage, setComposerDraft, sid, pinEphemeral, webReadOnly],
+    [
+      openArtifact,
+      sendPrompt,
+      editMessage,
+      revertMessage,
+      setComposerDraft,
+      sid,
+      eid,
+      pinEphemeral,
+      webReadOnly,
+      turnUndoBaseline,
+      previewLastTurnUndo,
+      t,
+    ],
   );
   const onEvaluate = (expr: string) =>
     void sendPrompt(`Evaluate in the notebook kernel:\n\`\`\`python\n${expr}\n\`\`\``, sid ?? undefined);
@@ -320,6 +354,9 @@ export function SessionView({
   const sessionDir = sessions.find((s) => s.id === eid)?.directory ?? workspace;
 
   const [hasRuns, setHasRuns] = useState(false);
+  // The undo confirmation: null when closed; otherwise the previewed file
+  // changes rolling back the last turn would make (shown in the dialog body).
+  const [pendingUndo, setPendingUndo] = useState<TurnUndoEntry[] | null>(null);
   useEffect(() => {
     if (!eid) return setHasRuns(false);
     let cancelled = false;
@@ -821,6 +858,23 @@ export function SessionView({
         >
           {inspectorNode}
         </RightPane>
+      )}
+
+      {pendingUndo && (
+        <ConfirmDialog
+          title={t("message.undoTitle")}
+          body={t("message.undoBody", { count: pendingUndo.length })}
+          confirmLabel={t("message.undoConfirm")}
+          onConfirm={() => {
+            setPendingUndo(null);
+            if (!eid) return;
+            void undoLastTurn(eid).then((n) => {
+              if (n === null) return;
+              toast.success(t("message.undoDone", { count: n }));
+            });
+          }}
+          onCancel={() => setPendingUndo(null)}
+        />
       )}
     </div>
   );

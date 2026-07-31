@@ -346,6 +346,12 @@
       "send": "Send"
     },
     "revert": "Revert",
+    "undo": "Undo this turn's file changes",
+    "undoTitle": "Undo the last turn's file changes?",
+    "undoBody": "This rolls the workspace back to before the last turn, affecting {{count}} file(s). A safety snapshot is taken first, so this itself can be undone.",
+    "undoConfirm": "Undo file changes",
+    "undoNothing": "The last turn made no file changes to undo.",
+    "undoDone": "Rolled back {{count}} file(s) from the last turn.",
     "confirm": {
       "title": "Discard everything after this?",
       "body": "This rolls the conversation back to this message and discards it and every message after it, along with the file changes those turns made. This can't be undone.",

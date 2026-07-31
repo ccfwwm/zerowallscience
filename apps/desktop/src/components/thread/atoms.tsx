@@ -266,9 +266,14 @@ export const UserAttachments = memo(function UserAttachments({
 export const AgentMessage = memo(function AgentMessage({
   markdown,
   onOpenArtifact,
+  onUndoTurn,
 }: {
   markdown: string;
   onOpenArtifact?: (a: ArtifactBlock) => void;
+  /** When present, show an Undo button that rolls back this turn's workspace
+   *  file changes. The parent only passes it for the latest reply in a live,
+   *  desktop session — so its presence is the gate. */
+  onUndoTurn?: () => void;
 }) {
   const { t } = useTranslation(["session", "common"]);
   const [copied, setCopied] = useState(false);
@@ -338,6 +343,16 @@ export const AgentMessage = memo(function AgentMessage({
         >
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
+        {onUndoTurn && (
+          <button
+            onClick={onUndoTurn}
+            title={t("message.undo")}
+            aria-label={t("message.undo")}
+            className="rounded p-1 text-muted hover:bg-surface-2 hover:text-text"
+          >
+            <RotateCcw size={14} />
+          </button>
+        )}
       </div>
     </div>
   );

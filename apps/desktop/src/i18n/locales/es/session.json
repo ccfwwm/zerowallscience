@@ -346,6 +346,12 @@
       "send": "Enviar"
     },
     "revert": "Revertir",
+    "undo": "Deshacer los cambios de archivos de este turno",
+    "undoTitle": "¿Deshacer los cambios de archivos del último turno?",
+    "undoBody": "Esto revierte el espacio de trabajo al estado anterior al último turno, afectando a {{count}} archivo(s). Primero se toma una instantánea de seguridad, por lo que esto también se puede deshacer.",
+    "undoConfirm": "Deshacer cambios de archivos",
+    "undoNothing": "El último turno no realizó cambios de archivos que deshacer.",
+    "undoDone": "Se revirtieron {{count}} archivo(s) del último turno.",
     "confirm": {
       "title": "¿Descartar todo lo posterior?",
       "body": "Esto revierte la conversación a este mensaje y lo descarta junto con todos los mensajes posteriores y los cambios de archivos que hicieron esos turnos. No se puede deshacer.",

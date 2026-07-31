@@ -26,6 +26,9 @@ export interface BlockHandlers {
    *  the live session (desktop, not read-only web); its absence hides the
    *  reviewer card's Auto-fix button. */
   onAutoFix?: (finding: ReviewFinding) => void;
+  /** Undo the last turn's workspace file changes. Present only in the live
+   *  desktop session; rendered only beside the latest agent reply. */
+  onUndoLastTurn?: () => void;
 }
 
 export function renderBlock(
@@ -35,6 +38,8 @@ export function renderBlock(
   liveReasoningIndex?: number,
   /** The session these blocks belong to — see BlockList's prop of the same name. */
   sessionId?: string | null,
+  /** Global index of the latest agent block; only that one gets the Undo action. */
+  lastAgentIndex?: number,
 ) {
   switch (block.kind) {
     case "user":
@@ -49,7 +54,14 @@ export function renderBlock(
     case "user-attachments":
       return <UserAttachments key={i} block={block} onOpen={handlers?.onArtifactOpen} />;
     case "agent":
-      return <AgentMessage key={i} markdown={block.markdown} onOpenArtifact={handlers?.onArtifactOpen} />;
+      return (
+        <AgentMessage
+          key={i}
+          markdown={block.markdown}
+          onOpenArtifact={handlers?.onArtifactOpen}
+          onUndoTurn={i === lastAgentIndex ? handlers?.onUndoLastTurn : undefined}
+        />
+      );
     case "reasoning":
       return <ReasoningRow key={i} block={block} streaming={i === liveReasoningIndex} />;
     case "step-summary":
@@ -99,6 +111,9 @@ export const BlockList = memo(function BlockList({
 }) {
   // Runs of quiet tool steps render as one collapsible group (Codex-style);
   // everything else — text, artifacts, prominent tool cards — on its own.
+  // The Undo action attaches to the last agent reply only.
+  let lastAgentIndex = -1;
+  for (let i = 0; i < blocks.length; i++) if (blocks[i].kind === "agent") lastAgentIndex = i;
   return (
     <>
       {groupToolBlocks(blocks).map((item) =>
@@ -110,7 +125,7 @@ export const BlockList = memo(function BlockList({
             liveReasoningIndex={liveReasoningIndex}
           />
         ) : (
-          renderBlock(item.block, item.index, handlers, liveReasoningIndex, sessionId)
+          renderBlock(item.block, item.index, handlers, liveReasoningIndex, sessionId, lastAgentIndex)
         ),
       )}
     </>

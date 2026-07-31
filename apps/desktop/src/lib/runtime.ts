@@ -38,6 +38,9 @@ import bookmarkerAgent from "../../../../runtime/agents/bookmarker.json";
 import {
   detectTools as probeTools,
   commitWorkspaceSnapshot,
+  workspaceSnapshotTip,
+  previewTurnUndo,
+  undoTurn,
   createProject as createProjectFolder,
   importProject as importProjectFolder,
   setProjectPinned as setProjectPinnedCmd,
@@ -58,6 +61,7 @@ import {
   type ProjectInfo,
   type ProxyMode,
   type ToolStatus,
+  type TurnUndoEntry,
 } from "./tauri";
 import { isGatewayWeb, gatewayToken, gatewayOrigin } from "./webMode";
 import { AcpRuntime } from "./acp-runtime";
@@ -376,6 +380,19 @@ interface RuntimeState {
    *  succeeded (the caller prefills the composer with the message on success).
    *  Destructive: callers must confirm first. */
   revertMessage: (messageID: string, sessionId?: string) => Promise<boolean>;
+  /** The pre-turn snapshot tip captured for each session at its last turn start
+   *  — the baseline a turn undo restores back to. Absent until a turn has run in
+   *  this app session, or off the desktop (turn undo is desktop-only). */
+  turnUndoBaseline: Record<string, string>;
+  /** Preview which workspace files an undo of the session's last turn would
+   *  change, for the confirmation dialog. Empty when there is no baseline (no
+   *  turn ran yet) or nothing changed. Desktop-only; `[]` on web. */
+  previewLastTurnUndo: (sessionId?: string) => Promise<TurnUndoEntry[]>;
+  /** Roll the workspace back to the session's pre-turn baseline for exactly the
+   *  files the last turn touched (a safety snapshot is taken first). Returns the
+   *  count of files changed, or null when there was no baseline to undo to.
+   *  Destructive: callers must confirm via previewLastTurnUndo first. */
+  undoLastTurn: (sessionId?: string) => Promise<number | null>;
   /** Check every session holding a running lock against the server: if its
    *  turn is actually over (idle was missed — SSE reconnect windows, the
    *  directory-scoped event stream), reload the missed history and unlock. */
@@ -800,6 +817,18 @@ async function performTurn(
     const sid = id;
     interruptedSessions.delete(sid); // a fresh turn folds its events normally
     void logDebug(`turn → ${sid}`);
+    // Capture the workspace snapshot tip BEFORE the turn writes anything, as the
+    // baseline a later "undo this turn" restores back to (desktop-only; no-op on
+    // web). Best-effort and fire-and-forget: the tip read is a fast git ref
+    // lookup, and a failure just means Undo is unavailable for this turn — it
+    // must never delay or block the send.
+    if (isTauri) {
+      void workspaceSnapshotTip()
+        .then((tip) => {
+          if (tip) set((s) => ({ turnUndoBaseline: { ...s.turnUndoBaseline, [sid]: tip } }));
+        })
+        .catch(() => {});
+    }
     // A fresh turn restarts step counting (the SDK resets its own counter on idle).
     if (get().stepCounts[sid])
       set((s) => {
@@ -1404,6 +1433,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   sessions: [],
   currentId: null,
   threads: {},
+  turnUndoBaseline: {},
   skills: [],
   agents: [],
   commands: [],
@@ -2471,6 +2501,42 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   },
 
   revertMessage: async (messageID, sessionId) => revertToMessage(set, get, messageID, sessionId),
+
+  previewLastTurnUndo: async (sessionId) => {
+    const sid = sessionId ?? get().currentId;
+    if (!sid) return [];
+    const baseline = get().turnUndoBaseline[sid];
+    if (!baseline) return [];
+    try {
+      const preview = await previewTurnUndo(baseline);
+      return preview.entries;
+    } catch {
+      return [];
+    }
+  },
+
+  undoLastTurn: async (sessionId) => {
+    const sid = sessionId ?? get().currentId;
+    if (!sid) return null;
+    const baseline = get().turnUndoBaseline[sid];
+    if (!baseline) return null;
+    let count: number;
+    try {
+      count = await undoTurn(baseline);
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : "Failed to undo the last turn." });
+      return null;
+    }
+    // The turn's file changes are rolled back; drop the baseline so the Undo
+    // action retires (a fresh one is captured on the next turn). A safety
+    // snapshot was taken inside undoTurn, so this stays recoverable.
+    set((s) => {
+      const rest = { ...s.turnUndoBaseline };
+      delete rest[sid];
+      return { turnUndoBaseline: rest };
+    });
+    return count;
+  },
 
   reconcileRunning: async () => {
     const c = client;

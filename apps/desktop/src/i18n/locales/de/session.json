@@ -346,6 +346,12 @@
       "send": "Senden"
     },
     "revert": "Zurücksetzen",
+    "undo": "Dateiänderungen dieser Runde rückgängig machen",
+    "undoTitle": "Dateiänderungen der letzten Runde rückgängig machen?",
+    "undoBody": "Dadurch wird der Arbeitsbereich auf den Zustand vor der letzten Runde zurückgesetzt; {{count}} Datei(en) sind betroffen. Zuvor wird ein Sicherungs-Snapshot erstellt, sodass auch dies rückgängig gemacht werden kann.",
+    "undoConfirm": "Dateiänderungen rückgängig machen",
+    "undoNothing": "Die letzte Runde hat keine Dateiänderungen vorgenommen.",
+    "undoDone": "{{count}} Datei(en) aus der letzten Runde zurückgesetzt.",
     "confirm": {
       "title": "Alles danach verwerfen?",
       "body": "Dies setzt die Unterhaltung auf diese Nachricht zurück und verwirft sie sowie alle nachfolgenden Nachrichten samt der in diesen Runden vorgenommenen Dateiänderungen. Das lässt sich nicht rückgängig machen.",

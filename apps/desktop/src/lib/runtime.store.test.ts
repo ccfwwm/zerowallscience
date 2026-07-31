@@ -6,6 +6,13 @@ const mocks = vi.hoisted(() => ({
   newDatedWorkspace: vi.fn(async (name: string) => `/ws/${name}`),
   setWorkspace: vi.fn(async (path: string) => path),
   commitWorkspaceSnapshot: vi.fn(async () => false),
+  /** The snapshot tip captured as a turn-undo baseline; null = none yet. */
+  snapshotTip: null as string | null,
+  workspaceSnapshotTip: vi.fn(async () => mocks.snapshotTip),
+  /** Entries previewTurnUndo returns for the confirm dialog. */
+  turnUndoPreview: [] as { path: string; status: string }[],
+  previewTurnUndo: vi.fn(async () => ({ entries: mocks.turnUndoPreview })),
+  undoTurn: vi.fn(async () => mocks.turnUndoPreview.length),
   kernelReset: vi.fn(async () => {}),
   /** Number of connect() attempts that fail before one succeeds. */
   failConnects: 0,
@@ -84,6 +91,9 @@ vi.mock("./tauri", () => ({
   newDatedWorkspace: mocks.newDatedWorkspace,
   markSession: async () => {},
   commitWorkspaceSnapshot: mocks.commitWorkspaceSnapshot,
+  workspaceSnapshotTip: mocks.workspaceSnapshotTip,
+  previewTurnUndo: mocks.previewTurnUndo,
+  undoTurn: mocks.undoTurn,
   getApprovalMode: async () => mocks.approvalMode,
   setApprovalMode: mocks.setApprovalMode,
   runtimePassword: async () => "pw-test",
@@ -275,6 +285,8 @@ beforeEach(async () => {
   mocks.failMessages = false;
   mocks.failReverts = 0;
   mocks.approvalMode = "approve";
+  mocks.snapshotTip = null;
+  mocks.turnUndoPreview = [];
   // A connected install: one provider, one model, and it IS the default. The
   // fixture used to leave both empty, which meant every send test exercised a
   // turn with model=null — the state the app now refuses, because omitting the
@@ -305,6 +317,7 @@ beforeEach(async () => {
     selectedAgent: "general",
     // Every test starts on OpenCode; the ACP factory tests opt in explicitly.
     acpProfileId: null,
+    turnUndoBaseline: {},
   });
   await useRuntimeStore.getState().connect();
   expect(useRuntimeStore.getState().status).toBe("ready");
@@ -948,6 +961,53 @@ describe("edit a past user message", () => {
     const ok = await useRuntimeStore.getState().revertMessage("msg_1");
     expect(ok).toBe(false);
     expect(useRuntimeStore.getState().threads["ses_new"].blocks).toEqual(before);
+  });
+});
+
+// Turn undo: a pre-turn snapshot tip is captured as a baseline when a turn
+// starts; previewLastTurnUndo/undoLastTurn diff and roll back to it.
+describe("undo the last turn's file changes", () => {
+  it("captures the snapshot tip as a baseline when a turn starts", async () => {
+    mocks.snapshotTip = "abc123";
+    await useRuntimeStore.getState().sendPrompt("hi");
+    // Baseline capture is fire-and-forget; let the microtask settle.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mocks.workspaceSnapshotTip).toHaveBeenCalled();
+    expect(useRuntimeStore.getState().turnUndoBaseline["ses_new"]).toBe("abc123");
+  });
+
+  it("previewLastTurnUndo returns the changed entries for the session", async () => {
+    mocks.snapshotTip = "base1";
+    mocks.turnUndoPreview = [{ path: "a.py", status: "restore" }];
+    await useRuntimeStore.getState().sendPrompt("hi");
+    await new Promise((r) => setTimeout(r, 0));
+    const entries = await useRuntimeStore.getState().previewLastTurnUndo("ses_new");
+    expect(mocks.previewTurnUndo).toHaveBeenCalledWith("base1");
+    expect(entries).toEqual([{ path: "a.py", status: "restore" }]);
+  });
+
+  it("previewLastTurnUndo returns [] when no baseline was captured", async () => {
+    const entries = await useRuntimeStore.getState().previewLastTurnUndo("ses_new");
+    expect(entries).toEqual([]);
+    expect(mocks.previewTurnUndo).not.toHaveBeenCalled();
+  });
+
+  it("undoLastTurn rolls back and clears the baseline", async () => {
+    mocks.snapshotTip = "base1";
+    mocks.turnUndoPreview = [{ path: "a.py", status: "restore" }];
+    await useRuntimeStore.getState().sendPrompt("hi");
+    await new Promise((r) => setTimeout(r, 0));
+    const n = await useRuntimeStore.getState().undoLastTurn("ses_new");
+    expect(mocks.undoTurn).toHaveBeenCalledWith("base1");
+    expect(n).toBe(1);
+    // The baseline retires after undo — the action is one-shot per turn.
+    expect(useRuntimeStore.getState().turnUndoBaseline["ses_new"]).toBeUndefined();
+  });
+
+  it("undoLastTurn returns null (and does nothing) with no baseline", async () => {
+    const n = await useRuntimeStore.getState().undoLastTurn("ses_new");
+    expect(n).toBeNull();
+    expect(mocks.undoTurn).not.toHaveBeenCalled();
   });
 });
 

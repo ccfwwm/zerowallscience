@@ -346,6 +346,12 @@
       "send": "Envoyer"
     },
     "revert": "Revenir",
+    "undo": "Annuler les modifications de fichiers de ce tour",
+    "undoTitle": "Annuler les modifications de fichiers du dernier tour ?",
+    "undoBody": "Cela ramène l'espace de travail à l'état précédant le dernier tour, affectant {{count}} fichier(s). Un instantané de sécurité est pris au préalable, afin que cette action puisse elle-même être annulée.",
+    "undoConfirm": "Annuler les modifications de fichiers",
+    "undoNothing": "Le dernier tour n'a apporté aucune modification de fichier à annuler.",
+    "undoDone": "{{count}} fichier(s) rétabli(s) depuis le dernier tour.",
     "confirm": {
       "title": "Tout supprimer après ceci ?",
       "body": "Cela ramène la conversation à ce message et le supprime, ainsi que tous les messages suivants et les modifications de fichiers effectuées lors de ces tours. Action irréversible.",
