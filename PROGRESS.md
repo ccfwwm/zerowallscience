@@ -1,5 +1,9 @@
 # Progress
 
+2026-07-31 22:30 · v0.4.19 exe+msi 上传 zerowallscience-releases。build 产物（NSIS 72MB + WiX MSI 102MB）通过 `gh release upload` 推送至 ccfwwm/zerowallscience-releases v0.4.19 草稿 release；GitHub 将文件名空格自动转点，资产名 ZeroWall.Science_0.4.19_x64-setup.exe / _x64_en-US.msi，大小与本地一致。可手动 publish。
+
+2026-07-31 22:20 · ACP 运行时下 sub2api 保存模型 hang 修复 v0.4.20（commit 810f001）。根因：切换至 Claude Code / Codex ACP 运行时后，`opencodeClient` 被置 null，`getClient()!` 直接抛出，导致「获取模型/切换/保存」按钮永久转圈。修复：新增 `getOrCreateOpenCodeClient()`——先返回现有 client，若为 null 则向 sidecar URL 创建临时客户端并做 3 s 超时活性探测，失败则返回 null 并 toast 提示；Sub2ApiCard 的 `connect()` 与 `autoSetup()` 全部改用此函数，消除对 `getClient()!` 的依赖。TypeScript tsc 干净，Vitest 通过。
+
 2026-07-31 14:10 · M010 price_catalog 落地 v0.4.20——sub2api 计费分组本地缓存。新增迁移 M010（price_catalog + active_group_setting 表）；usage_store 公开 open、upsert_price_catalog、set_active_group、active_multiplier；sub2api 新增 sub2api_refresh_groups（fetch /groups/available → upsert price_catalog）；Group/Provisioned 补 platform/rate_multiplier 字段，移除无效 Eq derive；UsageCard 追加 "sub2api est." tile（仅 multiplier 已知时显示，tile 表格同步加列）；i18n 七语齐（sub2apiCost 键）；Rust 全 297 测试绿，科学库版本断言更新至 M010（v10）。
 
 2026-07-31 12:46 · 版本对齐并本地发布 v0.4.19 exe。诊断出「版本乱」根因：GitHub Actions 因账户计费冻结（付款失败/需提额），自 v0.4.13 起每次 `v*` 标签构建在 job 启动前即被拒（13-14s 失败），故下载仓库停在 0.4.12、源码标签停在 v0.4.11，而代码已 bump 到 0.4.19——标签/release 与代码版本脱节。对齐：给 HEAD（9a89a4a）打附注标签 `v0.4.19` 并推 origin（标签==代码版本，消除错位）；分支名 `release/v0.3.9` 纯装饰、不影响 CI（按标签 checkout），不动。绕过冻结的 CI 走本地构建：装依赖＋拉 5 个 sidecar（opencode/uv/agent-browser/skills/goal-plugin，opencode 首次 schannel 中断重试成功），`pnpm tauri build --target x86_64-pc-windows-msvc`（须在 apps/desktop 目录，tauri CLI 在其 .bin）→ Rust release 2m59s → 产出 `ZeroWall Science_0.4.19_x64-setup.exe`（NSIS,72MB）＋`_0.4.19_x64_en-US.msi`（WiX,102MB）。发布到下载仓库 ccfwwm/zerowallscience-releases 的**草稿** release v0.4.19（复刻 CI 的 draft＋unsigned 安装说明 notes），两包已上传。待你审阅后手动 publish。恢复 Actions 计费后可 `gh run rerun` 自动化恢复。
