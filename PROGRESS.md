@@ -1,5 +1,7 @@
 # Progress
 
+2026-07-31 23:59 · v0.4.20 发布完成（commit 96ad55b，tag v0.4.20）。修复 ACP 运行时切换四个根因：best-effort key 注入、Windows cmd wrap、fail-fast connect、ConnBadge 动态 runtime 标签；两个测试 mock 修复；exe 72MB + MSI 102MB 上传至 ccfwwm/zerowallscience-releases v0.4.20 并已 publish。
+
 2026-07-31 22:30 · v0.4.19 exe+msi 上传 zerowallscience-releases。build 产物（NSIS 72MB + WiX MSI 102MB）通过 `gh release upload` 推送至 ccfwwm/zerowallscience-releases v0.4.19 草稿 release；GitHub 将文件名空格自动转点，资产名 ZeroWall.Science_0.4.19_x64-setup.exe / _x64_en-US.msi，大小与本地一致。可手动 publish。
 
 2026-07-31 22:20 · ACP 运行时下 sub2api 保存模型 hang 修复 v0.4.20（commit 810f001）。根因：切换至 Claude Code / Codex ACP 运行时后，`opencodeClient` 被置 null，`getClient()!` 直接抛出，导致「获取模型/切换/保存」按钮永久转圈。修复：新增 `getOrCreateOpenCodeClient()`——先返回现有 client，若为 null 则向 sidecar URL 创建临时客户端并做 3 s 超时活性探测，失败则返回 null 并 toast 提示；Sub2ApiCard 的 `connect()` 与 `autoSetup()` 全部改用此函数，消除对 `getClient()!` 的依赖。TypeScript tsc 干净，Vitest 通过。
