@@ -24,9 +24,10 @@ import type {
  * runtime" in general. Callers that need them go through the concrete
  * `OpenCodeClient` (e.g. `getClient()`), which `implements AgentRuntime`.
  *
- * See `docs/rfc/agent-runtime.md` for the rationale. The sole implementation
- * today is `OpenCodeClient`; no second runtime is planned. This is Phase 1 —
- * formalize the seam, change no behavior.
+ * See `docs/rfc/agent-runtime.md` for the rationale. `OpenCodeClient` is the
+ * default implementation (HTTP/SSE); `AcpRuntime` is the second, bridging
+ * external ACP agents (Codex, Claude Code) over the Tauri host. Both implement
+ * this interface so the app UI is agnostic to which runtime is active.
  */
 /**
  * An inline file attached to a prompt turn, carried to the model as a real

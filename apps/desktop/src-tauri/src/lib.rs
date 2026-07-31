@@ -2,6 +2,7 @@
 // bundled OpenCode sidecar (isolated config/data + dedicated port; killed on exit).
 mod artifact_file;
 mod annotation_store;
+mod acp_consumer;
 mod browser;
 mod debug_log;
 mod examples;
@@ -79,6 +80,7 @@ pub fn run() {
         .manage(runs::RunState::default())
         .manage(gateway::GatewayState::default())
         .manage(sub2api::Sub2ApiState::default())
+        .manage(acp_consumer::AcpConsumerState::default())
         .setup(|app| {
             // Watch the active workspace so changes made outside the app (an
             // external editor, a detached process) still enqueue a debounced
@@ -239,6 +241,13 @@ pub fn run() {
             usage_store::usage_record,
             usage_store::usage_by_session,
             usage_store::usage_by_workspace,
+            acp_consumer::acp_status,
+            acp_consumer::acp_launch,
+            acp_consumer::acp_prompt,
+            acp_consumer::acp_cancel,
+            acp_consumer::acp_shutdown,
+            acp_consumer::acp_reply_permission,
+            acp_consumer::acp_reply_exec,
             method_check::method_check_evaluate,
             bio_check::bio_check_evaluate,
             memory_store::create_memory,
@@ -285,6 +294,7 @@ pub fn run() {
                 runtime::kill_child(&app.state::<RuntimeState>());
                 kernel::kill_kernel(&app.state::<KernelState>());
                 jupyter::kill_jupyter(&app.state::<JupyterState>());
+                acp_consumer::kill_acp(&app.state::<acp_consumer::AcpConsumerState>());
                 gateway::shutdown(app.state::<gateway::GatewayState>().inner());
             }
         });

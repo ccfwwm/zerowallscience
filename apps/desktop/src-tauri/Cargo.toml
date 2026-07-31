@@ -37,6 +37,13 @@ reqwest = { version = "0.13", default-features = false, features = ["blocking", 
 # Watches the active workspace so file changes from outside the app (an external
 # editor, a detached process) still enqueue a debounced git snapshot.
 notify = "6"
+# The ACP client crate (MIT, original implementation over the Apache-2.0
+# agent-client-protocol SDK) — drives external coding agents (Codex, Claude
+# Code) as a switchable second runtime. See crates/zerowall-acp.
+zerowall-acp = { path = "crates/zerowall-acp" }
+# The ACP crate's public API returns futures channels (mpsc/oneshot); the
+# consumer (acp_consumer.rs) drives that receiver and answers permission oneshots.
+futures = "0.3"
 
 # Already in the tree via tao — used to re-pin the traffic lights (src/macos.rs).
 [target.'cfg(target_os = "macos")'.dependencies]

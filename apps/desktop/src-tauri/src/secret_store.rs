@@ -285,6 +285,55 @@ pub(crate) fn sidecar_secrets(app: &AppHandle) -> Result<InjectedSecrets, String
     injected_secrets(&KeyringCredentialStore, &registry)
 }
 
+/// Materialize a single provider's API key from the keychain, for injection into
+/// an ACP agent's spawn environment (e.g. `OPENAI_API_KEY`). Returns `None` if no
+/// credential is stored for `provider_id`.
+///
+/// A plain `api-key` credential yields its stored value verbatim. An OpenCode
+/// auth blob yields its `key` (api) or `access` (oauth) field, so a provider the
+/// user logged into via OpenCode can still back an ACP agent. Any other shape has
+/// no single-string key and returns `None` rather than guessing.
+///
+/// Values are read straight from the OS credential store and never persisted or
+/// logged (see AGENTS.md).
+pub(crate) fn provider_api_key(app: &AppHandle, provider_id: &str) -> Result<Option<String>, String> {
+    let registry = load_registry(&registry_path(app)?)?;
+    provider_api_key_from(&KeyringCredentialStore, &registry, provider_id)
+}
+
+/// Core of [`provider_api_key`], decoupled from the app handle for testing.
+fn provider_api_key_from(
+    store: &dyn CredentialStore,
+    registry: &SecretRegistry,
+    provider_id: &str,
+) -> Result<Option<String>, String> {
+    let reference = SecretReference::provider(provider_id)?;
+    let Some(entry) = registry
+        .entries
+        .iter()
+        .find(|item| item.id == provider_id && item.kind == SecretKind::Provider)
+    else {
+        return Ok(None);
+    };
+    let Some(value) = store.get(&reference.account)? else {
+        return Ok(None);
+    };
+    match entry.format {
+        SecretFormat::ApiKey => Ok(Some(value)),
+        SecretFormat::OpenCodeAuth => {
+            let parsed: serde_json::Value = serde_json::from_str(&value)
+                .map_err(|error| format!("provider auth for {provider_id} is invalid: {error}"))?;
+            let key = parsed
+                .get("key")
+                .or_else(|| parsed.get("access"))
+                .and_then(|value| value.as_str())
+                .map(str::to_owned);
+            Ok(key)
+        }
+        SecretFormat::Environment => Ok(None),
+    }
+}
+
 /// The environment the sidecar spawns with, materialized from the keychain.
 /// OpenCode 1.17.13 reads provider credentials from `OPENCODE_AUTH_CONTENT`
 /// (which takes precedence over any on-disk `auth.json`), and local MCP servers
@@ -416,6 +465,13 @@ fn validate_id(id: &str) -> Result<(), String> {
         return Err("secret id contains unsupported characters".to_owned());
     }
     Ok(())
+}
+
+/// Validate an environment variable name an ACP agent profile wants to set,
+/// enforcing the same shape and reserved-prefix policy as connector secrets so a
+/// profile can never shadow PATH/HOME/OPENCODE_*/ZEROWALL_*/XDG_*.
+pub(crate) fn validate_acp_env_name(name: &str) -> Result<(), String> {
+    validate_environment_name(name)
 }
 
 fn validate_environment_name(name: &str) -> Result<(), String> {
@@ -705,8 +761,9 @@ mod tests {
 
     use super::{
         import_auth_document, injected_secrets, load_registry, persist_secret,
-        plan_legacy_config_migration, remove_secret, save_registry, sidecar_environment,
-        CredentialStore, SecretKind, SecretReference, SecretRegistry,
+        plan_legacy_config_migration, provider_api_key_from, remove_secret, save_registry,
+        sidecar_environment, validate_acp_env_name, CredentialStore, SecretKind, SecretReference,
+        SecretRegistry,
     };
 
     #[derive(Default)]
@@ -746,6 +803,56 @@ mod tests {
             backend.get(&reference.account).unwrap().as_deref(),
             Some("sk-sensitive")
         );
+    }
+
+    #[test]
+    fn provider_api_key_reads_plain_api_key() {
+        let backend = MemoryCredentialStore::default();
+        let mut registry = SecretRegistry::default();
+        persist_secret(
+            &backend,
+            &mut registry,
+            SecretReference::provider("openai").unwrap(),
+            "sk-openai",
+        )
+        .unwrap();
+
+        assert_eq!(
+            provider_api_key_from(&backend, &registry, "openai").unwrap(),
+            Some("sk-openai".to_owned())
+        );
+        // A provider with no stored credential yields None, not an error.
+        assert_eq!(
+            provider_api_key_from(&backend, &registry, "anthropic").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn provider_api_key_extracts_key_from_opencode_auth() {
+        let backend = MemoryCredentialStore::default();
+        let mut registry = SecretRegistry::default();
+        persist_secret(
+            &backend,
+            &mut registry,
+            super::SecretReference::provider_auth("anthropic").unwrap(),
+            r#"{"type":"api","key":"sk-anthropic"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            provider_api_key_from(&backend, &registry, "anthropic").unwrap(),
+            Some("sk-anthropic".to_owned())
+        );
+    }
+
+    #[test]
+    fn acp_env_name_rejects_reserved_and_malformed() {
+        assert!(validate_acp_env_name("OPENAI_API_KEY").is_ok());
+        assert!(validate_acp_env_name("PATH").is_err());
+        assert!(validate_acp_env_name("OPENCODE_AUTH_CONTENT").is_err());
+        assert!(validate_acp_env_name("lowercase").is_err());
+        assert!(validate_acp_env_name("").is_err());
     }
 
     #[test]
