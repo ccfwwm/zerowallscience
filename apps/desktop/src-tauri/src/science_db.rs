@@ -72,6 +72,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 9,
         sql: include_str!("../migrations/M009__usage.sql"),
     },
+    Migration {
+        id: "M010",
+        version: 10,
+        sql: include_str!("../migrations/M010__price_catalog.sql"),
+    },
 ];
 
 const REQUIRED_TABLES: &[&str] = &[
@@ -116,6 +121,8 @@ const REQUIRED_TABLES: &[&str] = &[
     "tool_policies",
     "usage_events",
     "verification_checks",
+    "price_catalog",
+    "active_group_setting",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
@@ -473,10 +480,10 @@ mod tests {
         let conn = open_science_db(workspace.path()).unwrap();
 
         let status = science_db_status(workspace.path()).unwrap();
-        assert_eq!(status.version, 9);
+        assert_eq!(status.version, 10);
         assert_eq!(
             status.applied_migration_ids,
-            (0..=9).map(|n| format!("M{n:03}")).collect::<Vec<_>>()
+            (0..=10).map(|n| format!("M{n:03}")).collect::<Vec<_>>()
         );
         assert_eq!(status.table_count, REQUIRED_TABLES.len() as u32);
         assert_eq!(
@@ -527,7 +534,7 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         assert_eq!(applied_after, applied_before);
-        assert_eq!(applied_after.len(), 10);
+        assert_eq!(applied_after.len(), 11);
     }
 
     #[test]

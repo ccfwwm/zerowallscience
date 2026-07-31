@@ -63,7 +63,7 @@ pub struct Account {
 
 /// Outcome of a one-click provision: enough for the caller to register the
 /// provider with the runtime, and nothing more.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Provisioned {
     /// Provider id the key was stored under.
@@ -77,17 +77,22 @@ pub struct Provisioned {
 }
 
 /// A model group exposed by the gateway.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Group {
     pub id: i64,
     pub name: String,
+    /// Gateway platform (e.g. "openai", "anthropic").
+    pub platform: String,
+    /// Cost multiplier relative to the standard provider price.
+    /// Estimated credit deducted = cost_usd × rate_multiplier.
+    pub rate_multiplier: f64,
 }
 
 /// Result of the first provisioning step: the groups the account has access to,
 /// and which ones already have an API key. The frontend shows a group selector
 /// and then calls `sub2api_provision_group` for the chosen group.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupsAndKeys {
     pub groups: Vec<Group>,
@@ -295,7 +300,21 @@ pub(crate) fn parse_groups(body: &str) -> Vec<Group> {
         .filter_map(|g| {
             let id = g.get("id")?.as_i64()?;
             let name = g.get("name")?.as_str().filter(|s| !s.is_empty())?;
-            Some(Group { id, name: name.to_string() })
+            let platform = g
+                .get("platform")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let rate_multiplier = g
+                .get("rate_multiplier")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(1.0);
+            Some(Group {
+                id,
+                name: name.to_string(),
+                platform,
+                rate_multiplier,
+            })
         })
         .collect()
 }
@@ -586,8 +605,59 @@ pub async fn sub2api_fetch_groups(
     Ok(GroupsAndKeys { groups, existing_key_group_ids })
 }
 
-/// Step 2: provision a specific group — find or create a key, list models, and
-/// store the key in the OS credential manager.
+/// Refresh the local price catalog from the gateway and optionally record the
+/// active group for this workspace. Called after sign-in or after provisioning
+/// a new group.
+///
+/// The groups are fetched from `/api/v1/groups/available`, upserted into the
+/// `price_catalog` table, and returned so the frontend can display them. The
+/// optional `active_group_id` is persisted in `active_group_setting` so that
+/// estimated-cost tiles in the Usage panel can apply the right rate_multiplier.
+#[tauri::command]
+pub async fn sub2api_refresh_groups(
+    app: AppHandle,
+    sub2api: State<'_, Sub2ApiState>,
+    active_group_id: Option<i64>,
+) -> Result<Vec<Group>, String> {
+    let (session_base, token) = {
+        let guard = sub2api.session.lock().map_err(|_| "session lock poisoned")?;
+        let session = guard.as_ref().ok_or("sign in to the AI platform first")?;
+        (session.base_url.clone(), session.access_token.clone())
+    };
+
+    let mut bases = candidate_bases();
+    if let Some(pos) = bases.iter().position(|b| b == &session_base) {
+        if pos != 0 {
+            bases.swap(0, pos);
+        }
+    }
+
+    let (_base, groups) = blocking(move || {
+        with_failover(&bases, |base| {
+            Ok(parse_groups(&get_json(base, "/groups/available", &token)?))
+        })
+    })
+    .await?;
+
+    // Persist into price_catalog (best-effort — never breaks the UI).
+    if let Ok((_, conn, _)) = crate::usage_store::open(&app) {
+        let entries: Vec<crate::usage_store::GroupCatalogEntry> = groups
+            .iter()
+            .map(|g| crate::usage_store::GroupCatalogEntry {
+                group_id: g.id,
+                group_name: g.name.clone(),
+                platform: g.platform.clone(),
+                rate_multiplier: g.rate_multiplier,
+            })
+            .collect();
+        let _ = crate::usage_store::upsert_price_catalog(&conn, &entries);
+        if let Some(gid) = active_group_id {
+            let _ = crate::usage_store::set_active_group(&conn, gid);
+        }
+    }
+
+    Ok(groups)
+}
 ///
 /// If the account already has a key for the requested group, it is reused.
 /// Otherwise a new key is created via `POST /api/v1/keys`.
@@ -1238,8 +1308,24 @@ mod tests {
         ]}"#;
         let groups = parse_groups(body);
         assert_eq!(groups.len(), 2);
-        assert_eq!(groups[0], Group { id: 1, name: "Default".into() });
-        assert_eq!(groups[1], Group { id: 2, name: "VIP".into() });
+        assert_eq!(
+            groups[0],
+            Group {
+                id: 1,
+                name: "Default".into(),
+                platform: "sub2api".into(),
+                rate_multiplier: 1.0,
+            }
+        );
+        assert_eq!(
+            groups[1],
+            Group {
+                id: 2,
+                name: "VIP".into(),
+                platform: "sub2api".into(),
+                rate_multiplier: 0.5,
+            }
+        );
         assert!(parse_groups(r#"{"data":[]}"#).is_empty());
         assert!(parse_groups("not json").is_empty());
     }

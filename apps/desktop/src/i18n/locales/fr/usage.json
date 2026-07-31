@@ -24,7 +24,8 @@
       "reasoning": "Raisonnement",
       "cached": "En cache",
       "cost": "Coût",
-      "replies": "Réponses"
+      "replies": "Réponses",
+      "sub2apiCost": "sub2api est."
     },
     "table": {
       "session": "Session",

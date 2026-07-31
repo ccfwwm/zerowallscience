@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { WorkspaceUsage } from "@zerowall/shared";
-import { usageByWorkspace } from "@/lib/usage";
+import { usageByWorkspace, usageActiveMultiplier } from "@/lib/usage";
 import { formatCost, formatCount } from "@/lib/usageFormat";
 import { Section } from "./Section";
 import i18n from "@/i18n";
@@ -15,10 +15,15 @@ import i18n from "@/i18n";
  *
  * Cost is nullable end to end: a session that never priced a reply shows "—",
  * never a fabricated "$0.00" (see AGENTS.md — fail honestly).
+ *
+ * When a sub2api group is active and its rate_multiplier is known, an extra
+ * "sub2api est." tile shows the estimated credit deducted:
+ *   estimated_credit = cost_usd × rate_multiplier
  */
 export function UsageCard() {
   const { t } = useTranslation(["usage"]);
   const [data, setData] = useState<WorkspaceUsage | null>(null);
+  const [multiplier, setMultiplier] = useState<number | null>(null);
   const locale = i18n.language;
   const count = (n: number) => formatCount(n, locale);
 
@@ -27,10 +32,19 @@ export function UsageCard() {
     void usageByWorkspace().then((d) => {
       if (active) setData(d);
     });
+    void usageActiveMultiplier().then((m) => {
+      if (active) setMultiplier(m);
+    });
     return () => {
       active = false;
     };
   }, []);
+
+  /** Estimated sub2api credit for a USD cost: null when either value is absent. */
+  function estimatedCredit(costUsd: number | null | undefined): string {
+    if (costUsd == null || multiplier == null) return "—";
+    return formatCost(costUsd * multiplier);
+  }
 
   const label = (raw: string) => (raw.trim() ? raw : t("settings.untitled"));
 
@@ -48,7 +62,8 @@ export function UsageCard() {
       ) : (
         <div>
           {/* Cumulative tiles. On phone width they collapse to a single stacked
-              column (grid-cols-2) rather than a squeezed six-across row. */}
+              column (grid-cols-2) rather than a squeezed row. The sub2api tile
+              is appended when a rate_multiplier is known for the active group. */}
           <div className="grid grid-cols-2 gap-px bg-faint sm:grid-cols-3">
             <Tile label={t("settings.tiles.input")} value={count(data.total.input)} />
             <Tile label={t("settings.tiles.output")} value={count(data.total.output)} />
@@ -59,6 +74,13 @@ export function UsageCard() {
             />
             <Tile label={t("settings.tiles.cost")} value={formatCost(data.total.cost)} />
             <Tile label={t("settings.tiles.replies")} value={count(data.total.replies)} />
+            {multiplier !== null && (
+              <Tile
+                label={t("settings.tiles.sub2apiCost")}
+                value={estimatedCredit(data.total.cost)}
+                hint={`×${multiplier}`}
+              />
+            )}
           </div>
 
           {/* Per-session table. Horizontally scrollable so the numeric columns
@@ -74,6 +96,11 @@ export function UsageCard() {
                   <th className="px-3 py-2 text-right font-medium tabular-nums">{t("settings.table.cached")}</th>
                   <th className="px-3 py-2 text-right font-medium tabular-nums">{t("settings.table.replies")}</th>
                   <th className="px-4 py-2 text-right font-medium tabular-nums">{t("settings.table.cost")}</th>
+                  {multiplier !== null && (
+                    <th className="px-4 py-2 text-right font-medium tabular-nums">
+                      {t("settings.tiles.sub2apiCost")}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -88,6 +115,11 @@ export function UsageCard() {
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-muted">{count(s.replies)}</td>
                     <td className="px-4 py-2 text-right tabular-nums text-muted">{formatCost(s.cost)}</td>
+                    {multiplier !== null && (
+                      <td className="px-4 py-2 text-right tabular-nums text-muted">
+                        {estimatedCredit(s.cost)}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -99,12 +131,14 @@ export function UsageCard() {
   );
 }
 
-/** One cumulative-total tile: a large locale-grouped number over its label. */
-function Tile({ label, value }: { label: string; value: string }) {
+/** One cumulative-total tile: a large locale-grouped number over its label.
+ *  Optional `hint` renders below the label in a smaller muted style. */
+function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="bg-surface px-4 py-3">
       <div className="text-lg font-semibold tabular-nums text-text">{value}</div>
       <div className="mt-0.5 text-xs text-muted">{label}</div>
+      {hint && <div className="text-xs text-muted/60">{hint}</div>}
     </div>
   );
 }

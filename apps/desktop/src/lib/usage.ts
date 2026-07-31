@@ -112,3 +112,16 @@ export async function usageByWorkspace(): Promise<WorkspaceUsage> {
     return EMPTY_WORKSPACE_USAGE;
   }
 }
+
+/** The rate multiplier for the active sub2api gateway group, or `null` when
+ *  not configured. Desktop-only — returns null in gateway-web mode.
+ *  Estimated credit deducted = cost_usd × multiplier. */
+export async function usageActiveMultiplier(): Promise<number | null> {
+  if (!isTauri) return null;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<number | null>("usage_active_multiplier");
+  } catch {
+    return null;
+  }
+}

@@ -13,7 +13,7 @@
 // `cost_usd` is nullable, not defaulted: a provider that priced nothing leaves
 // it NULL, which the UI renders as "—". A real $0.00 and "unpriced" are
 // different facts and the schema keeps them apart.
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use tauri::AppHandle;
 
 use crate::runtime::workspace_dir;
@@ -252,9 +252,90 @@ pub fn by_workspace(conn: &Connection) -> Result<WorkspaceUsage, String> {
     Ok(WorkspaceUsage { sessions, total })
 }
 
+// ── Price catalog ────────────────────────────────────────────────────────────
+
+/// One row from `/api/v1/groups/available`, cached locally. The `rate_multiplier`
+/// converts the base provider `cost_usd` into the credit deducted from the
+/// sub2api account balance (estimated_credit = cost_usd × rate_multiplier).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupCatalogEntry {
+    pub group_id: i64,
+    pub group_name: String,
+    pub platform: String,
+    pub rate_multiplier: f64,
+}
+
+/// Upsert the fetched group list into `price_catalog`. Existing rows are
+/// refreshed in place; groups no longer returned are left (they stay valid for
+/// cost lookups on historical replies).
+pub fn upsert_price_catalog(
+    conn: &Connection,
+    entries: &[GroupCatalogEntry],
+) -> Result<(), String> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("begin catalog tx: {e}"))?;
+    for entry in entries {
+        tx.execute(
+            &format!(
+                "INSERT INTO price_catalog \
+                 (group_id, group_name, platform, rate_multiplier, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, {NOW}) \
+                 ON CONFLICT(group_id) DO UPDATE SET \
+                     group_name = excluded.group_name, \
+                     platform = excluded.platform, \
+                     rate_multiplier = excluded.rate_multiplier, \
+                     updated_at = {NOW}"
+            ),
+            params![
+                entry.group_id,
+                entry.group_name,
+                entry.platform,
+                entry.rate_multiplier,
+            ],
+        )
+        .map_err(|e| format!("upsert group {}: {e}", entry.group_id))?;
+    }
+    tx.commit().map_err(|e| format!("commit catalog tx: {e}"))?;
+    Ok(())
+}
+
+/// Record which gateway group is active for this workspace. Called after a
+/// group is provisioned so cost estimation knows the right multiplier.
+pub fn set_active_group(conn: &Connection, group_id: i64) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO active_group_setting (singleton, group_id) VALUES (0, ?1) \
+         ON CONFLICT(singleton) DO UPDATE SET group_id = excluded.group_id",
+        params![group_id],
+    )
+    .map_err(|e| format!("set active group: {e}"))?;
+    Ok(())
+}
+
+/// The rate multiplier for the currently active group, or `None` when no
+/// active group has been recorded or the price catalog is empty.
+pub fn active_multiplier(conn: &Connection) -> Result<Option<f64>, String> {
+    conn.query_row(
+        "SELECT p.rate_multiplier \
+         FROM active_group_setting a \
+         JOIN price_catalog p ON p.group_id = a.group_id \
+         WHERE a.singleton = 0",
+        [],
+        |row| row.get::<_, f64>(0),
+    )
+    .optional()
+    .map_err(|e| format!("get active multiplier: {e}"))
+}
+
+// ── Tauri commands ────────────────────────────────────────────────────────────
+
 /// Open the workspace's science database and ensure the project row every usage
 /// row hangs off.
-fn open(app: &AppHandle) -> Result<(std::path::PathBuf, Connection, String), String> {
+pub fn open(app: &AppHandle) -> Result<(std::path::PathBuf, Connection, String), String> {
     let root = workspace_dir(app)?;
     let conn = science_store::open(&root)?;
     let project_id = science_store::ensure_project(&conn, &root)?;
@@ -286,6 +367,30 @@ pub fn usage_by_session(app: AppHandle, session_id: String) -> Result<SessionUsa
 pub fn usage_by_workspace(app: AppHandle) -> Result<WorkspaceUsage, String> {
     let (_, conn, _) = open(&app)?;
     by_workspace(&conn)
+}
+
+/// Bulk-upsert the gateway group catalog fetched from `/api/v1/groups/available`.
+#[tauri::command(async)]
+pub fn usage_upsert_catalog(
+    app: AppHandle,
+    entries: Vec<GroupCatalogEntry>,
+) -> Result<(), String> {
+    let (_, conn, _) = open(&app)?;
+    upsert_price_catalog(&conn, &entries)
+}
+
+/// Record which gateway group is active for this workspace.
+#[tauri::command(async)]
+pub fn usage_set_active_group(app: AppHandle, group_id: i64) -> Result<(), String> {
+    let (_, conn, _) = open(&app)?;
+    set_active_group(&conn, group_id)
+}
+
+/// The rate multiplier for the active group, or `null` when not configured.
+#[tauri::command(async)]
+pub fn usage_active_multiplier(app: AppHandle) -> Result<Option<f64>, String> {
+    let (_, conn, _) = open(&app)?;
+    active_multiplier(&conn)
 }
 
 #[cfg(test)]

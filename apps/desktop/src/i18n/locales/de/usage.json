@@ -24,7 +24,8 @@
       "reasoning": "Reasoning",
       "cached": "Zwischengespeichert",
       "cost": "Kosten",
-      "replies": "Antworten"
+      "replies": "Antworten",
+      "sub2apiCost": "sub2api Schätz."
     },
     "table": {
       "session": "Sitzung",

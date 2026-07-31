@@ -24,7 +24,8 @@
       "reasoning": "推理",
       "cached": "缓存",
       "cost": "费用",
-      "replies": "回复数"
+      "replies": "回复数",
+      "sub2apiCost": "sub2api 估算"
     },
     "table": {
       "session": "会话",

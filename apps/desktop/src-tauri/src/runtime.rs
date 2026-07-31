@@ -1123,7 +1123,7 @@ mod tests {
         assert_eq!(prepared, root.canonicalize().unwrap());
         assert!(prepared.join(".zerowall/science.db").is_file());
         let status = crate::science_db::science_db_status(&prepared).unwrap();
-        assert_eq!(status.version, 8);
+        assert_eq!(status.version, 10);
 
         let _ = fs::remove_dir_all(&root);
     }

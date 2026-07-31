@@ -24,7 +24,8 @@
       "reasoning": "추론",
       "cached": "캐시",
       "cost": "비용",
-      "replies": "응답 수"
+      "replies": "응답 수",
+      "sub2apiCost": "sub2api 예상"
     },
     "table": {
       "session": "세션",
