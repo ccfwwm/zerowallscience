@@ -60,6 +60,8 @@ import {
   type ToolStatus,
 } from "./tauri";
 import { isGatewayWeb, gatewayToken, gatewayOrigin } from "./webMode";
+import { AcpRuntime } from "./acp-runtime";
+import { acpPresetById } from "./acp-presets";
 import { kernelReset } from "./kernel";
 import { moveScrollMemory } from "./scrollMemory";
 import { deriveArtifact } from "./artifacts";
@@ -82,6 +84,9 @@ const HIDDEN_KEY = "zerowall.hiddenExamples";
 // / recent models persist too, so the effort should as well). Sibling of the
 // model-preferences keys in components/settings/modelPreferences.
 const REASONING_KEY = "zerowall.models.variant.v1";
+// The active ACP agent preset id (null = OpenCode), persisted so a relaunch
+// restores the chosen runtime. Desktop-only; the gateway web client ignores it.
+const ACP_PROFILE_KEY = "zerowall.acp.profileId.v1";
 /** Per-session model + reasoning-effort overrides, persisted so a restored split
  *  layout keeps each pane's model/effort (they're keyed by real session id,
  *  which survives across runs). */
@@ -123,6 +128,13 @@ function initialReasoningVariant(): string | null {
   if (typeof window === "undefined") return null;
   return window.localStorage.getItem(REASONING_KEY) || null;
 }
+function initialAcpProfileId(): string | null {
+  // Never on web — the gateway client only speaks OpenCode.
+  if (typeof window === "undefined" || isGatewayWeb) return null;
+  const id = window.localStorage.getItem(ACP_PROFILE_KEY);
+  // Guard against a stale id whose preset was removed between versions.
+  return id && acpPresetById(id) ? id : null;
+}
 function initialSelectedAgent(): AgentRole {
   if (typeof window === "undefined") return "general";
   return (window.localStorage.getItem(SELECTED_AGENT_KEY) as AgentRole) || "general";
@@ -157,6 +169,14 @@ export interface PaneState {
 interface RuntimeState {
   status: RuntimeStatus;
   serverUrl: string;
+  /** The active runtime: null = OpenCode (the default), else the id of the ACP
+   *  agent preset driving this connection (e.g. "codex"). Desktop-only; the
+   *  gateway web client never leaves OpenCode. Persisted so a relaunch restores
+   *  the chosen agent. Changed via `switchRuntime`, which reconnects. */
+  acpProfileId: string | null;
+  /** Switch the active runtime and reconnect. null → OpenCode; an ACP preset id
+   *  → that external agent. A no-op if already on that runtime. */
+  switchRuntime: (profileId: string | null) => Promise<void>;
   sessions: SessionMeta[];
   currentId: string | null;
   threads: Record<string, Thread>;
@@ -1380,6 +1400,7 @@ function makeSharedEventHandler(set: StoreSet, get: StoreGet): (event: OpenCodeE
 export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   status: "offline",
   serverUrl: initialUrl(),
+  acpProfileId: initialAcpProfileId(),
   sessions: [],
   currentId: null,
   threads: {},
@@ -1749,11 +1770,69 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     }
   },
 
+  switchRuntime: async (profileId) => {
+    // A no-op if already on that runtime — avoids a needless reconnect flash.
+    if (get().acpProfileId === profileId) return;
+    if (typeof window !== "undefined") {
+      if (profileId) window.localStorage.setItem(ACP_PROFILE_KEY, profileId);
+      else window.localStorage.removeItem(ACP_PROFILE_KEY);
+    }
+    // Switching runtimes drops the whole conversation view: the sessions,
+    // threads and per-runtime capability lists all belong to the old runtime.
+    set({
+      acpProfileId: profileId,
+      sessions: [],
+      currentId: null,
+      threads: {},
+      skills: [],
+      agents: [],
+      commands: [],
+      error: null,
+    });
+    await get().connectRetry();
+  },
+
   connect: async () => {
     // Quiet teardown of any previous connection: within a (re)connect the
     // status must never pass through "offline" — on first boot the retry loop
     // runs for minutes (macOS TCC) and each flip repaints the whole page.
     teardownClient();
+    // ACP runtime: when a preset is selected we drive an external agent instead
+    // of OpenCode. Desktop-only — the gateway web client never leaves OpenCode,
+    // and initialAcpProfileId() already returns null on web. Build the runtime,
+    // wire it into the same fold/render pipeline, and return before all the
+    // OpenCode-only machinery (providers, catalog, one-shot config migrations).
+    const acpProfileId = get().acpProfileId;
+    if (!isGatewayWeb && acpProfileId) {
+      const preset = acpPresetById(acpProfileId);
+      if (!preset) {
+        // A stale id whose preset was removed — fall back to OpenCode cleanly.
+        set({ acpProfileId: null });
+      } else {
+        const acp = new AcpRuntime(preset);
+        client = acp; // NOT opencodeClient — ACP is not an OpenCode server.
+        clientStatusUnsub = acp.onStatus((status) => {
+          clearStatusBlip();
+          set({ status });
+        });
+        if (!sharedEventHandler) sharedEventHandler = makeSharedEventHandler(set, get);
+        acp.onEvent(sharedEventHandler);
+        try {
+          void logDebug(`ACP connect → ${preset.id}`);
+          await acp.connect();
+          void logDebug("ACP connect OK");
+          set({ error: null });
+          await get().refreshSessions();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          void logDebug(`ACP connect FAILED: ${msg}`);
+          lastConnectError = msg;
+          if (retryLoopActive) set({ status: "connecting" });
+          else set({ error: msg, status: "error" });
+        }
+        return;
+      }
+    }
     let directory: string | null;
     let password: string | null;
     let baseUrl = get().serverUrl;

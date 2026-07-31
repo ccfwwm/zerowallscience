@@ -90,6 +90,7 @@ vi.mock("@zerowall/sdk", async () => {
   // session snapshots) is only meaningfully covered if it runs. It is a thin
   // wrapper with type-only imports, so pulling it in costs nothing.
   const { ZeroWallClient } = await import("../../../../packages/sdk/src/ZeroWallClient");
+  const { BaseAgentRuntime } = await import("../../../../packages/sdk/src/base-runtime");
   const actual = await import("../../../../packages/sdk/src/pack-registry");
   class OpenCodeClient {
     private statusCb: (s: string) => void = () => {};
@@ -224,6 +225,7 @@ vi.mock("@zerowall/sdk", async () => {
   return {
     OpenCodeClient,
     ZeroWallClient,
+    BaseAgentRuntime,
     DEFAULT_OPENCODE_URL: "http://127.0.0.1:4096",
     // The pack registry is NOT stubbed. It used to return `[]` here, which is
     // part of why a store that could never load a pack still passed: the mock
