@@ -1062,6 +1062,321 @@ function modelForSession(state: RuntimeState, key: string): { model: string | nu
   return { model, variant };
 }
 
+/** Build the one event-folding handler shared by every runtime (foreground
+ *  OpenCode, background per-folder streams, and the ACP runtime): the ACP
+ *  adapter translates its events into the same OpenCodeEvent shape, so one
+ *  fold/render pipeline serves both. Closes over the store set/get; depends
+ *  otherwise only on module-level helpers. Built once, cached in
+ *  sharedEventHandler. */
+function makeSharedEventHandler(set: StoreSet, get: StoreGet): (event: OpenCodeEvent) => void {
+  return (event) => {
+        // text.updated fires per streamed token, and a running bash tool fires
+        // per stdout write (tqdm redraws dozens of times a second) — logging
+        // each one would flood debug.log with an IPC call per event.
+        if (
+          event.type !== "text.updated" &&
+          event.type !== "reasoning.updated" &&
+          !(event.type === "tool.updated" && event.status === "running")
+        )
+          void logDebug(`event ← ${event.type}${"sessionId" in event ? " " + event.sessionId : ""}`);
+        if ("sessionId" in event && event.sessionId) {
+          sseLast.set(event.sessionId, ++sseSeq);
+          while (sseLast.size > 500) {
+            const oldest = sseLast.keys().next().value;
+            if (oldest === undefined) break;
+            sseLast.delete(oldest);
+          }
+          // First streamed token after a send → log latency (multi-pane probe).
+          const posted = turnPostAt.get(event.sessionId);
+          if (posted !== undefined && (event.type === "text.updated" || event.type === "reasoning.updated")) {
+            turnPostAt.delete(event.sessionId);
+            void logDebug(`first token ← ${event.sessionId} ${Math.round(performance.now() - posted)}ms`);
+          }
+        }
+        if (event.type === "error") {
+          // A session-scoped error belongs IN the conversation (a red status
+          // line where the user is looking), and it ends that session's turn so
+          // the composer unlocks. Errors without a session keep the banner.
+          const sid = event.sessionId;
+          // After a user interrupt the abort's own "aborted" error is expected —
+          // the thread already says "Interrupted"; don't add a second red line.
+          if (sid) clearLiveFolds(sid);
+          if (sid && interruptedSessions.has(sid)) return;
+          // A dangling default model (its provider removed or renamed) fails
+          // every send the same way — point at where the fix lives.
+          const message = /model not found/i.test(event.message)
+            ? `${event.message} Pick an available model in Settings → Models.`
+            : event.message;
+          if (sid) {
+            set((s) => {
+              const cur = s.threads[sid] ?? emptyThread();
+              const runningSessions = { ...s.runningSessions };
+              delete runningSessions[sid];
+              const retryNotices = { ...s.retryNotices };
+              delete retryNotices[sid];
+              return {
+                runningSessions,
+                retryNotices,
+                threads: {
+                  ...s.threads,
+                  [sid]: {
+                    ...cur,
+                    loaded: true,
+                    blocks: [...cur.blocks, { kind: "status-line", text: message, tone: "error" }],
+                  },
+                },
+              };
+            });
+          } else {
+            set({ error: message });
+          }
+          return;
+        }
+        // Interactive requests live outside the thread blocks (transient UI).
+        switch (event.type) {
+          case "question.asked":
+            set((s) => ({
+              questions: [...s.questions.filter((q) => q.requestId !== event.requestId), event],
+            }));
+            return;
+          case "question.resolved":
+            set((s) => ({ questions: s.questions.filter((q) => q.requestId !== event.requestId) }));
+            return;
+          case "permission.asked":
+            if (!notifiedPermissions.has(event.requestId)) {
+              remember(notifiedPermissions, event.requestId);
+              void notifyPermissionRequest({ action: event.action, resources: event.resources });
+            }
+            set((s) => {
+              const permissions = [
+                ...s.permissions.filter((p) => p.requestId !== event.requestId),
+                event,
+              ];
+              // Mark the tool the agent is blocked on — the newest running/pending
+              // step in this session — as waiting-approval, right in the transcript
+              // (not just the separate permission card). The permission event has
+              // no callID to match on, but the blocked tool is always the latest
+              // active one. The next tool.updated restores its real status.
+              const sid = event.sessionId;
+              const cur = sid ? s.threads[sid] : undefined;
+              if (!cur) return { permissions };
+              const blocks = [...cur.blocks];
+              for (let i = blocks.length - 1; i >= 0; i--) {
+                const b = blocks[i];
+                if (b.kind === "tool-call" && (b.status === "running" || b.status === "pending")) {
+                  blocks[i] = { ...b, status: "waiting-approval" };
+                  return { permissions, threads: { ...s.threads, [sid]: { ...cur, blocks } } };
+                }
+              }
+              return { permissions };
+            });
+            return;
+          case "permission.resolved":
+            set((s) => {
+              const permissions = s.permissions.filter((p) => p.requestId !== event.requestId);
+              const sid = event.sessionId;
+              const cur = sid ? s.threads[sid] : undefined;
+              if (!cur) return { permissions };
+              let changed = false;
+              const blocks = cur.blocks.map((b) => {
+                if (b.kind === "tool-call" && b.status === "waiting-approval") {
+                  changed = true;
+                  return { ...b, status: "running" as const };
+                }
+                return b;
+              });
+              return changed
+                ? { permissions, threads: { ...s.threads, [sid]: { ...cur, blocks } } }
+                : { permissions };
+            });
+            return;
+          case "step.updated":
+            set((s) => ({ stepCounts: { ...s.stepCounts, [event.sessionId]: event.step } }));
+            return;
+          case "session.retry":
+            set((s) => ({
+              retryNotices: {
+                ...s.retryNotices,
+                [event.sessionId]: { attempt: event.attempt, message: event.message },
+              },
+            }));
+            return;
+          case "message.agent": {
+            // A user message landed. Tag the newest still-untagged user block in
+            // this thread with its server id — the optimistic echo from a send
+            // starts id-less, and the id is what makes the row editable later.
+            // Sends are serialized, so the last untagged block is this message.
+            if (event.messageID) {
+              const mid = event.messageID;
+              set((s) => {
+                const cur = s.threads[event.sessionId];
+                if (!cur) return {};
+                const blocks = [...cur.blocks];
+                for (let i = blocks.length - 1; i >= 0; i--) {
+                  const b = blocks[i];
+                  if (b.kind === "user" && !b.messageID) {
+                    blocks[i] = { ...b, messageID: mid };
+                    return { threads: { ...s.threads, [event.sessionId]: { ...cur, blocks } } };
+                  }
+                }
+                return {};
+              });
+            }
+            // A user message names its agent. This is how the pill follows
+            // OpenCode's own plan_exit "Yes" (it injects a build user message)
+            // — and it self-confirms our own sends.
+            if (event.agent) {
+              const mode: AgentMode = event.agent === "plan" ? "plan" : "build";
+              if (get().sessionAgents[event.sessionId] !== mode)
+                set((s) => ({
+                  sessionAgents: { ...s.sessionAgents, [event.sessionId]: mode },
+                }));
+            }
+            return;
+          }
+        }
+        const sid = event.sessionId;
+        if (!sid) return;
+        // Any other sign of life from the session supersedes its retry notice:
+        // an attempt is streaming again (text/tool events) or the turn is over.
+        if (get().retryNotices[sid]) {
+          set((s) => {
+            const retryNotices = { ...s.retryNotices };
+            delete retryNotices[sid];
+            return { retryNotices };
+          });
+        }
+        if (event.type === "session.idle") clearLiveFolds(sid);
+        // Idle after a user interrupt: the thread already ends with "Interrupted"
+        // — keep the locks clear and skip the fold. An abort can emit MORE than
+        // one idle, so the guard must survive every trailing idle (`.has`, not
+        // `.delete`); it is cleared when the next turn starts (see `turn → sid`).
+        if (event.type === "session.idle" && interruptedSessions.has(sid)) {
+          set((s) => {
+            const runningSessions = { ...s.runningSessions };
+            const shellTurns = { ...s.shellTurns };
+            delete runningSessions[sid];
+            delete shellTurns[sid];
+            return { runningSessions, shellTurns };
+          });
+          void get().refreshSessions();
+          return;
+        }
+        // A task tool names the subagent session it spawned — remember the
+        // parent link so the child's permission/question asks surface in THIS
+        // conversation, and refresh the list so the child's title is known.
+        if (
+          event.type === "tool.updated" &&
+          event.childSessionId &&
+          get().sessionParents[event.childSessionId] !== sid
+        ) {
+          const child = event.childSessionId;
+          set((s) => ({ sessionParents: { ...s.sessionParents, [child]: sid } }));
+          void get().refreshSessions();
+        }
+        const applyFold = (ev: typeof event) =>
+          set((s) => {
+            const cur = s.threads[sid] ?? emptyThread();
+            const folded = foldEvent(
+              { blocks: cur.blocks, index: cur.index },
+              ev,
+              { shellTurn: !!s.shellTurns[sid] },
+            );
+            // The turn is over — unlock the composer and drop the "Working…" row.
+            // The shell flag clears HERE (not when the POST settles): within the
+            // SSE stream the bash-output event always precedes session.idle.
+            const runningSessions = { ...s.runningSessions };
+            const shellTurns = { ...s.shellTurns };
+            const stepCounts = { ...s.stepCounts };
+            if (ev.type === "session.idle") {
+              delete runningSessions[sid];
+              delete shellTurns[sid];
+              delete stepCounts[sid];
+            }
+            return {
+              runningSessions,
+              shellTurns,
+              stepCounts,
+              threads: { ...s.threads, [sid]: { ...cur, ...folded, loaded: true } },
+            };
+          });
+        // A running bash tool streams its stdout tail on every write — dozens
+        // of events per second under a progress bar. Fold at most one partial
+        // update per LIVE_FOLD_MS per call (latest wins); everything else
+        // (status changes, completion) folds immediately and supersedes.
+        if (event.type === "tool.updated") {
+          if (event.status === "running" && event.partialOutput !== undefined) {
+            const now = Date.now();
+            const last = liveFoldLast.get(event.callId) ?? 0;
+            if (now - last < LIVE_FOLD_MS) {
+              const pending = liveFoldPending.get(event.callId);
+              if (pending) pending.event = event;
+              else {
+                const callId = event.callId;
+                const timer = window.setTimeout(() => {
+                  const p = liveFoldPending.get(callId);
+                  liveFoldPending.delete(callId);
+                  if (!p) return;
+                  liveFoldLast.set(callId, Date.now());
+                  applyFold(p.event);
+                }, LIVE_FOLD_MS - (now - last));
+                liveFoldPending.set(event.callId, { sessionId: sid, timer, event });
+              }
+              return;
+            }
+            liveFoldLast.set(event.callId, now);
+          } else {
+            const pending = liveFoldPending.get(event.callId);
+            if (pending) {
+              window.clearTimeout(pending.timer);
+              liveFoldPending.delete(event.callId);
+            }
+            liveFoldLast.delete(event.callId);
+          }
+        }
+        applyFold(event);
+        // A completed live write becomes a provenance version. One apply_patch call
+        // can touch many files, so dedupe per (call, path) rather than per call.
+        if (event.type === "tool.updated") {
+          for (const input of provenanceInputsFromEvent(event)) {
+            const key = `${event.callId}:${input.path}`;
+            if (recordedProvenance.has(key)) continue;
+            remember(recordedProvenance, key);
+            void recordProvenance(input, sid, get().defaultModel);
+          }
+        }
+        // A completed experiment execution (bash running code) becomes a run —
+        // its reproducibility recipe (once per call).
+        if (event.type === "tool.updated" && !recordedRuns.has(event.callId)) {
+          const run = runInputFromEvent(event);
+          if (run) {
+            remember(recordedRuns, event.callId);
+            void recordRun(run, sid, get().defaultModel);
+          }
+        }
+        // A usage stamp (cumulative token/cost totals for an assistant reply)
+        // persists latest-wins per message id — the durable rollup the Usage
+        // surfaces read. Best-effort; the fold already reflected it in the UI.
+        if (event.type === "usage") {
+          const rec = usageInputFromEvent(event);
+          if (rec) void recordUsage(rec.sessionId, rec.messageId, rec.usage);
+        }
+        if (event.type === "session.idle") {
+          void get().refreshSessions();
+          // Name the session in the snapshot: a project folder is shared by many
+          // sessions, and its git history must say which one made each change.
+          const sessionName = get().sessions.find((s) => s.id === sid)?.title || sid;
+          void commitWorkspaceSnapshot(`Snapshot session changes (${sessionName})`)
+            .then((committed) => {
+              if (committed) void logDebug(`git snapshot ✓ ${sid}`);
+            })
+            .catch((err) =>
+              logDebug(`git snapshot skipped for ${sid}: ${err instanceof Error ? err.message : String(err)}`),
+            );
+        }
+  };
+}
+
 export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   status: "offline",
   serverUrl: initialUrl(),
@@ -1500,313 +1815,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       clearStatusBlip();
       set({ status });
     });
-    if (!sharedEventHandler)
-      sharedEventHandler = (event) => {
-      // text.updated fires per streamed token, and a running bash tool fires
-      // per stdout write (tqdm redraws dozens of times a second) — logging
-      // each one would flood debug.log with an IPC call per event.
-      if (
-        event.type !== "text.updated" &&
-        event.type !== "reasoning.updated" &&
-        !(event.type === "tool.updated" && event.status === "running")
-      )
-        void logDebug(`event ← ${event.type}${"sessionId" in event ? " " + event.sessionId : ""}`);
-      if ("sessionId" in event && event.sessionId) {
-        sseLast.set(event.sessionId, ++sseSeq);
-        while (sseLast.size > 500) {
-          const oldest = sseLast.keys().next().value;
-          if (oldest === undefined) break;
-          sseLast.delete(oldest);
-        }
-        // First streamed token after a send → log latency (multi-pane probe).
-        const posted = turnPostAt.get(event.sessionId);
-        if (posted !== undefined && (event.type === "text.updated" || event.type === "reasoning.updated")) {
-          turnPostAt.delete(event.sessionId);
-          void logDebug(`first token ← ${event.sessionId} ${Math.round(performance.now() - posted)}ms`);
-        }
-      }
-      if (event.type === "error") {
-        // A session-scoped error belongs IN the conversation (a red status
-        // line where the user is looking), and it ends that session's turn so
-        // the composer unlocks. Errors without a session keep the banner.
-        const sid = event.sessionId;
-        // After a user interrupt the abort's own "aborted" error is expected —
-        // the thread already says "Interrupted"; don't add a second red line.
-        if (sid) clearLiveFolds(sid);
-        if (sid && interruptedSessions.has(sid)) return;
-        // A dangling default model (its provider removed or renamed) fails
-        // every send the same way — point at where the fix lives.
-        const message = /model not found/i.test(event.message)
-          ? `${event.message} Pick an available model in Settings → Models.`
-          : event.message;
-        if (sid) {
-          set((s) => {
-            const cur = s.threads[sid] ?? emptyThread();
-            const runningSessions = { ...s.runningSessions };
-            delete runningSessions[sid];
-            const retryNotices = { ...s.retryNotices };
-            delete retryNotices[sid];
-            return {
-              runningSessions,
-              retryNotices,
-              threads: {
-                ...s.threads,
-                [sid]: {
-                  ...cur,
-                  loaded: true,
-                  blocks: [...cur.blocks, { kind: "status-line", text: message, tone: "error" }],
-                },
-              },
-            };
-          });
-        } else {
-          set({ error: message });
-        }
-        return;
-      }
-      // Interactive requests live outside the thread blocks (transient UI).
-      switch (event.type) {
-        case "question.asked":
-          set((s) => ({
-            questions: [...s.questions.filter((q) => q.requestId !== event.requestId), event],
-          }));
-          return;
-        case "question.resolved":
-          set((s) => ({ questions: s.questions.filter((q) => q.requestId !== event.requestId) }));
-          return;
-        case "permission.asked":
-          if (!notifiedPermissions.has(event.requestId)) {
-            remember(notifiedPermissions, event.requestId);
-            void notifyPermissionRequest({ action: event.action, resources: event.resources });
-          }
-          set((s) => {
-            const permissions = [
-              ...s.permissions.filter((p) => p.requestId !== event.requestId),
-              event,
-            ];
-            // Mark the tool the agent is blocked on — the newest running/pending
-            // step in this session — as waiting-approval, right in the transcript
-            // (not just the separate permission card). The permission event has
-            // no callID to match on, but the blocked tool is always the latest
-            // active one. The next tool.updated restores its real status.
-            const sid = event.sessionId;
-            const cur = sid ? s.threads[sid] : undefined;
-            if (!cur) return { permissions };
-            const blocks = [...cur.blocks];
-            for (let i = blocks.length - 1; i >= 0; i--) {
-              const b = blocks[i];
-              if (b.kind === "tool-call" && (b.status === "running" || b.status === "pending")) {
-                blocks[i] = { ...b, status: "waiting-approval" };
-                return { permissions, threads: { ...s.threads, [sid]: { ...cur, blocks } } };
-              }
-            }
-            return { permissions };
-          });
-          return;
-        case "permission.resolved":
-          set((s) => {
-            const permissions = s.permissions.filter((p) => p.requestId !== event.requestId);
-            const sid = event.sessionId;
-            const cur = sid ? s.threads[sid] : undefined;
-            if (!cur) return { permissions };
-            let changed = false;
-            const blocks = cur.blocks.map((b) => {
-              if (b.kind === "tool-call" && b.status === "waiting-approval") {
-                changed = true;
-                return { ...b, status: "running" as const };
-              }
-              return b;
-            });
-            return changed
-              ? { permissions, threads: { ...s.threads, [sid]: { ...cur, blocks } } }
-              : { permissions };
-          });
-          return;
-        case "step.updated":
-          set((s) => ({ stepCounts: { ...s.stepCounts, [event.sessionId]: event.step } }));
-          return;
-        case "session.retry":
-          set((s) => ({
-            retryNotices: {
-              ...s.retryNotices,
-              [event.sessionId]: { attempt: event.attempt, message: event.message },
-            },
-          }));
-          return;
-        case "message.agent": {
-          // A user message landed. Tag the newest still-untagged user block in
-          // this thread with its server id — the optimistic echo from a send
-          // starts id-less, and the id is what makes the row editable later.
-          // Sends are serialized, so the last untagged block is this message.
-          if (event.messageID) {
-            const mid = event.messageID;
-            set((s) => {
-              const cur = s.threads[event.sessionId];
-              if (!cur) return {};
-              const blocks = [...cur.blocks];
-              for (let i = blocks.length - 1; i >= 0; i--) {
-                const b = blocks[i];
-                if (b.kind === "user" && !b.messageID) {
-                  blocks[i] = { ...b, messageID: mid };
-                  return { threads: { ...s.threads, [event.sessionId]: { ...cur, blocks } } };
-                }
-              }
-              return {};
-            });
-          }
-          // A user message names its agent. This is how the pill follows
-          // OpenCode's own plan_exit "Yes" (it injects a build user message)
-          // — and it self-confirms our own sends.
-          if (event.agent) {
-            const mode: AgentMode = event.agent === "plan" ? "plan" : "build";
-            if (get().sessionAgents[event.sessionId] !== mode)
-              set((s) => ({
-                sessionAgents: { ...s.sessionAgents, [event.sessionId]: mode },
-              }));
-          }
-          return;
-        }
-      }
-      const sid = event.sessionId;
-      if (!sid) return;
-      // Any other sign of life from the session supersedes its retry notice:
-      // an attempt is streaming again (text/tool events) or the turn is over.
-      if (get().retryNotices[sid]) {
-        set((s) => {
-          const retryNotices = { ...s.retryNotices };
-          delete retryNotices[sid];
-          return { retryNotices };
-        });
-      }
-      if (event.type === "session.idle") clearLiveFolds(sid);
-      // Idle after a user interrupt: the thread already ends with "Interrupted"
-      // — keep the locks clear and skip the fold. An abort can emit MORE than
-      // one idle, so the guard must survive every trailing idle (`.has`, not
-      // `.delete`); it is cleared when the next turn starts (see `turn → sid`).
-      if (event.type === "session.idle" && interruptedSessions.has(sid)) {
-        set((s) => {
-          const runningSessions = { ...s.runningSessions };
-          const shellTurns = { ...s.shellTurns };
-          delete runningSessions[sid];
-          delete shellTurns[sid];
-          return { runningSessions, shellTurns };
-        });
-        void get().refreshSessions();
-        return;
-      }
-      // A task tool names the subagent session it spawned — remember the
-      // parent link so the child's permission/question asks surface in THIS
-      // conversation, and refresh the list so the child's title is known.
-      if (
-        event.type === "tool.updated" &&
-        event.childSessionId &&
-        get().sessionParents[event.childSessionId] !== sid
-      ) {
-        const child = event.childSessionId;
-        set((s) => ({ sessionParents: { ...s.sessionParents, [child]: sid } }));
-        void get().refreshSessions();
-      }
-      const applyFold = (ev: typeof event) =>
-        set((s) => {
-          const cur = s.threads[sid] ?? emptyThread();
-          const folded = foldEvent(
-            { blocks: cur.blocks, index: cur.index },
-            ev,
-            { shellTurn: !!s.shellTurns[sid] },
-          );
-          // The turn is over — unlock the composer and drop the "Working…" row.
-          // The shell flag clears HERE (not when the POST settles): within the
-          // SSE stream the bash-output event always precedes session.idle.
-          const runningSessions = { ...s.runningSessions };
-          const shellTurns = { ...s.shellTurns };
-          const stepCounts = { ...s.stepCounts };
-          if (ev.type === "session.idle") {
-            delete runningSessions[sid];
-            delete shellTurns[sid];
-            delete stepCounts[sid];
-          }
-          return {
-            runningSessions,
-            shellTurns,
-            stepCounts,
-            threads: { ...s.threads, [sid]: { ...cur, ...folded, loaded: true } },
-          };
-        });
-      // A running bash tool streams its stdout tail on every write — dozens
-      // of events per second under a progress bar. Fold at most one partial
-      // update per LIVE_FOLD_MS per call (latest wins); everything else
-      // (status changes, completion) folds immediately and supersedes.
-      if (event.type === "tool.updated") {
-        if (event.status === "running" && event.partialOutput !== undefined) {
-          const now = Date.now();
-          const last = liveFoldLast.get(event.callId) ?? 0;
-          if (now - last < LIVE_FOLD_MS) {
-            const pending = liveFoldPending.get(event.callId);
-            if (pending) pending.event = event;
-            else {
-              const callId = event.callId;
-              const timer = window.setTimeout(() => {
-                const p = liveFoldPending.get(callId);
-                liveFoldPending.delete(callId);
-                if (!p) return;
-                liveFoldLast.set(callId, Date.now());
-                applyFold(p.event);
-              }, LIVE_FOLD_MS - (now - last));
-              liveFoldPending.set(event.callId, { sessionId: sid, timer, event });
-            }
-            return;
-          }
-          liveFoldLast.set(event.callId, now);
-        } else {
-          const pending = liveFoldPending.get(event.callId);
-          if (pending) {
-            window.clearTimeout(pending.timer);
-            liveFoldPending.delete(event.callId);
-          }
-          liveFoldLast.delete(event.callId);
-        }
-      }
-      applyFold(event);
-      // A completed live write becomes a provenance version. One apply_patch call
-      // can touch many files, so dedupe per (call, path) rather than per call.
-      if (event.type === "tool.updated") {
-        for (const input of provenanceInputsFromEvent(event)) {
-          const key = `${event.callId}:${input.path}`;
-          if (recordedProvenance.has(key)) continue;
-          remember(recordedProvenance, key);
-          void recordProvenance(input, sid, get().defaultModel);
-        }
-      }
-      // A completed experiment execution (bash running code) becomes a run —
-      // its reproducibility recipe (once per call).
-      if (event.type === "tool.updated" && !recordedRuns.has(event.callId)) {
-        const run = runInputFromEvent(event);
-        if (run) {
-          remember(recordedRuns, event.callId);
-          void recordRun(run, sid, get().defaultModel);
-        }
-      }
-      // A usage stamp (cumulative token/cost totals for an assistant reply)
-      // persists latest-wins per message id — the durable rollup the Usage
-      // surfaces read. Best-effort; the fold already reflected it in the UI.
-      if (event.type === "usage") {
-        const rec = usageInputFromEvent(event);
-        if (rec) void recordUsage(rec.sessionId, rec.messageId, rec.usage);
-      }
-      if (event.type === "session.idle") {
-        void get().refreshSessions();
-        // Name the session in the snapshot: a project folder is shared by many
-        // sessions, and its git history must say which one made each change.
-        const sessionName = get().sessions.find((s) => s.id === sid)?.title || sid;
-        void commitWorkspaceSnapshot(`Snapshot session changes (${sessionName})`)
-          .then((committed) => {
-            if (committed) void logDebug(`git snapshot ✓ ${sid}`);
-          })
-          .catch((err) =>
-            logDebug(`git snapshot skipped for ${sid}: ${err instanceof Error ? err.message : String(err)}`),
-          );
-      }
-      };
+    if (!sharedEventHandler) sharedEventHandler = makeSharedEventHandler(set, get);
     c.onEvent(sharedEventHandler);
     try {
       void logDebug(`connect → ${get().serverUrl}`);
