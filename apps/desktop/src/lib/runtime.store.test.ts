@@ -65,6 +65,13 @@ const mocks = vi.hoisted(() => ({
   startRuntime: vi.fn(async () => "http://127.0.0.1:1"),
   /** Constructor options every OpenCodeClient was created with. */
   clientOpts: [] as Record<string, unknown>[],
+  // ---- ACP bridge fakes (drive the real AcpRuntime through the store) ----
+  acpLaunch: vi.fn(async () => ({ running: true, profile_id: "codex" })),
+  acpPrompt: vi.fn(async () => {}),
+  acpShutdown: vi.fn(async () => ({ running: false, profile_id: null })),
+  acpUnlisten: vi.fn(),
+  /** The handlers AcpRuntime subscribed; drive the event stream through them. */
+  acpHandlers: {} as Record<string, (p: unknown) => void>,
 }));
 
 vi.mock("./tauri", () => ({
@@ -84,6 +91,19 @@ vi.mock("./tauri", () => ({
 vi.mock("./kernel", () => ({ kernelReset: mocks.kernelReset }));
 vi.mock("./systemNotification", () => ({
   notifyPermissionRequest: mocks.notifyPermissionRequest,
+}));
+// ACP Tauri bridge — faked so the REAL AcpRuntime (and the store's runtime
+// factory) run against a fake agent, no desktop present. `acpHandlers` captures
+// the subscribed handlers so a test can drive the event stream synchronously.
+vi.mock("./acp", () => ({
+  acpLaunch: mocks.acpLaunch,
+  acpPrompt: mocks.acpPrompt,
+  acpCancel: vi.fn(async () => {}),
+  acpShutdown: mocks.acpShutdown,
+  subscribeAcp: vi.fn(async (h: unknown) => {
+    mocks.acpHandlers = h as Record<string, (p: unknown) => void>;
+    return mocks.acpUnlisten;
+  }),
 }));
 vi.mock("@zerowall/sdk", async () => {
   // The REAL ZeroWallClient — the store's P2 path (agent routing, handoff log,
@@ -283,6 +303,8 @@ beforeEach(async () => {
     agentDefinitions: [],
     zeroWallClient: null,
     selectedAgent: "general",
+    // Every test starts on OpenCode; the ACP factory tests opt in explicitly.
+    acpProfileId: null,
   });
   await useRuntimeStore.getState().connect();
   expect(useRuntimeStore.getState().status).toBe("ready");
@@ -1479,5 +1501,62 @@ describe("sending with no model chosen", () => {
     });
     await useRuntimeStore.getState().sendPrompt("hello", undefined, draft);
     expect(mocks.sendPromptSpy).toHaveBeenCalled();
+  });
+});
+
+// The runtime factory: connect() must select AcpRuntime (never OpenCode) when a
+// profile is set, drive it through the SAME store event pipeline, and skip all
+// OpenCode-only machinery. These exercise the real AcpRuntime over the faked
+// ./acp bridge — the store's own selection logic is what's under test.
+describe("runtime factory (OpenCode ⇄ ACP)", () => {
+  it("switchRuntime to a preset connects an ACP agent, not OpenCode", async () => {
+    mocks.clientOpts.length = 0; // forget the beforeEach OpenCode connect
+    await useRuntimeStore.getState().switchRuntime("codex");
+    expect(useRuntimeStore.getState().status).toBe("ready");
+    // The ACP agent launched…
+    expect(mocks.acpLaunch).toHaveBeenCalledOnce();
+    // …and NO new OpenCode client was built for this connection.
+    expect(mocks.clientOpts).toEqual([]);
+    // The one exposed session is the profile id.
+    expect(useRuntimeStore.getState().sessions).toEqual([{ id: "codex", title: "Codex" }]);
+  });
+
+  it("routes ACP agent text through the shared fold pipeline into a thread", async () => {
+    await useRuntimeStore.getState().switchRuntime("codex");
+    // Drive the fake agent's stream exactly as the Tauri events would.
+    mocks.acpHandlers.onMessage?.({ message_id: "m1", text: "Hello" });
+    mocks.acpHandlers.onTurnEnded?.("end_turn");
+    const thread = useRuntimeStore.getState().threads["codex"];
+    expect(thread).toBeDefined();
+    const text = JSON.stringify(thread);
+    expect(text).toContain("Hello");
+  });
+
+  it("a prompt on the ACP runtime forwards plain text to the agent", async () => {
+    await useRuntimeStore.getState().switchRuntime("codex");
+    // ACP exposes one fixed session; the UI opens it (no lazy draft-create).
+    useRuntimeStore.setState({ currentId: "codex" });
+    await useRuntimeStore.getState().sendPrompt("do it");
+    expect(mocks.acpPrompt).toHaveBeenCalledWith("do it");
+    // OpenCode's prompt path was NOT taken.
+    expect(mocks.sendPromptSpy).not.toHaveBeenCalled();
+  });
+
+  it("switching back to OpenCode shuts the agent down and rebuilds an OpenCode client", async () => {
+    await useRuntimeStore.getState().switchRuntime("codex");
+    mocks.clientOpts.length = 0;
+    await useRuntimeStore.getState().switchRuntime(null);
+    expect(useRuntimeStore.getState().status).toBe("ready");
+    expect(mocks.acpShutdown).toHaveBeenCalled();
+    // A fresh OpenCode client is built for the OpenCode connection.
+    expect(mocks.clientOpts.length).toBeGreaterThan(0);
+    expect(useRuntimeStore.getState().acpProfileId).toBeNull();
+  });
+
+  it("switchRuntime to the current runtime is a no-op (no reconnect)", async () => {
+    await useRuntimeStore.getState().switchRuntime("codex");
+    mocks.acpLaunch.mockClear();
+    await useRuntimeStore.getState().switchRuntime("codex");
+    expect(mocks.acpLaunch).not.toHaveBeenCalled();
   });
 });

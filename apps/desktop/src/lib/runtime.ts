@@ -1779,6 +1779,10 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     }
     // Switching runtimes drops the whole conversation view: the sessions,
     // threads and per-runtime capability lists all belong to the old runtime.
+    // Clear zeroWallClient too — it wraps the OpenCode client for agent routing
+    // and must not survive onto the ACP path (loadCatalog rebuilds it when we
+    // return to OpenCode). sendPrompt prefers it over `client`, so a stale one
+    // would silently keep routing turns to the torn-down OpenCode runtime.
     set({
       acpProfileId: profileId,
       sessions: [],
@@ -1787,6 +1791,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       skills: [],
       agents: [],
       commands: [],
+      zeroWallClient: null,
       error: null,
     });
     await get().connectRetry();
@@ -2353,7 +2358,11 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // apply ITS default, which on a fresh install is the runtime vendor's own
     // hosted gateway — so a first message would silently leave the machine
     // through an endpoint the user never connected. Say so instead.
-    if (!model) {
+    //
+    // Exempt the ACP runtime: an ACP agent's model is fixed by its launch env,
+    // not chosen in ZeroWall (getDefaultModel is null by design), so there is no
+    // model to pick and the guard would block every send.
+    if (!model && !s.acpProfileId) {
       toast.error(i18n.t("settings:toast.noModelSelected"));
       return Promise.resolve(null);
     }
