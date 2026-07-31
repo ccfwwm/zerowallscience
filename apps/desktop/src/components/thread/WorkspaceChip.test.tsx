@@ -48,7 +48,20 @@ vi.mock("@zerowall/sdk", () => {
     }
     close() {}
   }
-  return { OpenCodeClient, DEFAULT_OPENCODE_URL: "http://127.0.0.1:4096" };
+  // AcpRuntime (pulled in transitively via lib/runtime) extends this — the
+  // status pub/sub is the only surface the runtime store touches at import.
+  class BaseAgentRuntime {
+    protected statusCb: (s: string) => void = () => {};
+    onStatus(cb: (s: string) => void) {
+      this.statusCb = cb;
+    }
+    setStatus(s: string) {
+      this.statusCb(s);
+    }
+    onEvent() {}
+    emit() {}
+  }
+  return { OpenCodeClient, BaseAgentRuntime, DEFAULT_OPENCODE_URL: "http://127.0.0.1:4096" };
 });
 
 describe("WorkspaceChip", () => {

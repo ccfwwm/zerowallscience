@@ -167,7 +167,7 @@
       "openTitle": "{{path}} を開く — エージェントはこのセッションでこのノートブックを操作します"
     },
     "connBadge": {
-      "title": "OpenCode · {{status}}",
+      "title": "{{runtime}} · {{status}}",
       "status": {
         "ready": "準備完了",
         "connecting": "接続中",

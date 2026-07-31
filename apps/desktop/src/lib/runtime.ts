@@ -1864,7 +1864,14 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       zeroWallClient: null,
       error: null,
     });
-    await get().connectRetry();
+    // Switching TO an ACP agent is a single deterministic child-process spawn:
+    // it either launches or fails for a concrete reason (missing binary, denied
+    // approval). Retrying 120× would just spin "connecting" for ~2 min and then
+    // surface the same error, so connect once and let connect() paint the error
+    // directly. Switching back to OpenCode still uses the retry loop — the
+    // bundled sidecar's first boot can legitimately take a while (macOS TCC).
+    if (profileId) await get().connect();
+    else await get().connectRetry();
   },
 
   connect: async () => {

@@ -167,7 +167,7 @@
       "openTitle": "Abrir {{path}} — el agente trabaja en este cuaderno dentro de esta sesión"
     },
     "connBadge": {
-      "title": "OpenCode · {{status}}",
+      "title": "{{runtime}} · {{status}}",
       "status": {
         "ready": "listo",
         "connecting": "conectando",

@@ -167,7 +167,7 @@
       "openTitle": "{{path}} öffnen — der Agent arbeitet in dieser Sitzung an diesem Notebook"
     },
     "connBadge": {
-      "title": "OpenCode · {{status}}",
+      "title": "{{runtime}} · {{status}}",
       "status": {
         "ready": "bereit",
         "connecting": "verbindet …",

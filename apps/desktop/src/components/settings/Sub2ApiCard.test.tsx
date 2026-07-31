@@ -58,11 +58,15 @@ vi.mock("@/lib/runtime", () => {
   const state = { status: "ready", loadCatalog: mocks.loadCatalog, connectRetry: mocks.connectRetry };
   const useRuntimeStore = (select: (s: typeof state) => unknown) => select(state);
   useRuntimeStore.getState = () => state;
+  const client = {
+    addCustomProvider: mocks.addCustomProvider,
+    setDefaultModel: mocks.setDefaultModel,
+  };
   return {
-    getClient: () => ({
-      addCustomProvider: mocks.addCustomProvider,
-      setDefaultModel: mocks.setDefaultModel,
-    }),
+    getClient: () => client,
+    // The card now resolves its OpenCode client through this (ACP-safe) path, so
+    // the mock must supply it too — otherwise the save handler bails on a null.
+    getOrCreateOpenCodeClient: () => Promise.resolve(client),
     useRuntimeStore,
   };
 });

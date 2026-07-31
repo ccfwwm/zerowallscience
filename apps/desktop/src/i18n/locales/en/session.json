@@ -167,7 +167,7 @@
       "openTitle": "Open {{path}} — the agent works on this notebook in this session"
     },
     "connBadge": {
-      "title": "OpenCode · {{status}}",
+      "title": "{{runtime}} · {{status}}",
       "status": {
         "ready": "ready",
         "connecting": "connecting",

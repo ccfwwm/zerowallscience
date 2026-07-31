@@ -167,7 +167,7 @@
       "openTitle": "{{path}} 열기 — 에이전트가 이 세션에서 이 노트북을 작업합니다"
     },
     "connBadge": {
-      "title": "OpenCode · {{status}}",
+      "title": "{{runtime}} · {{status}}",
       "status": {
         "ready": "준비됨",
         "connecting": "연결 중",

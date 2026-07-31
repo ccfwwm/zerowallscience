@@ -101,6 +101,38 @@ fn status_of(state: &AcpConsumerState) -> AcpStatus {
     }
 }
 
+/// Normalize a launch command for the host platform.
+///
+/// On Windows, npm-installed CLIs are `.cmd` batch shims (`npx.cmd`,
+/// `codex-acp.cmd`). `CreateProcess` — which `std::process::Command` uses — can
+/// only run real executables, not batch files, by bare name, so spawning `npx`
+/// fails with "program not found". Route bare-name (non-absolute, extensionless)
+/// commands through `cmd /c`, which resolves the `.cmd` shim on PATH. An absolute
+/// path or one that already carries an extension is spawned as-is.
+///
+/// Off Windows this is the identity: PATH resolution already handles scripts.
+#[cfg(windows)]
+fn normalize_launch_command(command: String, args: Vec<String>) -> (String, Vec<String>) {
+    let looks_like_path = command.contains('/')
+        || command.contains('\\')
+        || std::path::Path::new(&command).extension().is_some();
+    if looks_like_path {
+        return (command, args);
+    }
+    // `cmd /c <command> <args...>` — cmd resolves `<command>` against PATHEXT
+    // (.cmd/.bat/.exe), which a bare `CreateProcess` will not.
+    let mut wrapped = Vec::with_capacity(args.len() + 2);
+    wrapped.push("/c".to_string());
+    wrapped.push(command);
+    wrapped.extend(args);
+    ("cmd".to_string(), wrapped)
+}
+
+#[cfg(not(windows))]
+fn normalize_launch_command(command: String, args: Vec<String>) -> (String, Vec<String>) {
+    (command, args)
+}
+
 #[tauri::command]
 pub fn acp_status(state: State<'_, AcpConsumerState>) -> AcpStatus {
     status_of(&state)
@@ -126,19 +158,27 @@ pub fn acp_launch(
 
     // Materialize secret env vars from the keychain. Reserved names (PATH, HOME,
     // OPENCODE_*, ...) are refused so a profile can't shadow the host environment.
+    // Injection is BEST-EFFORT: when no key is stored we simply omit the var and
+    // let the agent use its own login. Claude Code and Codex authenticate through
+    // their own subscription/OAuth session (`claude login`, `codex login`), so a
+    // model-agnostic host must not refuse to launch just because it holds no key.
     let mut env = request.env.clone();
     for secret in &request.secrets {
         crate::secret_store::validate_acp_env_name(&secret.env_var)?;
-        let key = crate::secret_store::provider_api_key(&app, &secret.provider_id)?
-            .ok_or_else(|| format!("no stored key for provider {}", secret.provider_id))?;
-        env.push((secret.env_var.clone(), key));
+        if let Some(key) = crate::secret_store::provider_api_key(&app, &secret.provider_id)? {
+            env.push((secret.env_var.clone(), key));
+        }
     }
+
+    // On Windows, npm-installed CLIs (`npx`, `codex-acp`) are `.cmd` shims that
+    // CreateProcess cannot spawn by bare name — route them through `cmd /c`.
+    let (command, args) = normalize_launch_command(request.command, request.args);
 
     let profile = AcpAgentProfile {
         id: request.id.clone(),
         label: request.label,
-        command: request.command,
-        args: request.args,
+        command,
+        args,
         // Values materialized from the OS keychain above; never logged or persisted.
         env,
     };
@@ -374,4 +414,62 @@ fn pump_events(
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_launch_command;
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_wraps_bare_name_through_cmd() {
+        // `npx --yes @zed-industries/claude-code-acp` — a bare name that on
+        // Windows is a `.cmd` shim CreateProcess can't spawn directly.
+        let (cmd, args) = normalize_launch_command(
+            "npx".to_string(),
+            vec!["--yes".to_string(), "@zed-industries/claude-code-acp".to_string()],
+        );
+        assert_eq!(cmd, "cmd");
+        assert_eq!(
+            args,
+            vec![
+                "/c".to_string(),
+                "npx".to_string(),
+                "--yes".to_string(),
+                "@zed-industries/claude-code-acp".to_string(),
+            ]
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_wraps_bare_codex() {
+        let (cmd, args) = normalize_launch_command("codex-acp".to_string(), vec![]);
+        assert_eq!(cmd, "cmd");
+        assert_eq!(args, vec!["/c".to_string(), "codex-acp".to_string()]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_leaves_absolute_and_extensioned_as_is() {
+        // Absolute path — spawn directly.
+        let (cmd, args) =
+            normalize_launch_command("C:\\tools\\agent.exe".to_string(), vec!["-x".to_string()]);
+        assert_eq!(cmd, "C:\\tools\\agent.exe");
+        assert_eq!(args, vec!["-x".to_string()]);
+        // Bare name that already carries an extension — spawn directly.
+        let (cmd, _) = normalize_launch_command("agent.exe".to_string(), vec![]);
+        assert_eq!(cmd, "agent.exe");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn non_windows_is_identity() {
+        let (cmd, args) = normalize_launch_command(
+            "npx".to_string(),
+            vec!["--yes".to_string(), "pkg".to_string()],
+        );
+        assert_eq!(cmd, "npx");
+        assert_eq!(args, vec!["--yes".to_string(), "pkg".to_string()]);
+    }
 }

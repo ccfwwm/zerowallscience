@@ -167,7 +167,7 @@
       "openTitle": "打开 {{path}} — 代理在此会话中处理此笔记本"
     },
     "connBadge": {
-      "title": "OpenCode · {{status}}",
+      "title": "{{runtime}} · {{status}}",
       "status": {
         "ready": "就绪",
         "connecting": "连接中",
