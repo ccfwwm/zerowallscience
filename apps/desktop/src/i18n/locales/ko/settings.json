@@ -56,7 +56,9 @@
     "mirrorPython": "Python 다운로드",
     "mirrorPypiPlaceholder": "https://pypi.tuna.tsinghua.edu.cn/simple",
     "mirrorPythonPlaceholder": "https://mirror.example.com/python-build-standalone",
-    "mirrorHint": "선택적 미러로, Python 도구(Jupyter, 과학 데이터베이스)를 설정할 때 pypi.org / github.com이 느린 네트워크에서 다운로드에만 사용됩니다. 비워 두면 기본값을 사용합니다."
+    "mirrorHint": "선택적 미러로, Python 도구(Jupyter, 과학 데이터베이스)를 설정할 때 pypi.org / github.com이 느린 네트워크에서 다운로드에만 사용됩니다. 비워 두면 기본값을 사용합니다.",
+    "engineLabel": "엔진",
+    "engineHint": "OpenCode 또는 번들 ACP 에이전트(Codex, Claude Code)를 로컬 프로세스로 실행"
   },
   "updates": {
     "title": "앱 업데이트",

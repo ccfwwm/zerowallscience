@@ -56,7 +56,9 @@
     "mirrorPython": "Téléchargement Python",
     "mirrorPypiPlaceholder": "https://pypi.tuna.tsinghua.edu.cn/simple",
     "mirrorPythonPlaceholder": "https://mirror.example.com/python-build-standalone",
-    "mirrorHint": "Miroirs facultatifs, utilisés uniquement lors de l’installation d’outils Python (Jupyter, bases de données scientifiques) sur les réseaux où pypi.org / github.com sont lents. Laisser vide pour les valeurs par défaut."
+    "mirrorHint": "Miroirs facultatifs, utilisés uniquement lors de l’installation d’outils Python (Jupyter, bases de données scientifiques) sur les réseaux où pypi.org / github.com sont lents. Laisser vide pour les valeurs par défaut.",
+    "engineLabel": "Moteur",
+    "engineHint": "OpenCode, ou un agent ACP fourni (Codex, Claude Code) exécuté comme processus local"
   },
   "updates": {
     "title": "Mises à jour de l'app",

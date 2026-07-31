@@ -77,6 +77,7 @@ import { PacksSection } from "@/components/settings/PacksSection";
 import { resolveSection } from "@/components/settings/sections";
 import { chipCls, inputCls, selectCls } from "@/components/settings/inputCls";
 import { RECOMMENDED_CONNECTOR_IDS, SCIENCE_CONNECTORS } from "@/lib/scienceConnectors";
+import { ACP_PRESETS } from "@/lib/acp-presets";
 import {
   BROWSER_MCP_ID,
   BROWSER_DISPLAY_NAMES,
@@ -117,6 +118,8 @@ export function SettingsPage() {
   const disconnect = useRuntimeStore((s) => s.disconnect);
   const defaultModel = useRuntimeStore((s) => s.defaultModel);
   const loadCatalog = useRuntimeStore((s) => s.loadCatalog);
+  const acpProfileId = useRuntimeStore((s) => s.acpProfileId);
+  const switchRuntime = useRuntimeStore((s) => s.switchRuntime);
   const connected = status === "ready";
 
   // P2: Agent system state
@@ -875,7 +878,34 @@ export function SettingsPage() {
         {section === "runtime" && (
         <Section title={t("runtime.title")} hint={t("runtime.hint")} flush>
           <div className="divide-y divide-faint">
-            {/* Server URL + connection status */}
+            {/* Runtime picker: OpenCode (default) or a bundled ACP agent. Desktop
+                only — the gateway web client always speaks OpenCode, so the
+                switcher (which spawns a local child process) is hidden on web. */}
+            {isTauri && (
+              <Row
+                title={t("runtime.engineLabel")}
+                hint={t("runtime.engineHint")}
+                control={
+                  <select
+                    value={acpProfileId ?? ""}
+                    onChange={(e) => void switchRuntime(e.target.value || null)}
+                    aria-label={t("runtime.engineLabel")}
+                    className={chipCls("shrink-0")}
+                  >
+                    <option value="">OpenCode</option>
+                    {ACP_PRESETS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                }
+              />
+            )}
+            {/* Server URL + connection status. Meaningless for an ACP agent (a
+                local child process, not an HTTP server) — hidden when one is
+                active; the runtime picker above governs the connection then. */}
+            {!acpProfileId && (
             <Row
               title={t("runtime.serverLabel")}
               hint={
@@ -914,6 +944,7 @@ export function SettingsPage() {
                 )}
               </div>
             </Row>
+            )}
 
             {/* Network proxy: follow system / custom / direct. Mode is a right-side
                 chip; a custom URL field appears below only when "custom" is picked. */}

@@ -56,7 +56,9 @@
     "mirrorPython": "Python-Download",
     "mirrorPypiPlaceholder": "https://pypi.tuna.tsinghua.edu.cn/simple",
     "mirrorPythonPlaceholder": "https://mirror.example.com/python-build-standalone",
-    "mirrorHint": "Optionale Spiegelserver, nur beim Einrichten von Python-Tools (Jupyter, Wissenschaftsdatenbanken) in Netzwerken verwendet, in denen pypi.org / github.com langsam sind. Leer lassen für Standardwerte."
+    "mirrorHint": "Optionale Spiegelserver, nur beim Einrichten von Python-Tools (Jupyter, Wissenschaftsdatenbanken) in Netzwerken verwendet, in denen pypi.org / github.com langsam sind. Leer lassen für Standardwerte.",
+    "engineLabel": "Engine",
+    "engineHint": "OpenCode oder ein mitgelieferter ACP-Agent (Codex, Claude Code), lokal als Prozess ausgeführt"
   },
   "updates": {
     "title": "App-Updates",

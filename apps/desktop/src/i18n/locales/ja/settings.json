@@ -56,7 +56,9 @@
     "mirrorPython": "Python ダウンロード",
     "mirrorPypiPlaceholder": "https://pypi.tuna.tsinghua.edu.cn/simple",
     "mirrorPythonPlaceholder": "https://mirror.example.com/python-build-standalone",
-    "mirrorHint": "任意のミラー。Python ツール(Jupyter・科学データベース)のセットアップ時のダウンロードにのみ使用され、pypi.org / github.com が遅いネットワーク向けです。空欄でデフォルト。"
+    "mirrorHint": "任意のミラー。Python ツール(Jupyter・科学データベース)のセットアップ時のダウンロードにのみ使用され、pypi.org / github.com が遅いネットワーク向けです。空欄でデフォルト。",
+    "engineLabel": "エンジン",
+    "engineHint": "OpenCode、または同梱の ACP エージェント（Codex、Claude Code）をローカルプロセスとして実行"
   },
   "updates": {
     "title": "アプリの更新",

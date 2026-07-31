@@ -56,7 +56,9 @@
     "mirrorPython": "Python download",
     "mirrorPypiPlaceholder": "https://pypi.tuna.tsinghua.edu.cn/simple",
     "mirrorPythonPlaceholder": "https://mirror.example.com/python-build-standalone",
-    "mirrorHint": "Optional mirrors, used only when setting up Python tools (Jupyter, science databases) on networks where pypi.org / github.com are slow. Leave blank for defaults."
+    "mirrorHint": "Optional mirrors, used only when setting up Python tools (Jupyter, science databases) on networks where pypi.org / github.com are slow. Leave blank for defaults.",
+    "engineLabel": "Engine",
+    "engineHint": "OpenCode, or a bundled ACP agent (Codex, Claude Code) run as a local process"
   },
   "updates": {
     "title": "App updates",
