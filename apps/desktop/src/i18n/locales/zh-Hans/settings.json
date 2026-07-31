@@ -383,6 +383,11 @@
     "unreachable": "无法连接",
     "reprobeTitle": "重新检测此机器",
     "removeTitle": "移除此机器",
+    "wsl": {
+      "label": "WSL",
+      "add": "添加 {{name}}",
+      "hint": "或添加本地 WSL 发行版："
+    },
     "chips": {
       "cores_other": "{{count}} 个核心",
       "diskFree": "剩余 {{size}}",

@@ -10,6 +10,7 @@ import {
   computeProbe,
   isTauri,
   listSshHosts,
+  listWslDistros,
   removeComputeMachine,
   type ComputeJob,
   type ComputeProbe,
@@ -33,6 +34,7 @@ type TFn = TFunction<["settings", "common"]>;
 export function RemoteComputeCard() {
   const { t } = useTranslation(["settings", "common"]);
   const [hosts, setHosts] = useState<string[]>([]);
+  const [wslDistros, setWslDistros] = useState<string[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
@@ -75,6 +77,7 @@ export function RemoteComputeCard() {
   useEffect(() => {
     if (!isTauri) return;
     void listSshHosts().then(setHosts).catch(() => undefined);
+    void listWslDistros().then(setWslDistros).catch(() => undefined);
     void loadMachines();
   }, [loadMachines]);
 
@@ -91,6 +94,16 @@ export function RemoteComputeCard() {
       setAddError(e instanceof Error ? e.message : String(e));
     } finally {
       setAdding(false);
+    }
+  };
+
+  // Import a discovered WSL distribution as a `wsl:<distro>` machine, then probe.
+  const addWsl = async (distro: string) => {
+    try {
+      await addComputeMachine(`wsl:${distro}`, `${t("remoteCompute.wsl.label")}: ${distro}`);
+      await loadMachines();
+    } catch (e) {
+      setAddError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -123,9 +136,11 @@ export function RemoteComputeCard() {
     }
   };
 
+  // Discovered WSL distributions not yet saved as machines (offered as chips).
+  const wslUnadded = wslDistros.filter((d) => !machines.some((m) => m.host === `wsl:${d}`));
+
   return (
-    <Section title={t("remoteCompute.title")} hint={t("remoteCompute.subtitle")} flush>
-        {!isTauri ? (
+    <Section title={t("remoteCompute.title")} hint={t("remoteCompute.subtitle")} flush>        {!isTauri ? (
           <p className="px-4 py-3 text-[13px] text-muted">{t("remoteCompute.unavailable")}</p>
         ) : (
           <>
@@ -174,6 +189,20 @@ export function RemoteComputeCard() {
                   </button>
                 </div>
                 {addError && <p className="mt-2 text-xs text-error">{addError}</p>}
+                {wslUnadded.length > 0 && (
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-muted">{t("remoteCompute.wsl.hint")}</span>
+                    {wslUnadded.map((distro) => (
+                      <button
+                        key={distro}
+                        className="rounded-input border border-border px-2 py-1 font-mono text-xs text-text transition-colors hover:bg-surface-2"
+                        onClick={() => void addWsl(distro)}
+                      >
+                        {t("remoteCompute.wsl.add", { name: distro })}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </>

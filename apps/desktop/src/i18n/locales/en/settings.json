@@ -384,6 +384,11 @@
     "unreachable": "unreachable",
     "reprobeTitle": "Re-probe this machine",
     "removeTitle": "Remove this machine",
+    "wsl": {
+      "label": "WSL",
+      "add": "Add {{name}}",
+      "hint": "Or add a local WSL distribution:"
+    },
     "chips": {
       "cores_one": "{{count}} core",
       "cores_other": "{{count}} cores",

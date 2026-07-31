@@ -942,6 +942,16 @@ export async function listSshHosts(): Promise<string[]> {
   return invoke<string[]>("list_ssh_hosts");
 }
 
+/**
+ * Installed WSL distribution names (Windows desktop only; empty elsewhere or
+ * when WSL isn't installed). Each becomes a `wsl:<distro>` compute machine.
+ */
+export async function listWslDistros(): Promise<string[]> {
+  if (!isTauri) return [];
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string[]>("list_wsl_distros_cmd");
+}
+
 export interface GpuInfo {
   name: string;
   mem_total_mib: number;

@@ -384,6 +384,11 @@
     "unreachable": "inaccessible",
     "reprobeTitle": "Sonder à nouveau cette machine",
     "removeTitle": "Supprimer cette machine",
+    "wsl": {
+      "label": "WSL",
+      "add": "Ajouter {{name}}",
+      "hint": "Ou ajoutez une distribution WSL locale :"
+    },
     "chips": {
       "cores_one": "{{count}} cœur",
       "cores_other": "{{count}} cœurs",

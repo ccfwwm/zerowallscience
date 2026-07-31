@@ -383,6 +383,11 @@
     "unreachable": "到達不能",
     "reprobeTitle": "このマシンを再検出",
     "removeTitle": "このマシンを削除",
+    "wsl": {
+      "label": "WSL",
+      "add": "{{name}} を追加",
+      "hint": "またはローカルの WSL ディストリビューションを追加:"
+    },
     "chips": {
       "cores_other": "{{count}} コア",
       "diskFree": "空き容量 {{size}}",

@@ -384,6 +384,11 @@
     "unreachable": "nicht erreichbar",
     "reprobeTitle": "Diesen Rechner erneut prüfen",
     "removeTitle": "Diesen Rechner entfernen",
+    "wsl": {
+      "label": "WSL",
+      "add": "{{name}} hinzufügen",
+      "hint": "Oder eine lokale WSL-Distribution hinzufügen:"
+    },
     "chips": {
       "cores_one": "{{count}} Kern",
       "cores_other": "{{count}} Kerne",

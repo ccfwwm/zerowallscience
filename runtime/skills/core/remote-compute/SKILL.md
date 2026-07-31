@@ -9,6 +9,23 @@ Run heavy work on the user's own machines over non-interactive SSH with their
 own keys — you never install anything remote and never handle credentials.
 A machine may be a plain server (CPU or GPU, no scheduler) or a Slurm cluster.
 
+## 0 · Transport (SSH vs local WSL)
+
+A machine's `host` tells you how to reach it:
+
+- **`user@host` / `host`** — a remote box over SSH. Every command below runs as
+  `ssh -o BatchMode=yes <host> "<cmd>"` (and `scp` for file copy), exactly as written.
+- **`wsl:<distro>`** — a local Windows Subsystem for Linux distribution, NOT a
+  remote host. There is no SSH, no keys, no network. Run commands with
+  `wsl.exe -d <distro> -- bash -c "<cmd>"` instead of `ssh`, and copy files by
+  plain filesystem access to the distro's `\\wsl$\<distro>\...` path (or by
+  running `cp` inside `wsl.exe`) instead of `scp`. Slurm never applies to WSL
+  (`caps.slurm` is null) — always use **§2-Direct**. Everything else (per-job
+  dirs, detached launch, tracking, fetch, record) works the same.
+
+Substitute the transport wherever the steps below say `ssh`/`scp`; the remote
+commands themselves are identical.
+
 ## 1 · Pick the machine
 
 1. `cat .zerowall/compute.json` in the workspace (the app keeps this file in

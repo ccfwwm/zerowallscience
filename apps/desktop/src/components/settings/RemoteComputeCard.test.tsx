@@ -6,6 +6,7 @@ import { RemoteComputeCard } from "./RemoteComputeCard";
 
 const bridge = {
   listSshHosts: vi.fn<() => Promise<string[]>>(),
+  listWslDistros: vi.fn<() => Promise<string[]>>(),
   computeMachines: vi.fn<() => Promise<Machine[]>>(),
   addComputeMachine: vi.fn<(h: string, l?: string) => Promise<void>>(),
   removeComputeMachine: vi.fn<(h: string) => Promise<void>>(),
@@ -17,6 +18,7 @@ const bridge = {
 vi.mock("@/lib/tauri", () => ({
   isTauri: true,
   listSshHosts: (...a: []) => bridge.listSshHosts(...a),
+  listWslDistros: (...a: []) => bridge.listWslDistros(...a),
   computeMachines: (...a: []) => bridge.computeMachines(...a),
   addComputeMachine: (...a: [string, string?]) => bridge.addComputeMachine(...a),
   removeComputeMachine: (...a: [string]) => bridge.removeComputeMachine(...a),
@@ -41,6 +43,7 @@ describe("RemoteComputeCard", () => {
   beforeEach(() => {
     Object.values(bridge).forEach((f) => f.mockReset());
     bridge.listSshHosts.mockResolvedValue(["home-3090"]);
+    bridge.listWslDistros.mockResolvedValue([]);
   });
 
   it("lists a non-Slurm machine with capability chips and never reads the queue", async () => {
@@ -81,5 +84,36 @@ describe("RemoteComputeCard", () => {
     expect(await screen.findByText(/Slurm/)).toBeInTheDocument();
     await waitFor(() => expect(bridge.computeJobs).toHaveBeenCalledWith("login-a"));
     expect(await screen.findByText("fit-model")).toBeInTheDocument();
+  });
+
+  it("offers discovered WSL distributions and imports one as a wsl: machine", async () => {
+    bridge.computeMachines.mockResolvedValueOnce([]); // initial: no machines
+    bridge.listWslDistros.mockResolvedValue(["Ubuntu-22.04"]);
+    // After import the machine list includes the wsl: host, which gets probed.
+    bridge.computeMachines.mockResolvedValueOnce([
+      { host: "wsl:Ubuntu-22.04", label: "WSL: Ubuntu-22.04", caps: null },
+    ]);
+    bridge.addComputeMachine.mockResolvedValue();
+    bridge.computeProbe.mockResolvedValue(gpuProbe);
+    render(<RemoteComputeCard />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Add Ubuntu-22\.04/ }));
+    await waitFor(() =>
+      expect(bridge.addComputeMachine).toHaveBeenCalledWith("wsl:Ubuntu-22.04", "WSL: Ubuntu-22.04"),
+    );
+    await waitFor(() => expect(bridge.computeProbe).toHaveBeenCalledWith("wsl:Ubuntu-22.04"));
+  });
+
+  it("does not offer a WSL distribution that is already added", async () => {
+    bridge.computeMachines.mockResolvedValue([
+      { host: "wsl:Ubuntu-22.04", label: "WSL: Ubuntu-22.04", caps: null },
+    ]);
+    bridge.listWslDistros.mockResolvedValue(["Ubuntu-22.04"]);
+    bridge.computeProbe.mockResolvedValue(gpuProbe);
+    render(<RemoteComputeCard />);
+
+    // The machine row appears, but no "Add Ubuntu-22.04" import chip.
+    await screen.findByText("WSL: Ubuntu-22.04");
+    expect(screen.queryByRole("button", { name: /Add Ubuntu-22\.04/ })).not.toBeInTheDocument();
   });
 });

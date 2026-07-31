@@ -105,6 +105,28 @@ fn is_host_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+')
 }
 
+/// A WSL distribution name as it appears after the `wsl:` host prefix. The name
+/// is always passed to `wsl.exe` as a discrete argv element (never concatenated
+/// into a shell string), so the only real risks are it being mistaken for a
+/// wsl flag or carrying a control character; we also keep it to a tame charset
+/// for defense in depth. Distro names come from the user's own WSL install.
+fn is_safe_wsl_distro(distro: &str) -> bool {
+    !distro.is_empty()
+        && !distro.starts_with('-')
+        && distro
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+' | '(' | ')' | ' '))
+}
+
+/// Validate a saved-machine host, accepting both SSH targets (`user@host`) and
+/// WSL contexts (`wsl:<distro>`).
+fn is_valid_machine_host(host: &str) -> bool {
+    match host.strip_prefix("wsl:") {
+        Some(distro) => is_safe_wsl_distro(distro),
+        None => is_safe_host(host),
+    }
+}
+
 /// A Slurm job id as squeue %i prints it: `123`, array forms `123_4` /
 /// `123_[0-15]` / `123_[0-15%4]`, het-job forms `123+0`.
 fn is_safe_job_id(id: &str) -> bool {
@@ -180,6 +202,49 @@ async fn run_ssh(app: &AppHandle, host: &str, command: &str) -> Result<(i32, Str
         String::from_utf8_lossy(&out.stdout).to_string(),
         String::from_utf8_lossy(&out.stderr).to_string(),
     ))
+}
+
+/// Run one non-interactive command inside a WSL distribution via `wsl.exe`,
+/// using the user's default WSL user. The command is passed to `bash -c` as a
+/// single discrete argv element — never concatenated into a shell string — so
+/// the distro name and script cannot smuggle extra arguments. Returns (exit
+/// code, stdout, stderr). Off Windows this is unreachable (no wsl: host is ever
+/// saved), but it is compiled everywhere so the routing stays platform-agnostic.
+async fn run_wsl(
+    app: &AppHandle,
+    distro: &str,
+    command: &str,
+) -> Result<(i32, String, String), String> {
+    if !is_safe_wsl_distro(distro) {
+        return Err("invalid WSL distribution".into());
+    }
+    let out = app
+        .shell()
+        .command("wsl.exe")
+        .args(["-d", distro, "--", "bash", "-c", command])
+        .output()
+        .await
+        .map_err(|e| format!("wsl.exe failed to run: {e}"))?;
+    Ok((
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stdout).to_string(),
+        String::from_utf8_lossy(&out.stderr).to_string(),
+    ))
+}
+
+/// Run one command on a saved machine, dispatching by host scheme: a
+/// `wsl:<distro>` host runs inside that WSL distribution, everything else runs
+/// over SSH. This is the single entry point the probe/jobs/cancel commands use,
+/// so WSL and SSH share all downstream parsing.
+async fn run_remote(
+    app: &AppHandle,
+    host: &str,
+    command: &str,
+) -> Result<(i32, String, String), String> {
+    match host.strip_prefix("wsl:") {
+        Some(distro) => run_wsl(app, distro, command).await,
+        None => run_ssh(app, host, command).await,
+    }
 }
 
 /// Parse `squeue -h -o '%i|%T|%M|%P|%j'` output (name last — it may contain
@@ -375,7 +440,7 @@ pub fn compute_machines(app: AppHandle) -> Result<Vec<Machine>, String> {
 
 #[tauri::command]
 pub fn add_compute_machine(app: AppHandle, host: String, label: Option<String>) -> Result<(), String> {
-    if !is_safe_host(&host) {
+    if !is_valid_machine_host(&host) {
         return Err("invalid host".into());
     }
     let mut machines = load_machines(&app)?;
@@ -399,14 +464,23 @@ pub fn remove_compute_machine(app: AppHandle, host: String) -> Result<(), String
 /// because add runs first). Live usage in the return value is never cached.
 #[tauri::command]
 pub async fn compute_probe(app: AppHandle, host: String) -> Result<ComputeProbe, String> {
-    let (code, stdout, stderr) = run_ssh(&app, &host, PROBE_SCRIPT).await?;
-    if code == 255 {
+    let (code, stdout, stderr) = run_remote(&app, &host, PROBE_SCRIPT).await?;
+    let is_wsl = host.starts_with("wsl:");
+    // SSH signals an unreachable host with exit 255; wsl.exe signals a missing
+    // or broken distribution with any non-zero code (the probe script itself
+    // swallows per-tool failures, so a healthy distro exits 0). Treat those as
+    // "not reachable" and surface the last stderr line.
+    let unreachable = if is_wsl { code != 0 } else { code == 255 };
+    if unreachable {
         let mut detail = stderr.lines().last().unwrap_or("connection failed").trim().to_string();
-        if stderr.contains("Host key verification failed") {
+        if !is_wsl && stderr.contains("Host key verification failed") {
             detail = format!(
                 "host key not verified — run `ssh {host}` once in your terminal to check \
                  and accept its fingerprint, then retry"
             );
+        }
+        if detail.is_empty() {
+            detail = "distribution unavailable".into();
         }
         return Ok(ComputeProbe { reachable: false, message: Some(detail), ..Default::default() });
     }
@@ -427,7 +501,7 @@ pub async fn compute_probe(app: AppHandle, host: String) -> Result<ComputeProbe,
 #[tauri::command]
 pub async fn compute_jobs(app: AppHandle, host: String) -> Result<Vec<HpcJob>, String> {
     let (code, stdout, stderr) =
-        run_ssh(&app, &host, "squeue -u \"$USER\" -h -o '%i|%T|%M|%P|%j'").await?;
+        run_remote(&app, &host, "squeue -u \"$USER\" -h -o '%i|%T|%M|%P|%j'").await?;
     if code != 0 {
         return Err(stderr.lines().last().unwrap_or("squeue failed").trim().to_string());
     }
@@ -439,7 +513,7 @@ pub async fn compute_cancel(app: AppHandle, host: String, job_id: String) -> Res
     if !is_safe_job_id(&job_id) {
         return Err("invalid job id".into());
     }
-    let (code, _, stderr) = run_ssh(&app, &host, &format!("scancel '{job_id}'")).await?;
+    let (code, _, stderr) = run_remote(&app, &host, &format!("scancel '{job_id}'")).await?;
     if code != 0 {
         return Err(stderr.lines().last().unwrap_or("scancel failed").trim().to_string());
     }
@@ -448,7 +522,7 @@ pub async fn compute_cancel(app: AppHandle, host: String, job_id: String) -> Res
 
 #[cfg(test)]
 mod tests {
-    use super::{is_safe_host, is_safe_job_id, parse_squeue, parse_ssh_hosts};
+    use super::{is_safe_host, is_safe_job_id, is_valid_machine_host, parse_squeue, parse_ssh_hosts};
 
     #[test]
     fn parses_hosts_and_skips_wildcards() {
@@ -488,6 +562,20 @@ Host gpu+login \"quoted alias\"
         assert!(!is_safe_host("host cmd"));
         assert!(!is_safe_host("@host"));
         assert!(!is_safe_host("a@b@c"));
+    }
+
+    #[test]
+    fn accepts_wsl_hosts_alongside_ssh() {
+        // A WSL context host is `wsl:<distro>`; the distro charset allows the
+        // spaces/parens that appear in real names ("Ubuntu (Preview)").
+        assert!(is_valid_machine_host("wsl:Ubuntu-22.04"));
+        assert!(is_valid_machine_host("wsl:Ubuntu (Preview)"));
+        assert!(is_valid_machine_host("alice@login.hpc.edu")); // still SSH
+        // Empty or flag-like distro names, and shell metacharacters, are rejected.
+        assert!(!is_valid_machine_host("wsl:"));
+        assert!(!is_valid_machine_host("wsl:-d"));
+        assert!(!is_valid_machine_host("wsl:a; rm -rf /"));
+        assert!(!is_valid_machine_host("wsl:a`b`"));
     }
 
     #[test]

@@ -39,6 +39,7 @@ mod macos;
 mod updates;
 mod usage_store;
 mod uv;
+mod wsl;
 
 use jupyter::JupyterState;
 use kernel::KernelState;
@@ -279,6 +280,7 @@ pub fn run() {
             compute::compute_probe,
             compute::compute_jobs,
             compute::compute_cancel,
+            wsl::list_wsl_distros_cmd,
             modal::modal_status,
             preview_server::preview_url,
             large_file::probe_large_file,

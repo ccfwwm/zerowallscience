@@ -384,6 +384,11 @@
     "unreachable": "inalcanzable",
     "reprobeTitle": "Volver a sondear esta máquina",
     "removeTitle": "Quitar esta máquina",
+    "wsl": {
+      "label": "WSL",
+      "add": "Agregar {{name}}",
+      "hint": "O agrega una distribución WSL local:"
+    },
     "chips": {
       "cores_one": "{{count}} núcleo",
       "cores_other": "{{count}} núcleos",

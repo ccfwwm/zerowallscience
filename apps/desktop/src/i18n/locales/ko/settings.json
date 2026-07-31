@@ -383,6 +383,11 @@
     "unreachable": "연결 불가",
     "reprobeTitle": "이 머신 다시 검사",
     "removeTitle": "이 머신 제거",
+    "wsl": {
+      "label": "WSL",
+      "add": "{{name}} 추가",
+      "hint": "또는 로컬 WSL 배포판 추가:"
+    },
     "chips": {
       "cores_other": "코어 {{count}}개",
       "diskFree": "{{size}} 여유",

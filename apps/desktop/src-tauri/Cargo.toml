@@ -1,6 +1,6 @@
 [package]
 name = "zerowall-science"
-version = "0.4.18"
+version = "0.4.19"
 description = "ZeroWall Science"
 authors = ["ZeroWall Science contributors"]
 edition = "2021"
@@ -44,6 +44,12 @@ zerowall-acp = { path = "crates/zerowall-acp" }
 # The ACP crate's public API returns futures channels (mpsc/oneshot); the
 # consumer (acp_consumer.rs) drives that receiver and answers permission oneshots.
 futures = "0.3"
+
+# Read-only registry check for WSL: the Lxss key exists exactly when a distro is
+# registered, so we can gate spawning wsl.exe (which would otherwise trigger the
+# install stub on a machine without WSL). See src/wsl.rs.
+[target.'cfg(target_os = "windows")'.dependencies]
+winreg = "0.52"
 
 # Already in the tree via tao — used to re-pin the traffic lights (src/macos.rs).
 [target.'cfg(target_os = "macos")'.dependencies]
