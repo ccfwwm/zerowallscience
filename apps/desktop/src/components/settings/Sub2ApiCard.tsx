@@ -16,7 +16,7 @@ import {
   type Sub2ApiAccount,
 } from "@/lib/tauri";
 import { isGatewayWeb } from "@/lib/webMode";
-import { getClient, useRuntimeStore } from "@/lib/runtime";
+import { getOrCreateOpenCodeClient, useRuntimeStore } from "@/lib/runtime";
 import { Section } from "./Section";
 import { RechargeDialog } from "./RechargeDialog";
 import { inputCls } from "./inputCls";
@@ -238,8 +238,11 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       // stale. Always re-establish the connection before registering — otherwise
       // the config PATCH races a restarting sidecar and the catalog comes back
       // empty ("未连接供应商" / no models).
-      const ok = await useRuntimeStore.getState().connectRetry();
-      if (!ok) return; // leave the models staged; the 保存 button still works
+      // When an ACP agent is the active runtime, getOrCreateOpenCodeClient()
+      // reaches the sidecar directly with a 3-second timeout instead of the
+      // 120-retry connectRetry() loop that would try to re-launch the ACP agent.
+      const oc = await getOrCreateOpenCodeClient();
+      if (!oc) return; // leave the models staged; the 保存 button still works
       // One provider per provisioned group. Non-primary providers are labelled
       // with their group name so they are distinguishable in the model picker.
       for (const p of provisioned) {
@@ -249,7 +252,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
             : `${t("sub2api.providerName")} · ${
                 visible.find((g) => g.id === p.groupId)?.name ?? p.groupId
               }`;
-        await getClient()!.addCustomProvider(p.providerId, {
+        await oc.addCustomProvider(p.providerId, {
           name,
           npm: npmForProtocol(protocol),
           baseURL: p.baseUrl,
@@ -262,7 +265,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       const def = pickDefaultModel(chosen);
       if (def) {
         const primaryProviderId = providerIdForGroup(primary.id, primary.id);
-        await getClient()!.setDefaultModel(`${primaryProviderId}/${def}`);
+        await oc.setDefaultModel(`${primaryProviderId}/${def}`);
       }
       await loadCatalog();
       const total = provisioned.reduce((n, p) => n + p.models.length, 0);
@@ -414,16 +417,17 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       groups.find((g) => g.id === selectedGroupId)?.name ?? String(selectedGroupId);
     setBusy("connect");
     try {
-      // Provisioning restarts the sidecar, and the runtime need not already be up
-      // to save: always re-establish the connection first, so the Save button is
-      // never greyed out because of an offline or stale-ready sidecar, and the
-      // config write never races a restart.
-      const ok = await useRuntimeStore.getState().connectRetry();
-      if (!ok) {
+      // Always reach the OpenCode sidecar directly for provider config writes.
+      // When an ACP agent (Claude Code / Codex) is the active runtime the sidecar
+      // is still running in the background — getOrCreateOpenCodeClient() finds it
+      // with a 3-second timeout instead of the 120-retry connectRetry() loop that
+      // would otherwise spend ~2 minutes trying to re-launch the ACP agent.
+      const oc = await getOrCreateOpenCodeClient();
+      if (!oc) {
         toast.error(t("sub2api.runtimeOffline"));
         return;
       }
-      await getClient()!.addCustomProvider(providerId, {
+      await oc.addCustomProvider(providerId, {
         name: `${t("sub2api.providerName")} · ${groupName}`,
         npm: npmForProtocol(proto),
         baseURL: baseUrl,
@@ -434,7 +438,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       // only have an AI 平台 key.
       const first = pickDefaultModel(chosen);
       if (first) {
-        await getClient()!.setDefaultModel(`${providerId}/${first}`);
+        await oc.setDefaultModel(`${providerId}/${first}`);
       }
       await loadCatalog();
       toast.success(t("sub2api.connected", { count: chosen.length }));

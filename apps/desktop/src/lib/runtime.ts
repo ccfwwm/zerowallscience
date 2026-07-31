@@ -964,6 +964,46 @@ export function getClient(): OpenCodeClient | null {
 }
 
 /**
+ * Return the current OpenCode client, or create a transient one if ACP is the
+ * active runtime (the OpenCode sidecar keeps running in the background even
+ * when an ACP agent is selected; only the UI switched runtimes).
+ *
+ * Used by sub2api provider registration which must always target OpenCode's
+ * config API regardless of which agent the user is chatting with.
+ *
+ * Resolves null when the sidecar is unreachable after 3 s so the caller can
+ * surface a clear error instead of blocking forever.
+ */
+export async function getOrCreateOpenCodeClient(): Promise<OpenCodeClient | null> {
+  if (opencodeClient) return opencodeClient;
+  // ACP is active — opencodeClient was torn down by the runtime switch.
+  // Recreate a short-lived client aimed at the same sidecar URL.
+  const state = useRuntimeStore.getState();
+  const baseUrl = state.serverUrl ?? DEFAULT_OPENCODE_URL;
+  try {
+    const [password, directory] = await Promise.all([
+      isTauri ? runtimePassword().catch(() => null) : Promise.resolve(null),
+      isTauri ? workspacePath().catch(() => null) : Promise.resolve(null),
+    ]);
+    const c = new OpenCodeClient({
+      baseUrl,
+      directory: directory ?? undefined,
+      password: password ?? undefined,
+    });
+    // Quick liveness check — 3 s hard timeout so we fail fast and never block.
+    await Promise.race([
+      c.listProviders(),
+      new Promise<never>((_, rej) =>
+        setTimeout(() => rej(new Error("OpenCode sidecar unreachable")), 3_000),
+      ),
+    ]);
+    return c;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Every pack manifest under `runtime/packs/`, inlined at build time.
  *
  * Same reasoning as `BUILT_IN_AGENT_SOURCES` below: nothing serves
