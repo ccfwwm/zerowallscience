@@ -4,7 +4,7 @@
 // profiles plus whatever a user adds later via the config surface.
 //
 // The command strings are the agents' own published entry points:
-//   Codex        → `codex-acp` (OpenAI's ACP bridge, on PATH after install).
+//   Codex        → `npx @agentclientprotocol/codex-acp` (ACP bridge for Codex).
 //   Claude Code  → `npx @zed-industries/claude-code-acp` (Zed's ACP bridge).
 //
 // Secrets are injected by REFERENCE only: each preset names the env var the
@@ -17,13 +17,13 @@ import type { AcpLaunchRequest } from "./acp";
 /** A shippable ACP profile: a launch request the runtime can start as-is. */
 export type AcpPreset = AcpLaunchRequest;
 
-/** The two agents ZeroWall ships ready to launch. Order is display order. */
+/** The agents ZeroWall ships ready to launch. Order is display order. */
 export const ACP_PRESETS: readonly AcpPreset[] = [
   {
     id: "codex",
     label: "Codex",
-    command: "codex-acp",
-    args: [],
+    command: "npx",
+    args: ["--yes", "@agentclientprotocol/codex-acp"],
     secrets: [{ envVar: "OPENAI_API_KEY", providerId: "openai" }],
   },
   {
