@@ -1,6 +1,6 @@
 # Progress
 
-2026-08-01 01:55 · v0.4.21 代码提交（858a6e8）。修复三处结构性 bug：①Sub2ApiCard mount 时 OpenCode ready + account 存在 + providers 空则自动触发 autoSetup，重启后无需手动点"一键获取模型"；② loadCatalog ACP 模式下通过 getOrCreateOpenCodeClient() 读取后台 sidecar 的 providers，切换 Claude Code / Codex 时模型列表不再清空；③ switchRuntime ACP 路径 connect 成功后立即调 loadCatalog 填充 providers。
+2026-08-01 02:10 · v0.4.21 exe+msi 发布至 ccfwwm/zerowallscience-releases v0.4.21。修复三处结构性 bug：①Sub2ApiCard mount 时 OpenCode ready + account 存在 + providers 空则自动触发 autoSetup，重启后无需手动点"一键获取模型"；② loadCatalog ACP 模式下通过 getOrCreateOpenCodeClient() 读取后台 sidecar 的 providers，切换 Claude Code / Codex 时模型列表不再清空；③ switchRuntime ACP 路径 connect 成功后立即调 loadCatalog。
 
 2026-07-31 23:59 · v0.4.20 发布完成（commit 96ad55b，tag v0.4.20）。修复 ACP 运行时切换四个根因：best-effort key 注入、Windows cmd wrap、fail-fast connect、ConnBadge 动态 runtime 标签；两个测试 mock 修复；exe 72MB + MSI 102MB 上传至 ccfwwm/zerowallscience-releases v0.4.20 并已 publish。
 
