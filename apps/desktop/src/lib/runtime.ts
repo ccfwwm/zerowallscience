@@ -1671,14 +1671,17 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   loadCatalog: async () => {
     if (!client) return;
     try {
+      // listProviders is OpenCodeClient-only. In OpenCode mode opencodeClient
+      // equals `client`. In ACP mode opencodeClient is torn down, but the
+      // sidecar keeps running in the background — create a transient client so
+      // the model picker stays populated while the user is on the ACP runtime.
+      const oc = opencodeClient ?? await getOrCreateOpenCodeClient().catch(() => null);
       const [firstSkills, agents, defaultModel, commands, providers] = await Promise.all([
         client.listSkills(),
         client.listAgents(),
         client.getDefaultModel().catch(() => null),
         client.listCommands().catch(() => []),
-        // listProviders is OpenCodeClient-only (not on the AgentRuntime port);
-        // opencodeClient is the same instance as `client`, set together.
-        opencodeClient ? opencodeClient.listProviders().catch(() => []) : Promise.resolve([]),
+        oc ? oc.listProviders().catch(() => []) : Promise.resolve([]),
       ]);
       // A model switch in flight owns `defaultModel`: this read may predate
       // the switch's config write, and applying it would visibly revert the
@@ -1905,6 +1908,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           void logDebug("ACP connect OK");
           set({ error: null });
           await get().refreshSessions();
+          // Populate the model picker from the background OpenCode sidecar so
+          // sub2api providers remain visible while the ACP runtime is active.
+          void get().loadCatalog();
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           void logDebug(`ACP connect FAILED: ${msg}`);

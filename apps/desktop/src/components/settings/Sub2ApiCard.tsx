@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, KeyRound, Loader2, LogOut, RefreshCw, Sparkles, Wallet } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -141,6 +141,8 @@ const DOMESTIC_MARK = "★";
 export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: boolean } = {}) {
   const { t } = useTranslation(["settings", "common"]);
   const loadCatalog = useRuntimeStore((s) => s.loadCatalog);
+  const runtimeStatus = useRuntimeStore((s) => s.status);
+  const providers = useRuntimeStore((s) => s.providers);
 
   const [mode, setMode] = useState<Mode>("signIn");
   const [email, setEmail] = useState("");
@@ -158,6 +160,10 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
   const [balance, setBalance] = useState<string | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const [protocol, setProtocol] = useState<Protocol>(loadProtocol);
+
+  // Tracks the last account email for which auto-setup was triggered, so we
+  // run it at most once per account per mount (not on every re-render).
+  const autoSetupAccountRef = useRef<string | null>(null);
 
   // Best-effort balance fetch — a gateway that has no billing surface just
   // leaves the amount hidden rather than surfacing an error to the user.
@@ -188,6 +194,22 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       cancelled = true;
     };
   }, []);
+
+  // After a restart the session is restored (above) but providers are never
+  // re-registered — autoSetup only ran during the original sign-in. Once
+  // OpenCode is ready and the account is live but the catalog is still empty,
+  // trigger it automatically so the model picker fills in without a manual
+  // "一键获取模型" click. Runs at most once per account per mount.
+  useEffect(() => {
+    if (!isTauri || isGatewayWeb) return;
+    if (runtimeStatus !== "ready" || !account || providers.length > 0) return;
+    if (autoSetupAccountRef.current === account.email) return;
+    autoSetupAccountRef.current = account.email;
+    void autoSetup();
+    // autoSetup closes over stable setState refs; exhaustive-deps would add it
+    // to the array and re-run on every render. The ref guard makes this safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runtimeStatus, account, providers.length]);
 
   const ordered = useMemo(() => (models ? orderModels(models) : []), [models]);
 
