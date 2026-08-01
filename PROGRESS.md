@@ -1,6 +1,6 @@
 # Progress
 
-2026-08-01 02:25 · v0.4.21 hotfix（3efa690）推送并重新发布。回滚 switchRuntime ACP 路径主动调 loadCatalog，避免 getOrCreateOpenCodeClient() 触发后台 sidecar 连接竞态。保留 loadCatalog 内部 fallback 和 Sub2ApiCard 自动 autoSetup。Codex 错误现在正确显示（codex-acp 未安装），不再误报"OpenCode 运行中"。
+2026-08-01 02:35 · v0.4.21 final（01c4790）推送并重新发布。修正 Codex ACP preset：从不存在的 `codex-acp` 命令改为 `npx @agentclientprotocol/codex-acp`（官方 ACP bridge）。Codex 和 Claude Code 现在都通过 npx 自动安装，首次启动会下载依赖。
 
 2026-07-31 23:59 · v0.4.20 发布完成（commit 96ad55b，tag v0.4.20）。修复 ACP 运行时切换四个根因：best-effort key 注入、Windows cmd wrap、fail-fast connect、ConnBadge 动态 runtime 标签；两个测试 mock 修复；exe 72MB + MSI 102MB 上传至 ccfwwm/zerowallscience-releases v0.4.20 并已 publish。
 
