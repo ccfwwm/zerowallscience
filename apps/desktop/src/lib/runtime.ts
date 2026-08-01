@@ -1908,9 +1908,6 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           void logDebug("ACP connect OK");
           set({ error: null });
           await get().refreshSessions();
-          // Populate the model picker from the background OpenCode sidecar so
-          // sub2api providers remain visible while the ACP runtime is active.
-          void get().loadCatalog();
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           void logDebug(`ACP connect FAILED: ${msg}`);
