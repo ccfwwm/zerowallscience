@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-01 03:05 · v0.4.22 发布（46e6e74）。默认运行时改为 Claude Code，首次启动自动使用 ACP 模式。Sub2Api autoSetup 现在在 ACP 模式下也能触发（检测 runtime ready 而不仅仅 OpenCode ready），账号恢复后自动获取模型无需手动点击。优化 Claude Code 首次使用体验。
+
 2026-08-01 02:35 · v0.4.21 final（01c4790）推送并重新发布。修正 Codex ACP preset：从不存在的 `codex-acp` 命令改为 `npx @agentclientprotocol/codex-acp`（官方 ACP bridge）。Codex 和 Claude Code 现在都通过 npx 自动安装，首次启动会下载依赖。
 
 2026-07-31 23:59 · v0.4.20 发布完成（commit 96ad55b，tag v0.4.20）。修复 ACP 运行时切换四个根因：best-effort key 注入、Windows cmd wrap、fail-fast connect、ConnBadge 动态 runtime 标签；两个测试 mock 修复；exe 72MB + MSI 102MB 上传至 ccfwwm/zerowallscience-releases v0.4.20 并已 publish。
