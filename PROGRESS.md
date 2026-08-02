@@ -1,6 +1,6 @@
 # Progress
 
-2026-08-03 18:30 · v0.4.23 — ACP 模式 UI 适配修复。**供应商描述修正**：移除 "OpenCode 登录信息" 误导文字，改为中性描述"模型供应商配置"；ACP 模式下显示专用提示"ACP 模式下供应商由 AI 平台统一管理"；ProviderManagerCard 自动检测 localStorage 的 acpProfileId 切换 hint；中英文本地化完整支持。**事件流验证**：确认 ACP runtime 正确发送 session.idle（acp-runtime.ts:152），runtime.ts 正确处理清除 runningSessions（runtime.ts:1383-1386），事件链路完整（Rust acp_consumer.rs:398 → acp:turn-ended → ACP runtime → session.idle）。"正在处理"卡住问题需实际测试，可能为 sessionId 不匹配或其他 UI 状态同步问题。
+2026-08-03 19:20 · v0.4.23 发布（8da34eb）— ACP 模式 UI 适配修复。**供应商描述修正**：移除 "OpenCode 登录信息" 误导文字，改为中性描述"模型供应商配置"；ACP 模式下显示专用提示"ACP 模式下供应商由 AI 平台统一管理"；ProviderManagerCard 自动检测 localStorage 的 acpProfileId 切换 hint；中英文本地化完整支持。**事件流验证**：确认 ACP runtime 正确发送 session.idle（acp-runtime.ts:152），runtime.ts 正确处理清除 runningSessions（runtime.ts:1383-1386），事件链路完整（Rust acp_consumer.rs:398 → acp:turn-ended → ACP runtime → session.idle）。"正在处理"卡住问题需实际测试，可能为 sessionId 不匹配或其他 UI 状态同步问题。已发布至 GitHub releases，exe 72MB + msi 102MB。
 
 2026-08-01 03:05 · v0.4.22 发布（46e6e74）。默认运行时改为 Claude Code，首次启动自动使用 ACP 模式。Sub2Api autoSetup 现在在 ACP 模式下也能触发（检测 runtime ready 而不仅仅 OpenCode ready），账号恢复后自动获取模型无需手动点击。优化 Claude Code 首次使用体验。
 
