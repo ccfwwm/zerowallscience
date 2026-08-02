@@ -137,7 +137,10 @@ function initialAcpProfileId(): string | null {
   if (typeof window === "undefined" || isGatewayWeb) return null;
   const id = window.localStorage.getItem(ACP_PROFILE_KEY);
   // Guard against a stale id whose preset was removed between versions.
-  return id && acpPresetById(id) ? id : null;
+  if (id && acpPresetById(id)) return id;
+  // Default to Claude Code on first launch (no stored preference yet).
+  // Users can switch to OpenCode or Codex from the runtime picker.
+  return id === null ? "claude-code" : null;
 }
 function initialSelectedAgent(): AgentRole {
   if (typeof window === "undefined") return "general";

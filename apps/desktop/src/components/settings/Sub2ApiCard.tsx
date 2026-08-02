@@ -197,12 +197,19 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
 
   // After a restart the session is restored (above) but providers are never
   // re-registered — autoSetup only ran during the original sign-in. Once
-  // OpenCode is ready and the account is live but the catalog is still empty,
+  // the runtime is ready and the account is live but the catalog is still empty,
   // trigger it automatically so the model picker fills in without a manual
   // "一键获取模型" click. Runs at most once per account per mount.
+  //
+  // Triggers in both OpenCode mode (runtimeStatus === "ready") and ACP mode
+  // (runtimeStatus === "ready" with ACP agent, but OpenCode sidecar in background).
   useEffect(() => {
     if (!isTauri || isGatewayWeb) return;
-    if (runtimeStatus !== "ready" || !account || providers.length > 0) return;
+    // Wait for some runtime to be ready (OpenCode or ACP).
+    if (runtimeStatus !== "ready") return;
+    // Need an account and empty providers to trigger.
+    if (!account || providers.length > 0) return;
+    // Run at most once per account email per mount.
     if (autoSetupAccountRef.current === account.email) return;
     autoSetupAccountRef.current = account.email;
     void autoSetup();
