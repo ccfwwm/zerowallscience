@@ -110,7 +110,8 @@
   },
   "providers": {
     "title": "Providers",
-    "hint": "Authentication, custom endpoints, and imported OpenCode logins",
+    "hint": "Authentication, custom endpoints, and model provider configuration",
+    "hintAcp": "In ACP mode, providers are managed by AI Platform",
     "connectPrompt": "Connect the runtime to manage providers.",
     "manage": "Manage",
     "collapse": "Collapse",

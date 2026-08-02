@@ -24,10 +24,15 @@ export function ProviderManagerCard({
     ? t("providers.connectedSummary", { count: providers.length, names })
     : t("providers.noneConnected");
 
+  // Check if we're in ACP mode (Claude Code / Codex) by looking at localStorage
+  const isAcpMode = typeof window !== "undefined" &&
+    window.localStorage.getItem("zerowall.acp.profileId.v1") !== null &&
+    window.localStorage.getItem("zerowall.acp.profileId.v1") !== "";
+
   return (
     <Section
       title={t("providers.title")}
-      hint={t("providers.hint")}
+      hint={isAcpMode ? t("providers.hintAcp") : t("providers.hint")}
       action={
         /* The toggle only shows/hides content — it must stay clickable in
            every runtime state, or a disconnect strands an expanded panel. */
