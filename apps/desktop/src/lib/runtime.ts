@@ -56,6 +56,10 @@ import {
   setProxySetting as persistProxySetting,
   setWorkspace,
   startRuntime,
+  sub2apiAccount,
+  sub2apiFetchGroups,
+  sub2apiProvisionGroups,
+  sub2apiRestoreSession,
   workspacePath,
   type ApprovalMode,
   type ProjectInfo,
@@ -66,6 +70,16 @@ import {
 import { isGatewayWeb, gatewayToken, gatewayOrigin } from "./webMode";
 import { AcpRuntime } from "./acp-runtime";
 import { acpPresetById } from "./acp-presets";
+import { buildAcpLaunchRequest, saveAcpConfig } from "./acp-config";
+import {
+  deriveAcpConfigs,
+  loadProtocol,
+  npmForProtocol,
+  openGroups,
+  orderModels,
+  pickDefaultModel,
+  providerIdForGroup,
+} from "./sub2api-provision";
 import { kernelReset } from "./kernel";
 import { moveScrollMemory } from "./scrollMemory";
 import { deriveArtifact } from "./artifacts";
@@ -184,6 +198,12 @@ interface RuntimeState {
   /** Switch the active runtime and reconnect. null → OpenCode; an ACP preset id
    *  → that external agent. A no-op if already on that runtime. */
   switchRuntime: (profileId: string | null) => Promise<void>;
+  /** Restore a saved Sub2Api session and, if signed in, provision its open
+   *  groups: store each group's key in the keychain, register the OpenCode
+   *  providers, and write the Claude Code / Codex ACP launch configs. Idempotent
+   *  and best-effort; a no-op when signed out or off-desktop. Shared by bootstrap
+   *  (before connecting) and the settings card. */
+  ensureAutoProvisioned: () => Promise<void>;
   sessions: SessionMeta[];
   currentId: string | null;
   threads: Record<string, Thread>;
@@ -1880,6 +1900,81 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     else await get().connectRetry();
   },
 
+  ensureAutoProvisioned: async () => {
+    if (!isTauri) return; // web client provisions server-side; nothing to do here
+    // A stored Sub2Api session is silently restored. Signed out → no account,
+    // and we leave the login prompt to the settings card. The token stays in the
+    // Rust process; only the identity comes back here.
+    const account = (await sub2apiRestoreSession().catch(() => null))
+      ?? (await sub2apiAccount().catch(() => null));
+    if (!account) {
+      void logDebug("auto-provision: no Sub2Api session — skipping");
+      return;
+    }
+    // One key per open group, each stored under its own provider id, keys landing
+    // straight in the OS credential manager (never through JS). The sidecar is
+    // restarted once by the Rust side as part of provisioning.
+    const { groups } = await sub2apiFetchGroups();
+    const visible = openGroups(groups);
+    if (visible.length === 0) return;
+    const primary =
+      visible.find((g) => /国产|domestic/i.test(g.name)) ??
+      visible.find((g) => /default/i.test(g.name)) ??
+      visible[0];
+    const requests = visible.map((g) => ({
+      groupId: g.id,
+      providerId: providerIdForGroup(g.id, primary.id),
+    }));
+    const provisioned = await sub2apiProvisionGroups(requests);
+    if (provisioned.length === 0) return;
+    // Route the ACP runtimes (Claude Code / Codex) through the gateway: classify
+    // each provisioned group as claude vs gpt and persist the launch config
+    // (keychain provider id + base URL + model). Non-secret — the key never
+    // leaves the credential manager. Written BEFORE connect() so the ACP agent
+    // spawns with its key + base URL already in place (see bootstrap).
+    const named = provisioned.map((p) => ({
+      ...p,
+      name: visible.find((g) => g.id === p.groupId)?.name ?? String(p.groupId),
+    }));
+    const { claudeCode, codex } = deriveAcpConfigs(named);
+    if (claudeCode) saveAcpConfig("claude-code", claudeCode);
+    if (codex) saveAcpConfig("codex", codex);
+    void logDebug(
+      `auto-provision: ${provisioned.length} group(s); acp claude=${claudeCode ? "yes" : "no"} codex=${codex ? "yes" : "no"}`,
+    );
+    // Register one OpenCode provider per group so the model picker is populated
+    // regardless of which agent the user chats with. Best-effort: if the sidecar
+    // is briefly unreachable (still restarting), leave it — the settings card's
+    // autoSetup re-registers on next open, and the ACP path already has its
+    // config from the saveAcpConfig calls above.
+    const oc = await getOrCreateOpenCodeClient();
+    if (!oc) {
+      void logDebug("auto-provision: OpenCode sidecar unreachable — providers deferred");
+      return;
+    }
+    const npm = npmForProtocol(loadProtocol());
+    for (const p of named) {
+      const name =
+        p.groupId === primary.id ? "Sub2API" : `Sub2API · ${p.name}`;
+      await oc.addCustomProvider(p.providerId, {
+        name,
+        npm,
+        baseURL: p.baseUrl,
+        models: orderModels(p.models),
+      });
+    }
+    // Default model: the primary group's first ordered model, pinned to the
+    // primary provider id so it survives group switches.
+    const primaryProv = named.find((p) => p.groupId === primary.id) ?? named[0];
+    const def = pickDefaultModel(orderModels(primaryProv.models));
+    if (def) {
+      const primaryProviderId = providerIdForGroup(primary.id, primary.id);
+      await oc.setDefaultModel(`${primaryProviderId}/${def}`).catch((err) => {
+        void logDebug(`auto-provision: setDefaultModel failed: ${err}`);
+      });
+    }
+  },
+
   connect: async () => {
     // Quiet teardown of any previous connection: within a (re)connect the
     // status must never pass through "offline" — on first boot the retry loop
@@ -1897,7 +1992,12 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         // A stale id whose preset was removed — fall back to OpenCode cleanly.
         set({ acpProfileId: null });
       } else {
-        const acp = new AcpRuntime(preset);
+        // Merge any Sub2Api-provisioned gateway config (key ref + base URL +
+        // model) into the launch request so the agent routes through the gateway
+        // instead of its own vendor endpoint. No config → the preset launches
+        // as-is and the agent uses its own login (subscription / OAuth).
+        const request = buildAcpLaunchRequest(preset);
+        const acp = new AcpRuntime(request);
         client = acp; // NOT opencodeClient — ACP is not an OpenCode server.
         clientStatusUnsub = acp.onStatus((status) => {
           clearStatusBlip();
@@ -2126,11 +2226,26 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         set({ error: msg });
         return;
       }
-      // ACP mode: OpenCode sidecar is running (for provider config), but don't
-      // connect it as the active runtime — reconnect ACP as the active client.
+      // Auto-provision Sub2Api BEFORE connecting: a stored account is silently
+      // restored, its groups provisioned (keys → keychain), and the ACP launch
+      // configs written. In ACP mode this must happen first — otherwise the
+      // agent launches with no key/base URL and the connection fails, which
+      // (since the retry loop never reaches "ready") would stop auto-setup from
+      // ever running: the deadlock that left Claude Code offline with no
+      // providers. Best-effort — a signed-out user just gets the login prompt.
+      try {
+        await get().ensureAutoProvisioned();
+      } catch (err) {
+        void logDebug(`bootstrap: auto-provision skipped: ${err}`);
+      }
+      // ACP mode: the OpenCode sidecar keeps running (provider config + model
+      // picker), but the ACP agent is the active conversation runtime. connect()
+      // — NOT switchRuntime(), which no-ops when the id already matches the
+      // stored default and would leave us offline — actually launches it, now
+      // that its key + base URL are in place.
       if (get().acpProfileId) {
-        void logDebug("bootstrap: OpenCode started (config only), reconnecting ACP runtime");
-        await get().switchRuntime(get().acpProfileId);
+        void logDebug("bootstrap: OpenCode started (config only), connecting ACP runtime");
+        await get().connect();
         return;
       }
       await get().connectRetry();

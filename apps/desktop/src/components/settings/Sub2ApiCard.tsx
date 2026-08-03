@@ -17,110 +17,45 @@ import {
 } from "@/lib/tauri";
 import { isGatewayWeb } from "@/lib/webMode";
 import { getOrCreateOpenCodeClient, useRuntimeStore } from "@/lib/runtime";
+import {
+  deriveAcpConfigs,
+  isDomesticModel,
+  loadProtocol,
+  npmForProtocol,
+  openGroups,
+  orderModels,
+  pickDefaultModel,
+  PROTOCOL_KEY,
+  providerIdForGroup,
+  type Protocol,
+  type ProvisionedGroupNamed,
+} from "@/lib/sub2api-provision";
+import { saveAcpConfig } from "@/lib/acp-config";
 import { Section } from "./Section";
 import { RechargeDialog } from "./RechargeDialog";
 import { inputCls } from "./inputCls";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
 
-/** Namespace every gateway-provisioned provider lives under. The old
- *  `"sub2api"` id leaked the internal gateway name into fully-qualified model
- *  refs the model then echoed back at the user ("sub2api/gpt-5.5"). A neutral
- *  brand prefix keeps the assistant's identity clean while a per-group suffix
- *  keeps one group's key from overwriting another. See `providerIdForGroup`. */
-const PROVIDER_NAMESPACE = "zerowall";
+// The pure provisioning helpers moved to `@/lib/sub2api-provision` so the
+// runtime store can share them without a circular import. Re-exported here so
+// existing test imports (`./Sub2ApiCard`) keep resolving.
+export { isDomesticModel, openGroups, orderModels, pickDefaultModel, providerIdForGroup };
 
-/** Substrings that mark a model as one of the domestic families this app leads
- *  with. Used only for ordering and a badge — nothing is hidden. */
-const DOMESTIC = ["kimi", "moonshot", "deepseek", "glm", "zhipu", "qwen", "qwq", "ernie", "hunyuan", "minimax", "step", "baichuan", "yi-"];
-
-export function isDomesticModel(id: string): boolean {
-  const lower = id.toLowerCase();
-  return DOMESTIC.some((needle) => lower.includes(needle));
-}
-
-/** Only these groups are open to users right now. The gateway exposes many more
- *  channels (codex, claude-reverse, test, science, …), but the product
- *  deliberately ships just the domestic-model channel and the GPT channel so a
- *  customer cannot switch into an unsupported or unpriced group by hand. Match is
- *  by name: "国产模型" and "GPT模型分组". Domestic stays first — it holds the
- *  default kimi-k3. Exported for the test — the allowlist is the feature. */
-const OPEN_GROUP = /国产|GPT/i;
-
-export function openGroups<T extends { name: string }>(groups: T[]): T[] {
-  const open = groups.filter((g) => OPEN_GROUP.test(g.name));
-  // If the gateway ever renames both away, fall back to the full list so a
-  // signed-in user is never stranded with no channel at all.
-  return open.length > 0 ? open : groups;
-}
-
-/** Domestic models first, then everything else, alphabetical within each group.
- *  Exported for the test — the ordering is the feature, not decoration. */
-export function orderModels(models: string[]): string[] {
-  return [...new Set(models)].sort((a, b) => {
-    const da = isDomesticModel(a);
-    const db = isDomesticModel(b);
-    if (da !== db) return da ? -1 : 1;
-    return a.localeCompare(b);
-  });
-}
-
-/** The model the app defaults to after provisioning. The product leads with
- *  Kimi, so prefer the newest Kimi the account actually has, then any Kimi,
- *  then any other domestic model, then whatever is first. Exported for the
- *  test — the preference is the feature. */
-const DEFAULT_MODEL_PREFERENCE = ["kimi-k3", "kimi"];
-
-export function pickDefaultModel(models: string[]): string | undefined {
-  for (const pref of DEFAULT_MODEL_PREFERENCE) {
-    const hit = models.find((m) => m.toLowerCase().includes(pref));
-    if (hit) return hit;
-  }
-  return models.find(isDomesticModel) ?? models[0];
-}
-
-/** Provider id a group's key is registered under. A gateway key is scoped to a
- *  single group, so each open group becomes its own OpenCode provider. Every
- *  group — including the primary — gets a `zerowall-<groupId>` id: one uniform
- *  rule, no bare special case. The old bare `"sub2api"` id collapsed all groups
- *  onto one keychain entry (so switching from a domestic key to the GPT key
- *  overwrote it and `list_models` came back for the wrong group), and it leaked
- *  the internal gateway name into fully-qualified model refs the model echoed
- *  back at the user. `primaryGroupId` is kept in the signature to preserve the
- *  call sites — it no longer affects the mapping. Exported for the test. */
-export function providerIdForGroup(groupId: number, _primaryGroupId: number): string {
-  void _primaryGroupId;
-  return `${PROVIDER_NAMESPACE}-${groupId}`;
+/** Derive and persist the Claude Code / Codex launch configs from the groups
+ *  just provisioned, so the ACP runtimes route through the gateway. */
+function writeAcpConfigs(provisioned: ProvisionedGroupNamed[]): void {
+  const { claudeCode, codex } = deriveAcpConfigs(provisioned);
+  if (claudeCode) saveAcpConfig("claude-code", claudeCode);
+  if (codex) saveAcpConfig("codex", codex);
 }
 
 type Mode = "signIn" | "register";
 
 const MODES: Mode[] = ["signIn", "register"];
 
-/** Upstream API protocol the provider speaks. OpenCode picks the wire format
- *  from the AI-SDK adapter (`npm`): the openai-compatible adapter calls
- *  `/v1/chat/completions`, the openai adapter calls `/v1/responses`. Default to
- *  Chat Completions — the gateway only carries image parts on that protocol
- *  (Responses drops them, so image analysis fails); the user can still opt into
- *  Responses for a text-only, Responses-native gateway. */
-type Protocol = "chat" | "responses";
-
-const PROTOCOL_KEY = "sub2api.protocol";
 // Default (chat) first so the toggle reads default → alternative left-to-right.
 const PROTOCOLS: Protocol[] = ["chat", "responses"];
-
-function loadProtocol(): Protocol {
-  try {
-    return localStorage.getItem(PROTOCOL_KEY) === "responses" ? "responses" : "chat";
-  } catch {
-    return "chat";
-  }
-}
-
-/** The AI-SDK adapter that speaks the chosen protocol. */
-function npmForProtocol(p: Protocol): string {
-  return p === "responses" ? "@ai-sdk/openai" : "@ai-sdk/openai-compatible";
-}
 
 /** Marks a domestic model in the chip list. Decorative — the label is the id. */
 const DOMESTIC_MARK = "★";
@@ -254,6 +189,16 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       }));
       const provisioned = await sub2apiProvisionGroups(requests);
       if (provisioned.length === 0) return;
+      // Route the ACP runtimes (Claude Code / Codex) through the gateway too:
+      // attach each provisioned group's name, classify claude vs gpt, and store
+      // the launch config (keychain provider id + base URL + model) so the next
+      // ACP connect injects them. Non-secret; the key stays in the keychain.
+      writeAcpConfigs(
+        provisioned.map((p) => ({
+          ...p,
+          name: visible.find((g) => g.id === p.groupId)?.name ?? String(p.groupId),
+        })),
+      );
       // Reflect the primary group's models in the picker so the manual controls
       // stay populated; the auto-registration below covers every group.
       const primaryProv =

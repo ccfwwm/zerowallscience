@@ -25,6 +25,10 @@ const mocks = vi.hoisted(() => ({
   setDefaultModel: vi.fn(),
   loadCatalog: vi.fn(),
   connectRetry: vi.fn(),
+  // Providers the runtime already knows about. Non-empty by default so the card's
+  // "re-provision on restart" effect (which fires only when the catalog is empty)
+  // stays dormant and these manual-path tests exercise just the handler they click.
+  providers: [{ id: "seed" }] as { id: string }[],
 }));
 
 vi.mock("@/lib/tauri", () => ({
@@ -55,7 +59,17 @@ vi.mock("@/lib/webMode", () => ({
 }));
 
 vi.mock("@/lib/runtime", () => {
-  const state = { status: "ready", loadCatalog: mocks.loadCatalog, connectRetry: mocks.connectRetry };
+  // `providers` feeds the card's re-provision-on-restart effect (it fires only
+  // when the catalog is empty). A getter keeps it live so a test can flip
+  // `mocks.providers` to [] to exercise that auto path.
+  const state = {
+    status: "ready",
+    get providers() {
+      return mocks.providers;
+    },
+    loadCatalog: mocks.loadCatalog,
+    connectRetry: mocks.connectRetry,
+  };
   const useRuntimeStore = (select: (s: typeof state) => unknown) => select(state);
   useRuntimeStore.getState = () => state;
   const client = {
@@ -131,6 +145,7 @@ beforeEach(() => {
   mocks.setDefaultModel.mockResolvedValue(undefined);
   mocks.connectRetry.mockResolvedValue(true);
   mocks.restoreSession.mockResolvedValue(null);
+  mocks.providers = [{ id: "seed" }];
   localStorage.clear();
 });
 
@@ -158,7 +173,7 @@ describe("model ordering", () => {
 });
 
 describe("group allowlist", () => {
-  it("keeps only 国产模型 and GPT模型分组, hiding every other channel", () => {
+  it("keeps 国产模型, GPT模型分组, and the Claude-science channel, hiding the rest", () => {
     const all = [
       { id: 1, name: "codex-pro分组" },
       { id: 2, name: "国产模型" },
@@ -166,7 +181,11 @@ describe("group allowlist", () => {
       { id: 4, name: "GPT模型分组" },
       { id: 5, name: "测试分组-不要使用" },
     ];
-    expect(openGroups(all).map((g) => g.name)).toEqual(["国产模型", "GPT模型分组"]);
+    expect(openGroups(all).map((g) => g.name)).toEqual([
+      "国产模型",
+      "claude-science-稳定专属分组",
+      "GPT模型分组",
+    ]);
   });
 
   it("falls back to the full list if the gateway renamed both open groups away", () => {
