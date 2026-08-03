@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-03 13:45 · v0.4.24 final fix — **修复 ACP 启动时未自动连接**。前一版本虽然跳过了 OpenCode 连接，但没有主动调用 `switchRuntime` 连接 ACP，导致应用启动后显示"离线"，用户需手动切换运行时。**根因**：`bootstrap()` 检测到 `acpProfileId` 后直接 return，注释说"ACP client was already set by switchRuntime"，但这只在用户手动切换时才发生，启动时不会自动连接。**修复**：line 2132 改为 `await get().switchRuntime(get().acpProfileId)`，确保启动时自动重连 ACP。日志标记："bootstrap: OpenCode started (config only), reconnecting ACP runtime" → "ACP connect → claude-code" → "ACP connect OK"。
+
 2026-08-03 13:20 · v0.4.24 final — **修复 ACP 模式供应商管理**。前一版本完全跳过 OpenCode 启动导致供应商配置失败（"未连接供应商"空白）。**修复策略**：ACP 模式下仍启动 OpenCode sidecar（用于 Sub2Api autoSetup 的 `addCustomProvider`/`setDefaultModel` 配置操作），但不调用 `connectRetry()` 将其设为活动运行时——`client` 保持为 `AcpRuntime`，对话路由正确通过 `acp_prompt` Tauri 命令。日志标记："OpenCode started (config only), ACP is active runtime"。供应商管理现在可以在 ACP 模式下正常工作，Claude Code 对话功能和模型配置两不误。
 
 2026-08-03 12:11 · v0.4.24 发布 — **修复 ACP 模式对话卡住根因**。Bug：切换至 Claude Code 后，用户发送消息一直显示"正在处理"无响应，日志显示 `ACP connect OK` 后仍走 `send POST` HTTP 路径（应该调用 `acpPrompt` Tauri 命令）。**根因**：`bootstrap()` 在 ACP 模式下仍启动 OpenCode sidecar 并调用 `connectRetry()`，后者的 `connect()` 将 `client` 从 `AcpRuntime` 覆盖回 `OpenCodeClient`，导致 `sendPrompt` 路由到错误的传输层（HTTP POST 而非 ACP stdio JSON-RPC）。**修复**：在 `bootstrap()` 中增加 ACP 模式检测（runtime.ts:2122），当 `acpProfileId` 存在时跳过 OpenCode 启动和连接，避免覆盖 `client`。验证：standalone `npx @zed-industries/claude-code-acp` 工作正常（利用用户本地 `~/.claude` 登录，返回 Sonnet 4.5 并成功对话），确认 SDK 继承父进程环境变量（无 `env_clear()`），`cmd /c` 包装不影响 stdio。

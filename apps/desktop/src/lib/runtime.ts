@@ -2127,9 +2127,10 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         return;
       }
       // ACP mode: OpenCode sidecar is running (for provider config), but don't
-      // connect it as the active runtime — ACP client was already set by switchRuntime.
+      // connect it as the active runtime — reconnect ACP as the active client.
       if (get().acpProfileId) {
-        void logDebug("bootstrap: OpenCode started (config only), ACP is active runtime");
+        void logDebug("bootstrap: OpenCode started (config only), reconnecting ACP runtime");
+        await get().switchRuntime(get().acpProfileId);
         return;
       }
       await get().connectRetry();
