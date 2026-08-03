@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-03 21:45 · v0.4.24 发布 — **修复 ACP 模式对话卡住根因**。Bug：切换至 Claude Code 后，用户发送消息一直显示"正在处理"无响应，日志显示 `ACP connect OK` 后仍走 `send POST` HTTP 路径（应该调用 `acpPrompt` Tauri 命令）。**根因**：`bootstrap()` 在 ACP 模式下仍启动 OpenCode sidecar 并调用 `connectRetry()`，后者的 `connect()` 将 `client` 从 `AcpRuntime` 覆盖回 `OpenCodeClient`，导致 `sendPrompt` 路由到错误的传输层（HTTP POST 而非 ACP stdio JSON-RPC）。**修复**：在 `bootstrap()` 中增加 ACP 模式检测（runtime.ts:2122），当 `acpProfileId` 存在时跳过 OpenCode 启动和连接，避免覆盖 `client`。验证：standalone `npx @zed-industries/claude-code-acp` 工作正常（利用用户本地 `~/.claude` 登录，返回 Sonnet 4.5 并成功对话），确认 SDK 继承父进程环境变量（无 `env_clear()`），`cmd /c` 包装不影响 stdio。
+
 2026-08-03 19:20 · v0.4.23 发布（8da34eb）— ACP 模式 UI 适配修复。**供应商描述修正**：移除 "OpenCode 登录信息" 误导文字，改为中性描述"模型供应商配置"；ACP 模式下显示专用提示"ACP 模式下供应商由 AI 平台统一管理"；ProviderManagerCard 自动检测 localStorage 的 acpProfileId 切换 hint；中英文本地化完整支持。**事件流验证**：确认 ACP runtime 正确发送 session.idle（acp-runtime.ts:152），runtime.ts 正确处理清除 runningSessions（runtime.ts:1383-1386），事件链路完整（Rust acp_consumer.rs:398 → acp:turn-ended → ACP runtime → session.idle）。"正在处理"卡住问题需实际测试，可能为 sessionId 不匹配或其他 UI 状态同步问题。已发布至 GitHub releases，exe 72MB + msi 102MB。
 
 2026-08-01 03:05 · v0.4.22 发布（46e6e74）。默认运行时改为 Claude Code，首次启动自动使用 ACP 模式。Sub2Api autoSetup 现在在 ACP 模式下也能触发（检测 runtime ready 而不仅仅 OpenCode ready），账号恢复后自动获取模型无需手动点击。优化 Claude Code 首次使用体验。

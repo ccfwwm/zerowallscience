@@ -2115,6 +2115,13 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         return;
       }
       if (!isTauri) return;
+      // ACP mode: skip starting OpenCode — the user selected an external agent.
+      // switchRuntime already connected the ACP runtime; starting OpenCode here
+      // would overwrite `client` and route turns through the wrong transport.
+      if (get().acpProfileId) {
+        void logDebug("bootstrap: skipping OpenCode (ACP mode)");
+        return;
+      }
       void logDebug("bootstrap: starting bundled runtime");
       try {
         const url = await startRuntime();
