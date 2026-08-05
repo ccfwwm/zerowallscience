@@ -3,9 +3,22 @@ import type { OpenCodeEvent, RuntimeStatus } from "@zerowall/sdk";
 import type { AcpEventHandlers, AcpLaunchRequest, AcpStatus } from "./acp";
 import { AcpRuntime, AcpUnsupportedError, type AcpRuntimeDeps } from "./acp-runtime";
 
-const REQUEST: AcpLaunchRequest = { id: "codex", label: "Codex", command: "codex" };
-const READY: AcpStatus = { running: true, profile_id: "codex" };
-const IDLE: AcpStatus = { running: false, profile_id: null };
+const REQUEST: AcpLaunchRequest = {
+  profileId: "codex",
+  gateway: { providerId: "zerowall-1", baseUrl: "https://gateway/v1", model: "gpt-5.4" },
+};
+const READY: AcpStatus = {
+  phase: "ready",
+  profile_id: "codex",
+  runtime_info: null,
+  last_error: null,
+};
+const IDLE: AcpStatus = {
+  phase: "idle",
+  profile_id: null,
+  runtime_info: null,
+  last_error: null,
+};
 
 /** Last element, avoiding Array.prototype.at (below the tsc lib target here). */
 function last<T>(arr: T[]): T | undefined {
@@ -22,6 +35,7 @@ function makeDeps() {
     prompt: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
     shutdown: vi.fn(async () => IDLE),
+    listSkills: vi.fn(async () => []),
     subscribe: vi.fn(async (h: AcpEventHandlers) => {
       handlers = h;
       return unlisten;
@@ -72,17 +86,37 @@ describe("AcpRuntime lifecycle", () => {
   });
 });
 
+describe("AcpRuntime capability discovery", () => {
+  it("lists the skills copied into the active ACP runtime home", async () => {
+    const { runtime, deps } = harness();
+    (deps.listSkills as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { name: "literature-review", description: "Search and synthesize papers", location: "C:/acp/skills/literature-review/SKILL.md" },
+    ]);
+
+    await expect(runtime.listSkills()).resolves.toEqual([
+      { name: "literature-review", description: "Search and synthesize papers", location: "C:/acp/skills/literature-review/SKILL.md" },
+    ]);
+    expect(deps.listSkills).toHaveBeenCalledWith("codex");
+  });
+});
+
 describe("AcpRuntime event translation", () => {
   it("accumulates message chunks into a full-value text.updated per message id", async () => {
-    const { runtime, fire, events } = harness();
-    await runtime.connect();
-    fire().onMessage!({ message_id: "m1", text: "Hel" });
-    fire().onMessage!({ message_id: "m1", text: "lo" });
-    const texts = events.filter((e) => e.type === "text.updated");
-    expect(texts).toEqual([
-      { type: "text.updated", sessionId: "codex", partId: "m1", text: "Hel" },
-      { type: "text.updated", sessionId: "codex", partId: "m1", text: "Hello" },
-    ]);
+    vi.useFakeTimers();
+    try {
+      const { runtime, fire, events } = harness();
+      await runtime.connect();
+      fire().onMessage!({ message_id: "m1", text: "Hel" });
+      fire().onMessage!({ message_id: "m1", text: "lo" });
+      vi.advanceTimersByTime(40);
+      const texts = events.filter((e) => e.type === "text.updated");
+      expect(texts).toEqual([
+        { type: "text.updated", sessionId: "codex", partId: "m1", text: "Hel" },
+        { type: "text.updated", sessionId: "codex", partId: "m1", text: "Hello" },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("routes thought chunks to reasoning.updated", async () => {
@@ -132,12 +166,12 @@ describe("AcpRuntime event translation", () => {
     });
   });
 
-  it("surfaces an abnormal exit as an error and goes offline", async () => {
+  it("surfaces an abnormal exit and remains in error for retry", async () => {
     const { runtime, fire, events, statuses } = harness();
     await runtime.connect();
     fire().onExited!("agent crashed");
     expect(last(events)).toEqual({ type: "error", sessionId: "codex", message: "agent crashed" });
-    expect(last(statuses)).toBe("offline");
+    expect(last(statuses)).toBe("error");
   });
 
   it("does not emit an error on a clean exit", async () => {
@@ -146,14 +180,210 @@ describe("AcpRuntime event translation", () => {
     fire().onExited!(null);
     expect(events.some((e) => e.type === "error")).toBe(false);
   });
+
+  it("coalesces rapid text chunks between display refreshes", async () => {
+    vi.useFakeTimers();
+    try {
+      const { runtime, fire, events } = harness();
+      await runtime.connect();
+      fire().onMessage!({ message_id: "m1", text: "Hel" });
+      fire().onMessage!({ message_id: "m1", text: "lo" });
+      expect(events.filter((event) => event.type === "text.updated")).toHaveLength(1);
+      vi.advanceTimersByTime(40);
+      expect(events.filter((event) => event.type === "text.updated")).toEqual([
+        { type: "text.updated", sessionId: "codex", partId: "m1", text: "Hel" },
+        { type: "text.updated", sessionId: "codex", partId: "m1", text: "Hello" },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not mislabel ACP context occupancy as input or estimated output tokens", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-04T09:00:00.000Z"));
+    try {
+    const { runtime, fire, events } = harness();
+    await runtime.connect();
+    await runtime.sendPrompt("codex", "question");
+    fire().onMessage!({ message_id: "reply-1", text: "answer" });
+    fire().onUsage!({ used: 1234, size: 200000 });
+    vi.advanceTimersByTime(1_250);
+    fire().onTurnEnded!("end_turn");
+    expect(last(events)).toEqual({
+      type: "session.idle",
+      sessionId: "codex",
+    });
+    expect(last(events.filter((event) => event.type === "usage"))).toEqual({
+      type: "usage",
+      sessionId: "codex",
+      messageID: "reply-1",
+      input: 0,
+      inputUnavailable: true,
+      output: 0,
+      outputUnavailable: true,
+      contextUsed: 1234,
+      contextSize: 200000,
+      durationMs: 1250,
+      reasoning: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("persists exact ACP prompt usage as per-turn deltas", async () => {
+    const { runtime, fire, events } = harness();
+    await runtime.connect();
+    await runtime.sendPrompt("codex", "first");
+    fire().onMessage!({ message_id: "reply-1", text: "one" });
+    fire().onTurnEnded!("end_turn", {
+      total_tokens: 100,
+      input_tokens: 60,
+      output_tokens: 40,
+      thought_tokens: 4,
+      cached_read_tokens: 2,
+      cached_write_tokens: 1,
+    });
+    await runtime.sendPrompt("codex", "second");
+    fire().onMessage!({ message_id: "reply-2", text: "two" });
+    fire().onTurnEnded!("end_turn", {
+      total_tokens: 250,
+      input_tokens: 160,
+      output_tokens: 90,
+      thought_tokens: 10,
+      cached_read_tokens: 7,
+      cached_write_tokens: 3,
+    });
+
+    const usage = events.filter((event) => event.type === "usage");
+    expect(usage[usage.length - 2]).toMatchObject({
+      messageID: "reply-1",
+      input: 60,
+      output: 40,
+      reasoning: 4,
+      cacheRead: 2,
+      cacheWrite: 1,
+    });
+    expect(usage[usage.length - 1]).toMatchObject({
+      messageID: "reply-2",
+      input: 100,
+      output: 50,
+      reasoning: 6,
+      cacheRead: 5,
+      cacheWrite: 2,
+    });
+    expect(usage[usage.length - 1]).not.toHaveProperty("inputUnavailable");
+    expect(usage[usage.length - 1]).not.toHaveProperty("outputUnavailable");
+  });
+
+  it("marks both token directions unavailable when ACP reports no usage", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-04T10:00:00.000Z"));
+    try {
+      const { runtime, fire, events } = harness();
+      await runtime.connect();
+      await runtime.sendPrompt("claude-code", "question");
+      fire().onMessage!({ message_id: "reply-1", text: "你好" });
+      vi.advanceTimersByTime(900);
+      fire().onTurnEnded!("end_turn");
+
+      expect(last(events.filter((event) => event.type === "usage"))).toEqual({
+        type: "usage",
+        sessionId: "codex",
+        messageID: "reply-1",
+        input: 0,
+        inputUnavailable: true,
+        output: 0,
+        outputUnavailable: true,
+        durationMs: 900,
+        reasoning: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restamps Claude usage that arrives after turn-ended onto the completed reply", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T01:00:00.000Z"));
+    try {
+      const { runtime, fire, events } = harness();
+      await runtime.connect();
+      await runtime.sendPrompt("claude-code", "question");
+      fire().onMessage!({ message_id: "reply-1", text: "answer" });
+      vi.advanceTimersByTime(900);
+      fire().onTurnEnded!("end_turn");
+      // Claude Code ACP sends its context occupancy after the terminal update.
+      fire().onUsage!({ used: 512, size: 200000 });
+
+      expect(last(events.filter((event) => event.type === "usage"))).toEqual({
+        type: "usage",
+        sessionId: "codex",
+        messageID: "reply-1",
+        input: 0,
+        inputUnavailable: true,
+        output: 0,
+        outputUnavailable: true,
+        contextUsed: 512,
+        contextSize: 200000,
+        durationMs: 900,
+        reasoning: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("holds usage that arrives before text until it can sit beneath that reply", async () => {
+    const { runtime, fire, events } = harness();
+    await runtime.connect();
+    fire().onUsage!({ used: 4321, size: 200000 });
+    expect(events).toEqual([]);
+    fire().onMessage!({ message_id: "reply-1", text: "answer" });
+    expect(events.map((event) => event.type)).toEqual(["text.updated", "usage"]);
+    expect(last(events)).toMatchObject({
+      type: "usage",
+      messageID: "reply-1",
+      input: 0,
+      inputUnavailable: true,
+      output: 0,
+      outputUnavailable: true,
+      contextUsed: 4321,
+      contextSize: 200000,
+    });
+  });
+
+  it("keeps the connection ready across authoritative busy and ready states", async () => {
+    const { runtime, fire } = harness();
+    await runtime.connect();
+    fire().onState!({ ...READY, phase: "busy" });
+    fire().onState!(READY);
+    expect(runtime.getStatus()).toBe("ready");
+  });
 });
 
 describe("AcpRuntime prompt + unsupported ops", () => {
-  it("forwards a prompt as plain text (ignoring agent/model/variant)", async () => {
+  it("forwards a prompt and its attachments while ignoring agent/model/variant", async () => {
     const { runtime, deps } = harness();
     await runtime.connect();
-    await runtime.sendPrompt("codex", "hi", "plan", "openai/gpt-5", "max");
-    expect(deps.prompt).toHaveBeenCalledWith("hi");
+    const attachments = [
+      { filename: "floor-plan.png", mime: "image/png", base64: "cGl4ZWxz" },
+      {
+        filename: "notes.txt",
+        mime: "text/plain",
+        base64: "bm90ZXM=",
+        extractedText: "Important document contents",
+      },
+    ];
+    await runtime.sendPrompt("codex", "hi", "plan", "openai/gpt-5", "max", attachments);
+    expect(deps.prompt).toHaveBeenCalledWith("hi", attachments);
   });
 
   it("abort forwards to cancel", async () => {
@@ -173,7 +403,7 @@ describe("AcpRuntime prompt + unsupported ops", () => {
   it("exposes exactly one session whose id is the profile id", async () => {
     const { runtime } = harness();
     expect(await runtime.createSession()).toBe("codex");
-    expect(await runtime.listSessions()).toEqual([{ id: "codex", title: "Codex" }]);
+    expect(await runtime.listSessions()).toEqual([{ id: "codex", title: "codex" }]);
     expect(await runtime.getMessages()).toEqual([]);
   });
 

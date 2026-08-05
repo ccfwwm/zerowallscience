@@ -14,36 +14,66 @@
 //    payloads are serde structs whose field names stay snake_case, so the
 //    payload interfaces below are snake_case on purpose.
 //
-// Secrets NEVER cross this seam as values: `launch` sends only references
-// (`{ envVar, providerId }`); the Rust side materializes the key from the OS
-// keychain at spawn time (see AGENTS.md).
+// Secrets NEVER cross this seam. `launch` sends a provider id, gateway URL, and
+// model; Rust resolves the key and every executable/environment detail.
 import { isTauri, logDebug } from "./tauri";
+
+/** Media attached to an ACP turn. The Rust host turns images into protocol
+ * content blocks and documents into explicit text context without logging data. */
+export interface AcpPromptAttachment {
+  filename: string;
+  mime: string;
+  base64: string;
+  extractedText?: string;
+}
 
 /** Live status of the single ACP session (one agent at a time, like Jupyter). */
 export interface AcpStatus {
-  running: boolean;
-  /** Profile id of the running agent, or null when idle. */
+  phase: "idle" | "starting" | "ready" | "busy" | "stopping" | "error";
   profile_id: string | null;
+  runtime_info: AcpRuntimeInfo | null;
+  last_error: AcpRuntimeError | null;
 }
 
-/** A keychain-backed environment injection: set `envVar` from `providerId`'s
- *  stored key. The value is read server-side and never travels through JS. */
-export interface AcpSecretRef {
-  envVar: string;
-  providerId: string;
+export interface AcpRuntimeError {
+  stage: string;
+  code: string;
+  message: string;
 }
 
-/** What `launch` needs to start an agent. `env` carries only NON-secret vars
- *  (model selection, base URLs, flags); secret keys go through `secrets`. */
-export interface AcpLaunchRequest {
-  id: string;
-  label: string;
+export interface AcpRuntimeInfo {
+  profile_id: string;
+  availability: "available" | "cli_not_found" | "cli_unverified" | "adapter_not_found";
+  executable_path: string | null;
+  cli_version: string | null;
+  adapter_version: string;
+  error: AcpRuntimeError | null;
+}
+
+/** A host-vetted MCP server linked to an ACP session. No environment values or
+ * credentials cross this read-only diagnostic boundary. */
+export interface AcpMcpServerInfo {
+  name: string;
+  status: string;
   command: string;
-  args?: string[];
-  /** Non-secret environment (`[name, value]` pairs). */
-  env?: [string, string][];
-  /** Secret references resolved from the keychain at spawn time. */
-  secrets?: AcpSecretRef[];
+  args: string[];
+}
+
+/** A bundled skill copied into an ACP runtime's isolated skills directory. */
+export interface AcpSkillInfo {
+  name: string;
+  description: string;
+  location: string;
+}
+
+export interface AcpLaunchRequest {
+  profileId: string;
+  gateway: {
+    providerId: string;
+    baseUrl: string;
+    model: string;
+    platform?: string;
+  };
 }
 
 async function invoker() {
@@ -51,7 +81,12 @@ async function invoker() {
   return invoke;
 }
 
-const IDLE: AcpStatus = { running: false, profile_id: null };
+const IDLE: AcpStatus = {
+  phase: "idle",
+  profile_id: null,
+  runtime_info: null,
+  last_error: null,
+};
 
 /** Current ACP session status (idle off-desktop). */
 export async function acpStatus(): Promise<AcpStatus> {
@@ -67,24 +102,52 @@ export async function acpLaunch(request: AcpLaunchRequest): Promise<AcpStatus> {
   const invoke = await invoker();
   return invoke<AcpStatus>("acp_launch", {
     request: {
-      id: request.id,
-      label: request.label,
-      command: request.command,
-      args: request.args ?? [],
-      env: request.env ?? [],
-      secrets: (request.secrets ?? []).map((s) => ({
-        env_var: s.envVar,
-        provider_id: s.providerId,
-      })),
+      profile_id: request.profileId,
+      gateway: {
+        provider_id: request.gateway.providerId,
+        base_url: request.gateway.baseUrl,
+        model: request.gateway.model,
+        ...(request.gateway.platform ? { platform: request.gateway.platform } : {}),
+      },
     },
   });
 }
 
-/** Send one user turn to the active agent. */
-export async function acpPrompt(text: string): Promise<void> {
+export async function acpProbeRuntime(profileId: string): Promise<AcpRuntimeInfo> {
+  if (!isTauri) throw new Error("ACP agents run only in the desktop app");
+  const invoke = await invoker();
+  return invoke<AcpRuntimeInfo>("acp_probe_runtime", { profileId });
+}
+
+/** Prepare the native ACP runtime's app-owned skills and vetted MCP descriptors.
+ * This is intentionally a runtime-switch operation, never a model-switch one. */
+export async function acpPrepareEnvironment(profileId: string): Promise<void> {
+  if (!isTauri) throw new Error("ACP agents run only in the desktop app");
+  const invoke = await invoker();
+  await invoke("acp_prepare_environment", { profileId });
+}
+
+export async function acpListMcpServers(): Promise<AcpMcpServerInfo[]> {
+  if (!isTauri) return [];
+  const invoke = await invoker();
+  return invoke<AcpMcpServerInfo[]>("acp_list_mcp_servers");
+}
+
+export async function acpListSkills(profileId: string): Promise<AcpSkillInfo[]> {
+  if (!isTauri) return [];
+  const invoke = await invoker();
+  return invoke<AcpSkillInfo[]>("acp_list_skills", { profileId });
+}
+
+/** Send one user turn to the active agent, including any image or document
+ * context selected in the composer. */
+export async function acpPrompt(
+  text: string,
+  attachments: AcpPromptAttachment[] = [],
+): Promise<void> {
   if (!isTauri) return;
   const invoke = await invoker();
-  await invoke("acp_prompt", { text });
+  await invoke("acp_prompt", { text, attachments });
 }
 
 /** Cancel the in-flight turn. */
@@ -129,13 +192,22 @@ export interface AcpMessagePayload {
   text: string;
 }
 
-/** `acp:usage` — cumulative context-window usage for the turn, plus optional
- *  cost. Mirrors Part T: a null `cost` means the provider priced nothing (shown
- *  as "—", distinct from a real $0.00). */
+/** `acp:usage` — cumulative context-window occupancy for the turn. ACP 1.4
+ * does not include exact input/output token counts; consumers must not treat
+ * `used` as billed input. */
 export interface AcpUsagePayload {
   used: number;
   size: number;
-  cost: { amount: number; currency: string } | null;
+}
+
+/** Cumulative token counters returned by ACP at prompt completion. */
+export interface AcpTokenUsagePayload {
+  total_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  thought_tokens: number;
+  cached_read_tokens: number;
+  cached_write_tokens: number;
 }
 
 /** `acp:permission` — the agent asks to do something; the user picks an option
@@ -159,6 +231,8 @@ export interface AcpExecApprovalPayload {
  *  subscribed. `toolCall` and `plan` carry the raw ACP JSON (shape owned by the
  *  protocol), so they are typed `unknown` — the renderer narrows them. */
 export interface AcpEventHandlers {
+  onState?: (status: AcpStatus) => void;
+  onDiagnostic?: (payload: AcpDiagnosticPayload) => void;
   onMessage?: (payload: AcpMessagePayload) => void;
   onThought?: (payload: AcpMessagePayload) => void;
   onToolCall?: (payload: unknown) => void;
@@ -167,10 +241,17 @@ export interface AcpEventHandlers {
   onFileWritten?: (path: string) => void;
   onPermission?: (payload: AcpPermissionPayload) => void;
   onExecApproval?: (payload: AcpExecApprovalPayload) => void;
-  /** A turn finished; `stopReason` is the agent's stop reason string. */
-  onTurnEnded?: (stopReason: string) => void;
+  /** A turn finished; usage is cumulative across the ACP session. */
+  onTurnEnded?: (stopReason: string, usage?: AcpTokenUsagePayload) => void;
   /** The agent process exited; `error` is set on an abnormal exit. */
   onExited?: (error: string | null) => void;
+}
+
+export interface AcpDiagnosticPayload {
+  stage: string;
+  elapsed_ms: number;
+  outcome: string;
+  code: string | null;
 }
 
 /**
@@ -185,6 +266,8 @@ export async function subscribeAcp(handlers: AcpEventHandlers): Promise<() => vo
   // Pair each event name with its handler (skip the ones the caller omitted),
   // then subscribe them together so a single unlisten tears them all down.
   const bindings: [string, ((payload: never) => void) | undefined][] = [
+    ["acp:state", handlers.onState],
+    ["acp:diagnostic", handlers.onDiagnostic],
     ["acp:message", handlers.onMessage],
     ["acp:thought", handlers.onThought],
     ["acp:tool-call", handlers.onToolCall],
@@ -193,7 +276,28 @@ export async function subscribeAcp(handlers: AcpEventHandlers): Promise<() => vo
     ["acp:file-written", handlers.onFileWritten],
     ["acp:permission", handlers.onPermission],
     ["acp:exec-approval", handlers.onExecApproval],
-    ["acp:turn-ended", handlers.onTurnEnded],
+    [
+      "acp:turn-ended",
+      handlers.onTurnEnded
+        ? ((payload: never) => {
+            const value = payload as unknown;
+            // Older desktop builds emitted the stop reason as a plain string;
+            // accepting it keeps an upgraded renderer compatible with an
+            // already-running host during hot reload.
+            if (typeof value === "string") {
+              handlers.onTurnEnded!(value);
+              return;
+            }
+            const ended = value as {
+              stop_reason?: unknown;
+              usage?: AcpTokenUsagePayload | null;
+            };
+            if (typeof ended.stop_reason === "string") {
+              handlers.onTurnEnded!(ended.stop_reason, ended.usage ?? undefined);
+            }
+          })
+        : undefined,
+    ],
     ["acp:exited", handlers.onExited],
   ];
 

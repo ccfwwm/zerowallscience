@@ -14,10 +14,11 @@
 //    request's own options, which the fixed once/always/reject `PermissionReply`
 //    cannot express. Those events keep flowing on the dedicated `subscribeAcp`
 //    path to purpose-built ACP approval UI, NOT through `replyPermission`.
-//  - usage (context-window occupancy) and plan (task checklist) — see
-//    acp-normalize.ts. The ACP session UI renders them directly.
-//  - skills / agents / commands / model catalog — an ACP agent is configured by
-//    its launch env, not discoverable over this protocol. These return empty.
+  //  - plan (task checklist) — see acp-normalize.ts. The ACP session UI renders
+  //    it directly.
+//  - agents / commands / model catalog — an ACP agent is configured by its
+//    launch env, not discoverable over this protocol. Skills are the exception:
+//    ZeroWall owns the isolated ACP skills directory and lists it natively.
 //
 // Testability: every Tauri touchpoint is injected via `AcpRuntimeDeps`, so the
 // event-translation and lifecycle logic is unit-testable with plain fakes and
@@ -38,6 +39,7 @@ import type {
 
 import {
   acpCancel,
+  acpListSkills,
   acpLaunch,
   acpPrompt,
   acpShutdown,
@@ -45,7 +47,10 @@ import {
   type AcpEventHandlers,
   type AcpLaunchRequest,
   type AcpMessagePayload,
+  type AcpPromptAttachment,
   type AcpStatus,
+  type AcpTokenUsagePayload,
+  type AcpUsagePayload,
 } from "./acp";
 import { acpToolCallToEvent } from "./acp-normalize";
 
@@ -53,10 +58,11 @@ import { acpToolCallToEvent } from "./acp-normalize";
  *  without a desktop. Defaults wire the real `lib/acp.ts` functions. */
 export interface AcpRuntimeDeps {
   launch: (request: AcpLaunchRequest) => Promise<AcpStatus>;
-  prompt: (text: string) => Promise<void>;
+  prompt: (text: string, attachments?: AcpPromptAttachment[]) => Promise<void>;
   cancel: () => Promise<void>;
   shutdown: () => Promise<AcpStatus>;
   subscribe: (handlers: AcpEventHandlers) => Promise<() => void>;
+  listSkills?: (profileId: string) => Promise<SkillInfo[]>;
 }
 
 const REAL_DEPS: AcpRuntimeDeps = {
@@ -65,7 +71,12 @@ const REAL_DEPS: AcpRuntimeDeps = {
   cancel: acpCancel,
   shutdown: acpShutdown,
   subscribe: subscribeAcp,
+  listSkills: acpListSkills,
 };
+
+/** One UI update every 40 ms keeps streamed prose visually continuous without
+ * rebuilding the live thread and Markdown tree for every protocol token. */
+const STREAM_REFRESH_MS = 40;
 
 /** Thrown by methods an ACP agent cannot honor (revert, ad-hoc shell). Callers
  *  gate these in the UI; a thrown error is the honest answer if one slips
@@ -90,6 +101,30 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
    *  carries the FULL current value, not deltas, so we accumulate here. */
   private readonly messageText = new Map<string, string>();
   private readonly thoughtText = new Map<string, string>();
+  /** The latest whole-value update for each part waiting for the next display
+   * refresh. Protocol chunks still accumulate losslessly in the maps above. */
+  private readonly pendingText = new Map<string, { kind: "text" | "reasoning"; key: string; text: string }>();
+  private streamFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastTextFlushAt: number | null = null;
+  /** ACP UsageUpdate has no message id; track the visible reply it belongs to. */
+  private currentMessageId: string | null = null;
+  /** Usage updates have no reply id and some adapters send one immediately
+   * before their first text chunk. Hold it until it can render beneath the
+   * reply instead of creating an orphaned usage row above it. */
+  private pendingUsage: AcpUsagePayload | null = null;
+  /** Retained after the first display update so turn-ended can restamp its
+   * duration onto the same usage row. */
+  private turnUsage: AcpUsagePayload | null = null;
+  /** Claude Code sends context usage after `turn-ended`. Retain only the just
+   * completed reply so that late terminal update can replace its provisional
+   * unavailable-input row without leaking into the next prompt. */
+  private completedMessageId: string | null = null;
+  private completedTurnDurationMs: number | undefined;
+  /** Last cumulative ACP prompt usage observed. ACP reports session totals,
+   * so every persisted row must contain the delta from this baseline. */
+  private previousTokenUsage: AcpTokenUsagePayload | null = null;
+  /** Wall-clock timing starts when the prompt is accepted by the ACP bridge. */
+  private turnStartedAt: number | null = null;
   /** Distinguishes null-`message_id` chunks across turns so two turns' worth of
    *  unlabeled text never merge into one bubble. Bumped on each turn-ended. */
   private turnSeq = 0;
@@ -99,7 +134,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     this.request = request;
     this.deps = deps;
     // One agent, one conversation: the session id IS the profile id.
-    this.sessionId = request.id;
+    this.sessionId = request.profileId;
   }
 
   // ---- lifecycle ----
@@ -109,7 +144,10 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     try {
       // Subscribe BEFORE launch so no early event is missed.
       this.unsubscribe = await this.deps.subscribe(this.handlers());
-      await this.deps.launch(this.request);
+      const status = await this.deps.launch(this.request);
+      if (status.phase !== "ready") {
+        throw new Error(status.last_error?.message ?? "ACP runtime did not become ready");
+      }
       this.setStatus("ready");
     } catch (err) {
       this.teardown();
@@ -132,23 +170,74 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     }
     this.messageText.clear();
     this.thoughtText.clear();
+    this.pendingText.clear();
+    if (this.streamFlushTimer !== null) clearTimeout(this.streamFlushTimer);
+    this.streamFlushTimer = null;
+    this.lastTextFlushAt = null;
+    this.currentMessageId = null;
+    this.pendingUsage = null;
+    this.turnUsage = null;
+    this.completedMessageId = null;
+    this.completedTurnDurationMs = undefined;
+    this.previousTokenUsage = null;
   }
 
   /** The `acp:*` handlers this runtime consumes: conversation content and
-   *  lifecycle only. Permission/exec/usage/plan/file-written are intentionally
+   *  lifecycle only. Permission/exec/plan/file-written are intentionally
    *  left for other subscribers (see the module header). */
   private handlers(): AcpEventHandlers {
     return {
+      onState: (status) => {
+        switch (status.phase) {
+          case "starting":
+          case "stopping":
+            this.setStatus("connecting");
+            break;
+          case "ready":
+            this.setStatus("ready");
+            break;
+          case "busy":
+            this.setStatus("ready");
+            break;
+          case "error":
+            this.setStatus("error");
+            if (status.last_error) {
+              this.emit({
+                type: "error",
+                sessionId: this.sessionId,
+                message: status.last_error.message,
+              });
+            }
+            break;
+          case "idle":
+            this.setStatus("offline");
+            break;
+        }
+      },
       onMessage: (p) => this.onTextChunk(this.messageText, p, "text"),
       onThought: (p) => this.onTextChunk(this.thoughtText, p, "reasoning"),
       onToolCall: (payload) => {
         const event = acpToolCallToEvent(this.sessionId, payload);
         if (event) this.emit(event);
       },
-      onTurnEnded: () => {
+      onUsage: (payload) => this.onUsage(payload),
+      onTurnEnded: (_stopReason, tokenUsage) => {
         // A turn boundary: unlabeled chunks of the next turn must not extend
         // this turn's bubbles, and the composer must unlock.
+        this.flushTextUpdates();
+        this.emitTurnUsage(tokenUsage);
+        this.pendingUsage = null;
+        this.turnUsage = null;
+        this.completedMessageId = this.currentMessageId;
+        this.completedTurnDurationMs = this.turnStartedAt === null
+          ? undefined
+          : Math.max(0, Date.now() - this.turnStartedAt);
+        // A fresh turn must paint its first visible chunk immediately.  Keeping
+        // the previous turn's throttle timestamp would delay it unnecessarily.
+        this.lastTextFlushAt = null;
         this.turnSeq += 1;
+        this.currentMessageId = null;
+        this.turnStartedAt = null;
         this.emit({ type: "session.idle", sessionId: this.sessionId });
       },
       onExited: (error) => {
@@ -156,7 +245,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
           this.emit({ type: "error", sessionId: this.sessionId, message: error });
         }
         this.teardown();
-        this.setStatus("offline");
+        this.setStatus(error ? "error" : "offline");
       },
     };
   }
@@ -170,13 +259,123 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     kind: "text" | "reasoning",
   ): void {
     const key = payload.message_id ?? `turn-${this.turnSeq}`;
+    if (kind === "text") this.currentMessageId = key;
     const next = (store.get(key) ?? "") + payload.text;
     store.set(key, next);
-    if (kind === "text") {
-      this.emit({ type: "text.updated", sessionId: this.sessionId, partId: key, text: next });
-    } else {
-      this.emit({ type: "reasoning.updated", sessionId: this.sessionId, partId: key, text: next });
+    this.queueTextUpdate(kind, key, next);
+    // A usage update received before the first visible text must appear after
+    // it. Flush this one frame immediately so the ordering is deterministic.
+    if (kind === "text" && this.pendingUsage) {
+      this.flushTextUpdates();
+      this.emitPendingUsage();
     }
+  }
+
+  private queueTextUpdate(kind: "text" | "reasoning", key: string, text: string): void {
+    const mapKey = `${kind}:${key}`;
+    const now = Date.now();
+    if (this.lastTextFlushAt === null || now - this.lastTextFlushAt >= STREAM_REFRESH_MS) {
+      this.emitTextUpdate(kind, key, text);
+      this.lastTextFlushAt = now;
+      return;
+    }
+    this.pendingText.set(mapKey, { kind, key, text });
+    if (this.streamFlushTimer === null) {
+      this.streamFlushTimer = setTimeout(() => this.flushTextUpdates(), STREAM_REFRESH_MS);
+    }
+  }
+
+  private flushTextUpdates(): void {
+    if (this.streamFlushTimer !== null) clearTimeout(this.streamFlushTimer);
+    this.streamFlushTimer = null;
+    if (this.pendingText.size === 0) return;
+    const updates = [...this.pendingText.values()];
+    this.pendingText.clear();
+    this.lastTextFlushAt = Date.now();
+    for (const update of updates) this.emitTextUpdate(update.kind, update.key, update.text);
+  }
+
+  private emitTextUpdate(kind: "text" | "reasoning", key: string, text: string): void {
+    if (kind === "text") {
+      this.emit({ type: "text.updated", sessionId: this.sessionId, partId: key, text });
+    } else {
+      this.emit({ type: "reasoning.updated", sessionId: this.sessionId, partId: key, text });
+    }
+  }
+
+  /** ACP reports context occupancy, not completion tokens. Keep it separate;
+   * ACP 1.4 does not expose exact prompt/completion token counts. */
+  private onUsage(payload: AcpUsagePayload): void {
+    this.turnUsage = payload;
+    this.pendingUsage = payload;
+    if (!this.currentMessageId) {
+      if (this.completedMessageId) {
+        this.pendingUsage = null;
+        this.emitUsage(this.completedMessageId, payload, this.completedTurnDurationMs);
+      }
+      return;
+    }
+    this.flushTextUpdates();
+    this.emitPendingUsage();
+  }
+
+  private emitPendingUsage(): void {
+    const payload = this.pendingUsage;
+    const messageID = this.currentMessageId;
+    if (!payload || !messageID) return;
+    this.pendingUsage = null;
+    this.emitUsage(messageID, payload);
+  }
+
+  private emitTurnUsage(tokenUsage?: AcpTokenUsagePayload): void {
+    const payload = this.turnUsage;
+    const messageID = this.currentMessageId ?? `acp-turn-${this.turnSeq}`;
+    this.emitUsage(messageID, payload, undefined, tokenUsage);
+  }
+
+  private emitUsage(
+    messageID: string,
+    payload: AcpUsagePayload | null,
+    durationMs = this.turnStartedAt === null ? undefined : Math.max(0, Date.now() - this.turnStartedAt),
+    tokenUsage?: AcpTokenUsagePayload,
+  ): void {
+    const exact = tokenUsage ? this.tokenUsageDelta(tokenUsage) : null;
+    this.emit({
+      type: "usage",
+      sessionId: this.sessionId,
+      messageID,
+      input: exact?.input_tokens ?? 0,
+      ...(exact ? {} : { inputUnavailable: true }),
+      output: exact?.output_tokens ?? 0,
+      ...(exact ? {} : { outputUnavailable: true }),
+      ...(payload ? { contextUsed: payload.used, contextSize: payload.size } : {}),
+      ...(durationMs === undefined ? {} : { durationMs }),
+      reasoning: exact?.thought_tokens ?? 0,
+      cacheRead: exact?.cached_read_tokens ?? 0,
+      cacheWrite: exact?.cached_write_tokens ?? 0,
+    });
+  }
+
+  private tokenUsageDelta(current: AcpTokenUsagePayload): AcpTokenUsagePayload {
+    const previous = this.previousTokenUsage;
+    this.previousTokenUsage = current;
+    if (!previous) return current;
+    const reset =
+      current.total_tokens < previous.total_tokens ||
+      current.input_tokens < previous.input_tokens ||
+      current.output_tokens < previous.output_tokens ||
+      current.thought_tokens < previous.thought_tokens ||
+      current.cached_read_tokens < previous.cached_read_tokens ||
+      current.cached_write_tokens < previous.cached_write_tokens;
+    if (reset) return current;
+    return {
+      total_tokens: current.total_tokens - previous.total_tokens,
+      input_tokens: current.input_tokens - previous.input_tokens,
+      output_tokens: current.output_tokens - previous.output_tokens,
+      thought_tokens: current.thought_tokens - previous.thought_tokens,
+      cached_read_tokens: current.cached_read_tokens - previous.cached_read_tokens,
+      cached_write_tokens: current.cached_write_tokens - previous.cached_write_tokens,
+    };
   }
 
   // ---- sessions (a single conversation) ----
@@ -186,7 +385,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
   }
 
   async listSessions(): Promise<SessionMeta[]> {
-    return [{ id: this.sessionId, title: this.request.label }];
+    return [{ id: this.sessionId, title: this.sessionId }];
   }
 
   async deleteSession(): Promise<void> {
@@ -204,12 +403,21 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     _agent?: string,
     _model?: string | null,
     _variant?: string | null,
-    _attachments?: PromptAttachment[],
+    attachments?: PromptAttachment[],
   ): Promise<void> {
-    // ACP's prompt is plain text; per-turn agent/model/variant and inline
-    // attachments have no protocol slot here and are ignored (the model is
-    // fixed by the launch env). The UI hides those affordances for ACP.
-    await this.deps.prompt(text);
+    // Agent/model/variant are fixed by the ACP launch environment. Attachments
+    // are different: ACP v1 has native image and text content blocks, so they
+    // must cross this bridge instead of becoming a UI-only thumbnail.
+    // A later usage update can only belong to the previous reply until the
+    // next prompt is accepted. Clear that association at this turn boundary.
+    this.completedMessageId = null;
+    this.completedTurnDurationMs = undefined;
+    this.turnStartedAt = Date.now();
+    if (attachments && attachments.length > 0) {
+      await this.deps.prompt(text, attachments);
+    } else {
+      await this.deps.prompt(text);
+    }
   }
 
   async abortSession(_sessionId: string): Promise<void> {
@@ -224,10 +432,10 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     throw new AcpUnsupportedError("un-reverting");
   }
 
-  // ---- capability discovery (an ACP agent advertises none over this seam) ----
+  // ---- capability discovery ----
 
   async listSkills(): Promise<SkillInfo[]> {
-    return [];
+    return this.deps.listSkills?.(this.request.profileId) ?? [];
   }
 
   async listAgents(): Promise<AgentInfo[]> {
