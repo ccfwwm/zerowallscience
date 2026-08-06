@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 06:18 · P6 环境发布通道新增目标平台独立资产：CI 拉取并归一化 OpenCode/Codex/Claude ACP/uv/agent-browser/MCP proxy/Skills，打包 tar.gz，生成精确 payload 的 Ed25519 签名 manifest 并上传独立 release assets；manifest 生成器 2 项测试和 workflow YAML 解析通过。
+
 2026-08-07 06:05 · P6 环境控制面接通：新增 Tauri check/install/status/rollback 命令、并发更新锁与前端活动阻断状态机；Codex/Claude adapter、OpenCode、uv、agent-browser 和 Skills 优先从 current 环境版本解析并保留旧 bundle 回退，Rust 13 项定向测试、前端 19 项测试与 typecheck 通过。
 
 2026-08-07 06:02 · P6 Environment installer/update 核心完成：签名 envelope、HTTPS manifest、流式 SHA-256、安全 file/zip/tarGz 解包、staging/versions/current 原子切换、health gate 与 rollback；离线核心测试 8 项、Tauri check、Clippy 通过。
