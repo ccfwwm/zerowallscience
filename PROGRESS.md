@@ -1,5 +1,9 @@
 # Progress
 
+2026-08-06 21:32 · P1 契约层完成：新增 zerowall-acp-host 的统一引擎、binding、能力、事件和生命周期路由，覆盖 config/mode、权限选项、恢复绑定与 fake driver 回归；真实三引擎驱动验证仍在进行。
+
+2026-08-06 21:11 · P0 完成：从 release/v0.3.9 创建 codex/single-acp-host-unified-workbench，保留 ACP 可靠性提交，完成计划融合、外部备份与基线验证；桌面类型检查、ACP Rust 测试和孤立回归通过。
+
 2026-08-06 20:35 · 已完成 ZeroWall Science × Wisp × ChatGPT Desktop 统一工作台最终生产计划，覆盖三引擎、MCP/Skills/Workflow、AI 云平台账号、供应商、双安装器和在线回滚更新。
 
 2026-08-06 20:15 · v0.4.57 — ACP 项目原地注册、项目运行时目录隔离、MCP 超时回退与项目会话保持已实现，完成 Rust/前端回归测试。

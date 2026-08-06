@@ -65,7 +65,6 @@ impl AgentBinding {
                 "profile_fingerprint",
                 self.profile_fingerprint == requested.profile_fingerprint,
             ),
-            ("resolved_at", self.resolved_at == requested.resolved_at),
         ];
         checks
             .iter()
@@ -123,6 +122,7 @@ pub enum AgentEvent {
     ThoughtDelta { session_id: String, delta: String },
     #[serde(rename = "tool.updated")]
     ToolUpdated {
+        session_id: String,
         tool_call_id: String,
         status: String,
         title: Option<String>,
@@ -136,7 +136,7 @@ pub enum AgentEvent {
     PermissionRequested {
         session_id: String,
         request_id: String,
-        option_id: String,
+        options: Vec<PermissionOption>,
     },
     #[serde(rename = "question.requested")]
     QuestionRequested {
@@ -159,6 +159,12 @@ pub enum AgentEvent {
         session_id: Option<String>,
         message: String,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PermissionOption {
+    pub id: String,
+    pub label: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -352,6 +358,40 @@ impl AcpHost {
             .prompt(PromptRequest { session_id, prompt })
             .await
     }
+    pub async fn set_config(
+        &mut self,
+        session_id: &str,
+        config: serde_json::Value,
+    ) -> Result<SessionState, HostError> {
+        let kind = self.session_kind(session_id)?;
+        let binding = self
+            .sessions
+            .get(session_id)
+            .expect("session kind was resolved")
+            .binding
+            .clone();
+        let caps = self.drivers[&kind].capabilities();
+        self.require(kind, "config", caps.config)?;
+        let state = self
+            .driver_mut(kind)?
+            .set_config(SetConfigRequest {
+                session_id: session_id.into(),
+                config,
+            })
+            .await?;
+        Ok(SessionState { binding, ..state })
+    }
+    pub async fn set_mode(&mut self, session_id: &str, mode: &str) -> Result<(), HostError> {
+        let kind = self.session_kind(session_id)?;
+        let caps = self.drivers[&kind].capabilities();
+        self.require(kind, "mode", caps.mode)?;
+        self.driver_mut(kind)?
+            .set_mode(SetModeRequest {
+                session_id: session_id.into(),
+                mode: mode.into(),
+            })
+            .await
+    }
     pub async fn bind_session(
         &mut self,
         session_id: &str,
@@ -424,6 +464,13 @@ pub enum DriverCall {
     },
     Load {
         session_id: String,
+    },
+    Config {
+        session_id: String,
+    },
+    Mode {
+        session_id: String,
+        mode: String,
     },
 }
 
@@ -520,10 +567,17 @@ impl AcpHostDriver for FakeDriver {
         });
         Ok(())
     }
-    async fn set_config(&mut self, _: SetConfigRequest) -> Result<SessionState, HostError> {
-        Err(HostError::Driver("fake config".into()))
+    async fn set_config(&mut self, request: SetConfigRequest) -> Result<SessionState, HostError> {
+        self.record(DriverCall::Config {
+            session_id: request.session_id.clone(),
+        });
+        Ok(Self::placeholder_state(request.session_id))
     }
-    async fn set_mode(&mut self, _: SetModeRequest) -> Result<(), HostError> {
+    async fn set_mode(&mut self, request: SetModeRequest) -> Result<(), HostError> {
+        self.record(DriverCall::Mode {
+            session_id: request.session_id,
+            mode: request.mode,
+        });
         Ok(())
     }
     async fn close_session(&mut self, session_id: String) -> Result<(), HostError> {
@@ -619,6 +673,7 @@ mod tests {
     #[test]
     fn events_have_stable_vendor_neutral_tags() {
         let event = AgentEvent::ToolUpdated {
+            session_id: "session-1".into(),
             tool_call_id: "tool-1".into(),
             status: "running".into(),
             title: None,
@@ -626,6 +681,14 @@ mod tests {
         let value = serde_json::to_value(event).unwrap();
         assert_eq!(value["type"], "tool.updated");
         assert_eq!(value["data"]["tool_call_id"], "tool-1");
+    }
+
+    #[test]
+    fn binding_compatibility_ignores_resolution_timestamp() {
+        let first = binding(HostDriverKind::Codex, "gpt", "C:/project");
+        let mut refreshed = first.clone();
+        refreshed.resolved_at = "2026-08-06T00:01:00Z".into();
+        assert!(first.ensure_compatible(&refreshed).is_ok());
     }
 
     fn fake(caps: DriverCapabilities) -> (FakeDriver, Arc<Mutex<Vec<DriverCall>>>) {
@@ -699,6 +762,32 @@ mod tests {
             Err(HostError::BindingConflict { .. })
         ));
         assert_eq!(calls.lock().unwrap().len(), before);
+    }
+
+    #[test]
+    fn host_routes_config_and_mode_through_the_bound_driver() {
+        let (driver, calls) = fake(DriverCapabilities {
+            new_session: true,
+            config: true,
+            mode: true,
+            ..Default::default()
+        });
+        let mut host = AcpHost::new();
+        host.register_driver(HostDriverKind::Codex, Box::new(driver));
+        block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s1".into(),
+            },
+            binding(HostDriverKind::Codex, "gpt", "C:/project"),
+        ))
+        .unwrap();
+        block_on(host.set_config("s1", serde_json::json!({"model":"gpt-5"}))).unwrap();
+        block_on(host.set_mode("s1", "planning")).unwrap();
+        let calls = calls.lock().unwrap();
+        assert!(calls
+            .iter()
+            .any(|call| matches!(call, DriverCall::Config { session_id } if session_id == "s1")));
+        assert!(calls.iter().any(|call| matches!(call, DriverCall::Mode { session_id, mode } if session_id == "s1" && mode == "planning")));
     }
 
     #[test]
