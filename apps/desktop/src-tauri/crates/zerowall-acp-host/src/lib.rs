@@ -216,6 +216,7 @@ pub struct SessionState {
 #[async_trait]
 pub trait AcpHostDriver: Send {
     fn capabilities(&self) -> DriverCapabilities;
+    fn drain_events(&mut self) -> Vec<AgentEvent>;
     async fn initialize(
         &mut self,
         request: InitializeRequest,
@@ -436,6 +437,10 @@ impl AcpHost {
         self.sessions.remove(session_id);
         Ok(())
     }
+    pub fn drain_events(&mut self, session_id: &str) -> Result<Vec<AgentEvent>, HostError> {
+        let kind = self.session_kind(session_id)?;
+        Ok(self.driver_mut(kind)?.drain_events())
+    }
     fn session_kind(&self, session_id: &str) -> Result<HostDriverKind, HostError> {
         self.sessions
             .get(session_id)
@@ -479,10 +484,26 @@ pub enum DriverCall {
 pub struct FakeDriver {
     caps: DriverCapabilities,
     calls: Arc<Mutex<Vec<DriverCall>>>,
+    events: Vec<AgentEvent>,
 }
 impl FakeDriver {
     pub fn with_calls(caps: DriverCapabilities, calls: Arc<Mutex<Vec<DriverCall>>>) -> Self {
-        Self { caps, calls }
+        Self {
+            caps,
+            calls,
+            events: Vec::new(),
+        }
+    }
+    pub fn with_events(
+        caps: DriverCapabilities,
+        calls: Arc<Mutex<Vec<DriverCall>>>,
+        events: Vec<AgentEvent>,
+    ) -> Self {
+        Self {
+            caps,
+            calls,
+            events,
+        }
     }
     fn record(&self, call: DriverCall) {
         self.calls.lock().unwrap().push(call);
@@ -508,6 +529,9 @@ impl FakeDriver {
 impl AcpHostDriver for FakeDriver {
     fn capabilities(&self) -> DriverCapabilities {
         self.caps
+    }
+    fn drain_events(&mut self) -> Vec<AgentEvent> {
+        std::mem::take(&mut self.events)
     }
     async fn initialize(&mut self, _: InitializeRequest) -> Result<InitializeResponse, HostError> {
         Ok(InitializeResponse {
@@ -811,5 +835,36 @@ mod tests {
         .unwrap();
         let resumed = block_on(host.resume_session("s1".into())).unwrap();
         assert_eq!(resumed.binding, original);
+    }
+
+    #[test]
+    fn host_drains_vendor_neutral_events_from_the_bound_driver() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let events = vec![AgentEvent::TextDelta {
+            session_id: "s1".into(),
+            delta: "hello".into(),
+        }];
+        let driver = FakeDriver::with_events(
+            DriverCapabilities {
+                new_session: true,
+                ..Default::default()
+            },
+            calls,
+            events,
+        );
+        let mut host = AcpHost::new();
+        host.register_driver(HostDriverKind::Codex, Box::new(driver));
+        block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s1".into(),
+            },
+            binding(HostDriverKind::Codex, "gpt", "C:/project"),
+        ))
+        .unwrap();
+        let drained = host.drain_events("s1").unwrap();
+        assert!(
+            matches!(drained.as_slice(), [AgentEvent::TextDelta { delta, .. }] if delta == "hello")
+        );
+        assert!(host.drain_events("s1").unwrap().is_empty());
     }
 }

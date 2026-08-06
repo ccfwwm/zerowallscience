@@ -118,6 +118,10 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         }
     }
 
+    fn drain_events(&mut self) -> Vec<crate::AgentEvent> {
+        self.take_events()
+    }
+
     async fn initialize(&mut self, _: InitializeRequest) -> Result<InitializeResponse, HostError> {
         Ok(InitializeResponse {
             capabilities: self.capabilities(),
