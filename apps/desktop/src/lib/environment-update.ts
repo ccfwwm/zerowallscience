@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {
   environmentUpdateCheck,
   environmentUpdateInstall,
+  environmentUpdateManifest,
   environmentUpdateRollback,
   environmentUpdateStatus,
   type EnvironmentUpdateSnapshot,
@@ -59,13 +60,11 @@ export function environmentUpdateStatusLabel(phase: EnvironmentUpdatePhase): str
 
 export interface EnvironmentUpdateState {
   snapshot: EnvironmentUpdateSnapshot | null;
+  envelopeJson: string | null;
   error: string | null;
   refresh: () => Promise<void>;
-  check: (envelopeJson: string) => Promise<EnvironmentUpdateSnapshot | null>;
-  install: (
-    envelopeJson: string,
-    activity?: EnvironmentActivitySnapshot,
-  ) => Promise<EnvironmentUpdateSnapshot | null>;
+  check: () => Promise<EnvironmentUpdateSnapshot | null>;
+  install: (activity?: EnvironmentActivitySnapshot) => Promise<EnvironmentUpdateSnapshot | null>;
   rollback: (activity?: EnvironmentActivitySnapshot) => Promise<EnvironmentUpdateSnapshot | null>;
 }
 
@@ -85,8 +84,9 @@ function assertUpdateAllowed(activity: EnvironmentActivitySnapshot = EMPTY_ACTIV
   if (reason) throw new Error(`environment update blocked by ${reason}`);
 }
 
-export const useEnvironmentUpdateStore = create<EnvironmentUpdateState>((set) => ({
+export const useEnvironmentUpdateStore = create<EnvironmentUpdateState>((set, get) => ({
   snapshot: null,
+  envelopeJson: null,
   error: null,
   refresh: async () => {
     try {
@@ -96,19 +96,22 @@ export const useEnvironmentUpdateStore = create<EnvironmentUpdateState>((set) =>
       set({ error: errorText(error) });
     }
   },
-  check: async (envelopeJson) => {
+  check: async () => {
     try {
+      const envelopeJson = await environmentUpdateManifest();
       const snapshot = await environmentUpdateCheck(envelopeJson);
-      set({ snapshot, error: null });
+      set({ snapshot, envelopeJson, error: null });
       return snapshot;
     } catch (error) {
-      set({ error: errorText(error) });
+      set({ envelopeJson: null, error: errorText(error) });
       return null;
     }
   },
-  install: async (envelopeJson, activity = EMPTY_ACTIVITY) => {
+  install: async (activity = EMPTY_ACTIVITY) => {
     try {
       assertUpdateAllowed(activity);
+      const envelopeJson = get().envelopeJson;
+      if (!envelopeJson) throw new Error("Check for environment updates first.");
       const snapshot = await environmentUpdateInstall(envelopeJson);
       set({ snapshot, error: null });
       return snapshot;

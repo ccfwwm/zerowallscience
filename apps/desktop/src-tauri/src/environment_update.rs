@@ -19,6 +19,9 @@ pub const ENVIRONMENT_SCHEMA: &str = "zerowall.science/environment/v1";
 const VERSION_METADATA: &str = ".environment-manifest.json";
 const MAX_ARCHIVE_FILES: usize = 10_000;
 const MAX_EXTRACTED_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
+const ENVIRONMENT_RELEASE_LATEST_BASE: &str =
+    "https://github.com/ccfwwm/zerowallscience-releases/releases/latest/download";
 static NONCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Error)]
@@ -676,6 +679,65 @@ pub fn active_environment_executable(
     Ok(environment_executable_candidates(&root, executable)
         .into_iter()
         .find(|path| path.is_file()))
+}
+
+pub fn environment_target_triple() -> Result<&'static str, String> {
+    match (std::env::consts::ARCH, std::env::consts::OS) {
+        ("x86_64", "windows") => Ok("x86_64-pc-windows-msvc"),
+        ("aarch64", "macos") => Ok("aarch64-apple-darwin"),
+        ("x86_64", "macos") => Ok("x86_64-apple-darwin"),
+        ("x86_64", "linux") => Ok("x86_64-unknown-linux-gnu"),
+        (architecture, operating_system) => Err(format!(
+            "environment updates are not published for {architecture}-{operating_system}"
+        )),
+    }
+}
+
+fn environment_manifest_asset_name(target: &str) -> String {
+    format!("ZeroWall-Environment-{target}.tar.gz.json")
+}
+
+fn fetch_environment_manifest() -> Result<String, EnvironmentUpdateError> {
+    let asset = environment_manifest_asset_name(
+        environment_target_triple().map_err(EnvironmentUpdateError::InvalidManifest)?,
+    );
+    let url = format!("{ENVIRONMENT_RELEASE_LATEST_BASE}/{asset}");
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("ZeroWall Science environment updater")
+        .build()
+        .map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
+    let response = client
+        .get(url)
+        .send()
+        .and_then(|response| response.error_for_status())
+        .map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_MANIFEST_BYTES)
+    {
+        return Err(EnvironmentUpdateError::Download(
+            "environment manifest exceeds the size limit".into(),
+        ));
+    }
+    let mut limited = response.take(MAX_MANIFEST_BYTES + 1);
+    let mut envelope = String::new();
+    limited
+        .read_to_string(&mut envelope)
+        .map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
+    if envelope.len() as u64 > MAX_MANIFEST_BYTES {
+        return Err(EnvironmentUpdateError::Download(
+            "environment manifest exceeds the size limit".into(),
+        ));
+    }
+    Ok(envelope)
+}
+
+#[tauri::command]
+pub async fn environment_update_manifest() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(fetch_environment_manifest)
+        .await
+        .map_err(|error| format!("environment manifest download task failed: {error}"))?
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1446,5 +1508,25 @@ mod tests {
         ));
         assert!(!root.join("escape.txt").exists());
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn builds_the_target_specific_manifest_asset_name() {
+        assert_eq!(
+            environment_manifest_asset_name("x86_64-pc-windows-msvc"),
+            "ZeroWall-Environment-x86_64-pc-windows-msvc.tar.gz.json"
+        );
+    }
+
+    #[test]
+    fn reports_a_supported_release_target() {
+        let target = environment_target_triple().expect("current test platform is supported");
+        assert!(matches!(
+            target,
+            "x86_64-pc-windows-msvc"
+                | "aarch64-apple-darwin"
+                | "x86_64-apple-darwin"
+                | "x86_64-unknown-linux-gnu"
+        ));
     }
 }

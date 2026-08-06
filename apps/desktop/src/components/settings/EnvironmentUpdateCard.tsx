@@ -5,9 +5,10 @@ import { useEnvironmentUpdateStore } from "@/lib/environment-update";
 import { Section } from "./Section";
 import { cn } from "@/lib/cn";
 
-export function EnvironmentUpdateCard({ envelopeJson }: { envelopeJson?: string | null } = {}) {
+export function EnvironmentUpdateCard() {
   const { t } = useTranslation("settings");
   const snapshot = useEnvironmentUpdateStore((s) => s.snapshot);
+  const envelopeJson = useEnvironmentUpdateStore((s) => s.envelopeJson);
   const error = useEnvironmentUpdateStore((s) => s.error);
   const refresh = useEnvironmentUpdateStore((s) => s.refresh);
   const check = useEnvironmentUpdateStore((s) => s.check);
@@ -21,13 +22,12 @@ export function EnvironmentUpdateCard({ envelopeJson }: { envelopeJson?: string 
 
   const phase = snapshot?.phase ?? "idle";
   const isWorking = busy !== null || ["checking", "downloading", "verifying", "installing"].includes(phase);
-  const hasEnvelope = Boolean(envelopeJson?.trim());
   const run = async (kind: "check" | "install" | "rollback") => {
     if (busy) return;
     setBusy(kind);
     try {
-      if (kind === "check" && hasEnvelope) await check(envelopeJson!.trim());
-      if (kind === "install" && hasEnvelope) await install(envelopeJson!.trim());
+      if (kind === "check") await check();
+      if (kind === "install") await install();
       if (kind === "rollback") await rollback();
     } finally {
       setBusy(null);
@@ -58,16 +58,13 @@ export function EnvironmentUpdateCard({ envelopeJson }: { envelopeJson?: string 
                 {error ?? snapshot?.message}
               </p>
             )}
-            {!hasEnvelope && (
-              <p className="mt-2 text-xs text-muted">{t("environmentUpdates.configurationMissing")}</p>
-            )}
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
             <button
               type="button"
               className="flex h-9 items-center gap-1.5 rounded-input bg-surface-2 px-3.5 text-[13px] text-text hover:bg-border/50 disabled:text-muted"
               onClick={() => void run("check")}
-              disabled={!hasEnvelope || isWorking}
+              disabled={isWorking}
             >
               {busy === "check" || phase === "checking" ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
               {t("environmentUpdates.check")}
@@ -76,7 +73,7 @@ export function EnvironmentUpdateCard({ envelopeJson }: { envelopeJson?: string 
               type="button"
               className="flex h-9 items-center gap-1.5 rounded-input bg-accent px-3.5 text-[13px] text-white hover:bg-accent/90 disabled:bg-surface-2 disabled:text-muted"
               onClick={() => void run("install")}
-              disabled={!hasEnvelope || isWorking || phase !== "available"}
+              disabled={!envelopeJson || isWorking || phase !== "available"}
             >
               {busy === "install" || ["downloading", "verifying", "installing"].includes(phase) ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
               {t("environmentUpdates.install")}

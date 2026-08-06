@@ -1098,6 +1098,12 @@ export interface EnvironmentUpdateSnapshot {
   message: string | null;
 }
 
+export async function environmentUpdateManifest(): Promise<string> {
+  if (!isTauri) throw new Error("environment updates are available in the desktop app only");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("environment_update_manifest");
+}
+
 export async function environmentUpdateStatus(): Promise<EnvironmentUpdateSnapshot | null> {
   if (!isTauri) return null;
   const { invoke } = await import("@tauri-apps/api/core");

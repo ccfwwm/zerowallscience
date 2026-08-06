@@ -5,10 +5,11 @@ import type { EnvironmentUpdateSnapshot } from "@/lib/tauri";
 
 const store = vi.hoisted(() => ({
   snapshot: null as EnvironmentUpdateSnapshot | null,
+  envelopeJson: null as string | null,
   error: null as string | null,
   refresh: vi.fn<() => Promise<void>>(),
-  check: vi.fn<(envelopeJson: string) => Promise<EnvironmentUpdateSnapshot | null>>(),
-  install: vi.fn<(envelopeJson: string) => Promise<EnvironmentUpdateSnapshot | null>>(),
+  check: vi.fn<() => Promise<EnvironmentUpdateSnapshot | null>>(),
+  install: vi.fn<() => Promise<EnvironmentUpdateSnapshot | null>>(),
   rollback: vi.fn<() => Promise<EnvironmentUpdateSnapshot | null>>(),
 }));
 
@@ -21,6 +22,7 @@ import { EnvironmentUpdateCard } from "./EnvironmentUpdateCard";
 describe("EnvironmentUpdateCard", () => {
   beforeEach(() => {
     store.snapshot = null;
+    store.envelopeJson = null;
     store.error = null;
     store.refresh.mockReset().mockResolvedValue(undefined);
     store.check.mockReset().mockResolvedValue(null);
@@ -36,7 +38,8 @@ describe("EnvironmentUpdateCard", () => {
       targetVersion: "2026.8.2",
       message: "Restart ZeroWall Science to activate the environment.",
     };
-    render(<EnvironmentUpdateCard envelopeJson="signed-envelope" />);
+    store.envelopeJson = "signed-envelope";
+    render(<EnvironmentUpdateCard />);
 
     expect(await screen.findByText("Current: 2026.8.1")).toBeInTheDocument();
     expect(screen.getByText("Target: 2026.8.2")).toBeInTheDocument();
@@ -47,16 +50,15 @@ describe("EnvironmentUpdateCard", () => {
     await userEvent.click(screen.getByRole("button", { name: "Install" }));
     await userEvent.click(screen.getByRole("button", { name: "Roll back" }));
 
-    expect(store.check).toHaveBeenCalledWith("signed-envelope");
-    expect(store.install).toHaveBeenCalledWith("signed-envelope");
+    expect(store.check).toHaveBeenCalledTimes(1);
+    expect(store.install).toHaveBeenCalledTimes(1);
     expect(store.rollback).toHaveBeenCalledTimes(1);
   });
 
-  it("explains that check and install need an environment update configuration", async () => {
+  it("allows checking before a manifest has been downloaded", async () => {
     render(<EnvironmentUpdateCard />);
 
-    expect(await screen.findByText("No environment update configuration is available.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Check now" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Check now" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Install" })).toBeDisabled();
     await waitFor(() => expect(store.refresh).toHaveBeenCalledTimes(1));
   });
@@ -69,7 +71,7 @@ describe("EnvironmentUpdateCard", () => {
       targetVersion: "2026.8.2",
       message: "SHA-256 verification failed.",
     };
-    render(<EnvironmentUpdateCard envelopeJson="signed-envelope" />);
+    render(<EnvironmentUpdateCard />);
 
     expect(screen.getByText("Failed")).toBeInTheDocument();
     expect(screen.getByText("SHA-256 verification failed.")).toBeInTheDocument();
@@ -83,7 +85,7 @@ describe("EnvironmentUpdateCard", () => {
       targetVersion: "2026.8.2",
       message: "Restart ZeroWall Science to activate the environment.",
     };
-    render(<EnvironmentUpdateCard envelopeJson="signed-envelope" />);
+    render(<EnvironmentUpdateCard />);
 
     expect(screen.getByText("Restart required")).toBeInTheDocument();
     expect(screen.getByText(/Restart ZeroWall Science/)).toBeInTheDocument();

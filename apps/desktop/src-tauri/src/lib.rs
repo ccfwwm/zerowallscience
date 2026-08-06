@@ -318,6 +318,7 @@ pub fn run() {
             updates::download_update,
             updates::open_downloaded_update,
             environment_update::environment_update_status,
+            environment_update::environment_update_manifest,
             environment_update::environment_update_check,
             environment_update::environment_update_install,
             environment_update::environment_update_rollback,
