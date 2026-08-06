@@ -4,13 +4,18 @@ use crate::{
     PromptResponse, ResumeSessionRequest, SessionState, SetConfigRequest, SetModeRequest,
 };
 use async_trait::async_trait;
+use futures::{future::FutureExt, stream, Stream, StreamExt};
 use serde_json::json;
+use std::pin::Pin;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransportResponse {
     pub status: u16,
     pub body: String,
 }
+
+pub type TransportEventStream =
+    Pin<Box<dyn Stream<Item = Result<Vec<u8>, String>> + Send + 'static>>;
 
 #[async_trait]
 pub trait OpenCodeTransport: Send {
@@ -21,6 +26,19 @@ pub trait OpenCodeTransport: Send {
         headers: &[(String, String)],
         body: Option<&str>,
     ) -> Result<TransportResponse, String>;
+
+    async fn stream(
+        &mut self,
+        method: &str,
+        path: &str,
+        headers: &[(String, String)],
+    ) -> Result<(u16, TransportEventStream), String> {
+        let response = self.send(method, path, headers, None).await?;
+        Ok((
+            response.status,
+            Box::pin(stream::once(async move { Ok(response.body.into_bytes()) })),
+        ))
+    }
 }
 
 #[derive(Clone)]
@@ -71,6 +89,31 @@ impl OpenCodeTransport for HttpOpenCodeTransport {
             .map_err(|error| format!("OpenCode response read failed: {error}"))?;
         Ok(TransportResponse { status, body })
     }
+
+    async fn stream(
+        &mut self,
+        method: &str,
+        path: &str,
+        headers: &[(String, String)],
+    ) -> Result<(u16, TransportEventStream), String> {
+        let method = reqwest::Method::from_bytes(method.as_bytes())
+            .map_err(|error| format!("invalid HTTP method: {error}"))?;
+        let mut request = self.client.request(method, path);
+        for (name, value) in headers {
+            request = request.header(name, value);
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|error| format!("OpenCode event stream failed: {error}"))?;
+        let status = response.status().as_u16();
+        let stream = response.bytes_stream().map(|chunk| {
+            chunk
+                .map(|bytes| bytes.to_vec())
+                .map_err(|error| format!("OpenCode event stream read failed: {error}"))
+        });
+        Ok((status, Box::pin(stream)))
+    }
 }
 
 pub struct OpenCodeDriver<T> {
@@ -79,6 +122,9 @@ pub struct OpenCodeDriver<T> {
     auth_header: String,
     binding: AgentBinding,
     events: Vec<crate::AgentEvent>,
+    event_stream: Option<TransportEventStream>,
+    event_buffer: Vec<u8>,
+    event_session_id: Option<String>,
 }
 
 impl<T: OpenCodeTransport> OpenCodeDriver<T> {
@@ -95,6 +141,9 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
             auth_header: format!("Basic {}", encode_base64(&format!("{username}:{password}"))),
             binding,
             events: Vec::new(),
+            event_stream: None,
+            event_buffer: Vec::new(),
+            event_session_id: None,
         }
     }
 
@@ -119,6 +168,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
     }
 
     fn drain_events(&mut self) -> Vec<crate::AgentEvent> {
+        self.poll_event_stream();
         self.take_events()
     }
 
@@ -166,6 +216,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
     }
 
     async fn prompt(&mut self, request: PromptRequest) -> Result<PromptResponse, HostError> {
+        self.ensure_event_stream(&request.session_id).await?;
         let path = format!("/session/{}/prompt_async", encode_path(&request.session_id));
         let mut parts = Vec::new();
         if !request.prompt.is_empty() || request.attachments.is_empty() {
@@ -192,14 +243,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         let response = self.send("POST", &path, Some(&body)).await?;
         ensure_success(response.status, "session/prompt")?;
         self.map_events(&request.session_id, &response.body);
-        let event_path = format!("/event?sessionID={}", encode_query(&request.session_id));
-        let event_response = self.send("GET", &event_path, None).await?;
-        ensure_success(event_response.status, "event")?;
-        self.map_events(&request.session_id, &event_response.body);
-        self.events.push(crate::AgentEvent::SessionIdle {
-            session_id: request.session_id,
-        });
-        Ok(PromptResponse { completed: true })
+        Ok(PromptResponse { completed: false })
     }
 
     async fn cancel(&mut self, session_id: String) -> Result<(), HostError> {
@@ -241,11 +285,89 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
     async fn close_session(&mut self, session_id: String) -> Result<(), HostError> {
         let path = format!("/session/{}", encode_path(&session_id));
         let response = self.send("DELETE", &path, None).await?;
-        ensure_success(response.status, "session/close")
+        ensure_success(response.status, "session/close")?;
+        self.event_stream = None;
+        self.event_buffer.clear();
+        self.event_session_id = None;
+        Ok(())
     }
 }
 
 impl<T: OpenCodeTransport> OpenCodeDriver<T> {
+    async fn ensure_event_stream(&mut self, session_id: &str) -> Result<(), HostError> {
+        if self.event_stream.is_some() {
+            return Ok(());
+        }
+        let path = format!("/event?sessionID={}", encode_query(session_id));
+        let url = format!("{}{}", self.base_url, path);
+        let headers = self.headers();
+        let (status, stream) = self
+            .transport
+            .stream("GET", &url, &headers)
+            .await
+            .map_err(HostError::Driver)?;
+        ensure_success(status, "event")?;
+        self.event_stream = Some(stream);
+        self.event_session_id = Some(session_id.to_owned());
+        Ok(())
+    }
+
+    fn poll_event_stream(&mut self) {
+        loop {
+            let next = self
+                .event_stream
+                .as_mut()
+                .and_then(|stream| stream.next().now_or_never());
+            match next {
+                Some(Some(Ok(chunk))) => {
+                    self.event_buffer.extend_from_slice(&chunk);
+                    self.map_complete_frames();
+                }
+                Some(Some(Err(error))) => {
+                    self.events.push(crate::AgentEvent::Error {
+                        session_id: self.event_session_id.clone(),
+                        message: error,
+                    });
+                    self.event_stream = None;
+                    break;
+                }
+                Some(None) => {
+                    self.map_remaining_buffer();
+                    self.event_stream = None;
+                    break;
+                }
+                None => break,
+            }
+        }
+    }
+
+    fn map_complete_frames(&mut self) {
+        while let Some(end) = sse_frame_end(&self.event_buffer) {
+            let frame = self.event_buffer.drain(..end).collect::<Vec<_>>();
+            let session_id = self.event_session_id.clone().unwrap_or_default();
+            self.map_events(&session_id, &String::from_utf8_lossy(&frame));
+        }
+    }
+
+    fn map_remaining_buffer(&mut self) {
+        if self.event_buffer.is_empty() {
+            return;
+        }
+        let frame = std::mem::take(&mut self.event_buffer);
+        let session_id = self.event_session_id.clone().unwrap_or_default();
+        self.map_events(&session_id, &String::from_utf8_lossy(&frame));
+    }
+
+    fn headers(&self) -> Vec<(String, String)> {
+        vec![
+            ("Authorization".to_owned(), self.auth_header.clone()),
+            (
+                "Accept".to_owned(),
+                "application/json, text/event-stream".to_owned(),
+            ),
+        ]
+    }
+
     async fn send(
         &mut self,
         method: &str,
@@ -253,13 +375,7 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
         body: Option<&str>,
     ) -> Result<TransportResponse, HostError> {
         let url = format!("{}{}", self.base_url, path);
-        let headers = vec![
-            ("Authorization".to_owned(), self.auth_header.clone()),
-            (
-                "Accept".to_owned(),
-                "application/json, text/event-stream".to_owned(),
-            ),
-        ];
+        let headers = self.headers();
         self.transport
             .send(method, &url, &headers, body)
             .await
@@ -325,6 +441,27 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                 continue;
             }
             match kind {
+                "session.idle" => {
+                    self.events.push(crate::AgentEvent::SessionIdle {
+                        session_id: session_id.into(),
+                    });
+                }
+                "session.status" => {
+                    let status = props
+                        .get("status")
+                        .and_then(|value| value.as_str())
+                        .or_else(|| {
+                            props
+                                .get("status")
+                                .and_then(|value| value.get("type"))
+                                .and_then(|value| value.as_str())
+                        });
+                    if status == Some("idle") {
+                        self.events.push(crate::AgentEvent::SessionIdle {
+                            session_id: session_id.into(),
+                        });
+                    }
+                }
                 "text.updated" | "message.part.updated" => {
                     if let Some(text) = props
                         .get("delta")
@@ -473,6 +610,19 @@ fn sse_data(body: &str) -> Vec<String> {
         .collect()
 }
 
+fn sse_frame_end(buffer: &[u8]) -> Option<usize> {
+    buffer
+        .windows(2)
+        .position(|window| window == b"\n\n")
+        .map(|index| index + 2)
+        .or_else(|| {
+            buffer
+                .windows(4)
+                .position(|window| window == b"\r\n\r\n")
+                .map(|index| index + 4)
+        })
+}
+
 fn encode_path(value: &str) -> String {
     value
         .replace('%', "%25")
@@ -543,6 +693,70 @@ mod tests {
             self.responses
                 .pop()
                 .ok_or_else(|| "missing response".into())
+        }
+    }
+
+    struct SlowEventFake;
+
+    #[async_trait]
+    impl OpenCodeTransport for SlowEventFake {
+        async fn send(
+            &mut self,
+            method: &str,
+            path: &str,
+            _headers: &[(String, String)],
+            _body: Option<&str>,
+        ) -> Result<TransportResponse, String> {
+            if method == "GET" && path.contains("/event?") {
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+            Ok(TransportResponse {
+                status: 200,
+                body: String::new(),
+            })
+        }
+
+        async fn stream(
+            &mut self,
+            _method: &str,
+            _path: &str,
+            _headers: &[(String, String)],
+        ) -> Result<(u16, TransportEventStream), String> {
+            let delayed = stream::once(async {
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                Ok(Vec::new())
+            });
+            Ok((200, Box::pin(delayed)))
+        }
+    }
+
+    struct ChunkedEventFake;
+
+    #[async_trait]
+    impl OpenCodeTransport for ChunkedEventFake {
+        async fn send(
+            &mut self,
+            _method: &str,
+            _path: &str,
+            _headers: &[(String, String)],
+            _body: Option<&str>,
+        ) -> Result<TransportResponse, String> {
+            Ok(TransportResponse {
+                status: 200,
+                body: String::new(),
+            })
+        }
+
+        async fn stream(
+            &mut self,
+            _method: &str,
+            _path: &str,
+            _headers: &[(String, String)],
+        ) -> Result<(u16, TransportEventStream), String> {
+            let body = b"data: {\"type\":\"text.updated\",\"properties\":{\"delta\":\"hello\"}}\n\ndata: {\"type\":\"session.idle\",\"properties\":{}}\n\n";
+            let split = body.iter().position(|byte| *byte == b'"').unwrap_or(10);
+            let chunks = vec![Ok(body[..split].to_vec()), Ok(body[split..].to_vec())];
+            Ok((200, Box::pin(stream::iter(chunks))))
         }
     }
     fn binding() -> AgentBinding {
@@ -644,6 +858,45 @@ mod tests {
         assert!(calls
             .iter()
             .any(|call| call.url == "http://x/session/s1/abort" && call.method == "POST"));
+    }
+
+    #[test]
+    fn prompt_returns_without_waiting_for_the_sse_connection_to_end() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let mut driver = OpenCodeDriver::new(SlowEventFake, "http://x", "u", "p", binding());
+            let prompt = driver.prompt(PromptRequest {
+                session_id: "s1".into(),
+                prompt: "hello".into(),
+                attachments: Vec::new(),
+            });
+
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(50), prompt)
+                    .await
+                    .is_ok()
+            );
+        });
+    }
+
+    #[test]
+    fn drain_events_incrementally_decodes_sse_frames_and_idle() {
+        let mut driver = OpenCodeDriver::new(ChunkedEventFake, "http://x", "u", "p", binding());
+        block_on(driver.prompt(PromptRequest {
+            session_id: "s1".into(),
+            prompt: "hello".into(),
+            attachments: Vec::new(),
+        }))
+        .unwrap();
+
+        let events = driver.drain_events();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            crate::AgentEvent::TextDelta { delta, .. } if delta == "hello"
+        )));
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, crate::AgentEvent::SessionIdle { session_id } if session_id == "s1")));
     }
 
     #[test]
