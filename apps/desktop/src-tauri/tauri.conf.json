@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "pnpm --filter @zerowall/desktop exec vite --port 5173 --strictPort",
-    "beforeBuildCommand": "pnpm --filter @zerowall/desktop build && node ../../scripts/build-mcp-proxy.mjs"
+    "beforeBuildCommand": "pnpm --filter @zerowall/desktop build"
   },
   "app": {
     "windows": [
@@ -33,30 +33,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": [
-      "binaries/opencode",
-      "binaries/uv",
-      "binaries/agent-browser",
-      "binaries/claude-code-acp",
-      "binaries/codex-acp",
-      "binaries/zerowall-mcp-proxy"
-    ],
+    "externalBin": [],
     "macOS": {
       "minimumSystemVersion": "13.0"
     },
-    "resources": {
-      "../../../runtime/goal-plugin": "goal-plugin/",
-      "../../../runtime/skills/external/ai4s-skills": "skills/",
-      "../../../runtime/skills/external/anthropic-skills": "skills-office/",
-      "../../../runtime/skills/core": "skills-core/",
-      "../../../runtime/skills/advanced": "skills-advanced/",
-      "../../../runtime/skills/compute": "skills-compute/",
-      "../../../runtime/skills/life-science": "skills-life-science/",
-      "../../../runtime/skills/literature": "skills-literature/",
-      "../../../runtime/skills/publishing": "skills-publishing/",
-      "../../../runtime/harness": "harness/",
-      "../../../runtime/acp": "acp-runtime/"
-    },
+    "resources": {},
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

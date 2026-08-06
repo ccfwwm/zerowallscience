@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 06:51 · P6 package split completed: the app bundle no longer embeds agent binaries, ACP runtimes, Skills, or MCP resources; a desktop first-run gate installs the signed environment in one flow, with package-contract, UI, TypeScript, and Rust checks passing.
+
 2026-08-07 06:22 · Workflow control race closed: immediate concurrent start/retry or start/resume rechecks the registered pump before mutating nodes, and the desktop starter callback is locked to its workflowId; SDK Workflow 14/14, desktop Workflow 6/6, and desktop typecheck passed.
 
 2026-08-07 06:18 · P6 环境发布通道新增目标平台独立资产：CI 拉取并归一化 OpenCode/Codex/Claude ACP/uv/agent-browser/MCP proxy/Skills，打包 tar.gz，生成精确 payload 的 Ed25519 签名 manifest 并上传独立 release assets；manifest 生成器 2 项测试和 workflow YAML 解析通过。

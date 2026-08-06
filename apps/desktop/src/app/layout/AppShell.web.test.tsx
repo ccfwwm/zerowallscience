@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderAt } from "@/test/render";
 import { clearGatewayToken, setGatewayToken } from "@/lib/webMode";
@@ -14,12 +15,31 @@ vi.mock("@/lib/webMode", async (importOriginal) => ({
   },
 }));
 
+vi.mock("@/components/auth/DesktopLoginGate", () => ({
+  DesktopLoginGate: ({ children }: { children: ReactNode }) => (
+    <div data-testid="desktop-login-gate">{children}</div>
+  ),
+}));
+
+vi.mock("@/components/environment/DesktopEnvironmentGate", () => ({
+  DesktopEnvironmentGate: ({ children }: { children: ReactNode }) => (
+    <div data-testid="desktop-environment-gate">{children}</div>
+  ),
+}));
+
 afterEach(() => {
   mode.web = false;
   clearGatewayToken();
 });
 
 describe("Gateway web client sign-in", () => {
+  it("checks the managed desktop environment before the optional cloud login", async () => {
+    renderAt("/files");
+
+    const environmentGate = await screen.findByTestId("desktop-environment-gate");
+    expect(environmentGate).toContainElement(screen.getByTestId("desktop-login-gate"));
+  });
+
   it("shows nothing but the token prompt until the browser client is authenticated", async () => {
     mode.web = true;
     renderAt("/files");
