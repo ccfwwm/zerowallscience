@@ -81,6 +81,28 @@
     "showBadgeHint": "发现新版本时，在设置入口显示红点提醒。",
     "privacy": "仅访问公开的 GitHub Releases API。不会发送工作区文件或 API 密钥。"
   },
+  "environmentUpdates": {
+    "title": "基础环境更新",
+    "hint": "独立更新底层智能体环境，不影响应用本体。",
+    "currentVersion": "当前：{{version}}",
+    "targetVersion": "目标：{{version}}",
+    "previousVersion": "上一版本：{{version}}",
+    "configurationMissing": "尚未配置基础环境更新信息。",
+    "check": "立即检查",
+    "install": "安装",
+    "rollback": "回滚",
+    "phase": {
+      "idle": "就绪",
+      "checking": "检查中",
+      "available": "可更新",
+      "downloading": "下载中",
+      "verifying": "校验中",
+      "installing": "安装中",
+      "restart-required": "需要重启",
+      "failed": "失败",
+      "rolled-back": "已回滚"
+    }
+  },
   "model": {
     "title": "模型",
     "hint": "下方的供应商提供可在此选择的模型",

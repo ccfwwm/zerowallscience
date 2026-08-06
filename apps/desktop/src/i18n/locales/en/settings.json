@@ -81,6 +81,28 @@
     "showBadgeHint": "Show a red dot on Settings when a newer release is found.",
     "privacy": "Only the public GitHub Releases API is contacted. No workspace files or API keys are sent."
   },
+  "environmentUpdates": {
+    "title": "Environment updates",
+    "hint": "Update the bundled agent environment independently from the app.",
+    "currentVersion": "Current: {{version}}",
+    "targetVersion": "Target: {{version}}",
+    "previousVersion": "Previous: {{version}}",
+    "configurationMissing": "No environment update configuration is available.",
+    "check": "Check now",
+    "install": "Install",
+    "rollback": "Roll back",
+    "phase": {
+      "idle": "Ready",
+      "checking": "Checking",
+      "available": "Available",
+      "downloading": "Downloading",
+      "verifying": "Verifying",
+      "installing": "Installing",
+      "restart-required": "Restart required",
+      "failed": "Failed",
+      "rolled-back": "Rolled back"
+    }
+  },
   "model": {
     "title": "Model",
     "hint": "Providers below supply the models you can pick here",
