@@ -135,6 +135,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          target="${{ matrix.target }}"
           bash scripts/dev/fetch-opencode.sh "${{ matrix.target }}"
           bash scripts/dev/fetch-acp-runtimes.sh "${{ matrix.target }}"
           bash scripts/dev/build-acp-adapters.sh "${{ matrix.target }}"
@@ -143,6 +144,21 @@ jobs:
           bash scripts/dev/fetch-agent-browser.sh "${{ matrix.target }}"
           bash scripts/dev/fetch-goal-plugin.sh
           node scripts/build-mcp-proxy.mjs "$target"
+      - name: Build environment bootstrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          suffix=""
+          if [[ "$target" == *windows* ]]; then suffix=".exe"; fi
+          cargo build \
+            --manifest-path apps/environment-bootstrapper/Cargo.toml \
+            --release \
+            --target "$target"
+          asset="ZeroWall-Environment-Bootstrapper-${target}${suffix}"
+          cp "apps/environment-bootstrapper/target/$target/release/zerowall-environment-bootstrapper${suffix}" \
+            "$RUNNER_TEMP/$asset"
+          echo "ENVIRONMENT_BOOTSTRAPPER=$RUNNER_TEMP/$asset" >> "$GITHUB_ENV"
       - name: Package and sign environment
         shell: bash
         env:
@@ -194,7 +210,7 @@ jobs:
             --output "$RUNNER_TEMP/$asset.json"
           echo "ENVIRONMENT_ASSET=$RUNNER_TEMP/$asset" >> "$GITHUB_ENV"
           echo "ENVIRONMENT_MANIFEST=$RUNNER_TEMP/$asset.json" >> "$GITHUB_ENV"
-      - name: Upload environment package and manifest
+      - name: Upload environment package, manifest, and bootstrapper
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.DOWNLOADS_TOKEN }}
@@ -202,6 +218,7 @@ jobs:
         run: |
           set -euo pipefail
           gh release upload "$TAG" "$ENVIRONMENT_ASSET" "$ENVIRONMENT_MANIFEST" \
+            "$ENVIRONMENT_BOOTSTRAPPER" \
             --repo "$DOWNLOADS_REPO" --clobber
 
   build:
