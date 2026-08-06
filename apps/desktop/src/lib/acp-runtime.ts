@@ -39,13 +39,7 @@ import type {
 } from "@zerowall/sdk";
 
 import {
-  acpCancel,
   acpListSkills,
-  acpLaunch,
-  acpSetModel,
-  acpPrompt,
-  acpShutdown,
-  subscribeAcp,
   type AcpEventHandlers,
   type AcpLaunchRequest,
   type AcpMessagePayload,
@@ -54,6 +48,7 @@ import {
   type AcpTokenUsagePayload,
   type AcpUsagePayload,
 } from "./acp";
+import { createAcpHostRuntimeDeps } from "./acp-host-runtime";
 import { acpToolCallToEvent } from "./acp-normalize";
 
 /** The Tauri touchpoints the runtime needs, injected so the logic is testable
@@ -69,12 +64,7 @@ export interface AcpRuntimeDeps {
 }
 
 const REAL_DEPS: AcpRuntimeDeps = {
-  launch: acpLaunch,
-  prompt: acpPrompt,
-  setModel: acpSetModel,
-  cancel: acpCancel,
-  shutdown: acpShutdown,
-  subscribe: subscribeAcp,
+  ...createAcpHostRuntimeDeps(),
   listSkills: acpListSkills,
 };
 

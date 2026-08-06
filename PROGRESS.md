@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 00:19 · ACP Runtime 已切换到单一 AcpHostClient 生命周期桥：真实 launch/prompt/config/cancel/close 和 Host 事件轮询统一，26 项桌面 ACP 定向测试与 typecheck 通过。
+
 2026-08-07 00:09 · ACP Host 生命周期桥补齐：SDK/Tauri 新增 engine initialize 与 session config 命令，配置返回保持 immutable binding；7 项 SDK 测试、桌面 typecheck 与 Tauri check 通过。
 
 2026-08-07 00:03 · Host session 隔离完成：Driver 从按引擎共享改为按 session 持有，避免同一引擎的第二个会话覆盖旧会话；新增并发路由回归，Host 25 项测试与 clippy 通过。
