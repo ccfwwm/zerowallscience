@@ -1,0 +1,552 @@
+use base64::Engine;
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use flate2::read::GzDecoder;
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufReader, Read};
+use std::path::{Component, Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+use thiserror::Error;
+
+const ENVELOPE_SCHEMA: &str = "zerowall.science/environment-envelope/v1";
+const PAYLOAD_SCHEMA: &str = "zerowall.science/environment/v1";
+
+#[derive(Debug, Error)]
+enum BootstrapError {
+    #[error("usage: zerowall-environment-bootstrapper --manifest URL --app-data PATH")]
+    Usage,
+    #[error("environment update public key is not configured")]
+    MissingPublicKey,
+    #[error("environment update public key is invalid")]
+    InvalidPublicKey,
+    #[error("environment update signature is invalid")]
+    InvalidSignature,
+    #[error("invalid manifest: {0}")]
+    InvalidManifest(String),
+    #[error("download failed: {0}")]
+    Download(String),
+    #[error("checksum mismatch: expected {expected}, got {actual}")]
+    ChecksumMismatch { expected: String, actual: String },
+    #[error("unsafe archive path: {0}")]
+    UnsafeArchivePath(String),
+    #[error("health check failed: {0}")]
+    Health(String),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Envelope {
+    schema: String,
+    payload: String,
+    signature: String,
+}
+
+#[derive(Debug, serde::Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Manifest {
+    schema: String,
+    version: String,
+    components: Vec<ComponentSpec>,
+    health_checks: Vec<HealthCheck>,
+}
+
+#[derive(Debug, serde::Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComponentSpec {
+    id: String,
+    url: String,
+    sha256: String,
+    archive: String,
+    size_bytes: Option<u64>,
+}
+
+#[derive(Debug, serde::Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HealthCheck {
+    executable: String,
+    args: Vec<String>,
+}
+
+#[derive(serde::Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CurrentEnvironment {
+    current_version: String,
+    previous_version: Option<String>,
+    installed_at: u64,
+}
+
+fn verify_envelope(raw: &str, key_text: &str) -> Result<Manifest, BootstrapError> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(key_text.trim())
+        .map_err(|_| BootstrapError::InvalidPublicKey)?;
+    let key_bytes: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| BootstrapError::InvalidPublicKey)?;
+    let key = VerifyingKey::from_bytes(&key_bytes).map_err(|_| BootstrapError::InvalidPublicKey)?;
+    let envelope: Envelope = serde_json::from_str(raw)?;
+    if envelope.schema != ENVELOPE_SCHEMA {
+        return Err(BootstrapError::InvalidManifest(
+            "unsupported envelope schema".into(),
+        ));
+    }
+    let signature = base64::engine::general_purpose::STANDARD
+        .decode(envelope.signature)
+        .map_err(|_| BootstrapError::InvalidSignature)?;
+    key.verify(
+        envelope.payload.as_bytes(),
+        &Signature::from_slice(&signature).map_err(|_| BootstrapError::InvalidSignature)?,
+    )
+    .map_err(|_| BootstrapError::InvalidSignature)?;
+    let manifest: Manifest = serde_json::from_str(&envelope.payload)?;
+    validate_manifest(manifest)
+}
+
+fn validate_manifest(manifest: Manifest) -> Result<Manifest, BootstrapError> {
+    if manifest.schema != PAYLOAD_SCHEMA || manifest.version.is_empty() {
+        return Err(BootstrapError::InvalidManifest(
+            "unsupported schema or version".into(),
+        ));
+    }
+    if manifest.components.len() != 1 {
+        return Err(BootstrapError::InvalidManifest(
+            "exactly one environment bundle is required".into(),
+        ));
+    }
+    for value in [&manifest.version, &manifest.components[0].id] {
+        if value.is_empty() || value.contains(['/', '\\', ':']) || value == "." || value == ".." {
+            return Err(BootstrapError::InvalidManifest(
+                "unsafe path segment".into(),
+            ));
+        }
+    }
+    let component = &manifest.components[0];
+    let url = reqwest::Url::parse(&component.url)
+        .map_err(|_| BootstrapError::InvalidManifest("invalid component URL".into()))?;
+    if url.scheme() != "https" || url.host_str().is_none() || component.archive != "tarGz" {
+        return Err(BootstrapError::InvalidManifest(
+            "HTTPS tarGz component required".into(),
+        ));
+    }
+    if component.sha256.len() != 64
+        || !component
+            .sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(BootstrapError::InvalidManifest("invalid SHA-256".into()));
+    }
+    if manifest.health_checks.is_empty() {
+        return Err(BootstrapError::InvalidManifest(
+            "at least one health check is required".into(),
+        ));
+    }
+    for check in &manifest.health_checks {
+        validate_relative_path(Path::new(&check.executable))?;
+    }
+    Ok(manifest)
+}
+
+fn validate_relative_path(path: &Path) -> Result<(), BootstrapError> {
+    if path.is_absolute()
+        || path.to_string_lossy().contains(':')
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(BootstrapError::UnsafeArchivePath(
+            path.display().to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn hash_file(path: &Path) -> Result<String, BootstrapError> {
+    let mut input = BufReader::new(File::open(path)?);
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = input.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    Ok(digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+fn verify_checksum(path: &Path, expected: &str) -> Result<(), BootstrapError> {
+    let actual = hash_file(path)?;
+    if actual != expected.to_lowercase() {
+        return Err(BootstrapError::ChecksumMismatch {
+            expected: expected.into(),
+            actual,
+        });
+    }
+    Ok(())
+}
+
+fn extract_archive(archive: &Path, destination: &Path) -> Result<(), BootstrapError> {
+    let mut tar = tar::Archive::new(GzDecoder::new(File::open(archive)?));
+    for item in tar.entries()? {
+        let mut entry = item?;
+        let relative = entry.path()?.into_owned();
+        validate_relative_path(&relative)?;
+        if entry.header().entry_type().is_symlink() || entry.header().entry_type().is_hard_link() {
+            return Err(BootstrapError::UnsafeArchivePath(
+                relative.display().to_string(),
+            ));
+        }
+        let target = destination.join(&relative);
+        if entry.header().entry_type().is_dir() {
+            fs::create_dir_all(target)?;
+        } else if entry.header().entry_type().is_file() {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let mut output = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(target)?;
+            std::io::copy(&mut entry, &mut output)?;
+        } else {
+            return Err(BootstrapError::UnsafeArchivePath(
+                relative.display().to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn install(app_data: &Path, manifest: &Manifest, archive: &Path) -> Result<(), BootstrapError> {
+    let environment = app_data.join("environment");
+    let versions = environment.join("versions");
+    let staging = environment
+        .join("staging")
+        .join(format!("{}-{}", manifest.version, timestamp()));
+    let version_dir = versions.join(&manifest.version);
+    fs::create_dir_all(&versions)?;
+    fs::create_dir_all(&staging)?;
+    extract_archive(archive, &staging)?;
+    fs::write(
+        staging.join(".environment-manifest.json"),
+        serde_json::to_vec_pretty(manifest)?,
+    )?;
+    for check in &manifest.health_checks {
+        let executable = staging.join(&check.executable);
+        if !executable.is_file() {
+            return Err(BootstrapError::Health(format!(
+                "{} is missing",
+                check.executable
+            )));
+        }
+        let mut command = Command::new(&executable);
+        command.args(&check.args).current_dir(&staging);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000);
+        }
+        if !command
+            .output()
+            .map_err(|error| BootstrapError::Health(error.to_string()))?
+            .status
+            .success()
+        {
+            return Err(BootstrapError::Health(check.executable.clone()));
+        }
+    }
+    if version_dir.exists() {
+        fs::remove_dir_all(&version_dir)?;
+    }
+    fs::rename(&staging, &version_dir)?;
+    let current = environment.join("current.json");
+    let previous = fs::read(&current)
+        .ok()
+        .and_then(|raw| serde_json::from_slice::<CurrentEnvironment>(&raw).ok())
+        .map(|state| state.current_version);
+    let state = CurrentEnvironment {
+        current_version: manifest.version.clone(),
+        previous_version: previous,
+        installed_at: timestamp(),
+    };
+    let temp = environment.join(format!("current-{}.json.tmp", timestamp()));
+    fs::write(&temp, serde_json::to_vec_pretty(&state)?)?;
+    replace_file(&temp, &current)?;
+    Ok(())
+}
+
+fn replace_file(source: &Path, target: &Path) -> Result<(), BootstrapError> {
+    #[cfg(not(windows))]
+    {
+        fs::rename(source, target)?;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::{
+            MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+        };
+        let source = source
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        let target = target
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        let result = unsafe {
+            MoveFileExW(
+                source.as_ptr(),
+                target.as_ptr(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        };
+        if result == 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+    }
+    Ok(())
+}
+
+fn timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn default_app_data() -> PathBuf {
+    #[cfg(windows)]
+    if let Some(value) = std::env::var_os("APPDATA") {
+        return PathBuf::from(value).join("com.zerowall.science");
+    }
+    #[cfg(target_os = "macos")]
+    if let Some(value) = std::env::var_os("HOME") {
+        return PathBuf::from(value).join("Library/Application Support/com.zerowall.science");
+    }
+    if let Some(value) = std::env::var_os("XDG_DATA_HOME") {
+        return PathBuf::from(value).join("com.zerowall.science");
+    }
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".local/share/com.zerowall.science")
+}
+
+fn arg(args: &[String], name: &str) -> Option<String> {
+    args.windows(2)
+        .find(|pair| pair[0] == name)
+        .map(|pair| pair[1].clone())
+}
+
+fn run() -> Result<(), BootstrapError> {
+    let args = std::env::args().collect::<Vec<_>>();
+    let manifest_url = arg(&args, "--manifest").ok_or(BootstrapError::Usage)?;
+    let app_data = arg(&args, "--app-data")
+        .map(PathBuf::from)
+        .unwrap_or_else(default_app_data);
+    let key = arg(&args, "--public-key")
+        .or_else(|| std::env::var("ZEROWALL_ENV_UPDATE_PUBLIC_KEY").ok())
+        .ok_or(BootstrapError::MissingPublicKey)?;
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("ZeroWall Science environment bootstrapper")
+        .build()
+        .map_err(|error| BootstrapError::Download(error.to_string()))?;
+    let envelope = client
+        .get(&manifest_url)
+        .send()
+        .and_then(|response| response.error_for_status())
+        .map_err(|error| BootstrapError::Download(error.to_string()))?
+        .text()
+        .map_err(|error| BootstrapError::Download(error.to_string()))?;
+    let manifest = verify_envelope(&envelope, &key)?;
+    let component = &manifest.components[0];
+    let temp = std::env::temp_dir().join(format!("zerowall-environment-{}.tar.gz", timestamp()));
+    let mut response = client
+        .get(&component.url)
+        .send()
+        .and_then(|response| response.error_for_status())
+        .map_err(|error| BootstrapError::Download(error.to_string()))?;
+    let mut output = File::create(&temp)?;
+    std::io::copy(&mut response, &mut output)?;
+    output.sync_all()?;
+    if let Some(size) = component.size_bytes {
+        if fs::metadata(&temp)?.len() != size {
+            return Err(BootstrapError::Download("component size mismatch".into()));
+        }
+    }
+    verify_checksum(&temp, &component.sha256)?;
+    let result = install(&app_data, &manifest, &temp);
+    let _ = fs::remove_file(&temp);
+    result
+}
+
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ed25519_dalek::{Signer, SigningKey};
+    use flate2::{write::GzEncoder, Compression};
+
+    fn valid_payload() -> String {
+        r#"{"schema":"zerowall.science/environment/v1","version":"v1","components":[{"id":"bundle","url":"https://example.test/bundle.tar.gz","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","archive":"tarGz"}],"healthChecks":[{"executable":"opencode.exe","args":["--version"]}]}"#.into()
+    }
+
+    fn signed_envelope(payload: &str, key: &SigningKey) -> String {
+        let signature = key.sign(payload.as_bytes());
+        serde_json::json!({
+            "schema": ENVELOPE_SCHEMA,
+            "payload": payload,
+            "signature": base64::engine::general_purpose::STANDARD.encode(signature.to_bytes())
+        })
+        .to_string()
+    }
+
+    fn temp_root(label: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("zerowall-bootstrapper-{label}-{}", timestamp()));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn tar_gz_with_entry(path: &Path, name: &str, content: &[u8]) {
+        let output = File::create(path).unwrap();
+        let encoder = GzEncoder::new(output, Compression::fast());
+        let mut builder = tar::Builder::new(encoder);
+        let mut header = tar::Header::new_gnu();
+        header.set_size(content.len() as u64);
+        header.set_mode(0o644);
+        let name_bytes = name.as_bytes();
+        header.as_mut_bytes()[..name_bytes.len()].copy_from_slice(name_bytes);
+        header.set_cksum();
+        builder.append(&header, content).unwrap();
+        builder.into_inner().unwrap().finish().unwrap();
+    }
+
+    fn tar_gz_with_symlink(path: &Path, name: &str, target: &str) {
+        let output = File::create(path).unwrap();
+        let encoder = GzEncoder::new(output, Compression::fast());
+        let mut builder = tar::Builder::new(encoder);
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(tar::EntryType::symlink());
+        header.set_size(0);
+        header.set_mode(0o777);
+        header.set_link_name(target).unwrap();
+        header.set_cksum();
+        builder
+            .append_data(&mut header, name, std::io::empty())
+            .unwrap();
+        builder.into_inner().unwrap().finish().unwrap();
+    }
+
+    #[test]
+    fn verifies_exact_payload_signature() {
+        let key = SigningKey::from_bytes(&[3; 32]);
+        let payload = valid_payload();
+        let envelope = signed_envelope(&payload, &key);
+        let manifest = verify_envelope(
+            &envelope,
+            &base64::engine::general_purpose::STANDARD.encode(key.verifying_key().to_bytes()),
+        )
+        .unwrap();
+        assert_eq!(manifest.version, "v1");
+    }
+
+    #[test]
+    fn rejects_payload_tampering_after_signature() {
+        let key = SigningKey::from_bytes(&[3; 32]);
+        let envelope = signed_envelope(&valid_payload(), &key);
+        let mut value: serde_json::Value = serde_json::from_str(&envelope).unwrap();
+        value["payload"] = serde_json::Value::String(valid_payload().replace("\"v1\"", "\"v2\""));
+        let error = verify_envelope(
+            &value.to_string(),
+            &base64::engine::general_purpose::STANDARD.encode(key.verifying_key().to_bytes()),
+        )
+        .unwrap_err();
+        assert!(matches!(error, BootstrapError::InvalidSignature));
+    }
+
+    #[test]
+    fn rejects_unsafe_manifest_paths() {
+        let key = SigningKey::from_bytes(&[3; 32]);
+        for replacement in [
+            ("\"version\":\"v1\"", "\"version\":\"../v1\""),
+            ("\"id\":\"bundle\"", "\"id\":\"..\\\\bundle\""),
+            (
+                "\"executable\":\"opencode.exe\"",
+                "\"executable\":\"tools/../opencode.exe\"",
+            ),
+        ] {
+            let payload = valid_payload().replace(replacement.0, replacement.1);
+            let error = verify_envelope(
+                &signed_envelope(&payload, &key),
+                &base64::engine::general_purpose::STANDARD.encode(key.verifying_key().to_bytes()),
+            )
+            .unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    BootstrapError::InvalidManifest(_) | BootstrapError::UnsafeArchivePath(_)
+                ),
+                "{error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_tar_path_traversal_without_writing_outside_destination() {
+        let root = temp_root("traversal");
+        let archive = root.join("bundle.tar.gz");
+        let destination = root.join("destination");
+        fs::create_dir_all(&destination).unwrap();
+        tar_gz_with_entry(&archive, "../escaped.txt", b"escape");
+        let error = extract_archive(&archive, &destination).unwrap_err();
+        assert!(matches!(error, BootstrapError::UnsafeArchivePath(_)));
+        assert!(!root.join("escaped.txt").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rejects_tar_symlink_entries() {
+        let root = temp_root("symlink");
+        let archive = root.join("bundle.tar.gz");
+        let destination = root.join("destination");
+        fs::create_dir_all(&destination).unwrap();
+        tar_gz_with_symlink(&archive, "link", "../../outside");
+        let error = extract_archive(&archive, &destination).unwrap_err();
+        assert!(matches!(error, BootstrapError::UnsafeArchivePath(_)));
+        assert!(!destination.join("link").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rejects_checksum_mismatch() {
+        let root = temp_root("checksum");
+        let file = root.join("bundle.tar.gz");
+        fs::write(&file, b"actual").unwrap();
+        let error = verify_checksum(&file, &"00".repeat(32)).unwrap_err();
+        assert!(matches!(error, BootstrapError::ChecksumMismatch { .. }));
+        let _ = fs::remove_dir_all(root);
+    }
+}
