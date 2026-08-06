@@ -223,6 +223,7 @@ impl AcpHostDriver for AcpProcessDriver {
             .set_model(model.to_owned())
             .await
             .map_err(Self::process_error)?;
+        self.binding.model = Some(model.to_owned());
         Ok(SessionState {
             id: request.session_id,
             binding: self.binding.clone(),

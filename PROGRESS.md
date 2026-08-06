@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 00:56 · 三引擎 Host 会话入口贯通：OpenCode Engine Picker 走 opencode Host profile，prompt 固定 provider/model/variant，Host 支持 initialize 前置能力声明并在首 prompt 后冻结 binding；118 项桌面定向测试、30 项 Host 测试、typecheck 与 Tauri check 通过。
+
 2026-08-07 00:28 · OpenCode Driver SSE 已改为独立 HTTP 字节流：prompt 不再等待长连接，Host 事件轮询增量解析跨 chunk frame 并识别 session idle；27 项 Host 测试、clippy 与 Tauri cargo check 通过。
 
 2026-08-07 00:19 · ACP Runtime 已切换到单一 AcpHostClient 生命周期桥：真实 launch/prompt/config/cancel/close 和 Host 事件轮询统一，26 项桌面 ACP 定向测试与 typecheck 通过。

@@ -257,6 +257,7 @@ struct SessionEntry {
     kind: HostDriverKind,
     binding: AgentBinding,
     driver: Box<dyn AcpHostDriver>,
+    turn_started: bool,
 }
 
 #[derive(Default)]
@@ -271,14 +272,6 @@ impl AcpHost {
     }
     pub fn register_driver(&mut self, kind: HostDriverKind, driver: Box<dyn AcpHostDriver>) {
         self.pending_drivers.insert(kind, driver);
-    }
-    fn pending_driver_mut(
-        &mut self,
-        kind: HostDriverKind,
-    ) -> Result<&mut Box<dyn AcpHostDriver>, HostError> {
-        self.pending_drivers
-            .get_mut(&kind)
-            .ok_or(HostError::DriverNotRegistered { kind })
     }
     fn require(
         kind: HostDriverKind,
@@ -295,9 +288,12 @@ impl AcpHost {
         &mut self,
         kind: HostDriverKind,
     ) -> Result<InitializeResponse, HostError> {
-        self.pending_driver_mut(kind)?
-            .initialize(InitializeRequest)
-            .await
+        if let Some(driver) = self.pending_drivers.get_mut(&kind) {
+            return driver.initialize(InitializeRequest).await;
+        }
+        Ok(InitializeResponse {
+            capabilities: declared_capabilities(kind),
+        })
     }
     pub async fn new_session(
         &mut self,
@@ -328,6 +324,7 @@ impl AcpHost {
                 kind,
                 binding,
                 driver,
+                turn_started: false,
             },
         );
         Ok(state)
@@ -378,14 +375,16 @@ impl AcpHost {
                 })?;
         let caps = entry.driver.capabilities();
         Self::require(entry.kind, "prompt", caps.prompt)?;
-        entry
+        let response = entry
             .driver
             .prompt(PromptRequest {
                 session_id,
                 prompt,
                 attachments,
             })
-            .await
+            .await?;
+        entry.turn_started = true;
+        Ok(response)
     }
     pub async fn set_config(
         &mut self,
@@ -398,7 +397,13 @@ impl AcpHost {
                 .ok_or_else(|| HostError::SessionNotFound {
                     session_id: session_id.into(),
                 })?;
-        let binding = entry.binding.clone();
+        if entry.turn_started {
+            return Err(HostError::BindingConflict {
+                field: "model".into(),
+            });
+        }
+        let mut binding = entry.binding.clone();
+        apply_config_to_binding(&mut binding, &config);
         let caps = entry.driver.capabilities();
         Self::require(entry.kind, "config", caps.config)?;
         let state = entry
@@ -408,6 +413,7 @@ impl AcpHost {
                 config,
             })
             .await?;
+        entry.binding = binding.clone();
         Ok(SessionState { binding, ..state })
     }
     pub async fn set_mode(&mut self, session_id: &str, mode: &str) -> Result<(), HostError> {
@@ -490,6 +496,34 @@ impl AcpHost {
             .ok_or_else(|| HostError::SessionNotFound {
                 session_id: session_id.into(),
             })
+    }
+}
+
+fn declared_capabilities(kind: HostDriverKind) -> DriverCapabilities {
+    match kind {
+        HostDriverKind::Codex | HostDriverKind::ClaudeCode | HostDriverKind::OpenCode => {
+            DriverCapabilities {
+                new_session: true,
+                prompt: true,
+                cancel: true,
+                permission: true,
+                config: true,
+                close_session: true,
+                ..Default::default()
+            }
+        }
+    }
+}
+
+fn apply_config_to_binding(binding: &mut AgentBinding, config: &serde_json::Value) {
+    if let Some(model) = config.get("model").and_then(|value| value.as_str()) {
+        binding.model = Some(model.to_owned());
+    }
+    if let Some(provider) = config.get("provider").and_then(|value| value.as_str()) {
+        binding.provider = Some(provider.to_owned());
+    }
+    if let Some(variant) = config.get("variant").and_then(|value| value.as_str()) {
+        binding.variant = Some(variant.to_owned());
     }
 }
 
@@ -747,6 +781,16 @@ mod tests {
     }
 
     #[test]
+    fn initialize_declares_static_capabilities_before_a_driver_is_registered() {
+        let mut host = AcpHost::new();
+        let result = block_on(host.initialize(HostDriverKind::OpenCode)).unwrap();
+        assert!(result.capabilities.new_session);
+        assert!(result.capabilities.prompt);
+        assert!(result.capabilities.cancel);
+        assert!(result.capabilities.close_session);
+    }
+
+    #[test]
     fn events_have_stable_vendor_neutral_tags() {
         let event = AgentEvent::ToolUpdated {
             session_id: "session-1".into(),
@@ -864,6 +908,34 @@ mod tests {
             .iter()
             .any(|call| matches!(call, DriverCall::Config { session_id } if session_id == "s1")));
         assert!(calls.iter().any(|call| matches!(call, DriverCall::Mode { session_id, mode } if session_id == "s1" && mode == "planning")));
+    }
+
+    #[test]
+    fn host_updates_model_before_first_prompt_and_rejects_changes_afterward() {
+        let (driver, _calls) = fake(DriverCapabilities {
+            new_session: true,
+            prompt: true,
+            config: true,
+            ..Default::default()
+        });
+        let mut host = AcpHost::new();
+        host.register_driver(HostDriverKind::Codex, Box::new(driver));
+        block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s1".into(),
+            },
+            binding(HostDriverKind::Codex, "gpt", "C:/project"),
+        ))
+        .unwrap();
+
+        let updated = block_on(host.set_config("s1", json!({"model":"gpt-5"}))).unwrap();
+        assert_eq!(updated.binding.model.as_deref(), Some("gpt-5"));
+
+        block_on(host.prompt("s1".into(), "hello".into(), Vec::new())).unwrap();
+        assert!(matches!(
+            block_on(host.set_config("s1", json!({"model":"gpt-5.4"}))),
+            Err(HostError::BindingConflict { field }) if field == "model"
+        ));
     }
 
     #[test]

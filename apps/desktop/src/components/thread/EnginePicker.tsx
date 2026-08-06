@@ -11,7 +11,7 @@ import { isGatewayWeb } from "@/lib/webMode";
 const ENGINES: { id: AgentEngine; profileId: string | null; label: string }[] = [
   { id: "codex", profileId: "codex", label: "Codex" },
   { id: "claude-code", profileId: "claude-code", label: "Claude Code" },
-  { id: "opencode", profileId: null, label: "OpenCode" },
+  { id: "opencode", profileId: "opencode", label: "OpenCode" },
 ];
 
 export function contextFromBlocks(blocks: ThreadBlock[]): string {

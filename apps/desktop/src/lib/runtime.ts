@@ -69,6 +69,7 @@ import {
 } from "./tauri";
 import { isGatewayWeb, gatewayToken, gatewayOrigin } from "./webMode";
 import { AcpRuntime } from "./acp-runtime";
+import type { AcpLaunchRequest } from "./acp";
 import { acpPresetById } from "./acp-presets";
 import { buildAcpLaunchRequest, clearAcpConfig, loadAcpConfig, saveAcpConfig } from "./acp-config";
 import {
@@ -154,6 +155,28 @@ function initialAcpProfileId(): string | null {
     window.localStorage.removeItem(ACP_PROFILE_KEY);
   }
   return null;
+}
+
+function buildOpenCodeHostLaunchRequest(
+  serverUrl: string,
+  selectedModel: string | null,
+  providers: ProviderInfo[],
+  conversationId?: string,
+): AcpLaunchRequest {
+  const raw = selectedModel?.trim() ?? "";
+  const slash = raw.indexOf("/");
+  const providerId = slash > 0 ? raw.slice(0, slash) : providers[0]?.id ?? "default";
+  const model = slash > 0 ? raw.slice(slash + 1) : raw;
+  if (!model) throw new Error("Select a model before switching to OpenCode");
+  return {
+    profileId: "opencode",
+    conversationId,
+    gateway: {
+      providerId,
+      baseUrl: serverUrl,
+      model,
+    },
+  };
 }
 function initialSelectedAgent(): AgentRole {
   if (typeof window === "undefined") return "general";
@@ -2115,21 +2138,26 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     const acpProfileId = get().acpProfileId;
     if (!isGatewayWeb && acpProfileId) {
       const preset = acpPresetById(acpProfileId);
-      if (!preset) {
+      const request = preset
+        ? buildAcpLaunchRequest(preset, get().currentId ?? undefined)
+        : acpProfileId === "opencode"
+          ? buildOpenCodeHostLaunchRequest(
+              get().serverUrl,
+              get().defaultModel,
+              get().providers,
+              get().currentId ?? undefined,
+            )
+          : null;
+      if (!request) {
         // A stale id whose preset was removed — fall back to OpenCode cleanly.
         set({ acpProfileId: null });
       } else {
-        // Merge any Sub2Api-provisioned gateway config (key ref + base URL +
-        // model) into the launch request so the agent routes through the gateway
-        // instead of its own vendor endpoint. No config → the preset launches
-        // as-is and the agent uses its own login (subscription / OAuth).
-        const request = buildAcpLaunchRequest(preset, get().currentId ?? undefined);
         const acp = new AcpRuntime(request);
         client = acp; // NOT opencodeClient — ACP is not an OpenCode server.
         const ownsConnection = () =>
           runtimeConnectEpoch === connectionEpoch &&
           client === acp &&
-          get().acpProfileId === preset.id;
+          get().acpProfileId === acpProfileId;
         clientStatusUnsub = acp.onStatus((status) => {
           if (!ownsConnection()) return;
           clearStatusBlip();
@@ -2144,7 +2172,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           sharedEventHandler?.(event);
         });
         try {
-          void logDebug(`ACP connect → ${preset.id}`);
+          void logDebug(`ACP Host connect → ${acpProfileId}`);
           await acp.connect();
           if (!ownsConnection()) return;
           void logDebug("ACP connect OK");
@@ -2155,10 +2183,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
             const first = get().sessions[0]?.id;
             if (first) set({ currentId: first });
           }
-          // The OpenCode sidecar keeps running behind the ACP agent — load its
-          // provider catalog so the model picker is populated and the sidebar
-          // shows the agent's gateway model (loadCatalog derives the ACP default
-          // from the launch config, since the agent itself advertises none).
+          // Load the catalog after every Host engine launch so the model picker
+          // remains available while the active session uses the immutable Host
+          // binding.
           void get().loadCatalog();
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);

@@ -118,6 +118,7 @@ export class AcpHostClient {
   private readonly pollIntervalMs: number;
   private readonly requestedBindings = new Map<string, AgentBinding>();
   private readonly sessions = new Map<string, AgentSession>();
+  private readonly startedSessions = new Set<string>();
 
   constructor(options: AcpHostClientOptions) {
     this.invoke = options.invoke;
@@ -175,6 +176,7 @@ export class AcpHostClient {
         prompt,
         ...(attachments.length > 0 ? { attachments } : {}),
       });
+      this.startedSessions.add(sessionId);
     } catch (error) {
       session.state = "error";
       throw error;
@@ -237,7 +239,7 @@ export class AcpHostClient {
     const raw = await this.invoke<RawSession>("acp_host_config", { sessionId, config });
     const session: AgentSession = {
       ...current,
-      binding: current.binding,
+      binding: normalizeBinding(raw.binding),
       state: "ready",
       resumable: raw.resumable,
     };
@@ -255,6 +257,7 @@ export class AcpHostClient {
     await this.invoke("acp_host_close", { sessionId });
     session.state = "closed";
     this.sessions.delete(sessionId);
+    this.startedSessions.delete(sessionId);
   }
 
   private requireSession(sessionId: string): AgentSession {

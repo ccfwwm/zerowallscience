@@ -385,7 +385,12 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
   }
 
   async listSessions(): Promise<SessionMeta[]> {
-    const title = this.request.profileId === "claude-code" ? "Claude Code" : "Codex";
+    const title =
+      this.request.profileId === "claude-code"
+        ? "Claude Code"
+        : this.request.profileId === "opencode"
+          ? "OpenCode"
+          : "Codex";
     return [{ id: this.sessionId, title }];
   }
 

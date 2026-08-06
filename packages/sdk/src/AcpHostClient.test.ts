@@ -37,7 +37,7 @@ function invokeMock(): AcpHostInvoke {
         binding: {
           engine: "codex",
           profile: "codex",
-          model: "gpt-5.4",
+          model: "gpt-5.5",
           provider: "cloud",
           variant: null,
           projectRoot: "C:/science",
@@ -176,7 +176,7 @@ describe("AcpHostClient", () => {
     });
   });
 
-  it("routes session config changes through the host and preserves the immutable binding", async () => {
+  it("routes pre-prompt session config changes through the host and refreshes the binding", async () => {
     const invoke = invokeMock();
     const client = new AcpHostClient({ invoke });
     await client.launch(launchRequest);
@@ -184,7 +184,7 @@ describe("AcpHostClient", () => {
     await expect(client.setConfig("agent-session-1", { model: "gpt-5.5" })).resolves.toEqual(
       expect.objectContaining({
         id: "agent-session-1",
-        binding: expect.objectContaining({ modelId: "gpt-5.4" }),
+        binding: expect.objectContaining({ modelId: "gpt-5.5" }),
       }),
     );
     expect(invoke).toHaveBeenCalledWith("acp_host_config", {

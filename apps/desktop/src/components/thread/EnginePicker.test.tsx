@@ -47,6 +47,17 @@ describe("EnginePicker", () => {
     expect(startDraft).not.toHaveBeenCalled();
   });
 
+  it("switches back to OpenCode through the unified Host profile", async () => {
+    const user = userEvent.setup();
+    useRuntimeStore.setState({ acpProfileId: "codex" });
+    render(<EnginePicker />);
+
+    await user.click(screen.getByRole("button", { name: "Switch engine" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "OpenCode" }));
+
+    expect(switchRuntime).toHaveBeenCalledWith("opencode");
+  });
+
   it("requires a new immutable session when the current conversation has content", async () => {
     const user = userEvent.setup();
     useRuntimeStore.setState({

@@ -1643,6 +1643,26 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     expect(useRuntimeStore.getState().sessions).toEqual([{ id: "codex", title: "Codex" }]);
   });
 
+  it("switchRuntime routes OpenCode conversations through the unified Host", async () => {
+    mocks.clientOpts.length = 0;
+    mocks.acpLaunch.mockClear();
+    useRuntimeStore.setState({
+      defaultModel: "cloud/gpt-5.4",
+      providers: [{ id: "cloud", name: "Cloud", models: [{ id: "gpt-5.4", name: "GPT-5.4" }] }],
+    });
+
+    await useRuntimeStore.getState().switchRuntime("opencode");
+
+    expect(mocks.acpLaunch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profileId: "opencode",
+        gateway: expect.objectContaining({ providerId: "cloud", model: "gpt-5.4" }),
+      }),
+    );
+    expect(mocks.clientOpts).toEqual([]);
+    expect(useRuntimeStore.getState().sessions).toEqual([{ id: "opencode", title: "OpenCode" }]);
+  });
+
   it("routes ACP agent text through the shared fold pipeline into a thread", async () => {
     await useRuntimeStore.getState().switchRuntime("codex");
     // Drive the fake agent's stream exactly as the Tauri events would.

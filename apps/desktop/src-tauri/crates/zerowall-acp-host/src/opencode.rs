@@ -239,7 +239,15 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
                 }));
             }
         }
-        let body = json!({"parts": parts}).to_string();
+        let mut body = json!({"parts": parts});
+        if let (Some(provider), Some(model)) = (&self.binding.provider, &self.binding.model) {
+            let model_id = model.strip_prefix(&format!("{provider}/")).unwrap_or(model);
+            body["model"] = json!({"providerID": provider, "modelID": model_id});
+        }
+        if let Some(variant) = &self.binding.variant {
+            body["variant"] = json!(variant);
+        }
+        let body = body.to_string();
         let response = self.send("POST", &path, Some(&body)).await?;
         ensure_success(response.status, "session/prompt")?;
         self.map_events(&request.session_id, &response.body);
@@ -268,6 +276,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         let body = request.config.to_string();
         let response = self.send("PATCH", &path, Some(&body)).await?;
         ensure_success(response.status, "session/config")?;
+        crate::apply_config_to_binding(&mut self.binding, &request.config);
         Ok(SessionState {
             id: request.session_id,
             binding: self.binding.clone(),
@@ -972,6 +981,47 @@ mod tests {
             value["parts"][2]["text"],
             "[Attached file: notes.txt]\nsample notes"
         );
+    }
+
+    #[test]
+    fn prompt_pins_the_immutable_provider_model_and_variant_binding() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+            ],
+        };
+        let mut prompt_binding = binding();
+        prompt_binding.provider = Some("cloud".into());
+        prompt_binding.model = Some("gpt-5.4".into());
+        prompt_binding.variant = Some("high".into());
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", prompt_binding);
+
+        block_on(driver.prompt(PromptRequest {
+            session_id: "s1".into(),
+            prompt: "inspect".into(),
+            attachments: Vec::new(),
+        }))
+        .unwrap();
+
+        let calls = calls.lock().unwrap();
+        let body = calls
+            .iter()
+            .find(|call| call.method == "POST")
+            .and_then(|call| call.body.as_deref())
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_str(body).unwrap();
+        assert_eq!(value["model"]["providerID"], "cloud");
+        assert_eq!(value["model"]["modelID"], "gpt-5.4");
+        assert_eq!(value["variant"], "high");
     }
 
     #[test]

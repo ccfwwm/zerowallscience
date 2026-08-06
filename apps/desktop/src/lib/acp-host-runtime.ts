@@ -2,6 +2,7 @@ import {
   AcpHostClient,
   type AcpHostInvoke,
   type AgentEvent,
+  type AgentEngine,
   type PromptAttachment,
 } from "@zerowall/sdk";
 import type {
@@ -48,6 +49,13 @@ function toHostAttachment(attachment: AcpPromptAttachment): PromptAttachment {
 
 function toMessage(delta: string): AcpMessagePayload {
   return { message_id: null, text: delta };
+}
+
+function hostEngine(profileId: string): AgentEngine {
+  if (profileId === "codex" || profileId === "claude-code" || profileId === "opencode") {
+    return profileId;
+  }
+  throw new Error(`Unsupported ACP Host engine: ${profileId}`);
 }
 
 function forwardEvent(handlers: AcpEventHandlers, event: AgentEvent): void {
@@ -127,9 +135,10 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
         hostState = null;
       }
       const client = new AcpHostClient({ invoke });
-      await client.initialize(request.profileId as "codex" | "claude-code");
+      const engine = hostEngine(request.profileId);
+      await client.initialize(engine);
       const session = await client.launch({
-        engine: request.profileId as "codex" | "claude-code",
+        engine,
         profileId: request.profileId,
         sessionId: request.conversationId?.trim() || request.profileId,
         model: request.gateway.model,
