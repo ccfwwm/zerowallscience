@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-06 22:18 · P1 ACP 进程驱动完成：Codex/Claude 的统一 Host driver 复用 zerowall-acp 进程树与权限沙箱，支持新会话、prompt、取消、模型配置、权限回传和事件归一化；恢复/加载/模式明确声明不支持，Host crate 22 项测试与 clippy 通过。
+
 2026-08-06 21:51 · P1 OpenCode Driver 骨架完成：内部 transport 注入、session/new/load/prompt/cancel/permission/config/close、Basic auth、SSE 与真实 message.part.updated 事件映射已通过 15 个 Rust 测试；生产 reqwest transport 与 Codex/Claude Host proxy 仍待完成。
 
 2026-08-06 21:32 · P1 契约层完成：新增 zerowall-acp-host 的统一引擎、binding、能力、事件和生命周期路由，覆盖 config/mode、权限选项、恢复绑定与 fake driver 回归；真实三引擎驱动验证仍在进行。

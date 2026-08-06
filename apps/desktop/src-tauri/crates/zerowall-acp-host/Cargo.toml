@@ -11,6 +11,8 @@ serde_json = "1"
 thiserror = "2"
 futures = "0.3"
 reqwest = { version = "0.13", default-features = false, features = ["native-tls"] }
+zerowall-acp = { path = "../zerowall-acp" }
+tokio = { version = "1", features = ["rt", "sync", "time"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread"] }
