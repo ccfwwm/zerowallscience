@@ -1,6 +1,8 @@
 # Progress
 
-2026-08-07 00:18 · Host session 隔离完成：Driver 从按引擎共享改为按 session 持有，避免同一引擎的第二个会话覆盖旧会话；新增并发路由回归，Host 25 项测试与 clippy 通过。
+2026-08-07 00:09 · ACP Host 生命周期桥补齐：SDK/Tauri 新增 engine initialize 与 session config 命令，配置返回保持 immutable binding；7 项 SDK 测试、桌面 typecheck 与 Tauri check 通过。
+
+2026-08-07 00:03 · Host session 隔离完成：Driver 从按引擎共享改为按 session 持有，避免同一引擎的第二个会话覆盖旧会话；新增并发路由回归，Host 25 项测试与 clippy 通过。
 
 2026-08-06 23:58 · 统一 Host 附件链路完成：SDK 结构化附件经 Tauri 进入 Host，Codex/Claude 调用 ACP 原生 attachment blocks，OpenCode 在内部映射 file/extracted-text parts；5 项 SDK、24 项 Host 测试、typecheck 与 Tauri check 通过。
 

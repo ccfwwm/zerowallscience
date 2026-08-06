@@ -4,6 +4,7 @@ export {
   AcpHostClient,
   type AcpHostClientOptions,
   type AcpHostEngineInfo,
+  type AcpHostInitializeResponse,
   type AcpHostInvoke,
   type AcpHostLaunchRequest,
   type AgentBinding,

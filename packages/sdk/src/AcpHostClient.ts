@@ -74,6 +74,10 @@ export interface AcpHostEngineInfo {
   reason: string | null;
 }
 
+export interface AcpHostInitializeResponse {
+  capabilities: Record<string, boolean>;
+}
+
 export type AcpHostInvoke = <T = unknown>(
   command: string,
   args?: Record<string, unknown>,
@@ -122,6 +126,10 @@ export class AcpHostClient {
 
   async listEngines(): Promise<AcpHostEngineInfo[]> {
     return this.invoke<AcpHostEngineInfo[]>("acp_host_engines");
+  }
+
+  async initialize(engine: AgentEngine): Promise<AcpHostInitializeResponse> {
+    return this.invoke<AcpHostInitializeResponse>("acp_host_initialize", { engine });
   }
 
   async launch(request: AcpHostLaunchRequest): Promise<AgentSession> {
@@ -222,6 +230,19 @@ export class AcpHostClient {
   ): Promise<void> {
     this.requireSession(sessionId);
     await this.invoke("acp_host_permission", { sessionId, requestId, optionId });
+  }
+
+  async setConfig(sessionId: string, config: Record<string, unknown>): Promise<AgentSession> {
+    const current = this.requireSession(sessionId);
+    const raw = await this.invoke<RawSession>("acp_host_config", { sessionId, config });
+    const session: AgentSession = {
+      ...current,
+      binding: current.binding,
+      state: "ready",
+      resumable: raw.resumable,
+    };
+    this.sessions.set(sessionId, session);
+    return session;
   }
 
   async cancel(sessionId: string): Promise<void> {

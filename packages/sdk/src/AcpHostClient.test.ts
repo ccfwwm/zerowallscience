@@ -31,6 +31,22 @@ function invokeMock(): AcpHostInvoke {
         resumable: false,
       };
     }
+    if (command === "acp_host_config") {
+      return {
+        id: "agent-session-1",
+        binding: {
+          engine: "codex",
+          profile: "codex",
+          model: "gpt-5.4",
+          provider: "cloud",
+          variant: null,
+          projectRoot: "C:/science",
+          profileFingerprint: "fp-1",
+          resolvedAt: "123",
+        },
+        resumable: false,
+      };
+    }
     if (command === "acp_host_events") {
       return [
         { type: "text.delta", data: { session_id: "agent-session-1", delta: "hi" } },
@@ -49,6 +65,21 @@ function invokeMock(): AcpHostInvoke {
 }
 
 describe("AcpHostClient", () => {
+  it("initializes an engine through the host control plane", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_initialize") {
+        return { capabilities: { prompt: true, permission: true } };
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    await expect(client.initialize("codex")).resolves.toEqual({
+      capabilities: { prompt: true, permission: true },
+    });
+    expect(invoke).toHaveBeenCalledWith("acp_host_initialize", { engine: "codex" });
+  });
+
   it("launches every engine through the single host command without secret values", async () => {
     const invoke = invokeMock();
     const client = new AcpHostClient({ invoke });
@@ -142,6 +173,23 @@ describe("AcpHostClient", () => {
       sessionId: "agent-session-1",
       prompt: "analyze",
       attachments,
+    });
+  });
+
+  it("routes session config changes through the host and preserves the immutable binding", async () => {
+    const invoke = invokeMock();
+    const client = new AcpHostClient({ invoke });
+    await client.launch(launchRequest);
+
+    await expect(client.setConfig("agent-session-1", { model: "gpt-5.5" })).resolves.toEqual(
+      expect.objectContaining({
+        id: "agent-session-1",
+        binding: expect.objectContaining({ modelId: "gpt-5.4" }),
+      }),
+    );
+    expect(invoke).toHaveBeenCalledWith("acp_host_config", {
+      sessionId: "agent-session-1",
+      config: { model: "gpt-5.5" },
     });
   });
 });

@@ -262,6 +262,7 @@ pub fn run() {
             acp_host::acp_host_initialize,
             acp_host::acp_host_launch,
             acp_host::acp_host_prompt,
+            acp_host::acp_host_config,
             acp_host::acp_host_events,
             acp_host::acp_host_cancel,
             acp_host::acp_host_permission,

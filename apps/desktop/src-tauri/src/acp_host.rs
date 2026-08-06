@@ -352,6 +352,21 @@ pub async fn acp_host_prompt(
 }
 
 #[tauri::command]
+pub async fn acp_host_config(
+    state: State<'_, AcpHostState>,
+    session_id: String,
+    config: serde_json::Value,
+) -> Result<SessionState, String> {
+    state
+        .host
+        .lock()
+        .await
+        .set_config(&session_id, config)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
 pub async fn acp_host_events(
     state: State<'_, AcpHostState>,
     session_id: String,
