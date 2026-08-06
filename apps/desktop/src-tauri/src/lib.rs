@@ -2,6 +2,7 @@
 // bundled OpenCode sidecar (isolated config/data + dedicated port; killed on exit).
 mod artifact_file;
 mod annotation_store;
+mod acp_host;
 mod acp_consumer;
 mod browser;
 mod debug_log;
@@ -79,6 +80,7 @@ pub fn run() {
         .manage(runs::RunState::default())
         .manage(gateway::GatewayState::default())
         .manage(sub2api::Sub2ApiState::default())
+        .manage(acp_host::AcpHostState::default())
         .manage(acp_consumer::AcpConsumerState::default())
         .setup(|app| {
             // Watch the active workspace so changes made outside the app (an
@@ -256,6 +258,14 @@ pub fn run() {
             acp_consumer::acp_list_skills,
             acp_consumer::acp_list_mcp_servers,
             acp_consumer::acp_probe_runtime,
+            acp_host::acp_host_engines,
+            acp_host::acp_host_initialize,
+            acp_host::acp_host_launch,
+            acp_host::acp_host_prompt,
+            acp_host::acp_host_events,
+            acp_host::acp_host_cancel,
+            acp_host::acp_host_permission,
+            acp_host::acp_host_close,
             method_check::method_check_evaluate,
             bio_check::bio_check_evaluate,
             memory_store::create_memory,

@@ -172,7 +172,7 @@ pub struct PermissionOption {
 
 #[derive(Debug, Clone, Default)]
 pub struct InitializeRequest;
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct InitializeResponse {
     pub capabilities: DriverCapabilities,
 }
@@ -193,7 +193,7 @@ pub struct PromptRequest {
     pub session_id: String,
     pub prompt: String,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PromptResponse {
     pub completed: bool,
 }
@@ -207,7 +207,7 @@ pub struct SetModeRequest {
     pub session_id: String,
     pub mode: String,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SessionState {
     pub id: String,
     pub binding: AgentBinding,
