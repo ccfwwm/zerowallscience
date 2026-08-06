@@ -147,15 +147,21 @@ function initialReasoningVariant(): string | null {
   if (typeof window === "undefined") return null;
   return window.localStorage.getItem(REASONING_KEY) || null;
 }
+export function resolveInitialAcpProfileId(
+  stored: string | null,
+  desktop: boolean,
+): string | null {
+  if (!desktop) return null;
+  if (stored === "codex" || stored === "claude-code" || stored === "opencode") return stored;
+  return "opencode";
+}
+
 function initialAcpProfileId(): string | null {
-  // Keep the legacy OpenCode control-plane startup until the Host runtime has
-  // a durable multi-session/history facade. Explicit engine selection already
-  // routes OpenCode turns through the Host profile.
-  if (typeof window !== "undefined" && !isGatewayWeb) {
-    const stored = window.localStorage.getItem(ACP_PROFILE_KEY);
-    if (stored === "codex" || stored === "claude-code" || stored === "opencode") return stored;
-  }
-  return null;
+  if (typeof window === "undefined") return null;
+  return resolveInitialAcpProfileId(
+    window.localStorage.getItem(ACP_PROFILE_KEY),
+    !isGatewayWeb,
+  );
 }
 
 function buildOpenCodeHostLaunchRequest(

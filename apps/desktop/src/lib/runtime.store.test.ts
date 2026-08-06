@@ -304,7 +304,7 @@ vi.mock("@zerowall/sdk", async () => {
 });
 
 import type { ArtifactBlock } from "@zerowall/shared";
-import { DRAFT_KEY, rootSessionOf, useRuntimeStore } from "./runtime";
+import { DRAFT_KEY, resolveInitialAcpProfileId, rootSessionOf, useRuntimeStore } from "./runtime";
 
 /** The model the fixture ships connected. */
 const FIXTURE_MODEL = "moonshot/kimi-k2-thinking";
@@ -1606,6 +1606,13 @@ describe("sending with no model chosen", () => {
 // OpenCode-only machinery. These exercise the real AcpRuntime over the faked
 // ./acp bridge — the store's own selection logic is what's under test.
 describe("runtime factory (OpenCode ⇄ ACP)", () => {
+  it("defaults desktop startup to the unified OpenCode Host while web stays legacy", () => {
+    expect(resolveInitialAcpProfileId(null, true)).toBe("opencode");
+    expect(resolveInitialAcpProfileId("claude-code", true)).toBe("claude-code");
+    expect(resolveInitialAcpProfileId("invalid", true)).toBe("opencode");
+    expect(resolveInitialAcpProfileId(null, false)).toBeNull();
+  });
+
   beforeEach(() => {
     window.localStorage.setItem(
       "zerowall.acp.config.codex",
