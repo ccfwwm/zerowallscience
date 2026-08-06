@@ -140,7 +140,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     this.request = request;
     this.deps = deps;
     // One agent, one conversation: the session id IS the profile id.
-    this.sessionId = request.profileId;
+    this.sessionId = request.conversationId?.trim() || request.profileId;
   }
 
   // ---- lifecycle ----

@@ -854,7 +854,7 @@ async fn drive(
     let _ = event_tx.unbounded_send(AcpEvent::HandshakeStarted {
         stage: AcpHandshakeStage::SessionNew,
     });
-    let mcp_servers = mcp_servers
+    let mcp_servers: Vec<McpServer> = mcp_servers
         .into_iter()
         .map(|server| {
             McpServer::Stdio(
@@ -870,24 +870,41 @@ async fn drive(
             )
         })
         .collect();
-    let session = cx
-        .send_request(
-            NewSessionRequest::new(cwd)
-                .mcp_servers(mcp_servers)
-                .meta(session_meta),
-        )
-        .block_task();
-    let Some(session) = await_handshake_stage(
+    let session_request = NewSessionRequest::new(cwd.clone())
+        .mcp_servers(mcp_servers.clone())
+        .meta(session_meta.clone());
+    let session = cx.send_request(session_request).block_task();
+    let session_result = await_handshake_stage(
         session,
         AcpHandshakeStage::SessionNew,
-        deadline,
+        std::cmp::min(deadline, tokio::time::Instant::now() + Duration::from_secs(5)),
         &mut prompt_rx,
         &mut shutdown_rx,
         &event_tx,
-    )
-    .await?
-    else {
-        return Ok(());
+    ).await;
+    let session = match session_result {
+        Ok(Some(session)) => session,
+        Ok(None) => return Ok(()),
+        Err(_) if !mcp_servers.is_empty() => {
+            // A slow or broken MCP must never prevent the primary ACP session
+            // from becoming usable. Retry session/new once without MCP; the
+            // supervisor can retry the individual server independently.
+            let fallback = cx.send_request(
+                NewSessionRequest::new(cwd).mcp_servers(Vec::new()).meta(session_meta),
+            ).block_task();
+            match await_handshake_stage(
+                fallback,
+                AcpHandshakeStage::SessionNew,
+                deadline,
+                &mut prompt_rx,
+                &mut shutdown_rx,
+                &event_tx,
+            ).await? {
+                Some(session) => session,
+                None => return Ok(()),
+            }
+        }
+        Err(error) => return Err(error),
     };
     let session_id = session.session_id;
     let _ = event_tx.unbounded_send(AcpEvent::Ready {

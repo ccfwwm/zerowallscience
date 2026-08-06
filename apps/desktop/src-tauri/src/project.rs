@@ -176,12 +176,12 @@ fn create_in(base: &Path, name: &str) -> Result<(PathBuf, ProjectMeta), String> 
 pub fn create_project(app: AppHandle, name: String) -> Result<ProjectInfo, String> {
     let base = base_workspace_dir(&app)?;
     let (dir, meta) = create_in(&base, &name)?;
-    crate::harness::seed_harness(&app, &dir);
+    crate::runtime::initialize_project_runtime_dirs(&dir)?;
     crate::git_snapshot::commit_best_effort(&dir, "Initialize project");
     Ok(info_of(meta, &dir))
 }
 
-/// Recursively copy `src` into `dst` (created if missing) as a FAITHFUL clone:
+/// Legacy copy-import helpers retained only for migration tests; new imports are in-place.
 /// every file (permission bits preserved by `fs::copy`), the full directory tree,
 /// `.git` and its history, and every symlink — nothing is dropped. Importing a
 /// project must relocate a *working* copy the sandboxed sidecar can reach, not a
@@ -279,67 +279,43 @@ fn restore_write_recursive(dir: &Path) {
     }
 }
 
-/// Import an EXISTING repo/folder as a project by making a FAITHFUL copy of it
-/// under the base dir (full contents, `.git` history, symlinks, permissions — see
-/// `copy_tree`). The copy — not the original — is what the app and the sandboxed
-/// sidecar operate on, so the sidecar only ever touches an app-created path. This
-/// is the fix for issue #31: the ad-hoc-signed sidecar cannot reliably access user
-/// folders under `~/Documents`/`~/Desktop`/`~/Downloads` through macOS TCC (the
-/// child hits `EPERM`), but it CAN access folders the app itself creates under the
-/// base dir. The user's original folder is never moved or written to, and the copy
-/// is treated as the user's existing work: the app never scaffolds its harness into
-/// it or rewrites its files. The only additions are the app's `.zerowall/` dir
-/// (project.json) and one clearly-marked import-provenance section appended to the
-/// copy's AGENTS.md — kept there, where agents read it, so a reference to a path
-/// outside the copy can be traced back to the source. Snapshots run to the dedicated
-/// per-branch ref (a copied git repo's branch/working tree stay byte-for-byte
-/// intact); a non-repo copy gets a fresh app-managed snapshot repo.
-#[tauri::command(async)]
-pub fn import_project(app: AppHandle, path: String) -> Result<ProjectInfo, String> {
-    let base = base_workspace_dir(&app)?;
-    let source = PathBuf::from(path.trim());
-    if path.trim().is_empty() || !source.is_dir() {
+/// Register an EXISTING repo/folder in place. The project index lives under the
+/// app-owned base directory, while `source_path` points at the user's real
+/// folder. No files are copied and no project files are modified.
+fn register_in_place(base: &Path, source: &Path) -> Result<ProjectInfo, String> {
+    if !source.is_dir() {
         return Err("the selected folder does not exist".into());
     }
-    // Canonicalize strictly: the overlap guard below compares against a canonical
-    // base, so a non-canonical source (from a failed resolve) could slip past both
-    // starts_with checks and let copy_tree recurse the base into itself.
+    std::fs::create_dir_all(base).map_err(|e| format!("could not create project index: {e}"))?;
     let source = source
         .canonicalize()
         .map_err(|e| format!("could not resolve the selected folder: {e}"))?;
-    // Guard: reject overlap with the base dir in either direction — importing a
-    // folder inside base would double-track an app-managed workspace (use "New
-    // project"), and importing a parent of base would copy the workspace into
-    // itself and recurse.
-    if let Ok(base_canon) = base.canonicalize() {
-        if source == base_canon || source.starts_with(&base_canon) {
-            return Err("this folder is already managed by the app; use New project instead".into());
-        }
-        if base_canon.starts_with(&source) {
-            return Err("cannot import a folder that contains the app's workspace".into());
-        }
-    }
     let name = source
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "imported".into());
-    // Reserve the folder, then populate it. ANY failure after the folder exists
-    // (copy, marker write) rolls it back, so a broken import never strands a partial
-    // (possibly multi-GB) tree or a half-written project under the base dir.
-    let (dir, meta) = create_in(&base, &name)?;
-    match populate_import(&source, &dir, meta) {
-        Ok(info) => Ok(info),
-        Err(e) => {
-            let _ = force_remove_dir_all(&dir);
-            Err(e)
-        }
-    }
+        .unwrap_or_else(|| "project".into());
+    let (stub, mut meta) = create_in(base, &name)?;
+    meta.source_path = Some(source.to_string_lossy().to_string());
+    write_meta(&stub, &meta)?;
+    Ok(info_of(meta, &stub))
+}
+/// Import an EXISTING repo/folder as a project without copying or scaffolding it.
+/// The selected folder remains the active workspace and the app-owned project
+/// index stores only a pointer to its canonical path.
+#[tauri::command(async)]
+pub fn import_project(app: AppHandle, path: String) -> Result<ProjectInfo, String> {
+    let base = base_workspace_dir(&app)?;
+    let source = PathBuf::from(path.trim());
+    register_in_place(&base, &source)
 }
 
+/* Legacy copy-import/provenance path. Existing imported stubs remain readable,
+ * but all new imports use `register_in_place` above. */
 /// Fill a reserved project folder `dir` with a faithful copy of `source` and make
 /// it an app-managed project. Split out so `import_project` can roll `dir` back on
 /// any error here.
+#[allow(dead_code)]
 fn populate_import(
     source: &Path,
     dir: &Path,
@@ -380,6 +356,7 @@ fn populate_import(
 
 /// Marks the single provenance line the app appends to a copy's AGENTS.md, so the
 /// append can be made idempotent (never duplicated on a re-run).
+#[allow(dead_code)]
 const IMPORT_PROVENANCE_MARKER: &str = "<!-- zerowall-science:imported -->";
 
 /// Record where the copy came from. The FULL details (source path, external-ref and
@@ -390,6 +367,7 @@ const IMPORT_PROVENANCE_MARKER: &str = "<!-- zerowall-science:imported -->";
 /// line is appended only if the marker isn't already present (idempotent), and an
 /// existing AGENTS.md is otherwise left exactly as written. Best-effort throughout;
 /// the user's ORIGINAL folder is never touched — only the copy.
+#[allow(dead_code)]
 fn record_import_provenance(dir: &Path, source: &Path) {
     use std::io::Write;
     // 1) Full details in the app-owned file (overwritten fresh each import).
@@ -551,7 +529,7 @@ pub fn open_project_folder(app: AppHandle, id: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_in, folder_slug, populate_import, read_meta};
+    use super::{create_in, folder_slug, populate_import, read_meta, register_in_place};
     use std::fs;
 
     #[test]
@@ -835,6 +813,34 @@ mod tests {
             "the source snapshot opt-out must not survive the import"
         );
         assert_eq!(fs::read_to_string(destination.join("paper.md")).unwrap(), "research\n");
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn in_place_import_registers_source_without_copying_or_scaffolding() {
+        let base = std::env::temp_dir().join(format!(
+            "zerowall-project-in-place-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&base);
+        let source = base.join("external").join("source-project");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("AGENTS.md"), "user rules\n").unwrap();
+        fs::write(source.join("paper.md"), "research\n").unwrap();
+
+        let info = register_in_place(&base, &source).unwrap();
+        assert_eq!(info.path, source.canonicalize().unwrap().to_string_lossy());
+        assert!(info.imported);
+        assert_eq!(fs::read_to_string(source.join("AGENTS.md")).unwrap(), "user rules\n");
+        assert!(!source.join(".zerowall").exists());
+        assert!(source.join("paper.md").exists());
+        let copied_papers = fs::read_dir(&base)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().join("paper.md").exists())
+            .count();
+        assert_eq!(copied_papers, 0);
 
         let _ = fs::remove_dir_all(&base);
     }

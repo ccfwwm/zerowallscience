@@ -65,12 +65,18 @@ fn mcp_proxy_path(app: &AppHandle) -> Result<PathBuf, String> {
     }
 }
 
-fn mcp_proxy_args(python: &std::path::Path, module: &str) -> Vec<String> {
-    vec![
+fn mcp_proxy_args(
+    python: &std::path::Path,
+    module: &str,
+    extra_args: &[&str],
+) -> Vec<String> {
+    let mut args = vec![
         python.to_string_lossy().to_string(),
         "-m".to_string(),
         module.to_string(),
-    ]
+    ];
+    args.extend(extra_args.iter().map(|arg| (*arg).to_string()));
+    args
 }
 
 /// Return only host-managed, keyless MCP descriptors for ACP sessions. The
@@ -85,11 +91,11 @@ pub(crate) fn acp_mcp_servers(app: &AppHandle) -> Result<Vec<AcpMcpServer>, Stri
     let candidates = [
         ("spaceweather", "spaceweather_mcp.server", false),
         ("paper-search", "paper_search_mcp.server", false),
-        ("biomcp", "biomcp", false),
+        ("biomcp", "biomcp", true),
         ("open-meteo", "mcp_weather_server", false),
     ];
     let mut result = Vec::new();
-    for (name, module, _) in candidates {
+    for (name, module, biomcp_cli) in candidates {
         let probe = crate::runtime::quiet_command(&python)
             .args(["-c", &format!("import {module}")])
             .output();
@@ -99,7 +105,7 @@ pub(crate) fn acp_mcp_servers(app: &AppHandle) -> Result<Vec<AcpMcpServer>, Stri
         result.push(AcpMcpServer {
             name: name.to_string(),
             command: proxy.to_string_lossy().to_string(),
-            args: mcp_proxy_args(&python, module),
+            args: mcp_proxy_args(&python, module, if biomcp_cli { &["run"] } else { &[] }),
             env: if name == "spaceweather" {
                 vec![("FASTMCP_SHOW_SERVER_BANNER".to_string(), "false".to_string())]
             } else {
@@ -113,6 +119,7 @@ pub(crate) fn acp_mcp_servers(app: &AppHandle) -> Result<Vec<AcpMcpServer>, Stri
 /// Prepare is intentionally idempotent. The existing settings action owns
 /// package installation; ACP switching only verifies the app-managed env and
 /// does not reinstall packages on every model change.
+#[allow(dead_code)]
 pub(crate) async fn prepare_acp_mcp(app: &AppHandle) -> Result<(), String> {
     let dir = env_dir(app)?;
     if dir.is_dir() {
@@ -205,7 +212,7 @@ mod tests {
 
     #[test]
     fn mcp_proxy_keeps_python_as_the_child_command() {
-        let args = mcp_proxy_args(Path::new("C:/managed/python.exe"), "spaceweather_mcp.server");
+        let args = mcp_proxy_args(Path::new("C:/managed/python.exe"), "spaceweather_mcp.server", &[]);
         assert_eq!(
             args,
             vec![
@@ -214,5 +221,11 @@ mod tests {
                 "spaceweather_mcp.server".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn biomcp_descriptor_includes_run_subcommand() {
+        let args = mcp_proxy_args(Path::new("C:/managed/python.exe"), "biomcp", &["run"]);
+        assert_eq!(args.last().map(String::as_str), Some("run"));
     }
 }

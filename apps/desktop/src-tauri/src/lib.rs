@@ -5,12 +5,10 @@ mod annotation_store;
 mod acp_consumer;
 mod browser;
 mod debug_log;
-mod examples;
 mod gateway;
 mod git_snapshot;
 mod bio_check;
 mod goal;
-mod harness;
 mod compute;
 mod jupyter;
 mod kernel;
@@ -256,6 +254,7 @@ pub fn run() {
             acp_consumer::acp_reply_exec,
             acp_consumer::acp_prepare_environment,
             acp_consumer::acp_list_skills,
+            acp_consumer::acp_list_mcp_servers,
             acp_consumer::acp_probe_runtime,
             method_check::method_check_evaluate,
             bio_check::bio_check_evaluate,

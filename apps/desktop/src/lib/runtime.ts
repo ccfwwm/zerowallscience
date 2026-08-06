@@ -94,7 +94,6 @@ import { notifyPermissionRequest } from "./systemNotification";
 import { fallbackDefaultModel } from "@/components/settings/modelCatalog";
 import { toast } from "@/lib/toast";
 import i18n from "@/i18n";
-import { useLayoutStore } from "./layout";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const URL_KEY = "zerowall.opencodeUrl";
@@ -1200,11 +1199,12 @@ function modelForSession(state: RuntimeState, key: string): { model: string | nu
  *  sharedEventHandler. */
 function makeSharedEventHandler(set: StoreSet, get: StoreGet): (event: OpenCodeEvent) => void {
   return (event) => {
-        // ACP owns one stable profile session. Events from the OpenCode
+        // ACP owns one stable project conversation. Events from the OpenCode
         // sidecar, a background pane, or a previous ACP process must never
-        // recreate/fold blocks into the active ACP conversation.
+        // recreate/fold blocks into the active project thread.
         const activeAcp = get().acpProfileId;
-        if (activeAcp && event.sessionId !== activeAcp) return;
+        const activeConversation = get().currentId ?? activeAcp;
+        if (activeAcp && event.sessionId !== activeConversation) return;
         // text.updated fires per streamed token, and a running bash tool fires
         // per stdout write (tqdm redraws dozens of times a second) — logging
         // each one would flood debug.log with an IPC call per event.
@@ -1996,22 +1996,11 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       if (profileId) window.localStorage.setItem(ACP_PROFILE_KEY, profileId);
       else window.localStorage.removeItem(ACP_PROFILE_KEY);
     }
-    // ACP exposes one live conversation. Rebind the active pane before the
-    // new process starts so its first prompt cannot target a stale OpenCode
-    // session, and late events have no old pane to corrupt.
-    const layout = useLayoutStore.getState();
-    layout.reset(profileId);
-    // Switching runtimes drops the whole conversation view: the sessions,
-    // threads and per-runtime capability lists all belong to the old runtime.
-    // Clear zeroWallClient too — it wraps the OpenCode client for agent routing
-    // and must not survive onto the ACP path (loadCatalog rebuilds it when we
-    // return to OpenCode). sendPrompt prefers it over `client`, so a stale one
-    // would silently keep routing turns to the torn-down OpenCode runtime.
+    // Runtime switching replaces only the execution client. Project sessions,
+    // currentId, threads and panes stay intact so the same conversation can
+    // continue under another runtime.
     set({
       acpProfileId: profileId,
-      sessions: [],
-      currentId: null,
-      threads: {},
       skills: [],
       agents: [],
       commands: [],
@@ -2134,7 +2123,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         // model) into the launch request so the agent routes through the gateway
         // instead of its own vendor endpoint. No config → the preset launches
         // as-is and the agent uses its own login (subscription / OAuth).
-        const request = buildAcpLaunchRequest(preset);
+        const request = buildAcpLaunchRequest(preset, get().currentId ?? undefined);
         const acp = new AcpRuntime(request);
         client = acp; // NOT opencodeClient — ACP is not an OpenCode server.
         const ownsConnection = () =>
@@ -2162,6 +2151,10 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           set({ error: null });
           await get().refreshSessions();
           if (!ownsConnection()) return;
+          if (!get().currentId) {
+            const first = get().sessions[0]?.id;
+            if (first) set({ currentId: first });
+          }
           // The OpenCode sidecar keeps running behind the ACP agent — load its
           // provider catalog so the model picker is populated and the sidebar
           // shows the agent's gateway model (loadCatalog derives the ACP default
@@ -2729,13 +2722,11 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // found".
     const s = get();
     const key = sessionId ?? draftKey ?? s.currentId ?? DRAFT_KEY;
-    // An ACP runtime owns exactly one live conversation, keyed by its stable
-    // profile id. Persisted layouts may still contain panes from OpenCode (or
-    // the other ACP profile); forwarding one of those ids would put the echoed
-    // user message in that stale pane while AcpRuntime streams the answer into
-    // its fixed session. Reject at this shared boundary so every composer path
-    // remains coherent until the pane is rebound to the active runtime.
-    if (s.acpProfileId && key !== s.acpProfileId && !key.startsWith("draft:")) {
+    // An ACP runtime owns exactly one live project conversation. Persisted
+    // panes from another project/runtime are rejected, while the current
+    // project conversation remains valid across runtime switches.
+    const acpConversation = s.currentId ?? s.acpProfileId;
+    if (s.acpProfileId && key !== acpConversation && !key.startsWith("draft:")) {
       set({ error: "This pane belongs to a different runtime. Select the active ACP conversation before sending." });
       return Promise.resolve(null);
     }

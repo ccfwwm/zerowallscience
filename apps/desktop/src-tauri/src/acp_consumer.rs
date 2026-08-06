@@ -68,6 +68,8 @@ impl Default for AcpConsumerState {
 #[serde(deny_unknown_fields)]
 pub struct AcpLaunchRequest {
     pub profile_id: String,
+    #[serde(default)]
+    pub conversation_id: Option<String>,
     pub gateway: AcpGatewayConfig,
 }
 
@@ -899,12 +901,9 @@ fn build_agent_profile(
 
 fn acp_runtime_home(app: &AppHandle, profile_id: &str) -> Result<PathBuf, String> {
     profile_spec(profile_id)?;
-    Ok(app
-        .path()
-        .app_local_data_dir()
-        .map_err(|error| format!("failed to resolve ACP data directory: {error}"))?
-        .join("acp")
-        .join(profile_id))
+    let workspace = crate::runtime::workspace_dir(app)?;
+    crate::runtime::initialize_project_runtime_dirs(&workspace)?;
+    Ok(workspace)
 }
 
 fn prepare_runtime_layout(runtime_home: &Path, profile_id: &str) -> Result<(), String> {
@@ -958,23 +957,22 @@ async fn prepare_environment(
     profile_id: &str,
 ) -> Result<(), String> {
     profile_spec(profile_id)?;
-    if state.prepared_profiles.lock().unwrap().contains(profile_id) {
+    let workspace = crate::runtime::workspace_dir(app)?;
+    let preparation_key = format!("{}::{}", profile_id, workspace.to_string_lossy());
+    if state.prepared_profiles.lock().unwrap().contains(&preparation_key) {
         return Ok(());
     }
     let runtime_home = acp_runtime_home(app, profile_id)?;
     prepare_runtime_layout(&runtime_home, profile_id)?;
-    crate::runtime::deploy_bundled_skills_to(
+    crate::runtime::deploy_bundled_skills_for_acp(
         app,
         &acp_skill_directory(&runtime_home, profile_id)?,
+        &runtime_home.join(".zerowall").join("skills-store"),
     )?;
-    crate::science_mcp::prepare_acp_mcp(app).await?;
-    // Resolving descriptors here validates the managed environment boundary.
-    let _ = managed_mcp_servers(app)?;
-    state
-        .prepared_profiles
-        .lock()
-        .unwrap()
-        .insert(profile_id.to_string());
+    // MCP provisioning is independent from ACP readiness. Probe descriptors
+    // opportunistically and let the supervisor retry failed servers later.
+    let _ = managed_mcp_servers(app);
+    state.prepared_profiles.lock().unwrap().insert(preparation_key);
     Ok(())
 }
 
@@ -1010,12 +1008,7 @@ pub struct AcpSkillInfo {
 #[tauri::command]
 pub fn acp_list_skills(app: AppHandle, profile_id: String) -> Result<Vec<AcpSkillInfo>, String> {
     profile_spec(&profile_id)?;
-    let root = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|error| format!("failed to resolve ACP data directory: {error}"))?
-        .join("acp")
-        .join(&profile_id);
+    let root = crate::runtime::workspace_dir(&app)?;
     let root = acp_skill_directory(&root, &profile_id)?;
     let mut skills = Vec::new();
     collect_acp_skills(&root, &mut skills)?;
@@ -1246,7 +1239,7 @@ fn codex_environment(
 fn write_codex_gateway_config(request: &AcpLaunchRequest, codex_home: &Path) -> Result<(), String> {
     let quote = |value: &str| serde_json::to_string(value).expect("string JSON serialization");
     let config = format!(
-        "model = {model}\nmodel_provider = \"zerowall-sub2api\"\n\n[model_providers.zerowall-sub2api]\nname = \"ZeroWall Sub2API\"\nbase_url = {base_url}\nwire_api = \"responses\"\nenv_key = \"CODEX_API_KEY\"\nrequires_openai_auth = false\n",
+        "model = {model}\nmodel_provider = \"zerowall-sub2api\"\n\n[model_providers.zerowall-sub2api]\nname = \"ZeroWall Sub2API\"\nbase_url = {base_url}\nwire_api = \"responses\"\nenv_key = \"CODEX_API_KEY\"\nrequires_openai_auth = false\n\n[mcp_servers.biomcp]\nstartup_timeout_sec = 120\n[mcp_servers.spaceweather]\nstartup_timeout_sec = 120\n[mcp_servers.paper-search]\nstartup_timeout_sec = 120\n[mcp_servers.open-meteo]\nstartup_timeout_sec = 120\n",
         model = quote(request.gateway.model.trim()),
         base_url = quote(request.gateway.base_url.trim()),
     );
@@ -1274,6 +1267,9 @@ pub async fn acp_launch(
     request: AcpLaunchRequest,
 ) -> Result<AcpStatus, String> {
     request.validate()?;
+    // The conversation id is owned by the frontend project/session store; the
+    // native adapter session remains an implementation detail.
+    let _conversation_id = request.conversation_id.as_deref();
 
     // A launch during desktop restore may be the first ACP action in this app
     // process. Runtime switching invokes this explicitly before teardown; a
@@ -1303,12 +1299,13 @@ pub async fn acp_launch(
     if request.profile_id == CODEX_PROFILE_ID {
         write_codex_gateway_config(&request, &runtime_home.join(".codex"))?;
     }
+    let mcp_servers = managed_mcp_servers(&app)?;
     let profile = build_agent_profile(
         &request,
         &runtime,
         &api_key,
         &runtime_home,
-        managed_mcp_servers(&app)?,
+        mcp_servers.clone(),
     )?;
 
     let _lifecycle = state.lifecycle.lock().await;
@@ -1356,6 +1353,17 @@ pub async fn acp_launch(
     );
 
     await_launch_ready(_lifecycle, ready_rx).await?;
+    for server in mcp_servers {
+        let _ = app.emit(
+            "acp:mcp-state",
+            AcpMcpServerInfo {
+                name: server.name,
+                status: "deferred".to_string(),
+                command: server.command,
+                args: server.args,
+            },
+        );
+    }
     Ok(status_of(&state))
 }
 
@@ -1424,6 +1432,29 @@ pub fn acp_prompt(
         }
     }
     result
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AcpMcpServerInfo {
+    pub name: String,
+    pub status: String,
+    pub command: String,
+    pub args: Vec<String>,
+}
+
+/// Return host-vetted MCP descriptors without exposing environment values.
+/// Descriptor discovery is read-only and never starts a server.
+#[tauri::command]
+pub fn acp_list_mcp_servers(app: AppHandle) -> Result<Vec<AcpMcpServerInfo>, String> {
+    Ok(managed_mcp_servers(&app)?
+        .into_iter()
+        .map(|server| AcpMcpServerInfo {
+            name: server.name,
+            status: "deferred".to_string(),
+            command: server.command,
+            args: server.args,
+        })
+        .collect())
 }
 
 /// Change the model in the current ACP session. This command deliberately does
@@ -2040,6 +2071,7 @@ mod tests {
     fn request(profile_id: &str) -> AcpLaunchRequest {
         AcpLaunchRequest {
             profile_id: profile_id.to_string(),
+            conversation_id: None,
             gateway: AcpGatewayConfig {
                 provider_id: "zerowall-provider".to_string(),
                 base_url: "https://gateway.example/v1/".to_string(),

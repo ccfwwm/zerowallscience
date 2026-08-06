@@ -1681,6 +1681,19 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     expect(mocks.acpLaunch).not.toHaveBeenCalled();
   });
 
+  it("switchRuntime preserves the project conversation and pane identity", async () => {
+    useRuntimeStore.setState({
+      currentId: "project-conversation",
+      sessions: [{ id: "project-conversation", title: "Project" }],
+      threads: { "project-conversation": { blocks: [], index: {}, loaded: true } },
+    });
+    await useRuntimeStore.getState().switchRuntime("codex");
+    const state = useRuntimeStore.getState();
+    expect(state.currentId).toBe("project-conversation");
+    expect(state.threads["project-conversation"]).toBeDefined();
+    expect(state.sessions.some((session) => session.id === "project-conversation")).toBe(true);
+  });
+
   it("keeps the new ACP runtime ready when a superseded launch fails", async () => {
     window.localStorage.setItem(
       "zerowall.acp.config.claude-code",

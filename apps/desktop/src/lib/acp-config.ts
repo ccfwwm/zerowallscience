@@ -85,10 +85,10 @@ export function clearAcpConfig(presetId: string): void {
  *  Without config: return the preset unchanged so the agent uses its own login
  *  — a model-agnostic host must still launch for users with no Sub2Api account.
  */
-export function buildAcpLaunchRequest(preset: AcpPreset): AcpLaunchRequest {
+export function buildAcpLaunchRequest(preset: AcpPreset, conversationId?: string): AcpLaunchRequest {
   const config = loadAcpConfig(preset.id);
   if (!config) {
     throw new Error(`${preset.label} requires a complete AI gateway configuration`);
   }
-  return { profileId: preset.id, gateway: config };
+  return { profileId: preset.id, conversationId, gateway: config };
 }

@@ -1,5 +1,9 @@
 # Progress
 
+2026-08-06 20:35 · 已完成 ZeroWall Science × Wisp × ChatGPT Desktop 统一工作台最终生产计划，覆盖三引擎、MCP/Skills/Workflow、AI 云平台账号、供应商、双安装器和在线回滚更新。
+
+2026-08-06 20:15 · v0.4.57 — ACP 项目原地注册、项目运行时目录隔离、MCP 超时回退与项目会话保持已实现，完成 Rust/前端回归测试。
+
 2026-08-06 16:20 · v0.4.56 — 修复 Codex ACP 拒绝 Sub2API 自定义模型：允许不在 Codex 内置目录中的 gateway model ID 通过同一 session 切换，并完成上游 ACP 回归验证。
 
 2026-08-06 13:20 · v0.4.55 — ACP Claude Code/Codex 模型切换改为同一 session 的 session/set_model 请求，不再重启 adapter、MCP、Skills 或工作区；新增 fake ACP 回归并完成前端/Rust 验证。

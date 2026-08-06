@@ -1,6 +1,6 @@
 {
   "name": "@zerowall/desktop",
-  "version": "0.4.56",
+  "version": "0.4.57",
   "private": true,
   "type": "module",
   "scripts": {

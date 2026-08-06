@@ -254,6 +254,37 @@ pub(crate) fn deploy_bundled_skills_to(app: &AppHandle, dst: &Path) -> Result<()
     }
 }
 
+/// Deploy the complete pack to the project-owned on-demand store while keeping
+/// only a compact core set in the adapter discovery directory. This prevents
+/// Codex's 2% skill-description budget from being consumed at startup.
+pub(crate) fn deploy_bundled_skills_for_acp(
+    app: &AppHandle,
+    discovery: &Path,
+    store: &Path,
+) -> Result<(), String> {
+    deploy_bundled_skills_to(app, store)?;
+    let mut bundled = std::collections::HashSet::new();
+    let mut all_ok = true;
+    const CORE: &[&str] = &[
+        "ai4s-agent", "experiment-suite", "file-processing", "image-processing",
+        "mcp-usage", "literature-review", "bio-plausibility", "reproducible-research",
+        "citation-reviewer", "domain-check",
+    ];
+    for resource in SKILL_RESOURCES {
+        let src = match app.path().resolve(resource, tauri::path::BaseDirectory::Resource) {
+            Ok(path) if path.is_dir() => path,
+            _ => { all_ok = false; continue; }
+        };
+        match sync_skill_pack_filtered(&src, discovery, CORE) {
+            Ok(names) => bundled.extend(names),
+            Err(_) => all_ok = false,
+        }
+    }
+    if !all_ok { return Err("bundled scientific skills are unavailable".into()); }
+    prune_stale_skills(discovery, &bundled);
+    Ok(())
+}
+
 /// Ship the bundled goal plugin (one self-contained JS file, see
 /// scripts/dev/fetch-goal-plugin.sh) into the app-private OpenCode profile and
 /// return its absolute path for the config's `plugin` array. OpenCode 1.17
@@ -308,6 +339,30 @@ fn sync_skill_pack(src: &Path, dst: &Path) -> std::io::Result<Vec<std::ffi::OsSt
         }
         copy_dir(&entry.path(), &target)?;
         deployed.push(entry.file_name());
+    }
+    Ok(deployed)
+}
+
+fn sync_skill_pack_filtered(
+    src: &Path,
+    dst: &Path,
+    allow: &[&str],
+) -> std::io::Result<Vec<std::ffi::OsString>> {
+    std::fs::create_dir_all(dst)?;
+    let mut deployed = Vec::new();
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() || !entry.path().join("SKILL.md").is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        if !allow.iter().any(|value| name == std::ffi::OsStr::new(value)) {
+            continue;
+        }
+        let target = dst.join(&name);
+        if target.exists() { std::fs::remove_dir_all(&target)?; }
+        copy_dir(&entry.path(), &target)?;
+        deployed.push(name);
     }
     Ok(deployed)
 }
@@ -920,6 +975,19 @@ fn prepare_workspace_dir(dir: &Path) -> Result<PathBuf, String> {
     Ok(canonical)
 }
 
+/// Create only the application-owned runtime directories inside a project.
+/// This is intentionally idempotent and never writes agent instructions or
+/// other scaffold files into a user's repository.
+pub(crate) fn initialize_project_runtime_dirs(dir: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("could not create project directory: {e}"))?;
+    for name in [".opencode", ".codex", ".claude", ".zerowall"] {
+        std::fs::create_dir_all(dir.join(name))
+            .map_err(|e| format!("could not initialize {name}: {e}"))?;
+    }
+    crate::science_db::open_science_db(dir)?;
+    Ok(())
+}
+
 #[tauri::command(async)]
 pub fn set_workspace(
     app: AppHandle,
@@ -928,6 +996,7 @@ pub fn set_workspace(
 ) -> Result<String, String> {
     let dir = PathBuf::from(&path);
     let canon = prepare_workspace_dir(&dir)?;
+    initialize_project_runtime_dirs(&canon)?;
     std::fs::write(active_workspace_file(&app)?, canon.to_string_lossy().as_bytes())
         .map_err(|e| e.to_string())?;
 
@@ -984,14 +1053,7 @@ pub fn new_dated_workspace(
         return Err("invalid folder name".into());
     }
     let dir = base_workspace_dir(&app)?.join(&name);
-    // `set_workspace` moves `app`; keep a handle to seed the harness afterwards.
-    let seed_app = app.clone();
     let canon = set_workspace(app, state, dir.to_string_lossy().to_string())?;
-    // Seed the agent harness into the fresh folder so it starts with its
-    // operating rules, not an empty directory. Only NEW dated folders get seeded
-    // (never `set_workspace` alone — switching to an existing session must not
-    // re-plant the scaffold).
-    crate::harness::seed_harness(&seed_app, std::path::Path::new(&canon));
     crate::git_snapshot::commit_best_effort(std::path::Path::new(&canon), "Initialize workspace");
     Ok(canon)
 }
@@ -1030,6 +1092,7 @@ mod tests {
     use super::{
         auth_has_provider, prepare_workspace_dir, prune_stale_skills, random_hex,
         remove_key_from_config, resolve_proxy_env, sync_skill_pack, validate_proxy_url,
+        initialize_project_runtime_dirs,
         SKILL_RESOURCES,
     };
     #[cfg(target_os = "macos")]
@@ -1135,6 +1198,21 @@ mod tests {
         let status = crate::science_db::science_db_status(&prepared).unwrap();
         assert_eq!(status.version, 10);
 
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn project_runtime_initialization_creates_only_app_runtime_dirs() {
+        let root = std::env::temp_dir().join(format!("zerowall-runtime-layout-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        initialize_project_runtime_dirs(&root).unwrap();
+        for name in [".opencode", ".codex", ".claude", ".zerowall"] {
+            assert!(root.join(name).is_dir(), "missing {name}");
+        }
+        for name in ["AGENTS.md", "KNOWLEDGE.md", "notes", "knowledge", "README.md"] {
+            assert!(!root.join(name).exists(), "unexpected scaffold {name}");
+        }
         let _ = fs::remove_dir_all(&root);
     }
 
