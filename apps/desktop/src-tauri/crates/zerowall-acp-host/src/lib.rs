@@ -17,6 +17,7 @@ pub enum HostDriverKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CredentialRef {
     pub keychain_id: String,
 }
@@ -34,6 +35,7 @@ pub struct LaunchProfile {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentBinding {
     pub engine: HostDriverKind,
     pub profile: String,
@@ -647,7 +649,7 @@ mod tests {
         }
         assert_eq!(
             encoded,
-            json!({"kind":"codex","credential":{"keychain_id":"kc-1"}})
+            json!({"kind":"codex","credential":{"keychainId":"kc-1"}})
         );
     }
 

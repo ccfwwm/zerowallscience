@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-06 23:18 · P3 统一 SDK 客户端完成：新增 AcpHostClient、AgentBinding/Session/Event 类型、单一 Host IPC、事件归一化和前端 binding 冲突保护；4 项新测试、桌面 typecheck 与 22 项 Host Rust 测试通过。
+
 2026-08-06 22:42 · P2 Tauri Host 接入完成：新增统一 acp_host state 与引擎探测、启动、prompt、事件、取消、权限和关闭命令；Codex/Claude 使用 Host 进程 driver，OpenCode 使用内部 HTTP driver，API key 仅从 OS Keychain 读取。
 
 2026-08-06 22:18 · P1 ACP 进程驱动完成：Codex/Claude 的统一 Host driver 复用 zerowall-acp 进程树与权限沙箱，支持新会话、prompt、取消、模型配置、权限回传和事件归一化；恢复/加载/模式明确声明不支持，Host crate 22 项测试与 clippy 通过。

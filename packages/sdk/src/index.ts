@@ -1,5 +1,17 @@
 export { OpenCodeClient } from "./OpenCodeClient";
 export { ZeroWallClient } from "./ZeroWallClient";
+export {
+  AcpHostClient,
+  type AcpHostClientOptions,
+  type AcpHostEngineInfo,
+  type AcpHostInvoke,
+  type AcpHostLaunchRequest,
+  type AgentBinding,
+  type AgentEngine,
+  type AgentEvent,
+  type AgentSession,
+  type PermissionOption as AcpPermissionOption,
+} from "./AcpHostClient";
 export type { AgentRuntime, PromptAttachment } from "./runtime";
 export { BaseAgentRuntime } from "./base-runtime";
 export {
