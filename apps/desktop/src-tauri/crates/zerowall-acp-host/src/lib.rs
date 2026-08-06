@@ -141,6 +141,8 @@ pub enum AgentEvent {
     PermissionRequested {
         session_id: String,
         request_id: String,
+        action: Option<String>,
+        resources: Vec<String>,
         options: Vec<PermissionOption>,
     },
     #[serde(rename = "question.requested")]

@@ -34,6 +34,7 @@ function makeDeps() {
     launch: vi.fn(async () => READY),
     prompt: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
+    respondPermission: vi.fn(async () => {}),
     shutdown: vi.fn(async () => IDLE),
     setModel: vi.fn(async () => {}),
     listSkills: vi.fn(async () => []),
@@ -98,6 +99,37 @@ describe("AcpRuntime capability discovery", () => {
       { name: "literature-review", description: "Search and synthesize papers", location: "C:/acp/skills/literature-review/SKILL.md" },
     ]);
     expect(deps.listSkills).toHaveBeenCalledWith("codex");
+  });
+});
+
+describe("AcpRuntime permissions", () => {
+  it("preserves Host request ids and selects the real option id", async () => {
+    const { runtime, deps, fire, events } = harness();
+    await runtime.connect();
+    fire().onHostPermission?.({
+      request_id: "permission-abc",
+      action: "shell",
+      resources: ["git status"],
+      options: [
+        { option_id: "allow_once", name: "Allow once" },
+        { option_id: "reject", name: "Reject" },
+      ],
+    });
+
+    expect(events).toContainEqual({
+      type: "permission.asked",
+      sessionId: "codex",
+      requestId: "permission-abc",
+      action: "shell",
+      resources: ["git status"],
+    });
+    await runtime.replyPermission("permission-abc", "once");
+    expect(deps.respondPermission).toHaveBeenCalledWith("permission-abc", "allow_once");
+    expect(events).toContainEqual({
+      type: "permission.resolved",
+      sessionId: "codex",
+      requestId: "permission-abc",
+    });
   });
 });
 

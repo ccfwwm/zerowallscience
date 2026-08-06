@@ -44,6 +44,8 @@ export type AgentEvent =
       type: "permission.requested";
       sessionId: string;
       requestId: string;
+      action: string;
+      resources: string[];
       options: PermissionOption[];
     }
   | { type: "question.requested"; sessionId: string; question: string }
@@ -335,6 +337,10 @@ function normalizeEvent(raw: RawEvent): AgentEvent {
         type: raw.type,
         sessionId,
         requestId: stringValue(data, "request_id", "requestId"),
+        action: nullableString(data, "action") ?? "agent",
+        resources: Array.isArray(data.resources)
+          ? data.resources.filter((value): value is string => typeof value === "string")
+          : [],
         options: Array.isArray(data.options)
           ? data.options.map((option) => {
               const value = option as Record<string, unknown>;

@@ -137,6 +137,7 @@ vi.mock("./acp-host-runtime", () => ({
     prompt: mocks.acpPrompt,
     setModel: mocks.acpSetModel,
     cancel: vi.fn(async () => {}),
+    respondPermission: vi.fn(async () => {}),
     shutdown: mocks.acpShutdown,
     subscribe: vi.fn(async (handlers: unknown) => {
       mocks.acpHandlers = handlers as Record<string, (payload: unknown) => void>;

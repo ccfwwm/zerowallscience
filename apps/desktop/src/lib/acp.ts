@@ -229,6 +229,13 @@ export interface AcpPermissionPayload {
   options: { option_id: string; name: string }[];
 }
 
+export interface AcpHostPermissionPayload {
+  request_id: string;
+  action: string;
+  resources: string[];
+  options: { option_id: string; name: string | null }[];
+}
+
 /** `acp:exec-approval` — the agent wants to run a command. The host MUST approve
  *  (via `acpReplyExec`) before the process is spawned. */
 export interface AcpExecApprovalPayload {
@@ -251,6 +258,7 @@ export interface AcpEventHandlers {
   onUsage?: (payload: AcpUsagePayload) => void;
   onFileWritten?: (path: string) => void;
   onPermission?: (payload: AcpPermissionPayload) => void;
+  onHostPermission?: (payload: AcpHostPermissionPayload) => void;
   onExecApproval?: (payload: AcpExecApprovalPayload) => void;
   /** A turn finished; usage is cumulative across the ACP session. */
   onTurnEnded?: (stopReason: string, usage?: AcpTokenUsagePayload) => void;

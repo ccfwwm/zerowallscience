@@ -345,6 +345,8 @@ impl AcpEventMapper {
                 self.events.push(AgentEvent::PermissionRequested {
                     session_id: self.session_id.clone(),
                     request_id,
+                    action: None,
+                    resources: Vec::new(),
                     options,
                 });
             }
@@ -360,6 +362,10 @@ impl AcpEventMapper {
                 self.events.push(AgentEvent::PermissionRequested {
                     session_id: self.session_id.clone(),
                     request_id,
+                    action: Some("shell".into()),
+                    resources: vec![format!("{} {}", command, args.join(" "))
+                        .trim()
+                        .to_owned()],
                     options: vec![
                         PermissionOption {
                             id: "allow_once".into(),

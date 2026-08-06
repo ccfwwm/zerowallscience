@@ -114,6 +114,8 @@ describe("AcpHostClient", () => {
         type: "permission.requested",
         sessionId: "agent-session-1",
         requestId: "permission-1",
+        action: "agent",
+        resources: [],
         options: [{ id: "allow_once", label: "Allow once" }],
       },
     ]);

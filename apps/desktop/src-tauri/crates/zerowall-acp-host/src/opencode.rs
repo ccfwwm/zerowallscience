@@ -265,8 +265,12 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         request_id: String,
         option_id: Option<String>,
     ) -> Result<(), HostError> {
-        let path = format!("/permission/{}", encode_path(&request_id));
-        let body = json!({"optionId": option_id}).to_string();
+        let path = format!(
+            "/permission/{}/reply?directory={}",
+            encode_path(&request_id),
+            encode_query(&self.binding.project_root)
+        );
+        let body = json!({"reply": option_id.unwrap_or_else(|| "reject".into())}).to_string();
         let response = self.send("POST", &path, Some(&body)).await?;
         ensure_success(response.status, "permission")
     }
@@ -523,7 +527,7 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                         .or_else(|| props.get("requestID"))
                         .and_then(|v| v.as_str())
                         .unwrap_or_default();
-                    let options = props
+                    let mut options: Vec<PermissionOption> = props
                         .get("options")
                         .and_then(|v| v.as_array())
                         .map(|items| {
@@ -543,9 +547,43 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                                 .collect()
                         })
                         .unwrap_or_default();
+                    if options.is_empty() {
+                        options = vec![
+                            PermissionOption {
+                                id: "once".into(),
+                                label: Some("Allow once".into()),
+                            },
+                            PermissionOption {
+                                id: "always".into(),
+                                label: Some("Always allow".into()),
+                            },
+                            PermissionOption {
+                                id: "reject".into(),
+                                label: Some("Reject".into()),
+                            },
+                        ];
+                    }
+                    let action = props
+                        .get("permission")
+                        .or_else(|| props.get("action"))
+                        .and_then(|value| value.as_str())
+                        .map(str::to_owned);
+                    let resources = props
+                        .get("patterns")
+                        .or_else(|| props.get("resources"))
+                        .and_then(|value| value.as_array())
+                        .map(|values| {
+                            values
+                                .iter()
+                                .filter_map(|value| value.as_str().map(str::to_owned))
+                                .collect()
+                        })
+                        .unwrap_or_default();
                     self.events.push(crate::AgentEvent::PermissionRequested {
                         session_id: session_id.into(),
                         request_id: request_id.into(),
+                        action,
+                        resources,
                         options,
                     });
                 }
@@ -867,6 +905,43 @@ mod tests {
         assert!(calls
             .iter()
             .any(|call| call.url == "http://x/session/s1/abort" && call.method == "POST"));
+    }
+
+    #[test]
+    fn maps_and_replies_to_native_opencode_permissions() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![TransportResponse {
+                status: 200,
+                body: String::new(),
+            }],
+        };
+        let mut permission_binding = binding();
+        permission_binding.project_root = "C:/science project".into();
+        let mut driver =
+            OpenCodeDriver::new(fake, "http://x", "u", "p", permission_binding);
+        driver.map_events(
+            "s1",
+            "data: {\"type\":\"permission.asked\",\"properties\":{\"id\":\"p1\",\"permission\":\"bash\",\"patterns\":[\"git status\"]}}\n\n",
+        );
+
+        assert!(driver.take_events().iter().any(|event| matches!(
+            event,
+            crate::AgentEvent::PermissionRequested { request_id, action, resources, options, .. }
+                if request_id == "p1"
+                    && action.as_deref() == Some("bash")
+                    && resources == &["git status"]
+                    && options.iter().map(|option| option.id.as_str()).eq(["once", "always", "reject"])
+        )));
+
+        block_on(driver.respond_permission("p1".into(), Some("once".into()))).unwrap();
+        let calls = calls.lock().unwrap();
+        assert_eq!(
+            calls[0].url,
+            "http://x/permission/p1/reply?directory=C:%2Fscience%20project"
+        );
+        assert_eq!(calls[0].body.as_deref(), Some("{\"reply\":\"once\"}"));
     }
 
     #[test]

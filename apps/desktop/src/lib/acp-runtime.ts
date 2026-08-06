@@ -41,6 +41,7 @@ import type {
 import {
   acpListSkills,
   type AcpEventHandlers,
+  type AcpHostPermissionPayload,
   type AcpLaunchRequest,
   type AcpMessagePayload,
   type AcpPromptAttachment,
@@ -58,6 +59,7 @@ export interface AcpRuntimeDeps {
   prompt: (text: string, attachments?: AcpPromptAttachment[]) => Promise<void>;
   setModel: (model: string) => Promise<void>;
   cancel: () => Promise<void>;
+  respondPermission: (requestId: string, optionId: string | null) => Promise<void>;
   shutdown: () => Promise<AcpStatus>;
   subscribe: (handlers: AcpEventHandlers) => Promise<() => void>;
   listSkills?: (profileId: string) => Promise<SkillInfo[]>;
@@ -95,6 +97,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
    *  carries the FULL current value, not deltas, so we accumulate here. */
   private readonly messageText = new Map<string, string>();
   private readonly thoughtText = new Map<string, string>();
+  private readonly permissionOptions = new Map<string, AcpHostPermissionPayload["options"]>();
   /** The latest whole-value update for each part waiting for the next display
    * refresh. Protocol chunks still accumulate losslessly in the maps above. */
   private readonly pendingText = new Map<string, { kind: "text" | "reasoning"; key: string; text: string }>();
@@ -218,6 +221,16 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
         if (event) this.emit(event);
       },
       onUsage: (payload) => this.onUsage(payload),
+      onHostPermission: (payload) => {
+        this.permissionOptions.set(payload.request_id, payload.options);
+        this.emit({
+          type: "permission.asked",
+          sessionId: this.sessionId,
+          requestId: payload.request_id,
+          action: payload.action,
+          resources: payload.resources,
+        });
+      },
       onTurnEnded: (_stopReason, tokenUsage) => {
         // A turn boundary: unlabeled chunks of the next turn must not extend
         // this turn's bubbles, and the composer must unlock.
@@ -494,8 +507,19 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
 
   async rejectQuestion(): Promise<void> {}
 
-  async replyPermission(_requestId: string, _reply: PermissionReply): Promise<void> {
-    // ACP approvals are answered via acpReplyPermission / acpReplyExec from the
-    // ACP UI (they need an option id, not once/always/reject). No-op here.
+  async replyPermission(requestId: string, reply: PermissionReply): Promise<void> {
+    const options = this.permissionOptions.get(requestId) ?? [];
+    const matcher =
+      reply === "always"
+        ? /always|permanent/i
+        : reply === "once"
+          ? /once|allow|approve/i
+          : /reject|deny|cancel/i;
+    const optionId = options.find(
+      (option) => matcher.test(option.option_id) || matcher.test(option.name ?? ""),
+    )?.option_id ?? null;
+    await this.deps.respondPermission(requestId, optionId);
+    this.permissionOptions.delete(requestId);
+    this.emit({ type: "permission.resolved", sessionId: this.sessionId, requestId });
   }
 }

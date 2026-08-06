@@ -107,7 +107,18 @@ function forwardEvent(handlers: AcpEventHandlers, event: AgentEvent): void {
       handlers.onExited?.(event.message);
       break;
     case "session.started":
+      break;
     case "permission.requested":
+      handlers.onHostPermission?.({
+        request_id: event.requestId,
+        action: event.action,
+        resources: event.resources,
+        options: event.options.map((option) => ({
+          option_id: option.id,
+          name: option.label,
+        })),
+      });
+      break;
     case "question.requested":
     case "artifact.created":
       // These are consumed by the unified event reducer in the next migration
@@ -171,6 +182,10 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
     cancel: async () => {
       if (!hostState) return;
       await hostState.client.cancel(hostState.sessionId);
+    },
+    respondPermission: async (requestId, optionId) => {
+      if (!hostState) throw new Error("ACP Host session is not running");
+      await hostState.client.respondPermission(hostState.sessionId, requestId, optionId);
     },
     shutdown: async () => {
       const active = hostState;
