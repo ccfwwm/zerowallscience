@@ -148,11 +148,12 @@ function initialReasoningVariant(): string | null {
   return window.localStorage.getItem(REASONING_KEY) || null;
 }
 function initialAcpProfileId(): string | null {
-  // The app always opens in its bundled OpenCode mode. ACP remains available
-  // for an explicit switch during this run, but an old persisted ACP selection
-  // must never make a new launch depend on an external adapter.
+  // Keep the legacy OpenCode control-plane startup until the Host runtime has
+  // a durable multi-session/history facade. Explicit engine selection already
+  // routes OpenCode turns through the Host profile.
   if (typeof window !== "undefined" && !isGatewayWeb) {
-    window.localStorage.removeItem(ACP_PROFILE_KEY);
+    const stored = window.localStorage.getItem(ACP_PROFILE_KEY);
+    if (stored === "codex" || stored === "claude-code" || stored === "opencode") return stored;
   }
   return null;
 }
@@ -2137,6 +2138,16 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // OpenCode-only machinery (providers, catalog, one-shot config migrations).
     const acpProfileId = get().acpProfileId;
     if (!isGatewayWeb && acpProfileId) {
+      if (acpProfileId === "opencode" && !get().defaultModel) {
+        const controlClient = await getOrCreateOpenCodeClient();
+        if (controlClient) {
+          const [defaultModel, providers] = await Promise.all([
+            controlClient.getDefaultModel().catch(() => null),
+            controlClient.listProviders().catch(() => []),
+          ]);
+          set({ defaultModel, providers });
+        }
+      }
       const preset = acpPresetById(acpProfileId);
       const request = preset
         ? buildAcpLaunchRequest(preset, get().currentId ?? undefined)

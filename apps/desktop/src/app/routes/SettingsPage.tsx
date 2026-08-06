@@ -896,12 +896,12 @@ export function SettingsPage() {
                 hint={t("runtime.engineHint")}
                 control={
                   <select
-                    value={acpProfileId ?? ""}
-                    onChange={(e) => void switchRuntime(e.target.value || null)}
+                    value={acpProfileId ?? "opencode"}
+                    onChange={(e) => void switchRuntime(e.target.value)}
                     aria-label={t("runtime.engineLabel")}
                     className={chipCls("shrink-0")}
                   >
-                    <option value="">{t("runtime.openCode", { defaultValue: "OpenCode" })}</option>
+                    <option value="opencode">{t("runtime.openCode", { defaultValue: "OpenCode" })}</option>
                     {ACP_PRESETS.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.label}
