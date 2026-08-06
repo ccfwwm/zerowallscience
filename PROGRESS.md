@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 06:05 · P6 环境控制面接通：新增 Tauri check/install/status/rollback 命令、并发更新锁与前端活动阻断状态机；Codex/Claude adapter、OpenCode、uv、agent-browser 和 Skills 优先从 current 环境版本解析并保留旧 bundle 回退，Rust 13 项定向测试、前端 19 项测试与 typecheck 通过。
+
 2026-08-07 06:02 · P6 Environment installer/update 核心完成：签名 envelope、HTTPS manifest、流式 SHA-256、安全 file/zip/tarGz 解包、staging/versions/current 原子切换、health gate 与 rollback；离线核心测试 8 项、Tauri check、Clippy 通过。
 
 2026-08-07 05:03 · 更新通道新增桌面可用版本弹窗、按平台选择发布资产、HTTPS 下载、临时文件替换、GitHub digest SHA-256 校验和安装程序打开入口；Tauri/前端类型检查通过。
