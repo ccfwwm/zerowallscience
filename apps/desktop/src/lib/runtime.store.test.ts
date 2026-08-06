@@ -131,6 +131,20 @@ vi.mock("./acp", () => ({
     return mocks.acpUnlisten;
   }),
 }));
+vi.mock("./acp-host-runtime", () => ({
+  createAcpHostRuntimeDeps: () => ({
+    launch: mocks.acpLaunch,
+    prompt: mocks.acpPrompt,
+    setModel: mocks.acpSetModel,
+    cancel: vi.fn(async () => {}),
+    shutdown: mocks.acpShutdown,
+    subscribe: vi.fn(async (handlers: unknown) => {
+      mocks.acpHandlers = handlers as Record<string, (payload: unknown) => void>;
+      return mocks.acpUnlisten;
+    }),
+    listSkills: vi.fn(async () => []),
+  }),
+}));
 vi.mock("@zerowall/sdk", async () => {
   // The REAL ZeroWallClient — the store's P2 path (agent routing, handoff log,
   // session snapshots) is only meaningfully covered if it runs. It is a thin
