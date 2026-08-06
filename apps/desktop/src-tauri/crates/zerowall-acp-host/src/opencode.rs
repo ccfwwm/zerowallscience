@@ -200,6 +200,54 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
             let props = value.get("properties").unwrap_or(&value);
+            if kind == "message.part.updated" {
+                let part = props.get("part").unwrap_or(props);
+                let part_kind = part
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                match part_kind {
+                    "text" => {
+                        if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                            self.events.push(crate::AgentEvent::TextDelta {
+                                session_id: session_id.into(),
+                                delta: text.into(),
+                            });
+                        }
+                    }
+                    "reasoning" => {
+                        if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                            self.events.push(crate::AgentEvent::ThoughtDelta {
+                                session_id: session_id.into(),
+                                delta: text.into(),
+                            });
+                        }
+                    }
+                    "tool" => {
+                        let id = part
+                            .get("callID")
+                            .or_else(|| part.get("callId"))
+                            .or_else(|| part.get("id"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default();
+                        let status = part
+                            .get("state")
+                            .and_then(|v| v.get("status"))
+                            .or_else(|| part.get("status"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("updated");
+                        let title = part.get("tool").and_then(|v| v.as_str()).map(str::to_owned);
+                        self.events.push(crate::AgentEvent::ToolUpdated {
+                            session_id: session_id.into(),
+                            tool_call_id: id.into(),
+                            status: status.into(),
+                            title,
+                        });
+                    }
+                    _ => {}
+                }
+                continue;
+            }
             match kind {
                 "text.updated" | "message.part.updated" => {
                     if let Some(text) = props
@@ -519,6 +567,36 @@ mod tests {
         assert!(calls
             .iter()
             .any(|call| call.url == "http://x/session/s1/abort" && call.method == "POST"));
+    }
+
+    #[test]
+    fn maps_real_message_part_updated_payloads() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let sse = "data: {\"type\":\"message.part.updated\",\"properties\":{\"part\":{\"sessionID\":\"s1\",\"id\":\"p1\",\"type\":\"text\",\"text\":\"nested text\"}}}\n";
+        let fake = Fake {
+            calls,
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: sse.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+            ],
+        };
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
+        block_on(driver.prompt(PromptRequest {
+            session_id: "s1".into(),
+            prompt: "hello".into(),
+        }))
+        .unwrap();
+        assert!(driver.take_events().iter().any(|event| matches!(event, crate::AgentEvent::TextDelta { delta, .. } if delta == "nested text")));
     }
 
     #[test]
