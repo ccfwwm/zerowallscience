@@ -62,6 +62,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
             prompt: true,
             cancel: true,
             permission: true,
+            config: true,
             close_session: true,
             ..Default::default()
         }
@@ -615,5 +616,16 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn advertises_config_only_when_the_driver_implements_it() {
+        let fake = Fake {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            responses: vec![],
+        };
+        let driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
+        assert!(driver.capabilities().config);
+        assert!(!driver.capabilities().mode);
     }
 }
