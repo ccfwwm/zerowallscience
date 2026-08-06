@@ -32,6 +32,10 @@ git -C "$TMP/claude" apply "$PATCH"
   cp "dist/bin/claude-code-acp$SUFFIX" "$OUT/claude-code-acp-$TRIPLE$SUFFIX")
 
 git clone --depth 1 --branch "v$CODEX_ACP_VERSION" https://github.com/agentclientprotocol/codex-acp.git "$TMP/codex"
+# Keep gateway-provided model IDs usable even when they are absent from
+# Codex's built-in catalog. The configured Responses provider remains the
+# source of truth for the actual model request.
+git -C "$TMP/codex" apply "$ROOT/scripts/patches/codex-acp-custom-model.patch"
 # The upstream suite has POSIX-path fixtures which fail under Windows even
 # though the compiled adapter is platform-correct. Its own CI runs that suite
 # on Linux; the desktop CI typechecks and packages the Windows binary here.

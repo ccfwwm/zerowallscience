@@ -1,0 +1,20 @@
+diff --git a/src/CodexAcpServer.ts b/src/CodexAcpServer.ts
+index 0ed4870..6874158 100644
+--- a/src/CodexAcpServer.ts
++++ b/src/CodexAcpServer.ts
+@@ -854,7 +854,14 @@ export class CodexAcpServer {
+ 
+         const models = await this.codexAcpClient.fetchAvailableModels();
+         const model = models.find(m => m.id === requestedModelName);
+-        if (!model) throw new Error(`Unknown model ${params.modelId}`);
++        if (!model) {
++            // Gateway providers may expose models outside Codex's built-in catalog.
++            const currentEffort = ModelId.fromString(sessionState.currentModelId).effort;
++            const reasoningEffort = requestedEffort ?? currentEffort ?? "medium";
++            sessionState.currentModelId = ModelId.create(requestedModelName, reasoningEffort).toString();
++            sessionState.currentModelSupportsFast = false;
++            return {};
++        }
+ 
+         let reasoningEffort: ReasoningEffort;
+         if (requestedEffort) {
