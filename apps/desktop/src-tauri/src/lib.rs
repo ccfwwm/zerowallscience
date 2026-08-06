@@ -36,6 +36,7 @@ mod tools;
 #[cfg(target_os = "macos")]
 mod macos;
 mod updates;
+pub mod environment_update;
 mod usage_store;
 mod workflow_store;
 mod uv;

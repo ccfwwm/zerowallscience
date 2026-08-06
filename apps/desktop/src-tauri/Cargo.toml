@@ -33,6 +33,12 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # Addresses the workspace content store (src/science_store.rs). Already compiled
 # as a transitive dependency, so naming it here pulls in nothing new.
 sha2 = "0.10"
+base64 = "0.22"
+ed25519-dalek = "2"
+flate2 = "1"
+tar = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+thiserror = "2"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "native-tls"] }
 # Watches the active workspace so file changes from outside the app (an external
 # editor, a detached process) still enqueue a debounced git snapshot.
@@ -51,6 +57,7 @@ futures = "0.3"
 # install stub on a machine without WSL). See src/wsl.rs.
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.52"
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
 
 # Already in the tree via tao — used to re-pin the traffic lights (src/macos.rs).
 [target.'cfg(target_os = "macos")'.dependencies]

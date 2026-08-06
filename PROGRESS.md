@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 06:02 · P6 Environment installer/update 核心完成：签名 envelope、HTTPS manifest、流式 SHA-256、安全 file/zip/tarGz 解包、staging/versions/current 原子切换、health gate 与 rollback；离线核心测试 8 项、Tauri check、Clippy 通过。
+
 2026-08-07 05:03 · 更新通道新增桌面可用版本弹窗、按平台选择发布资产、HTTPS 下载、临时文件替换、GitHub digest SHA-256 校验和安装程序打开入口；Tauri/前端类型检查通过。
 
 2026-08-07 04:18 · Workflow starter 已接入真实 DAG scheduler；桌面 Workflow Executor 的 agent/review 节点统一调用 ACP Host，Tauri workflow JSON 原子持久化接入并在启动恢复未完成 run；修复慢持久化重复 start 与活动 retry/resume 竞态，增加 Engine/Model/MCP/Skills 节点快照和审查引擎/模型选择器；SDK 13 项 workflow 测试、桌面 typecheck、Tauri workflow_store 2 项测试通过。
