@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 07:47 · The app update dialog no longer mixes English fallback labels into Chinese: close, defer, download, downloading, and installer actions now use complete locale resources; the i18n regression test, typecheck, ESLint, and live desktop-page check pass.
+
 2026-08-07 07:40 · P5 desktop navigation now matches the approved workbench direction: New chat, Search, Workflows, and a collapsed Research tools group lead the sidebar while preserving projects, settings, and gateway web capability guards; sidebar tests 12/12 and TypeScript checks pass.
 
 2026-08-07 06:51 · P6 package split completed: the app bundle no longer embeds agent binaries, ACP runtimes, Skills, or MCP resources; a desktop first-run gate installs the signed environment in one flow, with package-contract, UI, TypeScript, and Rust checks passing.

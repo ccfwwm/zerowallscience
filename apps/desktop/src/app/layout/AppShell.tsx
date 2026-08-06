@@ -293,16 +293,16 @@ function UpdateDialog({ latest, status, downloadedPath, onDownload, onOpen, onCl
             <p className="mt-1 text-sm text-muted">{t("updates.latestVersion", { version: latest.version })}</p>
             {latest.assetName && <p className="mt-1 truncate font-mono text-xs text-muted">{latest.assetName}</p>}
           </div>
-          <button aria-label={t("updates.close", { defaultValue: "Close" })} onClick={onClose} className="text-muted hover:text-text"><X size={15} /></button>
+          <button aria-label={t("updates.close")} onClick={onClose} className="text-muted hover:text-text"><X size={15} /></button>
         </div>
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-md px-3 py-1.5 text-xs text-muted hover:bg-surface-2">{t("updates.later", { defaultValue: "Later" })}</button>
+          <button onClick={onClose} className="rounded-md px-3 py-1.5 text-xs text-muted hover:bg-surface-2">{t("updates.later")}</button>
           {status === "ready" && downloadedPath ? (
-            <button onClick={onOpen} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg"><Download size={13} /> {t("updates.openInstaller", { defaultValue: "Open installer" })}</button>
+            <button onClick={onOpen} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg"><Download size={13} /> {t("updates.openInstaller")}</button>
           ) : (
             <button disabled={status === "downloading"} onClick={onDownload} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg disabled:opacity-60">
               {status === "downloading" ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-              {status === "downloading" ? t("updates.downloading", { defaultValue: "Downloading…" }) : t("updates.download", { defaultValue: "Download update" })}
+              {status === "downloading" ? t("updates.downloading") : t("updates.download")}
             </button>
           )}
         </div>

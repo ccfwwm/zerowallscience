@@ -20,4 +20,16 @@ describe("i18n instance", () => {
     expect(i18n.t("common:actions.save")).toBe("Save");
     await i18n.changeLanguage("en");
   });
+
+  it("localizes every action in the Chinese app update dialog", async () => {
+    await i18n.changeLanguage("zh-Hans");
+
+    expect(i18n.t("settings:updates.close")).toBe("关闭");
+    expect(i18n.t("settings:updates.later")).toBe("稍后");
+    expect(i18n.t("settings:updates.download")).toBe("下载更新");
+    expect(i18n.t("settings:updates.downloading")).toBe("正在下载…");
+    expect(i18n.t("settings:updates.openInstaller")).toBe("打开安装程序");
+
+    await i18n.changeLanguage("en");
+  });
 });
