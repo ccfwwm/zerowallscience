@@ -35,7 +35,7 @@ describe("model catalog", () => {
       name: "Sub2API · claude-science-stable",
       models: [],
     })).toBe("claude-science-stable");
-    expect(displayProviderName({ id: "zerowall-2", name: "Sub2API", models: [] })).toBe("AI Platform");
+    expect(displayProviderName({ id: "zerowall-2", name: "Sub2API", models: [] })).toBe("AI 云平台");
     expect(displayProviderName({ id: "custom", name: "Sub2API research proxy", models: [] }))
       .toBe("Sub2API research proxy");
   });

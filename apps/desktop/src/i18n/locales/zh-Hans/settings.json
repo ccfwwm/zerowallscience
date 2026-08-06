@@ -111,7 +111,7 @@
   "providers": {
     "title": "供应商",
     "hint": "登录认证、自定义端点和模型供应商配置",
-    "hintAcp": "ACP 模式下供应商由 AI 平台统一管理",
+    "hintAcp": "ACP 模式下供应商由 AI 云平台统一管理",
     "connectPrompt": "连接运行时以管理提供商。",
     "manage": "管理",
     "collapse": "收起",
@@ -145,7 +145,7 @@
     "importLogin": "已经在使用 OpenCode CLI？导入其登录信息"
   },
   "sub2api": {
-    "title": "AI 平台",
+    "title": "AI 云平台",
     "hint": "使用邮箱和密码登录，通过一个 OpenAI 兼容接口使用 Kimi、DeepSeek、GLM、Qwen",
     "signIn": "登录",
     "register": "注册账号",
@@ -171,7 +171,7 @@
     "keyExists": "已有密钥",
     "manualPlaceholder": "手动添加模型 ID — 逗号分隔",
     "addModels": "添加",
-    "providerName": "AI 平台",
+    "providerName": "AI 云平台",
     "privacy": "密码仅发送给网关。访问令牌仅保留在本应用本次运行中；API 密钥直接存入系统凭据管理器 — 不会写入配置文件、日志或溯源记录。",
     "runtimeOffline": "请先连接运行时",
     "protocolLabel": "上游协议",

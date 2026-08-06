@@ -25,7 +25,7 @@ export function displayProviderName(provider: ProviderInfo): string {
   const name = provider.name
     .replace(/^sub2api(?:\s*[·.:/-]\s*)?/i, "")
     .trim();
-  return name || "AI Platform";
+  return name || "AI 云平台";
 }
 
 export function flattenModelOptions(providers: ProviderInfo[]): ModelOption[] {
