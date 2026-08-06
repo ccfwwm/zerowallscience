@@ -165,6 +165,11 @@ impl AcpHostDriver for AcpProcessDriver {
             id: actual_id,
             binding: self.binding.clone(),
             resumable: false,
+            title: None,
+            directory: None,
+            parent_id: None,
+            created: None,
+            updated: None,
         })
     }
 
@@ -228,6 +233,11 @@ impl AcpHostDriver for AcpProcessDriver {
             id: request.session_id,
             binding: self.binding.clone(),
             resumable: false,
+            title: None,
+            directory: None,
+            parent_id: None,
+            created: None,
+            updated: None,
         })
     }
 
@@ -363,9 +373,7 @@ impl AcpEventMapper {
                     session_id: self.session_id.clone(),
                     request_id,
                     action: Some("shell".into()),
-                    resources: vec![format!("{} {}", command, args.join(" "))
-                        .trim()
-                        .to_owned()],
+                    resources: vec![format!("{} {}", command, args.join(" ")).trim().to_owned()],
                     options: vec![
                         PermissionOption {
                             id: "allow_once".into(),

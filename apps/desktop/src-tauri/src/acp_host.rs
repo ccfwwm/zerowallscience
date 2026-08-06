@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -6,13 +7,93 @@ use zerowall_acp::AcpAgentProfile;
 use zerowall_acp_host::acp_process::AcpProcessDriver;
 use zerowall_acp_host::opencode::{HttpOpenCodeTransport, OpenCodeDriver};
 use zerowall_acp_host::{
-    AcpHost, AgentBinding, AgentEvent, CredentialRef, HostDriverKind, NewSessionRequest,
-    PromptAttachment, PromptResponse, SessionState,
+    AcpHost, AgentBinding, AgentEvent, CredentialRef, HostDriverKind, HostError,
+    NewSessionRequest, PromptAttachment, PromptResponse, SessionState,
 };
 
 #[derive(Default)]
 pub struct AcpHostState {
     host: tokio::sync::Mutex<AcpHost>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PersistedSession {
+    id: String,
+    binding: AgentBinding,
+    resumable: bool,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    directory: Option<String>,
+    #[serde(default)]
+    parent_id: Option<String>,
+    #[serde(default)]
+    created: Option<u64>,
+    #[serde(default)]
+    updated: Option<u64>,
+}
+
+fn catalog_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("resolve ACP catalog directory: {error}"))?
+        .join("acp-host");
+    std::fs::create_dir_all(&root)
+        .map_err(|error| format!("create ACP catalog directory: {error}"))?;
+    Ok(root.join("sessions.json"))
+}
+
+fn read_catalog(app: &AppHandle) -> Result<HashMap<String, PersistedSession>, String> {
+    let path = catalog_path(app)?;
+    if !path.is_file() {
+        return Ok(HashMap::new());
+    }
+    let text = std::fs::read_to_string(&path)
+        .map_err(|error| format!("read ACP session catalog: {error}"))?;
+    serde_json::from_str(&text).map_err(|error| format!("parse ACP session catalog: {error}"))
+}
+
+fn write_catalog(app: &AppHandle, catalog: &HashMap<String, PersistedSession>) -> Result<(), String> {
+    let path = catalog_path(app)?;
+    let staging = path.with_extension("json.staging");
+    let body = serde_json::to_vec_pretty(catalog)
+        .map_err(|error| format!("serialize ACP session catalog: {error}"))?;
+    std::fs::write(&staging, body)
+        .map_err(|error| format!("stage ACP session catalog: {error}"))?;
+    if path.exists() {
+        std::fs::remove_file(&path)
+            .map_err(|error| format!("replace ACP session catalog: {error}"))?;
+    }
+    std::fs::rename(staging, path)
+        .map_err(|error| format!("commit ACP session catalog: {error}"))
+}
+
+fn persist_session(app: &AppHandle, state: &SessionState) -> Result<(), String> {
+    let mut catalog = read_catalog(app)?;
+    catalog.insert(
+        state.id.clone(),
+        PersistedSession {
+            id: state.id.clone(),
+            binding: state.binding.clone(),
+            resumable: state.resumable,
+            title: state.title.clone(),
+            directory: state.directory.clone(),
+            parent_id: state.parent_id.clone(),
+            created: state.created,
+            updated: state.updated,
+        },
+    );
+    write_catalog(app, &catalog)
+}
+
+fn remove_persisted_session(app: &AppHandle, session_id: &str) -> Result<(), String> {
+    let mut catalog = read_catalog(app)?;
+    if catalog.remove(session_id).is_some() {
+        write_catalog(app, &catalog)?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
@@ -223,6 +304,42 @@ fn binding(request: &AcpHostLaunchRequest, workspace: &Path) -> AgentBinding {
     }
 }
 
+fn build_driver(
+    app: &AppHandle,
+    request: &AcpHostLaunchRequest,
+    workspace: &Path,
+    session_binding: AgentBinding,
+) -> Result<Box<dyn zerowall_acp_host::AcpHostDriver>, String> {
+    Ok(match request.engine {
+        HostDriverKind::Codex | HostDriverKind::ClaudeCode => Box::new(
+            AcpProcessDriver::new(
+                request.engine,
+                process_profile(app, request, workspace)?,
+                workspace.to_path_buf(),
+                session_binding,
+            )
+            .map_err(error_string)?
+        ),
+        HostDriverKind::OpenCode => Box::new(build_opencode_driver(app, session_binding)?),
+    })
+}
+
+fn build_opencode_driver(
+    app: &AppHandle,
+    session_binding: AgentBinding,
+) -> Result<OpenCodeDriver<HttpOpenCodeTransport>, String> {
+    let runtime = app.state::<crate::runtime::RuntimeState>();
+    let base_url = crate::runtime::sidecar_url(runtime.inner())
+        .ok_or_else(|| "OpenCode runtime is not running".to_owned())?;
+    Ok(OpenCodeDriver::new(
+        HttpOpenCodeTransport::new(),
+        base_url,
+        "opencode",
+        crate::runtime::server_password(),
+        session_binding,
+    ))
+}
+
 fn chrono_like_timestamp() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -290,32 +407,10 @@ pub async fn acp_host_launch(
     validate_request(&request)?;
     let workspace = workspace_root(&app)?;
     let session_binding = binding(&request, &workspace);
-    let driver: Box<dyn zerowall_acp_host::AcpHostDriver> = match request.engine {
-        HostDriverKind::Codex | HostDriverKind::ClaudeCode => Box::new(
-            AcpProcessDriver::new(
-                request.engine,
-                process_profile(&app, &request, &workspace)?,
-                workspace,
-                session_binding.clone(),
-            )
-            .map_err(error_string)?,
-        ),
-        HostDriverKind::OpenCode => {
-            let runtime = app.state::<crate::runtime::RuntimeState>();
-            let base_url = crate::runtime::sidecar_url(runtime.inner())
-                .ok_or_else(|| "OpenCode runtime is not running".to_owned())?;
-            Box::new(OpenCodeDriver::new(
-                HttpOpenCodeTransport::new(),
-                base_url,
-                "opencode",
-                crate::runtime::server_password(),
-                session_binding.clone(),
-            ))
-        }
-    };
+    let driver = build_driver(&app, &request, &workspace, session_binding.clone())?;
     let mut host = state.host.lock().await;
     host.register_driver(request.engine, driver);
-    if request.engine == HostDriverKind::OpenCode && request.session_id != request.profile_id {
+    let result = if request.engine == HostDriverKind::OpenCode && request.session_id != request.profile_id {
         host.load_existing_session(
             zerowall_acp_host::LoadSessionRequest {
                 session_id: request.session_id,
@@ -333,7 +428,12 @@ pub async fn acp_host_launch(
         )
         .await
         .map_err(error_string)
+    };
+    drop(host);
+    if let Ok(ref state) = result {
+        persist_session(&app, state)?;
     }
+    result
 }
 
 /// Explicit new-session alias used by the multi-session Host client. Keeping
@@ -349,23 +449,121 @@ pub async fn acp_host_new(
 
 #[tauri::command]
 pub async fn acp_host_sessions(
+    app: AppHandle,
     state: State<'_, AcpHostState>,
 ) -> Result<Vec<SessionState>, String> {
-    Ok(state.host.lock().await.list_sessions())
+    let mut sessions = state.host.lock().await.list_sessions();
+    let active = sessions.iter().map(|session| session.id.clone()).collect::<std::collections::HashSet<_>>();
+    for persisted in read_catalog(&app)?.into_values() {
+        if !active.contains(&persisted.id) {
+            sessions.push(SessionState {
+                id: persisted.id,
+                binding: persisted.binding,
+                resumable: persisted.resumable,
+                title: persisted.title,
+                directory: persisted.directory,
+                parent_id: persisted.parent_id,
+                created: persisted.created,
+                updated: persisted.updated,
+            });
+        }
+    }
+    Ok(sessions)
+}
+
+#[tauri::command]
+pub async fn acp_host_discover(
+    app: AppHandle,
+    request: AcpHostLaunchRequest,
+) -> Result<Vec<SessionState>, String> {
+    validate_request(&request)?;
+    if request.engine != HostDriverKind::OpenCode {
+        return Err("session discovery is currently supported only by OpenCode".into());
+    }
+    let workspace = workspace_root(&app)?;
+    let mut driver = build_opencode_driver(&app, binding(&request, &workspace))?;
+    let discovered = driver.list_sessions().await.map_err(error_string)?;
+    let mut catalog = read_catalog(&app)?;
+    let mut sessions = Vec::with_capacity(discovered.len());
+    for mut session in discovered {
+        if let Some(existing) = catalog.get_mut(&session.id) {
+            session.binding = existing.binding.clone();
+            session.resumable = existing.resumable;
+            existing.title = session.title.clone();
+            existing.directory = session.directory.clone();
+            existing.parent_id = session.parent_id.clone();
+            existing.created = session.created;
+            existing.updated = session.updated;
+        } else {
+            catalog.insert(
+                session.id.clone(),
+                PersistedSession {
+                    id: session.id.clone(),
+                    binding: session.binding.clone(),
+                    resumable: session.resumable,
+                    title: session.title.clone(),
+                    directory: session.directory.clone(),
+                    parent_id: session.parent_id.clone(),
+                    created: session.created,
+                    updated: session.updated,
+                },
+            );
+        }
+        sessions.push(session);
+    }
+    write_catalog(&app, &catalog)?;
+    Ok(sessions)
 }
 
 #[tauri::command]
 pub async fn acp_host_load(
+    app: AppHandle,
     state: State<'_, AcpHostState>,
     session_id: String,
+    request: Option<AcpHostLaunchRequest>,
 ) -> Result<SessionState, String> {
-    state
-        .host
-        .lock()
-        .await
-        .load_session(session_id)
-        .await
-        .map_err(error_string)
+    let mut host = state.host.lock().await;
+    match host.load_session(session_id.clone()).await {
+        Ok(result) => {
+            drop(host);
+            persist_session(&app, &result)?;
+            Ok(result)
+        }
+        Err(HostError::SessionNotFound { .. }) => {
+            drop(host);
+            let request = request.ok_or_else(|| "session is not active and no launch profile was supplied".to_owned())?;
+            validate_request(&request)?;
+            if request.session_id != session_id {
+                return Err("load request session_id does not match session_id".into());
+            }
+            let workspace = workspace_root(&app)?;
+            let expected = binding(&request, &workspace);
+            let effective_binding = if let Some(persisted) = read_catalog(&app)?.get(&session_id) {
+                if persisted.binding.engine != expected.engine
+                    || persisted.binding.profile != expected.profile
+                {
+                    return Err("session binding conflicts on engine or profile".into());
+                }
+                persisted.binding.clone()
+            } else {
+                expected
+            };
+            let driver = build_driver(&app, &request, &workspace, effective_binding.clone())?;
+            let mut host = state.host.lock().await;
+            host.register_driver(request.engine, driver);
+            let result = host
+                .load_existing_session(
+                    zerowall_acp_host::LoadSessionRequest { session_id },
+                    effective_binding,
+                )
+                .await
+                .map_err(error_string)?;
+            drop(host);
+            persist_session(&app, &result)?;
+            Ok(result)
+        }
+        Err(error) => Err(error_string(error)),
+    }
 }
 
 #[tauri::command]
@@ -468,6 +666,7 @@ pub async fn acp_host_permission(
 
 #[tauri::command]
 pub async fn acp_host_close(
+    app: AppHandle,
     state: State<'_, AcpHostState>,
     session_id: String,
 ) -> Result<(), String> {
@@ -477,5 +676,45 @@ pub async fn acp_host_close(
         .await
         .close_session(&session_id)
         .await
-        .map_err(error_string)
+        .map_err(error_string)?;
+    remove_persisted_session(&app, &session_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn persisted_session_catalog_contains_binding_and_safe_metadata_only() {
+        let entry = PersistedSession {
+            id: "session-1".into(),
+            binding: AgentBinding {
+                engine: HostDriverKind::OpenCode,
+                profile: "opencode".into(),
+                model: Some("model-a".into()),
+                provider: Some("provider".into()),
+                variant: None,
+                project_root: "C:/science".into(),
+                profile_fingerprint: "fp".into(),
+                resolved_at: "now".into(),
+            },
+            resumable: true,
+            title: Some("Review".into()),
+            directory: Some("C:/science".into()),
+            parent_id: Some("parent".into()),
+            created: Some(1),
+            updated: Some(2),
+        };
+        let encoded = serde_json::to_string(&entry).unwrap();
+        assert!(encoded.contains("session-1"));
+        assert!(encoded.contains("model-a"));
+        assert!(encoded.contains("Review"));
+        assert!(encoded.contains("C:/science"));
+        assert!(encoded.contains("parent"));
+        assert!(encoded.contains("created"));
+        assert!(encoded.contains("updated"));
+        for secret in ["api_key", "token", "secret_value", "api-key"] {
+            assert!(!encoded.contains(secret));
+        }
+    }
 }

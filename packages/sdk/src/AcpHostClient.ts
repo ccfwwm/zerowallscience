@@ -20,6 +20,13 @@ export interface AgentSession {
   binding: AgentBinding;
   state: "new" | "ready" | "busy" | "waiting" | "error" | "closed";
   resumable: boolean;
+  title?: string | null;
+  directory?: string | null;
+  parentId?: string | null;
+  created?: number | null;
+  created_at?: number | null;
+  updated?: number | null;
+  updated_at?: number | null;
 }
 
 export interface PermissionOption {
@@ -109,6 +116,14 @@ interface RawSession {
   id: string;
   binding: RawBinding;
   resumable: boolean;
+  title?: string | null;
+  directory?: string | null;
+  parentId?: string | null;
+  parent_id?: string | null;
+  created?: number | null;
+  created_at?: number | null;
+  updated?: number | null;
+  updated_at?: number | null;
 }
 
 interface RawEvent {
@@ -121,6 +136,7 @@ export class AcpHostClient {
   private readonly pollIntervalMs: number;
   private readonly requestedBindings = new Map<string, AgentBinding>();
   private readonly sessions = new Map<string, AgentSession>();
+  private readonly loadedSessions = new Set<string>();
   private readonly startedSessions = new Set<string>();
 
   constructor(options: AcpHostClientOptions) {
@@ -157,6 +173,7 @@ export class AcpHostClient {
     const session = normalizeSession(raw);
     this.requestedBindings.set(request.sessionId, requested);
     this.sessions.set(session.id, session);
+    this.loadedSessions.add(session.id);
     return session;
   }
 
@@ -180,6 +197,7 @@ export class AcpHostClient {
     ensureCompatible(requested, session.binding);
     this.requestedBindings.set(request.sessionId, requested);
     this.sessions.set(session.id, session);
+    this.loadedSessions.add(session.id);
     return session;
   }
 
@@ -187,17 +205,50 @@ export class AcpHostClient {
   async listSessions(): Promise<AgentSession[]> {
     const raw = await this.invoke<RawSession[]>("acp_host_sessions");
     const sessions = raw.map(normalizeSession);
-    for (const session of sessions) this.sessions.set(session.id, session);
-    return sessions;
+    return sessions.map((session) => {
+      const existing = this.sessions.get(session.id);
+      if (!existing) {
+        this.sessions.set(session.id, session);
+        return session;
+      }
+      const merged = { ...session, binding: existing.binding };
+      this.sessions.set(session.id, merged);
+      return merged;
+    });
+  }
+
+  /** Import sessions discovered by an internal Driver into the Host catalog. */
+  async discoverSessions(request: AcpHostLaunchRequest): Promise<AgentSession[]> {
+    const raw = await this.invoke<RawSession[]>("acp_host_discover", {
+      request: serializeLaunchRequest(request),
+    });
+    const sessions = raw.map(normalizeSession);
+    return sessions.map((session) => {
+      const existing = this.sessions.get(session.id);
+      if (!existing) {
+        this.sessions.set(session.id, session);
+        return session;
+      }
+      const merged = { ...session, binding: existing.binding };
+      this.sessions.set(session.id, merged);
+      return merged;
+    });
   }
 
   /** Load a persisted session while preserving its immutable binding. */
-  async loadSession(sessionId: string): Promise<AgentSession> {
-    const raw = await this.invoke<RawSession>("acp_host_load", { sessionId });
+  async loadSession(
+    sessionId: string,
+    request?: AcpHostLaunchRequest,
+  ): Promise<AgentSession> {
+    const raw = await this.invoke<RawSession>("acp_host_load", {
+      sessionId,
+      ...(request ? { request: serializeLaunchRequest(request) } : {}),
+    });
     const session = normalizeSession(raw);
     const current = this.sessions.get(sessionId);
     if (current) ensureCompatible(current.binding, session.binding);
     this.sessions.set(session.id, session);
+    this.loadedSessions.add(session.id);
     return session;
   }
 
@@ -209,6 +260,10 @@ export class AcpHostClient {
 
   getSession(sessionId: string): AgentSession | null {
     return this.sessions.get(sessionId) ?? null;
+  }
+
+  hasLoadedSession(sessionId: string): boolean {
+    return this.loadedSessions.has(sessionId);
   }
 
   async prompt(sessionId: string, prompt: string, attachments: PromptAttachment[] = []): Promise<void> {
@@ -301,6 +356,7 @@ export class AcpHostClient {
     await this.invoke("acp_host_close", { sessionId });
     session.state = "closed";
     this.sessions.delete(sessionId);
+    this.loadedSessions.delete(sessionId);
     this.startedSessions.delete(sessionId);
   }
 
@@ -318,6 +374,25 @@ function normalizeSession(raw: RawSession): AgentSession {
     binding: normalizeBinding(raw.binding),
     state: "ready",
     resumable: raw.resumable,
+    title: raw.title ?? null,
+    directory: raw.directory ?? null,
+    parentId: raw.parentId ?? raw.parent_id ?? null,
+    created: raw.created ?? raw.created_at ?? null,
+    updated: raw.updated ?? raw.updated_at ?? null,
+  };
+}
+
+function serializeLaunchRequest(request: AcpHostLaunchRequest): Record<string, unknown> {
+  return {
+    engine: request.engine,
+    profileId: request.profileId,
+    sessionId: request.sessionId,
+    model: request.model,
+    providerId: request.providerId,
+    baseUrl: request.baseUrl,
+    variant: request.variant,
+    profileFingerprint: request.profileFingerprint,
+    credential: { keychainId: request.credentialRef },
   };
 }
 

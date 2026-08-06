@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 02:24 · ACP Host 会话目录补齐 OpenCode 历史发现 metadata 与持久化：SDK/runtime 合并发现且保持已持久 binding 优先，rehydrate 仅传 Keychain credential reference；Host 34 项测试、SDK 12 项与 ACP 桌面 31 项定向测试、typecheck、Tauri check、clippy 通过。
+
 2026-08-07 01:42 · Host 多会话控制面补齐 `new/list/load/history`：SDK、Tauri 与 OpenCode Driver 统一 session 路由，history 只输出中立消息结构；新增两个会话绑定隔离与 history 规范化回归，33 项 Host、148 项桌面定向测试、typecheck、Tauri check 与 clippy 通过。
 
 2026-08-07 01:10 · 桌面 OpenCode 选择器已改为明确的 `opencode` Host profile；默认启动暂保留旧多会话控制面，直到 Host Runtime 补齐 session list/history/new-session，避免切换默认造成已有会话不可见。

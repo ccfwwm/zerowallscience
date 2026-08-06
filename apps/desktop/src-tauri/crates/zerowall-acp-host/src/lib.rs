@@ -221,10 +221,21 @@ pub struct SetModeRequest {
     pub mode: String,
 }
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionState {
     pub id: String,
     pub binding: AgentBinding,
     pub resumable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub directory: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated: Option<u64>,
 }
 
 #[async_trait]
@@ -269,6 +280,11 @@ struct SessionEntry {
     driver: Box<dyn AcpHostDriver>,
     turn_started: bool,
     resumable: bool,
+    title: Option<String>,
+    directory: Option<String>,
+    parent_id: Option<String>,
+    created: Option<u64>,
+    updated: Option<u64>,
 }
 
 #[derive(Default)]
@@ -328,6 +344,11 @@ impl AcpHost {
             id: state.id.clone(),
             binding: binding.clone(),
             resumable: state.resumable,
+            title: state.title.clone(),
+            directory: state.directory.clone(),
+            parent_id: state.parent_id.clone(),
+            created: state.created,
+            updated: state.updated,
         };
         self.sessions.insert(
             state.id.clone(),
@@ -337,6 +358,11 @@ impl AcpHost {
                 driver,
                 turn_started: false,
                 resumable: state.resumable,
+                title: state.title.clone(),
+                directory: state.directory.clone(),
+                parent_id: state.parent_id.clone(),
+                created: state.created,
+                updated: state.updated,
             },
         );
         Ok(state)
@@ -366,6 +392,11 @@ impl AcpHost {
             id: state.id.clone(),
             binding: binding.clone(),
             resumable: state.resumable,
+            title: state.title.clone(),
+            directory: state.directory.clone(),
+            parent_id: state.parent_id.clone(),
+            created: state.created,
+            updated: state.updated,
         };
         self.sessions.insert(
             state.id.clone(),
@@ -375,6 +406,11 @@ impl AcpHost {
                 driver,
                 turn_started: false,
                 resumable: state.resumable,
+                title: state.title.clone(),
+                directory: state.directory.clone(),
+                parent_id: state.parent_id.clone(),
+                created: state.created,
+                updated: state.updated,
             },
         );
         Ok(state)
@@ -418,16 +454,21 @@ impl AcpHost {
                 id: id.clone(),
                 binding: entry.binding.clone(),
                 resumable: entry.resumable,
+                title: entry.title.clone(),
+                directory: entry.directory.clone(),
+                parent_id: entry.parent_id.clone(),
+                created: entry.created,
+                updated: entry.updated,
             })
             .collect()
     }
     pub async fn history(&mut self, session_id: &str) -> Result<serde_json::Value, HostError> {
-        let entry = self
-            .sessions
-            .get_mut(session_id)
-            .ok_or_else(|| HostError::SessionNotFound {
-                session_id: session_id.into(),
-            })?;
+        let entry =
+            self.sessions
+                .get_mut(session_id)
+                .ok_or_else(|| HostError::SessionNotFound {
+                    session_id: session_id.into(),
+                })?;
         let caps = entry.driver.capabilities();
         Self::require(entry.kind, "history", caps.history)?;
         entry.driver.history(session_id.into()).await
@@ -474,6 +515,13 @@ impl AcpHost {
             });
         }
         let mut binding = entry.binding.clone();
+        let old_metadata = (
+            entry.title.clone(),
+            entry.directory.clone(),
+            entry.parent_id.clone(),
+            entry.created,
+            entry.updated,
+        );
         apply_config_to_binding(&mut binding, &config);
         let caps = entry.driver.capabilities();
         Self::require(entry.kind, "config", caps.config)?;
@@ -485,7 +533,20 @@ impl AcpHost {
             })
             .await?;
         entry.binding = binding.clone();
-        Ok(SessionState { binding, ..state })
+        entry.title = state.title.clone().or(old_metadata.0.clone());
+        entry.directory = state.directory.clone().or(old_metadata.1.clone());
+        entry.parent_id = state.parent_id.clone().or(old_metadata.2.clone());
+        entry.created = state.created.or(old_metadata.3);
+        entry.updated = state.updated.or(old_metadata.4);
+        Ok(SessionState {
+            binding,
+            title: entry.title.clone(),
+            directory: entry.directory.clone(),
+            parent_id: entry.parent_id.clone(),
+            created: entry.created,
+            updated: entry.updated,
+            ..state
+        })
     }
     pub async fn set_mode(&mut self, session_id: &str, mode: &str) -> Result<(), HostError> {
         let entry =
@@ -682,6 +743,11 @@ impl FakeDriver {
                 resolved_at: String::new(),
             },
             resumable: true,
+            title: None,
+            directory: None,
+            parent_id: None,
+            created: None,
+            updated: None,
         }
     }
 }
@@ -715,6 +781,11 @@ impl AcpHostDriver for FakeDriver {
                 resolved_at: String::new(),
             },
             resumable: false,
+            title: None,
+            directory: None,
+            parent_id: None,
+            created: None,
+            updated: None,
         })
     }
     async fn resume_session(
@@ -1106,13 +1177,17 @@ mod tests {
         let mut host = AcpHost::new();
         host.register_driver(HostDriverKind::OpenCode, Box::new(first_driver));
         block_on(host.new_session(
-            NewSessionRequest { session_id: "s1".into() },
+            NewSessionRequest {
+                session_id: "s1".into(),
+            },
             binding(HostDriverKind::OpenCode, "model-a", "C:/project"),
         ))
         .unwrap();
         host.register_driver(HostDriverKind::OpenCode, Box::new(second_driver));
         block_on(host.new_session(
-            NewSessionRequest { session_id: "s2".into() },
+            NewSessionRequest {
+                session_id: "s2".into(),
+            },
             binding(HostDriverKind::OpenCode, "model-b", "C:/project"),
         ))
         .unwrap();

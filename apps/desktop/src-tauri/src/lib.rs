@@ -263,6 +263,7 @@ pub fn run() {
             acp_host::acp_host_launch,
             acp_host::acp_host_new,
             acp_host::acp_host_sessions,
+            acp_host::acp_host_discover,
             acp_host::acp_host_load,
             acp_host::acp_host_history,
             acp_host::acp_host_prompt,

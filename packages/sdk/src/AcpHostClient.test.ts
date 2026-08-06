@@ -153,6 +153,170 @@ describe("AcpHostClient", () => {
     expect(invoke).toHaveBeenCalledWith("acp_host_history", { sessionId: "s1" });
   });
 
+  it("passes a credential reference when rehydrating a persisted session", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_load") {
+        return {
+          id: "persisted-1",
+          binding: {
+            engine: "opencode",
+            profile: "opencode",
+            model: "model-a",
+            provider: "provider",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: "fp-persisted",
+            resolvedAt: "now",
+          },
+          resumable: true,
+        };
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+    await client.loadSession("persisted-1", {
+      ...launchRequest,
+      engine: "opencode",
+      profileId: "opencode",
+      sessionId: "persisted-1",
+      model: "model-a",
+      providerId: "provider",
+      credentialRef: "provider",
+      profileFingerprint: "fp-persisted",
+    });
+    expect(invoke).toHaveBeenCalledWith("acp_host_load", {
+      sessionId: "persisted-1",
+      request: expect.objectContaining({
+        engine: "opencode",
+        profileId: "opencode",
+        credential: { keychainId: "provider" },
+      }),
+    });
+    expect(JSON.stringify(vi.mocked(invoke).mock.calls)).not.toContain("api-key");
+  });
+
+  it("discovers legacy sessions through the Host without marking them loaded", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_discover") {
+        return [{
+          id: "legacy-1",
+          title: "Legacy title",
+          directory: "C:/legacy",
+          parentId: "parent-1",
+          created: 1,
+          updated: 2,
+          binding: {
+            engine: "opencode",
+            profile: "opencode",
+            model: "model-a",
+            provider: "provider",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: "legacy-fp",
+            resolvedAt: "now",
+          },
+          resumable: true,
+        }];
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    const sessions = await client.discoverSessions({
+      ...launchRequest,
+      engine: "opencode",
+      profileId: "opencode",
+      sessionId: "opencode",
+      model: "model-a",
+      providerId: "provider",
+      credentialRef: "provider",
+      profileFingerprint: "legacy-fp",
+    });
+
+    expect(sessions.map((session) => session.id)).toEqual(["legacy-1"]);
+    expect(client.hasLoadedSession("legacy-1")).toBe(false);
+    expect(sessions[0]).toMatchObject({
+      title: "Legacy title",
+      directory: "C:/legacy",
+      parentId: "parent-1",
+      created: 1,
+      updated: 2,
+    });
+    expect(invoke).toHaveBeenCalledWith("acp_host_discover", {
+      request: expect.objectContaining({ engine: "opencode", credential: { keychainId: "provider" } }),
+    });
+  });
+
+  it("normalizes legacy snake_case session timestamps", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_discover") {
+        return [{
+          id: "legacy-snake",
+          binding: {
+            engine: "opencode",
+            profile: "opencode",
+            model: "model-a",
+            provider: "provider",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: "fp",
+            resolvedAt: "now",
+          },
+          resumable: true,
+          created_at: 3,
+          updated_at: 4,
+        }];
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+    const sessions = await client.discoverSessions({ ...launchRequest, engine: "opencode", profileId: "opencode" });
+    expect(sessions[0]).toMatchObject({ created: 3, updated: 4 });
+  });
+
+  it("keeps an existing session binding immutable when discovery returns a newer profile", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_sessions") {
+        return [{
+          id: "persisted",
+          binding: {
+            engine: "opencode",
+            profile: "opencode",
+            model: "old-model",
+            provider: "provider",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: "old-fp",
+            resolvedAt: "now",
+          },
+          resumable: true,
+        }];
+      }
+      if (command === "acp_host_discover") {
+        return [{
+          id: "persisted",
+          binding: {
+            engine: "opencode",
+            profile: "opencode",
+            model: "new-model",
+            provider: "provider",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: "new-fp",
+            resolvedAt: "later",
+          },
+          resumable: true,
+        }];
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+    await client.listSessions();
+    const [session] = await client.discoverSessions({ ...launchRequest, engine: "opencode", profileId: "opencode" });
+    expect(session.binding.modelId).toBe("old-model");
+    expect(client.getSession("persisted")?.binding.profileFingerprint).toBe("old-fp");
+  });
+
   it("initializes an engine through the host control plane", async () => {
     const invoke = vi.fn(async (command: string) => {
       if (command === "acp_host_initialize") {
@@ -190,6 +354,29 @@ describe("AcpHostClient", () => {
       },
     });
     expect(JSON.stringify(vi.mocked(invoke).mock.calls)).not.toContain("api-key");
+  });
+
+  it("keeps an existing persisted binding when discovery reports a newer model", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_sessions") return [{
+        id: "shared",
+        title: "Persisted",
+        binding: { engine: "opencode", profile: "opencode", model: "old-model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "old-fp", resolvedAt: "now" },
+        resumable: true,
+      }];
+      if (command === "acp_host_discover") return [{
+        id: "shared",
+        title: "Remote",
+        binding: { engine: "opencode", profile: "opencode", model: "new-model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "new-fp", resolvedAt: "now" },
+        resumable: true,
+      }];
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+    await client.listSessions();
+    const discovered = await client.discoverSessions({ ...launchRequest, engine: "opencode", profileId: "opencode" });
+    expect(discovered[0].binding.modelId).toBe("old-model");
+    expect(discovered[0].title).toBe("Remote");
   });
 
   it("normalizes vendor-neutral host events", async () => {

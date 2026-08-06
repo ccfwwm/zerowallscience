@@ -143,6 +143,7 @@ function forwardEvent(handlers: AcpEventHandlers, event: AgentEvent): void {
 export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke): AcpRuntimeDeps {
   let hostState: HostState | null = null;
   let pendingHandlers: AcpEventHandlers | null = null;
+  let currentRequest: AcpLaunchRequest | null = null;
 
   const attach = (handlers: AcpEventHandlers) => {
     if (!hostState || hostState.unsubscribe) return;
@@ -154,7 +155,14 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
 
   const activate = async (sessionId: string) => {
     if (!hostState) throw new Error("ACP Host session is not running");
-    if (!hostState.client.getSession(sessionId)) await hostState.client.loadSession(sessionId);
+    if (!hostState.client.hasLoadedSession(sessionId)) {
+      await hostState.client.loadSession(
+        sessionId,
+        currentRequest
+          ? hostLaunchRequest(currentRequest, sessionId)
+          : undefined,
+      );
+    }
     if (hostState.sessionId === sessionId && hostState.unsubscribe) return;
     hostState.unsubscribe?.();
     hostState.sessionId = sessionId;
@@ -164,6 +172,7 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
 
   return {
     launch: async (request) => {
+      currentRequest = request;
       if (hostState) {
         const previous = hostState;
         hostState = null;
@@ -208,21 +217,34 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
     },
     listSessions: async () => {
       if (!hostState) return [];
-      const sessions = await hostState.client.listSessions();
-      return sessions.map((session) => ({
+      const persisted = await hostState.client.listSessions();
+      const discovered = currentRequest?.profileId === "opencode"
+        ? await hostState.client.discoverSessions(
+          hostLaunchRequest(currentRequest, currentRequest.conversationId?.trim() || currentRequest.profileId),
+        ).catch(() => [])
+        : [];
+      const merged = new Map(persisted.map((session) => [session.id, session]));
+      for (const session of discovered) if (!merged.has(session.id)) merged.set(session.id, session);
+      return [...merged.values()].map((session) => ({
         id: session.id,
-        title: session.binding.engineId === "claude-code"
-          ? "Claude Code"
-          : session.binding.engineId === "opencode"
-            ? "OpenCode"
-            : "Codex",
-        directory: session.binding.projectRoot || undefined,
+        title: session.title || session.id,
+        directory: session.directory || session.binding.projectRoot || undefined,
+        parentId: session.parentId ?? undefined,
+        created: session.created ?? undefined,
+        updated: session.updated ?? undefined,
       }));
     },
     activateSession: activate,
     getMessages: async (sessionId) => {
       if (!hostState) throw new Error("ACP Host session is not running");
-      if (!hostState.client.getSession(sessionId)) await hostState.client.loadSession(sessionId);
+      if (!hostState.client.hasLoadedSession(sessionId)) {
+        await hostState.client.loadSession(
+          sessionId,
+          currentRequest
+            ? hostLaunchRequest(currentRequest, sessionId)
+            : undefined,
+        );
+      }
       return hostState.client.getHistory(sessionId);
     },
     promptSession: async (sessionId, text, attachments = []) => {
@@ -262,6 +284,7 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
     shutdown: async () => {
       const active = hostState;
       hostState = null;
+      currentRequest = null;
       active?.unsubscribe?.();
       if (active) {
         const sessions = await active.client.listSessions().catch(() => []);

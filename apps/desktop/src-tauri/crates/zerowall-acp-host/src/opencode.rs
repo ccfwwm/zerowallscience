@@ -150,6 +150,54 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
     pub fn take_events(&mut self) -> Vec<crate::AgentEvent> {
         std::mem::take(&mut self.events)
     }
+
+    /// Discover existing sessions inside the Host. OpenCode response DTOs are
+    /// reduced to the same immutable SessionState used by every Driver.
+    pub async fn list_sessions(&mut self) -> Result<Vec<SessionState>, HostError> {
+        let mut response = self.send("GET", "/experimental/session", None).await?;
+        if !(200..300).contains(&response.status) {
+            response = self.send("GET", "/session", None).await?;
+        }
+        ensure_success(response.status, "session/list")?;
+        let sessions =
+            serde_json::from_str::<Vec<serde_json::Value>>(&response.body).map_err(|error| {
+                HostError::Driver(format!("invalid OpenCode session list: {error}"))
+            })?;
+        Ok(sessions
+            .into_iter()
+            .filter_map(|value| {
+                let id = value
+                    .get("id")
+                    .and_then(serde_json::Value::as_str)?
+                    .to_owned();
+                let time = value.get("time");
+                Some(SessionState {
+                    id,
+                    binding: self.binding.clone(),
+                    resumable: true,
+                    title: value
+                        .get("title")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned),
+                    directory: value
+                        .get("directory")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned),
+                    parent_id: value
+                        .get("parentID")
+                        .or_else(|| value.get("parentId"))
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned),
+                    created: time
+                        .and_then(|v| v.get("created"))
+                        .and_then(serde_json::Value::as_u64),
+                    updated: time
+                        .and_then(|v| v.get("updated"))
+                        .and_then(serde_json::Value::as_u64),
+                })
+            })
+            .collect::<Vec<_>>())
+    }
 }
 
 #[async_trait]
@@ -183,7 +231,8 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         let body = json!({"title": request.session_id}).to_string();
         let response = self.send("POST", "/session", Some(&body)).await?;
         ensure_success(response.status, "session/new")?;
-        let id = session_id(&response.body).unwrap_or(request.session_id);
+        let requested_id = request.session_id;
+        let id = session_id(&response.body).unwrap_or_else(|| requested_id.clone());
         self.events.push(crate::AgentEvent::SessionStarted {
             session_id: id.clone(),
         });
@@ -191,6 +240,11 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
             id,
             binding: self.binding.clone(),
             resumable: false,
+            title: Some(requested_id),
+            directory: Some(self.binding.project_root.clone()),
+            parent_id: None,
+            created: None,
+            updated: None,
         })
     }
 
@@ -213,6 +267,11 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
             id,
             binding: self.binding.clone(),
             resumable: false,
+            title: None,
+            directory: Some(self.binding.project_root.clone()),
+            parent_id: None,
+            created: None,
+            updated: None,
         })
     }
 
@@ -239,7 +298,12 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
                     let message = error
                         .as_str()
                         .map(str::to_owned)
-                        .or_else(|| error.pointer("/data/message").and_then(serde_json::Value::as_str).map(str::to_owned))
+                        .or_else(|| {
+                            error
+                                .pointer("/data/message")
+                                .and_then(serde_json::Value::as_str)
+                                .map(str::to_owned)
+                        })
                         .unwrap_or_else(|| error.to_string());
                     output.insert("error".into(), serde_json::Value::String(message));
                 }
@@ -248,18 +312,54 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
                 }
                 if let Some(tokens) = info.get("tokens") {
                     let mut usage = serde_json::Map::from_iter([
-                        ("input".into(), serde_json::json!(tokens.get("input").and_then(serde_json::Value::as_u64).unwrap_or(0))),
-                        ("output".into(), serde_json::json!(tokens.get("output").and_then(serde_json::Value::as_u64).unwrap_or(0))),
-                        ("reasoning".into(), serde_json::json!(tokens.get("reasoning").and_then(serde_json::Value::as_u64).unwrap_or(0))),
-                        ("cacheRead".into(), serde_json::json!(tokens.pointer("/cache/read").and_then(serde_json::Value::as_u64).unwrap_or(0))),
-                        ("cacheWrite".into(), serde_json::json!(tokens.pointer("/cache/write").and_then(serde_json::Value::as_u64).unwrap_or(0))),
+                        (
+                            "input".into(),
+                            serde_json::json!(tokens
+                                .get("input")
+                                .and_then(serde_json::Value::as_u64)
+                                .unwrap_or(0)),
+                        ),
+                        (
+                            "output".into(),
+                            serde_json::json!(tokens
+                                .get("output")
+                                .and_then(serde_json::Value::as_u64)
+                                .unwrap_or(0)),
+                        ),
+                        (
+                            "reasoning".into(),
+                            serde_json::json!(tokens
+                                .get("reasoning")
+                                .and_then(serde_json::Value::as_u64)
+                                .unwrap_or(0)),
+                        ),
+                        (
+                            "cacheRead".into(),
+                            serde_json::json!(tokens
+                                .pointer("/cache/read")
+                                .and_then(serde_json::Value::as_u64)
+                                .unwrap_or(0)),
+                        ),
+                        (
+                            "cacheWrite".into(),
+                            serde_json::json!(tokens
+                                .pointer("/cache/write")
+                                .and_then(serde_json::Value::as_u64)
+                                .unwrap_or(0)),
+                        ),
                     ]);
                     if let Some(cost) = info.get("cost").filter(|value| value.is_number()) {
                         usage.insert("cost".into(), cost.clone());
                     }
                     output.insert("usage".into(), serde_json::Value::Object(usage));
                 }
-                output.insert("parts".into(), message.get("parts").cloned().unwrap_or_else(|| serde_json::json!([])));
+                output.insert(
+                    "parts".into(),
+                    message
+                        .get("parts")
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!([])),
+                );
                 serde_json::Value::Object(output)
             })
             .collect::<Vec<_>>();
@@ -336,6 +436,11 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
             id: request.session_id,
             binding: self.binding.clone(),
             resumable: false,
+            title: None,
+            directory: Some(self.binding.project_root.clone()),
+            parent_id: None,
+            created: None,
+            updated: None,
         })
     }
 
@@ -927,6 +1032,42 @@ mod tests {
     }
 
     #[test]
+    fn discovers_existing_sessions_without_exposing_http_dtos() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![TransportResponse {
+                status: 200,
+                body: r#"[{"id":"remote-1","title":"Literature review","directory":"C:/science","time":{"created":1,"updated":2}},{"id":"remote-2","title":"Experiment"}]"#.into(),
+            }],
+        };
+        let mut discovered_binding = binding();
+        discovered_binding.model = Some("model".into());
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", discovered_binding);
+
+        let sessions = block_on(driver.list_sessions()).unwrap();
+
+        assert_eq!(
+            sessions
+                .iter()
+                .map(|session| session.id.as_str())
+                .collect::<Vec<_>>(),
+            ["remote-1", "remote-2"]
+        );
+        assert_eq!(sessions[0].binding.model.as_deref(), Some("model"));
+        assert_eq!(sessions[0].title.as_deref(), Some("Literature review"));
+        assert_eq!(sessions[0].directory.as_deref(), Some("C:/science"));
+        assert_eq!(sessions[0].created, Some(1));
+        assert_eq!(sessions[0].updated, Some(2));
+        assert_eq!(sessions[0].parent_id, None);
+        assert_eq!(sessions[1].title.as_deref(), Some("Experiment"));
+        assert_eq!(
+            calls.lock().unwrap()[0].url,
+            "http://x/experimental/session"
+        );
+    }
+
+    #[test]
     fn prompt_maps_sse_events_and_cancel_aborts() {
         let calls = Arc::new(Mutex::new(Vec::new()));
         let sse = "data: {\"type\":\"text.updated\",\"properties\":{\"delta\":\"hi\"}}\ndata: {\"type\":\"reasoning.updated\",\"properties\":{\"text\":\"why\"}}\ndata: {\"type\":\"tool.updated\",\"properties\":{\"callID\":\"t1\",\"status\":\"running\",\"title\":\"Search\"}}\ndata: {\"type\":\"permission.asked\",\"properties\":{\"id\":\"r1\",\"options\":[{\"id\":\"allow\",\"title\":\"Allow\"}]}}\ndata: {\"type\":\"question.asked\",\"properties\":{\"question\":\"Continue?\"}}\ndata: {\"type\":\"usage.updated\",\"properties\":{\"inputTokens\":2,\"outputTokens\":3}}\n";
@@ -991,8 +1132,7 @@ mod tests {
         };
         let mut permission_binding = binding();
         permission_binding.project_root = "C:/science project".into();
-        let mut driver =
-            OpenCodeDriver::new(fake, "http://x", "u", "p", permission_binding);
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", permission_binding);
         driver.map_events(
             "s1",
             "data: {\"type\":\"permission.asked\",\"properties\":{\"id\":\"p1\",\"permission\":\"bash\",\"patterns\":[\"git status\"]}}\n\n",
