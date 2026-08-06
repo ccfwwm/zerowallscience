@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { AcpHostClient, type AcpHostInvoke } from "./AcpHostClient";
+import type { PromptAttachment } from "./runtime";
 
 const launchRequest = {
   engine: "codex" as const,
@@ -119,5 +120,28 @@ describe("AcpHostClient", () => {
     });
     expect(invoke).toHaveBeenCalledWith("acp_host_cancel", { sessionId: "agent-session-1" });
     expect(invoke).toHaveBeenCalledWith("acp_host_close", { sessionId: "agent-session-1" });
+  });
+
+  it("routes structured prompt attachments through the host without changing the session binding", async () => {
+    const invoke = invokeMock();
+    const client = new AcpHostClient({ invoke });
+    await client.launch(launchRequest);
+    const attachments: PromptAttachment[] = [
+      { filename: "figure.png", mime: "image/png", base64: "cGl4ZWxz" },
+      {
+        filename: "notes.txt",
+        mime: "text/plain",
+        base64: "bm90ZXM=",
+        extractedText: "sample notes",
+      },
+    ];
+
+    await client.prompt("agent-session-1", "analyze", attachments);
+
+    expect(invoke).toHaveBeenCalledWith("acp_host_prompt", {
+      sessionId: "agent-session-1",
+      prompt: "analyze",
+      attachments,
+    });
   });
 });

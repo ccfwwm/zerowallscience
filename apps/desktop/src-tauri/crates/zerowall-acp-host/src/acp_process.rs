@@ -183,8 +183,18 @@ impl AcpHostDriver for AcpProcessDriver {
     }
 
     async fn prompt(&mut self, request: PromptRequest) -> Result<PromptResponse, HostError> {
+        let attachments = request
+            .attachments
+            .into_iter()
+            .map(|attachment| zerowall_acp::PromptAttachment {
+                filename: attachment.filename,
+                mime: attachment.mime,
+                base64: attachment.base64,
+                extracted_text: attachment.extracted_text,
+            })
+            .collect();
         self.require_session(&request.session_id)?
-            .prompt(request.prompt)
+            .prompt_with_attachments(request.prompt, attachments)
             .map_err(Self::process_error)?;
         Ok(PromptResponse { completed: false })
     }

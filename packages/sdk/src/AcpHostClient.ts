@@ -1,3 +1,5 @@
+import type { PromptAttachment } from "./runtime";
+
 export type AgentEngine = "codex" | "claude-code" | "opencode";
 
 export interface AgentBinding {
@@ -156,11 +158,15 @@ export class AcpHostClient {
     return this.sessions.get(sessionId) ?? null;
   }
 
-  async prompt(sessionId: string, prompt: string): Promise<void> {
+  async prompt(sessionId: string, prompt: string, attachments: PromptAttachment[] = []): Promise<void> {
     const session = this.requireSession(sessionId);
     session.state = "busy";
     try {
-      await this.invoke("acp_host_prompt", { sessionId, prompt });
+      await this.invoke("acp_host_prompt", {
+        sessionId,
+        prompt,
+        ...(attachments.length > 0 ? { attachments } : {}),
+      });
     } catch (error) {
       session.state = "error";
       throw error;

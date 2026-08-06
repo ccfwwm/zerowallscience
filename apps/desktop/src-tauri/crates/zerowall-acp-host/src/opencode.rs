@@ -167,7 +167,25 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
 
     async fn prompt(&mut self, request: PromptRequest) -> Result<PromptResponse, HostError> {
         let path = format!("/session/{}/prompt_async", encode_path(&request.session_id));
-        let body = json!({"parts":[{"type":"text","text":request.prompt}]}).to_string();
+        let mut parts = Vec::new();
+        if !request.prompt.is_empty() || request.attachments.is_empty() {
+            parts.push(json!({"type":"text","text":request.prompt}));
+        }
+        for attachment in request.attachments {
+            parts.push(json!({
+                "type": "file",
+                "mime": attachment.mime,
+                "filename": attachment.filename,
+                "url": format!("data:{};base64,{}", attachment.mime, attachment.base64),
+            }));
+            if let Some(text) = attachment.extracted_text.filter(|text| !text.trim().is_empty()) {
+                parts.push(json!({
+                    "type": "text",
+                    "text": format!("[Attached file: {}]\n{}", attachment.filename, text),
+                }));
+            }
+        }
+        let body = json!({"parts": parts}).to_string();
         let response = self.send("POST", &path, Some(&body)).await?;
         ensure_success(response.status, "session/prompt")?;
         self.map_events(&request.session_id, &response.body);
@@ -597,6 +615,7 @@ mod tests {
         block_on(driver.prompt(PromptRequest {
             session_id: "s1".into(),
             prompt: "hello".into(),
+            attachments: Vec::new(),
         }))
         .unwrap();
         let events = driver.take_events();
@@ -649,9 +668,54 @@ mod tests {
         block_on(driver.prompt(PromptRequest {
             session_id: "s1".into(),
             prompt: "hello".into(),
+            attachments: Vec::new(),
         }))
         .unwrap();
         assert!(driver.take_events().iter().any(|event| matches!(event, crate::AgentEvent::TextDelta { delta, .. } if delta == "nested text")));
+    }
+
+    #[test]
+    fn prompt_maps_image_and_extracted_document_attachments_to_opencode_parts() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+            ],
+        };
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
+        block_on(driver.prompt(PromptRequest {
+            session_id: "s1".into(),
+            prompt: "inspect".into(),
+            attachments: vec![crate::PromptAttachment {
+                filename: "notes.txt".into(),
+                mime: "text/plain".into(),
+                base64: "bm90ZXM=".into(),
+                extracted_text: Some("sample notes".into()),
+            }],
+        }))
+        .unwrap();
+        let calls = calls.lock().unwrap();
+        let body = calls
+            .iter()
+            .find(|call| call.method == "POST")
+            .and_then(|call| call.body.as_deref())
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_str(body).unwrap();
+        assert_eq!(value["parts"][0]["text"], "inspect");
+        assert_eq!(value["parts"][1]["filename"], "notes.txt");
+        assert_eq!(value["parts"][1]["url"], "data:text/plain;base64,bm90ZXM=");
+        assert_eq!(
+            value["parts"][2]["text"],
+            "[Attached file: notes.txt]\nsample notes"
+        );
     }
 
     #[test]

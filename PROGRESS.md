@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-06 23:58 · 统一 Host 附件链路完成：SDK 结构化附件经 Tauri 进入 Host，Codex/Claude 调用 ACP 原生 attachment blocks，OpenCode 在内部映射 file/extracted-text parts；5 项 SDK、24 项 Host 测试、typecheck 与 Tauri check 通过。
+
 2026-08-06 23:46 · Engine/Model 双选择器交互完成：Composer 同排显示独立引擎与模型控件，已有会话切换要求新会话或复制上下文；31 项定向组件测试通过，统一 Host 运行时迁移仍未完成。
 
 2026-08-06 23:18 · P3 统一 SDK 客户端完成：新增 AcpHostClient、AgentBinding/Session/Event 类型、单一 Host IPC、事件归一化和前端 binding 冲突保护；4 项新测试、桌面 typecheck 与 22 项 Host Rust 测试通过。

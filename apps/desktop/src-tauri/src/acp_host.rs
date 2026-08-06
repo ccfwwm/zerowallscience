@@ -7,7 +7,7 @@ use zerowall_acp_host::acp_process::AcpProcessDriver;
 use zerowall_acp_host::opencode::{HttpOpenCodeTransport, OpenCodeDriver};
 use zerowall_acp_host::{
     AcpHost, AgentBinding, AgentEvent, CredentialRef, HostDriverKind, NewSessionRequest,
-    PromptResponse, SessionState,
+    PromptAttachment, PromptResponse, SessionState,
 };
 
 #[derive(Default)]
@@ -28,6 +28,16 @@ pub struct AcpHostLaunchRequest {
     pub variant: Option<String>,
     pub profile_fingerprint: String,
     pub credential: CredentialRef,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcpHostPromptAttachment {
+    pub filename: String,
+    pub mime: String,
+    pub base64: String,
+    #[serde(default)]
+    pub extracted_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -320,12 +330,23 @@ pub async fn acp_host_prompt(
     state: State<'_, AcpHostState>,
     session_id: String,
     prompt: String,
+    attachments: Option<Vec<AcpHostPromptAttachment>>,
 ) -> Result<PromptResponse, String> {
+    let attachments = attachments
+        .unwrap_or_default()
+        .into_iter()
+        .map(|attachment| PromptAttachment {
+            filename: attachment.filename,
+            mime: attachment.mime,
+            base64: attachment.base64,
+            extracted_text: attachment.extracted_text,
+        })
+        .collect();
     state
         .host
         .lock()
         .await
-        .prompt(session_id, prompt)
+        .prompt(session_id, prompt, attachments)
         .await
         .map_err(error_string)
 }

@@ -194,6 +194,14 @@ pub struct LoadSessionRequest {
 pub struct PromptRequest {
     pub session_id: String,
     pub prompt: String,
+    pub attachments: Vec<PromptAttachment>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptAttachment {
+    pub filename: String,
+    pub mime: String,
+    pub base64: String,
+    pub extracted_text: Option<String>,
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct PromptResponse {
@@ -356,12 +364,17 @@ impl AcpHost {
         &mut self,
         session_id: String,
         prompt: String,
+        attachments: Vec<PromptAttachment>,
     ) -> Result<PromptResponse, HostError> {
         let kind = self.session_kind(&session_id)?;
         let caps = self.drivers[&kind].capabilities();
         self.require(kind, "prompt", caps.prompt)?;
         self.driver_mut(kind)?
-            .prompt(PromptRequest { session_id, prompt })
+            .prompt(PromptRequest {
+                session_id,
+                prompt,
+                attachments,
+            })
             .await
     }
     pub async fn set_config(
@@ -456,6 +469,10 @@ impl AcpHost {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DriverCall {
+    Prompt {
+        session_id: String,
+        attachment_count: usize,
+    },
     Permission {
         request_id: String,
         option_id: Option<String>,
@@ -578,7 +595,11 @@ impl AcpHostDriver for FakeDriver {
         });
         Ok(Self::placeholder_state(request.session_id))
     }
-    async fn prompt(&mut self, _: PromptRequest) -> Result<PromptResponse, HostError> {
+    async fn prompt(&mut self, request: PromptRequest) -> Result<PromptResponse, HostError> {
+        self.record(DriverCall::Prompt {
+            session_id: request.session_id,
+            attachment_count: request.attachments.len(),
+        });
         Ok(PromptResponse { completed: true })
     }
     async fn cancel(&mut self, session_id: String) -> Result<(), HostError> {
@@ -817,6 +838,40 @@ mod tests {
             .iter()
             .any(|call| matches!(call, DriverCall::Config { session_id } if session_id == "s1")));
         assert!(calls.iter().any(|call| matches!(call, DriverCall::Mode { session_id, mode } if session_id == "s1" && mode == "planning")));
+    }
+
+    #[test]
+    fn host_routes_prompt_attachments_without_exposing_the_payload_to_the_binding() {
+        let (driver, calls) = fake(DriverCapabilities {
+            new_session: true,
+            prompt: true,
+            ..Default::default()
+        });
+        let mut host = AcpHost::new();
+        host.register_driver(HostDriverKind::Codex, Box::new(driver));
+        block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s1".into(),
+            },
+            binding(HostDriverKind::Codex, "gpt", "C:/project"),
+        ))
+        .unwrap();
+        block_on(host.prompt(
+            "s1".into(),
+            "inspect".into(),
+            vec![PromptAttachment {
+                filename: "figure.png".into(),
+                mime: "image/png".into(),
+                base64: "cGl4ZWxz".into(),
+                extracted_text: None,
+            }],
+        ))
+        .unwrap();
+        assert!(calls.lock().unwrap().iter().any(|call| matches!(
+            call,
+            DriverCall::Prompt { session_id, attachment_count }
+                if session_id == "s1" && *attachment_count == 1
+        )));
     }
 
     #[test]
