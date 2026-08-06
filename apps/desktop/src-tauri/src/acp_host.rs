@@ -247,6 +247,9 @@ fn process_profile(
         .join(&request.profile_id);
     std::fs::create_dir_all(&runtime_home)
         .map_err(|error| format!("create ACP runtime directory: {error}"))?;
+    // MCP discovery is best-effort: an unavailable optional connector must not
+    // prevent the unified ACP Host from starting the primary session.
+    let mcp_servers = crate::science_mcp::acp_mcp_servers(app).unwrap_or_default();
     let mut env = vec![("ZERO_WALL_MODEL".into(), request.model.clone())];
     match request.engine {
         HostDriverKind::Codex => {
@@ -287,7 +290,7 @@ fn process_profile(
             "CLAUDE_CONFIG_DIR".into(),
         ],
         session_meta: None,
-        mcp_servers: Vec::new(),
+        mcp_servers,
     })
 }
 

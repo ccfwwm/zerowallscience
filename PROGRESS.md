@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 02:48 · 统一 ACP Host 为 Codex/Claude 注入 app-managed MCP descriptors；MCP 探测失败按可选能力降级为空列表，不阻塞主会话启动；Tauri cargo check 通过。
+
 2026-08-07 02:42 · 桌面默认 OpenCode 启动切换到统一 ACP Host：无历史引擎选择时默认 `opencode`，显式 Codex/Claude/OpenCode 选择优先，网关 Web 继续使用原运行时；新增初始引擎决策回归测试。
 
 2026-08-07 02:24 · ACP Host 会话目录补齐 OpenCode 历史发现 metadata 与持久化：SDK/runtime 合并发现且保持已持久 binding 优先，rehydrate 仅传 Keychain credential reference；Host 34 项测试、SDK 13 项与 ACP 桌面 32 项定向测试、typecheck、Tauri check、clippy 通过。
