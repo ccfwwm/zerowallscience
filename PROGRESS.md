@@ -1,6 +1,6 @@
 # Progress
 
-2026-08-06 21:48 · P1 OpenCode Driver 骨架完成：内部 transport 注入、session/new/load/prompt/cancel/permission/close、Basic auth、SSE 与真实 message.part.updated 事件映射已通过 14 个 Rust 测试；生产 reqwest transport 与 Codex/Claude Host proxy 仍待完成。
+2026-08-06 21:51 · P1 OpenCode Driver 骨架完成：内部 transport 注入、session/new/load/prompt/cancel/permission/config/close、Basic auth、SSE 与真实 message.part.updated 事件映射已通过 15 个 Rust 测试；生产 reqwest transport 与 Codex/Claude Host proxy 仍待完成。
 
 2026-08-06 21:32 · P1 契约层完成：新增 zerowall-acp-host 的统一引擎、binding、能力、事件和生命周期路由，覆盖 config/mode、权限选项、恢复绑定与 fake driver 回归；真实三引擎驱动验证仍在进行。
 
