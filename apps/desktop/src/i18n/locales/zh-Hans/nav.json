@@ -12,7 +12,10 @@
     "lowBalance": "余额不足，请充值"
   },
   "items": {
-    "new": "新建",
+    "new": "新对话",
+    "search": "搜索",
+    "workflows": "工作流",
+    "researchTools": "科研工具",
     "notebooks": "笔记本",
     "files": "文件",
     "runs": "运行",

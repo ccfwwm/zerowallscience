@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 07:40 · P5 desktop navigation now matches the approved workbench direction: New chat, Search, Workflows, and a collapsed Research tools group lead the sidebar while preserving projects, settings, and gateway web capability guards; sidebar tests 12/12 and TypeScript checks pass.
+
 2026-08-07 06:51 · P6 package split completed: the app bundle no longer embeds agent binaries, ACP runtimes, Skills, or MCP resources; a desktop first-run gate installs the signed environment in one flow, with package-contract, UI, TypeScript, and Rust checks passing.
 
 2026-08-07 06:22 · Workflow control race closed: immediate concurrent start/retry or start/resume rechecks the registered pump before mutating nodes, and the desktop starter callback is locked to its workflowId; SDK Workflow 14/14, desktop Workflow 6/6, and desktop typecheck passed.

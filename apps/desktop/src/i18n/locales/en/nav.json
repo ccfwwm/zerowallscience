@@ -12,7 +12,10 @@
     "lowBalance": "Balance empty — recharge"
   },
   "items": {
-    "new": "New",
+    "new": "New chat",
+    "search": "Search",
+    "workflows": "Workflows",
+    "researchTools": "Research tools",
     "notebooks": "Notebooks",
     "files": "Files",
     "runs": "Runs",

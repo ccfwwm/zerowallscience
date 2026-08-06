@@ -1,4 +1,5 @@
 import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderAt } from "@/test/render";
 import { clearGatewayToken, setGatewayToken } from "@/lib/webMode";
@@ -28,12 +29,14 @@ afterEach(() => {
 describe("Sidebar in the gateway web client", () => {
   it("offers Notebooks in the desktop app", async () => {
     renderAt("/files");
+    await userEvent.click(await screen.findByRole("button", { name: "Research tools" }));
     expect(await screen.findByRole("button", { name: "Notebooks" })).toBeInTheDocument();
   });
 
   it("drops Notebooks in the browser, where there is no local kernel to run them", async () => {
     signedInWebClient();
     renderAt("/files");
+    await userEvent.click(await screen.findByRole("button", { name: "Research tools" }));
     // The rest of the nav is intact — only the kernel-backed entry is gone.
     expect(await screen.findByRole("button", { name: "Files" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Runs" })).toBeInTheDocument();
@@ -42,12 +45,14 @@ describe("Sidebar in the gateway web client", () => {
 
   it("offers the Research Graph in the desktop app", async () => {
     renderAt("/files");
+    await userEvent.click(await screen.findByRole("button", { name: "Research tools" }));
     expect(await screen.findByRole("button", { name: "Research Graph" })).toBeInTheDocument();
   });
 
   it("drops the Research Graph in the browser, which has no route to the local science database", async () => {
     signedInWebClient();
     renderAt("/files");
+    await userEvent.click(await screen.findByRole("button", { name: "Research tools" }));
     expect(await screen.findByRole("button", { name: "Files" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Research Graph" })).toBeNull();
   });
