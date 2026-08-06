@@ -65,6 +65,94 @@ function invokeMock(): AcpHostInvoke {
 }
 
 describe("AcpHostClient", () => {
+  it("creates, lists, loads, and reads history for multiple isolated sessions", async () => {
+    const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "acp_host_new") {
+        const sessionId = (args?.request as { sessionId: string }).sessionId;
+        return {
+          id: sessionId,
+          binding: {
+            engine: "opencode",
+            profile: "opencode",
+            model: sessionId === "s1" ? "model-a" : "model-b",
+            provider: "provider",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: sessionId,
+            resolvedAt: "now",
+          },
+          resumable: true,
+        };
+      }
+      if (command === "acp_host_sessions") {
+        return [
+          {
+            id: "s1",
+            binding: {
+              engine: "opencode",
+              profile: "opencode",
+              model: "model-a",
+              provider: "provider",
+              variant: null,
+              projectRoot: "C:/science",
+              profileFingerprint: "s1",
+              resolvedAt: "now",
+            },
+            resumable: true,
+          },
+          {
+            id: "s2",
+            binding: {
+              engine: "opencode",
+              profile: "opencode",
+              model: "model-b",
+              provider: "provider",
+              variant: null,
+              projectRoot: "C:/science",
+              profileFingerprint: "s2",
+              resolvedAt: "now",
+            },
+            resumable: true,
+          },
+        ];
+      }
+      if (command === "acp_host_load") {
+        const sessionId = args?.sessionId as string;
+        return {
+          id: sessionId,
+          binding: {
+            engine: "opencode",
+            profile: "opencode",
+            model: sessionId === "s1" ? "model-a" : "model-b",
+            provider: "provider",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: sessionId,
+            resolvedAt: "now",
+          },
+          resumable: true,
+        };
+      }
+      if (command === "acp_host_history") {
+        return [{ role: "user", id: args?.sessionId as string, parts: [{ type: "text", text: "hello" }] }];
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+    const first = await client.newSession({ ...launchRequest, engine: "opencode", profileId: "opencode", sessionId: "s1", model: "model-a", providerId: "provider", profileFingerprint: "s1" });
+    const second = await client.newSession({ ...launchRequest, engine: "opencode", profileId: "opencode", sessionId: "s2", model: "model-b", providerId: "provider", profileFingerprint: "s2" });
+    expect(first.binding.modelId).toBe("model-a");
+    expect(second.binding.modelId).toBe("model-b");
+    const sessions = await client.listSessions();
+    expect(sessions.map((session) => session.id)).toEqual(["s1", "s2"]);
+    const loaded = await client.loadSession("s2");
+    expect(loaded.binding.profileFingerprint).toBe("s2");
+    await expect(client.getHistory("s1")).resolves.toEqual([
+      { role: "user", id: "s1", parts: [{ type: "text", text: "hello" }] },
+    ]);
+    expect(invoke).toHaveBeenCalledWith("acp_host_history", { sessionId: "s1" });
+  });
+
   it("initializes an engine through the host control plane", async () => {
     const invoke = vi.fn(async (command: string) => {
       if (command === "acp_host_initialize") {

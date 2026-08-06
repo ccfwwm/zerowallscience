@@ -159,6 +159,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
             new_session: true,
             load_session: true,
             prompt: true,
+            history: true,
             cancel: true,
             permission: true,
             config: true,
@@ -213,6 +214,56 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
             binding: self.binding.clone(),
             resumable: false,
         })
+    }
+
+    async fn history(&mut self, session_id: String) -> Result<serde_json::Value, HostError> {
+        let path = format!("/session/{}/message", encode_path(&session_id));
+        let response = self.send("GET", &path, None).await?;
+        ensure_success(response.status, "session/history")?;
+        let messages = serde_json::from_str::<Vec<serde_json::Value>>(&response.body)
+            .map_err(|error| HostError::Driver(format!("invalid OpenCode history: {error}")))?;
+        let normalized = messages
+            .into_iter()
+            .map(|message| {
+                let info = message.get("info").cloned().unwrap_or_default();
+                let mut output = serde_json::Map::new();
+                if let Some(role) = info.get("role") {
+                    output.insert("role".into(), role.clone());
+                }
+                for key in ["id", "agent"] {
+                    if let Some(value) = info.get(key) {
+                        output.insert(key.into(), value.clone());
+                    }
+                }
+                if let Some(error) = info.get("error") {
+                    let message = error
+                        .as_str()
+                        .map(str::to_owned)
+                        .or_else(|| error.pointer("/data/message").and_then(serde_json::Value::as_str).map(str::to_owned))
+                        .unwrap_or_else(|| error.to_string());
+                    output.insert("error".into(), serde_json::Value::String(message));
+                }
+                if let Some(completed) = info.pointer("/time/completed") {
+                    output.insert("completed".into(), completed.clone());
+                }
+                if let Some(tokens) = info.get("tokens") {
+                    let mut usage = serde_json::Map::from_iter([
+                        ("input".into(), serde_json::json!(tokens.get("input").and_then(serde_json::Value::as_u64).unwrap_or(0))),
+                        ("output".into(), serde_json::json!(tokens.get("output").and_then(serde_json::Value::as_u64).unwrap_or(0))),
+                        ("reasoning".into(), serde_json::json!(tokens.get("reasoning").and_then(serde_json::Value::as_u64).unwrap_or(0))),
+                        ("cacheRead".into(), serde_json::json!(tokens.pointer("/cache/read").and_then(serde_json::Value::as_u64).unwrap_or(0))),
+                        ("cacheWrite".into(), serde_json::json!(tokens.pointer("/cache/write").and_then(serde_json::Value::as_u64).unwrap_or(0))),
+                    ]);
+                    if let Some(cost) = info.get("cost").filter(|value| value.is_number()) {
+                        usage.insert("cost".into(), cost.clone());
+                    }
+                    output.insert("usage".into(), serde_json::Value::Object(usage));
+                }
+                output.insert("parts".into(), message.get("parts").cloned().unwrap_or_else(|| serde_json::json!([])));
+                serde_json::Value::Object(output)
+            })
+            .collect::<Vec<_>>();
+        Ok(serde_json::Value::Array(normalized))
     }
 
     async fn prompt(&mut self, request: PromptRequest) -> Result<PromptResponse, HostError> {
@@ -852,6 +903,27 @@ mod tests {
         assert_eq!(calls[1].url, "http://localhost:4096/session/s-load");
         assert_eq!(calls[0].headers[0].1, "Basic dXNlcjpwYXNz");
         assert!(calls[0].body.as_deref().unwrap().contains("local"));
+    }
+
+    #[test]
+    fn history_normalizes_opencode_message_metadata() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![TransportResponse {
+                status: 200,
+                body: r#"[{"info":{"id":"m1","role":"assistant","time":{"completed":123},"agent":"build","tokens":{"input":2,"output":3,"reasoning":1,"cache":{"read":4,"write":5}},"cost":0.25},"parts":[{"type":"text","text":"answer"}]}]"#.into(),
+            }],
+        };
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
+
+        let history = block_on(driver.history("s1".into())).unwrap();
+
+        assert_eq!(history[0]["role"], "assistant");
+        assert_eq!(history[0]["id"], "m1");
+        assert_eq!(history[0]["usage"]["cacheRead"], 4);
+        assert_eq!(history[0]["parts"][0]["text"], "answer");
+        assert_eq!(calls.lock().unwrap()[0].url, "http://x/session/s1/message");
     }
 
     #[test]

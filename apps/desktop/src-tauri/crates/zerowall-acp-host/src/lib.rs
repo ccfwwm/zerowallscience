@@ -87,6 +87,7 @@ pub struct DriverCapabilities {
     pub new_session: bool,
     pub load_session: bool,
     pub resume_session: bool,
+    pub history: bool,
     pub prompt: bool,
     pub cancel: bool,
     pub permission: bool,
@@ -243,6 +244,13 @@ pub trait AcpHostDriver: Send {
         &mut self,
         request: LoadSessionRequest,
     ) -> Result<SessionState, HostError>;
+    async fn history(&mut self, session_id: String) -> Result<serde_json::Value, HostError> {
+        let _ = session_id;
+        Err(HostError::UnsupportedCapability {
+            kind: HostDriverKind::Codex,
+            operation: "history",
+        })
+    }
     async fn prompt(&mut self, request: PromptRequest) -> Result<PromptResponse, HostError>;
     async fn cancel(&mut self, session_id: String) -> Result<(), HostError>;
     async fn respond_permission(
@@ -260,6 +268,7 @@ struct SessionEntry {
     binding: AgentBinding,
     driver: Box<dyn AcpHostDriver>,
     turn_started: bool,
+    resumable: bool,
 }
 
 #[derive(Default)]
@@ -327,6 +336,45 @@ impl AcpHost {
                 binding,
                 driver,
                 turn_started: false,
+                resumable: state.resumable,
+            },
+        );
+        Ok(state)
+    }
+    /// Attach a newly constructed Driver to an existing vendor session. This
+    /// is intentionally separate from `load_session`, which only operates on
+    /// sessions already owned by this Host instance.
+    pub async fn load_existing_session(
+        &mut self,
+        request: LoadSessionRequest,
+        binding: AgentBinding,
+    ) -> Result<SessionState, HostError> {
+        let kind = binding.engine;
+        let supported = self
+            .pending_drivers
+            .get(&kind)
+            .ok_or(HostError::DriverNotRegistered { kind })?
+            .capabilities()
+            .load_session;
+        Self::require(kind, "load_session", supported)?;
+        let mut driver = self
+            .pending_drivers
+            .remove(&kind)
+            .ok_or(HostError::DriverNotRegistered { kind })?;
+        let state = driver.load_session(request.clone()).await?;
+        let state = SessionState {
+            id: state.id.clone(),
+            binding: binding.clone(),
+            resumable: state.resumable,
+        };
+        self.sessions.insert(
+            state.id.clone(),
+            SessionEntry {
+                kind,
+                binding,
+                driver,
+                turn_started: false,
+                resumable: state.resumable,
             },
         );
         Ok(state)
@@ -362,6 +410,27 @@ impl AcpHost {
             .load_session(LoadSessionRequest { session_id })
             .await?;
         Ok(SessionState { binding, ..state })
+    }
+    pub fn list_sessions(&self) -> Vec<SessionState> {
+        self.sessions
+            .iter()
+            .map(|(id, entry)| SessionState {
+                id: id.clone(),
+                binding: entry.binding.clone(),
+                resumable: entry.resumable,
+            })
+            .collect()
+    }
+    pub async fn history(&mut self, session_id: &str) -> Result<serde_json::Value, HostError> {
+        let entry = self
+            .sessions
+            .get_mut(session_id)
+            .ok_or_else(|| HostError::SessionNotFound {
+                session_id: session_id.into(),
+            })?;
+        let caps = entry.driver.capabilities();
+        Self::require(entry.kind, "history", caps.history)?;
+        entry.driver.history(session_id.into()).await
     }
     pub async fn prompt(
         &mut self,
@@ -503,17 +572,26 @@ impl AcpHost {
 
 fn declared_capabilities(kind: HostDriverKind) -> DriverCapabilities {
     match kind {
-        HostDriverKind::Codex | HostDriverKind::ClaudeCode | HostDriverKind::OpenCode => {
-            DriverCapabilities {
-                new_session: true,
-                prompt: true,
-                cancel: true,
-                permission: true,
-                config: true,
-                close_session: true,
-                ..Default::default()
-            }
-        }
+        HostDriverKind::Codex | HostDriverKind::ClaudeCode => DriverCapabilities {
+            new_session: true,
+            prompt: true,
+            cancel: true,
+            permission: true,
+            config: true,
+            close_session: true,
+            ..Default::default()
+        },
+        HostDriverKind::OpenCode => DriverCapabilities {
+            new_session: true,
+            load_session: true,
+            history: true,
+            prompt: true,
+            cancel: true,
+            permission: true,
+            config: true,
+            close_session: true,
+            ..Default::default()
+        },
     }
 }
 
@@ -773,6 +851,7 @@ mod tests {
             !caps.new_session
                 && !caps.load_session
                 && !caps.resume_session
+                && !caps.history
                 && !caps.prompt
                 && !caps.cancel
                 && !caps.permission
@@ -1012,6 +1091,36 @@ mod tests {
         assert!(!second_calls.lock().unwrap().iter().any(
             |call| matches!(call, DriverCall::Prompt { session_id, .. } if session_id == "s1")
         ));
+    }
+
+    #[test]
+    fn host_lists_each_session_with_its_own_immutable_binding() {
+        let (first_driver, _) = fake(DriverCapabilities {
+            new_session: true,
+            ..Default::default()
+        });
+        let (second_driver, _) = fake(DriverCapabilities {
+            new_session: true,
+            ..Default::default()
+        });
+        let mut host = AcpHost::new();
+        host.register_driver(HostDriverKind::OpenCode, Box::new(first_driver));
+        block_on(host.new_session(
+            NewSessionRequest { session_id: "s1".into() },
+            binding(HostDriverKind::OpenCode, "model-a", "C:/project"),
+        ))
+        .unwrap();
+        host.register_driver(HostDriverKind::OpenCode, Box::new(second_driver));
+        block_on(host.new_session(
+            NewSessionRequest { session_id: "s2".into() },
+            binding(HostDriverKind::OpenCode, "model-b", "C:/project"),
+        ))
+        .unwrap();
+
+        let mut sessions = host.list_sessions();
+        sessions.sort_by(|left, right| left.id.cmp(&right.id));
+        assert_eq!(sessions[0].binding.model.as_deref(), Some("model-a"));
+        assert_eq!(sessions[1].binding.model.as_deref(), Some("model-b"));
     }
 
     #[test]

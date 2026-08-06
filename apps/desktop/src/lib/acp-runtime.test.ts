@@ -347,7 +347,7 @@ describe("AcpRuntime event translation", () => {
     try {
       const { runtime, fire, events } = harness();
       await runtime.connect();
-      await runtime.sendPrompt("claude-code", "question");
+      await runtime.sendPrompt("codex", "question");
       fire().onMessage!({ message_id: "reply-1", text: "你好" });
       vi.advanceTimersByTime(900);
       fire().onTurnEnded!("end_turn");
@@ -376,7 +376,7 @@ describe("AcpRuntime event translation", () => {
     try {
       const { runtime, fire, events } = harness();
       await runtime.connect();
-      await runtime.sendPrompt("claude-code", "question");
+      await runtime.sendPrompt("codex", "question");
       fire().onMessage!({ message_id: "reply-1", text: "answer" });
       vi.advanceTimersByTime(900);
       fire().onTurnEnded!("end_turn");
@@ -432,6 +432,36 @@ describe("AcpRuntime event translation", () => {
 });
 
 describe("AcpRuntime prompt + unsupported ops", () => {
+  it("creates and switches multiple Host sessions without reusing the profile id", async () => {
+    const { deps } = makeDeps();
+    deps.currentSessionId = vi.fn(() => "host-session-1");
+    deps.createSession = vi.fn(async () => "host-session-2");
+    deps.listSessions = vi.fn(async () => [
+      { id: "host-session-1", title: "First" },
+      { id: "host-session-2", title: "Second" },
+    ]);
+    deps.getMessages = vi.fn(async (sessionId) => [
+      { role: "user" as const, id: sessionId, parts: [{ type: "text", text: sessionId }] },
+    ]);
+    deps.promptSession = vi.fn(async () => {});
+    deps.activateSession = vi.fn(async () => {});
+    const runtime = new AcpRuntime(REQUEST, deps);
+    await runtime.connect();
+
+    expect(await runtime.createSession()).toBe("host-session-1");
+    expect(await runtime.createSession()).toBe("host-session-2");
+    expect(await runtime.listSessions()).toEqual([
+      { id: "host-session-1", title: "First" },
+      { id: "host-session-2", title: "Second" },
+    ]);
+    await expect(runtime.getMessages("host-session-2")).resolves.toEqual([
+      { role: "user", id: "host-session-2", parts: [{ type: "text", text: "host-session-2" }] },
+    ]);
+    await runtime.sendPrompt("host-session-2", "hello");
+    expect(deps.activateSession).toHaveBeenCalledWith("host-session-2");
+    expect(deps.promptSession).toHaveBeenCalledWith("host-session-2", "hello", []);
+  });
+
   it("forwards a prompt and its attachments while ignoring agent/model/variant", async () => {
     const { runtime, deps } = harness();
     await runtime.connect();

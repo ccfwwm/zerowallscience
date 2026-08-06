@@ -315,14 +315,71 @@ pub async fn acp_host_launch(
     };
     let mut host = state.host.lock().await;
     host.register_driver(request.engine, driver);
-    host.new_session(
-        NewSessionRequest {
-            session_id: request.session_id,
-        },
-        session_binding,
-    )
-    .await
-    .map_err(error_string)
+    if request.engine == HostDriverKind::OpenCode && request.session_id != request.profile_id {
+        host.load_existing_session(
+            zerowall_acp_host::LoadSessionRequest {
+                session_id: request.session_id,
+            },
+            session_binding,
+        )
+        .await
+        .map_err(error_string)
+    } else {
+        host.new_session(
+            NewSessionRequest {
+                session_id: request.session_id,
+            },
+            session_binding,
+        )
+        .await
+        .map_err(error_string)
+    }
+}
+
+/// Explicit new-session alias used by the multi-session Host client. Keeping
+/// launch as the compatibility command avoids changing older desktop builds.
+#[tauri::command]
+pub async fn acp_host_new(
+    app: AppHandle,
+    state: State<'_, AcpHostState>,
+    request: AcpHostLaunchRequest,
+) -> Result<SessionState, String> {
+    acp_host_launch(app, state, request).await
+}
+
+#[tauri::command]
+pub async fn acp_host_sessions(
+    state: State<'_, AcpHostState>,
+) -> Result<Vec<SessionState>, String> {
+    Ok(state.host.lock().await.list_sessions())
+}
+
+#[tauri::command]
+pub async fn acp_host_load(
+    state: State<'_, AcpHostState>,
+    session_id: String,
+) -> Result<SessionState, String> {
+    state
+        .host
+        .lock()
+        .await
+        .load_session(session_id)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_history(
+    state: State<'_, AcpHostState>,
+    session_id: String,
+) -> Result<serde_json::Value, String> {
+    state
+        .host
+        .lock()
+        .await
+        .history(&session_id)
+        .await
+        .map_err(error_string)
 }
 
 #[tauri::command]

@@ -4,10 +4,10 @@
 // `acp-normalize.ts` translator, turning the agent's `acp:*` event stream into
 // the same `OpenCodeEvent`s the app's fold/render layer already consumes.
 //
-// One agent = one conversation. ACP runs a single live agent at a time (like
-// the Jupyter integration), so this runtime exposes exactly one session, whose
-// id is the launched profile's id. There is no history API on the ACP side, so
-// `getMessages` is empty on reload — the live thread is rebuilt from events.
+// The Host can own multiple sessions. This compatibility runtime keeps one
+// foreground subscription at a time, switches it explicitly when a pane is
+// opened, and reads history through the Host control plane when the Driver
+// advertises that capability.
 //
 // Deliberately OUT of scope here (each has no clean AgentRuntime target):
 //  - permission / exec-approval — ACP wants a specific option id chosen from the
@@ -63,6 +63,23 @@ export interface AcpRuntimeDeps {
   shutdown: () => Promise<AcpStatus>;
   subscribe: (handlers: AcpEventHandlers) => Promise<() => void>;
   listSkills?: (profileId: string) => Promise<SkillInfo[]>;
+  currentSessionId?: () => string | null;
+  createSession?: (request: AcpLaunchRequest) => Promise<string>;
+  listSessions?: () => Promise<SessionMeta[]>;
+  activateSession?: (sessionId: string) => Promise<void>;
+  getMessages?: (sessionId: string) => Promise<HistoryMessage[]>;
+  promptSession?: (
+    sessionId: string,
+    text: string,
+    attachments: AcpPromptAttachment[],
+  ) => Promise<void>;
+  cancelSession?: (sessionId: string) => Promise<void>;
+  respondPermissionSession?: (
+    sessionId: string,
+    requestId: string,
+    optionId: string | null,
+  ) => Promise<void>;
+  deleteSession?: (sessionId: string) => Promise<void>;
 }
 
 const REAL_DEPS: AcpRuntimeDeps = {
@@ -87,7 +104,9 @@ export class AcpUnsupportedError extends Error {
 export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
   private readonly request: AcpLaunchRequest;
   private readonly deps: AcpRuntimeDeps;
-  private readonly sessionId: string;
+  private sessionId: string;
+  private initialSessionClaimed = false;
+  private sessionSequence = 0;
 
   /** Torn down on close(); undefined until connect() subscribes. */
   private unsubscribe: (() => void) | null = null;
@@ -134,6 +153,10 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     this.deps = deps;
     // One agent, one conversation: the session id IS the profile id.
     this.sessionId = request.conversationId?.trim() || request.profileId;
+    // A runtime connected to an existing conversation must create a fresh Host
+    // session for the next draft; a profile-only launch starts as that draft's
+    // first session and can be claimed by the first send.
+    this.initialSessionClaimed = Boolean(request.conversationId?.trim());
   }
 
   // ---- lifecycle ----
@@ -147,6 +170,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
       if (status.phase !== "ready") {
         throw new Error(status.last_error?.message ?? "ACP runtime did not become ready");
       }
+      this.sessionId = this.deps.currentSessionId?.() ?? this.sessionId;
       this.setStatus("ready");
     } catch (err) {
       this.teardown();
@@ -391,13 +415,28 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     };
   }
 
-  // ---- sessions (a single conversation) ----
+  // ---- sessions ----
 
   async createSession(): Promise<string> {
-    return this.sessionId;
+    if (!this.initialSessionClaimed) {
+      this.initialSessionClaimed = true;
+      this.sessionId = this.deps.currentSessionId?.() ?? this.sessionId;
+      return this.sessionId;
+    }
+    if (!this.deps.createSession) return this.sessionId;
+    this.sessionSequence += 1;
+    const requestedId = `acp-${Date.now()}-${this.sessionSequence}`;
+    const sessionId = await this.deps.createSession({
+      ...this.request,
+      conversationId: requestedId,
+    });
+    this.sessionId = sessionId;
+    await this.deps.activateSession?.(sessionId);
+    return sessionId;
   }
 
   async listSessions(): Promise<SessionMeta[]> {
+    if (this.deps.listSessions) return this.deps.listSessions();
     const title =
       this.request.profileId === "claude-code"
         ? "Claude Code"
@@ -407,17 +446,16 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     return [{ id: this.sessionId, title }];
   }
 
-  async deleteSession(): Promise<void> {
-    // Nothing to delete server-side; the agent is torn down via close().
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.deps.deleteSession?.(sessionId);
   }
 
-  async getMessages(): Promise<HistoryMessage[]> {
-    // ACP exposes no history API; the live thread is built from events.
-    return [];
+  async getMessages(sessionId = this.sessionId): Promise<HistoryMessage[]> {
+    return this.deps.getMessages?.(sessionId) ?? [];
   }
 
   async sendPrompt(
-    _sessionId: string,
+    sessionId: string,
     text: string,
     _agent?: string,
     _model?: string | null,
@@ -433,15 +471,20 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     this.completedTurnDurationMs = undefined;
     this.exactUsageEmittedForTurn = false;
     this.turnStartedAt = Date.now();
-    if (attachments && attachments.length > 0) {
+    this.sessionId = sessionId;
+    await this.deps.activateSession?.(sessionId);
+    if (this.deps.promptSession) {
+      await this.deps.promptSession(sessionId, text, attachments ?? []);
+    } else if (attachments && attachments.length > 0) {
       await this.deps.prompt(text, attachments);
     } else {
       await this.deps.prompt(text);
     }
   }
 
-  async abortSession(_sessionId: string): Promise<void> {
-    await this.deps.cancel();
+  async abortSession(sessionId: string): Promise<void> {
+    if (this.deps.cancelSession) await this.deps.cancelSession(sessionId);
+    else await this.deps.cancel();
   }
 
   async revert(_sessionId: string, _messageID: string, _partID?: string): Promise<void> {
@@ -518,7 +561,11 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     const optionId = options.find(
       (option) => matcher.test(option.option_id) || matcher.test(option.name ?? ""),
     )?.option_id ?? null;
-    await this.deps.respondPermission(requestId, optionId);
+    if (this.deps.respondPermissionSession) {
+      await this.deps.respondPermissionSession(this.sessionId, requestId, optionId);
+    } else {
+      await this.deps.respondPermission(requestId, optionId);
+    }
     this.permissionOptions.delete(requestId);
     this.emit({ type: "permission.resolved", sessionId: this.sessionId, requestId });
   }

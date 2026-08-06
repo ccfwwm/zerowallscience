@@ -1,4 +1,5 @@
 import type { PromptAttachment } from "./runtime";
+import type { HistoryMessage } from "./types";
 
 export type AgentEngine = "codex" | "claude-code" | "opencode";
 
@@ -153,16 +154,57 @@ export class AcpHostClient {
         credential: { keychainId: request.credentialRef },
       },
     });
-    const session: AgentSession = {
-      id: raw.id,
-      acpSessionId: raw.id,
-      binding: normalizeBinding(raw.binding),
-      state: "ready",
-      resumable: raw.resumable,
-    };
+    const session = normalizeSession(raw);
     this.requestedBindings.set(request.sessionId, requested);
     this.sessions.set(session.id, session);
     return session;
+  }
+
+  /** Create a new ACP session without replacing any other engine session. */
+  async newSession(request: AcpHostLaunchRequest): Promise<AgentSession> {
+    const requested = requestBinding(request);
+    const raw = await this.invoke<RawSession>("acp_host_new", {
+      request: {
+        engine: request.engine,
+        profileId: request.profileId,
+        sessionId: request.sessionId,
+        model: request.model,
+        providerId: request.providerId,
+        baseUrl: request.baseUrl,
+        variant: request.variant,
+        profileFingerprint: request.profileFingerprint,
+        credential: { keychainId: request.credentialRef },
+      },
+    });
+    const session = normalizeSession(raw);
+    ensureCompatible(requested, session.binding);
+    this.requestedBindings.set(request.sessionId, requested);
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  /** Return Host-owned sessions without exposing vendor-specific DTOs. */
+  async listSessions(): Promise<AgentSession[]> {
+    const raw = await this.invoke<RawSession[]>("acp_host_sessions");
+    const sessions = raw.map(normalizeSession);
+    for (const session of sessions) this.sessions.set(session.id, session);
+    return sessions;
+  }
+
+  /** Load a persisted session while preserving its immutable binding. */
+  async loadSession(sessionId: string): Promise<AgentSession> {
+    const raw = await this.invoke<RawSession>("acp_host_load", { sessionId });
+    const session = normalizeSession(raw);
+    const current = this.sessions.get(sessionId);
+    if (current) ensureCompatible(current.binding, session.binding);
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  /** Read normalized history through the Host control plane. */
+  async getHistory(sessionId: string): Promise<HistoryMessage[]> {
+    this.requireSession(sessionId);
+    return this.invoke<HistoryMessage[]>("acp_host_history", { sessionId });
   }
 
   getSession(sessionId: string): AgentSession | null {
@@ -267,6 +309,16 @@ export class AcpHostClient {
     if (!session) throw new Error(`session ${sessionId} is not registered`);
     return session;
   }
+}
+
+function normalizeSession(raw: RawSession): AgentSession {
+  return {
+    id: raw.id,
+    acpSessionId: raw.id,
+    binding: normalizeBinding(raw.binding),
+    state: "ready",
+    resumable: raw.resumable,
+  };
 }
 
 function requestBinding(request: AcpHostLaunchRequest): AgentBinding {

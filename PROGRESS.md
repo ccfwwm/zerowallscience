@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 01:42 · Host 多会话控制面补齐 `new/list/load/history`：SDK、Tauri 与 OpenCode Driver 统一 session 路由，history 只输出中立消息结构；新增两个会话绑定隔离与 history 规范化回归，33 项 Host、148 项桌面定向测试、typecheck、Tauri check 与 clippy 通过。
+
 2026-08-07 01:10 · 桌面 OpenCode 选择器已改为明确的 `opencode` Host profile；默认启动暂保留旧多会话控制面，直到 Host Runtime 补齐 session list/history/new-session，避免切换默认造成已有会话不可见。
 
 2026-08-07 01:04 · 三引擎权限链路统一：AgentEvent 携带 action/resources/真实 option id，Codex/Claude 与 OpenCode 权限卡统一回复 AcpHostClient，OpenCode 使用原生 /permission/:id/reply；31 项 Host 与 139 项桌面运行时测试通过。

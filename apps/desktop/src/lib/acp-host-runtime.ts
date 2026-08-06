@@ -58,6 +58,19 @@ function hostEngine(profileId: string): AgentEngine {
   throw new Error(`Unsupported ACP Host engine: ${profileId}`);
 }
 
+function hostLaunchRequest(request: AcpLaunchRequest, sessionId: string) {
+  return {
+    engine: hostEngine(request.profileId),
+    profileId: request.profileId,
+    sessionId,
+    model: request.gateway.model,
+    providerId: request.gateway.providerId,
+    baseUrl: request.gateway.baseUrl,
+    profileFingerprint: profileFingerprint(request),
+    credentialRef: request.gateway.providerId,
+  };
+}
+
 function forwardEvent(handlers: AcpEventHandlers, event: AgentEvent): void {
   switch (event.type) {
     case "text.delta":
@@ -133,31 +146,40 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
 
   const attach = (handlers: AcpEventHandlers) => {
     if (!hostState || hostState.unsubscribe) return;
-    hostState.unsubscribe = hostState.client.subscribe(hostState.sessionId, (event) => {
-      forwardEvent(handlers, event);
+    const activeSessionId = hostState.sessionId;
+    hostState.unsubscribe = hostState.client.subscribe(activeSessionId, (event) => {
+      if (hostState?.sessionId === activeSessionId) forwardEvent(handlers, event);
     });
+  };
+
+  const activate = async (sessionId: string) => {
+    if (!hostState) throw new Error("ACP Host session is not running");
+    if (!hostState.client.getSession(sessionId)) await hostState.client.loadSession(sessionId);
+    if (hostState.sessionId === sessionId && hostState.unsubscribe) return;
+    hostState.unsubscribe?.();
+    hostState.sessionId = sessionId;
+    hostState.unsubscribe = null;
+    if (pendingHandlers) attach(pendingHandlers);
   };
 
   return {
     launch: async (request) => {
       if (hostState) {
-        hostState.unsubscribe?.();
-        await hostState.client.close(hostState.sessionId).catch(() => {});
+        const previous = hostState;
         hostState = null;
+        previous.unsubscribe?.();
+        const sessions = await previous.client.listSessions().catch(() => []);
+        const sessionIds = sessions.length > 0
+          ? sessions.map((session) => session.id)
+          : [previous.sessionId];
+        await Promise.all(sessionIds.map((sessionId) => previous.client.close(sessionId).catch(() => {})));
       }
       const client = new AcpHostClient({ invoke });
       const engine = hostEngine(request.profileId);
       await client.initialize(engine);
-      const session = await client.launch({
-        engine,
-        profileId: request.profileId,
-        sessionId: request.conversationId?.trim() || request.profileId,
-        model: request.gateway.model,
-        providerId: request.gateway.providerId,
-        baseUrl: request.gateway.baseUrl,
-        profileFingerprint: profileFingerprint(request),
-        credentialRef: request.gateway.providerId,
-      });
+      const session = await client.launch(
+        hostLaunchRequest(request, request.conversationId?.trim() || request.profileId),
+      );
       hostState = { client, sessionId: session.id, unsubscribe: null };
       if (pendingHandlers) attach(pendingHandlers);
       return {
@@ -175,6 +197,56 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
         attachments.map(toHostAttachment),
       );
     },
+    currentSessionId: () => hostState?.sessionId ?? null,
+    createSession: async (request) => {
+      if (!hostState) throw new Error("ACP Host session is not running");
+      const session = await hostState.client.newSession(
+        hostLaunchRequest(request, request.conversationId?.trim() || request.profileId),
+      );
+      await activate(session.id);
+      return session.id;
+    },
+    listSessions: async () => {
+      if (!hostState) return [];
+      const sessions = await hostState.client.listSessions();
+      return sessions.map((session) => ({
+        id: session.id,
+        title: session.binding.engineId === "claude-code"
+          ? "Claude Code"
+          : session.binding.engineId === "opencode"
+            ? "OpenCode"
+            : "Codex",
+        directory: session.binding.projectRoot || undefined,
+      }));
+    },
+    activateSession: activate,
+    getMessages: async (sessionId) => {
+      if (!hostState) throw new Error("ACP Host session is not running");
+      if (!hostState.client.getSession(sessionId)) await hostState.client.loadSession(sessionId);
+      return hostState.client.getHistory(sessionId);
+    },
+    promptSession: async (sessionId, text, attachments = []) => {
+      if (!hostState) throw new Error("ACP Host session is not running");
+      await activate(sessionId);
+      await hostState.client.prompt(sessionId, text, attachments.map(toHostAttachment));
+    },
+    cancelSession: async (sessionId) => {
+      if (!hostState) return;
+      await hostState.client.cancel(sessionId);
+    },
+    respondPermissionSession: async (sessionId, requestId, optionId) => {
+      if (!hostState) throw new Error("ACP Host session is not running");
+      await hostState.client.respondPermission(sessionId, requestId, optionId);
+    },
+    deleteSession: async (sessionId) => {
+      if (!hostState) return;
+      const wasActive = hostState.sessionId === sessionId;
+      if (wasActive) {
+        hostState.unsubscribe?.();
+        hostState.unsubscribe = null;
+      }
+      await hostState.client.close(sessionId);
+    },
     setModel: async (model) => {
       if (!hostState) throw new Error("ACP Host session is not running");
       await hostState.client.setConfig(hostState.sessionId, { model });
@@ -191,7 +263,13 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
       const active = hostState;
       hostState = null;
       active?.unsubscribe?.();
-      if (active) await active.client.close(active.sessionId).catch(() => {});
+      if (active) {
+        const sessions = await active.client.listSessions().catch(() => []);
+        const sessionIds = sessions.length > 0
+          ? sessions.map((session) => session.id)
+          : [active.sessionId];
+        await Promise.all(sessionIds.map((sessionId) => active.client.close(sessionId).catch(() => {})));
+      }
       return IDLE;
     },
     subscribe: async (handlers) => {

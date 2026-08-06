@@ -72,6 +72,7 @@ describe("ACP Host runtime adapter", () => {
       "acp_host_events",
       "acp_host_prompt",
       "acp_host_cancel",
+      "acp_host_sessions",
       "acp_host_close",
     ]);
   });
