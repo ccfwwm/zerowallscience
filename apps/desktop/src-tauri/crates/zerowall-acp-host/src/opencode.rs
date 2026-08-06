@@ -23,6 +23,56 @@ pub trait OpenCodeTransport: Send {
     ) -> Result<TransportResponse, String>;
 }
 
+#[derive(Clone)]
+pub struct HttpOpenCodeTransport {
+    client: reqwest::Client,
+}
+
+impl HttpOpenCodeTransport {
+    pub fn new() -> Self {
+        Self {
+            client: reqwest::Client::new(),
+        }
+    }
+}
+
+impl Default for HttpOpenCodeTransport {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl OpenCodeTransport for HttpOpenCodeTransport {
+    async fn send(
+        &mut self,
+        method: &str,
+        path: &str,
+        headers: &[(String, String)],
+        body: Option<&str>,
+    ) -> Result<TransportResponse, String> {
+        let method = reqwest::Method::from_bytes(method.as_bytes())
+            .map_err(|error| format!("invalid HTTP method: {error}"))?;
+        let mut request = self.client.request(method, path);
+        for (name, value) in headers {
+            request = request.header(name, value);
+        }
+        if let Some(body) = body {
+            request = request.body(body.to_owned());
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|error| format!("OpenCode request failed: {error}"))?;
+        let status = response.status().as_u16();
+        let body = response
+            .text()
+            .await
+            .map_err(|error| format!("OpenCode response read failed: {error}"))?;
+        Ok(TransportResponse { status, body })
+    }
+}
+
 pub struct OpenCodeDriver<T> {
     transport: T,
     base_url: String,
@@ -627,5 +677,46 @@ mod tests {
         let driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
         assert!(driver.capabilities().config);
         assert!(!driver.capabilities().mode);
+    }
+
+    #[test]
+    fn http_transport_round_trips_a_local_fake_server() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::thread;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = [0_u8; 4096];
+            let count = stream.read(&mut buffer).unwrap();
+            let request = String::from_utf8_lossy(&buffer[..count]);
+            assert!(request.starts_with("POST /health HTTP/1.1"));
+            assert!(request
+                .to_ascii_lowercase()
+                .contains("authorization: basic dtpw"));
+            assert!(request.ends_with("hello"));
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nready")
+                .unwrap();
+        });
+
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let mut transport = HttpOpenCodeTransport::new();
+            let response = transport
+                .send(
+                    "POST",
+                    &format!("http://{address}/health"),
+                    &[("Authorization".into(), "Basic dTpw".into())],
+                    Some("hello"),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status, 200);
+            assert_eq!(response.body, "ready");
+        });
+        server.join().unwrap();
     }
 }
