@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-06 23:46 · Engine/Model 双选择器交互完成：Composer 同排显示独立引擎与模型控件，已有会话切换要求新会话或复制上下文；31 项定向组件测试通过，统一 Host 运行时迁移仍未完成。
+
 2026-08-06 23:18 · P3 统一 SDK 客户端完成：新增 AcpHostClient、AgentBinding/Session/Event 类型、单一 Host IPC、事件归一化和前端 binding 冲突保护；4 项新测试、桌面 typecheck 与 22 项 Host Rust 测试通过。
 
 2026-08-06 22:42 · P2 Tauri Host 接入完成：新增统一 acp_host state 与引擎探测、启动、prompt、事件、取消、权限和关闭命令；Codex/Claude 使用 Host 进程 driver，OpenCode 使用内部 HTTP driver，API key 仅从 OS Keychain 读取。

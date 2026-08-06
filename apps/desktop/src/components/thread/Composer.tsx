@@ -34,6 +34,7 @@ import {
 import { compressImage } from "@/lib/imageCompress";
 import { useRuntimeStore, type AgentMode } from "@/lib/runtime";
 import { ModelPicker } from "@/components/thread/ModelPicker";
+import { EnginePicker } from "@/components/thread/EnginePicker";
 import { WorkspaceChip } from "@/components/thread/WorkspaceChip";
 import { useUiStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
@@ -917,6 +918,7 @@ export function Composer({
         {/* Model picker + send kept together, pushed right (and wrapping as a
             unit) so the send button is always reachable on a narrow pane. */}
         <div className="ml-auto flex min-w-0 items-center gap-1.5">
+          {showModelPicker && <EnginePicker sessionId={modelSessionId} />}
           {showModelPicker && <ModelPicker sessionId={modelSessionId} />}
           {working && onStop ? (
             // Same spot, same shape, one action: the send button becomes Stop

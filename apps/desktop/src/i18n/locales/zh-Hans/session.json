@@ -89,6 +89,15 @@
       "paste": "无法保存粘贴内容：{{message}}",
       "addFiles": "无法添加文件：{{message}}"
     },
+    "engine": {
+      "aria": "切换引擎",
+      "title": "智能体引擎",
+      "changeTo": "切换到 {{engine}}",
+      "newConversation": "新建空会话",
+      "copyContext": "复制上下文",
+      "cancel": "取消",
+      "continuePrompt": "请基于以下会话上下文继续："
+    },
     "model": {
       "aria": "切换模型",
       "title": "模型与推理强度",

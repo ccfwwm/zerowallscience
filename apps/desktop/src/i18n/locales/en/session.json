@@ -89,6 +89,15 @@
       "paste": "Could not save paste: {{message}}",
       "addFiles": "Could not add files: {{message}}"
     },
+    "engine": {
+      "aria": "Switch engine",
+      "title": "Agent engine",
+      "changeTo": "Switch to {{engine}}",
+      "newConversation": "New conversation",
+      "copyContext": "Copy context",
+      "cancel": "Cancel",
+      "continuePrompt": "Continue from this conversation context:"
+    },
     "model": {
       "aria": "Switch model",
       "title": "Model & reasoning effort",
