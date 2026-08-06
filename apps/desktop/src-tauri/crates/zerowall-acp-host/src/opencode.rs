@@ -178,7 +178,10 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
                 "filename": attachment.filename,
                 "url": format!("data:{};base64,{}", attachment.mime, attachment.base64),
             }));
-            if let Some(text) = attachment.extracted_text.filter(|text| !text.trim().is_empty()) {
+            if let Some(text) = attachment
+                .extracted_text
+                .filter(|text| !text.trim().is_empty())
+            {
                 parts.push(json!({
                     "type": "text",
                     "text": format!("[Attached file: {}]\n{}", attachment.filename, text),

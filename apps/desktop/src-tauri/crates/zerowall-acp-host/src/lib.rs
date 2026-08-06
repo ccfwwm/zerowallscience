@@ -256,11 +256,12 @@ pub trait AcpHostDriver: Send {
 struct SessionEntry {
     kind: HostDriverKind,
     binding: AgentBinding,
+    driver: Box<dyn AcpHostDriver>,
 }
 
 #[derive(Default)]
 pub struct AcpHost {
-    drivers: HashMap<HostDriverKind, Box<dyn AcpHostDriver>>,
+    pending_drivers: HashMap<HostDriverKind, Box<dyn AcpHostDriver>>,
     sessions: HashMap<String, SessionEntry>,
 }
 
@@ -269,18 +270,17 @@ impl AcpHost {
         Self::default()
     }
     pub fn register_driver(&mut self, kind: HostDriverKind, driver: Box<dyn AcpHostDriver>) {
-        self.drivers.insert(kind, driver);
+        self.pending_drivers.insert(kind, driver);
     }
-    fn driver_mut(
+    fn pending_driver_mut(
         &mut self,
         kind: HostDriverKind,
     ) -> Result<&mut Box<dyn AcpHostDriver>, HostError> {
-        self.drivers
+        self.pending_drivers
             .get_mut(&kind)
             .ok_or(HostError::DriverNotRegistered { kind })
     }
     fn require(
-        &self,
         kind: HostDriverKind,
         operation: &'static str,
         supported: bool,
@@ -295,7 +295,9 @@ impl AcpHost {
         &mut self,
         kind: HostDriverKind,
     ) -> Result<InitializeResponse, HostError> {
-        self.driver_mut(kind)?.initialize(InitializeRequest).await
+        self.pending_driver_mut(kind)?
+            .initialize(InitializeRequest)
+            .await
     }
     pub async fn new_session(
         &mut self,
@@ -304,58 +306,60 @@ impl AcpHost {
     ) -> Result<SessionState, HostError> {
         let kind = binding.engine;
         let supported = self
-            .drivers
+            .pending_drivers
             .get(&kind)
             .ok_or(HostError::DriverNotRegistered { kind })?
             .capabilities()
             .new_session;
-        self.require(kind, "new_session", supported)?;
-        let state = self.driver_mut(kind)?.new_session(request.clone()).await?;
+        Self::require(kind, "new_session", supported)?;
+        let mut driver = self
+            .pending_drivers
+            .remove(&kind)
+            .ok_or(HostError::DriverNotRegistered { kind })?;
+        let state = driver.new_session(request.clone()).await?;
         let state = SessionState {
             id: state.id.clone(),
             binding: binding.clone(),
             resumable: state.resumable,
         };
-        self.sessions
-            .insert(state.id.clone(), SessionEntry { kind, binding });
+        self.sessions.insert(
+            state.id.clone(),
+            SessionEntry {
+                kind,
+                binding,
+                driver,
+            },
+        );
         Ok(state)
     }
     pub async fn resume_session(&mut self, session_id: String) -> Result<SessionState, HostError> {
-        let kind = self.session_kind(&session_id)?;
-        let binding = self
-            .sessions
-            .get(&session_id)
-            .expect("session kind was resolved")
-            .binding
-            .clone();
-        let caps = self
-            .drivers
-            .get(&kind)
-            .ok_or(HostError::DriverNotRegistered { kind })?
-            .capabilities();
-        self.require(kind, "resume_session", caps.resume_session)?;
-        let state = self
-            .driver_mut(kind)?
+        let entry =
+            self.sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| HostError::SessionNotFound {
+                    session_id: session_id.clone(),
+                })?;
+        let binding = entry.binding.clone();
+        let caps = entry.driver.capabilities();
+        Self::require(entry.kind, "resume_session", caps.resume_session)?;
+        let state = entry
+            .driver
             .resume_session(ResumeSessionRequest { session_id })
             .await?;
         Ok(SessionState { binding, ..state })
     }
     pub async fn load_session(&mut self, session_id: String) -> Result<SessionState, HostError> {
-        let kind = self.session_kind(&session_id)?;
-        let binding = self
-            .sessions
-            .get(&session_id)
-            .expect("session kind was resolved")
-            .binding
-            .clone();
-        let caps = self
-            .drivers
-            .get(&kind)
-            .ok_or(HostError::DriverNotRegistered { kind })?
-            .capabilities();
-        self.require(kind, "load_session", caps.load_session)?;
-        let state = self
-            .driver_mut(kind)?
+        let entry =
+            self.sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| HostError::SessionNotFound {
+                    session_id: session_id.clone(),
+                })?;
+        let binding = entry.binding.clone();
+        let caps = entry.driver.capabilities();
+        Self::require(entry.kind, "load_session", caps.load_session)?;
+        let state = entry
+            .driver
             .load_session(LoadSessionRequest { session_id })
             .await?;
         Ok(SessionState { binding, ..state })
@@ -366,10 +370,16 @@ impl AcpHost {
         prompt: String,
         attachments: Vec<PromptAttachment>,
     ) -> Result<PromptResponse, HostError> {
-        let kind = self.session_kind(&session_id)?;
-        let caps = self.drivers[&kind].capabilities();
-        self.require(kind, "prompt", caps.prompt)?;
-        self.driver_mut(kind)?
+        let entry =
+            self.sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| HostError::SessionNotFound {
+                    session_id: session_id.clone(),
+                })?;
+        let caps = entry.driver.capabilities();
+        Self::require(entry.kind, "prompt", caps.prompt)?;
+        entry
+            .driver
             .prompt(PromptRequest {
                 session_id,
                 prompt,
@@ -382,17 +392,17 @@ impl AcpHost {
         session_id: &str,
         config: serde_json::Value,
     ) -> Result<SessionState, HostError> {
-        let kind = self.session_kind(session_id)?;
-        let binding = self
-            .sessions
-            .get(session_id)
-            .expect("session kind was resolved")
-            .binding
-            .clone();
-        let caps = self.drivers[&kind].capabilities();
-        self.require(kind, "config", caps.config)?;
-        let state = self
-            .driver_mut(kind)?
+        let entry =
+            self.sessions
+                .get_mut(session_id)
+                .ok_or_else(|| HostError::SessionNotFound {
+                    session_id: session_id.into(),
+                })?;
+        let binding = entry.binding.clone();
+        let caps = entry.driver.capabilities();
+        Self::require(entry.kind, "config", caps.config)?;
+        let state = entry
+            .driver
             .set_config(SetConfigRequest {
                 session_id: session_id.into(),
                 config,
@@ -401,10 +411,16 @@ impl AcpHost {
         Ok(SessionState { binding, ..state })
     }
     pub async fn set_mode(&mut self, session_id: &str, mode: &str) -> Result<(), HostError> {
-        let kind = self.session_kind(session_id)?;
-        let caps = self.drivers[&kind].capabilities();
-        self.require(kind, "mode", caps.mode)?;
-        self.driver_mut(kind)?
+        let entry =
+            self.sessions
+                .get_mut(session_id)
+                .ok_or_else(|| HostError::SessionNotFound {
+                    session_id: session_id.into(),
+                })?;
+        let caps = entry.driver.capabilities();
+        Self::require(entry.kind, "mode", caps.mode)?;
+        entry
+            .driver
             .set_mode(SetModeRequest {
                 session_id: session_id.into(),
                 mode: mode.into(),
@@ -430,37 +446,47 @@ impl AcpHost {
         request_id: &str,
         option_id: Option<String>,
     ) -> Result<(), HostError> {
-        let kind = self.session_kind(session_id)?;
-        let caps = self.drivers[&kind].capabilities();
-        self.require(kind, "permission", caps.permission)?;
-        self.driver_mut(kind)?
+        let entry =
+            self.sessions
+                .get_mut(session_id)
+                .ok_or_else(|| HostError::SessionNotFound {
+                    session_id: session_id.into(),
+                })?;
+        let caps = entry.driver.capabilities();
+        Self::require(entry.kind, "permission", caps.permission)?;
+        entry
+            .driver
             .respond_permission(request_id.into(), option_id)
             .await
     }
     pub async fn cancel(&mut self, session_id: &str) -> Result<(), HostError> {
-        let kind = self.session_kind(session_id)?;
-        let caps = self.drivers[&kind].capabilities();
-        self.require(kind, "cancel", caps.cancel)?;
-        self.driver_mut(kind)?.cancel(session_id.into()).await
+        let entry =
+            self.sessions
+                .get_mut(session_id)
+                .ok_or_else(|| HostError::SessionNotFound {
+                    session_id: session_id.into(),
+                })?;
+        let caps = entry.driver.capabilities();
+        Self::require(entry.kind, "cancel", caps.cancel)?;
+        entry.driver.cancel(session_id.into()).await
     }
     pub async fn close_session(&mut self, session_id: &str) -> Result<(), HostError> {
-        let kind = self.session_kind(session_id)?;
-        let caps = self.drivers[&kind].capabilities();
-        self.require(kind, "close_session", caps.close_session)?;
-        self.driver_mut(kind)?
-            .close_session(session_id.into())
-            .await?;
+        let entry =
+            self.sessions
+                .get_mut(session_id)
+                .ok_or_else(|| HostError::SessionNotFound {
+                    session_id: session_id.into(),
+                })?;
+        let caps = entry.driver.capabilities();
+        Self::require(entry.kind, "close_session", caps.close_session)?;
+        entry.driver.close_session(session_id.into()).await?;
         self.sessions.remove(session_id);
         Ok(())
     }
     pub fn drain_events(&mut self, session_id: &str) -> Result<Vec<AgentEvent>, HostError> {
-        let kind = self.session_kind(session_id)?;
-        Ok(self.driver_mut(kind)?.drain_events())
-    }
-    fn session_kind(&self, session_id: &str) -> Result<HostDriverKind, HostError> {
         self.sessions
-            .get(session_id)
-            .map(|s| s.kind)
+            .get_mut(session_id)
+            .map(|entry| entry.driver.drain_events())
             .ok_or_else(|| HostError::SessionNotFound {
                 session_id: session_id.into(),
             })
@@ -872,6 +898,46 @@ mod tests {
             DriverCall::Prompt { session_id, attachment_count }
                 if session_id == "s1" && *attachment_count == 1
         )));
+    }
+
+    #[test]
+    fn sessions_of_the_same_engine_keep_their_own_driver_instances() {
+        let (first_driver, first_calls) = fake(DriverCapabilities {
+            new_session: true,
+            prompt: true,
+            ..Default::default()
+        });
+        let (second_driver, second_calls) = fake(DriverCapabilities {
+            new_session: true,
+            prompt: true,
+            ..Default::default()
+        });
+        let mut host = AcpHost::new();
+        host.register_driver(HostDriverKind::Codex, Box::new(first_driver));
+        block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s1".into(),
+            },
+            binding(HostDriverKind::Codex, "gpt-1", "C:/project"),
+        ))
+        .unwrap();
+        host.register_driver(HostDriverKind::Codex, Box::new(second_driver));
+        block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s2".into(),
+            },
+            binding(HostDriverKind::Codex, "gpt-2", "C:/project"),
+        ))
+        .unwrap();
+
+        block_on(host.prompt("s1".into(), "first".into(), Vec::new())).unwrap();
+
+        assert!(first_calls.lock().unwrap().iter().any(
+            |call| matches!(call, DriverCall::Prompt { session_id, .. } if session_id == "s1")
+        ));
+        assert!(!second_calls.lock().unwrap().iter().any(
+            |call| matches!(call, DriverCall::Prompt { session_id, .. } if session_id == "s1")
+        ));
     }
 
     #[test]
