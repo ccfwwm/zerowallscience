@@ -320,6 +320,29 @@ describe("WorkflowScheduler", () => {
     expect(executions).toBe(3);
   });
 
+  it("does not lose an immediate retry while start is registering its pump", async () => {
+    let executions = 0;
+    const scheduler = new WorkflowScheduler({
+      execute: async () => {
+        executions += 1;
+        if (executions === 1) throw new Error("first attempt failed");
+        return "recovered";
+      },
+    }, memoryPersistence());
+    const run = await scheduler.createRun({
+      id: "immediate-retry",
+      name: "Immediate retry",
+      nodes: [{ id: "agent", kind: "agent", dependsOn: [] }],
+    });
+
+    const starting = scheduler.start(run.id);
+    const retrying = scheduler.retry(run.id, "agent");
+    await Promise.all([starting, retrying]);
+
+    expect(executions).toBe(2);
+    expect((await scheduler.get(run.id))?.state).toBe("completed");
+  });
+
   it("discovers and resumes incomplete persisted runs after restart", async () => {
     const seed: WorkflowRun = {
       id: "recover-me",

@@ -296,6 +296,9 @@ export class WorkflowScheduler {
   async resume(runIdValue: string): Promise<WorkflowRun> {
     await this.waitForPump(runIdValue);
     const run = await this.require(runIdValue);
+    // A concurrent start can register its pump while require() is resolving.
+    // Check again before mutating node state so resume cannot race that pump.
+    await this.waitForPump(runIdValue);
     for (const node of Object.values(run.nodes)) {
       if (node.state === "running" || node.state === "paused") node.state = "pending";
     }
@@ -328,6 +331,10 @@ export class WorkflowScheduler {
   async retry(runIdValue: string, nodeId?: string): Promise<WorkflowRun> {
     await this.waitForPump(runIdValue);
     const run = await this.require(runIdValue);
+    // Close the same start-registration window as resume(). Without this
+    // second check, an immediate retry can inspect a still-running node and be
+    // lost before the first attempt records its failure.
+    await this.waitForPump(runIdValue);
     const nodes = nodeId ? [run.nodes[nodeId]] : Object.values(run.nodes).filter((node) => node.state === "failed");
     if (nodes.some((node) => !node)) throw new Error(`unknown workflow node: ${nodeId}`);
     for (const node of nodes) {

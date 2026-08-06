@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import { WORKFLOW_STARTERS, WorkflowStarters } from "./WorkflowStarters";
 
 describe("WorkflowStarters", () => {
@@ -20,5 +21,18 @@ describe("WorkflowStarters", () => {
     expect(screen.getByText("Search and deduplicate papers")).toBeInTheDocument();
     expect(screen.getByText("Run a reproducible analysis")).toBeInTheDocument();
     expect(screen.getByText("Generate a research report")).toBeInTheDocument();
+  });
+
+  it("passes the selected workflow binding to the host entry point", async () => {
+    const onPick = vi.fn();
+    const user = userEvent.setup();
+    render(<WorkflowStarters onPick={onPick} />);
+
+    await user.click(screen.getByRole("button", { name: /Search and deduplicate papers/i }));
+
+    expect(onPick).toHaveBeenCalledWith(expect.objectContaining({
+      id: "search",
+      workflowId: "paper-search-deduplication",
+    }));
   });
 });
