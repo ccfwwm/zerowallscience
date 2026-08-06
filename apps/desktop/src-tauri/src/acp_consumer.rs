@@ -1667,12 +1667,20 @@ pub async fn acp_shutdown(
     Ok(status_of(&state))
 }
 
-async fn probe_for_app(_app: &AppHandle, profile_id: &str) -> Result<ResolvedRuntime, String> {
-    let resource_root = std::env::current_exe()
+fn select_runtime_resource_root(active: Option<PathBuf>, executable_root: PathBuf) -> PathBuf {
+    active.unwrap_or(executable_root)
+}
+
+async fn probe_for_app(app: &AppHandle, profile_id: &str) -> Result<ResolvedRuntime, String> {
+    let executable_root = std::env::current_exe()
         .map_err(|error| format!("failed to resolve application executable: {error}"))?
         .parent()
         .ok_or_else(|| "failed to resolve application executable directory".to_string())?
         .to_path_buf();
+    let resource_root = select_runtime_resource_root(
+        crate::environment_update::active_environment_root(app)?,
+        executable_root,
+    );
     let profile_id = profile_id.to_string();
     tokio::task::spawn_blocking(move || {
         probe_runtime_with(&profile_id, &SystemProbeBackend { resource_root })
@@ -2495,6 +2503,17 @@ mod tests {
         assert_eq!(result.info.availability, AcpRuntimeAvailability::Available);
         assert_eq!(result.info.cli_version.as_deref(), Some("claude 2.0.0"));
         assert_eq!(result.info.adapter_version, CLAUDE_ADAPTER_VERSION);
+    }
+
+    #[test]
+    fn active_environment_root_replaces_bundled_runtime_root() {
+        let active = PathBuf::from("C:/environment/versions/v1");
+        let bundled = PathBuf::from("C:/app");
+        assert_eq!(select_runtime_resource_root(Some(active.clone()), bundled), active);
+        assert_eq!(
+            select_runtime_resource_root(None, PathBuf::from("C:/app")),
+            PathBuf::from("C:/app")
+        );
     }
 
     #[test]

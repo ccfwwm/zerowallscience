@@ -84,6 +84,7 @@ pub fn run() {
         .manage(sub2api::Sub2ApiState::default())
         .manage(acp_host::AcpHostState::default())
         .manage(acp_consumer::AcpConsumerState::default())
+        .manage(environment_update::EnvironmentUpdateControl::default())
         .setup(|app| {
             // Watch the active workspace so changes made outside the app (an
             // external editor, a detached process) still enqueue a debounced
@@ -316,6 +317,10 @@ pub fn run() {
             updates::latest_release,
             updates::download_update,
             updates::open_downloaded_update,
+            environment_update::environment_update_status,
+            environment_update::environment_update_check,
+            environment_update::environment_update_install,
+            environment_update::environment_update_rollback,
             debug_log::log_debug
         ])
         .build(tauri::generate_context!())

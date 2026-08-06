@@ -194,6 +194,23 @@ fn target_triple() -> &'static str {
     }
 }
 
+fn adapter_candidates(
+    environment_root: Option<&Path>,
+    resource_dir: Option<&Path>,
+    executable: &Path,
+) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(root) = environment_root {
+        candidates.push(root.join(executable));
+        candidates.push(root.join("binaries").join(executable));
+    }
+    if let Some(root) = resource_dir {
+        candidates.push(root.join("binaries").join(executable));
+        candidates.push(root.join(executable));
+    }
+    candidates
+}
+
 fn resolve_adapter_path(app: &AppHandle, engine: HostDriverKind) -> Result<PathBuf, String> {
     let name =
         adapter_name(engine).ok_or_else(|| "OpenCode has no ACP child adapter".to_owned())?;
@@ -202,11 +219,13 @@ fn resolve_adapter_path(app: &AppHandle, engine: HostDriverKind) -> Result<PathB
     } else {
         name.to_owned()
     };
-    let mut candidates = Vec::new();
-    if let Ok(resource_dir) = app.path().resource_dir() {
-        candidates.push(resource_dir.join("binaries").join(&executable));
-        candidates.push(resource_dir.join(&executable));
-    }
+    let environment_root = crate::environment_update::active_environment_root(app)?;
+    let resource_dir = app.path().resource_dir().ok();
+    let mut candidates = adapter_candidates(
+        environment_root.as_deref(),
+        resource_dir.as_deref(),
+        Path::new(&executable),
+    );
     candidates.push(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("binaries")
@@ -693,6 +712,21 @@ pub async fn acp_host_close(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn active_environment_adapter_candidate_precedes_bundled_resource() {
+        let candidates = adapter_candidates(
+            Some(Path::new("C:/app-data/environment/versions/v1")),
+            Some(Path::new("C:/app/resources")),
+            Path::new("codex-acp.exe"),
+        );
+        assert_eq!(
+            candidates.first(),
+            Some(&PathBuf::from(
+                "C:/app-data/environment/versions/v1/codex-acp.exe"
+            ))
+        );
+    }
 
     #[test]
     fn persisted_session_catalog_contains_binding_and_safe_metadata_only() {

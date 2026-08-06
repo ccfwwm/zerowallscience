@@ -1079,6 +1079,49 @@ export async function openDownloadedUpdate(path: string): Promise<void> {
   await invoke("open_downloaded_update", { path });
 }
 
+export type EnvironmentUpdatePhase =
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "verifying"
+  | "installing"
+  | "restart-required"
+  | "failed"
+  | "rolled-back";
+
+export interface EnvironmentUpdateSnapshot {
+  phase: EnvironmentUpdatePhase;
+  currentVersion: string | null;
+  previousVersion: string | null;
+  targetVersion: string | null;
+  message: string | null;
+}
+
+export async function environmentUpdateStatus(): Promise<EnvironmentUpdateSnapshot | null> {
+  if (!isTauri) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<EnvironmentUpdateSnapshot>("environment_update_status");
+}
+
+export async function environmentUpdateCheck(envelopeJson: string): Promise<EnvironmentUpdateSnapshot> {
+  if (!isTauri) throw new Error("environment updates are available in the desktop app only");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<EnvironmentUpdateSnapshot>("environment_update_check", { envelopeJson });
+}
+
+export async function environmentUpdateInstall(envelopeJson: string): Promise<EnvironmentUpdateSnapshot> {
+  if (!isTauri) throw new Error("environment updates are available in the desktop app only");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<EnvironmentUpdateSnapshot>("environment_update_install", { envelopeJson });
+}
+
+export async function environmentUpdateRollback(): Promise<EnvironmentUpdateSnapshot> {
+  if (!isTauri) throw new Error("environment updates are available in the desktop app only");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<EnvironmentUpdateSnapshot>("environment_update_rollback");
+}
+
 /** Durable Workflow run storage. The Rust side writes a single app-data JSON
  * file with a temporary-file + rename commit; browser mode keeps no durable
  * native state and callers should supply an in-memory fallback. */

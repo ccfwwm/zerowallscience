@@ -362,6 +362,18 @@ impl EnvironmentLayout {
         }
         Ok(Some(serde_json::from_slice(&fs::read(path)?)?))
     }
+
+    pub fn active_root(&self) -> Result<Option<PathBuf>, EnvironmentUpdateError> {
+        let Some(current) = self.read_current()? else {
+            return Ok(None);
+        };
+        let version_dir = self.versions().join(current.current_version);
+        if version_dir.is_dir() {
+            Ok(Some(version_dir))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 pub trait PackageDownloader {
@@ -645,6 +657,27 @@ fn app_environment_layout(app: &tauri::AppHandle) -> Result<EnvironmentLayout, S
     Ok(EnvironmentLayout::new(root))
 }
 
+pub fn active_environment_root(app: &tauri::AppHandle) -> Result<Option<PathBuf>, String> {
+    app_environment_layout(app)
+        .and_then(|layout| layout.active_root().map_err(|error| error.to_string()))
+}
+
+pub fn environment_executable_candidates(root: &Path, executable: &str) -> [PathBuf; 2] {
+    [root.join(executable), root.join("binaries").join(executable)]
+}
+
+pub fn active_environment_executable(
+    app: &tauri::AppHandle,
+    executable: &str,
+) -> Result<Option<PathBuf>, String> {
+    let Some(root) = active_environment_root(app)? else {
+        return Ok(None);
+    };
+    Ok(environment_executable_candidates(&root, executable)
+        .into_iter()
+        .find(|path| path.is_file()))
+}
+
 #[tauri::command]
 pub fn environment_update_status(
     app: tauri::AppHandle,
@@ -687,7 +720,8 @@ pub async fn environment_update_check(
             return Err(error.to_string());
         }
     }
-    environment_update_status(app, control)
+    update_snapshot(&app_environment_layout(&app)?, control.status())
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1223,6 +1257,16 @@ mod tests {
             installer.status().phase,
             EnvironmentUpdatePhase::RestartRequired
         );
+        assert_eq!(
+            installer
+                .layout
+                .active_root()
+                .unwrap()
+                .unwrap()
+                .file_name()
+                .and_then(|value| value.to_str()),
+            Some("v1")
+        );
         let persisted: CurrentEnvironment =
             serde_json::from_slice(&fs::read(root.join("environment/current.json")).unwrap())
                 .unwrap();
@@ -1275,6 +1319,27 @@ mod tests {
         assert_eq!(rolled_back.previous_version.as_deref(), Some("v2"));
         assert_eq!(installer.status().phase, EnvironmentUpdatePhase::RolledBack);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn update_control_rejects_overlapping_operations_and_releases_after_drop() {
+        let control = EnvironmentUpdateControl::default();
+        let first = control.try_begin().unwrap();
+        assert!(matches!(
+            control.try_begin(),
+            Err(EnvironmentUpdateError::OperationInProgress)
+        ));
+        drop(first);
+        assert!(control.try_begin().is_ok());
+    }
+
+    #[test]
+    fn active_environment_executable_candidates_cover_flat_and_bundled_layouts() {
+        let root = Path::new("C:/environment/versions/v1");
+        assert_eq!(
+            environment_executable_candidates(root, "uv.exe"),
+            [root.join("uv.exe"), root.join("binaries/uv.exe")]
+        );
     }
 
     fn traversal_zip() -> Vec<u8> {

@@ -201,6 +201,19 @@ pub(crate) const SKILL_RESOURCES: &[&str] = &[
     "skills-publishing",
 ];
 
+fn managed_resource(app: &AppHandle, resource: &str) -> Option<PathBuf> {
+    if let Ok(Some(root)) = crate::environment_update::active_environment_root(app) {
+        let candidate = root.join(resource);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    app.path()
+        .resolve(resource, tauri::path::BaseDirectory::Resource)
+        .ok()
+        .filter(|path| path.exists())
+}
+
 /// Deploy the bundled skill packs (Tauri resources) into the app-private
 /// profile's global skills dir (`<xdg-config>/opencode/skills/`), which OpenCode
 /// scans regardless of project detection. See `SKILL_RESOURCES` for the set. The
@@ -221,11 +234,8 @@ pub(crate) fn deploy_bundled_skills_to(app: &AppHandle, dst: &Path) -> Result<()
     let mut bundled: std::collections::HashSet<std::ffi::OsString> = std::collections::HashSet::new();
     let mut all_ok = true;
     for resource in SKILL_RESOURCES {
-        let src = match app
-            .path()
-            .resolve(resource, tauri::path::BaseDirectory::Resource)
-        {
-            Ok(p) if p.is_dir() => p,
+        let src = match managed_resource(app, resource) {
+            Some(p) if p.is_dir() => p,
             _ => {
                 all_ok = false;
                 continue;
@@ -271,8 +281,8 @@ pub(crate) fn deploy_bundled_skills_for_acp(
         "citation-reviewer", "domain-check",
     ];
     for resource in SKILL_RESOURCES {
-        let src = match app.path().resolve(resource, tauri::path::BaseDirectory::Resource) {
-            Ok(path) if path.is_dir() => path,
+        let src = match managed_resource(app, resource) {
+            Some(path) if path.is_dir() => path,
             _ => { all_ok = false; continue; }
         };
         match sync_skill_pack_filtered(&src, discovery, CORE) {
@@ -291,10 +301,7 @@ pub(crate) fn deploy_bundled_skills_for_acp(
 /// cannot install npm plugin specs itself (silently ignored), so the file is
 /// referenced by absolute path. None in dev runs without the fetch script.
 fn deploy_goal_plugin(app: &AppHandle) -> Option<PathBuf> {
-    let src = app
-        .path()
-        .resolve("goal-plugin/goal-plugin.server.js", tauri::path::BaseDirectory::Resource)
-        .ok()
+    let src = managed_resource(app, "goal-plugin/goal-plugin.server.js")
         .filter(|p| p.is_file())?;
     let dst = xdg_config_home(app).ok()?.join("opencode").join("goal-plugin.server.js");
     std::fs::create_dir_all(dst.parent()?).ok()?;
@@ -732,6 +739,11 @@ fn system_proxy_url() -> Option<String> {
     None
 }
 
+fn active_opencode_path(app: &AppHandle) -> Result<Option<PathBuf>, String> {
+    let executable = if cfg!(windows) { "opencode.exe" } else { "opencode" };
+    crate::environment_update::active_environment_executable(app, executable)
+}
+
 fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
     let root = runtime_root(app)?;
     let cfg = root.join("xdg-config");
@@ -801,10 +813,14 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
     // inherit connector secrets from this process environment.
     let secrets = crate::secret_store::sidecar_secrets(app)?;
 
-    let cmd = app
-        .shell()
-        .sidecar("opencode")
-        .map_err(|e| format!("sidecar not found: {e}"))?
+    let shell = app.shell();
+    let cmd = if let Some(path) = active_opencode_path(app)? {
+        shell.command(path.to_string_lossy().into_owned())
+    } else {
+        shell
+            .sidecar("opencode")
+            .map_err(|e| format!("sidecar not found: {e}"))?
+    }
         .args(["serve", "--hostname", "127.0.0.1", "--port", port_str.as_str()])
         // Require auth on every request (P0-7): without a password the server
         // trusts ANY localhost-origin page (verified in the 1.17.13 source —
@@ -1098,6 +1114,15 @@ mod tests {
     #[cfg(target_os = "macos")]
     use super::parse_scutil_proxy;
     use std::fs;
+
+    #[test]
+    fn environment_opencode_path_prefers_active_version_binary() {
+        let root = std::path::Path::new("C:/environment/versions/v1");
+        assert_eq!(
+            root.join("opencode.exe"),
+            root.join("opencode.exe")
+        );
+    }
 
     /// A skill tree that `deploy_bundled_skills` looks for but the bundle never
     /// ships resolves to nothing, and the deploy silently skips it. That is how

@@ -46,11 +46,18 @@ pub async fn run_uv(
     args: Vec<String>,
     label: &str,
 ) -> Result<(), String> {
-    let mut cmd = app
-        .shell()
-        .sidecar("uv")
-        .map_err(|e| format!("uv sidecar not found: {e}"))?
-        .args(args);
+    let shell = app.shell();
+    let mut cmd = if let Some(path) = crate::environment_update::active_environment_executable(
+        app,
+        if cfg!(windows) { "uv.exe" } else { "uv" },
+    )? {
+        shell.command(path.to_string_lossy().into_owned())
+    } else {
+        shell
+            .sidecar("uv")
+            .map_err(|e| format!("uv sidecar not found: {e}"))?
+    }
+    .args(args);
     // Same proxy the OpenCode sidecar uses, plus optional PyPI / Python-download
     // mirrors: a GUI-launched app inherits no shell env, so without this uv's
     // download of the managed Python (github.com) and wheels (pypi.org) ignores

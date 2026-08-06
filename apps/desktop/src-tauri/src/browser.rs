@@ -47,16 +47,19 @@ struct ProfilesEnvelope {
 /// put in the MCP `command`. Tauri places externalBin next to the app
 /// executable with the target-triple suffix stripped.
 #[tauri::command]
-pub fn agent_browser_bin(_app: AppHandle) -> Result<String, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let dir = exe
-        .parent()
-        .ok_or("cannot resolve the app executable directory")?;
+pub fn agent_browser_bin(app: AppHandle) -> Result<String, String> {
     let name = if cfg!(windows) {
         "agent-browser.exe"
     } else {
         "agent-browser"
     };
+    if let Some(path) = crate::environment_update::active_environment_executable(&app, name)? {
+        return Ok(path.to_string_lossy().to_string());
+    }
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let dir = exe
+        .parent()
+        .ok_or("cannot resolve the app executable directory")?;
     let bin = dir.join(name);
     if bin.exists() {
         Ok(bin.to_string_lossy().to_string())
@@ -74,10 +77,18 @@ pub fn agent_browser_bin(_app: AppHandle) -> Result<String, String> {
 /// can fall back to the download flow.
 #[tauri::command]
 pub async fn agent_browser_profiles(app: AppHandle) -> Result<Vec<BrowserProfile>, String> {
-    let out = app
-        .shell()
-        .sidecar("agent-browser")
-        .map_err(|e| format!("agent-browser sidecar not found: {e}"))?
+    let shell = app.shell();
+    let cmd = if let Some(path) = crate::environment_update::active_environment_executable(
+        &app,
+        if cfg!(windows) { "agent-browser.exe" } else { "agent-browser" },
+    )? {
+        shell.command(path.to_string_lossy().into_owned())
+    } else {
+        shell
+            .sidecar("agent-browser")
+            .map_err(|e| format!("agent-browser sidecar not found: {e}"))?
+    };
+    let out = cmd
         .args(["profiles", "--json"])
         .output()
         .await
@@ -209,11 +220,18 @@ const STALL_SECS: u64 = 600;
 /// proxy. Kills + fails on a long silence rather than hanging the UI forever.
 #[tauri::command]
 pub async fn setup_browser_chrome(app: AppHandle) -> Result<(), String> {
-    let mut cmd = app
-        .shell()
-        .sidecar("agent-browser")
-        .map_err(|e| format!("agent-browser sidecar not found: {e}"))?
-        .args(["install"]);
+    let shell = app.shell();
+    let mut cmd = if let Some(path) = crate::environment_update::active_environment_executable(
+        &app,
+        if cfg!(windows) { "agent-browser.exe" } else { "agent-browser" },
+    )? {
+        shell.command(path.to_string_lossy().into_owned())
+    } else {
+        shell
+            .sidecar("agent-browser")
+            .map_err(|e| format!("agent-browser sidecar not found: {e}"))?
+    }
+    .args(["install"]);
     for (k, v) in crate::runtime::sidecar_proxy_env(&app) {
         cmd = cmd.env(k, v);
     }
