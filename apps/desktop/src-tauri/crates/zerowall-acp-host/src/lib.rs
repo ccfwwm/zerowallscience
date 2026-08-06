@@ -78,7 +78,7 @@ impl AgentBinding {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DriverCapabilities {
     pub new_session: bool,
     pub load_session: bool,
@@ -89,22 +89,6 @@ pub struct DriverCapabilities {
     pub config: bool,
     pub mode: bool,
     pub close_session: bool,
-}
-
-impl Default for DriverCapabilities {
-    fn default() -> Self {
-        Self {
-            new_session: false,
-            load_session: false,
-            resume_session: false,
-            prompt: false,
-            cancel: false,
-            permission: false,
-            config: false,
-            mode: false,
-            close_session: false,
-        }
-    }
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -254,6 +238,7 @@ struct SessionEntry {
     binding: AgentBinding,
 }
 
+#[derive(Default)]
 pub struct AcpHost {
     drivers: HashMap<HostDriverKind, Box<dyn AcpHostDriver>>,
     sessions: HashMap<String, SessionEntry>,
@@ -261,10 +246,7 @@ pub struct AcpHost {
 
 impl AcpHost {
     pub fn new() -> Self {
-        Self {
-            drivers: HashMap::new(),
-            sessions: HashMap::new(),
-        }
+        Self::default()
     }
     pub fn register_driver(&mut self, kind: HostDriverKind, driver: Box<dyn AcpHostDriver>) {
         self.drivers.insert(kind, driver);
@@ -320,27 +302,43 @@ impl AcpHost {
     }
     pub async fn resume_session(&mut self, session_id: String) -> Result<SessionState, HostError> {
         let kind = self.session_kind(&session_id)?;
+        let binding = self
+            .sessions
+            .get(&session_id)
+            .expect("session kind was resolved")
+            .binding
+            .clone();
         let caps = self
             .drivers
             .get(&kind)
             .ok_or(HostError::DriverNotRegistered { kind })?
             .capabilities();
         self.require(kind, "resume_session", caps.resume_session)?;
-        self.driver_mut(kind)?
+        let state = self
+            .driver_mut(kind)?
             .resume_session(ResumeSessionRequest { session_id })
-            .await
+            .await?;
+        Ok(SessionState { binding, ..state })
     }
     pub async fn load_session(&mut self, session_id: String) -> Result<SessionState, HostError> {
         let kind = self.session_kind(&session_id)?;
+        let binding = self
+            .sessions
+            .get(&session_id)
+            .expect("session kind was resolved")
+            .binding
+            .clone();
         let caps = self
             .drivers
             .get(&kind)
             .ok_or(HostError::DriverNotRegistered { kind })?
             .capabilities();
         self.require(kind, "load_session", caps.load_session)?;
-        self.driver_mut(kind)?
+        let state = self
+            .driver_mut(kind)?
             .load_session(LoadSessionRequest { session_id })
-            .await
+            .await?;
+        Ok(SessionState { binding, ..state })
     }
     pub async fn prompt(
         &mut self,
@@ -440,6 +438,22 @@ impl FakeDriver {
     fn record(&self, call: DriverCall) {
         self.calls.lock().unwrap().push(call);
     }
+    fn placeholder_state(session_id: String) -> SessionState {
+        SessionState {
+            id: session_id,
+            binding: AgentBinding {
+                engine: HostDriverKind::Codex,
+                profile: String::new(),
+                model: None,
+                provider: None,
+                variant: None,
+                project_root: String::new(),
+                profile_fingerprint: String::new(),
+                resolved_at: String::new(),
+            },
+            resumable: true,
+        }
+    }
 }
 #[async_trait]
 impl AcpHostDriver for FakeDriver {
@@ -477,7 +491,7 @@ impl AcpHostDriver for FakeDriver {
         self.record(DriverCall::Resume {
             session_id: request.session_id.clone(),
         });
-        Err(HostError::Driver("fake resume".into()))
+        Ok(Self::placeholder_state(request.session_id))
     }
     async fn load_session(
         &mut self,
@@ -486,7 +500,7 @@ impl AcpHostDriver for FakeDriver {
         self.record(DriverCall::Load {
             session_id: request.session_id.clone(),
         });
-        Err(HostError::Driver("fake load".into()))
+        Ok(Self::placeholder_state(request.session_id))
     }
     async fn prompt(&mut self, _: PromptRequest) -> Result<PromptResponse, HostError> {
         Ok(PromptResponse { completed: true })
@@ -685,5 +699,26 @@ mod tests {
             Err(HostError::BindingConflict { .. })
         ));
         assert_eq!(calls.lock().unwrap().len(), before);
+    }
+
+    #[test]
+    fn resume_preserves_the_original_immutable_binding() {
+        let (driver, _) = fake(DriverCapabilities {
+            new_session: true,
+            resume_session: true,
+            ..Default::default()
+        });
+        let mut host = AcpHost::new();
+        host.register_driver(HostDriverKind::Codex, Box::new(driver));
+        let original = binding(HostDriverKind::Codex, "gpt", "C:/project");
+        block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s1".into(),
+            },
+            original.clone(),
+        ))
+        .unwrap();
+        let resumed = block_on(host.resume_session("s1".into())).unwrap();
+        assert_eq!(resumed.binding, original);
     }
 }
