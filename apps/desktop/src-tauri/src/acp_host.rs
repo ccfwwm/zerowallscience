@@ -109,6 +109,8 @@ pub struct AcpHostLaunchRequest {
     pub variant: Option<String>,
     pub profile_fingerprint: String,
     pub credential: CredentialRef,
+    #[serde(default)]
+    pub mcp_allow_list: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -249,7 +251,12 @@ fn process_profile(
         .map_err(|error| format!("create ACP runtime directory: {error}"))?;
     // MCP discovery is best-effort: an unavailable optional connector must not
     // prevent the unified ACP Host from starting the primary session.
-    let mcp_servers = crate::science_mcp::acp_mcp_servers(app).unwrap_or_default();
+    let mut mcp_servers = crate::science_mcp::acp_mcp_servers(app).unwrap_or_default();
+    if let Some(allow_list) = &request.mcp_allow_list {
+        if !allow_list.iter().any(|entry| entry == "*") {
+            mcp_servers.retain(|server| allow_list.iter().any(|entry| entry == &server.name));
+        }
+    }
     let mut env = vec![("ZERO_WALL_MODEL".into(), request.model.clone())];
     match request.engine {
         HostDriverKind::Codex => {

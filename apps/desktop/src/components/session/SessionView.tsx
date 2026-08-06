@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import type { RuntimeStatus, UsageBlock } from "@zerowall/shared";
-import type { PromptAttachment } from "@zerowall/sdk";
+import type { PromptAttachment, WorkflowRun } from "@zerowall/sdk";
 import { formatCount, contextPercent } from "@/lib/usageFormat";
 import { draftKeyFor, rootSessionOf, useRuntimeStore } from "@/lib/runtime";
 import { acpPresetById } from "@/lib/acp-presets";
@@ -34,14 +34,14 @@ import { Elapsed } from "@/components/thread/ToolGroup";
 import { Composer } from "@/components/thread/Composer";
 import { GOAL_RESUME_NUDGE, GoalPill } from "@/components/thread/GoalPill";
 import { baseName } from "@/components/thread/WorkspaceChip";
-import { WorkflowStarters } from "@/components/thread/WorkflowStarters";
+import { WorkflowStarters, type WorkflowStarter } from "@/components/thread/WorkflowStarters";
 import { InteractionPrompt } from "@/components/thread/InteractionPrompt";
 import { InspectorShell } from "@/components/inspector/InspectorShell";
 import { MaximizePaneButton, RightPane } from "@/components/inspector/RightPane";
 import { SessionFilesPane } from "@/app/routes/FilesPage";
 import { RunsPane } from "@/app/routes/RunsPage";
 import { ReviewPane } from "@/app/routes/ReviewPage";
-import { buildReviewPrompt, buildAutoFixPrompt } from "@/lib/review";
+import { buildAutoFixPrompt } from "@/lib/review";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { toast } from "@/lib/toast";
 import type { TurnUndoEntry } from "@/lib/tauri";
@@ -105,6 +105,7 @@ export function SessionView({
   const runningSessions = useRuntimeStore((s) => s.runningSessions);
   const stepCounts = useRuntimeStore((s) => s.stepCounts);
   const retryNotices = useRuntimeStore((s) => s.retryNotices);
+  const workflowRuns = useRuntimeStore((s) => s.workflowRuns);
   const serverUrl = useRuntimeStore((s) => s.serverUrl);
   const sessions = useRuntimeStore((s) => s.sessions);
   const error = useRuntimeStore((s) => s.error);
@@ -116,6 +117,8 @@ export function SessionView({
   const commands = useRuntimeStore((s) => s.commands);
   const connect = useRuntimeStore((s) => s.connect);
   const sendPrompt = useRuntimeStore((s) => s.sendPrompt);
+  const startWorkflow = useRuntimeStore((s) => s.startWorkflow);
+  const runReview = useRuntimeStore((s) => s.runReview);
   const runShell = useRuntimeStore((s) => s.runShell);
   const runCommand = useRuntimeStore((s) => s.runCommand);
   const openArtifact = useRuntimeStore((s) => s.openArtifact);
@@ -172,16 +175,20 @@ export function SessionView({
     pinEphemeral();
     bindIfCreated(await sendPrompt(text, sid ?? undefined, draftKey, attachments));
   };
+  const onWorkflowPick = async (starter: WorkflowStarter) => {
+    pinEphemeral();
+    await startWorkflow(starter.workflowId, sid ?? undefined, draftKey);
+  };
   const onRunShell = async (command: string) => {
     pinEphemeral();
     bindIfCreated(await runShell(command, sid ?? undefined, draftKey));
   };
   const onRunCommand = async (name: string, args: string) => {
     pinEphemeral();
-    // /review runs an active self-review through the ordinary send path — no
-    // runtime command, so it works with whatever agent is selected.
+    // /review runs in a fresh, read-only ACP session so its permission state and
+    // output cannot mutate or interleave with the conversation being reviewed.
     if (name === "review") {
-      void onSend(buildReviewPrompt());
+      void runReview(sid ?? undefined);
       return;
     }
     const localClear = name === "new" || name === "clear";
@@ -244,6 +251,7 @@ export function SessionView({
     [
       openArtifact,
       sendPrompt,
+      runReview,
       editMessage,
       revertMessage,
       setComposerDraft,
@@ -424,7 +432,6 @@ export function SessionView({
   ) : showReview ? (
     <ReviewPane
       sessionId={eid!}
-      onRunReview={() => void onSend(buildReviewPrompt())}
       onClose={() => setShowReview(false, sid ?? undefined)}
       controls={<MaximizePaneButton />}
     />
@@ -701,8 +708,11 @@ export function SessionView({
               </div>
             )}
             {connected && isEmpty && !eid && !webReadOnly && (
-              <WorkflowStarters onPick={(p) => void onSend(p)} />
+              <WorkflowStarters onPick={(starter) => void onWorkflowPick(starter)} />
             )}
+            {Object.values(workflowRuns).filter((run) => ["pending", "running", "paused", "failed"].includes(run.state)).slice(-1).map((run) => (
+              <WorkflowProgressCard key={run.id} run={run} />
+            ))}
             {historyLoading && <ThreadSkeleton />}
             {!historyLoading && thread && (
               <BlockList
@@ -884,6 +894,35 @@ export function SessionView({
         />
       )}
     </div>
+  );
+}
+
+function WorkflowProgressCard({ run }: { run: WorkflowRun }) {
+  const nodes = Object.values(run.nodes);
+  const completed = nodes.filter((node) => node.state === "completed").length;
+  return (
+    <section className="rounded-card border border-border bg-surface px-3.5 py-3 shadow-card" aria-label="Workflow progress">
+      <div className="flex items-center gap-2">
+        <FlaskConical size={14} className="text-accent" />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">{run.name}</span>
+        <span className="text-xs tabular-nums text-muted">{completed}/{nodes.length}</span>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {nodes.map((node) => (
+          <span
+            key={node.id}
+            className={cn(
+              "rounded px-1.5 py-0.5 text-[11px]",
+              node.state === "completed" ? "bg-ok/10 text-ok" :
+                node.state === "failed" || node.state === "blocked" ? "bg-error/10 text-error" :
+                  node.state === "running" ? "bg-accent/10 text-accent" : "bg-surface-2 text-muted",
+            )}
+          >
+            {node.id}
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }
 

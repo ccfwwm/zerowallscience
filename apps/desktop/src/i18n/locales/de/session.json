@@ -89,6 +89,15 @@
       "paste": "Einfügen konnte nicht gespeichert werden: {{message}}",
       "addFiles": "Dateien konnten nicht hinzugefügt werden: {{message}}"
     },
+    "engine": {
+      "aria": "Engine wechseln",
+      "title": "Agenten-Engine",
+      "changeTo": "Zu {{engine}} wechseln",
+      "newConversation": "Neue Unterhaltung",
+      "copyContext": "Kontext kopieren",
+      "cancel": "Abbrechen",
+      "continuePrompt": "Mit diesem Unterhaltungskontext fortfahren:"
+    },
     "model": {
       "aria": "Modell wechseln",
       "title": "Modell & Denkaufwand",
@@ -131,6 +140,14 @@
     "literature": {
       "title": "Literatur mit Zitaten durchsehen",
       "description": "Über die aktivierten Konnektoren suchen und eine Evidenztabelle mit echten DOIs erstellen."
+    },
+    "search": {
+      "title": "Publikationen suchen und deduplizieren",
+      "description": "Relevante Publikationen finden, Duplikate zusammenführen und den Katalog bereinigen."
+    },
+    "report": {
+      "title": "Forschungsbericht erstellen",
+      "description": "Ausgewählte Belege in einen kurzen, nachvollziehbaren Bericht überführen."
     },
     "audit": {
       "title": "Bericht auf Nachvollziehbarkeit prüfen",

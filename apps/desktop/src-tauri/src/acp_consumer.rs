@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use futures::channel::oneshot;
 use futures::StreamExt;
 use tauri::{AppHandle, Emitter, Manager, State};
+use sha2::{Digest, Sha256};
 use zerowall_acp::{
     AcpAgentProfile, AcpClient, AcpEvent, AcpEventErrorKind, AcpHandshakeStage, AcpMcpServer,
     AcpTokenUsage, PromptAttachment,
@@ -1000,6 +1001,7 @@ pub struct AcpSkillInfo {
     pub name: String,
     pub description: String,
     pub location: String,
+    pub sha256: String,
 }
 
 /// Enumerate the app-owned skills copied into an ACP runtime home. ACP does
@@ -1040,10 +1042,18 @@ fn collect_acp_skills(root: &Path, skills: &mut Vec<AcpSkillInfo>) -> Result<(),
             .and_then(OsStr::to_str)
             .unwrap_or("skill");
         let (name, description) = acp_skill_metadata(&source, fallback);
+        let mut digest = Sha256::new();
+        digest.update(source.as_bytes());
+        let sha256 = digest
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
         skills.push(AcpSkillInfo {
             name,
             description,
             location: path.to_string_lossy().to_string(),
+            sha256,
         });
     }
     Ok(())

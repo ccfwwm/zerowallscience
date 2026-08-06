@@ -16,6 +16,30 @@ export {
 export type { AgentRuntime, PromptAttachment } from "./runtime";
 export { BaseAgentRuntime } from "./base-runtime";
 export {
+  BUILTIN_WORKFLOWS,
+  WorkflowScheduler,
+  type WorkflowDefinition,
+  type WorkflowCreateOptions,
+  type WorkflowEvent,
+  type WorkflowExecutionContext,
+  type WorkflowExecutor,
+  type WorkflowNodeKind,
+  type WorkflowNodeRun,
+  type WorkflowNodeSpec,
+  type WorkflowNodeSnapshot,
+  type WorkflowNodeState,
+  type WorkflowPersistence,
+  type WorkflowRun,
+  type WorkflowRunState,
+} from "./workflow";
+export {
+  ReviewSessionRunner,
+  type ReviewHost,
+  type ReviewRunRequest,
+  type ReviewRunResult,
+  type ReviewRunStatus,
+} from "./review-session";
+export {
   PackRegistry,
   packRegistry,
   loadPackRegistry,

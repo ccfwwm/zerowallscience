@@ -76,6 +76,8 @@ export interface AcpHostLaunchRequest {
   variant?: string;
   profileFingerprint: string;
   credentialRef: string;
+  /** Optional session-scoped MCP server allow-list. */
+  mcpAllowList?: string[];
 }
 
 export interface AcpHostEngineInfo {
@@ -168,6 +170,7 @@ export class AcpHostClient {
         variant: request.variant,
         profileFingerprint: request.profileFingerprint,
         credential: { keychainId: request.credentialRef },
+        ...(request.mcpAllowList ? { mcpAllowList: [...request.mcpAllowList] } : {}),
       },
     });
     const session = normalizeSession(raw);
@@ -191,6 +194,7 @@ export class AcpHostClient {
         variant: request.variant,
         profileFingerprint: request.profileFingerprint,
         credential: { keychainId: request.credentialRef },
+        ...(request.mcpAllowList ? { mcpAllowList: [...request.mcpAllowList] } : {}),
       },
     });
     const session = normalizeSession(raw);
@@ -393,6 +397,7 @@ function serializeLaunchRequest(request: AcpHostLaunchRequest): Record<string, u
     variant: request.variant,
     profileFingerprint: request.profileFingerprint,
     credential: { keychainId: request.credentialRef },
+    ...(request.mcpAllowList ? { mcpAllowList: [...request.mcpAllowList] } : {}),
   };
 }
 

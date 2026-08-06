@@ -31,10 +31,20 @@ const BADGE: Record<FindingLevel, string> = {
  * `listReviews` returns null over the gateway web client and the view shows its
  * unavailable state instead of an empty list that never fills.
  */
-function ReviewView({ sessionId, onRunReview }: { sessionId?: string; onRunReview?: () => void }) {
+function ReviewView({ sessionId }: { sessionId?: string }) {
   const { t } = useTranslation(["review", "session", "common"]);
   const [runs, setRuns] = useState<StoredReviewRun[] | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const activeEngine = useRuntimeStore((s) => s.acpProfileId);
+  const activeModel = useRuntimeStore((s) => s.defaultModel);
+  const providers = useRuntimeStore((s) => s.providers);
+  const runReview = useRuntimeStore((s) => s.runReview);
+  const [reviewEngine, setReviewEngine] = useState(activeEngine ?? "opencode");
+  const [reviewModel, setReviewModel] = useState(activeModel ?? "");
+  const models = providers.flatMap((provider) => provider.models.map((model) => ({
+    id: `${provider.id}/${model.id}`,
+    label: `${provider.name} / ${model.name}`,
+  })));
 
   const reload = useCallback(() => {
     if (!sessionId) {
@@ -61,6 +71,10 @@ function ReviewView({ sessionId, onRunReview }: { sessionId?: string; onRunRevie
 
   const onClaimChanged = () => reload();
 
+  const runSelectedReview = () => {
+    if (sessionId) void runReview(sessionId, reviewEngine, reviewModel || undefined);
+  };
+
   if (state === "unavailable") {
     return <p className="mt-8 text-center text-sm text-muted">{t("unavailable")}</p>;
   }
@@ -77,10 +91,17 @@ function ReviewView({ sessionId, onRunReview }: { sessionId?: string; onRunRevie
         <ShieldCheck size={22} className="mx-auto text-muted" strokeWidth={1.5} />
         <p className="mt-2 text-sm font-medium text-text">{t("empty.title")}</p>
         <p className="mx-auto mt-1 max-w-sm text-xs text-muted">{t("empty.body")}</p>
-        {onRunReview && (
+        <ReviewSelection
+          engine={reviewEngine}
+          model={reviewModel}
+          models={models}
+          onEngineChange={setReviewEngine}
+          onModelChange={setReviewModel}
+        />
+        {sessionId && (
           <button
             className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:opacity-90"
-            onClick={onRunReview}
+            onClick={runSelectedReview}
           >
             <PlayCircle size={13} /> {t("runReview")}
           </button>
@@ -91,6 +112,19 @@ function ReviewView({ sessionId, onRunReview }: { sessionId?: string; onRunRevie
 
   return (
     <div className="mt-1 space-y-5">
+      <ReviewSelection
+        engine={reviewEngine}
+        model={reviewModel}
+        models={models}
+        onEngineChange={setReviewEngine}
+        onModelChange={setReviewModel}
+      />
+      <button
+        className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:opacity-90"
+        onClick={runSelectedReview}
+      >
+        <PlayCircle size={13} /> {t("runReview")}
+      </button>
       {runs.map((run) => (
         <section key={run.runId}>
           <div className="sticky top-0 z-10 flex items-center gap-2 bg-bg/95 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted backdrop-blur">
@@ -221,12 +255,10 @@ export function ReviewPage() {
  *  review runs, beside the chat, with a button to run a fresh review. */
 export function ReviewPane({
   sessionId,
-  onRunReview,
   onClose,
   controls,
 }: {
   sessionId: string;
-  onRunReview: () => void;
   onClose: () => void;
   controls?: React.ReactNode;
 }) {
@@ -238,21 +270,58 @@ export function ReviewPane({
         <ShieldCheck size={14} strokeWidth={1.5} className="shrink-0 text-text" />
         <span className="text-sm font-medium text-text">{t("title")}</span>
         <div className="flex-1" />
-        <button
-          className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted hover:bg-surface-2 hover:text-text"
-          title={t("runReview")}
-          onClick={onRunReview}
-        >
-          <PlayCircle size={13} /> {t("runReview")}
-        </button>
         {controls}
         <button className="text-text hover:opacity-60" aria-label={t("closeAria")} onClick={onClose}>
           <X size={14} strokeWidth={1.5} />
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-        <ReviewView sessionId={sessionId} onRunReview={onRunReview} />
+        <ReviewView sessionId={sessionId} />
       </div>
+    </div>
+  );
+}
+
+function ReviewSelection({
+  engine,
+  model,
+  models,
+  onEngineChange,
+  onModelChange,
+}: {
+  engine: string;
+  model: string;
+  models: Array<{ id: string; label: string }>;
+  onEngineChange: (value: string) => void;
+  onModelChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+      <label className="inline-flex items-center gap-1.5">
+        <span>Review engine</span>
+        <select
+          aria-label="Review engine"
+          value={engine}
+          onChange={(event) => onEngineChange(event.target.value)}
+          className="rounded-input border border-border bg-surface-2 px-2 py-1 text-xs text-text"
+        >
+          <option value="codex">Codex</option>
+          <option value="claude-code">Claude Code</option>
+          <option value="opencode">OpenCode</option>
+        </select>
+      </label>
+      <label className="inline-flex items-center gap-1.5">
+        <span>Review model</span>
+        <select
+          aria-label="Review model"
+          value={model}
+          onChange={(event) => onModelChange(event.target.value)}
+          className="max-w-[240px] rounded-input border border-border bg-surface-2 px-2 py-1 text-xs text-text"
+        >
+          <option value="">Default</option>
+          {models.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+        </select>
+      </label>
     </div>
   );
 }

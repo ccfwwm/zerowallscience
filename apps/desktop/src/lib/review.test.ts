@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAutoFixPrompt, buildReviewPrompt, splitReview } from "./review";
+import { buildAutoFixPrompt, buildReviewPrompt, reviewableThreadOutput, splitReview } from "./review";
 import type { ReviewFinding } from "@zerowall/shared";
 
 describe("splitReview", () => {
@@ -79,6 +79,22 @@ describe("splitReview", () => {
     const r = splitReview(malformed);
     expect(r.review).toBeNull();
     expect(r.clean).toBe(malformed);
+  });
+});
+
+describe("reviewableThreadOutput", () => {
+  it("keeps inspectable agent, tool, and artifact output but excludes user prompts", () => {
+    const raw = reviewableThreadOutput([
+      { kind: "user", text: "secret question" },
+      { kind: "agent", markdown: "supported claim" },
+      { kind: "tool-call", title: "Read results.csv", status: "success", output: "42" },
+      { kind: "artifact", path: "report.md", filename: "report.md", artifact: "report", tool: "write" },
+    ]);
+
+    expect(raw).toContain("supported claim");
+    expect(raw).toContain("Read results.csv");
+    expect(raw).toContain("report.md");
+    expect(raw).not.toContain("secret question");
   });
 });
 

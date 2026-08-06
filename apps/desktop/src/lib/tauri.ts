@@ -715,6 +715,9 @@ export interface LatestRelease {
   url: string;
   name: string | null;
   publishedAt: string | null;
+  assetUrl?: string | null;
+  assetName?: string | null;
+  assetSha256?: string | null;
 }
 
 export async function latestRelease(): Promise<LatestRelease | null> {
@@ -1060,6 +1063,41 @@ export async function logDebug(message: string): Promise<void> {
   } catch {
     /* never let diagnostics break the app */
   }
+}
+
+/** Download a release asset into app-data staging. The caller decides when to
+ * open the installer, so an update never interrupts an active turn. */
+export async function downloadUpdate(url: string, filename: string, sha256?: string | null): Promise<string> {
+  if (!isTauri) throw new Error("updates are available in the desktop app only");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("download_update", { url, filename, sha256: sha256 ?? null });
+}
+
+export async function openDownloadedUpdate(path: string): Promise<void> {
+  if (!isTauri) throw new Error("updates are available in the desktop app only");
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("open_downloaded_update", { path });
+}
+
+/** Durable Workflow run storage. The Rust side writes a single app-data JSON
+ * file with a temporary-file + rename commit; browser mode keeps no durable
+ * native state and callers should supply an in-memory fallback. */
+export async function saveWorkflowRun(runId: string, run: unknown): Promise<void> {
+  if (!isTauri) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("workflow_run_save", { runId, run });
+}
+
+export async function loadWorkflowRun<T>(runId: string): Promise<T | null> {
+  if (!isTauri) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<T | null>("workflow_run_load", { runId });
+}
+
+export async function listIncompleteWorkflowRuns<T>(): Promise<T[]> {
+  if (!isTauri) return [];
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<T[]>("workflow_runs_incomplete");
 }
 
 /** Sync the native window appearance with the in-app theme so the macOS

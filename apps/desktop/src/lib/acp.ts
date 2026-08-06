@@ -64,6 +64,7 @@ export interface AcpSkillInfo {
   name: string;
   description: string;
   location: string;
+  sha256: string;
 }
 
 export interface AcpLaunchRequest {

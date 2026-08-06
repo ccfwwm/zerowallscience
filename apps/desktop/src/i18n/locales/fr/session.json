@@ -89,6 +89,15 @@
       "paste": "Impossible d'enregistrer le collage : {{message}}",
       "addFiles": "Impossible d'ajouter les fichiers : {{message}}"
     },
+    "engine": {
+      "aria": "Changer de moteur",
+      "title": "Moteur de l'agent",
+      "changeTo": "Passer à {{engine}}",
+      "newConversation": "Nouvelle conversation",
+      "copyContext": "Copier le contexte",
+      "cancel": "Annuler",
+      "continuePrompt": "Continuer à partir du contexte de cette conversation :"
+    },
     "model": {
       "aria": "Changer de modèle",
       "title": "Modèle et effort de raisonnement",
@@ -131,6 +140,14 @@
     "literature": {
       "title": "Faire une revue de littérature citée",
       "description": "Chercher via les connecteurs activés et bâtir un tableau de preuves résolu en DOIs réels."
+    },
+    "search": {
+      "title": "Rechercher et dédupliquer les articles",
+      "description": "Trouvez les articles pertinents, fusionnez les doublons et gardez un catalogue propre."
+    },
+    "report": {
+      "title": "Générer un rapport de recherche",
+      "description": "Transformez les preuves sélectionnées en un rapport court et traçable."
     },
     "audit": {
       "title": "Auditer la traçabilité d'un rapport",

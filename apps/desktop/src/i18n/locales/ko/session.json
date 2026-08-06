@@ -89,6 +89,15 @@
       "paste": "붙여넣기를 저장할 수 없습니다: {{message}}",
       "addFiles": "파일을 추가할 수 없습니다: {{message}}"
     },
+    "engine": {
+      "aria": "엔진 전환",
+      "title": "에이전트 엔진",
+      "changeTo": "{{engine}}(으)로 전환",
+      "newConversation": "새 대화",
+      "copyContext": "컨텍스트 복사",
+      "cancel": "취소",
+      "continuePrompt": "이 대화의 컨텍스트에서 계속하세요:"
+    },
     "model": {
       "aria": "모델 전환",
       "title": "모델 및 추론 강도",
@@ -131,6 +140,14 @@
     "literature": {
       "title": "인용과 함께 문헌 검토",
       "description": "활성화된 커넥터로 검색해 실제 DOI로 연결되는 근거 표를 만듭니다."
+    },
+    "search": {
+      "title": "논문 검색 및 중복 정리",
+      "description": "관련 논문을 찾고 중복을 합쳐 깔끔한 연구 카탈로그를 만듭니다."
+    },
+    "report": {
+      "title": "연구 보고서 생성",
+      "description": "선택한 근거를 간결하고 추적 가능한 연구 보고서로 정리합니다."
     },
     "audit": {
       "title": "보고서 추적 가능성 감사",

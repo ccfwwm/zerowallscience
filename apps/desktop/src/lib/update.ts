@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { latestRelease } from "./tauri";
+import { downloadUpdate, latestRelease } from "./tauri";
 
 // The public downloads repo that actually holds the releases (see build.yml).
 const RELEASE_URL = "https://api.github.com/repos/ccfwwm/zerowallscience-releases/releases/latest";
@@ -15,6 +15,9 @@ export interface UpdateInfo {
   url: string;
   name: string | null;
   publishedAt: string | null;
+  assetUrl?: string | null;
+  assetName?: string | null;
+  assetSha256?: string | null;
 }
 
 interface GitHubRelease {
@@ -24,9 +27,11 @@ interface GitHubRelease {
   published_at?: string | null;
   draft?: boolean;
   prerelease?: boolean;
+  assets?: Array<{ browser_download_url?: string; name?: string; digest?: string | null }>;
 }
 
 type CheckStatus = "idle" | "checking" | "ready" | "error";
+export type DownloadStatus = "idle" | "downloading" | "ready" | "error";
 
 interface UpdateState {
   enabled: boolean;
@@ -39,11 +44,14 @@ interface UpdateState {
   currentVersion: string;
   hasUpdate: boolean;
   showBadge: boolean;
+  downloadStatus: DownloadStatus;
+  downloadedPath: string | null;
   setEnabled: (enabled: boolean) => void;
   setBadgeEnabled: (enabled: boolean) => void;
   dismissBadge: () => void;
   check: (opts?: { manual?: boolean; now?: number }) => Promise<void>;
   maybeAutoCheck: () => Promise<void>;
+  download: () => Promise<string | null>;
 }
 
 function readBool(key: string, fallback: boolean): boolean {
@@ -147,6 +155,9 @@ async function fetchLatestRelease(): Promise<UpdateInfo> {
     url,
     name: json.name ?? null,
     publishedAt: json.published_at ?? null,
+    assetUrl: json.assets?.[0]?.browser_download_url ?? null,
+    assetName: json.assets?.[0]?.name ?? null,
+    assetSha256: json.assets?.[0]?.digest?.replace(/^sha256:/, "") ?? null,
   };
 }
 
@@ -162,6 +173,8 @@ const initial = {
 export const useUpdateStore = create<UpdateState>((set, get) => ({
   ...initial,
   status: "idle",
+  downloadStatus: "idle",
+  downloadedPath: null,
   error: null,
   ...derive(initial),
   setEnabled: (enabled) => {
@@ -207,4 +220,24 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     }
   },
   maybeAutoCheck: () => get().check({ manual: false }),
+  download: async () => {
+    const latest = get().latest;
+    if (!latest?.assetUrl || !latest.assetName) {
+      set({ downloadStatus: "error", error: "No downloadable installer is available for this platform." });
+      return null;
+    }
+    if (!latest.assetSha256) {
+      set({ downloadStatus: "error", error: "The installer has no published SHA-256 digest." });
+      return null;
+    }
+    set({ downloadStatus: "downloading", error: null });
+    try {
+      const path = await downloadUpdate(latest.assetUrl, latest.assetName, latest.assetSha256);
+      set({ downloadStatus: "ready", downloadedPath: path });
+      return path;
+    } catch (error) {
+      set({ downloadStatus: "error", error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+  },
 }));

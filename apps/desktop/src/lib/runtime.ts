@@ -3,6 +3,8 @@ import {
   OpenCodeClient,
   ZeroWallClient,
   DEFAULT_OPENCODE_URL,
+  type AcpHostInvoke,
+  type WorkflowExecutionContext,
   type AgentInfo,
   type AgentRuntime,
   type CommandInfo,
@@ -16,6 +18,9 @@ import {
   type SessionMeta,
   type SkillInfo,
   type ToolCallStatus,
+  BUILTIN_WORKFLOWS,
+  WorkflowScheduler,
+  type WorkflowRun,
 } from "@zerowall/sdk";
 import type {
   ArtifactBlock,
@@ -69,9 +74,11 @@ import {
 } from "./tauri";
 import { isGatewayWeb, gatewayToken, gatewayOrigin } from "./webMode";
 import { AcpRuntime } from "./acp-runtime";
-import type { AcpLaunchRequest } from "./acp";
+import { acpListMcpServers, acpListSkills, type AcpLaunchRequest } from "./acp";
 import { acpPresetById } from "./acp-presets";
 import { buildAcpLaunchRequest, clearAcpConfig, loadAcpConfig, saveAcpConfig } from "./acp-config";
+import { AcpWorkflowExecutor, TauriWorkflowPersistence } from "./workflow-runtime";
+import { toAcpHostLaunchRequest } from "./acp-host-runtime";
 import {
   deriveAcpConfigs,
   loadProtocol,
@@ -88,6 +95,8 @@ import { provenanceInputsFromEvent, recordProvenance } from "./provenance";
 import { recordRun, runInputFromEvent } from "./runs";
 import { recordUsage, usageInputFromEvent } from "./usage";
 import { splitReview } from "./review";
+import { reviewableThreadOutput } from "./review";
+import { runAcpReview } from "./review-runtime";
 import { splitMethodContext } from "./methodCheck";
 import { splitBioClaims } from "./bioCheck";
 import { splitThink } from "./think";
@@ -185,6 +194,92 @@ function buildOpenCodeHostLaunchRequest(
     },
   };
 }
+
+let workflowScheduler: WorkflowScheduler | null = null;
+
+function resolveWorkflowSnapshot(
+  nodeId: string,
+  overrides?: { mcpAllowList?: string[]; skillsSnapshot?: unknown },
+) {
+  const state = useRuntimeStore.getState();
+  const key = state.currentId ?? DRAFT_KEY;
+  const model = modelForSession(state, key).model;
+  const engine = state.acpProfileId ?? "none";
+  const providerId = model?.includes("/") ? model.slice(0, model.indexOf("/")) : state.providers[0]?.id ?? null;
+  return {
+    bindingSnapshot: {
+      engineId: engine,
+      profileId: state.acpProfileId,
+      modelId: model,
+      providerId,
+      baseUrl: state.serverUrl,
+      variant: modelForSession(state, key).variant ?? null,
+      projectRoot: state.workspace ?? "",
+      profileFingerprint: [engine, model ?? "", state.workspace ?? ""].join("|"),
+      resolvedAt: new Date().toISOString(),
+      nodeId,
+    },
+    mcpAllowList: overrides?.mcpAllowList ?? [],
+    skillsSnapshot: overrides?.skillsSnapshot ?? state.skills.map((skill) => ({ id: skill.name, description: skill.description, location: skill.location ?? null })),
+  };
+}
+
+function getWorkflowScheduler(): WorkflowScheduler {
+  if (workflowScheduler) return workflowScheduler;
+  const persistence = new TauriWorkflowPersistence();
+  const invoke: AcpHostInvoke = async <T>(command: string, args?: Record<string, unknown>) => {
+    if (!isTauri) throw new Error("Workflow execution requires the desktop app");
+    const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
+    return tauriInvoke<T>(command, args);
+  };
+  const executor = new AcpWorkflowExecutor({
+    invoke,
+    resolveLaunch: (context: WorkflowExecutionContext) => {
+      const state = useRuntimeStore.getState();
+      const snapshot = (context.node.bindingSnapshot ?? {}) as Record<string, unknown>;
+      const profileId = typeof snapshot.engineId === "string" ? snapshot.engineId : state.acpProfileId;
+      const selectedModel = typeof snapshot.modelId === "string" ? snapshot.modelId : null;
+      const providerId = typeof snapshot.providerId === "string" ? snapshot.providerId : state.providers[0]?.id ?? "default";
+      const baseUrl = typeof snapshot.baseUrl === "string" ? snapshot.baseUrl : state.serverUrl;
+      if (!profileId) throw new Error("Select an engine before starting a workflow");
+      let launch: AcpLaunchRequest;
+      if (profileId === "opencode") {
+        launch = buildOpenCodeHostLaunchRequest(baseUrl, selectedModel, state.providers);
+        launch = { ...launch, gateway: { ...launch.gateway, providerId } };
+      } else {
+        const preset = acpPresetById(profileId);
+        if (!preset) throw new Error(`Unknown ACP engine: ${profileId}`);
+        launch = buildAcpLaunchRequest(preset, undefined);
+        if (selectedModel) {
+          const slash = selectedModel.indexOf("/");
+          launch = {
+            ...launch,
+            gateway: { ...launch.gateway, model: slash > 0 ? selectedModel.slice(slash + 1) : selectedModel },
+          };
+        }
+      }
+      return {
+        ...toAcpHostLaunchRequest(launch, `workflow:${context.run.id}:${context.node.id}`),
+        profileFingerprint: typeof snapshot.profileFingerprint === "string"
+          ? snapshot.profileFingerprint
+          : launch.profileId,
+      };
+    },
+    resolveSnapshot: ({ nodeId }) => resolveWorkflowSnapshot(nodeId),
+  });
+  workflowScheduler = new WorkflowScheduler(executor, persistence);
+  workflowScheduler.onEvent((event) => {
+    useRuntimeStore.setState((state) => {
+      if (event.type === "run.updated") {
+        return { workflowRuns: { ...state.workflowRuns, [event.run.id]: event.run } };
+      }
+      const current = state.workflowRuns[event.runId];
+      if (!current) return {};
+      return { workflowRuns: { ...state.workflowRuns, [event.runId]: { ...current, nodes: { ...current.nodes, [event.node.id]: event.node } } } };
+    });
+  });
+  return workflowScheduler;
+}
 function initialSelectedAgent(): AgentRole {
   if (typeof window === "undefined") return "general";
   return (window.localStorage.getItem(SELECTED_AGENT_KEY) as AgentRole) || "general";
@@ -234,6 +329,10 @@ interface RuntimeState {
    *  (before connecting) and the settings card. */
   ensureAutoProvisioned: () => Promise<void>;
   sessions: SessionMeta[];
+  /** Durable DAG runs driven by the unified ACP Host. */
+  workflowRuns: Record<string, WorkflowRun>;
+  startWorkflow: (workflowId: string, sessionId?: string, draftKey?: string) => Promise<string | null>;
+  recoverWorkflows: () => Promise<void>;
   currentId: string | null;
   threads: Record<string, Thread>;
   skills: SkillInfo[];
@@ -413,6 +512,8 @@ interface RuntimeState {
     draftKey?: string,
     attachments?: PromptAttachment[],
   ) => Promise<string | null>;
+  /** Run an isolated, read-only ACP review for an existing session. */
+  runReview: (sessionId?: string, engineId?: string, modelId?: string) => Promise<void>;
   /** Run a "!" shell command directly in the session's workspace folder —
    *  no model turn; the output folds into the thread as a bash tool row. */
   runShell: (command: string, sessionId?: string, draftKey?: string) => Promise<string | null>;
@@ -1547,6 +1648,54 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   serverUrl: initialUrl(),
   acpProfileId: initialAcpProfileId(),
   sessions: [],
+  workflowRuns: {},
+  startWorkflow: async (workflowId, _sessionId, _draftKey) => {
+    const state = get();
+    if (state.webReadOnly || !isTauri) {
+      set({ error: "Workflows require the desktop app." });
+      return null;
+    }
+    const definition = BUILTIN_WORKFLOWS.find((workflow) => workflow.id === workflowId);
+    if (!definition) {
+      set({ error: `Unknown workflow: ${workflowId}` });
+      return null;
+    }
+    if (!state.acpProfileId) {
+      set({ error: "Select an engine before starting a workflow." });
+      return null;
+    }
+    try {
+      const scheduler = getWorkflowScheduler();
+      const [mcpServers, acpSkills] = await Promise.all([
+        acpListMcpServers().catch(() => []),
+        acpListSkills(state.acpProfileId).catch(() => []),
+      ]);
+      const mcpAllowList = mcpServers.map((server) => server.name);
+      const skillsSnapshot = acpSkills.length > 0
+        ? acpSkills.map((skill) => ({ id: skill.name, version: "installed", sha256: skill.sha256, location: skill.location }))
+        : undefined;
+      const run = await scheduler.createRun(definition, undefined, {
+        resolveNodeSnapshot: (node) => resolveWorkflowSnapshot(node.id, { mcpAllowList, skillsSnapshot }),
+      });
+      set((current) => ({ workflowRuns: { ...current.workflowRuns, [run.id]: run } }));
+      void scheduler.start(run.id)
+        .then((completed) => set((current) => ({ workflowRuns: { ...current.workflowRuns, [completed.id]: completed } })))
+        .catch((error) => set({ error: error instanceof Error ? error.message : String(error) }));
+      return run.id;
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+  },
+  recoverWorkflows: async () => {
+    if (!isTauri || get().webReadOnly) return;
+    try {
+      const recovered = await getWorkflowScheduler().recoverIncomplete();
+      set((state) => ({ workflowRuns: { ...state.workflowRuns, ...Object.fromEntries(recovered.map((run) => [run.id, run])) } }));
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
+    }
+  },
   currentId: null,
   threads: {},
   turnUndoBaseline: {},
@@ -2451,9 +2600,11 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       if (get().acpProfileId) {
         void logDebug("bootstrap: OpenCode started (config only), connecting ACP runtime");
         await get().connect();
+        await get().recoverWorkflows();
         return;
       }
       await get().connectRetry();
+      await get().recoverWorkflows();
       // A remote client (LAN web / CLI) that creates or deletes a session emits
       // no OpenCode session event, so the gateway pings us to re-list — its
       // sessions then show up in the sidebar exactly like locally-made ones.
@@ -2753,6 +2904,92 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       }));
     } catch {
       /* best-effort; the pane keeps its skeleton and loads on focus */
+    }
+  },
+
+  runReview: async (sessionId, reviewEngineId, reviewModelId) => {
+    const state = get();
+    const sid = sessionId ?? state.currentId;
+    const selectedEngine = reviewEngineId || state.acpProfileId;
+    if (!sid || !selectedEngine) {
+      set({ error: "An ACP engine must be connected before running an isolated review." });
+      return;
+    }
+    const thread = state.threads[sid];
+    if (!thread) {
+      set({ error: "The session has no inspectable output to review." });
+      return;
+    }
+    const rawOutput = reviewableThreadOutput(thread.blocks);
+    if (!rawOutput.trim() || rawOutput === "[]") {
+      set((current) => ({
+        threads: {
+          ...current.threads,
+          [sid]: {
+            ...thread,
+            blocks: [
+              ...thread.blocks,
+              { kind: "status-line", text: "Unreviewable — no inspectable output is available.", tone: "error" },
+            ],
+          },
+        },
+      }));
+      return;
+    }
+
+    try {
+      const selectedModel = reviewModelId || modelForSession(state, sid).model;
+      let launch: AcpLaunchRequest;
+      if (selectedEngine === "opencode") {
+        launch = buildOpenCodeHostLaunchRequest(state.serverUrl, selectedModel, state.providers, sid);
+      } else {
+        const preset = acpPresetById(selectedEngine);
+        if (!preset) throw new Error(`Unknown ACP engine: ${selectedEngine}`);
+        launch = buildAcpLaunchRequest(preset, sid);
+        if (selectedModel) {
+          const slash = selectedModel.indexOf("/");
+          launch = {
+            ...launch,
+            gateway: { ...launch.gateway, model: slash > 0 ? selectedModel.slice(slash + 1) : selectedModel },
+          };
+        }
+      }
+      const invoke: AcpHostInvoke = async <T>(command: string, args?: Record<string, unknown>) => {
+        const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
+        return tauriInvoke<T>(command, args);
+      };
+      const result = await runAcpReview(launch, rawOutput, invoke);
+      const { clean, review } = splitReview(result.output);
+      const additions: ThreadBlock[] = [];
+      if (clean.trim()) additions.push({ kind: "agent", markdown: clean });
+      if (review) {
+        additions.push({
+          ...review,
+          metadata: {
+            engine: result.engine,
+            model: result.model,
+            coverage: result.coverage,
+            timeoutMs: result.timeoutMs,
+            evidenceReferences: result.evidenceReferences,
+            verdict: result.verdict,
+            ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}),
+          },
+        });
+      }
+      if (result.status === "unreviewable") {
+        additions.push({ kind: "status-line", text: "Unreviewable — no inspectable output was available.", tone: "error" });
+      } else if (result.status !== "completed") {
+        additions.push({ kind: "status-line", text: result.diagnostic ?? "Review did not complete.", tone: "error" });
+      }
+      if (additions.length > 0) {
+        set((current) => {
+          const currentThread = current.threads[sid];
+          if (!currentThread) return {};
+          return { threads: { ...current.threads, [sid]: { ...currentThread, blocks: [...currentThread.blocks, ...additions] } } };
+        });
+      }
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
     }
   },
 

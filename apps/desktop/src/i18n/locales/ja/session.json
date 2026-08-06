@@ -89,6 +89,15 @@
       "paste": "貼り付けを保存できませんでした: {{message}}",
       "addFiles": "ファイルを追加できませんでした: {{message}}"
     },
+    "engine": {
+      "aria": "エンジンを切り替え",
+      "title": "エージェントエンジン",
+      "changeTo": "{{engine}} に切り替え",
+      "newConversation": "新しい会話",
+      "copyContext": "コンテキストをコピー",
+      "cancel": "キャンセル",
+      "continuePrompt": "この会話のコンテキストから続けてください:"
+    },
     "model": {
       "aria": "モデルを切り替え",
       "title": "モデルと推論の強度",
@@ -131,6 +140,14 @@
     "literature": {
       "title": "引用付きで文献を調査",
       "description": "有効な各コネクタで検索し、実在する DOI に解決するエビデンス表を作成します。"
+    },
+    "search": {
+      "title": "論文を検索して重複を整理",
+      "description": "関連論文を検索し、重複をまとめて研究カタログを整えます。"
+    },
+    "report": {
+      "title": "研究レポートを生成",
+      "description": "選択した証拠から簡潔で追跡可能なレポートを作成します。"
     },
     "audit": {
       "title": "レポートの追跡可能性を監査",

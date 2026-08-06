@@ -132,13 +132,19 @@ pub struct StoredReviewRun {
 /// declaration order, so the same block always serializes to the same bytes and
 /// therefore the same SHA-256 — which is what lets `ensure_run` recognize a run
 /// it already stored instead of duplicating it every time the card mounts.
-fn run_body(findings: &[FindingInput], note: Option<&str>) -> Result<String, String> {
+fn run_body_with_metadata(
+    findings: &[FindingInput],
+    note: Option<&str>,
+    metadata: Option<&serde_json::Value>,
+) -> Result<String, String> {
     #[derive(serde::Serialize)]
     struct Body<'a> {
         findings: &'a [FindingInput],
         note: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        metadata: Option<&'a serde_json::Value>,
     }
-    serde_json::to_string(&Body { findings, note })
+    serde_json::to_string(&Body { findings, note, metadata })
         .map_err(|error| format!("serialize review body: {error}"))
 }
 
@@ -171,6 +177,7 @@ fn validate(value: &str, allowed: &[&str], what: &str) -> Result<(), String> {
 ///
 /// The whole insert is one transaction: a run with only some of its claims would
 /// read back as a review that lost findings.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn ensure_run(
     conn: &Connection,
     root: &Path,
@@ -179,10 +186,22 @@ pub fn ensure_run(
     findings: &[FindingInput],
     note: Option<&str>,
 ) -> Result<StoredReview, String> {
+    ensure_run_with_metadata(conn, root, project_id, session_id, findings, note, None)
+}
+
+pub fn ensure_run_with_metadata(
+    conn: &Connection,
+    root: &Path,
+    project_id: &str,
+    session_id: &str,
+    findings: &[FindingInput],
+    note: Option<&str>,
+    metadata: Option<&serde_json::Value>,
+) -> Result<StoredReview, String> {
     for finding in findings {
         validate(&finding.level, &VERIFICATION_RESULTS, "verification result")?;
     }
-    let summary_ref = science_store::put_text(root, &run_body(findings, note)?)?;
+    let summary_ref = science_store::put_text(root, &run_body_with_metadata(findings, note, metadata)?)?;
 
     let existing: Option<String> = conn
         .query_row(
@@ -537,15 +556,17 @@ pub fn review_sync(
     session_id: String,
     findings: Vec<FindingInput>,
     note: Option<String>,
+    metadata: Option<serde_json::Value>,
 ) -> Result<StoredReview, String> {
     let (root, conn, project_id) = open(&app)?;
-    ensure_run(
+    ensure_run_with_metadata(
         &conn,
         &root,
         &project_id,
         &session_id,
         &findings,
         note.as_deref(),
+        metadata.as_ref(),
     )
 }
 

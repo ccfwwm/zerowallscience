@@ -58,7 +58,7 @@ function hostEngine(profileId: string): AgentEngine {
   throw new Error(`Unsupported ACP Host engine: ${profileId}`);
 }
 
-function hostLaunchRequest(request: AcpLaunchRequest, sessionId: string) {
+export function toAcpHostLaunchRequest(request: AcpLaunchRequest, sessionId: string) {
   return {
     engine: hostEngine(request.profileId),
     profileId: request.profileId,
@@ -159,7 +159,7 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
       await hostState.client.loadSession(
         sessionId,
         currentRequest
-          ? hostLaunchRequest(currentRequest, sessionId)
+          ? toAcpHostLaunchRequest(currentRequest, sessionId)
           : undefined,
       );
     }
@@ -187,7 +187,7 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
       const engine = hostEngine(request.profileId);
       await client.initialize(engine);
       const session = await client.launch(
-        hostLaunchRequest(request, request.conversationId?.trim() || request.profileId),
+        toAcpHostLaunchRequest(request, request.conversationId?.trim() || request.profileId),
       );
       hostState = { client, sessionId: session.id, unsubscribe: null };
       if (pendingHandlers) attach(pendingHandlers);
@@ -210,7 +210,7 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
     createSession: async (request) => {
       if (!hostState) throw new Error("ACP Host session is not running");
       const session = await hostState.client.newSession(
-        hostLaunchRequest(request, request.conversationId?.trim() || request.profileId),
+        toAcpHostLaunchRequest(request, request.conversationId?.trim() || request.profileId),
       );
       await activate(session.id);
       return session.id;
@@ -220,7 +220,7 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
       const persisted = await hostState.client.listSessions();
       const discovered = currentRequest?.profileId === "opencode"
         ? await hostState.client.discoverSessions(
-          hostLaunchRequest(currentRequest, currentRequest.conversationId?.trim() || currentRequest.profileId),
+          toAcpHostLaunchRequest(currentRequest, currentRequest.conversationId?.trim() || currentRequest.profileId),
         ).catch(() => [])
         : [];
       const merged = new Map(persisted.map((session) => [session.id, session]));
@@ -241,7 +241,7 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
         await hostState.client.loadSession(
           sessionId,
           currentRequest
-            ? hostLaunchRequest(currentRequest, sessionId)
+            ? toAcpHostLaunchRequest(currentRequest, sessionId)
             : undefined,
         );
       }

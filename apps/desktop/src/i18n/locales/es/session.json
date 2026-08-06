@@ -89,6 +89,15 @@
       "paste": "No se pudo guardar el contenido pegado: {{message}}",
       "addFiles": "No se pudieron añadir los archivos: {{message}}"
     },
+    "engine": {
+      "aria": "Cambiar motor",
+      "title": "Motor del agente",
+      "changeTo": "Cambiar a {{engine}}",
+      "newConversation": "Nueva conversación",
+      "copyContext": "Copiar contexto",
+      "cancel": "Cancelar",
+      "continuePrompt": "Continúa desde el contexto de esta conversación:"
+    },
     "model": {
       "aria": "Cambiar de modelo",
       "title": "Modelo y esfuerzo de razonamiento",
@@ -131,6 +140,14 @@
     "literature": {
       "title": "Revisar la literatura con citas",
       "description": "Buscar mediante los conectores activados y construir una tabla de evidencia con DOIs reales."
+    },
+    "search": {
+      "title": "Buscar y deduplicar artículos",
+      "description": "Encuentra artículos relevantes, combina duplicados y conserva un catálogo limpio."
+    },
+    "report": {
+      "title": "Generar un informe de investigación",
+      "description": "Convierte la evidencia seleccionada en un informe breve y trazable."
     },
     "audit": {
       "title": "Auditar la trazabilidad de un informe",

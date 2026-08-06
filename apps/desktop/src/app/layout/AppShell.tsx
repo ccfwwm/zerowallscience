@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Outlet, useLocation } from "react-router-dom";
-import { PanelLeft } from "lucide-react";
+import { Download, Loader2, PanelLeft, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { CommandPalette } from "@/components/command-palette/CommandPalette";
@@ -11,7 +11,7 @@ import { useRuntimeStore } from "@/lib/runtime";
 import { ensureDefaultConnectors, ensureSetupProgressListener, healJupyterMcpEnv } from "@/lib/setup";
 import { useOverlayTitlebar, useUiStore } from "@/lib/store";
 import { overlayTitlebarStyle } from "@/lib/titlebar";
-import { ensureJupyter, openExternal, watchFullscreen } from "@/lib/tauri";
+import { ensureJupyter, openDownloadedUpdate, openExternal, watchFullscreen } from "@/lib/tauri";
 import { useUpdateStore } from "@/lib/update";
 import { isGatewayWeb, gatewayToken, setUnauthorizedHandler } from "@/lib/webMode";
 import { WebTokenGate } from "@/components/web/WebTokenGate";
@@ -25,6 +25,16 @@ export function AppShell() {
   const isMobile = useIsMobile();
   // Gateway web client: hold the app behind a token gate until authenticated.
   const [webReady, setWebReady] = useState(!isGatewayWeb || !!gatewayToken());
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const updateAvailable = useUpdateStore((s) => s.hasUpdate);
+  const latestUpdate = useUpdateStore((s) => s.latest);
+  const downloadedPath = useUpdateStore((s) => s.downloadedPath);
+  const downloadStatus = useUpdateStore((s) => s.downloadStatus);
+  const download = useUpdateStore((s) => s.download);
+
+  useEffect(() => {
+    if (updateAvailable && !import.meta.env.TEST) setUpdateOpen(true);
+  }, [updateAvailable]);
 
   // Cmd/Ctrl+B toggles the sidebar, matching the button's tooltip. Not in
   // settings: there the sidebar IS the settings navigation (with the only way
@@ -246,7 +256,54 @@ export function AppShell() {
       <CommandPalette />
       <Toaster />
       <PaneDragGhost />
+      {updateOpen && latestUpdate && (
+        <UpdateDialog
+          latest={latestUpdate}
+          status={downloadStatus}
+          downloadedPath={downloadedPath}
+          onDownload={() => void download()}
+          onOpen={() => downloadedPath && void openDownloadedUpdate(downloadedPath)}
+          onClose={() => setUpdateOpen(false)}
+        />
+      )}
     </div>
     </DesktopLoginGate>
+  );
+}
+
+function UpdateDialog({ latest, status, downloadedPath, onDownload, onOpen, onClose }: {
+  latest: { version: string; assetName?: string | null };
+  status: "idle" | "downloading" | "ready" | "error";
+  downloadedPath: string | null;
+  onDownload: () => void;
+  onOpen: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation(["settings"]);
+  return (
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/35 p-6">
+      <section role="dialog" aria-modal="true" aria-label={t("updates.title")} className="w-full max-w-md rounded-card border border-border bg-surface p-5 shadow-xl">
+        <div className="flex items-start gap-3">
+          <Download size={18} className="mt-0.5 text-accent" />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-semibold text-text">{t("updates.available")}</h2>
+            <p className="mt-1 text-sm text-muted">{t("updates.latestVersion", { version: latest.version })}</p>
+            {latest.assetName && <p className="mt-1 truncate font-mono text-xs text-muted">{latest.assetName}</p>}
+          </div>
+          <button aria-label={t("updates.close", { defaultValue: "Close" })} onClick={onClose} className="text-muted hover:text-text"><X size={15} /></button>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-md px-3 py-1.5 text-xs text-muted hover:bg-surface-2">{t("updates.later", { defaultValue: "Later" })}</button>
+          {status === "ready" && downloadedPath ? (
+            <button onClick={onOpen} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg"><Download size={13} /> {t("updates.openInstaller", { defaultValue: "Open installer" })}</button>
+          ) : (
+            <button disabled={status === "downloading"} onClick={onDownload} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg disabled:opacity-60">
+              {status === "downloading" ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              {status === "downloading" ? t("updates.downloading", { defaultValue: "Downloading…" }) : t("updates.download", { defaultValue: "Download update" })}
+            </button>
+          )}
+        </div>
+      </section>
+    </div>
   );
 }

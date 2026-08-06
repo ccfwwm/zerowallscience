@@ -1,5 +1,11 @@
 # Progress
 
+2026-08-07 05:03 · 更新通道新增桌面可用版本弹窗、按平台选择发布资产、HTTPS 下载、临时文件替换、GitHub digest SHA-256 校验和安装程序打开入口；Tauri/前端类型检查通过。
+
+2026-08-07 04:18 · Workflow starter 已接入真实 DAG scheduler；桌面 Workflow Executor 的 agent/review 节点统一调用 ACP Host，Tauri workflow JSON 原子持久化接入并在启动恢复未完成 run；修复慢持久化重复 start 与活动 retry/resume 竞态，增加 Engine/Model/MCP/Skills 节点快照和审查引擎/模型选择器；SDK 13 项 workflow 测试、桌面 typecheck、Tauri workflow_store 2 项测试通过。
+
+2026-08-07 03:40 · Workflow Scheduler 修复共享 run 状态、暂停/取消竞态、全局 mutation lane、blocked 传播、retry 与重启恢复；加入四个内置工作流、独立 ACP ReviewSessionRunner（只读权限拒绝、90 秒超时、Unreviewable）及桌面审查入口；SDK/桌面定向测试和 typecheck 通过。
+
 2026-08-07 02:48 · 统一 ACP Host 为 Codex/Claude 注入 app-managed MCP descriptors；MCP 探测失败按可选能力降级为空列表，不阻塞主会话启动；Tauri cargo check 通过。
 
 2026-08-07 02:42 · 桌面默认 OpenCode 启动切换到统一 ACP Host：无历史引擎选择时默认 `opencode`，显式 Codex/Claude/OpenCode 选择优先，网关 Web 继续使用原运行时；新增初始引擎决策回归测试。

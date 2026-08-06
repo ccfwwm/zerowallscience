@@ -6,6 +6,8 @@ import {
   type ReviewCheck,
   type ReviewFinding,
   type ReviewerBlock,
+  type ReviewMetadata,
+  type ThreadBlock,
 } from "@zerowall/shared";
 import { isTauri } from "./tauri";
 import { isGatewayWeb } from "./webMode";
@@ -23,6 +25,25 @@ const CHECKS: ReviewCheck[] = [
   "reasoning_trace",
   "bio_plausibility",
 ];
+
+const REVIEWABLE_BLOCKS = new Set<ThreadBlock["kind"]>([
+  "agent",
+  "reasoning",
+  "tool-call",
+  "reviewer",
+  "method-context",
+  "bio-claims",
+  "table",
+  "figure",
+  "artifact",
+  "usage",
+]);
+
+/** Serialize only inspectable work product. User prompts and interaction/status
+ * controls are context, not evidence, and never enter an isolated review. */
+export function reviewableThreadOutput(blocks: ThreadBlock[]): string {
+  return JSON.stringify(blocks.filter((block) => REVIEWABLE_BLOCKS.has(block.kind)), null, 2);
+}
 
 /**
  * Extract a structured reviewer result the agent was asked to emit as a
@@ -174,6 +195,7 @@ export const canPersistReview = isTauri && !isGatewayWeb;
 export async function syncReview(
   sessionId: string,
   block: ReviewerBlock,
+  metadata?: ReviewMetadata,
 ): Promise<StoredReview | null> {
   if (!canPersistReview) return null;
   const { invoke } = await import("@tauri-apps/api/core");
@@ -181,6 +203,7 @@ export async function syncReview(
     sessionId,
     findings: block.findings,
     note: block.note ?? null,
+    metadata: metadata ?? block.metadata ?? null,
   });
 }
 

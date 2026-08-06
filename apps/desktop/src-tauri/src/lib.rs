@@ -37,6 +37,7 @@ mod tools;
 mod macos;
 mod updates;
 mod usage_store;
+mod workflow_store;
 mod uv;
 mod wsl;
 
@@ -240,6 +241,9 @@ pub fn run() {
             review_store::review_resolve,
             review_store::review_reopen,
             review_store::review_list,
+            workflow_store::workflow_run_save,
+            workflow_store::workflow_run_load,
+            workflow_store::workflow_runs_incomplete,
             usage_store::usage_record,
             usage_store::usage_by_session,
             usage_store::usage_by_workspace,
@@ -309,6 +313,8 @@ pub fn run() {
             large_file::probe_large_file,
             tools::detect_tools,
             updates::latest_release,
+            updates::download_update,
+            updates::open_downloaded_update,
             debug_log::log_debug
         ])
         .build(tauri::generate_context!())

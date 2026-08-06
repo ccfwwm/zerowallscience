@@ -1,28 +1,47 @@
 import { useTranslation } from "react-i18next";
-import { ChevronRight } from "lucide-react";
+import { BookOpen, ChevronRight, FileText, FlaskConical, Search } from "lucide-react";
 export interface WorkflowStarter {
   id: string;
+  workflowId: string;
   icon: React.ReactNode;
   /** Sent to the agent as-is — content, not UI copy, so it is never translated.
    *  The card's display title/description live in `session:starters.<id>.*`. */
   prompt: string;
 }
 
-/**
- * The empty-session on-ramp. Intentionally empty: the default prompts were
- * removed at the user's request so the new-session screen shows only the
- * welcome, not a preset workflow list. Re-add entries here (with matching
- * `session:starters.<id>.{title,description}` i18n keys) to bring the card
- * grid back — the render path below draws one row per entry.
- */
-export const WORKFLOW_STARTERS: WorkflowStarter[] = [];
+/** The four shipped workflows are a compact on-ramp for a new research session. */
+export const WORKFLOW_STARTERS: WorkflowStarter[] = [
+  {
+    id: "literature",
+    workflowId: "literature-evidence-review",
+    icon: <BookOpen size={17} strokeWidth={1.8} />,
+    prompt: "Run the literature evidence review workflow for this research question.",
+  },
+  {
+    id: "search",
+    workflowId: "paper-search-deduplication",
+    icon: <Search size={17} strokeWidth={1.8} />,
+    prompt: "Run the paper search and deduplication workflow.",
+  },
+  {
+    id: "reproducible",
+    workflowId: "reproducible-experiment",
+    icon: <FlaskConical size={17} strokeWidth={1.8} />,
+    prompt: "Run the reproducible experiment workflow for this analysis.",
+  },
+  {
+    id: "report",
+    workflowId: "report-generation",
+    icon: <FileText size={17} strokeWidth={1.8} />,
+    prompt: "Run the report generation workflow from the selected evidence.",
+  },
+];
 
 /**
  * Empty-session welcome: a quiet, centered composition in the app's paper
- * aesthetic. The conversation is the point, so the copy invites a message
- * first; the starters below are an optional on-ramp, not a dashboard.
+ * aesthetic. The workflow rows are an optional on-ramp, not a dashboard.
  */
-export function WorkflowStarters({ onPick }: { onPick: (prompt: string) => void }) {
+export function WorkflowStarters({ onPick }: { onPick: (starter: WorkflowStarter) => void }) {
   const { t } = useTranslation(["session", "common"]);
   // Card copy is looked up per starter id at `session:starters.<id>.{title,
   // description}`. t()'s generated key type rejects a dynamic template, so we
@@ -48,7 +67,7 @@ export function WorkflowStarters({ onPick }: { onPick: (prompt: string) => void 
             {WORKFLOW_STARTERS.map((s) => (
               <button
                 key={s.id}
-                onClick={() => onPick(s.prompt)}
+                onClick={() => onPick(s)}
                 className="group flex w-full items-center gap-3.5 border-t border-border px-4 py-3.5 text-left transition-colors first:border-t-0 hover:bg-surface-2"
               >
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface-2 text-accent ring-1 ring-border transition-colors group-hover:bg-surface">

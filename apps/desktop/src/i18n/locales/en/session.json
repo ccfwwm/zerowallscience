@@ -141,6 +141,14 @@
       "title": "Review the literature with citations",
       "description": "Search through the enabled connectors and build an evidence table that resolves to real DOIs."
     },
+    "search": {
+      "title": "Search and deduplicate papers",
+      "description": "Find relevant papers, merge duplicates, and keep a clean research catalog."
+    },
+    "report": {
+      "title": "Generate a research report",
+      "description": "Turn selected evidence into a concise, traceable research report."
+    },
     "audit": {
       "title": "Audit a report for traceability",
       "description": "Check citations, unsourced numbers, and figure-versus-code consistency."

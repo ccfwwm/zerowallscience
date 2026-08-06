@@ -199,6 +199,18 @@ export interface ReviewerBlock {
   kind: "reviewer";
   findings: ReviewFinding[];
   note?: string;
+  /** Immutable provenance for the isolated review session. */
+  metadata?: ReviewMetadata;
+}
+
+export interface ReviewMetadata {
+  engine: string;
+  model: string;
+  coverage: number;
+  timeoutMs: number;
+  evidenceReferences: string[];
+  verdict: "Reviewable" | "Unreviewable";
+  diagnostic?: string;
 }
 
 /**
