@@ -16,8 +16,9 @@
 //    path to purpose-built ACP approval UI, NOT through `replyPermission`.
   //  - plan (task checklist) — see acp-normalize.ts. The ACP session UI renders
   //    it directly.
-//  - agents / commands / model catalog — an ACP agent is configured by its
-//    launch env, not discoverable over this protocol. Skills are the exception:
+//  - agents / commands / model catalog — the native adapters do not expose a
+//    portable catalog request. Model selection itself is supported through the
+//    adapter session/set_model extension. Skills are the exception:
 //    ZeroWall owns the isolated ACP skills directory and lists it natively.
 //
 // Testability: every Tauri touchpoint is injected via `AcpRuntimeDeps`, so the
@@ -41,6 +42,7 @@ import {
   acpCancel,
   acpListSkills,
   acpLaunch,
+  acpSetModel,
   acpPrompt,
   acpShutdown,
   subscribeAcp,
@@ -59,6 +61,7 @@ import { acpToolCallToEvent } from "./acp-normalize";
 export interface AcpRuntimeDeps {
   launch: (request: AcpLaunchRequest) => Promise<AcpStatus>;
   prompt: (text: string, attachments?: AcpPromptAttachment[]) => Promise<void>;
+  setModel: (model: string) => Promise<void>;
   cancel: () => Promise<void>;
   shutdown: () => Promise<AcpStatus>;
   subscribe: (handlers: AcpEventHandlers) => Promise<() => void>;
@@ -68,6 +71,7 @@ export interface AcpRuntimeDeps {
 const REAL_DEPS: AcpRuntimeDeps = {
   launch: acpLaunch,
   prompt: acpPrompt,
+  setModel: acpSetModel,
   cancel: acpCancel,
   shutdown: acpShutdown,
   subscribe: subscribeAcp,
@@ -123,6 +127,8 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
   /** Last cumulative ACP prompt usage observed. ACP reports session totals,
    * so every persisted row must contain the delta from this baseline. */
   private previousTokenUsage: AcpTokenUsagePayload | null = null;
+  /** Avoid replacing an exact usage row with an unavailable terminal stamp. */
+  private exactUsageEmittedForTurn = false;
   /** Wall-clock timing starts when the prompt is accepted by the ACP bridge. */
   private turnStartedAt: number | null = null;
   /** Distinguishes null-`message_id` chunks across turns so two turns' worth of
@@ -180,6 +186,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     this.completedMessageId = null;
     this.completedTurnDurationMs = undefined;
     this.previousTokenUsage = null;
+    this.exactUsageEmittedForTurn = false;
   }
 
   /** The `acp:*` handlers this runtime consumes: conversation content and
@@ -329,6 +336,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
 
   private emitTurnUsage(tokenUsage?: AcpTokenUsagePayload): void {
     const payload = this.turnUsage;
+    if (!tokenUsage && payload?.token_usage && this.exactUsageEmittedForTurn) return;
     const messageID = this.currentMessageId ?? `acp-turn-${this.turnSeq}`;
     this.emitUsage(messageID, payload, undefined, tokenUsage);
   }
@@ -339,7 +347,9 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     durationMs = this.turnStartedAt === null ? undefined : Math.max(0, Date.now() - this.turnStartedAt),
     tokenUsage?: AcpTokenUsagePayload,
   ): void {
-    const exact = tokenUsage ? this.tokenUsageDelta(tokenUsage) : null;
+    const rawExact = tokenUsage ?? payload?.token_usage;
+    const exact = rawExact ? this.tokenUsageDelta(rawExact) : null;
+    if (exact) this.exactUsageEmittedForTurn = true;
     this.emit({
       type: "usage",
       sessionId: this.sessionId,
@@ -385,7 +395,8 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
   }
 
   async listSessions(): Promise<SessionMeta[]> {
-    return [{ id: this.sessionId, title: this.sessionId }];
+    const title = this.request.profileId === "claude-code" ? "Claude Code" : "Codex";
+    return [{ id: this.sessionId, title }];
   }
 
   async deleteSession(): Promise<void> {
@@ -405,13 +416,14 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     _variant?: string | null,
     attachments?: PromptAttachment[],
   ): Promise<void> {
-    // Agent/model/variant are fixed by the ACP launch environment. Attachments
-    // are different: ACP v1 has native image and text content blocks, so they
+    // Agent/model/variant are selected by the ACP session. Attachments are
+    // different: ACP v1 has native image and text content blocks, so they
     // must cross this bridge instead of becoming a UI-only thumbnail.
     // A later usage update can only belong to the previous reply until the
     // next prompt is accepted. Clear that association at this turn boundary.
     this.completedMessageId = null;
     this.completedTurnDurationMs = undefined;
+    this.exactUsageEmittedForTurn = false;
     this.turnStartedAt = Date.now();
     if (attachments && attachments.length > 0) {
       await this.deps.prompt(text, attachments);
@@ -446,14 +458,17 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     return [];
   }
 
-  // ---- model selection (fixed by launch env) ----
+  // ---- model selection ----
 
   async getDefaultModel(): Promise<string | null> {
     return null;
   }
 
-  async setDefaultModel(): Promise<void> {
-    // The model is chosen by the launch environment, not switchable per turn.
+  async setDefaultModel(model: string): Promise<void> {
+    const slash = model.indexOf("/");
+    const modelId = slash >= 0 ? model.slice(slash + 1) : model;
+    if (!modelId) throw new Error("ACP model id is required");
+    await this.deps.setModel(modelId);
   }
 
   // ---- agent-driven execution (no ad-hoc shell / command over ACP) ----

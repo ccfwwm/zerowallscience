@@ -2,28 +2,22 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { WorkspaceUsage } from "@zerowall/shared";
-import { usageByWorkspace, usageActiveMultiplier } from "@/lib/usage";
-import { formatCost, formatCount } from "@/lib/usageFormat";
+import { usageByWorkspace } from "@/lib/usage";
+import { formatCount } from "@/lib/usageFormat";
 import { Section } from "./Section";
 import i18n from "@/i18n";
 
 /**
- * Settings → Usage: cumulative token/cost totals for the workspace, plus a
+ * Settings → Usage: cumulative token totals for the workspace, plus a
  * per-session table (busiest first). Pure display of what the runtime already
  * recorded — no writes — so it works over the gateway web client too (unlike
  * the desktop-only cards) and is never hidden behind `isGatewayWeb`.
  *
- * Cost is nullable end to end: a session that never priced a reply shows "—",
- * never a fabricated "$0.00" (see AGENTS.md — fail honestly).
- *
- * When a sub2api group is active and its rate_multiplier is known, an extra
- * "sub2api est." tile shows the estimated credit deducted:
- *   estimated_credit = cost_usd × rate_multiplier
+ * Fees are intentionally excluded. This surface reports usage, not billing.
  */
 export function UsageCard() {
   const { t } = useTranslation(["usage"]);
   const [data, setData] = useState<WorkspaceUsage | null>(null);
-  const [multiplier, setMultiplier] = useState<number | null>(null);
   const locale = i18n.language;
   const count = (n: number) => formatCount(n, locale);
 
@@ -32,19 +26,10 @@ export function UsageCard() {
     void usageByWorkspace().then((d) => {
       if (active) setData(d);
     });
-    void usageActiveMultiplier().then((m) => {
-      if (active) setMultiplier(m);
-    });
     return () => {
       active = false;
     };
   }, []);
-
-  /** Estimated sub2api credit for a USD cost: null when either value is absent. */
-  function estimatedCredit(costUsd: number | null | undefined): string {
-    if (costUsd == null || multiplier == null) return "—";
-    return formatCost(costUsd * multiplier);
-  }
 
   const label = (raw: string) => (raw.trim() ? raw : t("settings.untitled"));
 
@@ -61,9 +46,7 @@ export function UsageCard() {
         </div>
       ) : (
         <div>
-          {/* Cumulative tiles. On phone width they collapse to a single stacked
-              column (grid-cols-2) rather than a squeezed row. The sub2api tile
-              is appended when a rate_multiplier is known for the active group. */}
+          {/* Cumulative token tiles collapse to two columns on phone width. */}
           <div className="grid grid-cols-2 gap-px bg-faint sm:grid-cols-3">
             <Tile label={t("settings.tiles.input")} value={count(data.total.input)} />
             <Tile label={t("settings.tiles.output")} value={count(data.total.output)} />
@@ -72,15 +55,7 @@ export function UsageCard() {
               label={t("settings.tiles.cached")}
               value={count(data.total.cacheRead + data.total.cacheWrite)}
             />
-            <Tile label={t("settings.tiles.cost")} value={formatCost(data.total.cost)} />
             <Tile label={t("settings.tiles.replies")} value={count(data.total.replies)} />
-            {multiplier !== null && (
-              <Tile
-                label={t("settings.tiles.sub2apiCost")}
-                value={estimatedCredit(data.total.cost)}
-                hint={`×${multiplier}`}
-              />
-            )}
           </div>
 
           {/* Per-session table. Horizontally scrollable so the numeric columns
@@ -95,12 +70,6 @@ export function UsageCard() {
                   <th className="px-3 py-2 text-right font-medium tabular-nums">{t("settings.table.reasoning")}</th>
                   <th className="px-3 py-2 text-right font-medium tabular-nums">{t("settings.table.cached")}</th>
                   <th className="px-3 py-2 text-right font-medium tabular-nums">{t("settings.table.replies")}</th>
-                  <th className="px-4 py-2 text-right font-medium tabular-nums">{t("settings.table.cost")}</th>
-                  {multiplier !== null && (
-                    <th className="px-4 py-2 text-right font-medium tabular-nums">
-                      {t("settings.tiles.sub2apiCost")}
-                    </th>
-                  )}
                 </tr>
               </thead>
               <tbody>
@@ -114,12 +83,6 @@ export function UsageCard() {
                       {count(s.cacheRead + s.cacheWrite)}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-muted">{count(s.replies)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-muted">{formatCost(s.cost)}</td>
-                    {multiplier !== null && (
-                      <td className="px-4 py-2 text-right tabular-nums text-muted">
-                        {estimatedCredit(s.cost)}
-                      </td>
-                    )}
                   </tr>
                 ))}
               </tbody>

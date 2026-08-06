@@ -675,7 +675,13 @@ export function SessionView({
             style={zoom !== 1 ? { zoom } : undefined}
             className="mx-auto flex max-w-[760px] flex-col gap-4 px-8 pt-6"
           >
-            {!connected && !connecting && (
+            {!connected && (connecting || !isGatewayWeb) && (
+              <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-sm text-muted" role="status">
+                <Loader2 size={22} className="animate-spin text-accent" />
+                <span>{t("live.runtime.connecting")}</span>
+              </div>
+            )}
+            {!connected && !connecting && isGatewayWeb && (
               <div className="rounded-card border border-border bg-surface p-5 shadow-card">
                 <div className="text-sm font-medium text-text">{t("live.runtime.title")}</div>
                 <p className="mt-1 text-sm text-muted">

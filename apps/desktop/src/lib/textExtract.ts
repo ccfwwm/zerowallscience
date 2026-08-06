@@ -86,7 +86,7 @@ export async function extractPdfText(bytes: Uint8Array): Promise<string> {
     const pageText = (content.items as unknown[])
       .map((it) => (typeof (it as { str?: unknown }).str === "string" ? (it as { str: string }).str : ""))
       .join(" ")
-      .replace(/[\t  ]+/g, " ")
+      .replace(/[\t ]+/g, " ")
       .trim();
     if (pageText) chunks.push(pageText);
   }

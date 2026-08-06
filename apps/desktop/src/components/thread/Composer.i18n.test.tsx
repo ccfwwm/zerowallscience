@@ -26,13 +26,9 @@ describe("WorkflowStarters strings (i18n)", () => {
 });
 
 describe("LiveSessionPage strings (i18n)", () => {
-  it("renders the disconnected-runtime card in English (no Tauri sidecar in tests)", async () => {
+  it("renders the neutral runtime loading state in English (no Tauri sidecar in tests)", async () => {
     renderAt("/live");
-    expect(await screen.findByText("OpenCode runtime")).toBeInTheDocument();
-    expect(
-      screen.getByText((_, node) =>
-        node?.textContent === "The desktop app runs a bundled OpenCode automatically. In the browser, start one with opencode serve and connect.",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Connecting to the runtime…")).toBeInTheDocument();
+    expect(screen.queryByText("OpenCode runtime")).not.toBeInTheDocument();
   });
 });

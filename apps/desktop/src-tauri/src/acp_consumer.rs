@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -652,15 +652,69 @@ fn probe_runtime_with(
 }
 
 fn bundled_cli_candidates(resource_root: &Path, profile_id: &str) -> Vec<PathBuf> {
-    let executable = if cfg!(windows) {
-        format!("{profile_id}.exe")
-    } else {
-        profile_id.to_string()
+    // The installed runtime directories are named after the ACP profile, but
+    // their npm entry points use the actual CLI command name (claude/codex).
+    // Keeping this mapping explicit prevents a profile id such as
+    // `claude-code` from being turned into a non-existent `claude-code.cmd`.
+    let cli_name = match profile_id {
+        CLAUDE_PROFILE_ID => "claude",
+        CODEX_PROFILE_ID => "codex",
+        _ => profile_id,
     };
-    vec![
-        resource_root.join("acp-runtime").join(profile_id).join("bin").join(&executable),
-        resource_root.join("acp-runtime").join(profile_id).join(&executable),
-    ]
+    let runtime_root = resource_root.join("acp-runtime").join(profile_id);
+    #[cfg(windows)]
+    let mut candidates = {
+        let native_package = match profile_id {
+            CLAUDE_PROFILE_ID => {
+                let package = if cfg!(target_arch = "aarch64") {
+                    "claude-code-win32-arm64"
+                } else {
+                    "claude-code-win32-x64"
+                };
+                runtime_root
+                    .join("package/node_modules/@anthropic-ai")
+                    .join(package)
+                    .join("claude.exe")
+            }
+            CODEX_PROFILE_ID => {
+                let package = if cfg!(target_arch = "aarch64") {
+                    "codex-win32-arm64"
+                } else {
+                    "codex-win32-x64"
+                };
+                let triple = if cfg!(target_arch = "aarch64") {
+                    "aarch64-pc-windows-msvc"
+                } else {
+                    "x86_64-pc-windows-msvc"
+                };
+                runtime_root
+                    .join("package/node_modules/@openai")
+                    .join(package)
+                    .join("vendor")
+                    .join(triple)
+                    .join("bin/codex.exe")
+            }
+            _ => PathBuf::new(),
+        };
+        (!native_package.as_os_str().is_empty())
+            .then_some(native_package)
+            .into_iter()
+            .collect::<Vec<_>>()
+    };
+    #[cfg(not(windows))]
+    let mut candidates = Vec::new();
+    let names: Vec<String> = if cfg!(windows) {
+        // Release preparation emits a .cmd entry point around the private
+        // Node runtime. Keep .exe first for a future native shim, then accept
+        // the deterministic script without ever consulting the user's PATH.
+        vec![format!("{cli_name}.exe"), format!("{cli_name}.cmd")]
+    } else {
+        vec![cli_name.to_string()]
+    };
+    candidates.extend(names.into_iter().flat_map(|name| {
+        [runtime_root.join("bin").join(&name), runtime_root.join(&name)]
+    }));
+    candidates
 }
 
 fn cli_names(profile_id: &str) -> &'static [&'static str] {
@@ -749,11 +803,11 @@ where
 
 fn verify_cli_version(path: &Path) -> Result<String, String> {
     let mut command = if cfg!(windows) && path.extension() == Some(OsStr::new("cmd")) {
-        let mut command = Command::new("cmd");
+        let mut command = crate::runtime::quiet_command("cmd");
         command.arg("/D").arg("/C").arg(path).arg("--version");
         command
     } else {
-        let mut command = Command::new(path);
+        let mut command = crate::runtime::quiet_command(path);
         command.arg("--version");
         command
     };
@@ -1372,6 +1426,43 @@ pub fn acp_prompt(
     result
 }
 
+/// Change the model in the current ACP session. This command deliberately does
+/// not acquire the lifecycle mutex and never calls launch/prepare/stop: model
+/// selection is a session operation, not a runtime switch.
+#[tauri::command]
+pub async fn acp_set_model(
+    app: AppHandle,
+    state: State<'_, AcpConsumerState>,
+    model: String,
+) -> Result<(), String> {
+    let client = {
+        let inner = state.inner.lock().unwrap();
+        if inner.status.phase != AcpPhase::Ready {
+            return Err(match inner.status.phase {
+                AcpPhase::Busy => "ACP runtime is busy".to_string(),
+                _ => "ACP runtime is not ready".to_string(),
+            });
+        }
+        inner
+            .session
+            .as_ref()
+            .ok_or_else(|| "no active ACP session".to_string())?
+            .client
+            .clone()
+    };
+    client.set_model(model).await.map_err(|error| error.to_string())?;
+    emit_diagnostic(
+        &app,
+        AcpDiagnostic {
+            stage: "model_switch".to_string(),
+            elapsed_ms: 0,
+            outcome: "switched".to_string(),
+            code: None,
+        },
+    );
+    Ok(())
+}
+
 /// The ACP protocol has no portable per-request deadline. Watch the event
 /// stream instead: active generation/tool work continuously refreshes
 /// `last_turn_activity`; a completely silent turn is cancelled, then its owned
@@ -1691,6 +1782,8 @@ struct MessagePayload {
 struct UsagePayload {
     used: u64,
     size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token_usage: Option<TokenUsagePayload>,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -1847,6 +1940,7 @@ fn pump_events(
                         UsagePayload {
                             used: usage.used,
                             size: usage.size,
+                            token_usage: usage.token_usage.map(TokenUsagePayload::from),
                         },
                     );
                 }
@@ -2382,6 +2476,31 @@ mod tests {
         let result = probe_runtime_with(CLAUDE_PROFILE_ID, &backend).unwrap();
         assert_eq!(result.cli_path, bundled);
         assert_eq!(result.info.cli_version.as_deref(), Some("claude 2.1.222"));
+    }
+
+    #[test]
+    fn bundled_cli_uses_runtime_binary_name_not_profile_id() {
+        let root = PathBuf::from("C:\\resources");
+        let candidates = bundled_cli_candidates(&root, CLAUDE_PROFILE_ID);
+        assert!(candidates.contains(
+            &root
+                .join("acp-runtime")
+                .join("claude-code")
+                .join("bin")
+                .join("claude.cmd")
+        ));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn bundled_cli_prefers_native_binary_over_windows_cmd_shim() {
+        let root = PathBuf::from("C:\\resources");
+        let candidates = bundled_cli_candidates(&root, CLAUDE_PROFILE_ID);
+        let native = root
+            .join("acp-runtime")
+            .join("claude-code")
+            .join("package/node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe");
+        assert_eq!(candidates.first(), Some(&native));
     }
 
     #[test]

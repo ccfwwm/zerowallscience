@@ -103,12 +103,12 @@ beforeEach(() => {
   mocks.web = false;
   mocks.account = null;
   mocks.fetchGroups.mockResolvedValue({
-    // The gateway exposes many channels; only 国产模型 and GPT模型分组 are open.
+    // The gateway exposes many channels; only zero-prefixed groups are open.
     // codex-pro分组 stands in for the locked-down rest — it must never render.
     groups: [
       { id: 1, name: "codex-pro分组" },
-      { id: 2, name: "国产模型" },
-      { id: 3, name: "GPT模型分组" },
+      { id: 2, name: "zero-国产模型" },
+      { id: 3, name: "zero-GPT模型分组" },
     ],
     existingKeyGroupIds: [2],
   });
@@ -118,7 +118,7 @@ beforeEach(() => {
     models: ["gpt-4o", "kimi-k2-thinking", "deepseek-v3", "glm-4.6", "qwen3-max"],
     groups: [
       { id: 1, name: "Default" },
-      { id: 2, name: "国产模型" },
+      { id: 2, name: "zero-国产模型" },
     ],
   });
   // The sign-in auto-setup provisions every open group at once. Each group gets
@@ -173,27 +173,26 @@ describe("model ordering", () => {
 });
 
 describe("group allowlist", () => {
-  it("keeps 国产模型, GPT模型分组, and the Claude-science channel, hiding the rest", () => {
+  it("keeps only zero-prefixed groups, case-insensitively", () => {
     const all = [
-      { id: 1, name: "codex-pro分组" },
-      { id: 2, name: "国产模型" },
+      { id: 1, name: "zero-国产模型" },
+      { id: 2, name: " Zero-GPT模型分组 " },
       { id: 3, name: "claude-science-稳定专属分组" },
       { id: 4, name: "GPT模型分组" },
       { id: 5, name: "测试分组-不要使用" },
     ];
     expect(openGroups(all).map((g) => g.name)).toEqual([
-      "国产模型",
-      "claude-science-稳定专属分组",
-      "GPT模型分组",
+      "zero-国产模型",
+      " Zero-GPT模型分组 ",
     ]);
   });
 
-  it("falls back to the full list if the gateway renamed both open groups away", () => {
+  it("returns an empty list when no zero-prefixed group is available", () => {
     const renamed = [
       { id: 1, name: "channel-a" },
       { id: 2, name: "channel-b" },
     ];
-    expect(openGroups(renamed)).toEqual(renamed);
+    expect(openGroups(renamed)).toEqual([]);
   });
 
   it("gives every group its own neutral-namespace provider id, no bare special case", () => {
@@ -272,7 +271,7 @@ describe("Sub2API panel", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /gpt-4o/ })).toBeInTheDocument());
 
     expect(mocks.fetchGroups).toHaveBeenCalledTimes(1);
-    expect(mocks.provisionGroup).toHaveBeenCalledWith(2); // 国产模型 group
+    expect(mocks.provisionGroup).toHaveBeenCalledWith(2); // zero domestic group
 
     // Group buttons also have aria-pressed; model chips have font-mono class.
     const chips = screen
@@ -306,8 +305,8 @@ describe("Sub2API panel", () => {
       .getAllByRole("button")
       .filter((b) => b.getAttribute("aria-pressed") !== null && !b.className.includes("font-mono"));
     expect(groupChips.map((c) => c.textContent?.replace("✓", ""))).toEqual([
-      "国产模型",
-      "GPT模型分组",
+      "zero-国产模型",
+      "zero-GPT模型分组",
     ]);
     expect(screen.queryByRole("button", { name: /codex-pro分组/ })).not.toBeInTheDocument();
   });
@@ -322,10 +321,9 @@ describe("Sub2API panel", () => {
     const [id, opts] = mocks.addCustomProvider.mock.calls[0];
     expect(id).toBe("zerowall-2");
     expect(opts).toEqual({
-      // Provider name carries the group so both groups' providers are
-      // distinguishable in the model picker — the primary is no longer
-      // special-cased into the bare "AI Platform" label.
-      name: "AI Platform · 国产模型",
+      // The provider display name is the group itself. Gateway implementation
+      // details must not enter model filters or model-row subtitles.
+      name: "zero-国产模型",
       // Default is the Chat Completions protocol (@ai-sdk/openai-compatible);
       // the gateway only carries image parts on Chat Completions.
       npm: "@ai-sdk/openai-compatible",

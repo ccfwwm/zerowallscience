@@ -111,6 +111,7 @@
   "providers": {
     "title": "プロバイダー",
     "hint": "認証、カスタムエンドポイント、インポートした OpenCode ログイン",
+    "hintAcp": "ACP モードではプロバイダーは AI プラットフォームが管理します",
     "connectPrompt": "プロバイダーを管理するにはランタイムに接続してください。",
     "manage": "管理",
     "collapse": "折りたたむ",

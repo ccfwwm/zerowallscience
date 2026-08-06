@@ -127,6 +127,11 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      - name: Install Bun for ACP adapter bundling
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -143,6 +148,12 @@ jobs:
       - name: Fetch bundled OpenCode sidecar
         shell: bash
         run: bash scripts/dev/fetch-opencode.sh ${{ matrix.target }}
+
+      - name: Fetch bundled ACP CLI runtimes and build patched adapters
+        shell: bash
+        run: |
+          bash scripts/dev/fetch-acp-runtimes.sh ${{ matrix.target }}
+          bash scripts/dev/build-acp-adapters.sh ${{ matrix.target }}
 
       - name: Fetch bundled ai4s-skills pack
         shell: bash

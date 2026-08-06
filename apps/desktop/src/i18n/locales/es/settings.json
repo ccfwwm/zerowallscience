@@ -111,6 +111,7 @@
   "providers": {
     "title": "Proveedores",
     "hint": "Autenticación, endpoints personalizados e inicios de sesión de OpenCode importados",
+    "hintAcp": "En modo ACP, los proveedores son gestionados por la plataforma de IA",
     "connectPrompt": "Conecta el runtime para gestionar proveedores.",
     "manage": "Administrar",
     "collapse": "Contraer",

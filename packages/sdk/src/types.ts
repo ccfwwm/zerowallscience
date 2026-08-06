@@ -114,6 +114,15 @@ export interface UsageEvent {
   cacheWrite: number;
   /** Cost in USD, or undefined when the provider priced nothing. */
   cost?: number;
+  /** Wall-clock duration measured by a runtime that lacks server timing. */
+  durationMs?: number;
+  /** True when exact completion-token reporting is unavailable. */
+  outputUnavailable?: boolean;
+  /** True when the runtime could not obtain exact prompt-token counts. */
+  inputUnavailable?: boolean;
+  /** Context-window occupancy, kept separate from billed input/output. */
+  contextUsed?: number;
+  contextSize?: number;
 }
 
 // ---- Interactive requests (the agent asks; the user must answer) ----

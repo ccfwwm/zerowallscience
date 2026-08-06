@@ -28,47 +28,44 @@ afterEach(() => {
 });
 
 describe("acpLaunch arg mapping", () => {
-  it("maps secret refs to snake_case and defaults optional fields", async () => {
-    invoke.mockResolvedValue({ running: true, profile_id: "codex" });
+  it("maps a stable profile and gateway metadata to snake_case", async () => {
+    invoke.mockResolvedValue({ phase: "ready", profile_id: "codex" });
 
     await acpLaunch({
-      id: "codex",
-      label: "Codex",
-      command: "codex",
-      secrets: [{ envVar: "OPENAI_API_KEY", providerId: "openai" }],
+      profileId: "codex",
+      gateway: { providerId: "zerowall-1", baseUrl: "https://gw/v1", model: "gpt-5.6-terra" },
     });
 
     expect(invoke).toHaveBeenCalledWith("acp_launch", {
       request: {
-        id: "codex",
-        label: "Codex",
-        command: "codex",
-        args: [],
-        env: [],
-        secrets: [{ env_var: "OPENAI_API_KEY", provider_id: "openai" }],
+        profile_id: "codex",
+        gateway: { provider_id: "zerowall-1", base_url: "https://gw/v1", model: "gpt-5.6-terra" },
       },
     });
   });
 
-  it("passes through non-secret env and args verbatim", async () => {
-    invoke.mockResolvedValue({ running: true, profile_id: "claude-code" });
+  it("passes gateway platform metadata without accepting a command", async () => {
+    invoke.mockResolvedValue({ phase: "ready", profile_id: "claude-code" });
 
     await acpLaunch({
-      id: "claude-code",
-      label: "Claude Code",
-      command: "claude-code",
-      args: ["--acp"],
-      env: [["ANTHROPIC_MODEL", "claude-opus-4-8"]],
+      profileId: "claude-code",
+      gateway: {
+        providerId: "zerowall-2",
+        baseUrl: "https://gw/v1",
+        model: "claude-opus-5",
+        platform: "anthropic",
+      },
     });
 
     expect(invoke).toHaveBeenCalledWith("acp_launch", {
       request: {
-        id: "claude-code",
-        label: "Claude Code",
-        command: "claude-code",
-        args: ["--acp"],
-        env: [["ANTHROPIC_MODEL", "claude-opus-4-8"]],
-        secrets: [],
+        profile_id: "claude-code",
+        gateway: {
+          provider_id: "zerowall-2",
+          base_url: "https://gw/v1",
+          model: "claude-opus-5",
+          platform: "anthropic",
+        },
       },
     });
   });
@@ -76,7 +73,7 @@ describe("acpLaunch arg mapping", () => {
   it("throws off-desktop and never invokes", async () => {
     tauriFlag.value = false;
     await expect(
-      acpLaunch({ id: "x", label: "X", command: "x" }),
+      acpLaunch({ profileId: "x", gateway: { providerId: "p", baseUrl: "https://gw", model: "m" } }),
     ).rejects.toThrow(/desktop/);
     expect(invoke).not.toHaveBeenCalled();
   });
@@ -108,13 +105,13 @@ describe("reply wrappers", () => {
 describe("off-desktop behavior", () => {
   it("acpStatus returns an idle status without invoking", async () => {
     tauriFlag.value = false;
-    await expect(acpStatus()).resolves.toEqual({ running: false, profile_id: null });
+    await expect(acpStatus()).resolves.toEqual({ phase: "idle", profile_id: null, runtime_info: null, last_error: null });
     expect(invoke).not.toHaveBeenCalled();
   });
 
   it("acpShutdown returns idle without invoking", async () => {
     tauriFlag.value = false;
-    await expect(acpShutdown()).resolves.toEqual({ running: false, profile_id: null });
+    await expect(acpShutdown()).resolves.toEqual({ phase: "idle", profile_id: null, runtime_info: null, last_error: null });
     expect(invoke).not.toHaveBeenCalled();
   });
 

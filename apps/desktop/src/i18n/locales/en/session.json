@@ -141,7 +141,8 @@
     "runtime": {
       "title": "OpenCode runtime",
       "bodyPrefix": "The desktop app runs a bundled OpenCode automatically. In the browser, start one with",
-      "bodySuffix": " and connect."
+      "bodySuffix": " and connect.",
+      "connecting": "Connecting to the runtime…"
     },
     "connect": "Connect",
     "latest": "Latest",

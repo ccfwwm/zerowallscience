@@ -1,0 +1,78 @@
+diff --git a/src/acp-agent.ts b/src/acp-agent.ts
+index 274edd1..48aff90 100644
+--- a/src/acp-agent.ts
++++ b/src/acp-agent.ts
+@@ -79,6 +79,25 @@ import { fileURLToPath } from "node:url";
+ export const CLAUDE_CONFIG_DIR =
+   process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
+ 
++type ClaudeUsage = {
++  input_tokens: number;
++  output_tokens: number;
++  cache_read_input_tokens?: number;
++  cache_creation_input_tokens?: number;
++};
++
++export function usageFromClaude(usage: ClaudeUsage): NonNullable<PromptResponse["usage"]> {
++  const cachedReadTokens = usage.cache_read_input_tokens ?? 0;
++  const cachedWriteTokens = usage.cache_creation_input_tokens ?? 0;
++  return {
++    inputTokens: usage.input_tokens,
++    outputTokens: usage.output_tokens,
++    cachedReadTokens,
++    cachedWriteTokens,
++    totalTokens: usage.input_tokens + usage.output_tokens + cachedReadTokens + cachedWriteTokens,
++  };
++}
++
+ function sessionFilePath(cwd: string, sessionId: string): string {
+   return path.join(CLAUDE_CONFIG_DIR, "projects", encodeProjectPath(cwd), `${sessionId}.jsonl`);
+ }
+@@ -595,7 +614,7 @@ export class ClaudeAcpAgent implements Agent {
+               if (message.is_error) {
+                 throw RequestError.internalError(undefined, message.result);
+               }
+-              return { stopReason: "end_turn" };
++              return { stopReason: "end_turn", usage: usageFromClaude(message.usage) };
+             }
+             case "error_during_execution":
+               if (message.is_error) {
+diff --git a/src/tests/acp-agent.test.ts b/src/tests/acp-agent.test.ts
+index 15dff81..c5b010e 100644
+--- a/src/tests/acp-agent.test.ts
++++ b/src/tests/acp-agent.test.ts
+@@ -18,7 +18,7 @@ import {
+ } from "@agentclientprotocol/sdk";
+ import { nodeToWebWritable, nodeToWebReadable } from "../utils.js";
+ import { markdownEscape, toolInfoFromToolUse, toolUpdateFromToolResult } from "../tools.js";
+-import { toAcpNotifications, promptToClaude } from "../acp-agent.js";
++import { toAcpNotifications, promptToClaude, usageFromClaude } from "../acp-agent.js";
+ import { query, SDKAssistantMessage } from "@anthropic-ai/claude-agent-sdk";
+ import { randomUUID } from "crypto";
+ import type {
+@@ -246,6 +246,25 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("ACP subprocess integration"
+   }, 30000);
+ });
+ 
++describe("Claude token usage", () => {
++  it("preserves input, output, and cache token counters for an ACP prompt", () => {
++    expect(
++      usageFromClaude({
++        input_tokens: 6,
++        output_tokens: 1,
++        cache_read_input_tokens: 17265,
++        cache_creation_input_tokens: 326,
++      }),
++    ).toStrictEqual({
++      inputTokens: 6,
++      outputTokens: 1,
++      cachedReadTokens: 17265,
++      cachedWriteTokens: 326,
++      totalTokens: 17598,
++    });
++  });
++});
++
+ describe("tool conversions", () => {
+   it("should handle Bash nicely", () => {
+     const tool_use = {

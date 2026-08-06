@@ -111,6 +111,7 @@
   "providers": {
     "title": "공급자",
     "hint": "인증, 사용자 지정 엔드포인트 및 가져온 OpenCode 로그인",
+    "hintAcp": "ACP 모드에서는 공급자를 AI 플랫폼이 관리합니다",
     "connectPrompt": "프로바이더를 관리하려면 런타임에 연결하세요.",
     "manage": "관리",
     "collapse": "접기",

@@ -49,6 +49,9 @@ const mocks = vi.hoisted(() => ({
     name: string;
     models: { id: string; name: string; variants?: string[] }[];
   }[],
+  /** One delayed skills response, used to reproduce a catalog response that
+   * arrives after the user has switched runtimes. */
+  skillsGate: null as Promise<{ name: string }[]> | null,
   /** Next setDefaultModel PATCH throws (server unreachable). */
   failSetModel: false,
   /** History the mock server returns for any session. */
@@ -73,9 +76,20 @@ const mocks = vi.hoisted(() => ({
   /** Constructor options every OpenCodeClient was created with. */
   clientOpts: [] as Record<string, unknown>[],
   // ---- ACP bridge fakes (drive the real AcpRuntime through the store) ----
-  acpLaunch: vi.fn(async () => ({ running: true, profile_id: "codex" })),
+  acpLaunch: vi.fn(async () => ({
+    phase: "ready",
+    profile_id: "codex",
+    runtime_info: null,
+    last_error: null,
+  })),
   acpPrompt: vi.fn(async () => {}),
-  acpShutdown: vi.fn(async () => ({ running: false, profile_id: null })),
+  acpSetModel: vi.fn(async () => {}),
+  acpShutdown: vi.fn(async () => ({
+    phase: "idle",
+    profile_id: null,
+    runtime_info: null,
+    last_error: null,
+  })),
   acpUnlisten: vi.fn(),
   /** The handlers AcpRuntime subscribed; drive the event stream through them. */
   acpHandlers: {} as Record<string, (p: unknown) => void>,
@@ -108,8 +122,10 @@ vi.mock("./systemNotification", () => ({
 vi.mock("./acp", () => ({
   acpLaunch: mocks.acpLaunch,
   acpPrompt: mocks.acpPrompt,
+  acpSetModel: mocks.acpSetModel,
   acpCancel: vi.fn(async () => {}),
   acpShutdown: mocks.acpShutdown,
+  acpListSkills: vi.fn(async () => []),
   subscribeAcp: vi.fn(async (h: unknown) => {
     mocks.acpHandlers = h as Record<string, (p: unknown) => void>;
     return mocks.acpUnlisten;
@@ -150,6 +166,11 @@ vi.mock("@zerowall/sdk", async () => {
       return [];
     }
     async listSkills() {
+      const gate = mocks.skillsGate;
+      if (gate) {
+        mocks.skillsGate = null;
+        return gate;
+      }
       return [{ name: "stub" }];
     }
     async listAgents() {
@@ -295,6 +316,7 @@ beforeEach(async () => {
   mocks.providers = [
     { id: "moonshot", name: "Moonshot", models: [{ id: "kimi-k2-thinking", name: "Kimi K2" }] },
   ];
+  mocks.skillsGate = null;
   mocks.failSetModel = false;
   mocks.notifyPermissionRequest.mockResolvedValue(true);
   useRuntimeStore.setState({
@@ -1569,6 +1591,32 @@ describe("sending with no model chosen", () => {
 // OpenCode-only machinery. These exercise the real AcpRuntime over the faked
 // ./acp bridge — the store's own selection logic is what's under test.
 describe("runtime factory (OpenCode ⇄ ACP)", () => {
+  beforeEach(() => {
+    window.localStorage.setItem(
+      "zerowall.acp.config.codex",
+      JSON.stringify({ providerId: "zerowall-2", baseUrl: "https://gw/v1", model: "gpt-5" }),
+    );
+  });
+
+  it("ignores an OpenCode catalog response that arrives after switching to ACP", async () => {
+    let resolveOldSkills!: (skills: { name: string }[]) => void;
+    mocks.skillsGate = new Promise((resolve) => {
+      resolveOldSkills = resolve;
+    });
+    const staleCatalog = useRuntimeStore.getState().loadCatalog();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await useRuntimeStore.getState().switchRuntime("codex");
+    useRuntimeStore.setState({ skills: [{ name: "codex-skill", description: "current ACP catalog" }] });
+    resolveOldSkills([{ name: "opencode-stale-skill" }]);
+    await staleCatalog;
+
+    expect(useRuntimeStore.getState().acpProfileId).toBe("codex");
+    expect(useRuntimeStore.getState().skills).toEqual([
+      { name: "codex-skill", description: "current ACP catalog" },
+    ]);
+  });
+
   it("switchRuntime to a preset connects an ACP agent, not OpenCode", async () => {
     mocks.clientOpts.length = 0; // forget the beforeEach OpenCode connect
     await useRuntimeStore.getState().switchRuntime("codex");
@@ -1602,6 +1650,19 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     expect(mocks.sendPromptSpy).not.toHaveBeenCalled();
   });
 
+  it("refuses a stale OpenCode pane while an ACP runtime owns the conversation", async () => {
+    await useRuntimeStore.getState().switchRuntime("codex");
+    // A persisted layout can still contain an OpenCode pane after the runtime
+    // has moved to ACP. The ACP bridge has one fixed session, so accepting this
+    // target would echo the question under `ses-opencode` but stream the reply
+    // into `codex`.
+    await useRuntimeStore.getState().sendPrompt("do not split the turn", "ses-opencode");
+
+    expect(mocks.acpPrompt).not.toHaveBeenCalled();
+    expect(useRuntimeStore.getState().threads["ses-opencode"]?.blocks).toBeUndefined();
+    expect(useRuntimeStore.getState().error).toMatch(/active ACP conversation/i);
+  });
+
   it("switching back to OpenCode shuts the agent down and rebuilds an OpenCode client", async () => {
     await useRuntimeStore.getState().switchRuntime("codex");
     mocks.clientOpts.length = 0;
@@ -1618,5 +1679,155 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     mocks.acpLaunch.mockClear();
     await useRuntimeStore.getState().switchRuntime("codex");
     expect(mocks.acpLaunch).not.toHaveBeenCalled();
+  });
+
+  it("keeps the new ACP runtime ready when a superseded launch fails", async () => {
+    window.localStorage.setItem(
+      "zerowall.acp.config.claude-code",
+      JSON.stringify({ providerId: "zerowall-1", baseUrl: "https://gw/v1", model: "claude-5" }),
+    );
+    let rejectClaudeLaunch!: (reason?: unknown) => void;
+    mocks.acpLaunch
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectClaudeLaunch = reject;
+          }),
+      )
+      .mockResolvedValueOnce({
+        phase: "ready",
+        profile_id: "codex",
+        runtime_info: null,
+        last_error: null,
+      });
+
+    const staleClaudeConnect = useRuntimeStore.getState().switchRuntime("claude-code");
+    await vi.waitFor(() => expect(mocks.acpLaunch).toHaveBeenCalledTimes(1));
+
+    await useRuntimeStore.getState().switchRuntime("codex");
+    rejectClaudeLaunch(new Error("ACP event stream closed before readiness"));
+    await staleClaudeConnect;
+
+    const state = useRuntimeStore.getState();
+    expect(state.acpProfileId).toBe("codex");
+    expect(state.status).toBe("ready");
+    expect(state.error).toBeNull();
+    expect(state.sessions).toEqual([{ id: "codex", title: "Codex" }]);
+    window.localStorage.removeItem("zerowall.acp.config.claude-code");
+  });
+
+  it("in ACP mode loadCatalog shows the gateway model from the launch config, not the agent's null default", async () => {
+    // The agent advertises no model (getDefaultModel is null by design); the
+    // real default is what its Sub2Api config pins — so the sidebar/picker must
+    // read that, not blank to "未设置".
+    window.localStorage.setItem(
+      "zerowall.acp.config.codex",
+      JSON.stringify({ providerId: "zerowall-2", baseUrl: "https://gw/v1", model: "gpt-5" }),
+    );
+    mocks.currentModel = null; // AcpRuntime.getDefaultModel returns null
+    mocks.providers = [{ id: "zerowall-2", name: "Sub2API", models: [{ id: "gpt-5", name: "gpt-5" }] }];
+    await useRuntimeStore.getState().switchRuntime("codex");
+    await new Promise((r) => setTimeout(r, 0)); // settle the fired loadCatalog
+    expect(useRuntimeStore.getState().defaultModel).toBe("zerowall-2/gpt-5");
+    expect(useRuntimeStore.getState().providers).toHaveLength(1);
+    window.localStorage.removeItem("zerowall.acp.config.codex");
+  });
+
+  it("in ACP mode changes the model in-session without relaunching the agent", async () => {
+    window.localStorage.setItem(
+      "zerowall.acp.config.codex",
+      JSON.stringify({ providerId: "zerowall-2", baseUrl: "https://gw/v1", model: "gpt-5" }),
+    );
+    await useRuntimeStore.getState().switchRuntime("codex");
+    mocks.acpLaunch.mockClear();
+    mocks.acpSetModel.mockClear();
+    await useRuntimeStore.getState().setDefaultModel("zerowall-2/gpt-5-mini");
+    // The config's model was rewritten (same key + base URL) …
+    const saved = JSON.parse(window.localStorage.getItem("zerowall.acp.config.codex")!);
+    expect(saved).toEqual({ providerId: "zerowall-2", baseUrl: "https://gw/v1", model: "gpt-5-mini" });
+    // … the existing agent accepted the model; no second launch occurs.
+    expect(mocks.acpSetModel).toHaveBeenCalledWith("gpt-5-mini");
+    expect(mocks.acpLaunch).not.toHaveBeenCalled();
+    expect(useRuntimeStore.getState().defaultModel).toBe("zerowall-2/gpt-5-mini");
+    // OpenCode's config PATCH was NOT used — this is a launch-env switch.
+    expect(mocks.setDefaultModelSpy).not.toHaveBeenCalled();
+    window.localStorage.removeItem("zerowall.acp.config.codex");
+  });
+
+  it("serializes rapid ACP model picks and applies only the final queued model", async () => {
+    window.localStorage.setItem(
+      "zerowall.acp.config.codex",
+      JSON.stringify({ providerId: "zerowall-2", baseUrl: "https://gw/v1", model: "gpt-5" }),
+    );
+    await useRuntimeStore.getState().switchRuntime("codex");
+    mocks.acpLaunch.mockClear();
+    mocks.acpSetModel.mockClear();
+    let finishFirstModel!: () => void;
+    mocks.acpSetModel
+      .mockImplementationOnce(
+        () => new Promise((resolve) => { finishFirstModel = () => resolve(); }),
+      )
+      .mockResolvedValue(undefined);
+
+    const first = useRuntimeStore.getState().setDefaultModel("zerowall-2/gpt-5-mini");
+    await vi.waitFor(() => expect(mocks.acpSetModel).toHaveBeenCalledTimes(1));
+    const second = useRuntimeStore.getState().setDefaultModel("zerowall-2/gpt-5.6-terra");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.acpSetModel).toHaveBeenCalledTimes(1);
+    finishFirstModel();
+    await Promise.all([first, second]);
+
+    expect(mocks.acpSetModel).toHaveBeenCalledTimes(2);
+    expect(mocks.acpLaunch).not.toHaveBeenCalled();
+    expect(useRuntimeStore.getState().defaultModel).toBe("zerowall-2/gpt-5.6-terra");
+    expect(JSON.parse(window.localStorage.getItem("zerowall.acp.config.codex")!)).toMatchObject({
+      model: "gpt-5.6-terra",
+    });
+    window.localStorage.removeItem("zerowall.acp.config.codex");
+  });
+
+  it("in ACP mode ignores a model that is already active", async () => {
+    await useRuntimeStore.getState().switchRuntime("codex");
+    mocks.acpLaunch.mockClear();
+
+    await useRuntimeStore.getState().setDefaultModel("zerowall-2/gpt-5");
+
+    expect(mocks.acpLaunch).not.toHaveBeenCalled();
+    expect(useRuntimeStore.getState().defaultModel).toBe("zerowall-2/gpt-5");
+  });
+
+  it("keeps the previous ACP model when session/set_model fails", async () => {
+    window.localStorage.setItem(
+      "zerowall.acp.config.codex",
+      JSON.stringify({ providerId: "zerowall-2", baseUrl: "https://gw/v1", model: "gpt-5" }),
+    );
+    await useRuntimeStore.getState().switchRuntime("codex");
+    mocks.acpSetModel.mockRejectedValueOnce(new Error("model is not available"));
+
+    await expect(
+      useRuntimeStore.getState().setDefaultModel("zerowall-2/gpt-5.6-terra"),
+    ).rejects.toThrow("model is not available");
+
+    expect(useRuntimeStore.getState().defaultModel).toBe("zerowall-2/gpt-5");
+    expect(JSON.parse(window.localStorage.getItem("zerowall.acp.config.codex")!).model).toBe("gpt-5");
+    expect(useRuntimeStore.getState().modelSwitchError).toContain("model is not available");
+    window.localStorage.removeItem("zerowall.acp.config.codex");
+  });
+
+  it("in ACP mode a per-session model pick uses the existing agent (no per-pane override)", async () => {
+    window.localStorage.setItem(
+      "zerowall.acp.config.codex",
+      JSON.stringify({ providerId: "zerowall-2", baseUrl: "https://gw/v1", model: "gpt-5" }),
+    );
+    await useRuntimeStore.getState().switchRuntime("codex");
+    mocks.acpLaunch.mockClear();
+    mocks.acpSetModel.mockClear();
+    useRuntimeStore.getState().setSessionModel("codex", "zerowall-2/gpt-5-mini");
+    await new Promise((r) => setTimeout(r, 0)); // settle the fired setDefaultModel
+    // Routed through the live ACP session, not a store-only per-pane map.
+    expect(useRuntimeStore.getState().sessionModels["codex"]).toBeUndefined();
+    expect(mocks.acpSetModel).toHaveBeenCalledWith("gpt-5-mini");
+    expect(mocks.acpLaunch).not.toHaveBeenCalled();
+    window.localStorage.removeItem("zerowall.acp.config.codex");
   });
 });

@@ -29,6 +29,21 @@ describe("ModelBrowser", () => {
     expect(screen.getByText(/No models match/)).toBeInTheDocument();
   });
 
+  it("uses the configured group name without exposing gateway branding", () => {
+    const gatewayGroup: ProviderInfo = {
+      id: "zerowall-claude",
+      name: "claude-science-stable",
+      models: [{ id: "claude-opus-5", name: "claude-opus-5" }],
+    };
+    render(<ModelBrowser providers={[gatewayGroup]} defaultModel={null} busy={false}
+      onSelect={vi.fn()} onManageProviders={vi.fn()} />);
+
+    const filters = screen.getByRole("navigation", { name: "Model filters" });
+    expect(within(filters).getByRole("button", { name: /claude-science-stable/ })).toBeInTheDocument();
+    expect(screen.getAllByText("claude-science-stable")).toHaveLength(2);
+    expect(screen.queryByText(/Sub2API/i)).not.toBeInTheDocument();
+  });
+
   it("favorites without selecting and persists the result", async () => {
     const onSelect = vi.fn<(model: string) => Promise<boolean>>();
     render(<ModelBrowser providers={providers} defaultModel={null} busy={false}

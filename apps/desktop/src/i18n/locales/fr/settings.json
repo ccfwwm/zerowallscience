@@ -111,6 +111,7 @@
   "providers": {
     "title": "Fournisseurs",
     "hint": "Authentification, points de terminaison personnalisés et connexions OpenCode importées",
+    "hintAcp": "En mode ACP, les fournisseurs sont gérés par la plateforme IA",
     "connectPrompt": "Connectez le runtime pour gérer les fournisseurs.",
     "manage": "Gérer",
     "collapse": "Réduire",

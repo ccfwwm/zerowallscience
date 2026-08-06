@@ -319,6 +319,17 @@ pub(crate) fn parse_groups(body: &str) -> Vec<Group> {
         .collect()
 }
 
+/// ZeroWall only exposes explicitly published gateway groups. Keep this at the
+/// native boundary as well as the renderer: Tauri commands can be invoked
+/// directly, and a non-published group must never result in a locally stored
+/// provider key.
+pub(crate) fn published_groups(groups: Vec<Group>) -> Vec<Group> {
+    groups
+        .into_iter()
+        .filter(|group| group.name.trim_start().to_ascii_lowercase().starts_with("zero"))
+        .collect()
+}
+
 /// Create an API key on the gateway for a specific group. Mirrors transit-hub's
 /// `CreateSub2APIKey`: `POST /api/v1/keys` with `{"name", "group_id"}`.
 fn create_key(base_url: &str, token: &str, name: &str, group_id: i64) -> Result<String, String> {
@@ -585,9 +596,9 @@ pub async fn sub2api_fetch_groups(
 
     let (_base, (groups, existing_key_group_ids)) = blocking(move || {
         with_failover(&bases, |base| {
-            let groups = parse_groups(
+            let groups = published_groups(parse_groups(
                 &get_json(base, "/groups/available", &token)?,
-            );
+            ));
             let keys = parse_api_keys(&get_json(
                 base,
                 "/keys?page=1&page_size=100&sort_by=created_at&sort_order=desc",
@@ -634,7 +645,7 @@ pub async fn sub2api_refresh_groups(
 
     let (_base, groups) = blocking(move || {
         with_failover(&bases, |base| {
-            Ok(parse_groups(&get_json(base, "/groups/available", &token)?))
+            Ok(published_groups(parse_groups(&get_json(base, "/groups/available", &token)?)))
         })
     })
     .await?;
@@ -683,6 +694,12 @@ pub async fn sub2api_provision_group(
 
     let (base, (api_key, models, groups)) = blocking(move || {
         with_failover(&bases, |base| {
+            let groups = published_groups(parse_groups(
+                &get_json(base, "/groups/available", &token)?,
+            ));
+            if !groups.iter().any(|group| group.id == group_id) {
+                return Err("the selected group is not published for ZeroWall Science".into());
+            }
             // Fetch existing keys and look for one tied to the requested group.
             let keys = parse_api_keys(&get_json(
                 base,
@@ -701,9 +718,6 @@ pub async fn sub2api_provision_group(
             };
 
             let models = list_models(base, &api_key)?;
-            let groups = parse_groups(
-                &get_json(base, "/groups/available", &token).unwrap_or_default(),
-            );
             Ok((api_key, models, groups))
         })
     })
@@ -763,6 +777,14 @@ pub async fn sub2api_provision_groups(
     // returned to the renderer.
     let (base, provisioned) = blocking(move || {
         with_failover(&bases, |base| {
+            let available = published_groups(parse_groups(
+                &get_json(base, "/groups/available", &token)?,
+            ));
+            let allowed: std::collections::HashSet<i64> =
+                available.into_iter().map(|group| group.id).collect();
+            if requests.iter().any(|request| !allowed.contains(&request.group_id)) {
+                return Err("one or more requested groups are not published for ZeroWall Science".into());
+            }
             let keys = parse_api_keys(&get_json(
                 base,
                 "/keys?page=1&page_size=100&sort_by=created_at&sort_order=desc",
@@ -1328,6 +1350,32 @@ mod tests {
         );
         assert!(parse_groups(r#"{"data":[]}"#).is_empty());
         assert!(parse_groups("not json").is_empty());
+    }
+
+    #[test]
+    fn published_groups_keep_only_zero_prefixed_names() {
+        let groups = vec![
+            Group {
+                id: 1,
+                name: "zero-国产模型".into(),
+                platform: "openai".into(),
+                rate_multiplier: 1.0,
+            },
+            Group {
+                id: 2,
+                name: " Zero-GPT模型分组 ".into(),
+                platform: "openai".into(),
+                rate_multiplier: 1.0,
+            },
+            Group {
+                id: 3,
+                name: "internal-admin".into(),
+                platform: "openai".into(),
+                rate_multiplier: 1.0,
+            },
+        ];
+
+        assert_eq!(published_groups(groups).into_iter().map(|group| group.id).collect::<Vec<_>>(), vec![1, 2]);
     }
 
     #[test]

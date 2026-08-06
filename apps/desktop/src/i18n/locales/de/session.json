@@ -141,7 +141,8 @@
     "runtime": {
       "title": "OpenCode-Runtime",
       "bodyPrefix": "Die Desktop-App führt automatisch eine gebündelte OpenCode-Instanz aus. Starten Sie im Browser eine mit",
-      "bodySuffix": " und verbinden Sie sich."
+      "bodySuffix": " und verbinden Sie sich.",
+      "connecting": "Verbindung mit der Laufzeitumgebung wird hergestellt…"
     },
     "connect": "Verbinden",
     "latest": "Neueste",

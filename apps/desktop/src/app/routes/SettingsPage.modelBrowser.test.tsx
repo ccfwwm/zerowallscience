@@ -196,6 +196,39 @@ describe("Settings model browser integration", () => {
     ).toBeLessThan(setProviderSecret.mock.invocationCallOrder[0]);
   });
 
+  it("adds a custom provider through the background config service and stores its key only in the OS keychain", async () => {
+    const setProviderSecret = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(
+      tauri as unknown as { setProviderSecret: typeof setProviderSecret },
+      "setProviderSecret",
+    ).mockImplementation(setProviderSecret);
+    const client = catalogClient();
+    const addCustomProvider = vi.fn().mockResolvedValue(undefined);
+    Object.assign(client, { addCustomProvider });
+    // ACP owns the active chat client, so the provider editor must use the
+    // always-running OpenCode sidecar rather than reject the save.
+    vi.spyOn(runtime, "getClient").mockReturnValue(null);
+    vi.spyOn(runtime, "getOrCreateOpenCodeClient").mockResolvedValue(client);
+    await renderSettings();
+
+    await userEvent.click(screen.getAllByRole("button", { name: "Custom endpoint" })[0]);
+    await userEvent.type(screen.getByPlaceholderText("Name — e.g. Ollama, My DeepSeek gateway"), "Research gateway");
+    await userEvent.type(screen.getByPlaceholderText("Base URL — Ollama: http://127.0.0.1:11434/v1"), "https://models.example.test/v1");
+    await userEvent.type(screen.getByPlaceholderText("API key — optional, Ollama needs none"), "secret-value");
+    await userEvent.type(screen.getByPlaceholderText("Model ids, comma-separated"), "research-1, research-2");
+    await userEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
+
+    await waitFor(() => expect(addCustomProvider).toHaveBeenCalledWith("research-gateway", {
+      name: "Research gateway",
+      npm: "@ai-sdk/openai",
+      baseURL: "https://models.example.test/v1",
+      models: ["research-1", "research-2"],
+      contexts: {},
+    }));
+    expect(setProviderSecret).toHaveBeenCalledWith("research-gateway", "secret-value");
+    expect(addCustomProvider.mock.calls[0][1]).not.toHaveProperty("apiKey");
+  });
+
   it("drops the cached catalog when the server URL changes (no stale models from the old runtime)", async () => {
     vi.spyOn(runtime, "getClient").mockReturnValue(catalogClient());
     await renderSettings();

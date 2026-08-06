@@ -15,7 +15,7 @@ import type {
   UserMessageBlock,
 } from "@zerowall/shared";
 import { cn } from "@/lib/cn";
-import { formatCount, formatCost } from "@/lib/usageFormat";
+import { formatCount } from "@/lib/usageFormat";
 import { MarkdownViewer } from "@/components/markdown-viewer/MarkdownViewer";
 import { extractArtifactRefs, refToArtifactBlock } from "@/lib/artifacts";
 import { resolveArtifactPath } from "@/lib/artifactFile";
@@ -207,8 +207,12 @@ export const UserAttachments = memo(function UserAttachments({
         {block.attachments.map((att, k) => {
           const clickable = !!onOpen && !!att.path;
           const label = t("attachment.previewAria", { name: att.filename, defaultValue: `预览附件 ${att.filename}` });
+          // CSS utility tokens are intentionally literal; they are not user-facing copy.
+          // eslint-disable-next-line i18next/no-literal-string
+          /* eslint-disable i18next/no-literal-string */
           const commonBtnClass =
             "group/att flex items-center gap-2 rounded-card border border-border bg-surface px-2.5 py-1.5 text-xs text-text transition-colors";
+          /* eslint-enable i18next/no-literal-string */
           if (isImageMime(att.mime)) {
             const content = (
               <>
@@ -440,21 +444,25 @@ export const StatusLine = memo(function StatusLine({ block }: { block: StatusLin
   );
 });
 
-/** Per-reply token/cost tail, e.g. "123 in · 456 out · $0.0021". The reasoning
- *  and cached segments appear only when non-zero (most replies have neither);
- *  cost renders "—" when the provider priced nothing, never a fabricated "$0". */
+/** Per-reply token tail. Reasoning and cached segments appear only when
+ * non-zero; provider fees are intentionally neither calculated nor shown. */
 export const UsageTail = memo(function UsageTail({ block }: { block: UsageBlock }) {
   const { t, i18n } = useTranslation(["usage"]);
   const locale = i18n.language;
   const parts = [
-    t("tail.in", { count: block.input, value: formatCount(block.input, locale) }),
-    t("tail.out", { count: block.output, value: formatCount(block.output, locale) }),
+    t("tail.in", {
+      count: block.input,
+      value: block.inputUnavailable ? "—" : formatCount(block.input, locale),
+    }),
+    t("tail.out", {
+      count: block.output,
+      value: block.outputUnavailable ? "—" : formatCount(block.output, locale),
+    }),
   ];
   const cached = block.cacheRead + block.cacheWrite;
   if (cached > 0) parts.push(t("tail.cached", { value: formatCount(cached, locale) }));
   if (block.reasoning > 0)
     parts.push(t("tail.reasoning", { value: formatCount(block.reasoning, locale) }));
-  parts.push(formatCost(block.cost));
   return (
     <div className="flex items-center gap-1 pl-0.5 font-mono text-xs text-muted" title={t("tail.title")}>
       {parts.join(" · ")}

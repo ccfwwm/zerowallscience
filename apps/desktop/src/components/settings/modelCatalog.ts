@@ -14,12 +14,26 @@ export type ModelFilter =
   | { kind: "recent" }
   | { kind: "provider"; providerID: string };
 
+/**
+ * Provider ids in the ZeroWall namespace are application-managed group
+ * entries. Older installs persisted a gateway product name in `name`, which
+ * is rendered in filters and under each model. Keep that implementation detail
+ * out of the UI while leaving user-owned provider names untouched.
+ */
+export function displayProviderName(provider: ProviderInfo): string {
+  if (!provider.id.startsWith("zerowall-")) return provider.name;
+  const name = provider.name
+    .replace(/^sub2api(?:\s*[·.:/-]\s*)?/i, "")
+    .trim();
+  return name || "AI Platform";
+}
+
 export function flattenModelOptions(providers: ProviderInfo[]): ModelOption[] {
   return providers.flatMap((provider) =>
     provider.models.map((model) => ({
       key: `${provider.id}/${model.id}`,
       providerID: provider.id,
-      providerName: provider.name,
+      providerName: displayProviderName(provider),
       modelID: model.id,
       modelName: model.name,
     })),

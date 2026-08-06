@@ -13,7 +13,7 @@
 // launch request. Injecting via env keeps the effect scoped to the child
 // process this app spawns — a user's own `claude` / `codex` CLI, which reads
 // the same vars from its own shell, is never touched.
-import type { AcpLaunchRequest, AcpSecretRef } from "./acp";
+import type { AcpLaunchRequest } from "./acp";
 import type { AcpPreset } from "./acp-presets";
 
 const CONFIG_KEY_PREFIX = "zerowall.acp.config.";
@@ -27,6 +27,8 @@ export interface AcpAgentConfig {
   baseUrl: string;
   /** Concrete model id to pin via the agent's launch env. */
   model: string;
+  /** Gateway group protocol. Optional for descriptors written by older builds. */
+  platform?: string;
 }
 
 function configKey(presetId: string): string {
@@ -52,7 +54,14 @@ export function loadAcpConfig(presetId: string): AcpAgentConfig | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<AcpAgentConfig>;
     if (!parsed.providerId || !parsed.baseUrl || !parsed.model) return null;
-    return { providerId: parsed.providerId, baseUrl: parsed.baseUrl, model: parsed.model };
+    return {
+      providerId: parsed.providerId.trim(),
+      baseUrl: parsed.baseUrl.trim(),
+      model: parsed.model.trim(),
+      ...(typeof parsed.platform === "string" && parsed.platform.trim()
+        ? { platform: parsed.platform.trim() }
+        : {}),
+    };
   } catch {
     return null;
   }
@@ -68,12 +77,6 @@ export function clearAcpConfig(presetId: string): void {
   }
 }
 
-/** The Anthropic SDK appends `/v1/...` itself, so ANTHROPIC_BASE_URL must be the
- *  gateway ROOT. Provisioning hands back `<base>/v1`; strip the trailing `/v1`. */
-function anthropicBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/v1\/?$/, "");
-}
-
 /** Build the launch request for a preset, merging any stored gateway config.
  *
  *  With config: inject the key (under the group's keychain id, via both
@@ -84,28 +87,8 @@ function anthropicBaseUrl(baseUrl: string): string {
  */
 export function buildAcpLaunchRequest(preset: AcpPreset): AcpLaunchRequest {
   const config = loadAcpConfig(preset.id);
-  if (!config) return preset;
-
-  const isAnthropic = preset.id === "claude-code";
-  const secrets: AcpSecretRef[] = isAnthropic
-    ? [
-        { envVar: "ANTHROPIC_API_KEY", providerId: config.providerId },
-        { envVar: "ANTHROPIC_AUTH_TOKEN", providerId: config.providerId },
-      ]
-    : [{ envVar: "OPENAI_API_KEY", providerId: config.providerId }];
-
-  const env: [string, string][] = isAnthropic
-    ? [
-        ["ANTHROPIC_BASE_URL", anthropicBaseUrl(config.baseUrl)],
-        ["ANTHROPIC_MODEL", config.model],
-        ["ANTHROPIC_DEFAULT_SONNET_MODEL", config.model],
-        ["ANTHROPIC_DEFAULT_OPUS_MODEL", config.model],
-        ["ANTHROPIC_DEFAULT_HAIKU_MODEL", config.model],
-      ]
-    : [
-        ["OPENAI_BASE_URL", config.baseUrl],
-        ["OPENAI_MODEL", config.model],
-      ];
-
-  return { ...preset, env, secrets };
+  if (!config) {
+    throw new Error(`${preset.label} requires a complete AI gateway configuration`);
+  }
+  return { profileId: preset.id, gateway: config };
 }

@@ -30,7 +30,7 @@ import {
   type Protocol,
   type ProvisionedGroupNamed,
 } from "@/lib/sub2api-provision";
-import { saveAcpConfig } from "@/lib/acp-config";
+import { clearAcpConfig, saveAcpConfig } from "@/lib/acp-config";
 import { Section } from "./Section";
 import { RechargeDialog } from "./RechargeDialog";
 import { inputCls } from "./inputCls";
@@ -220,12 +220,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       // One provider per provisioned group. Non-primary providers are labelled
       // with their group name so they are distinguishable in the model picker.
       for (const p of provisioned) {
-        const name =
-          p.groupId === primary.id
-            ? t("sub2api.providerName")
-            : `${t("sub2api.providerName")} · ${
-                visible.find((g) => g.id === p.groupId)?.name ?? p.groupId
-              }`;
+        const name = visible.find((g) => g.id === p.groupId)?.name ?? String(p.groupId);
         await oc.addCustomProvider(p.providerId, {
           name,
           npm: npmForProtocol(protocol),
@@ -310,6 +305,8 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
 
   const signOut = async () => {
     await sub2apiLogout().catch(() => {});
+    clearAcpConfig("claude-code");
+    clearAcpConfig("codex");
     setAccount(null);
     setModels(null);
     setPicked(new Set());
@@ -402,7 +399,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
         return;
       }
       await oc.addCustomProvider(providerId, {
-        name: `${t("sub2api.providerName")} · ${groupName}`,
+        name: groupName,
         npm: npmForProtocol(proto),
         baseURL: baseUrl,
         models: chosen,
@@ -562,7 +559,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
                       {g.name}
                       {hasKey && (
                         <span className="ml-1 text-[10px] text-ok" title={t("sub2api.keyExists")}>
-                          ✓
+                          <Check size={11} aria-hidden={true} />
                         </span>
                       )}
                     </button>

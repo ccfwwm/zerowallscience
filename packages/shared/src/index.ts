@@ -356,6 +356,11 @@ export interface UsageBlock {
   cacheRead: number;
   cacheWrite: number;
   cost?: number;
+  durationMs?: number;
+  outputUnavailable?: boolean;
+  inputUnavailable?: boolean;
+  contextUsed?: number;
+  contextSize?: number;
 }
 
 /** One persisted assistant reply's usage, as the Usage panel renders it (the

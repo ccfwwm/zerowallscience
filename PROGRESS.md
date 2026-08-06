@@ -1,5 +1,29 @@
 # Progress
 
+2026-08-06 13:20 · v0.4.55 — ACP Claude Code/Codex 模型切换改为同一 session 的 session/set_model 请求，不再重启 adapter、MCP、Skills 或工作区；新增 fake ACP 回归并完成前端/Rust 验证。
+
+2026-08-06 10:15 · v0.4.54 — 限定 zero 分组、默认 OpenCode 与 token-only 统计已完成；Claude ACP 精确 usage 回传补丁、顺序模型切换和无窗口 adapter 已重新构建，Windows NSIS 安装至标准用户目录并启动验证通过。
+
+2026-08-06 03:10 · v0.4.53 — Windows ACP 无窗口 MCP 代理、重复模型切换幂等和通用运行环境加载态完成；目录异步竞态隔离，前端/Rust/NSIS/标准用户目录安装及 Claude ACP ready 验证通过。
+
+2026-08-06 01:05 · v0.4.52 — Windows ACP 启动进一步固定为包内原生 claude.exe/codex.exe，避免 adapter 经 .cmd shell shim 启动的不确定性；保留 .cmd 作为受控回退并新增原生优先回归测试。
+
+2026-08-06 00:20 · v0.4.51 — 修复 Windows 内置 ACP CLI 探测错误：按实际 claude/codex 命令名定位随包 runtime，避免回退到系统 PATH/WindowsApps 导致 Claude Code/Codex 连接退出；新增安装布局回归测试。
+
+2026-08-05 23:20 · v0.4.50 — 修复 ACP 运行时切换竞态：旧 Claude Code/Codex 连接的延迟失败不再覆盖新运行时状态，Claude Code、Codex 与 OpenCode 切换均加入连接代次隔离；新增回归测试并通过前端全量与 Rust ACP 测试。
+
+2026-08-05 22:40 · v0.4.49 — 修复 Windows/Unix 换行导致的科学数据库迁移校验误报，避免已安装版本在启动时因 M000 checksum panic 退出。
+
+2026-08-05 21:25 · v0.4.48 — ACP 精确 usage 扩展解析、旧运行时事件隔离与 ACP 单会话 pane 重绑定已完成；前端定向测试、Rust 主测试和 ACP reliability 测试通过。
+
+2026-08-05 20:20 · v0.4.47 — 模型目录隐藏内部网关品牌、支持 ACP 下自定义供应商直接获取/保存模型并将密钥写入系统凭据库；前端全量测试、Rust 326 项测试与 ACP 可靠性测试通过。
+
+2026-08-05 19:59 · ACP — exact turn token telemetry, strict Sub2API routing, private Claude Code/Codex Windows runtimes, lifecycle reliability tests, and the 0.4.46 NSIS installer are verified.
+
+2026-08-05 16:18 · Sub2API — DeepSeek V4 Flash and Pro received separate channel-5 token prices; default pricing was already correct, and both live OpenAI-compatible smoke requests returned HTTP 200.
+
+2026-08-03 15:30 · v0.4.26 — **修复 ACP 模式下"未加载默认模型 / 无供应商 / 无法选择供应商+模型"**。根因是 5 处：(1) `connect()` 的 ACP 成功分支直接 `return`，从未调用 `loadCatalog()` → store `providers` 为空（对话框"暂无模型")、`defaultModel` 为 null（侧栏"未设置")，已补 `void get().loadCatalog()`；(2) `loadCatalog` 在 ACP 模式改为从 ACP 启动配置派生 `defaultModel`（`acpDefaultModelKey`，因 `AcpRuntime.getDefaultModel()` 按设计返回 null），并以 `!acpId` 跳过 OpenCode 自愈逻辑，避免清空 defaultModel；(3) `setDefaultModel` 新增 ACP 分支：重写 ACP 启动配置（providerId/baseUrl/model）+ 重启子进程（`connect()`），因为 ACP 模型由启动 env 固定；(4) `setSessionModel` 在 ACP 模式路由到 `setDefaultModel`（单 agent，无 per-session 模型）；(5) `SettingsPage.refresh()` 用 `getClient() ?? await getOrCreateOpenCodeClient()` 回退到瞬态 OpenCode 客户端（ACP 拆除 opencodeClient 但 sidecar 仍持有供应商配置），解决"正在加载模型目录…"卡死。**验证**：typecheck clean，runtime.store 测试 103 通过（+3 ACP 新测试），我改动的文件 lint clean，构建产出 MSI 98MB + NSIS setup.exe 69MB（v0.4.26）。
+
 2026-08-03 14:55 · v0.4.25 release — **MSI 已构建完成**（98MB）。commit [d4f61cc](https://github.com/ccfwwm/zerowallscience/commit/d4f61cc) 推送至 `release/v0.3.9`，Sub2ApiCard.test.tsx 19/19 通过，typecheck clean。用户登录 Sub2Api → 一键获取模型后，Claude Code 自动注入网关配置（base URL + secret 引用 + 模型列表），无需手动配置。分组分类逻辑（claude 模型 → Claude Code，gpt 模型 → Codex）通过 `deriveAcpConfigs` 实现，bootstrap 自动恢复会话 + 供应 + 注册，打破"离线死锁"。
 
 2026-08-03 14:52 · v0.4.25 — **完整实现 Sub2Api 自动注入 ACP 配置（Claude Code / Codex）**。前一版本虽然修复了 ACP 启动连接，但 Claude Code 仍显示离线：因为 ACP 预设只携带 providerId 引用（应指向 Sub2Api 存储的 `zerowall-<groupId>`），缺少 base URL 和 model。**核心修复**：(1) 新增 `acp-config.ts`（localStorage 存储 ACP 配置）、`sub2api-provision.ts`（提取纯函数供 runtime.ts 复用，避免循环导入），并移动 protocol 选择逻辑至共享模块；(2) `Sub2ApiCard.tsx` 在 `autoSetup` 后调用 `writeAcpConfigs`（classify 分组 → claude/gpt，存储 providerId + baseUrl + model）；(3) `runtime.ts` 新增 `ensureAutoProvisioned`（bootstrap 时自动恢复 Sub2Api 会话 → 供应所有开放分组 → 注册 OpenCode 供应商 → 写入 ACP 配置），**在 `connect()` 之前**执行，打破"未连接 → 供应商空 → autoSetup 不触发 → 一直离线"死锁；(4) `connect()` 通过 `buildAcpLaunchRequest` 动态注入 env（`ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` / models）和 secret 引用（从 OS keychain 读取），Rust 端 `validate_acp_env_name` 已放行这些变量名；(5) 增加第 3 个开放分组 `claude-science-稳定专属分组`（匹配 `/claude|science/i`），`deriveAcpConfigs` 自动分类 claude 模型 → Claude Code，gpt 模型 → Codex。**验证**：修复 Sub2ApiCard.test.tsx 预存 mock（providers crash at HEAD → 现在 19/19 通过），typecheck clean。用户操作：登录 Sub2Api → 一键获取 → 自动填充 Claude Code，无需手动配置。

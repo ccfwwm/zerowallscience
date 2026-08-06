@@ -11,6 +11,24 @@ use zerowall_acp::{
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
+fn fake_agent_command() -> String {
+    if let Ok(path) = std::env::var("CARGO_BIN_EXE_zerowall_acp_fake_agent") {
+        return path;
+    }
+    // Workspace-wide `cargo test` may compile this integration test as a
+    // dependency without setting Cargo's bin environment variable. The fake
+    // binary still lives next to the test executable in that layout.
+    let mut path = std::env::current_exe()
+        .expect("test executable path")
+        .parent()
+        .and_then(Path::parent)
+        .expect("target debug directory")
+        .join("zerowall_acp_fake_agent");
+    #[cfg(windows)]
+    path.set_extension("exe");
+    path.to_string_lossy().to_string()
+}
+
 fn profile(mode: &str, env: Vec<(String, String)>) -> AcpAgentProfile {
     profile_with(mode, env, vec![], None)
 }
@@ -24,7 +42,7 @@ fn profile_with(
     AcpAgentProfile {
         id: "fake-agent".to_string(),
         label: "Fake Agent".to_string(),
-        command: env!("CARGO_BIN_EXE_zerowall_acp_fake_agent").to_string(),
+        command: fake_agent_command(),
         args: vec![mode.to_string()],
         env,
         env_remove,
@@ -107,6 +125,22 @@ async fn handshake_becomes_ready_only_after_initialize_and_session_new() {
         .await
         .expect("driver shutdown timeout")
         .unwrap();
+}
+
+#[tokio::test]
+async fn model_switch_uses_existing_session_without_rehandshake() {
+    let (client, mut events, driver) = launch("normal");
+    wait_ready(&mut events).await;
+
+    client.set_model("gpt-5.6-terra").await.unwrap();
+    client.prompt("after model switch").unwrap();
+    assert!(matches!(
+        next_event(&mut events).await,
+        AcpEvent::TurnEnded { ref stop_reason, .. } if stop_reason == "end_turn"
+    ));
+
+    client.shutdown().unwrap();
+    driver.await.unwrap();
 }
 
 #[tokio::test]

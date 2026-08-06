@@ -70,7 +70,7 @@ import {
 import { isGatewayWeb, gatewayToken, gatewayOrigin } from "./webMode";
 import { AcpRuntime } from "./acp-runtime";
 import { acpPresetById } from "./acp-presets";
-import { buildAcpLaunchRequest, saveAcpConfig } from "./acp-config";
+import { buildAcpLaunchRequest, clearAcpConfig, loadAcpConfig, saveAcpConfig } from "./acp-config";
 import {
   deriveAcpConfigs,
   loadProtocol,
@@ -94,6 +94,7 @@ import { notifyPermissionRequest } from "./systemNotification";
 import { fallbackDefaultModel } from "@/components/settings/modelCatalog";
 import { toast } from "@/lib/toast";
 import i18n from "@/i18n";
+import { useLayoutStore } from "./layout";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const URL_KEY = "zerowall.opencodeUrl";
@@ -147,14 +148,13 @@ function initialReasoningVariant(): string | null {
   return window.localStorage.getItem(REASONING_KEY) || null;
 }
 function initialAcpProfileId(): string | null {
-  // Never on web — the gateway client only speaks OpenCode.
-  if (typeof window === "undefined" || isGatewayWeb) return null;
-  const id = window.localStorage.getItem(ACP_PROFILE_KEY);
-  // Guard against a stale id whose preset was removed between versions.
-  if (id && acpPresetById(id)) return id;
-  // Default to Claude Code on first launch (no stored preference yet).
-  // Users can switch to OpenCode or Codex from the runtime picker.
-  return id === null ? "claude-code" : null;
+  // The app always opens in its bundled OpenCode mode. ACP remains available
+  // for an explicit switch during this run, but an old persisted ACP selection
+  // must never make a new launch depend on an external adapter.
+  if (typeof window !== "undefined" && !isGatewayWeb) {
+    window.localStorage.removeItem(ACP_PROFILE_KEY);
+  }
+  return null;
 }
 function initialSelectedAgent(): AgentRole {
   if (typeof window === "undefined") return "general";
@@ -263,7 +263,7 @@ interface RuntimeState {
    *  `reasoningVariant`. */
   sessionVariants: Record<string, string | null>;
   /** Set a session's model (per-pane); no sidecar config PATCH / reconnect. */
-  setSessionModel: (sessionId: string, model: string) => void;
+  setSessionModel: (sessionId: string, model: string) => Promise<void>;
   /** Set a session's reasoning effort (per-pane). */
   setSessionVariant: (sessionId: string, variant: string | null) => void;
 
@@ -436,6 +436,10 @@ interface RuntimeState {
 // provider/MCP surface that lives outside the AgentRuntime contract.
 let client: AgentRuntime | null = null;
 let opencodeClient: OpenCodeClient | null = null;
+/** Every connect owns one generation. A launch can reject only after its child
+ * is closed during a runtime switch; that obsolete completion must never paint
+ * an error over the agent that replaced it. */
+let runtimeConnectEpoch = 0;
 let openSessionSeq = 0;
 /** The model the user last DELIBERATELY switched to, and when. A switch does a
  *  masked reconnect, and connect() fires loadCatalog() un-awaited — so the
@@ -448,6 +452,9 @@ let openSessionSeq = 0;
 let lastSwitchModel: string | null = null;
 let lastSwitchAt = 0;
 const SWITCH_HEAL_GRACE_MS = 15_000;
+/** Serialize rapid ACP model picks into one session command lane. */
+let activeAcpModelSwitch: Promise<void> | null = null;
+let queuedAcpModel: string | null = null;
 /** React StrictMode mounts effects twice in development. Share the same boot
  *  promise so duplicate AppShell effects cannot start dueling connect loops. */
 let bootstrapInFlight: Promise<void> | null = null;
@@ -491,6 +498,7 @@ function teardownClient() {
   clientStatusUnsub = null;
   clearStatusBlip();
   client?.close();
+  teardownStreamClients();
   client = null;
   opencodeClient = null;
 }
@@ -986,6 +994,16 @@ export function getClient(): OpenCodeClient | null {
   return opencodeClient;
 }
 
+/** The default-model key ("providerId/model") for an ACP preset, from its stored
+ *  Sub2Api config, or null when the agent has no gateway config (own login). An
+ *  ACP agent's default is maintained by its live session, so the sidecar's own default is
+ *  irrelevant here — this is what the picker highlights and the sidebar shows. */
+function acpDefaultModelKey(presetId: string | null): string | null {
+  if (!presetId) return null;
+  const config = loadAcpConfig(presetId);
+  return config ? `${config.providerId}/${config.model}` : null;
+}
+
 /**
  * Return the current OpenCode client, or create a transient one if ACP is the
  * active runtime (the OpenCode sidecar keeps running in the background even
@@ -1182,6 +1200,11 @@ function modelForSession(state: RuntimeState, key: string): { model: string | nu
  *  sharedEventHandler. */
 function makeSharedEventHandler(set: StoreSet, get: StoreGet): (event: OpenCodeEvent) => void {
   return (event) => {
+        // ACP owns one stable profile session. Events from the OpenCode
+        // sidecar, a background pane, or a previous ACP process must never
+        // recreate/fold blocks into the active ACP conversation.
+        const activeAcp = get().acpProfileId;
+        if (activeAcp && event.sessionId !== activeAcp) return;
         // text.updated fires per streamed token, and a running bash tool fires
         // per stdout write (tqdm redraws dozens of times a second) — logging
         // each one would flood debug.log with an IPC call per event.
@@ -1522,12 +1545,19 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   sessionAgents: {},
   sessionModels: loadRecord<string>(SESSION_MODELS_KEY),
   sessionVariants: loadRecord<string | null>(SESSION_VARIANTS_KEY),
-  setSessionModel: (sessionId, model) =>
+  setSessionModel: (sessionId, model) => {
+    // ACP mode: one child process serves every pane. Route the pick through the
+    // live session model command rather than storing a pane-only override.
+    if (get().acpProfileId) {
+      return get().setDefaultModel(model);
+    }
     set((s) => {
       const sessionModels = { ...s.sessionModels, [sessionId]: model };
       saveRecord(SESSION_MODELS_KEY, sessionModels);
       return { sessionModels };
-    }),
+    });
+    return Promise.resolve();
+  },
   setSessionVariant: (sessionId, variant) =>
     set((s) => {
       const sessionVariants = { ...s.sessionVariants, [sessionId]: variant };
@@ -1692,20 +1722,33 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   },
 
   loadCatalog: async () => {
-    if (!client) return;
+    const catalogClient = client;
+    if (!catalogClient) return;
+    const catalogEpoch = runtimeConnectEpoch;
+    const ownsCatalog = () =>
+      client === catalogClient && runtimeConnectEpoch === catalogEpoch;
     try {
       // listProviders is OpenCodeClient-only. In OpenCode mode opencodeClient
       // equals `client`. In ACP mode opencodeClient is torn down, but the
       // sidecar keeps running in the background — create a transient client so
       // the model picker stays populated while the user is on the ACP runtime.
-      const oc = opencodeClient ?? await getOrCreateOpenCodeClient().catch(() => null);
-      const [firstSkills, agents, defaultModel, commands, providers] = await Promise.all([
-        client.listSkills(),
-        client.listAgents(),
-        client.getDefaultModel().catch(() => null),
-        client.listCommands().catch(() => []),
+      const catalogOpenCodeClient = opencodeClient;
+      const oc = catalogOpenCodeClient ?? await getOrCreateOpenCodeClient().catch(() => null);
+      if (!ownsCatalog()) return;
+      // In ACP mode the active runtime advertises no portable model catalog;
+      // the live session model is the
+      // real default is the one its Sub2Api config pins. Read that instead so the
+      // picker highlights it and the sidebar shows it — not "未设置".
+      const acpId = get().acpProfileId;
+      const [firstSkills, agents, clientDefaultModel, commands, providers] = await Promise.all([
+        catalogClient.listSkills(),
+        catalogClient.listAgents(),
+        catalogClient.getDefaultModel().catch(() => null),
+        catalogClient.listCommands().catch(() => []),
         oc ? oc.listProviders().catch(() => []) : Promise.resolve([]),
       ]);
+      if (!ownsCatalog()) return;
+      const defaultModel = acpId ? acpDefaultModelKey(acpId) : clientDefaultModel;
       // A model switch in flight owns `defaultModel`: this read may predate
       // the switch's config write, and applying it would visibly revert the
       // just-selected model.
@@ -1719,8 +1762,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       // Isolated in its own try/catch: this is an enhancement layer, and a
       // failure here must never abort the self-heal or the skills poll below
       // (the outer catch would swallow it and silently degrade both).
-      if (opencodeClient) {
+      if (catalogOpenCodeClient) {
         try {
+          if (!ownsCatalog()) return;
           const state = get();
           const { DEFAULT_ROLE_BINDINGS } = await import("@zerowall/shared");
           const bindings = Object.keys(state.agentBindings).length > 0
@@ -1729,11 +1773,12 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           const providerSet = new Set(providers.map((p) => p.id));
           const zwClient = syncZeroWallClient(
             state.zeroWallClient,
-            opencodeClient,
+            catalogOpenCodeClient,
             state.agentDefinitions,
             bindings,
             providerSet,
           );
+          if (!ownsCatalog()) return;
           set({ zeroWallClient: zwClient, agentBindings: bindings });
         } catch (err) {
           // Stay on the OpenCodeClient fallback path (see sendPrompt).
@@ -1754,14 +1799,18 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       // switch as "dangling" and points it back at an old model (#37).
       const justSwitched =
         defaultModel === lastSwitchModel && Date.now() - lastSwitchAt < SWITCH_HEAL_GRACE_MS;
-      if (!get().switching && !justSwitched && defaultModel) {
+      // ACP mode owns its default via the launch config (setDefaultModel there
+      // rewrites that config and relaunches) — the OpenCode self-heal would only
+      // try to PATCH a sidecar the user isn't chatting with, so skip it.
+      if (!acpId && !get().switching && !justSwitched && defaultModel) {
         const next = fallbackDefaultModel(providers, defaultModel);
         if (next) {
           try {
             // Call the underlying client directly to avoid triggering a reconnect
             // inside loadCatalog (which would cause infinite recursion). The
             // reconnect that called loadCatalog is already in progress.
-            await client.setDefaultModel(next);
+            await catalogClient.setDefaultModel(next);
+            if (!ownsCatalog()) return;
             set({ defaultModel: next });
             toast.success(
               i18n.t("settings:toast.defaultModelReset", { old: defaultModel, model: next }),
@@ -1777,8 +1826,11 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       // instance init and can answer before the scan finishes — poll briefly.
       for (let i = 0; skills.length === 0 && i < 4; i++) {
         await sleep(400);
-        skills = await client.listSkills();
+        if (!ownsCatalog()) return;
+        skills = await catalogClient.listSkills();
+        if (!ownsCatalog()) return;
       }
+      if (!ownsCatalog()) return;
       set({ skills });
     } catch {
       /* ignore transient failures */
@@ -1819,6 +1871,77 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
 
   setDefaultModel: async (model) => {
     if (!client) throw new Error("Not connected to the OpenCode runtime.");
+    // ACP adapters support `session/set_model`; keep their current process,
+    // session, MCP servers, skills, and workspace alive while changing model.
+    const acpId = get().acpProfileId;
+    if (acpId) {
+      const activeClient = client;
+      const slash = model.indexOf("/");
+      if (slash <= 0) throw new Error(`Malformed model id: ${model}`);
+      if (activeAcpModelSwitch) {
+        // Adapter requests are serialized; selection stays responsive and the
+        // final picker value wins without creating another ACP process.
+        queuedAcpModel = model;
+        return activeAcpModelSwitch;
+      }
+      const current = loadAcpConfig(acpId);
+      const currentKey = current ? `${current.providerId}/${current.model}` : null;
+      // Repeated picker events and delayed catalog refreshes may ask to apply
+      // the already-running model. Relaunching an ACP agent for that no-op
+      // visibly interrupts the conversation and can create duplicate MCP
+      // processes, so accept it as a UI-only confirmation.
+      if (currentKey === model) {
+        set({ defaultModel: model, modelSwitchError: null });
+        return;
+      }
+      if (!current) {
+        toast.error(i18n.t("settings:toast.noModelSelected"));
+        return;
+      }
+      const runSwitches = async () => {
+        let target: string | null = model;
+        while (target && get().acpProfileId === acpId) {
+          queuedAcpModel = null;
+          const targetSlash = target.indexOf("/");
+          const targetProviderId = target.slice(0, targetSlash);
+          const targetModelId = target.slice(targetSlash + 1);
+          const base = loadAcpConfig(acpId);
+          if (!base) {
+            toast.error(i18n.t("settings:toast.noModelSelected"));
+            return;
+          }
+          void logDebug(`[acp] setDefaultModel → ${target} (in-session ${acpId})`);
+          try {
+            await activeClient.setDefaultModel(target);
+            if (get().acpProfileId !== acpId) return;
+            // Persist only after the adapter accepted the change. The next
+            // runtime launch therefore starts with the last working model.
+            saveAcpConfig(acpId, {
+              providerId: targetProviderId,
+              baseUrl: base.baseUrl,
+              model: targetModelId,
+              ...(base.platform ? { platform: base.platform } : {}),
+            });
+            lastSwitchModel = target;
+            lastSwitchAt = Date.now();
+            set({ defaultModel: target });
+            set({ modelSwitchError: null });
+          } catch (err) {
+            set({ modelSwitchError: err instanceof Error ? err.message : String(err) });
+            if (!queuedAcpModel) throw err;
+          }
+          target = queuedAcpModel;
+        }
+      };
+      activeAcpModelSwitch = runSwitches();
+      try {
+        await activeAcpModelSwitch;
+      } finally {
+        activeAcpModelSwitch = null;
+        queuedAcpModel = null;
+      }
+      return;
+    }
     // #37 diagnostics: record what we ask for so a repro (e.g. switching after a
     // plan's quota runs out) shows the exact target model.
     void logDebug(`[provider] setDefaultModel → ${model}`);
@@ -1873,6 +1996,11 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       if (profileId) window.localStorage.setItem(ACP_PROFILE_KEY, profileId);
       else window.localStorage.removeItem(ACP_PROFILE_KEY);
     }
+    // ACP exposes one live conversation. Rebind the active pane before the
+    // new process starts so its first prompt cannot target a stale OpenCode
+    // session, and late events have no old pane to corrupt.
+    const layout = useLayoutStore.getState();
+    layout.reset(profileId);
     // Switching runtimes drops the whole conversation view: the sessions,
     // threads and per-runtime capability lists all belong to the old runtime.
     // Clear zeroWallClient too — it wraps the OpenCode client for agent routing
@@ -1908,9 +2036,20 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     const account = (await sub2apiRestoreSession().catch(() => null))
       ?? (await sub2apiAccount().catch(() => null));
     if (!account) {
+      // A signed-out or expired account must never leave the previous account's
+      // provider id/model descriptor usable on the next ACP launch. The key
+      // itself remains in the OS credential manager, but without this complete
+      // descriptor the strict launch request cannot route with stale identity.
+      clearAcpConfig("claude-code");
+      clearAcpConfig("codex");
       void logDebug("auto-provision: no Sub2Api session — skipping");
       return;
     }
+    // Re-provisioning is an account boundary. Clear both descriptors before
+    // fetching the new account's groups so a transient groups/key failure
+    // cannot fall back to the previous account's route.
+    clearAcpConfig("claude-code");
+    clearAcpConfig("codex");
     // One key per open group, each stored under its own provider id, keys landing
     // straight in the OS credential manager (never through JS). The sidecar is
     // restarted once by the Rust side as part of provisioning.
@@ -1954,10 +2093,8 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     }
     const npm = npmForProtocol(loadProtocol());
     for (const p of named) {
-      const name =
-        p.groupId === primary.id ? "Sub2API" : `Sub2API · ${p.name}`;
       await oc.addCustomProvider(p.providerId, {
-        name,
+        name: p.name,
         npm,
         baseURL: p.baseUrl,
         models: orderModels(p.models),
@@ -1976,6 +2113,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   },
 
   connect: async () => {
+    const connectionEpoch = ++runtimeConnectEpoch;
     // Quiet teardown of any previous connection: within a (re)connect the
     // status must never pass through "offline" — on first boot the retry loop
     // runs for minutes (macOS TCC) and each flip repaints the whole page.
@@ -1999,21 +2137,40 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         const request = buildAcpLaunchRequest(preset);
         const acp = new AcpRuntime(request);
         client = acp; // NOT opencodeClient — ACP is not an OpenCode server.
+        const ownsConnection = () =>
+          runtimeConnectEpoch === connectionEpoch &&
+          client === acp &&
+          get().acpProfileId === preset.id;
         clientStatusUnsub = acp.onStatus((status) => {
+          if (!ownsConnection()) return;
           clearStatusBlip();
           set({ status });
         });
         if (!sharedEventHandler) sharedEventHandler = makeSharedEventHandler(set, get);
-        acp.onEvent(sharedEventHandler);
+        acp.onEvent((event) => {
+          // Closing an ACP process is asynchronous. Check object identity as
+          // well as the profile id so late events from the old process are
+          // discarded after a runtime switch/reconnect.
+          if (!ownsConnection()) return;
+          sharedEventHandler?.(event);
+        });
         try {
           void logDebug(`ACP connect → ${preset.id}`);
           await acp.connect();
+          if (!ownsConnection()) return;
           void logDebug("ACP connect OK");
           set({ error: null });
           await get().refreshSessions();
+          if (!ownsConnection()) return;
+          // The OpenCode sidecar keeps running behind the ACP agent — load its
+          // provider catalog so the model picker is populated and the sidebar
+          // shows the agent's gateway model (loadCatalog derives the ACP default
+          // from the launch config, since the agent itself advertises none).
+          void get().loadCatalog();
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           void logDebug(`ACP connect FAILED: ${msg}`);
+          if (!ownsConnection()) return;
           lastConnectError = msg;
           if (retryLoopActive) set({ status: "connecting" });
           else set({ error: msg, status: "error" });
@@ -2061,6 +2218,8 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     });
     opencodeClient = c;
     client = c;
+    const ownsConnection = () =>
+      runtimeConnectEpoch === connectionEpoch && client === c && get().acpProfileId === null;
     // Background streams reuse the same sidecar; the foreground now streams this
     // folder, so drop any background stream that was covering it (avoid a double
     // fold of the same events).
@@ -2068,6 +2227,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     streamPassword = password ?? undefined;
     if (directory) removeStreamClient(directory);
     clientStatusUnsub = c.onStatus((status) => {
+      if (!ownsConnection()) return;
       void logDebug(`status → ${status}`);
       if (status === "connecting" && get().status === "ready") {
         // Hold the flip for STATUS_BLIP_GRACE_MS: if the SDK's own reconnect
@@ -2083,13 +2243,20 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       set({ status });
     });
     if (!sharedEventHandler) sharedEventHandler = makeSharedEventHandler(set, get);
-    c.onEvent(sharedEventHandler);
+    c.onEvent((event) => {
+      // The SDK may deliver a final queued event after close(). Do not let a
+      // previous foreground connection repopulate the newly selected pane.
+      if (!ownsConnection()) return;
+      sharedEventHandler?.(event);
+    });
     try {
       void logDebug(`connect → ${get().serverUrl}`);
       await c.connect();
+      if (!ownsConnection()) return;
       void logDebug("connect OK");
       set({ error: null });
       await get().refreshSessions();
+      if (!ownsConnection()) return;
       void get().refreshProjects();
       // Catalog (skills/agents/commands) fills in behind the page — a session
       // switch must not wait on it to show the conversation.
@@ -2145,6 +2312,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       void logDebug(`connect FAILED: ${msg}`);
+      if (!ownsConnection()) return;
       lastConnectError = msg;
       // Inside a retry loop (boot or a workspace switch), stay calm and let
       // connectRetry decide whether to surface this — a mid-boot flash of the
@@ -2277,9 +2445,13 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   },
 
   refreshSessions: async () => {
-    if (!client) return;
+    const activeClient = client;
+    if (!activeClient) return;
     try {
-      const sessions = await client.listSessions();
+      const sessions = await activeClient.listSessions();
+      // A session list belongs to the client that requested it. Do not let an
+      // old ACP/OpenCode completion replace the new runtime's conversation.
+      if (client !== activeClient) return;
       set((s) => {
         // The list also names each subagent session's parent — the recovery
         // path for parent links after a reload (no live task event to learn from).
@@ -2414,8 +2586,13 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   switchWorkspace: async (target) => {
     set({ switching: true });
     try {
-      if ("dated" in target) await newDatedWorkspace(target.dated);
-      else await setWorkspace(target.path);
+      // Tauri resolves the canonical directory (including Windows casing and
+      // reparse points). Keep that exact returned path in the store; otherwise
+      // a project picker changes the runtime's working directory while the UI
+      // and the next prompt still describe the previous workspace.
+      const workspace = "dated" in target
+        ? await newDatedWorkspace(target.dated)
+        : await setWorkspace(target.path);
       // Reset the local kernel so it respawns in the new folder, then reconnect
       // the event stream scoped to it (connect() re-reads the active folder —
       // the sidecar itself keeps running). An explicit switch pins the folder,
@@ -2428,7 +2605,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         delete panes[DRAFT_KEY];
         const sessionAgents = { ...s.sessionAgents };
         delete sessionAgents[DRAFT_KEY];
-        return { currentId: null, panes, workspacePinned: true, sessionAgents };
+        return { currentId: null, panes, workspace, workspacePinned: true, sessionAgents };
       });
       await get().connectRetry();
       await Promise.all([get().refreshSessions(), get().loadCatalog()]);
@@ -2552,6 +2729,16 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // found".
     const s = get();
     const key = sessionId ?? draftKey ?? s.currentId ?? DRAFT_KEY;
+    // An ACP runtime owns exactly one live conversation, keyed by its stable
+    // profile id. Persisted layouts may still contain panes from OpenCode (or
+    // the other ACP profile); forwarding one of those ids would put the echoed
+    // user message in that stale pane while AcpRuntime streams the answer into
+    // its fixed session. Reject at this shared boundary so every composer path
+    // remains coherent until the pane is rebound to the active runtime.
+    if (s.acpProfileId && key !== s.acpProfileId && !key.startsWith("draft:")) {
+      set({ error: "This pane belongs to a different runtime. Select the active ACP conversation before sending." });
+      return Promise.resolve(null);
+    }
     const mode = s.sessionAgents[key];
     const agent =
       mode === "plan" && s.agents.some((a) => a.name === "plan") ? "plan" : undefined;
@@ -2564,9 +2751,8 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // hosted gateway — so a first message would silently leave the machine
     // through an endpoint the user never connected. Say so instead.
     //
-    // Exempt the ACP runtime: an ACP agent's model is fixed by its launch env,
-    // not chosen in ZeroWall (getDefaultModel is null by design), so there is no
-    // model to pick and the guard would block every send.
+    // Exempt the ACP runtime: its model is selected through the ACP session
+    // command and the live runtime owns the selected model.
     if (!model && !s.acpProfileId) {
       toast.error(i18n.t("settings:toast.noModelSelected"));
       return Promise.resolve(null);
@@ -3099,7 +3285,11 @@ export function foldEvent(
         reasoning: event.reasoning,
         cacheRead: event.cacheRead,
         cacheWrite: event.cacheWrite,
-        ...(event.cost !== undefined ? { cost: event.cost } : {}),
+        ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
+        ...(event.inputUnavailable ? { inputUnavailable: true } : {}),
+        ...(event.outputUnavailable ? { outputUnavailable: true } : {}),
+        ...(event.contextUsed !== undefined ? { contextUsed: event.contextUsed } : {}),
+        ...(event.contextSize !== undefined ? { contextSize: event.contextSize } : {}),
       };
       if (key in index) blocks[index[key]] = block;
       else {
@@ -3312,7 +3502,6 @@ export function historyToThread(messages: HistoryMessage[], commands?: CommandIn
           reasoning: m.usage.reasoning,
           cacheRead: m.usage.cacheRead,
           cacheWrite: m.usage.cacheWrite,
-          ...(m.usage.cost !== undefined ? { cost: m.usage.cost } : {}),
         });
       }
       // A turn that ended in a provider/runtime error must say so on reload —

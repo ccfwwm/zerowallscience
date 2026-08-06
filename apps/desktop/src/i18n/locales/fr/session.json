@@ -141,7 +141,8 @@
     "runtime": {
       "title": "Runtime OpenCode",
       "bodyPrefix": "L'application de bureau exécute automatiquement un OpenCode intégré. Dans le navigateur, démarrez-en un avec",
-      "bodySuffix": " puis connectez-vous."
+      "bodySuffix": " puis connectez-vous.",
+      "connecting": "Connexion à l'environnement d'exécution…"
     },
     "connect": "Connecter",
     "latest": "Plus récent",

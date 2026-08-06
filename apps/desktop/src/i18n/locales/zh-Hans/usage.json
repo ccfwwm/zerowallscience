@@ -25,7 +25,7 @@
       "cached": "缓存",
       "cost": "费用",
       "replies": "回复数",
-      "sub2apiCost": "sub2api 估算"
+      "sub2apiCost": "网关估算"
     },
     "table": {
       "session": "会话",

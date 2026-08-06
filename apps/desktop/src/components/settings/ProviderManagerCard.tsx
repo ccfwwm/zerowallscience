@@ -4,6 +4,7 @@ import type { ProviderInfo } from "@zerowall/sdk";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/cn";
 import { Section } from "./Section";
+import { displayProviderName } from "./modelCatalog";
 
 interface ProviderManagerCardProps {
   providers: ProviderInfo[];
@@ -19,7 +20,7 @@ export function ProviderManagerCard({
   children,
 }: ProviderManagerCardProps) {
   const { t } = useTranslation("settings");
-  const names = providers.map((provider) => provider.name).join(", ");
+  const names = providers.map(displayProviderName).join(", ");
   const summary = providers.length
     ? t("providers.connectedSummary", { count: providers.length, names })
     : t("providers.noneConnected");

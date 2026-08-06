@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
+use zerowall_acp::AcpMcpServer;
 
 use crate::runtime::{free_port, workspace_dir};
 
@@ -40,6 +41,28 @@ pub struct JupyterState {
     /// Serializes start / re-root so overlapping workspace switches can never
     /// leave two jupyter-lab processes fighting over the fixed port.
     lifecycle: Mutex<()>,
+}
+
+/// ACP receives the Jupyter MCP descriptor only while the app-managed server
+/// is installed and running. The full status check is performed by the command
+/// below; this helper deliberately returns None when no safe descriptor exists.
+pub(crate) fn acp_mcp_server(app: &AppHandle) -> Option<AcpMcpServer> {
+    let state = app.state::<JupyterState>();
+    let status = status_of(app, &state);
+    if !status.installed || !status.running {
+        return None;
+    }
+    Some(AcpMcpServer {
+        name: "jupyter".to_string(),
+        command: status.mcp_command?,
+        args: Vec::new(),
+        env: vec![
+            ("JUPYTER_URL".to_string(), status.url?),
+            ("JUPYTER_TOKEN".to_string(), status.token?),
+            ("START_NEW_RUNTIME".to_string(), "false".to_string()),
+            ("ALLOW_IMG_OUTPUT".to_string(), "true".to_string()),
+        ],
+    })
 }
 
 fn env_dir(app: &AppHandle) -> Result<PathBuf, String> {

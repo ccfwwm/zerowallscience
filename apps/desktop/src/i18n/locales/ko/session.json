@@ -141,7 +141,8 @@
     "runtime": {
       "title": "OpenCode 런타임",
       "bodyPrefix": "데스크톱 앱은 내장된 OpenCode를 자동으로 실행합니다. 브라우저에서는 다음으로 시작하세요",
-      "bodySuffix": " 그리고 연결하세요."
+      "bodySuffix": " 그리고 연결하세요.",
+      "connecting": "실행 환경에 연결하는 중…"
     },
     "connect": "연결",
     "latest": "최신",

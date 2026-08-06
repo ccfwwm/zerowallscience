@@ -141,7 +141,8 @@
     "runtime": {
       "title": "Entorno de ejecución de OpenCode",
       "bodyPrefix": "La app de escritorio ejecuta automáticamente una instancia de OpenCode incluida. En el navegador, inicia una con",
-      "bodySuffix": " y conéctate."
+      "bodySuffix": " y conéctate.",
+      "connecting": "Conectando al entorno de ejecución…"
     },
     "connect": "Conectar",
     "latest": "Más reciente",

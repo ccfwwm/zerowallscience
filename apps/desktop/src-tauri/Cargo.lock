@@ -6288,15 +6288,17 @@ name = "zerowall-acp"
 version = "0.1.0"
 dependencies = [
  "agent-client-protocol",
+ "async-process",
  "futures",
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
 name = "zerowall-science"
-version = "0.4.25"
+version = "0.4.55"
 dependencies = [
  "futures",
  "getrandom 0.4.3",

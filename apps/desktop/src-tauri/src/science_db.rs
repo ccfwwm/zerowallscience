@@ -250,7 +250,12 @@ fn migration_is_applied(conn: &Connection, migration: Migration) -> Result<bool,
 
 fn sql_checksum(sql: &str) -> String {
     let mut hash = 0xcbf29ce484222325u64;
-    for byte in sql.bytes() {
+    // Migration files are checked out with the platform's line endings. The
+    // schema is portable data, so line-ending conversion must not make an
+    // existing database look tampered with when moving between Windows and
+    // Unix. Normalize CRLF and lone CR to LF before hashing and recording.
+    let normalized = sql.replace("\r\n", "\n").replace('\r', "\n");
+    for byte in normalized.bytes() {
         hash ^= u64::from(byte);
         hash = hash.wrapping_mul(0x100000001b3);
     }
@@ -535,6 +540,26 @@ mod tests {
             .unwrap();
         assert_eq!(applied_after, applied_before);
         assert_eq!(applied_after.len(), 11);
+    }
+
+    #[test]
+    fn migration_checksum_is_portable_between_lf_and_crlf() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        configure_connection(&conn).unwrap();
+        let lf = Migration {
+            id: "M000",
+            version: 0,
+            sql: "CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY, current_version INTEGER, created_at TEXT, updated_at TEXT);\nCREATE TABLE schema_migrations (id TEXT PRIMARY KEY, version INTEGER, sql_checksum TEXT, applied_at TEXT);\n",
+        };
+        let crlf = Migration {
+            sql: "CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY, current_version INTEGER, created_at TEXT, updated_at TEXT);\r\nCREATE TABLE schema_migrations (id TEXT PRIMARY KEY, version INTEGER, sql_checksum TEXT, applied_at TEXT);\r\n",
+            ..lf
+        };
+
+        apply_migrations(&mut conn, &[lf]).unwrap();
+        // A database created by a Unix checkout must reopen from a Windows
+        // checkout (and vice versa) without being mistaken for tampering.
+        apply_migrations(&mut conn, &[crlf]).unwrap();
     }
 
     #[test]

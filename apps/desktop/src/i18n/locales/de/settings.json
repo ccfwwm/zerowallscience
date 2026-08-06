@@ -111,6 +111,7 @@
   "providers": {
     "title": "Anbieter",
     "hint": "Authentifizierung, benutzerdefinierte Endpunkte und importierte OpenCode-Anmeldungen",
+    "hintAcp": "Im ACP-Modus werden Anbieter von der KI-Plattform verwaltet",
     "connectPrompt": "Verbinde die Laufzeit, um Anbieter zu verwalten.",
     "manage": "Verwalten",
     "collapse": "Einklappen",

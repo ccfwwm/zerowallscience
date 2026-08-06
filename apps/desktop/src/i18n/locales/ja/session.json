@@ -141,7 +141,8 @@
     "runtime": {
       "title": "OpenCode ランタイム",
       "bodyPrefix": "デスクトップアプリはバンドルされた OpenCode を自動的に実行します。ブラウザでは、",
-      "bodySuffix": " で起動して接続してください。"
+      "bodySuffix": " で起動して接続してください。",
+      "connecting": "実行環境に接続しています…"
     },
     "connect": "接続",
     "latest": "最新",

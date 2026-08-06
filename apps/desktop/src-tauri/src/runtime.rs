@@ -211,6 +211,13 @@ fn deploy_bundled_skills(app: &AppHandle) {
         Ok(cfg) => cfg.join("opencode").join("skills"),
         Err(_) => return,
     };
+    let _ = deploy_bundled_skills_to(app, &dst);
+}
+
+/// Deploy the same app-owned skill packs into a runtime-specific directory.
+/// ACP profiles cannot discover OpenCode's XDG home, so they need this
+/// explicit copy into their isolated `.claude`/`.codex` skills directory.
+pub(crate) fn deploy_bundled_skills_to(app: &AppHandle, dst: &Path) -> Result<(), String> {
     let mut bundled: std::collections::HashSet<std::ffi::OsString> = std::collections::HashSet::new();
     let mut all_ok = true;
     for resource in SKILL_RESOURCES {
@@ -220,11 +227,11 @@ fn deploy_bundled_skills(app: &AppHandle) {
         {
             Ok(p) if p.is_dir() => p,
             _ => {
-                all_ok = false; // dev run without `fetch-skills.sh` — nothing to deploy
+                all_ok = false;
                 continue;
             }
         };
-        match sync_skill_pack(&src, &dst) {
+        match sync_skill_pack(&src, dst) {
             Ok(names) => bundled.extend(names),
             Err(e) => {
                 all_ok = false;
@@ -240,7 +247,10 @@ fn deploy_bundled_skills(app: &AppHandle) {
     // EVERY tree deployed cleanly: a partial deploy would make `bundled`
     // incomplete and wrongly delete valid skills.
     if all_ok {
-        prune_stale_skills(&dst, &bundled);
+        prune_stale_skills(dst, &bundled);
+        Ok(())
+    } else {
+        Err("bundled scientific skills are unavailable".to_string())
     }
 }
 

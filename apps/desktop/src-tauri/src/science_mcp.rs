@@ -6,6 +6,7 @@
 // package and report the managed interpreter path.
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
+use zerowall_acp::AcpMcpServer;
 
 fn env_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app
@@ -23,6 +24,102 @@ fn python_bin(app: &AppHandle) -> Result<PathBuf, String> {
     return Ok(dir.join("Scripts").join("python.exe"));
     #[cfg(not(windows))]
     Ok(dir.join("bin").join("python"))
+}
+
+/// The ACP adapters own their MCP children, so the host's `CREATE_NO_WINDOW`
+/// flag does not propagate to Python. Route MCP stdio through our GUI-subsystem
+/// proxy, which starts the real child without creating a console window.
+fn mcp_proxy_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let extension = if cfg!(windows) { ".exe" } else { "" };
+    let installed = app
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?
+        .join(format!("zerowall-mcp-proxy{extension}"));
+    if installed.is_file() {
+        return Ok(installed);
+    }
+
+    let target = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        "x86_64-pc-windows-msvc"
+    } else if cfg!(all(target_os = "windows", target_arch = "aarch64")) {
+        "aarch64-pc-windows-msvc"
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        "x86_64-apple-darwin"
+    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "aarch64-apple-darwin"
+    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        "x86_64-unknown-linux-gnu"
+    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+        "aarch64-unknown-linux-gnu"
+    } else {
+        "unsupported-target"
+    };
+    let development = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("binaries")
+        .join(format!("zerowall-mcp-proxy-{target}{extension}"));
+    if development.is_file() {
+        Ok(development)
+    } else {
+        Err("bundled MCP proxy is unavailable".to_string())
+    }
+}
+
+fn mcp_proxy_args(python: &std::path::Path, module: &str) -> Vec<String> {
+    vec![
+        python.to_string_lossy().to_string(),
+        "-m".to_string(),
+        module.to_string(),
+    ]
+}
+
+/// Return only host-managed, keyless MCP descriptors for ACP sessions. The
+/// same isolated interpreter is shared by OpenCode and ACP; no frontend
+/// command or secret is accepted here.
+pub(crate) fn acp_mcp_servers(app: &AppHandle) -> Result<Vec<AcpMcpServer>, String> {
+    let python = python_bin(app)?;
+    if !python.is_file() {
+        return Ok(Vec::new());
+    }
+    let proxy = mcp_proxy_path(app)?;
+    let candidates = [
+        ("spaceweather", "spaceweather_mcp.server", false),
+        ("paper-search", "paper_search_mcp.server", false),
+        ("biomcp", "biomcp", false),
+        ("open-meteo", "mcp_weather_server", false),
+    ];
+    let mut result = Vec::new();
+    for (name, module, _) in candidates {
+        let probe = crate::runtime::quiet_command(&python)
+            .args(["-c", &format!("import {module}")])
+            .output();
+        if !probe.as_ref().is_ok_and(|output| output.status.success()) {
+            continue;
+        }
+        result.push(AcpMcpServer {
+            name: name.to_string(),
+            command: proxy.to_string_lossy().to_string(),
+            args: mcp_proxy_args(&python, module),
+            env: if name == "spaceweather" {
+                vec![("FASTMCP_SHOW_SERVER_BANNER".to_string(), "false".to_string())]
+            } else {
+                Vec::new()
+            },
+        });
+    }
+    Ok(result)
+}
+
+/// Prepare is intentionally idempotent. The existing settings action owns
+/// package installation; ACP switching only verifies the app-managed env and
+/// does not reinstall packages on every model change.
+pub(crate) async fn prepare_acp_mcp(app: &AppHandle) -> Result<(), String> {
+    let dir = env_dir(app)?;
+    if dir.is_dir() {
+        Ok(())
+    } else {
+        Err("science MCP environment is not initialized".to_string())
+    }
 }
 
 /// The managed interpreter path if the shared env exists, else None. The
@@ -86,7 +183,8 @@ fn is_safe_package(pkg: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_safe_package;
+    use super::{is_safe_package, mcp_proxy_args};
+    use std::path::Path;
 
     #[test]
     fn accepts_real_package_names_and_pins() {
@@ -103,5 +201,18 @@ mod tests {
         assert!(!is_safe_package("pkg && echo"));
         assert!(!is_safe_package("pkg --index-url http://evil"));
         assert!(!is_safe_package("pkg\nother"));
+    }
+
+    #[test]
+    fn mcp_proxy_keeps_python_as_the_child_command() {
+        let args = mcp_proxy_args(Path::new("C:/managed/python.exe"), "spaceweather_mcp.server");
+        assert_eq!(
+            args,
+            vec![
+                "C:/managed/python.exe".to_string(),
+                "-m".to_string(),
+                "spaceweather_mcp.server".to_string(),
+            ]
+        );
     }
 }

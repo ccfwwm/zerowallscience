@@ -139,6 +139,9 @@ pub struct AcpUsageUpdate {
     pub used: u64,
     /// Total context-window size in tokens.
     pub size: u64,
+    /// Optional provider token counters attached by an adapter in ACP `_meta`.
+    /// These are kept separate from `used`, which is only context occupancy.
+    pub token_usage: Option<AcpTokenUsage>,
 }
 
 /// Cumulative token usage reported by ACP at the end of a prompt turn.
@@ -337,8 +340,10 @@ impl std::error::Error for AcpError {}
 /// Holds the outbound command channel; the agent process and connection live on
 /// a background task. Dropping the handle (closing the channel) lets the session
 /// task observe the closure and tear the agent down.
+#[derive(Clone)]
 pub struct AcpClient {
     prompts: mpsc::UnboundedSender<PromptCommand>,
+    model: mpsc::UnboundedSender<SetModelCommand>,
     cancel: tokio::sync::watch::Sender<u64>,
     cancel_generation: Arc<AtomicU64>,
     shutdown: tokio::sync::watch::Sender<bool>,
@@ -365,6 +370,11 @@ struct PromptCommand {
     cancel_generation: u64,
 }
 
+struct SetModelCommand {
+    model_id: String,
+    reply: oneshot::Sender<Result<(), AcpError>>,
+}
+
 /// One media or document attachment supplied with a user prompt. Images are
 /// forwarded as native ACP image blocks; extracted document text is carried in
 /// a normal text block, which every ACP agent is required to understand.
@@ -378,6 +388,7 @@ pub struct PromptAttachment {
 
 struct SessionControl {
     prompt_rx: mpsc::UnboundedReceiver<PromptCommand>,
+    model_rx: mpsc::UnboundedReceiver<SetModelCommand>,
     cancel_rx: tokio::sync::watch::Receiver<u64>,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
     event_tx: mpsc::UnboundedSender<AcpEvent>,
@@ -507,6 +518,7 @@ impl AcpClient {
         impl Future<Output = ()> + Send,
     ) {
         let (prompt_tx, prompt_rx) = mpsc::unbounded::<PromptCommand>();
+        let (model_tx, model_rx) = mpsc::unbounded::<SetModelCommand>();
         let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(0_u64);
         let cancel_generation = Arc::new(AtomicU64::new(0));
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
@@ -525,6 +537,7 @@ impl AcpClient {
             cwd,
             SessionControl {
                 prompt_rx,
+                model_rx,
                 cancel_rx,
                 shutdown_rx,
                 event_tx,
@@ -539,6 +552,7 @@ impl AcpClient {
         (
             AcpClient {
                 prompts: prompt_tx,
+                model: model_tx,
                 cancel: cancel_tx,
                 cancel_generation,
                 shutdown: shutdown_tx,
@@ -569,6 +583,22 @@ impl AcpClient {
                 cancel_generation: self.cancel_generation.load(Ordering::SeqCst),
             })
             .map_err(|_| AcpError::Closed)
+    }
+
+    /// Change the model for the existing ACP session without restarting the
+    /// adapter, CLI, MCP servers, or workspace session.
+    pub async fn set_model(&self, model_id: impl Into<String>) -> Result<(), AcpError> {
+        if self.model.is_closed() {
+            return Err(AcpError::Closed);
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.model
+            .unbounded_send(SetModelCommand {
+                model_id: model_id.into(),
+                reply: reply_tx,
+            })
+            .map_err(|_| AcpError::Closed)?;
+        reply_rx.await.map_err(|_| AcpError::Closed)?
     }
 
     /// Cancel the in-flight turn.
@@ -782,6 +812,7 @@ async fn drive(
 ) -> Result<(), agent_client_protocol::Error> {
     let SessionControl {
         mut prompt_rx,
+        mut model_rx,
         mut cancel_rx,
         mut shutdown_rx,
         event_tx,
@@ -901,6 +932,40 @@ async fn drive(
                         usage: None,
                     });
                 }
+            }
+            model = model_rx.next() => {
+                let Some(model) = model else {
+                    break;
+                };
+                let result = if in_flight.is_some() {
+                    Err(AcpError::Protocol(
+                        "cannot change ACP model while a prompt is in flight".to_string(),
+                    ))
+                } else {
+                    let params = serde_json::value::to_raw_value(&serde_json::json!({
+                        "sessionId": session_id.clone(),
+                        "modelId": model.model_id,
+                    }))
+                    .map(Arc::from)
+                    .map_err(|error| AcpError::Protocol(error.to_string()));
+                    match params {
+                        Ok(params) => {
+                            let request = agent_client_protocol::schema::v1::ClientRequest::ExtMethodRequest(
+                                agent_client_protocol::schema::v1::ExtRequest::new(
+                                    "session/set_model",
+                                    params,
+                                ),
+                            );
+                            cx.send_request(request)
+                                .block_task()
+                                .await
+                                .map(|_| ())
+                                .map_err(|error| AcpError::Protocol(error.to_string()))
+                        }
+                        Err(error) => Err(error),
+                    }
+                };
+                let _ = model.reply.send(result);
             }
             prompt = prompt_rx.next() => {
                 let Some(prompt) = prompt else {
@@ -1541,6 +1606,10 @@ fn forward_notification(tx: &mpsc::UnboundedSender<AcpEvent>, update: SessionUpd
         SessionUpdate::UsageUpdate(usage) => Some(AcpEvent::Usage(AcpUsageUpdate {
             used: usage.used,
             size: usage.size,
+            token_usage: usage
+                .meta
+                .as_ref()
+                .and_then(token_usage_from_meta),
         })),
         // User-message echoes, command lists, mode/config/session-info updates,
         // and any future non-exhaustive variants are not surfaced here.
@@ -1549,6 +1618,67 @@ fn forward_notification(tx: &mpsc::UnboundedSender<AcpEvent>, update: SessionUpd
     if let Some(event) = event {
         let _ = tx.unbounded_send(event);
     }
+}
+
+/// Extract provider usage from an ACP extension metadata object without
+/// retaining arbitrary metadata. Claude/Anthropic adapters use
+/// `input_tokens`/`output_tokens`, while OpenAI-compatible adapters commonly
+/// use `prompt_tokens`/`completion_tokens`; both may be nested under a vendor
+/// key. Only numeric token counters are accepted.
+fn token_usage_from_meta(meta: &agent_client_protocol::schema::v1::Meta) -> Option<AcpTokenUsage> {
+    fn number(value: &serde_json::Value, keys: &[&str]) -> Option<u64> {
+        keys.iter().find_map(|key| value.get(*key)).and_then(|value| {
+            value.as_u64().or_else(|| value.as_i64().and_then(|v| u64::try_from(v).ok()))
+        })
+    }
+
+    fn walk(value: &serde_json::Value) -> Option<AcpTokenUsage> {
+        let object = value.as_object()?;
+        let input = number(
+            value,
+            &["input_tokens", "prompt_tokens", "inputTokens", "promptTokens"],
+        );
+        let output = number(
+            value,
+            &["output_tokens", "completion_tokens", "outputTokens", "completionTokens"],
+        );
+        if let (Some(input_tokens), Some(output_tokens)) = (input, output) {
+            let thought_tokens = number(
+                value,
+                &["thought_tokens", "reasoning_tokens", "thoughtTokens", "reasoningTokens"],
+            )
+            .unwrap_or(0);
+            let cached_read_tokens = number(
+                value,
+                &[
+                    "cached_read_tokens",
+                    "cache_read_input_tokens",
+                    "prompt_cache_hit_tokens",
+                    "cachedReadTokens",
+                    "cacheReadInputTokens",
+                ],
+            )
+            .unwrap_or(0);
+            let cached_write_tokens = number(
+                value,
+                &["cached_write_tokens", "cache_creation_input_tokens", "cachedWriteTokens", "cacheCreationInputTokens"],
+            )
+            .unwrap_or(0);
+            let total_tokens = number(value, &["total_tokens", "totalTokens"])
+                .unwrap_or_else(|| input_tokens.saturating_add(output_tokens));
+            return Some(AcpTokenUsage {
+                total_tokens,
+                input_tokens,
+                output_tokens,
+                thought_tokens,
+                cached_read_tokens,
+                cached_write_tokens,
+            });
+        }
+        object.values().find_map(walk)
+    }
+
+    walk(&serde_json::Value::Object(meta.clone()))
 }
 
 /// Emit a `Permission` event and await the host's decision.
@@ -2233,6 +2363,32 @@ mod tests {
                 cached_write_tokens: 3,
             }
         );
+    }
+
+    #[test]
+    fn usage_update_extracts_provider_counters_from_meta() {
+        use agent_client_protocol::schema::v1::{SessionUpdate, UsageUpdate};
+
+        let mut provider = serde_json::Map::new();
+        provider.insert("prompt_tokens".into(), serde_json::json!(120));
+        provider.insert("completion_tokens".into(), serde_json::json!(37));
+        provider.insert("reasoning_tokens".into(), serde_json::json!(5));
+        provider.insert("prompt_cache_hit_tokens".into(), serde_json::json!(20));
+        let mut meta = serde_json::Map::new();
+        meta.insert("provider_usage".into(), serde_json::Value::Object(provider));
+
+        let update = SessionUpdate::UsageUpdate(UsageUpdate::new(157, 200_000).meta(meta));
+        let (tx, mut rx) = mpsc::unbounded();
+        forward_notification(&tx, update);
+        let event = futures::executor::block_on(rx.next()).expect("usage event");
+        match event {
+            AcpEvent::Usage(usage) => {
+                assert_eq!(usage.used, 157);
+                assert_eq!(usage.size, 200_000);
+                assert_eq!(usage.token_usage.map(|u| (u.input_tokens, u.output_tokens, u.thought_tokens, u.cached_read_tokens)), Some((120, 37, 5, 20)));
+            }
+            other => panic!("expected usage event, got {other:?}"),
+        }
     }
 
     #[test]

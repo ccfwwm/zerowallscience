@@ -54,6 +54,9 @@ secrets/
 # Bundled sidecar binaries (fetched per-platform; too large for git)
 apps/desktop/src-tauri/binaries/
 
+# Release-preparation scratch directory (created by fetch-acp-runtimes.sh).
+.acp-runtime.*
+
 # Third-party skill packs (fetched by scripts/dev/fetch-skills.sh)
 runtime/skills/external/
 

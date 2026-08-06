@@ -242,7 +242,6 @@ describe("foldEvent", () => {
       reasoning: 8,
       cacheRead: 0,
       cacheWrite: 0,
-      cost: 0.0021,
     });
   });
 
@@ -506,7 +505,6 @@ describe("historyToThread", () => {
       reasoning: 8,
       cacheRead: 16,
       cacheWrite: 0,
-      cost: 0.0021,
     });
   });
 

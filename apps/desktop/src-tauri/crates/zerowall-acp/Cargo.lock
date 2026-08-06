@@ -1282,10 +1282,12 @@ name = "zerowall-acp"
 version = "0.1.0"
 dependencies = [
  "agent-client-protocol",
+ "async-process",
  "futures",
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

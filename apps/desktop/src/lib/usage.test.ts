@@ -15,18 +15,16 @@ const base: UsageEvent = {
 };
 
 describe("usageInputFromEvent", () => {
-  it("maps a live usage event to the record payload, cost included when priced", () => {
+  it("maps a live usage event to the record payload without recording a fee", () => {
     expect(usageInputFromEvent(base)).toEqual({
       sessionId: "ses_1",
       messageId: "m1",
-      usage: { input: 100, output: 42, reasoning: 8, cacheRead: 16, cacheWrite: 0, cost: 0.0021 },
+      usage: { input: 100, output: 42, reasoning: 8, cacheRead: 16, cacheWrite: 0 },
     });
   });
 
-  it("omits cost when the provider priced nothing (undefined), never a fabricated 0", () => {
-    const { cost, ...unpriced } = base;
-    void cost;
-    const out = usageInputFromEvent(unpriced);
+  it("never writes a fee even when an upstream usage event includes one", () => {
+    const out = usageInputFromEvent(base);
     expect(out?.usage).not.toHaveProperty("cost");
   });
 

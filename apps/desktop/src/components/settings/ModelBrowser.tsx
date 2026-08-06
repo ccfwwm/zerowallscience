@@ -7,6 +7,7 @@ import { inputCls } from "./inputCls";
 import {
   filterModelOptions,
   flattenModelOptions,
+  displayProviderName,
   type ModelFilter,
   type ModelOption,
 } from "./modelCatalog";
@@ -110,7 +111,7 @@ export function ModelBrowser({ providers, defaultModel, busy, onSelect, onManage
             {providers.map((provider) => {
               // eslint-disable-next-line i18next/no-literal-string -- discriminated-union key, not display text
               const providerFilter: ModelFilter = { kind: "provider", providerID: provider.id };
-              return <FilterButton key={provider.id} label={provider.name} count={provider.models.length}
+              return <FilterButton key={provider.id} label={displayProviderName(provider)} count={provider.models.length}
                 active={sameFilter(filter, providerFilter)} onClick={() => setFilter(providerFilter)} />;
             })}
           </nav>

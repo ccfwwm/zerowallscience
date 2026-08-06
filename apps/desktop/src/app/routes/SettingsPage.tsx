@@ -24,7 +24,7 @@ import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { useUiStore, ZOOM_MAX, ZOOM_MIN } from "@/lib/store";
 import { shippedLocales } from "@/i18n/config";
-import { getClient, useRuntimeStore } from "@/lib/runtime";
+import { getClient, getOrCreateOpenCodeClient, useRuntimeStore } from "@/lib/runtime";
 import { useUpdateStore } from "@/lib/update";
 import {
   agentBrowserProfiles,
@@ -68,7 +68,7 @@ import { MemoryCard } from "@/components/settings/MemoryCard";
 import { AnnotationsCard } from "@/components/settings/AnnotationsCard";
 import { UsageCard } from "@/components/settings/UsageCard";
 import { ModelBrowser } from "@/components/settings/ModelBrowser";
-import { fallbackDefaultModel } from "@/components/settings/modelCatalog";
+import { displayProviderName, fallbackDefaultModel } from "@/components/settings/modelCatalog";
 import { ProviderManagerCard } from "@/components/settings/ProviderManagerCard";
 import { Sub2ApiCard } from "@/components/settings/Sub2ApiCard";
 import { Row, Section, Switch } from "@/components/settings/Section";
@@ -252,7 +252,11 @@ export function SettingsPage() {
   const oauthAbort = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async (): Promise<ProviderInfo[] | null> => {
-    const client = getClient();
+    // In ACP mode the OpenCode client is torn down (an external agent is the
+    // active runtime), but the sidecar still runs behind it and owns the
+    // provider config the Models card renders — reach it with a transient client
+    // so the catalog loads instead of hanging on "正在加载模型目录…".
+    const client = getClient() ?? (await getOrCreateOpenCodeClient());
     if (!client) return null;
     // The model catalog (listProviders) is what the Models card renders — only
     // its failure means "catalog unavailable", and only when there is no last
@@ -705,7 +709,12 @@ export function SettingsPage() {
         const ctx = cContexts[m] ?? (Number.isFinite(typedCtx) && typedCtx > 0 ? typedCtx : 0);
         if (ctx > 0) contexts[m] = ctx;
       }
-      await getClient()!.addCustomProvider(id, {
+      // Claude Code and Codex ACP own the active chat client, but provider
+      // configuration remains in the bundled OpenCode sidecar. Resolving a
+      // transient client here keeps custom endpoints usable in every runtime.
+      const client = getClient() ?? (await getOrCreateOpenCodeClient());
+      if (!client) throw new Error(t("providers.connectPrompt"));
+      await client.addCustomProvider(id, {
         name: cName.trim(),
         npm: cNpm,
         baseURL: cUrl.trim(),
@@ -892,7 +901,7 @@ export function SettingsPage() {
                     aria-label={t("runtime.engineLabel")}
                     className={chipCls("shrink-0")}
                   >
-                    <option value="">OpenCode</option>
+                    <option value="">{t("runtime.openCode", { defaultValue: "OpenCode" })}</option>
                     {ACP_PRESETS.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.label}
@@ -1062,7 +1071,21 @@ export function SettingsPage() {
           } />
         </Section>
 
-        <Section title={t("model.title")} hint={t("model.hint")}>
+        <Section
+          title={t("model.title")}
+          hint={t("model.hint")}
+          action={
+            <button
+              className={btnGhost("gap-1.5")}
+              onClick={() => {
+                setProviderManagerOpen(true);
+                setShowCustom(true);
+              }}
+            >
+              <Plus size={13} /> {t("providers.customEndpoint")}
+            </button>
+          }
+        >
           {!modelSurfaceAvailable ? (
             <p className="text-[13px] text-muted">{t("model.connectPrompt")}</p>
           ) : catalogState === "unavailable" ? (
@@ -1103,7 +1126,7 @@ export function SettingsPage() {
                     )}
                   >
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
-                    <span className="font-medium text-text">{p.name}</span>
+                    <span className="font-medium text-text">{displayProviderName(p)}</span>
                     <span className="text-xs text-muted">
                       {t("providers.modelCount", { count: p.models.length })}
                     </span>

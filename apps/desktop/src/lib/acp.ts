@@ -150,6 +150,13 @@ export async function acpPrompt(
   await invoke("acp_prompt", { text, attachments });
 }
 
+/** Switch the model in the current ACP session without restarting its runtime. */
+export async function acpSetModel(model: string): Promise<void> {
+  if (!isTauri) throw new Error("ACP agents run only in the desktop app");
+  const invoke = await invoker();
+  await invoke("acp_set_model", { model });
+}
+
 /** Cancel the in-flight turn. */
 export async function acpCancel(): Promise<void> {
   if (!isTauri) return;
@@ -198,6 +205,8 @@ export interface AcpMessagePayload {
 export interface AcpUsagePayload {
   used: number;
   size: number;
+  /** Exact provider counters carried by an adapter extension, when present. */
+  token_usage?: AcpTokenUsagePayload;
 }
 
 /** Cumulative token counters returned by ACP at prompt completion. */

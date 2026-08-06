@@ -18,8 +18,6 @@ export interface UsageInput {
   reasoning: number;
   cacheRead: number;
   cacheWrite: number;
-  /** USD cost, omitted when the provider priced nothing (kept distinct from 0). */
-  cost?: number;
 }
 
 /** The persist payload from a live `usage` event, or `null` when it isn't
@@ -37,7 +35,6 @@ export function usageInputFromEvent(
       reasoning: event.reasoning,
       cacheRead: event.cacheRead,
       cacheWrite: event.cacheWrite,
-      ...(event.cost !== undefined ? { cost: event.cost } : {}),
     },
   };
 }
@@ -110,18 +107,5 @@ export async function usageByWorkspace(): Promise<WorkspaceUsage> {
     return await invoke<WorkspaceUsage>("usage_by_workspace");
   } catch {
     return EMPTY_WORKSPACE_USAGE;
-  }
-}
-
-/** The rate multiplier for the active sub2api gateway group, or `null` when
- *  not configured. Desktop-only — returns null in gateway-web mode.
- *  Estimated credit deducted = cost_usd × multiplier. */
-export async function usageActiveMultiplier(): Promise<number | null> {
-  if (!isTauri) return null;
-  try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    return await invoke<number | null>("usage_active_multiplier");
-  } catch {
-    return null;
   }
 }

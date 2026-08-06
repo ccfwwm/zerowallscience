@@ -22,17 +22,13 @@ export function isDomesticModel(id: string): boolean {
   return DOMESTIC.some((needle) => lower.includes(needle));
 }
 
-/** Only these groups are open to users. The gateway exposes many more channels,
- *  but the product ships the domestic channel, the GPT channel, and the stable
- *  Claude-science channel (the Claude models the Claude Code ACP runtime routes
- *  through). Domestic stays first — it holds the default kimi-k3. */
-const OPEN_GROUP = /国产|GPT|claude|science/i;
+/** Only explicitly published Zero groups belong in this client. This is a
+ * boundary, not a best-effort display filter: exposing a different gateway
+ * group could provision its key into the local runtime. */
+const ZERO_GROUP = /^zero/i;
 
 export function openGroups<T extends { name: string }>(groups: T[]): T[] {
-  const open = groups.filter((g) => OPEN_GROUP.test(g.name));
-  // If the gateway ever renames them all away, fall back to the full list so a
-  // signed-in user is never stranded with no channel at all.
-  return open.length > 0 ? open : groups;
+  return groups.filter((g) => ZERO_GROUP.test(g.name.trim()));
 }
 
 /** Domestic models first, then everything else, alphabetical within each group. */

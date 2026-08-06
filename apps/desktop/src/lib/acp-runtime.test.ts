@@ -35,6 +35,7 @@ function makeDeps() {
     prompt: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
     shutdown: vi.fn(async () => IDLE),
+    setModel: vi.fn(async () => {}),
     listSkills: vi.fn(async () => []),
     subscribe: vi.fn(async (h: AcpEventHandlers) => {
       handlers = h;
@@ -279,6 +280,35 @@ describe("AcpRuntime event translation", () => {
     expect(usage[usage.length - 1]).not.toHaveProperty("outputUnavailable");
   });
 
+  it("uses exact provider counters carried by an ACP usage update", async () => {
+    const { runtime, fire, events } = harness();
+    await runtime.connect();
+    await runtime.sendPrompt("codex", "question");
+    fire().onMessage!({ message_id: "reply-meta", text: "answer" });
+    fire().onUsage!({
+      used: 1_200,
+      size: 200_000,
+      token_usage: {
+        total_tokens: 157,
+        input_tokens: 120,
+        output_tokens: 37,
+        thought_tokens: 5,
+        cached_read_tokens: 20,
+        cached_write_tokens: 0,
+      },
+    });
+
+    expect(last(events.filter((event) => event.type === "usage"))).toMatchObject({
+      messageID: "reply-meta",
+      input: 120,
+      output: 37,
+      reasoning: 5,
+      cacheRead: 20,
+      contextUsed: 1_200,
+      contextSize: 200_000,
+    });
+  });
+
   it("marks both token directions unavailable when ACP reports no usage", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-04T10:00:00.000Z"));
@@ -403,7 +433,7 @@ describe("AcpRuntime prompt + unsupported ops", () => {
   it("exposes exactly one session whose id is the profile id", async () => {
     const { runtime } = harness();
     expect(await runtime.createSession()).toBe("codex");
-    expect(await runtime.listSessions()).toEqual([{ id: "codex", title: "codex" }]);
+    expect(await runtime.listSessions()).toEqual([{ id: "codex", title: "Codex" }]);
     expect(await runtime.getMessages()).toEqual([]);
   });
 
@@ -413,5 +443,18 @@ describe("AcpRuntime prompt + unsupported ops", () => {
     expect(await runtime.listAgents()).toEqual([]);
     expect(await runtime.listCommands()).toEqual([]);
     expect(await runtime.getDefaultModel()).toBeNull();
+  });
+});
+
+describe("AcpRuntime model selection", () => {
+  it("changes the model in the existing ACP session without launching again", async () => {
+    const { runtime, deps } = harness();
+    await runtime.connect();
+
+    await runtime.setDefaultModel("zerowall-1/gpt-5.6-terra");
+
+    expect(deps.setModel).toHaveBeenCalledWith("gpt-5.6-terra");
+    expect(deps.launch).toHaveBeenCalledOnce();
+    expect(deps.shutdown).not.toHaveBeenCalled();
   });
 });

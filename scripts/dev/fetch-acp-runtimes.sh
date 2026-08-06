@@ -9,12 +9,15 @@ CLAUDE_VERSION="2.1.222"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="${ACP_RUNTIME_OUT:-$ROOT/runtime/acp}"
 TRIPLE="${1:-$(rustc -Vv | sed -n 's/^host: //p')}"
-TMP="$(mktemp -d)"
+# Windows npm does not understand Git Bash's synthetic `/tmp` mapping. Keep the
+# release scratch directory below the repository root so MSYS converts it to an
+# existing drive path before `npm pack` receives it.
+TMP="$(mktemp -d "$ROOT/.acp-runtime.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
 case "$TRIPLE" in
-  x86_64-pc-windows-msvc) NODE_ASSET="node-v${NODE_VERSION}-win-x64.zip"; NODE_DIR="node-v${NODE_VERSION}-win-x64"; EXT=".exe" ;;
-  aarch64-pc-windows-msvc) NODE_ASSET="node-v${NODE_VERSION}-win-arm64.zip"; NODE_DIR="node-v${NODE_VERSION}-win-arm64"; EXT=".exe" ;;
+  x86_64-pc-windows-msvc) NODE_ASSET="node-v${NODE_VERSION}-win-x64.zip"; NODE_DIR="node-v${NODE_VERSION}-win-x64"; EXT=".cmd" ;;
+  aarch64-pc-windows-msvc) NODE_ASSET="node-v${NODE_VERSION}-win-arm64.zip"; NODE_DIR="node-v${NODE_VERSION}-win-arm64"; EXT=".cmd" ;;
   x86_64-apple-darwin) NODE_ASSET="node-v${NODE_VERSION}-darwin-x64.tar.gz"; NODE_DIR="node-v${NODE_VERSION}-darwin-x64"; EXT="" ;;
   aarch64-apple-darwin) NODE_ASSET="node-v${NODE_VERSION}-darwin-arm64.tar.gz"; NODE_DIR="node-v${NODE_VERSION}-darwin-arm64"; EXT="" ;;
   x86_64-unknown-linux-gnu) NODE_ASSET="node-v${NODE_VERSION}-linux-x64.tar.xz"; NODE_DIR="node-v${NODE_VERSION}-linux-x64"; EXT="" ;;
@@ -36,27 +39,55 @@ for profile in claude-code codex; do
   cp -R "$TMP/$NODE_DIR/." "$OUT/$profile/node/"
 done
 
-# npm pack is run only by the release preparation job. The resulting package
-# trees are copied into the app-private runtime; no global npm state is used.
-NPM_BIN="$OUT/claude-code/node/bin/npm"
-if [[ "$TRIPLE" == *windows* ]]; then NPM_BIN="$OUT/claude-code/node/npm.cmd"; fi
+# npm pack is run only by the release preparation job. Use the host npm that
+# belongs to the host Node executable, not a PATH shim left by a Windows Node
+# installer. WSL commonly exposes such a shim even though `node` is native
+# Linux; that shim converts `/mnt/c` paths into invalid `C:\mnt\c` paths.
+HOST_NODE="$(command -v node || true)"
+if [[ -z "$HOST_NODE" ]]; then
+  echo "A host Node.js installation is required for npm pack during release preparation" >&2
+  exit 1
+fi
+HOST_NPM="$(dirname "$(readlink -f "$HOST_NODE")")/npm"
+if [[ ! -x "$HOST_NPM" ]]; then HOST_NPM="$(command -v npm)"; fi
 for spec in "@anthropic-ai/claude-code@$CLAUDE_VERSION" "@openai/codex@$CODEX_VERSION"; do
-  npm pack "$spec" --pack-destination "$TMP" >/dev/null
+  "$HOST_NPM" pack "$spec" --pack-destination "$TMP" >/dev/null
 done
+"$HOST_NPM" pack "@anthropic-ai/claude-code-win32-x64@$CLAUDE_VERSION" --pack-destination "$TMP" >/dev/null
+"$HOST_NPM" pack "@openai/codex@${CODEX_VERSION}-win32-x64" --pack-destination "$TMP" >/dev/null
 
-tar -xzf "$TMP/claude-code-$CLAUDE_VERSION.tgz" -C "$OUT/claude-code"
-tar -xzf "$TMP/codex-$CODEX_VERSION.tgz" -C "$OUT/codex"
+tar -xzf "$TMP/anthropic-ai-claude-code-$CLAUDE_VERSION.tgz" -C "$OUT/claude-code"
+tar -xzf "$TMP/openai-codex-$CODEX_VERSION.tgz" -C "$OUT/codex"
+mkdir -p "$OUT/claude-code/package/node_modules/@anthropic-ai/claude-code-win32-x64"
+mkdir -p "$OUT/codex/package/node_modules/@openai/codex-win32-x64"
+tar -xzf "$TMP/anthropic-ai-claude-code-win32-x64-$CLAUDE_VERSION.tgz" \
+  --strip-components=1 -C "$OUT/claude-code/package/node_modules/@anthropic-ai/claude-code-win32-x64"
+tar -xzf "$TMP/openai-codex-${CODEX_VERSION}-win32-x64.tgz" \
+  --strip-components=1 -C "$OUT/codex/package/node_modules/@openai/codex-win32-x64"
 
-cat > "$OUT/claude-code/bin/claude${EXT}" <<'WRAPPER'
+if [[ "$EXT" == ".cmd" ]]; then
+  cat > "$OUT/claude-code/bin/claude${EXT}" <<'WRAPPER'
+@echo off
+set "ROOT=%~dp0.."
+"%ROOT%\node\node.exe" "%ROOT%\package\cli-wrapper.cjs" %*
+WRAPPER
+  cat > "$OUT/codex/bin/codex${EXT}" <<'WRAPPER'
+@echo off
+set "ROOT=%~dp0.."
+"%ROOT%\node\node.exe" "%ROOT%\package\bin\codex.js" %*
+WRAPPER
+else
+  cat > "$OUT/claude-code/bin/claude" <<'WRAPPER'
 #!/usr/bin/env sh
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 exec "$ROOT/node/bin/node" "$ROOT/package/cli.js" "$@"
 WRAPPER
-cat > "$OUT/codex/bin/codex${EXT}" <<'WRAPPER'
+  cat > "$OUT/codex/bin/codex" <<'WRAPPER'
 #!/usr/bin/env sh
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 exec "$ROOT/node/bin/node" "$ROOT/package/bin/codex.js" "$@"
 WRAPPER
-if [[ "$EXT" == "" ]]; then chmod +x "$OUT"/*/bin/*; fi
+  chmod +x "$OUT"/*/bin/*
+fi
 
 echo "Prepared pinned ACP CLI runtimes in $OUT for $TRIPLE"

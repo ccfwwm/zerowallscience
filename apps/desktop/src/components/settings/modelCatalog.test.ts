@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProviderInfo } from "@zerowall/sdk";
 import {
+  displayProviderName,
   fallbackDefaultModel,
   filterModelOptions,
   flattenModelOptions,
@@ -28,6 +29,17 @@ const favorites = ["openai/o3", "missing/model"];
 const recent = ["ollama-cloud/qwen3-coder", "openai/gpt-5.2", "missing/model"];
 
 describe("model catalog", () => {
+  it("removes legacy gateway branding from internal group provider labels", () => {
+    expect(displayProviderName({
+      id: "zerowall-42",
+      name: "Sub2API · claude-science-stable",
+      models: [],
+    })).toBe("claude-science-stable");
+    expect(displayProviderName({ id: "zerowall-2", name: "Sub2API", models: [] })).toBe("AI Platform");
+    expect(displayProviderName({ id: "custom", name: "Sub2API research proxy", models: [] }))
+      .toBe("Sub2API research proxy");
+  });
+
   it("flattens providers into canonical model options without changing order", () => {
     expect(options.map((m) => m.key)).toEqual([
       "openai/gpt-5.2",

@@ -1,0 +1,2 @@
+# Release-preparation shell scripts must retain Unix line endings on Windows.
+scripts/**/*.sh text eol=lf
