@@ -560,6 +560,58 @@ impl AcpHost {
         );
         Ok(state)
     }
+    /// Attach a newly constructed Driver to an existing resumable vendor
+    /// session while preserving the Host catalog's immutable binding.
+    pub async fn resume_existing_session(
+        &mut self,
+        request: ResumeSessionRequest,
+        binding: AgentBinding,
+    ) -> Result<SessionState, HostError> {
+        if let Some(existing) = self.sessions.get(&request.session_id) {
+            existing.binding.ensure_compatible(&binding)?;
+        }
+        let kind = binding.engine;
+        let supported = self
+            .pending_drivers
+            .get(&kind)
+            .ok_or(HostError::DriverNotRegistered { kind })?
+            .capabilities()
+            .resume_session;
+        Self::require(kind, "resume_session", supported)?;
+        let mut driver = self
+            .pending_drivers
+            .remove(&kind)
+            .ok_or(HostError::DriverNotRegistered { kind })?;
+        let state = driver.resume_session(request).await?;
+        let state = SessionState {
+            id: state.id.clone(),
+            binding: binding.clone(),
+            state: SessionStatus::Ready,
+            resumable: state.resumable,
+            title: state.title.clone(),
+            directory: state.directory.clone(),
+            parent_id: state.parent_id.clone(),
+            created: state.created,
+            updated: state.updated,
+        };
+        self.sessions.insert(
+            state.id.clone(),
+            SessionEntry {
+                kind,
+                binding,
+                driver: Some(driver),
+                state: SessionStatus::Ready,
+                turn_started: false,
+                resumable: state.resumable,
+                title: state.title.clone(),
+                directory: state.directory.clone(),
+                parent_id: state.parent_id.clone(),
+                created: state.created,
+                updated: state.updated,
+            },
+        );
+        Ok(state)
+    }
     pub async fn resume_session(&mut self, session_id: String) -> Result<SessionState, HostError> {
         let (kind, binding, resumable, detached) = self
             .sessions
@@ -1397,6 +1449,7 @@ mod tests {
         let codex = block_on(host.initialize(HostDriverKind::Codex)).unwrap();
         assert!(codex.capabilities.load_session);
         assert!(codex.capabilities.resume_session);
+        assert!(!codex.capabilities.mode);
     }
 
     #[test]
@@ -1538,6 +1591,33 @@ mod tests {
             .iter()
             .any(|call| matches!(call, DriverCall::Config { session_id } if session_id == "s1")));
         assert!(calls.iter().any(|call| matches!(call, DriverCall::Mode { session_id, mode } if session_id == "s1" && mode == "planning")));
+    }
+
+    #[test]
+    fn host_rejects_mode_before_calling_a_driver_that_does_not_advertise_it() {
+        let (driver, calls) = fake(DriverCapabilities {
+            new_session: true,
+            ..Default::default()
+        });
+        let mut host = AcpHost::new();
+        host.register_driver(HostDriverKind::Codex, Box::new(driver));
+        block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s1".into(),
+            },
+            binding(HostDriverKind::Codex, "gpt", "C:/project"),
+        ))
+        .unwrap();
+        calls.lock().unwrap().clear();
+
+        assert_eq!(
+            block_on(host.set_mode("s1", "planning")),
+            Err(HostError::UnsupportedCapability {
+                kind: HostDriverKind::Codex,
+                operation: "mode",
+            })
+        );
+        assert!(calls.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -1695,6 +1775,33 @@ mod tests {
         .unwrap();
         let resumed = block_on(host.resume_session("s1".into())).unwrap();
         assert_eq!(resumed.binding, original);
+    }
+
+    #[test]
+    fn resume_existing_session_attaches_a_driver_with_the_persisted_binding() {
+        let (driver, calls) = fake(DriverCapabilities {
+            resume_session: true,
+            ..Default::default()
+        });
+        let mut host = AcpHost::new();
+        host.register_driver(HostDriverKind::Codex, Box::new(driver));
+        let persisted = binding(HostDriverKind::Codex, "persisted-model", "C:/project");
+
+        let resumed = block_on(host.resume_existing_session(
+            ResumeSessionRequest {
+                session_id: "persisted-session".into(),
+            },
+            persisted.clone(),
+        ))
+        .unwrap();
+
+        assert_eq!(resumed.binding, persisted);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [DriverCall::Resume {
+                session_id: "persisted-session".into()
+            }]
+        );
     }
 
     #[test]

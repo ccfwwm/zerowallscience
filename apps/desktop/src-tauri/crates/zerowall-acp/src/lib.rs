@@ -46,9 +46,10 @@ use agent_client_protocol::schema::v1::{
     PromptRequest, PromptResponse, ReadTextFileRequest, ReadTextFileResponse,
     ReleaseTerminalRequest, ReleaseTerminalResponse, RequestPermissionOutcome,
     RequestPermissionRequest, RequestPermissionResponse, ResumeSessionRequest,
-    SelectedPermissionOutcome, SessionNotification, SessionUpdate, StopReason, TerminalExitStatus,
-    TerminalId, TerminalOutputRequest, TerminalOutputResponse, WaitForTerminalExitRequest,
-    WaitForTerminalExitResponse, WriteTextFileRequest, WriteTextFileResponse,
+    SelectedPermissionOutcome, SessionNotification, SessionUpdate, SetSessionModeRequest,
+    StopReason, TerminalExitStatus, TerminalId, TerminalOutputRequest, TerminalOutputResponse,
+    WaitForTerminalExitRequest, WaitForTerminalExitResponse, WriteTextFileRequest,
+    WriteTextFileResponse,
 };
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::{Agent, Client, ConnectTo, ConnectionTo, Lines, Responder};
@@ -372,6 +373,8 @@ impl std::error::Error for AcpError {}
 pub struct AcpClient {
     prompts: mpsc::Sender<PromptCommand>,
     model: mpsc::Sender<SetModelCommand>,
+    mode: mpsc::Sender<SetModeCommand>,
+    mode_supported: Arc<AtomicBool>,
     cancel: tokio::sync::watch::Sender<u64>,
     cancel_generation: Arc<AtomicU64>,
     shutdown: tokio::sync::watch::Sender<bool>,
@@ -382,6 +385,8 @@ impl std::fmt::Debug for AcpClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AcpClient")
             .field("prompt_channel_closed", &self.prompts.is_closed())
+            .field("mode_channel_closed", &self.mode.is_closed())
+            .field("mode_supported", &self.supports_mode())
             .field(
                 "cancel_generation",
                 &self.cancel_generation.load(Ordering::Relaxed),
@@ -403,6 +408,11 @@ struct SetModelCommand {
     reply: oneshot::Sender<Result<(), AcpError>>,
 }
 
+struct SetModeCommand {
+    mode_id: String,
+    reply: oneshot::Sender<Result<(), AcpError>>,
+}
+
 /// One media or document attachment supplied with a user prompt. Images are
 /// forwarded as native ACP image blocks; extracted document text is carried in
 /// a normal text block, which every ACP agent is required to understand.
@@ -417,6 +427,8 @@ pub struct PromptAttachment {
 struct SessionControl {
     prompt_rx: mpsc::Receiver<PromptCommand>,
     model_rx: mpsc::Receiver<SetModelCommand>,
+    mode_rx: mpsc::Receiver<SetModeCommand>,
+    mode_supported: Arc<AtomicBool>,
     cancel_rx: tokio::sync::watch::Receiver<u64>,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
     event_tx: mpsc::Sender<AcpEvent>,
@@ -566,6 +578,8 @@ impl AcpClient {
     ) -> (AcpClient, AcpEventReceiver, impl Future<Output = ()> + Send) {
         let (prompt_tx, prompt_rx) = mpsc::channel::<PromptCommand>(ACP_COMMAND_CHANNEL_CAPACITY);
         let (model_tx, model_rx) = mpsc::channel::<SetModelCommand>(ACP_COMMAND_CHANNEL_CAPACITY);
+        let (mode_tx, mode_rx) = mpsc::channel::<SetModeCommand>(ACP_COMMAND_CHANNEL_CAPACITY);
+        let mode_supported = Arc::new(AtomicBool::new(false));
         let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(0_u64);
         let cancel_generation = Arc::new(AtomicU64::new(0));
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
@@ -585,6 +599,8 @@ impl AcpClient {
             SessionControl {
                 prompt_rx,
                 model_rx,
+                mode_rx,
+                mode_supported: Arc::clone(&mode_supported),
                 cancel_rx,
                 shutdown_rx,
                 event_tx,
@@ -601,6 +617,8 @@ impl AcpClient {
             AcpClient {
                 prompts: prompt_tx,
                 model: model_tx,
+                mode: mode_tx,
+                mode_supported,
                 cancel: cancel_tx,
                 cancel_generation,
                 shutdown: shutdown_tx,
@@ -651,6 +669,27 @@ impl AcpClient {
             .await
             .map_err(|_| AcpError::Closed)?;
         reply_rx.await.map_err(|_| AcpError::Closed)?
+    }
+
+    /// Change the mode for the existing ACP session using `session/set_mode`.
+    pub async fn set_mode(&self, mode_id: impl Into<String>) -> Result<(), AcpError> {
+        if self.mode.is_closed() {
+            return Err(AcpError::Closed);
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.mode
+            .send(SetModeCommand {
+                mode_id: mode_id.into(),
+                reply: reply_tx,
+            })
+            .await
+            .map_err(|_| AcpError::Closed)?;
+        reply_rx.await.map_err(|_| AcpError::Closed)?
+    }
+
+    /// Whether the active session advertised ACP session modes.
+    pub fn supports_mode(&self) -> bool {
+        self.mode_supported.load(Ordering::Acquire)
     }
 
     /// Cancel the in-flight turn.
@@ -872,6 +911,8 @@ async fn drive(
     let SessionControl {
         mut prompt_rx,
         mut model_rx,
+        mut mode_rx,
+        mode_supported,
         mut cancel_rx,
         mut shutdown_rx,
         event_tx,
@@ -962,7 +1003,7 @@ async fn drive(
             )
         })
         .collect();
-    let session_id = match start {
+    let (session_id, supports_mode) = match start {
         AcpSessionStart::New => {
             let stage = AcpHandshakeStage::SessionNew;
             let _ = emit_event(&event_tx, AcpEvent::HandshakeStarted { stage }).await;
@@ -1011,7 +1052,7 @@ async fn drive(
                 }
                 Err(error) => return Err(error),
             };
-            session.session_id.to_string()
+            (session.session_id.to_string(), session.modes.is_some())
         }
         AcpSessionStart::Load { session_id } => {
             let stage = AcpHandshakeStage::SessionLoad;
@@ -1032,7 +1073,7 @@ async fn drive(
             )
             .await;
             match result {
-                Ok(Some(_)) => session_id,
+                Ok(Some(session)) => (session_id, session.modes.is_some()),
                 Ok(None) => return Ok(()),
                 Err(_) if !mcp_servers.is_empty() => {
                     let fallback = LoadSessionRequest::new(session_id.clone(), cwd)
@@ -1048,7 +1089,7 @@ async fn drive(
                     )
                     .await?
                     {
-                        Some(_) => session_id,
+                        Some(session) => (session_id, session.modes.is_some()),
                         None => return Ok(()),
                     }
                 }
@@ -1074,7 +1115,7 @@ async fn drive(
             )
             .await;
             match result {
-                Ok(Some(_)) => session_id,
+                Ok(Some(session)) => (session_id, session.modes.is_some()),
                 Ok(None) => return Ok(()),
                 Err(_) if !mcp_servers.is_empty() => {
                     let fallback = ResumeSessionRequest::new(session_id.clone(), cwd)
@@ -1090,7 +1131,7 @@ async fn drive(
                     )
                     .await?
                     {
-                        Some(_) => session_id,
+                        Some(session) => (session_id, session.modes.is_some()),
                         None => return Ok(()),
                     }
                 }
@@ -1098,6 +1139,7 @@ async fn drive(
             }
         }
     };
+    mode_supported.store(supports_mode, Ordering::Release);
     let _ = emit_event(
         &event_tx,
         AcpEvent::Ready {
@@ -1182,6 +1224,26 @@ async fn drive(
                     }
                 };
                 let _ = model.reply.send(result);
+            }
+            mode = mode_rx.recv() => {
+                let Some(mode) = mode else {
+                    break;
+                };
+                let result = if in_flight.is_some() {
+                    Err(AcpError::Protocol(
+                        "cannot change ACP mode while a prompt is in flight".to_string(),
+                    ))
+                } else {
+                    cx.send_request(SetSessionModeRequest::new(
+                        session_id.clone(),
+                        mode.mode_id,
+                    ))
+                    .block_task()
+                    .await
+                    .map(|_| ())
+                    .map_err(|error| AcpError::Protocol(error.to_string()))
+                };
+                let _ = mode.reply.send(result);
             }
             prompt = prompt_rx.recv() => {
                 let Some(prompt) = prompt else {

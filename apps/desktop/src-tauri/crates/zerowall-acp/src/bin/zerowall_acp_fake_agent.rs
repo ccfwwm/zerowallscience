@@ -104,6 +104,17 @@ fn main() {
             Some("session/new") if mode == "assert-load" || mode == "assert-resume" => {
                 respond_error(&mut stdout, id, -32000, "expected restored session")
             }
+            Some("session/new") if mode == "assert-mode" => respond(
+                &mut stdout,
+                id,
+                json!({
+                    "sessionId": "fake-session",
+                    "modes": {
+                        "currentModeId": "planning",
+                        "availableModes": [{"id": "planning", "name": "Planning"}]
+                    }
+                }),
+            ),
             Some("session/new") => respond(&mut stdout, id, json!({"sessionId": "fake-session"})),
             Some("session/load") if mode == "assert-load" => {
                 let valid = message.pointer("/params/sessionId")
@@ -124,6 +135,17 @@ fn main() {
                 }
             }
             Some("session/set_model") => respond(&mut stdout, id, json!({})),
+            Some("session/set_mode") if mode == "assert-mode" => {
+                let valid = message.pointer("/params/sessionId")
+                    == Some(&Value::String("fake-session".to_string()))
+                    && message.pointer("/params/modeId")
+                        == Some(&Value::String("planning".to_string()));
+                if valid {
+                    respond(&mut stdout, id, json!({}));
+                } else {
+                    respond_error(&mut stdout, id, -32000, "wrong session mode request");
+                }
+            }
             Some("session/prompt") if mode == "hung-prompt" || mode == "cancel-ignores" => {
                 write_prompt_marker();
                 if mode == "hung-prompt" {

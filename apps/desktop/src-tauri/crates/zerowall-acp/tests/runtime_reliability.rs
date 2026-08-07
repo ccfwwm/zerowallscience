@@ -212,6 +212,29 @@ async fn model_switch_uses_existing_session_without_rehandshake() {
 }
 
 #[tokio::test]
+async fn mode_switch_uses_the_standard_session_set_mode_request() {
+    let (client, mut events, driver) = launch("assert-mode");
+    wait_ready(&mut events).await;
+
+    assert!(client.supports_mode());
+    client.set_mode("planning").await.unwrap();
+
+    client.shutdown().unwrap();
+    driver.await.unwrap();
+}
+
+#[tokio::test]
+async fn mode_switch_stays_disabled_when_the_agent_does_not_advertise_modes() {
+    let (client, mut events, driver) = launch("normal");
+    wait_ready(&mut events).await;
+
+    assert!(!client.supports_mode());
+
+    client.shutdown().unwrap();
+    driver.await.unwrap();
+}
+
+#[tokio::test]
 async fn structured_image_and_document_attachments_reach_the_agent_prompt() {
     let (client, mut events, driver) = launch("assert-attachments");
     wait_ready(&mut events).await;

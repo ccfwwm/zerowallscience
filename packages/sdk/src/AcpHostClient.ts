@@ -373,6 +373,17 @@ export class AcpHostClient {
     return session;
   }
 
+  /** Resume a persisted session through its Host-owned immutable binding. */
+  async resumeSession(sessionId: string): Promise<AgentSession> {
+    const raw = await this.invoke<RawSession>("acp_host_resume", { sessionId });
+    const session = normalizeSession(raw);
+    const current = this.sessions.get(sessionId);
+    if (current) ensureCompatible(current.binding, session.binding);
+    this.sessions.set(session.id, session);
+    this.loadedSessions.add(session.id);
+    return session;
+  }
+
   /** Read normalized history through the Host control plane. */
   async getHistory(sessionId: string): Promise<HistoryMessage[]> {
     this.requireSession(sessionId);
@@ -485,6 +496,11 @@ export class AcpHostClient {
     };
     this.sessions.set(sessionId, session);
     return session;
+  }
+
+  async setMode(sessionId: string, mode: string): Promise<void> {
+    this.requireSession(sessionId);
+    await this.invoke("acp_host_mode", { sessionId, mode });
   }
 
   async cancel(sessionId: string): Promise<void> {

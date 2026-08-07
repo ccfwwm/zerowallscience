@@ -27,6 +27,10 @@ pub struct AcpHostState {
 struct PersistedSession {
     id: String,
     binding: AgentBinding,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    base_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    credential: Option<CredentialRef>,
     resumable: bool,
     #[serde(default = "inactive_session_status")]
     state: SessionStatus,
@@ -84,13 +88,26 @@ fn write_catalog(
     std::fs::rename(staging, path).map_err(|error| format!("commit ACP session catalog: {error}"))
 }
 
-fn persist_session(app: &AppHandle, state: &SessionState) -> Result<(), String> {
+fn persist_session(
+    app: &AppHandle,
+    state: &SessionState,
+    request: Option<&AcpHostLaunchRequest>,
+) -> Result<(), String> {
     let mut catalog = read_catalog(app)?;
+    let previous = catalog.get(&state.id);
+    let base_url = request
+        .map(|request| request.base_url.clone())
+        .or_else(|| previous.and_then(|entry| entry.base_url.clone()));
+    let credential = request
+        .map(|request| request.credential.clone())
+        .or_else(|| previous.and_then(|entry| entry.credential.clone()));
     catalog.insert(
         state.id.clone(),
         PersistedSession {
             id: state.id.clone(),
             binding: state.binding.clone(),
+            base_url,
+            credential,
             resumable: state.resumable,
             state: state.state,
             title: state.title.clone(),
@@ -267,6 +284,8 @@ fn merge_discovered_sessions(
                 PersistedSession {
                     id: session.id.clone(),
                     binding: session.binding.clone(),
+                    base_url: None,
+                    credential: None,
                     resumable: session.resumable,
                     state: session.state,
                     title: session.title.clone(),
@@ -1082,7 +1101,7 @@ async fn start_host_session(
     .await;
     drop(host);
     if let Ok(ref state) = result {
-        persist_session(&app, state)?;
+        persist_session(&app, state, Some(&request))?;
     }
     result
 }
@@ -1196,7 +1215,7 @@ pub async fn acp_host_load(
             .await
             .map_err(error_string)?;
         drop(host);
-        persist_session(&app, &result)?;
+        persist_session(&app, &result, request.as_ref())?;
         return Ok(result);
     }
     drop(host);
@@ -1228,11 +1247,98 @@ pub async fn acp_host_load(
         .await
         .map_err(error_string)?;
     drop(host);
-    persist_session(&app, &result)?;
+    persist_session(&app, &result, Some(&request))?;
     Ok(result)
 }
 
-async fn load_active_session(
+fn process_resume_request(persisted: &PersistedSession) -> Result<AcpHostLaunchRequest, String> {
+    let session_id = persisted.id.as_str();
+    let binding = &persisted.binding;
+    if binding.engine == HostDriverKind::OpenCode {
+        return Err(error_string(HostError::UnsupportedCapability {
+            kind: HostDriverKind::OpenCode,
+            operation: "resume_session",
+        }));
+    }
+    let binding = binding.clone().normalized().map_err(error_string)?;
+    let model = binding
+        .model
+        .clone()
+        .ok_or_else(|| "persisted process binding is missing its model".to_owned())?;
+    let provider = binding
+        .provider
+        .clone()
+        .ok_or_else(|| "persisted process binding is missing its provider".to_owned())?;
+    let legacy_base_url = if persisted.base_url.is_none() {
+        let fingerprint = binding.profile_fingerprint.split('|').collect::<Vec<_>>();
+        let [profile_id, fingerprint_provider, base_url, fingerprint_model] =
+            fingerprint.as_slice()
+        else {
+            return Err("persisted process profile fingerprint cannot restore its gateway".into());
+        };
+        for (field, matches) in [
+            ("profile", *profile_id == binding.profile),
+            ("provider", *fingerprint_provider == provider),
+            ("model", *fingerprint_model == model),
+        ] {
+            if !matches {
+                return Err(error_string(HostError::BindingConflict {
+                    field: field.into(),
+                }));
+            }
+        }
+        Some(*base_url)
+    } else {
+        None
+    };
+    let base_url = persisted
+        .base_url
+        .as_deref()
+        .or(legacy_base_url)
+        .ok_or_else(|| "persisted process session is missing its gateway URL".to_owned())?;
+    validate_base_url(base_url)?;
+    let credential = persisted.credential.clone().unwrap_or(CredentialRef {
+        keychain_id: provider.clone(),
+    });
+    Ok(AcpHostLaunchRequest {
+        engine: binding.engine,
+        profile_id: binding.profile,
+        session_id: session_id.to_owned(),
+        model,
+        provider_id: provider.clone(),
+        base_url: base_url.to_owned(),
+        project_root: binding.project_root,
+        variant: binding.variant,
+        profile_fingerprint: binding.profile_fingerprint,
+        credential,
+        mcp_allow_list: Some(binding.mcp_allow_list),
+        skills_snapshot: Some(binding.skills_snapshot),
+    })
+}
+
+async fn resume_persisted_session(
+    host: &mut AcpHost,
+    persisted: &PersistedSession,
+    driver: Box<dyn AcpHostDriver>,
+) -> Result<SessionState, String> {
+    if !persisted.resumable {
+        return Err(error_string(HostError::SessionTerminated {
+            session_id: persisted.id.clone(),
+            resumable: false,
+        }));
+    }
+    host.register_driver(persisted.binding.engine, driver);
+    host.resume_existing_session(
+        zerowall_acp_host::ResumeSessionRequest {
+            session_id: persisted.id.clone(),
+        },
+        persisted.binding.clone(),
+    )
+    .await
+    .map_err(error_string)
+}
+
+async fn resume_active_session(
     host: &mut AcpHost,
     session_id: &str,
     workspace: &Path,
@@ -1245,10 +1351,45 @@ async fn load_active_session(
         return Ok(None);
     };
     validate_project_root(&active.binding.project_root, workspace)?;
-    host.load_session(session_id.to_owned())
+    host.resume_session(session_id.to_owned())
         .await
         .map(Some)
         .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_resume(
+    app: AppHandle,
+    state: State<'_, AcpHostState>,
+    session_id: String,
+) -> Result<SessionState, String> {
+    let workspace = workspace_root(&app)?;
+    let mut host = state.host.lock().await;
+    if let Some(session) = resume_active_session(&mut host, &session_id, &workspace).await? {
+        drop(host);
+        persist_session(&app, &session, None)?;
+        return Ok(session);
+    }
+    drop(host);
+
+    let persisted = read_catalog(&app)?
+        .get(&session_id)
+        .cloned()
+        .ok_or_else(|| error_string(HostError::SessionNotFound { session_id }))?;
+    validate_project_root(&persisted.binding.project_root, &workspace)?;
+    if persisted.binding.engine == HostDriverKind::OpenCode {
+        return Err(error_string(HostError::UnsupportedCapability {
+            kind: HostDriverKind::OpenCode,
+            operation: "resume_session",
+        }));
+    }
+    let request = process_resume_request(&persisted)?;
+    let driver = build_driver(&app, &request, &workspace, persisted.binding.clone())?;
+    let mut host = state.host.lock().await;
+    let session = resume_persisted_session(&mut host, &persisted, driver).await?;
+    drop(host);
+    persist_session(&app, &session, None)?;
+    Ok(session)
 }
 
 #[tauri::command]
@@ -1307,6 +1448,21 @@ pub async fn acp_host_config(
 }
 
 #[tauri::command]
+pub async fn acp_host_mode(
+    state: State<'_, AcpHostState>,
+    session_id: String,
+    mode: String,
+) -> Result<(), String> {
+    state
+        .host
+        .lock()
+        .await
+        .set_mode(&session_id, &mode)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
 pub async fn acp_host_events(
     app: AppHandle,
     state: State<'_, AcpHostState>,
@@ -1321,7 +1477,7 @@ pub async fn acp_host_events(
     drop(host);
     if !events.is_empty() {
         if let Some(session) = session {
-            persist_session(&app, &session)?;
+            persist_session(&app, &session, None)?;
         }
     }
     Ok(events)
@@ -1454,6 +1610,8 @@ mod tests {
         PersistedSession {
             id: id.into(),
             binding: test_binding(engine, root),
+            base_url: None,
+            credential: None,
             resumable: true,
             state: SessionStatus::Ready,
             title: None,
@@ -1592,6 +1750,7 @@ mod tests {
             DriverCapabilities {
                 new_session: true,
                 load_session: true,
+                resume_session: true,
                 ..Default::default()
             },
             calls,
@@ -1756,7 +1915,70 @@ mod tests {
     }
 
     #[test]
-    fn active_cross_workspace_load_rejects_before_calling_the_driver() {
+    fn persisted_process_resume_request_uses_only_the_immutable_binding() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let mut persisted = test_persisted_session(
+            "persisted-session",
+            HostDriverKind::Codex,
+            &workspace,
+        );
+        persisted.binding.model = Some("persisted-model".into());
+        persisted.binding.provider = Some("persisted-provider".into());
+        persisted.binding.profile_fingerprint = "opaque-fingerprint".into();
+        persisted.base_url = Some("https://persisted.example/v1".into());
+        persisted.credential = Some(CredentialRef {
+            keychain_id: "keychain:original-profile".into(),
+        });
+
+        let request = process_resume_request(&persisted).unwrap();
+
+        assert_eq!(request.engine, HostDriverKind::Codex);
+        assert_eq!(request.profile_id, "codex");
+        assert_eq!(request.session_id, "persisted-session");
+        assert_eq!(request.model, "persisted-model");
+        assert_eq!(request.provider_id, "persisted-provider");
+        assert_eq!(request.base_url, "https://persisted.example/v1");
+        assert_eq!(request.project_root, persisted.binding.project_root);
+        assert_eq!(
+            request.profile_fingerprint,
+            persisted.binding.profile_fingerprint
+        );
+        assert_eq!(request.credential.keychain_id, "keychain:original-profile");
+    }
+
+    #[test]
+    fn catalog_only_opencode_resume_is_explicitly_unsupported() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let persisted = PersistedSession {
+            id: "remote".into(),
+            binding: test_binding(HostDriverKind::OpenCode, &workspace),
+            base_url: None,
+            credential: None,
+            resumable: true,
+            state: SessionStatus::Closed,
+            title: None,
+            directory: None,
+            parent_id: None,
+            created: None,
+            updated: None,
+        };
+        let driver = Box::new(FakeDriver::with_calls(
+            DriverCapabilities::default(),
+            calls.clone(),
+        ));
+        let mut host = AcpHost::default();
+
+        let error =
+            futures::executor::block_on(resume_persisted_session(&mut host, &persisted, driver))
+                .unwrap_err();
+
+        assert_eq!(error, "driver OpenCode does not support resume_session");
+        assert!(calls.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn active_cross_workspace_resume_rejects_before_calling_the_driver() {
         let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
         let other = workspace.parent().unwrap().canonicalize().unwrap();
         let calls = Arc::new(Mutex::new(Vec::new()));
@@ -1771,7 +1993,7 @@ mod tests {
         .unwrap();
         calls.lock().unwrap().clear();
 
-        let error = futures::executor::block_on(load_active_session(
+        let error = futures::executor::block_on(resume_active_session(
             &mut host,
             "foreign-active",
             &workspace,
@@ -1826,6 +2048,10 @@ mod tests {
                 mcp_allow_list: Vec::new(),
                 skills_snapshot: Vec::new(),
             },
+            base_url: Some("https://api.example.invalid/v1".into()),
+            credential: Some(CredentialRef {
+                keychain_id: "keychain:provider-profile".into(),
+            }),
             resumable: true,
             state: SessionStatus::Closed,
             title: Some("Review".into()),
@@ -1843,6 +2069,7 @@ mod tests {
         assert!(encoded.contains("created"));
         assert!(encoded.contains("updated"));
         assert!(encoded.contains("\"state\":\"closed\""));
+        assert!(encoded.contains("keychain:provider-profile"));
         for secret in ["api_key", "token", "secret_value", "api-key"] {
             assert!(!encoded.contains(secret));
         }

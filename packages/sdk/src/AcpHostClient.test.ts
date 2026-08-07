@@ -878,6 +878,62 @@ describe("AcpHostClient", () => {
     expect(invoke).toHaveBeenCalledWith("acp_host_close", { sessionId: "agent-session-1" });
   });
 
+  it("resumes a persisted session through the host lifecycle command", async () => {
+    const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "acp_host_resume") {
+        return {
+          id: args?.sessionId,
+          binding: {
+            engine: "codex",
+            profile: "codex",
+            model: "gpt-5.4",
+            provider: "cloud",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: "fp-1",
+            resolvedAt: "123",
+          },
+          state: "ready",
+          resumable: true,
+        };
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    await expect(client.resumeSession("persisted-session")).resolves.toEqual(
+      expect.objectContaining({ id: "persisted-session", state: "ready", resumable: true }),
+    );
+    expect(invoke).toHaveBeenCalledWith("acp_host_resume", {
+      sessionId: "persisted-session",
+    });
+    expect(client.hasLoadedSession("persisted-session")).toBe(true);
+  });
+
+  it("sets a session mode through the host lifecycle command", async () => {
+    const invoke = invokeMock();
+    const client = new AcpHostClient({ invoke });
+    await client.launch(launchRequest);
+    invoke.mockClear();
+
+    await client.setMode("agent-session-1", "planning");
+
+    expect(invoke).toHaveBeenCalledWith("acp_host_mode", {
+      sessionId: "agent-session-1",
+      mode: "planning",
+    });
+  });
+
+  it("rejects a mode change for a session that is not loaded", async () => {
+    const invoke = invokeMock();
+    const client = new AcpHostClient({ invoke });
+
+    await expect(client.setMode("missing-session", "planning")).rejects.toThrow(
+      "session missing-session is not registered",
+    );
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("routes structured prompt attachments through the host without changing the session binding", async () => {
     const invoke = invokeMock();
     const client = new AcpHostClient({ invoke });

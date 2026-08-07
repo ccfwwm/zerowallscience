@@ -18,7 +18,6 @@ const STARTUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(35);
 /// and its protocol task remain owned by `zerowall-acp`; this type only routes
 /// lifecycle calls and translates events into the host-neutral contract.
 pub struct AcpProcessDriver {
-    kind: HostDriverKind,
     profile: AcpAgentProfile,
     cwd: PathBuf,
     binding: AgentBinding,
@@ -53,7 +52,6 @@ impl AcpProcessDriver {
             )));
         }
         Ok(Self {
-            kind,
             profile,
             cwd,
             binding,
@@ -175,6 +173,10 @@ impl AcpHostDriver for AcpProcessDriver {
             cancel: true,
             permission: true,
             config: true,
+            mode: self
+                .client
+                .as_ref()
+                .is_some_and(zerowall_acp::AcpClient::supports_mode),
             close_session: true,
             ..Default::default()
         }
@@ -329,11 +331,11 @@ impl AcpHostDriver for AcpProcessDriver {
         })
     }
 
-    async fn set_mode(&mut self, _: SetModeRequest) -> Result<(), HostError> {
-        Err(HostError::UnsupportedCapability {
-            kind: self.kind,
-            operation: "mode",
-        })
+    async fn set_mode(&mut self, request: SetModeRequest) -> Result<(), HostError> {
+        self.require_session(&request.session_id)?
+            .set_mode(request.mode)
+            .await
+            .map_err(Self::process_error)
     }
 
     async fn close_session(&mut self, session_id: String) -> Result<(), HostError> {
@@ -790,6 +792,29 @@ mod tests {
         assert!(capabilities.resume_session);
         assert!(capabilities.load_session);
         assert!(!capabilities.mode);
+    }
+
+    #[test]
+    fn process_driver_does_not_advertise_mode_before_a_session_declares_it() {
+        let mut driver = AcpProcessDriver::new(
+            crate::HostDriverKind::Codex,
+            missing_profile(),
+            std::path::PathBuf::from("."),
+            binding(crate::HostDriverKind::Codex),
+        )
+        .unwrap();
+
+        assert!(matches!(
+            block_on(crate::AcpHostDriver::set_mode(
+                &mut driver,
+                crate::SetModeRequest {
+                    session_id: "session-1".into(),
+                    mode: "planning".into(),
+                },
+            )),
+            Err(crate::HostError::SessionNotFound { session_id }) if session_id == "session-1"
+        ));
+        assert!(!crate::AcpHostDriver::capabilities(&driver).mode);
     }
 
     #[test]
