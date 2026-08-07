@@ -36,6 +36,7 @@ function makeDeps() {
     prompt: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
     respondPermission: vi.fn(async () => {}),
+    respondQuestion: vi.fn(async () => {}),
     shutdown: vi.fn(async () => IDLE),
     setModel: vi.fn(async () => {}),
     listSkills: vi.fn(async () => []),
@@ -149,6 +150,75 @@ describe("AcpRuntime permissions", () => {
       type: "permission.resolved",
       sessionId: "codex",
       requestId: "permission-abc",
+    });
+  });
+});
+
+describe("AcpRuntime questions", () => {
+  it("forwards structured questions and resolves them after a successful answer", async () => {
+    const { runtime, deps, fire, events } = harness();
+    await runtime.connect();
+    fire().onHostQuestion?.({
+      request_id: "question-abc",
+      questions: [{
+        question: "Continue?",
+        header: "Next step",
+        options: [{ label: "Yes", description: "Continue the run" }],
+        multiple: false,
+        custom: true,
+      }],
+    });
+
+    expect(events).toContainEqual({
+      type: "question.asked",
+      sessionId: "codex",
+      requestId: "question-abc",
+      questions: [{
+        question: "Continue?",
+        header: "Next step",
+        options: [{ label: "Yes", description: "Continue the run" }],
+        multiple: false,
+        custom: true,
+      }],
+    });
+    await expect(runtime.listQuestions()).resolves.toHaveLength(1);
+
+    await runtime.answerQuestion("question-abc", [["Yes"]]);
+
+    expect(deps.respondQuestion).toHaveBeenCalledWith("question-abc", [["Yes"]]);
+    expect(events).toContainEqual({
+      type: "question.resolved",
+      sessionId: "codex",
+      requestId: "question-abc",
+    });
+    await expect(runtime.listQuestions()).resolves.toEqual([]);
+  });
+
+  it("rejects a Host question and clears pending questions when the agent exits", async () => {
+    const { runtime, deps, fire, events } = harness();
+    await runtime.connect();
+    fire().onHostQuestion?.({
+      request_id: "question-reject",
+      questions: [{ question: "Proceed?", header: "Confirm", options: [] }],
+    });
+    await runtime.rejectQuestion("question-reject");
+
+    expect(deps.respondQuestion).toHaveBeenCalledWith("question-reject", null);
+    expect(events).toContainEqual({
+      type: "question.resolved",
+      sessionId: "codex",
+      requestId: "question-reject",
+    });
+
+    fire().onHostQuestion?.({
+      request_id: "question-exit",
+      questions: [{ question: "Still there?", header: "Confirm", options: [] }],
+    });
+    fire().onExited?.("agent crashed");
+    expect(events).toContainEqual({
+      type: "question.resolved",
+      sessionId: "codex",
+      requestId: "question-exit",
     });
   });
 });

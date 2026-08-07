@@ -1,8 +1,8 @@
 use crate::{
     AcpHostDriver, AgentBinding, DriverCapabilities, HostError, InitializeRequest,
     InitializeResponse, LoadSessionRequest, NewSessionRequest, PermissionOption, PromptRequest,
-    PromptResponse, ResumeSessionRequest, SessionState, SessionStatus, SetConfigRequest,
-    SetModeRequest,
+    PromptResponse, QuestionItem, QuestionOption, QuestionResponseRequest, ResumeSessionRequest,
+    SessionState, SessionStatus, SetConfigRequest, SetModeRequest,
 };
 use async_trait::async_trait;
 use futures::{future::FutureExt, stream, Stream, StreamExt};
@@ -432,6 +432,23 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         ensure_success(response.status, "permission")
     }
 
+    async fn respond_question(
+        &mut self,
+        request: QuestionResponseRequest,
+    ) -> Result<(), HostError> {
+        let (suffix, body) = match request.answers {
+            Some(answers) => ("reply", json!({"answers": answers}).to_string()),
+            None => ("reject", "{}".into()),
+        };
+        let path = self.with_directory(&format!(
+            "/question/{}/{}",
+            encode_path(&request.request_id),
+            suffix
+        ));
+        let response = self.send("POST", &path, Some(&body)).await?;
+        ensure_success(response.status, "question")
+    }
+
     async fn set_config(&mut self, request: SetConfigRequest) -> Result<SessionState, HostError> {
         let path = self.with_directory(&format!("/session/{}", encode_path(&request.session_id)));
         let body = request.config.to_string();
@@ -769,11 +786,79 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                     });
                 }
                 "question.asked" | "question.requested" => {
-                    if let Some(question) = props.get("question").and_then(|v| v.as_str()) {
-                        self.events.push(crate::AgentEvent::QuestionRequested {
-                            session_id: session_id.into(),
-                            question: question.into(),
+                    let request_id = props
+                        .get("id")
+                        .or_else(|| props.get("requestID"))
+                        .or_else(|| props.get("requestId"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let questions = props
+                        .get("questions")
+                        .and_then(|v| v.as_array())
+                        .map(|items| {
+                            items
+                                .iter()
+                                .filter_map(|item| {
+                                    let question = item.get("question")?.as_str()?.to_owned();
+                                    let header = item
+                                        .get("header")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("Question")
+                                        .to_owned();
+                                    let options = item
+                                        .get("options")
+                                        .and_then(|v| v.as_array())
+                                        .map(|options| {
+                                            options
+                                                .iter()
+                                                .filter_map(|option| {
+                                                    Some(QuestionOption {
+                                                        label: option
+                                                            .get("label")
+                                                            .and_then(|v| v.as_str())?
+                                                            .to_owned(),
+                                                        description: option
+                                                            .get("description")
+                                                            .and_then(|v| v.as_str())
+                                                            .map(str::to_owned),
+                                                    })
+                                                })
+                                                .collect()
+                                        })
+                                        .unwrap_or_default();
+                                    Some(QuestionItem {
+                                        question,
+                                        header,
+                                        options,
+                                        multiple: item.get("multiple").and_then(|v| v.as_bool()),
+                                        custom: item.get("custom").and_then(|v| v.as_bool()),
+                                    })
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .filter(|items| !items.is_empty())
+                        .or_else(|| {
+                            props
+                                .get("question")
+                                .and_then(|v| v.as_str())
+                                .map(|question| {
+                                    vec![QuestionItem {
+                                        question: question.into(),
+                                        header: "Question".into(),
+                                        options: Vec::new(),
+                                        multiple: None,
+                                        custom: Some(true),
+                                    }]
+                                })
                         });
+                    if !request_id.is_empty() {
+                        if let Some(questions) = questions {
+                            self.events.push(crate::AgentEvent::QuestionRequested {
+                                session_id: session_id.into(),
+                                request_id: request_id.into(),
+                                questions,
+                            });
+                        }
                     }
                 }
                 "message.updated" | "usage.updated" => {
@@ -1138,7 +1223,7 @@ mod tests {
     #[test]
     fn prompt_maps_sse_events_and_cancel_aborts() {
         let calls = Arc::new(Mutex::new(Vec::new()));
-        let sse = "data: {\"type\":\"text.updated\",\"properties\":{\"sessionID\":\"s1\",\"delta\":\"hi\"}}\ndata: {\"type\":\"reasoning.updated\",\"properties\":{\"sessionID\":\"s1\",\"text\":\"why\"}}\ndata: {\"type\":\"tool.updated\",\"properties\":{\"sessionID\":\"s1\",\"callID\":\"t1\",\"status\":\"running\",\"title\":\"Search\"}}\ndata: {\"type\":\"permission.asked\",\"properties\":{\"sessionID\":\"s1\",\"id\":\"r1\",\"options\":[{\"id\":\"allow\",\"title\":\"Allow\"}]}}\ndata: {\"type\":\"question.asked\",\"properties\":{\"sessionID\":\"s1\",\"question\":\"Continue?\"}}\ndata: {\"type\":\"usage.updated\",\"properties\":{\"sessionID\":\"s1\",\"inputTokens\":2,\"outputTokens\":3}}\n";
+        let sse = "data: {\"type\":\"text.updated\",\"properties\":{\"sessionID\":\"s1\",\"delta\":\"hi\"}}\ndata: {\"type\":\"reasoning.updated\",\"properties\":{\"sessionID\":\"s1\",\"text\":\"why\"}}\ndata: {\"type\":\"tool.updated\",\"properties\":{\"sessionID\":\"s1\",\"callID\":\"t1\",\"status\":\"running\",\"title\":\"Search\"}}\ndata: {\"type\":\"permission.asked\",\"properties\":{\"sessionID\":\"s1\",\"id\":\"r1\",\"options\":[{\"id\":\"allow\",\"title\":\"Allow\"}]}}\ndata: {\"type\":\"question.asked\",\"properties\":{\"sessionID\":\"s1\",\"id\":\"q1\",\"questions\":[{\"question\":\"Continue?\",\"header\":\"Next\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue the run\"}],\"custom\":true}]}}\ndata: {\"type\":\"usage.updated\",\"properties\":{\"sessionID\":\"s1\",\"inputTokens\":2,\"outputTokens\":3}}\n";
         let fake = Fake {
             calls: calls.clone(),
             responses: vec![
@@ -1172,7 +1257,7 @@ mod tests {
             .any(|e| matches!(e, crate::AgentEvent::ThoughtDelta { delta, .. } if delta == "why")));
         assert!(events.iter().any(|e| matches!(e, crate::AgentEvent::ToolUpdated { tool_call_id, .. } if tool_call_id == "t1")));
         assert!(events.iter().any(|e| matches!(e, crate::AgentEvent::PermissionRequested { request_id, options, .. } if request_id == "r1" && options[0].id == "allow")));
-        assert!(events.iter().any(|e| matches!(e, crate::AgentEvent::QuestionRequested { question, .. } if question == "Continue?")));
+        assert!(events.iter().any(|e| matches!(e, crate::AgentEvent::QuestionRequested { request_id, questions, .. } if request_id == "q1" && questions[0].question == "Continue?" && questions[0].options[0].label == "Yes")));
         assert!(events.iter().any(|e| matches!(
             e,
             crate::AgentEvent::UsageUpdated {
@@ -1232,6 +1317,55 @@ mod tests {
             "http://x/permission/p1/reply?directory=C:%2Fscience%20project"
         );
         assert_eq!(calls[0].body.as_deref(), Some("{\"reply\":\"once\"}"));
+    }
+
+    #[test]
+    fn replies_to_and_rejects_native_opencode_questions() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+            ],
+        };
+        let mut question_binding = binding();
+        question_binding.project_root = "C:/science project".into();
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", question_binding);
+
+        block_on(driver.respond_question(QuestionResponseRequest {
+            session_id: "s1".into(),
+            request_id: "question/1".into(),
+            answers: Some(vec![vec!["Continue".into()]]),
+        }))
+        .unwrap();
+        block_on(driver.respond_question(QuestionResponseRequest {
+            session_id: "s1".into(),
+            request_id: "question-2".into(),
+            answers: None,
+        }))
+        .unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(
+            calls[0].url,
+            "http://x/question/question%2F1/reply?directory=C:%2Fscience%20project"
+        );
+        assert_eq!(
+            calls[0].body.as_deref(),
+            Some("{\"answers\":[[\"Continue\"]]}")
+        );
+        assert_eq!(
+            calls[1].url,
+            "http://x/question/question-2/reject?directory=C:%2Fscience%20project"
+        );
+        assert_eq!(calls[1].body.as_deref(), Some("{}"));
     }
 
     #[test]

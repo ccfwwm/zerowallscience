@@ -913,6 +913,22 @@ pub async fn acp_host_permission(
 }
 
 #[tauri::command]
+pub async fn acp_host_question(
+    state: State<'_, AcpHostState>,
+    session_id: String,
+    request_id: String,
+    answers: Option<Vec<Vec<String>>>,
+) -> Result<(), String> {
+    state
+        .host
+        .lock()
+        .await
+        .respond_question(&session_id, &request_id, answers)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
 pub async fn acp_host_close(
     app: AppHandle,
     state: State<'_, AcpHostState>,

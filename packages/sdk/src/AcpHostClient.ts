@@ -34,6 +34,19 @@ export interface PermissionOption {
   label: string | null;
 }
 
+export interface QuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface QuestionItem {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiple?: boolean;
+  custom?: boolean;
+}
+
 export type AgentEvent =
   | { type: "session.started"; sessionId: string }
   | { type: "session.idle"; sessionId: string }
@@ -56,7 +69,12 @@ export type AgentEvent =
       resources: string[];
       options: PermissionOption[];
     }
-  | { type: "question.requested"; sessionId: string; question: string }
+  | {
+      type: "question.requested";
+      sessionId: string;
+      requestId: string;
+      questions: QuestionItem[];
+    }
   | {
       type: "usage.updated";
       sessionId: string;
@@ -330,6 +348,15 @@ export class AcpHostClient {
     await this.invoke("acp_host_permission", { sessionId, requestId, optionId });
   }
 
+  async respondQuestion(
+    sessionId: string,
+    requestId: string,
+    answers: string[][] | null,
+  ): Promise<void> {
+    this.requireSession(sessionId);
+    await this.invoke("acp_host_question", { sessionId, requestId, answers });
+  }
+
   async setConfig(sessionId: string, config: Record<string, unknown>): Promise<AgentSession> {
     const current = this.requireSession(sessionId);
     const raw = await this.invoke<RawSession>("acp_host_config", { sessionId, config });
@@ -480,7 +507,14 @@ function normalizeEvent(raw: RawEvent): AgentEvent {
           : [],
       };
     case "question.requested":
-      return { type: raw.type, sessionId, question: stringValue(data, "question") };
+      return {
+        type: raw.type,
+        sessionId,
+        requestId: stringValue(data, "request_id", "requestId"),
+        questions: Array.isArray(data.questions)
+          ? data.questions.map(normalizeQuestion)
+          : [],
+      };
     case "usage.updated":
       return {
         type: raw.type,
@@ -503,6 +537,26 @@ function normalizeEvent(raw: RawEvent): AgentEvent {
     default:
       throw new Error(`unsupported ACP host event: ${String(raw.type)}`);
   }
+}
+
+function normalizeQuestion(value: unknown): QuestionItem {
+  const question = value as Record<string, unknown>;
+  return {
+    question: stringValue(question, "question"),
+    header: stringValue(question, "header"),
+    options: Array.isArray(question.options)
+      ? question.options.map((rawOption) => {
+          const option = rawOption as Record<string, unknown>;
+          const description = nullableString(option, "description");
+          return {
+            label: stringValue(option, "label"),
+            ...(description === null ? {} : { description }),
+          };
+        })
+      : [],
+    ...(typeof question.multiple === "boolean" ? { multiple: question.multiple } : {}),
+    ...(typeof question.custom === "boolean" ? { custom: question.custom } : {}),
+  };
 }
 
 function stringValue(value: Record<string, unknown>, ...keys: string[]): string {

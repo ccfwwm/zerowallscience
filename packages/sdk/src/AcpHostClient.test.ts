@@ -437,6 +437,44 @@ describe("AcpHostClient", () => {
     ]);
   });
 
+  it("normalizes structured question requests without losing request ids or options", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_launch") return invokeMock()(command);
+      if (command === "acp_host_events") {
+        return [{
+          type: "question.requested",
+          data: {
+            session_id: "agent-session-1",
+            request_id: "question-1",
+            questions: [{
+              question: "Continue the analysis?",
+              header: "Next step",
+              options: [{ label: "Continue", description: "Run the next stage" }],
+              multiple: false,
+              custom: true,
+            }],
+          },
+        }];
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+    await client.launch(launchRequest);
+
+    await expect(client.drainEvents("agent-session-1")).resolves.toEqual([{
+      type: "question.requested",
+      sessionId: "agent-session-1",
+      requestId: "question-1",
+      questions: [{
+        question: "Continue the analysis?",
+        header: "Next step",
+        options: [{ label: "Continue", description: "Run the next stage" }],
+        multiple: false,
+        custom: true,
+      }],
+    }]);
+  });
+
   it("rejects a silent binding change for an existing session", async () => {
     const invoke = invokeMock();
     const client = new AcpHostClient({ invoke });
@@ -448,13 +486,15 @@ describe("AcpHostClient", () => {
     expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "acp_host_launch")).toHaveLength(1);
   });
 
-  it("routes prompt, permission, cancel, and close through the same host", async () => {
+  it("routes prompt, permission, question replies, cancel, and close through the same host", async () => {
     const invoke = invokeMock();
     const client = new AcpHostClient({ invoke });
     await client.launch(launchRequest);
 
     await client.prompt("agent-session-1", "hello");
     await client.respondPermission("agent-session-1", "permission-1", "allow_once");
+    await client.respondQuestion("agent-session-1", "question-1", [["Continue"]]);
+    await client.respondQuestion("agent-session-1", "question-2", null);
     await client.cancel("agent-session-1");
     await client.close("agent-session-1");
 
@@ -466,6 +506,16 @@ describe("AcpHostClient", () => {
       sessionId: "agent-session-1",
       requestId: "permission-1",
       optionId: "allow_once",
+    });
+    expect(invoke).toHaveBeenCalledWith("acp_host_question", {
+      sessionId: "agent-session-1",
+      requestId: "question-1",
+      answers: [["Continue"]],
+    });
+    expect(invoke).toHaveBeenCalledWith("acp_host_question", {
+      sessionId: "agent-session-1",
+      requestId: "question-2",
+      answers: null,
     });
     expect(invoke).toHaveBeenCalledWith("acp_host_cancel", { sessionId: "agent-session-1" });
     expect(invoke).toHaveBeenCalledWith("acp_host_close", { sessionId: "agent-session-1" });

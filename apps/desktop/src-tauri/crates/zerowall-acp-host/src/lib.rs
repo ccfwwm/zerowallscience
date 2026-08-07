@@ -151,7 +151,8 @@ pub enum AgentEvent {
     #[serde(rename = "question.requested")]
     QuestionRequested {
         session_id: String,
-        question: String,
+        request_id: String,
+        questions: Vec<QuestionItem>,
     },
     #[serde(rename = "usage.updated")]
     UsageUpdated {
@@ -175,6 +176,23 @@ pub enum AgentEvent {
 pub struct PermissionOption {
     pub id: String,
     pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuestionOption {
+    pub label: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuestionItem {
+    pub question: String,
+    pub header: String,
+    pub options: Vec<QuestionOption>,
+    pub multiple: Option<bool>,
+    pub custom: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -234,6 +252,12 @@ pub struct SetModeRequest {
     pub session_id: String,
     pub mode: String,
 }
+#[derive(Debug, Clone)]
+pub struct QuestionResponseRequest {
+    pub session_id: String,
+    pub request_id: String,
+    pub answers: Option<Vec<Vec<String>>>,
+}
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionState {
@@ -284,6 +308,15 @@ pub trait AcpHostDriver: Send {
         request_id: String,
         option_id: Option<String>,
     ) -> Result<(), HostError>;
+    async fn respond_question(
+        &mut self,
+        _request: QuestionResponseRequest,
+    ) -> Result<(), HostError> {
+        Err(HostError::UnsupportedCapability {
+            kind: HostDriverKind::Codex,
+            operation: "question",
+        })
+    }
     async fn set_config(&mut self, request: SetConfigRequest) -> Result<SessionState, HostError>;
     async fn set_mode(&mut self, request: SetModeRequest) -> Result<(), HostError>;
     async fn close_session(&mut self, session_id: String) -> Result<(), HostError>;
@@ -743,6 +776,33 @@ impl AcpHost {
         Self::require(entry.kind, "permission", caps.permission)?;
         driver
             .respond_permission(request_id.into(), option_id)
+            .await
+    }
+    pub async fn respond_question(
+        &mut self,
+        session_id: &str,
+        request_id: &str,
+        answers: Option<Vec<Vec<String>>>,
+    ) -> Result<(), HostError> {
+        let entry =
+            self.sessions
+                .get_mut(session_id)
+                .ok_or_else(|| HostError::SessionNotFound {
+                    session_id: session_id.into(),
+                })?;
+        let driver = entry
+            .driver
+            .as_mut()
+            .ok_or_else(|| HostError::SessionTerminated {
+                session_id: session_id.into(),
+                resumable: entry.resumable,
+            })?;
+        driver
+            .respond_question(QuestionResponseRequest {
+                session_id: session_id.into(),
+                request_id: request_id.into(),
+                answers,
+            })
             .await
     }
     pub async fn cancel(&mut self, session_id: &str) -> Result<(), HostError> {

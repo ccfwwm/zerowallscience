@@ -76,6 +76,65 @@ describe("ACP Host runtime adapter", () => {
     ]);
   });
 
+  it("forwards question events and routes answer and reject through the Host", async () => {
+    const calls: Array<[string, Record<string, unknown> | undefined]> = [];
+    let eventRead = false;
+    const invoke = (async <T = unknown>(command: string, args?: Record<string, unknown>) => {
+      calls.push([command, args]);
+      if (command === "acp_host_events" && !eventRead) {
+        eventRead = true;
+        return [{
+          type: "question.requested",
+          data: {
+            session_id: "host-session-1",
+            request_id: "question-1",
+            questions: [{
+              question: "Continue?",
+              header: "Next step",
+              options: [{ label: "Yes", description: "Continue" }],
+              custom: true,
+            }],
+          },
+        }] as T;
+      }
+      return fakeInvoke()(command, args);
+    }) as AcpHostInvoke;
+    const deps = createAcpHostRuntimeDeps(invoke);
+    const received: unknown[] = [];
+    await deps.subscribe({ onHostQuestion: (question) => received.push(question) });
+    await deps.launch({
+      profileId: "codex",
+      conversationId: "conversation-1",
+      projectRoot: "C:/science",
+      gateway: { providerId: "cloud", baseUrl: "https://api.example.test/v1", model: "gpt-5.4" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(received).toEqual([{
+      request_id: "question-1",
+      questions: [{
+        question: "Continue?",
+        header: "Next step",
+        options: [{ label: "Yes", description: "Continue" }],
+        multiple: undefined,
+        custom: true,
+      }],
+    }]);
+    await deps.respondQuestionSession?.("host-session-1", "question-1", [["Yes"]]);
+    await deps.respondQuestion?.("question-2", null);
+
+    expect(calls).toContainEqual(["acp_host_question", {
+      sessionId: "host-session-1",
+      requestId: "question-1",
+      answers: [["Yes"]],
+    }]);
+    expect(calls).toContainEqual(["acp_host_question", {
+      sessionId: "host-session-1",
+      requestId: "question-2",
+      answers: null,
+    }]);
+  });
+
   it("detaches on shutdown without deleting persisted Host sessions", async () => {
     const calls: string[] = [];
     const invoke = (async (command: string, args?: Record<string, unknown>) => {

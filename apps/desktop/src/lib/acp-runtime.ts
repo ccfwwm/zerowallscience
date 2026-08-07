@@ -60,6 +60,7 @@ export interface AcpRuntimeDeps {
   setModel: (model: string) => Promise<void>;
   cancel: () => Promise<void>;
   respondPermission: (requestId: string, optionId: string | null) => Promise<void>;
+  respondQuestion: (requestId: string, answers: string[][] | null) => Promise<void>;
   shutdown: () => Promise<AcpStatus>;
   subscribe: (handlers: AcpEventHandlers) => Promise<() => void>;
   listSkills?: (profileId: string) => Promise<SkillInfo[]>;
@@ -78,6 +79,11 @@ export interface AcpRuntimeDeps {
     sessionId: string,
     requestId: string,
     optionId: string | null,
+  ) => Promise<void>;
+  respondQuestionSession?: (
+    sessionId: string,
+    requestId: string,
+    answers: string[][] | null,
   ) => Promise<void>;
   deleteSession?: (sessionId: string) => Promise<void>;
 }
@@ -117,6 +123,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
   private readonly messageText = new Map<string, string>();
   private readonly thoughtText = new Map<string, string>();
   private readonly permissionOptions = new Map<string, AcpHostPermissionPayload["options"]>();
+  private readonly pendingQuestions = new Map<string, QuestionAskedEvent>();
   /** The latest whole-value update for each part waiting for the next display
    * refresh. Protocol chunks still accumulate losslessly in the maps above. */
   private readonly pendingText = new Map<string, { kind: "text" | "reasoning"; key: string; text: string }>();
@@ -195,6 +202,14 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
       this.emit({ type: "permission.resolved", sessionId: this.sessionId, requestId });
     }
     this.permissionOptions.clear();
+    for (const question of this.pendingQuestions.values()) {
+      this.emit({
+        type: "question.resolved",
+        sessionId: question.sessionId,
+        requestId: question.requestId,
+      });
+    }
+    this.pendingQuestions.clear();
     this.messageText.clear();
     this.thoughtText.clear();
     this.pendingText.clear();
@@ -258,6 +273,16 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
           action: payload.action,
           resources: payload.resources,
         });
+      },
+      onHostQuestion: (payload) => {
+        const event: QuestionAskedEvent = {
+          type: "question.asked",
+          sessionId: this.sessionId,
+          requestId: payload.request_id,
+          questions: payload.questions,
+        };
+        this.pendingQuestions.set(payload.request_id, event);
+        this.emit(event);
       },
       onTurnEnded: (_stopReason, tokenUsage) => {
         // A turn boundary: unlabeled chunks of the next turn must not extend
@@ -544,19 +569,34 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
   // ACP permission / exec-approval flow through the dedicated subscribeAcp path
   // to purpose-built approval UI, NOT through this fixed-vocabulary seam.
 
-  async listQuestions(): Promise<QuestionAskedEvent[]> {
-    return [];
+  async listQuestions(sessionId?: string): Promise<QuestionAskedEvent[]> {
+    const questions = [...this.pendingQuestions.values()];
+    return sessionId ? questions.filter((question) => question.sessionId === sessionId) : questions;
   }
 
   async listPermissions(): Promise<PermissionAskedEvent[]> {
     return [];
   }
 
-  async answerQuestion(): Promise<void> {
-    // No ACP question concept; nothing to answer here.
+  async answerQuestion(requestId: string, answers: string[][]): Promise<void> {
+    await this.resolveQuestion(requestId, answers);
   }
 
-  async rejectQuestion(): Promise<void> {}
+  async rejectQuestion(requestId: string): Promise<void> {
+    await this.resolveQuestion(requestId, null);
+  }
+
+  private async resolveQuestion(requestId: string, answers: string[][] | null): Promise<void> {
+    const question = this.pendingQuestions.get(requestId);
+    const sessionId = question?.sessionId ?? this.sessionId;
+    if (this.deps.respondQuestionSession) {
+      await this.deps.respondQuestionSession(sessionId, requestId, answers);
+    } else {
+      await this.deps.respondQuestion(requestId, answers);
+    }
+    this.pendingQuestions.delete(requestId);
+    this.emit({ type: "question.resolved", sessionId, requestId });
+  }
 
   async replyPermission(requestId: string, reply: PermissionReply): Promise<void> {
     const options = this.permissionOptions.get(requestId) ?? [];

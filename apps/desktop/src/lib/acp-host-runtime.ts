@@ -152,6 +152,11 @@ function forwardEvent(handlers: AcpEventHandlers, event: AgentEvent): void {
       });
       break;
     case "question.requested":
+      handlers.onHostQuestion?.({
+        request_id: event.requestId,
+        questions: event.questions,
+      });
+      break;
     case "artifact.created":
       // These are consumed by the unified event reducer in the next migration
       // step. The compatibility reducer must not invent legacy request ids.
@@ -272,6 +277,10 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
       if (!hostState) throw new Error("ACP Host session is not running");
       await hostState.client.respondPermission(sessionId, requestId, optionId);
     },
+    respondQuestionSession: async (sessionId, requestId, answers) => {
+      if (!hostState) throw new Error("ACP Host session is not running");
+      await hostState.client.respondQuestion(sessionId, requestId, answers);
+    },
     deleteSession: async (sessionId) => {
       if (!hostState) return;
       const wasActive = hostState.sessionId === sessionId;
@@ -292,6 +301,10 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
     respondPermission: async (requestId, optionId) => {
       if (!hostState) throw new Error("ACP Host session is not running");
       await hostState.client.respondPermission(hostState.sessionId, requestId, optionId);
+    },
+    respondQuestion: async (requestId, answers) => {
+      if (!hostState) throw new Error("ACP Host session is not running");
+      await hostState.client.respondQuestion(hostState.sessionId, requestId, answers);
     },
     shutdown: async () => {
       const active = hostState;

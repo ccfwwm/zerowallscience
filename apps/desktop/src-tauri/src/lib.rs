@@ -277,6 +277,7 @@ pub fn run() {
             acp_host::acp_host_events,
             acp_host::acp_host_cancel,
             acp_host::acp_host_permission,
+            acp_host::acp_host_question,
             acp_host::acp_host_close,
             method_check::method_check_evaluate,
             bio_check::bio_check_evaluate,

@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 15:30 · Unified ACP Host questions now preserve request IDs, structured prompts and options from OpenCode SSE through the SDK and desktop runtime, support reply/reject commands, resolve pending UI requests on success or exit, and pass 41 Host tests, 59 targeted frontend tests, 14 Tauri host tests, and desktop typecheck.
+
 2026-08-07 15:11 · ACP Host now records terminal session states, detaches crashed process drivers, fail-closes pending permissions, stops SDK polling after termination, reloads resumable sessions through a replacement driver, and clears ACP permission cards on exit; targeted Host 40/40, Tauri acp_host 14/14, SDK/ACP desktop 55/55, and typecheck pass.
 
 2026-08-07 14:21 · Codex and Claude Host drivers no longer resolve ACP adapters from the user PATH, require app-managed adapter and private CLI roots, inject CODEX_PATH or CLAUDE_CODE_EXECUTABLE explicitly, and reuse the hardened inherited-auth environment removal; 379 Tauri tests, 35 Host tests, both Clippy gates, targeted rustfmt, and diff checks pass.
