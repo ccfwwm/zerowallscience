@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 23:35 · Canonical desktop AgentEvent folding now clears per-session accumulators across reconnect, error, and close, preventing stale text from contaminating restored turns; ACP Host 56/56, ACP core 22/22 plus reliability 21/21, desktop Vitest 148/148 files and 1341/1341 tests, TypeScript, ESLint, Tauri 397/397, brand, release, and Bootstrapper contracts pass.
+
 2026-08-07 22:41 · ACP process drivers now restore Codex/Claude sessions through capability-gated `session/load` or `session/resume`; the SDK routing facade and documentation now name the ACP Host as the desktop boundary while preserving Gateway Web compatibility, with ACP 43/43, Host 56/56, SDK, desktop ACP/runtime-store 162/162, and typecheck passing.
 
 2026-08-07 22:13 · Completed the local release gate: the production desktop frontend build succeeds and the independent Environment Bootstrapper security suite passes 6/6; clean-machine installs, production-key signing, and interrupted-update rollback remain external release validations.

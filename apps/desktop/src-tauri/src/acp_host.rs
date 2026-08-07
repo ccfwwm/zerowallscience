@@ -992,11 +992,16 @@ async fn route_registered_session(
     request: &AcpHostLaunchRequest,
     session_binding: AgentBinding,
     route: SessionLaunchRoute,
+    has_persisted_catalog_entry: bool,
 ) -> Result<SessionState, String> {
-    if matches!(route, SessionLaunchRoute::Compatibility)
-        && request.engine == HostDriverKind::OpenCode
-        && request.session_id != request.profile_id
-    {
+    // `acp_host_launch` is the compatibility entry used when the app opens a
+    // persisted conversation. All process-backed drivers must restore through
+    // `load_existing_session`; routing only OpenCode here silently created a
+    // fresh Codex/Claude session after restart. Explicit workflow/session-new
+    // calls remain on the new-session path regardless of the id shape.
+    let should_load = matches!(route, SessionLaunchRoute::Compatibility)
+        && (has_persisted_catalog_entry || request.session_id != request.profile_id);
+    if should_load {
         host.load_existing_session(
             zerowall_acp_host::LoadSessionRequest {
                 session_id: request.session_id.clone(),
@@ -1027,7 +1032,9 @@ async fn start_host_session(
     let workspace = workspace_root(&app)?;
     validate_project_root(&request.project_root, &workspace)?;
     let requested_binding = binding(&request, &workspace);
-    let session_binding = if let Some(persisted) = read_catalog(&app)?.get(&request.session_id) {
+    let catalog = read_catalog(&app)?;
+    let has_persisted_catalog_entry = catalog.contains_key(&request.session_id);
+    let session_binding = if let Some(persisted) = catalog.get(&request.session_id) {
         persisted
             .binding
             .ensure_compatible(&requested_binding)
@@ -1043,7 +1050,14 @@ async fn start_host_session(
     let driver = build_driver(&app, &request, &workspace, session_binding.clone())?;
     let mut host = state.host.lock().await;
     host.register_driver(request.engine, driver);
-    let result = route_registered_session(&mut host, &request, session_binding, route).await;
+    let result = route_registered_session(
+        &mut host,
+        &request,
+        session_binding,
+        route,
+        has_persisted_catalog_entry,
+    )
+    .await;
     drop(host);
     if let Ok(ref state) = result {
         persist_session(&app, state)?;
@@ -1635,6 +1649,7 @@ mod tests {
             &request,
             test_binding(HostDriverKind::OpenCode, &workspace),
             SessionLaunchRoute::ExplicitNew,
+            false,
         ))
         .unwrap();
 
@@ -1642,6 +1657,63 @@ mod tests {
             *calls.lock().unwrap(),
             [DriverCall::New {
                 session_id: "workflow:review:session-1".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn compatibility_launch_restores_process_backed_engines() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        for engine in [HostDriverKind::Codex, HostDriverKind::ClaudeCode] {
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let mut host = AcpHost::default();
+            host.register_driver(engine, test_driver(calls.clone()));
+            let profile = match engine {
+                HostDriverKind::Codex => "codex",
+                HostDriverKind::ClaudeCode => "claude-code",
+                HostDriverKind::OpenCode => unreachable!(),
+            };
+            let request = test_launch_request(engine, &workspace, &format!("{profile}-restored"));
+
+            futures::executor::block_on(route_registered_session(
+                &mut host,
+                &request,
+                test_binding(engine, &workspace),
+                SessionLaunchRoute::Compatibility,
+                false,
+            ))
+            .unwrap();
+
+            assert_eq!(
+                *calls.lock().unwrap(),
+                [DriverCall::Load {
+                    session_id: format!("{profile}-restored")
+                }]
+            );
+        }
+    }
+
+    #[test]
+    fn compatibility_launch_loads_a_persisted_profile_id_session() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mut host = AcpHost::default();
+        host.register_driver(HostDriverKind::Codex, test_driver(calls.clone()));
+        let request = test_launch_request(HostDriverKind::Codex, &workspace, "codex");
+
+        futures::executor::block_on(route_registered_session(
+            &mut host,
+            &request,
+            test_binding(HostDriverKind::Codex, &workspace),
+            SessionLaunchRoute::Compatibility,
+            true,
+        ))
+        .unwrap();
+
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [DriverCall::Load {
+                session_id: "codex".into()
             }]
         );
     }

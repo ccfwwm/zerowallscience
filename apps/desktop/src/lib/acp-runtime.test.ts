@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { OpenCodeEvent, RuntimeStatus } from "@zerowall/sdk";
 import type { AcpEventHandlers, AcpLaunchRequest, AcpStatus } from "./acp";
 import { AcpRuntime, AcpUnsupportedError, type AcpRuntimeDeps } from "./acp-runtime";
+import type { DesktopAgentEvent } from "./agent-events";
 
 const REQUEST: AcpLaunchRequest = {
   profileId: "codex",
@@ -54,10 +55,12 @@ function harness() {
   const { deps, unlisten, fire } = makeDeps();
   const runtime = new AcpRuntime(REQUEST, deps);
   const events: OpenCodeEvent[] = [];
+  const agentEvents: DesktopAgentEvent[] = [];
   const statuses: RuntimeStatus[] = [];
   runtime.onEvent((e) => events.push(e));
+  runtime.onAgentEvent((e) => agentEvents.push(e));
   runtime.onStatus((s) => statuses.push(s));
-  return { runtime, deps, unlisten, fire, events, statuses };
+  return { runtime, deps, unlisten, fire, events, agentEvents, statuses };
 }
 
 describe("AcpRuntime lifecycle", () => {
@@ -99,7 +102,7 @@ describe("AcpRuntime lifecycle", () => {
   });
 
   it("subscribes before launching, then goes ready", async () => {
-    const { runtime, deps, statuses } = harness();
+    const { runtime, deps, statuses, agentEvents } = harness();
     await runtime.connect();
     // subscribe must be called before launch so no early event is dropped.
     const subOrder = (deps.subscribe as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
@@ -107,6 +110,19 @@ describe("AcpRuntime lifecycle", () => {
     expect(subOrder).toBeLessThan(launchOrder);
     expect(statuses).toEqual(["connecting", "ready"]);
     expect(runtime.getStatus()).toBe("ready");
+    expect(agentEvents).toEqual([{ type: "session.started", sessionId: "codex" }]);
+  });
+
+  it("forwards canonical plan updates without fabricating a transcript event", async () => {
+    const { runtime, fire, agentEvents } = harness();
+    await runtime.connect();
+    fire().onPlan?.({ steps: [{ id: "collect", status: "running" }] });
+
+    expect(agentEvents).toContainEqual({
+      type: "plan.updated",
+      sessionId: "codex",
+      plan: { steps: [{ id: "collect", status: "running" }] },
+    });
   });
 
   it("tears down and reports error when launch fails", async () => {
@@ -190,6 +206,57 @@ describe("AcpRuntime permissions", () => {
       sessionId: "codex",
       requestId: "permission-abc",
     });
+  });
+
+  it("launches with empty optional capability snapshots when discovery stalls", async () => {
+    vi.useFakeTimers();
+    try {
+      const { runtime, deps } = harness();
+      (deps.listMcpServers as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise(() => {}));
+      (deps.discoverSkills as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise(() => {}));
+
+      const connecting = runtime.connect();
+      await vi.advanceTimersByTimeAsync(1_500);
+      await expect(connecting).resolves.toBeUndefined();
+      expect(deps.launch).toHaveBeenCalledWith(expect.objectContaining({
+        mcpAllowList: [],
+        skillsSnapshot: [],
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("AcpRuntime canonical AgentEvent stream", () => {
+  it("emits Host-native text, tool, permission, usage, and idle events", async () => {
+    const { runtime, fire, agentEvents } = harness();
+    await runtime.connect();
+    fire().onMessage?.({ message_id: null, text: "hello" });
+    fire().onToolCall?.({ toolCallId: "tool-1", kind: "read", status: "completed" });
+    fire().onHostPermission?.({
+      request_id: "p1",
+      action: "read",
+      resources: ["paper.md"],
+      options: [{ option_id: "allow", name: "Allow" }],
+    });
+    fire().onUsage?.({ used: 10, size: 100, token_usage: {
+      total_tokens: 12,
+      input_tokens: 8,
+      output_tokens: 4,
+      thought_tokens: 0,
+      cached_read_tokens: 0,
+      cached_write_tokens: 0,
+    } });
+    fire().onTurnEnded?.("end_turn");
+
+    expect(agentEvents).toEqual(expect.arrayContaining([
+      { type: "text.delta", sessionId: "codex", delta: "hello" },
+      expect.objectContaining({ type: "tool.updated", toolCallId: "tool-1" }),
+      expect.objectContaining({ type: "permission.requested", requestId: "p1" }),
+      expect.objectContaining({ type: "usage.updated", inputTokens: 8, outputTokens: 4 }),
+      { type: "session.idle", sessionId: "codex" },
+    ]));
   });
 });
 

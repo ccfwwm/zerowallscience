@@ -26,6 +26,7 @@
 // no Tauri present.
 import { BaseAgentRuntime } from "@zerowall/sdk";
 import type {
+  AgentEvent,
   AgentInfo,
   AgentRuntime,
   CommandInfo,
@@ -54,6 +55,7 @@ import {
   type AcpUsagePayload,
 } from "./acp";
 import { createAcpHostRuntimeDeps } from "./acp-host-runtime";
+import type { DesktopAgentEvent } from "./agent-events";
 import { acpToolCallToEvent } from "./acp-normalize";
 
 /** The Tauri touchpoints the runtime needs, injected so the logic is testable
@@ -104,6 +106,9 @@ const REAL_DEPS: AcpRuntimeDeps = {
 /** One UI update every 40 ms keeps streamed prose visually continuous without
  * rebuilding the live thread and Markdown tree for every protocol token. */
 const STREAM_REFRESH_MS = 40;
+/** Optional capability discovery must never hold the primary ACP session
+ * hostage when a configured MCP server or Skills catalog is unavailable. */
+const CAPABILITY_DISCOVERY_TIMEOUT_MS = 1_500;
 
 /** Thrown by methods an ACP agent cannot honor (revert, ad-hoc shell). Callers
  *  gate these in the UI; a thrown error is the honest answer if one slips
@@ -122,9 +127,13 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
   private sessionId: string;
   private initialSessionClaimed = false;
   private sessionSequence = 0;
+  private sessionStartedEmitted = false;
 
   /** Torn down on close(); undefined until connect() subscribes. */
   private unsubscribe: (() => void) | null = null;
+  /** Canonical Host event subscribers used by the desktop Store. The legacy
+   *  `onEvent` stream remains for Gateway Web compatibility and old tests. */
+  private readonly agentEventListeners = new Set<(event: DesktopAgentEvent) => void>();
 
   /** Cumulative text per streamed message, keyed by the ACP `message_id` (or a
    *  per-turn synthetic key when the agent sends none). The app's text.updated
@@ -175,6 +184,21 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     this.initialSessionClaimed = Boolean(request.conversationId?.trim());
   }
 
+  onAgentEvent(listener: (event: DesktopAgentEvent) => void): () => void {
+    this.agentEventListeners.add(listener);
+    return () => this.agentEventListeners.delete(listener);
+  }
+
+  private emitSessionStarted(): void {
+    if (this.sessionStartedEmitted) return;
+    this.sessionStartedEmitted = true;
+    this.emitAgent({ type: "session.started", sessionId: this.sessionId });
+  }
+
+  private emitAgent(event: AgentEvent | Extract<DesktopAgentEvent, { type: "permission.resolved" | "question.resolved" }>): void {
+    this.agentEventListeners.forEach((listener) => listener(event));
+  }
+
   // ---- lifecycle ----
 
   async connect(): Promise<void> {
@@ -189,6 +213,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
       }
       this.sessionId = this.deps.currentSessionId?.() ?? this.sessionId;
       this.setStatus("ready");
+      this.emitSessionStarted();
     } catch (err) {
       this.teardown();
       this.setStatus("error");
@@ -210,6 +235,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     }
     for (const requestId of this.permissionOptions.keys()) {
       this.emit({ type: "permission.resolved", sessionId: this.sessionId, requestId });
+      this.emitAgent({ type: "permission.resolved", sessionId: this.sessionId, requestId });
     }
     this.permissionOptions.clear();
     for (const question of this.pendingQuestions.values()) {
@@ -218,8 +244,14 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
         sessionId: question.sessionId,
         requestId: question.requestId,
       });
+      this.emitAgent({
+        type: "question.resolved",
+        sessionId: question.sessionId,
+        requestId: question.requestId,
+      });
     }
     this.pendingQuestions.clear();
+    this.sessionStartedEmitted = false;
     this.messageText.clear();
     this.thoughtText.clear();
     this.pendingText.clear();
@@ -248,6 +280,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
             break;
           case "ready":
             this.setStatus("ready");
+            this.emitSessionStarted();
             break;
           case "busy":
             this.setStatus("ready");
@@ -256,6 +289,11 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
             this.setStatus("error");
             if (status.last_error) {
               this.emit({
+                type: "error",
+                sessionId: this.sessionId,
+                message: status.last_error.message,
+              });
+              this.emitAgent({
                 type: "error",
                 sessionId: this.sessionId,
                 message: status.last_error.message,
@@ -271,10 +309,31 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
       onThought: (p) => this.onTextChunk(this.thoughtText, p, "reasoning"),
       onToolCall: (payload) => {
         const event = acpToolCallToEvent(this.sessionId, payload);
-        if (event) this.emit(event);
+        if (event) {
+          this.emit(event);
+          this.emitAgent({
+            type: "tool.updated",
+            sessionId: event.sessionId,
+            toolCallId: event.callId,
+            status: event.status,
+            title: event.title ?? null,
+            ...(event.tool ? { tool: event.tool } : {}),
+            ...(event.input ? { input: event.input } : {}),
+            ...(event.output ? { output: event.output } : {}),
+            ...(event.partialOutput ? { partialOutput: event.partialOutput } : {}),
+            ...(event.diff ? { diff: event.diff } : {}),
+            ...(event.startedAt !== undefined ? { startedAt: event.startedAt } : {}),
+            ...(event.endedAt !== undefined ? { endedAt: event.endedAt } : {}),
+            ...(event.childSessionId ? { childSessionId: event.childSessionId } : {}),
+          });
+        }
+      },
+      onPlan: (payload) => {
+        this.emitAgent({ type: "plan.updated", sessionId: this.sessionId, plan: payload });
       },
       onFileWritten: (path) => {
         this.emit({ type: "artifact.created", sessionId: this.sessionId, artifactId: path });
+        this.emitAgent({ type: "artifact.created", sessionId: this.sessionId, artifactId: path });
       },
       onUsage: (payload) => this.onUsage(payload),
       onHostPermission: (payload) => {
@@ -286,6 +345,14 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
           action: payload.action,
           resources: payload.resources,
         });
+        this.emitAgent({
+          type: "permission.requested",
+          sessionId: this.sessionId,
+          requestId: payload.request_id,
+          action: payload.action,
+          resources: payload.resources,
+          options: payload.options.map((option) => ({ id: option.option_id, label: option.name })),
+        });
       },
       onHostQuestion: (payload) => {
         const event: QuestionAskedEvent = {
@@ -296,6 +363,12 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
         };
         this.pendingQuestions.set(payload.request_id, event);
         this.emit(event);
+        this.emitAgent({
+          type: "question.requested",
+          sessionId: this.sessionId,
+          requestId: payload.request_id,
+          questions: payload.questions,
+        });
       },
       onTurnEnded: (_stopReason, tokenUsage) => {
         // A turn boundary: unlabeled chunks of the next turn must not extend
@@ -315,10 +388,14 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
         this.currentMessageId = null;
         this.turnStartedAt = null;
         this.emit({ type: "session.idle", sessionId: this.sessionId });
+        this.emitAgent({ type: "session.idle", sessionId: this.sessionId });
       },
       onExited: (error) => {
         if (error) {
           this.emit({ type: "error", sessionId: this.sessionId, message: error });
+          this.emitAgent({ type: "error", sessionId: this.sessionId, message: error });
+        } else {
+          this.emitAgent({ type: "session.closed", sessionId: this.sessionId });
         }
         this.teardown();
         this.setStatus(error ? "error" : "offline");
@@ -336,6 +413,11 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
   ): void {
     const key = payload.message_id ?? `turn-${this.turnSeq}`;
     if (kind === "text") this.currentMessageId = key;
+    this.emitAgent({
+      type: kind === "text" ? "text.delta" : "thought.delta",
+      sessionId: this.sessionId,
+      delta: payload.text,
+    });
     const next = (store.get(key) ?? "") + payload.text;
     store.set(key, next);
     this.queueTextUpdate(kind, key, next);
@@ -433,6 +515,12 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
       cacheRead: exact?.cached_read_tokens ?? 0,
       cacheWrite: exact?.cached_write_tokens ?? 0,
     });
+    this.emitAgent({
+      type: "usage.updated",
+      sessionId: this.sessionId,
+      inputTokens: exact?.input_tokens ?? 0,
+      outputTokens: exact?.output_tokens ?? 0,
+    });
   }
 
   private tokenUsageDelta(current: AcpTokenUsagePayload): AcpTokenUsagePayload {
@@ -468,16 +556,18 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
       this.request.mcpAllowList !== undefined
         ? Promise.resolve(normalizeMcpNames(this.request.mcpAllowList))
         : this.deps.listMcpServers
-          ? this.deps.listMcpServers()
-            .then((servers) => normalizeMcpNames(servers.map((server) => server.name)))
-            .catch(() => [])
+          ? bestEffortCapability(
+              this.deps.listMcpServers().then((servers) => normalizeMcpNames(servers.map((server) => server.name))),
+              [],
+            )
           : Promise.resolve([]),
       this.request.skillsSnapshot !== undefined
         ? Promise.resolve([...this.request.skillsSnapshot])
         : this.deps.discoverSkills
-          ? this.deps.discoverSkills(this.request.profileId)
-            .then((skills) => createSkillSnapshots(skills, "conversation"))
-            .catch(() => [])
+          ? bestEffortCapability(
+              this.deps.discoverSkills(this.request.profileId).then((skills) => createSkillSnapshots(skills, "conversation")),
+              [],
+            )
           : Promise.resolve([]),
     ]);
     return { ...this.request, mcpAllowList, skillsSnapshot };
@@ -655,6 +745,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     }
     this.pendingQuestions.delete(requestId);
     this.emit({ type: "question.resolved", sessionId, requestId });
+    this.emitAgent({ type: "question.resolved", sessionId, requestId });
   }
 
   async replyPermission(requestId: string, reply: PermissionReply): Promise<void> {
@@ -675,6 +766,21 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     }
     this.permissionOptions.delete(requestId);
     this.emit({ type: "permission.resolved", sessionId: this.sessionId, requestId });
+    this.emitAgent({ type: "permission.resolved", sessionId: this.sessionId, requestId });
+  }
+}
+
+async function bestEffortCapability<T>(task: Promise<T>, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      task.catch(() => fallback),
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), CAPABILITY_DISCOVERY_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 

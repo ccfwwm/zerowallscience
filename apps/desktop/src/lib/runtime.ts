@@ -78,6 +78,11 @@ import {
 import { isGatewayWeb, gatewayToken, gatewayOrigin } from "./webMode";
 import { AcpRuntime } from "./acp-runtime";
 import {
+  canonicalEventToLegacy,
+  createCanonicalEventState,
+  type DesktopAgentEvent,
+} from "./agent-events";
+import {
   acpListMcpServers,
   acpListSkills,
   createSkillSnapshots,
@@ -687,7 +692,7 @@ let streamBaseUrl = "";
 let streamPassword: string | undefined;
 /** The store's event handler, captured once (set/get are stable) so foreground
  *  and every background stream share one folding path. */
-let sharedEventHandler: ((event: OpenCodeEvent) => void) | null = null;
+let sharedEventHandler: ((event: DesktopAgentEvent) => void) | null = null;
 function removeStreamClient(dir: string) {
   const c = streamClients.get(dir);
   if (c) {
@@ -1411,8 +1416,11 @@ function modelForSession(state: RuntimeState, key: string): { model: string | nu
  *  fold/render pipeline serves both. Closes over the store set/get; depends
  *  otherwise only on module-level helpers. Built once, cached in
  *  sharedEventHandler. */
-function makeSharedEventHandler(set: StoreSet, get: StoreGet): (event: OpenCodeEvent) => void {
-  return (event) => {
+function makeSharedEventHandler(set: StoreSet, get: StoreGet): (event: DesktopAgentEvent) => void {
+  const canonicalState = createCanonicalEventState();
+  return (incoming) => {
+        const event = canonicalEventToLegacy(canonicalState, incoming);
+        if (!event) return;
         // ACP owns one stable project conversation. Events from the OpenCode
         // sidecar, a background pane, or a previous ACP process must never
         // recreate/fold blocks into the active project thread.
@@ -2503,7 +2511,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           set({ status });
         });
         if (!sharedEventHandler) sharedEventHandler = makeSharedEventHandler(set, get);
-        acp.onEvent((event) => {
+        acp.onAgentEvent((event) => {
           // Closing an ACP process is asynchronous. Check object identity as
           // well as the profile id so late events from the old process are
           // discarded after a runtime switch/reconnect.
@@ -2611,7 +2619,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       // The SDK may deliver a final queued event after close(). Do not let a
       // previous foreground connection repopulate the newly selected pane.
       if (!ownsConnection()) return;
-      sharedEventHandler?.(event);
+      sharedEventHandler?.({ type: "legacy", event });
     });
     try {
       void logDebug(`connect → ${get().serverUrl}`);
@@ -3479,7 +3487,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         directory: dir,
         password: streamPassword,
       });
-      if (sharedEventHandler) c.onEvent(sharedEventHandler);
+      if (sharedEventHandler) c.onEvent((event) => sharedEventHandler?.({ type: "legacy", event }));
       streamClients.set(dir, c);
       // Best-effort: a background stream that can't open just leaves that pane
       // non-live until it's focused (foreground reconnect covers it).
