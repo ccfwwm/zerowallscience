@@ -15,6 +15,7 @@ async function loadWith(flag: unknown) {
 afterEach(() => {
   delete (window as WebFlag).__OS_WEB__;
   localStorage.clear();
+  sessionStorage.clear();
   vi.resetModules();
 });
 
@@ -56,5 +57,36 @@ describe("shared link with a token", () => {
 
     expect(mod.gatewayToken()).toBeNull();
     window.location.hash = "";
+  });
+});
+
+describe("gateway token storage", () => {
+  it("keeps new tokens in session storage only", async () => {
+    const mod = await loadWith(true);
+
+    mod.setGatewayToken("session-secret");
+
+    expect(sessionStorage.getItem("os_gateway_token")).toBe("session-secret");
+    expect(localStorage.getItem("os_gateway_token")).toBeNull();
+  });
+
+  it("migrates a legacy local-storage token and removes the durable copy", async () => {
+    localStorage.setItem("os_gateway_token", "legacy-secret");
+    const mod = await loadWith(true);
+
+    expect(mod.gatewayToken()).toBe("legacy-secret");
+    expect(sessionStorage.getItem("os_gateway_token")).toBe("legacy-secret");
+    expect(localStorage.getItem("os_gateway_token")).toBeNull();
+  });
+
+  it("clears both current and legacy token storage", async () => {
+    const mod = await loadWith(true);
+    sessionStorage.setItem("os_gateway_token", "current-secret");
+    localStorage.setItem("os_gateway_token", "legacy-secret");
+
+    mod.clearGatewayToken();
+
+    expect(sessionStorage.getItem("os_gateway_token")).toBeNull();
+    expect(localStorage.getItem("os_gateway_token")).toBeNull();
   });
 });

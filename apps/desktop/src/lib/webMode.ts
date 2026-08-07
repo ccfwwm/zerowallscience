@@ -1,7 +1,8 @@
 // Browser "gateway mode": the real desktop SPA, served BY the Remote Access
 // gateway (src-tauri/src/gateway.rs) and running in a plain browser (phone / LAN
 // / tunnel) instead of the Tauri webview. The gateway injects `window.__OS_WEB__`
-// into index.html; the user pastes a bearer token once. Everything else is the
+// into index.html; the user pastes a bearer token once per browser session.
+// Everything else is the
 // identical desktop app talking to the gateway, which proxies OpenCode.
 // See docs/rfc/remote-access-gateway.md.
 
@@ -14,7 +15,21 @@ const TOKEN_KEY = "os_gateway_token";
 
 export function gatewayToken(): string | null {
   try {
-    return localStorage.getItem(TOKEN_KEY);
+    const current = sessionStorage.getItem(TOKEN_KEY);
+    if (current) return current;
+  } catch {
+    /* session storage unavailable; still remove any durable legacy token */
+  }
+  try {
+    const legacy = localStorage.getItem(TOKEN_KEY);
+    if (!legacy) return null;
+    try {
+      sessionStorage.setItem(TOKEN_KEY, legacy);
+    } catch {
+      /* the caller may use the migrated token for this request only */
+    }
+    localStorage.removeItem(TOKEN_KEY);
+    return legacy;
   } catch {
     return null;
   }
@@ -22,13 +37,23 @@ export function gatewayToken(): string | null {
 
 export function setGatewayToken(token: string): void {
   try {
-    localStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.setItem(TOKEN_KEY, token);
   } catch {
-    /* private mode / disabled storage — token just won't persist */
+    /* private mode / disabled storage - token just won't persist */
+  }
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* ignore legacy storage cleanup failures */
   }
 }
 
 export function clearGatewayToken(): void {
+  try {
+    sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
   try {
     localStorage.removeItem(TOKEN_KEY);
   } catch {
