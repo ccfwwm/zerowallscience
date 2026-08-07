@@ -1,5 +1,5 @@
 import type { PromptAttachment } from "./runtime";
-import type { HistoryMessage, ProviderInfo } from "./types";
+import type { HistoryMessage, ProviderCatalogEntry, ProviderInfo } from "./types";
 
 export type AgentEngine = "codex" | "claude-code" | "opencode";
 
@@ -184,6 +184,14 @@ export class AcpHostClient {
 
   async listProviders(): Promise<ProviderInfo[]> {
     return this.invoke<ProviderInfo[]>("acp_host_list_providers");
+  }
+
+  async listProviderCatalog(): Promise<{ all: ProviderCatalogEntry[]; connected: string[] }> {
+    return this.invoke<{ all: ProviderCatalogEntry[]; connected: string[] }>("acp_host_list_provider_catalog");
+  }
+
+  async listCustomProviderIds(): Promise<string[]> {
+    return this.invoke<string[]>("acp_host_list_custom_provider_ids");
   }
 
   async getDefaultModel(): Promise<string | null> {

@@ -42,6 +42,14 @@ function catalogClient(
   } as unknown as NonNullable<ReturnType<typeof runtime.getClient>>;
 }
 
+function mockCatalogClients(
+  client = catalogClient(),
+): NonNullable<ReturnType<typeof runtime.getClient>> {
+  vi.spyOn(runtime, "getClient").mockReturnValue(client);
+  vi.spyOn(runtime, "getProviderControlClient").mockReturnValue(client);
+  return client;
+}
+
 async function renderSettings() {
   let view!: ReturnType<typeof render>;
   await act(async () => {
@@ -93,7 +101,7 @@ describe("Settings model browser integration", () => {
   });
 
   it("keeps the browser up through an immediately-rejected retry after a failed switch", async () => {
-    vi.spyOn(runtime, "getClient").mockReturnValue(catalogClient());
+    mockCatalogClients();
     // A dead server per the store contract: every attempt rejects AND records
     // modelSwitchError (the store owns the failure fact now).
     const deadSwitch = vi.fn(async () => {
@@ -121,7 +129,7 @@ describe("Settings model browser integration", () => {
     const pending = new Promise<ProviderInfo[]>((resolve) => {
       resolveProviders = resolve;
     });
-    vi.spyOn(runtime, "getClient").mockReturnValue(
+    mockCatalogClients(
       catalogClient(vi.fn().mockReturnValue(pending)),
     );
 
@@ -139,7 +147,7 @@ describe("Settings model browser integration", () => {
     (client as { listAuthMethods: unknown }).listAuthMethods = vi
       .fn()
       .mockRejectedValue(new Error("aux down"));
-    vi.spyOn(runtime, "getClient").mockReturnValue(client);
+    mockCatalogClients(client);
 
     await renderSettings();
 
@@ -161,7 +169,7 @@ describe("Settings model browser integration", () => {
       },
     ]);
     vi.mocked(client.getProviderRegion).mockResolvedValue("eu-west-1");
-    vi.spyOn(runtime, "getClient").mockReturnValue(client);
+    mockCatalogClients(client);
     await renderSettings();
 
     await userEvent.click(screen.getByRole("button", { name: "Manage" }));
@@ -204,8 +212,11 @@ describe("Settings model browser integration", () => {
     ).mockImplementation(setProviderSecret);
     const client = catalogClient();
     const addCustomProvider = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(runtime, "getClient").mockReturnValue(client);
+    mockCatalogClients(client);
     vi.spyOn(runtime, "getProviderControlClient").mockReturnValue({
+      listProviders: client.listProviders,
+      listProviderCatalog: client.listProviderCatalog,
+      listCustomProviderIds: client.listCustomProviderIds,
       addCustomProvider,
     } as unknown as ReturnType<typeof runtime.getProviderControlClient>);
     vi.spyOn(runtime, "getOrCreateOpenCodeClient").mockRejectedValue(
@@ -232,7 +243,7 @@ describe("Settings model browser integration", () => {
   });
 
   it("drops the cached catalog when the server URL changes (no stale models from the old runtime)", async () => {
-    vi.spyOn(runtime, "getClient").mockReturnValue(catalogClient());
+    mockCatalogClients();
     await renderSettings();
     expect(await screen.findByRole("button", { name: /^o3/ })).toBeInTheDocument();
 
@@ -242,7 +253,7 @@ describe("Settings model browser integration", () => {
   });
 
   it("an expanded Providers card stays collapsible and shows a prompt after a disconnect", async () => {
-    vi.spyOn(runtime, "getClient").mockReturnValue(catalogClient());
+    mockCatalogClients();
     await renderSettings();
     await screen.findByRole("button", { name: /^o3/ });
     await userEvent.click(screen.getByRole("button", { name: "Manage" }));
@@ -259,7 +270,7 @@ describe("Settings model browser integration", () => {
   });
 
   it("shows a localized unavailable state when the initial provider refresh fails", async () => {
-    vi.spyOn(runtime, "getClient").mockReturnValue(
+    mockCatalogClients(
       catalogClient(vi.fn().mockRejectedValue(new Error("catalog offline"))),
     );
 
@@ -273,7 +284,7 @@ describe("Settings model browser integration", () => {
     const listProviders = vi.fn()
       .mockResolvedValueOnce(providers)
       .mockRejectedValueOnce(new Error("catalog offline"));
-    vi.spyOn(runtime, "getClient").mockReturnValue(catalogClient(listProviders));
+    mockCatalogClients(catalogClient(listProviders));
     await renderSettings();
     expect(await screen.findByRole("button", { name: /^o3/ })).toBeInTheDocument();
 
@@ -285,7 +296,7 @@ describe("Settings model browser integration", () => {
   });
 
   it("hides a cached model snapshot after an ordinary runtime disconnect", async () => {
-    vi.spyOn(runtime, "getClient").mockReturnValue(catalogClient());
+    mockCatalogClients();
     await renderSettings();
     expect(await screen.findByRole("searchbox", { name: "Search models" })).toBeInTheDocument();
 
@@ -297,7 +308,7 @@ describe("Settings model browser integration", () => {
   });
 
   it("keeps the runtime default and error semantics after a post-write reconnect failure", async () => {
-    vi.spyOn(runtime, "getClient").mockReturnValue(catalogClient());
+    mockCatalogClients();
     saveModelPreferences({ favorites: [], recent: ["openai/gpt-5.2"] });
     let exhaustReconnect!: () => void;
     const reconnectFailure = vi.fn((model: string) => new Promise<void>((_resolve, reject) => {

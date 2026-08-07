@@ -81,6 +81,21 @@ pub struct ProviderInfo {
     pub models: Vec<ProviderModelInfo>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCatalogEntry {
+    pub id: String,
+    pub name: String,
+    pub env: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCatalog {
+    pub all: Vec<ProviderCatalogEntry>,
+    pub connected: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CustomProviderRequest {
@@ -167,6 +182,76 @@ impl<T: OpenCodeTransport> OpenCodeProviderControl<T> {
             });
         }
         Ok(providers)
+    }
+
+    pub async fn list_provider_catalog(&mut self) -> Result<ProviderCatalog, HostError> {
+        let response = self.send("GET", "/provider", None).await?;
+        ensure_success(response.status, "provider/catalog")?;
+        let body = serde_json::from_str::<serde_json::Value>(&response.body).map_err(|error| {
+            HostError::Driver(format!("invalid OpenCode provider catalog: {error}"))
+        })?;
+        let all = body
+            .get("all")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|provider| {
+                let id = provider.get("id").and_then(serde_json::Value::as_str)?;
+                let name = provider
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(id);
+                let env = provider
+                    .get("env")
+                    .and_then(serde_json::Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(str::to_owned)
+                    .collect();
+                Some(ProviderCatalogEntry {
+                    id: id.to_owned(),
+                    name: name.to_owned(),
+                    env,
+                })
+            })
+            .collect();
+        let connected = body
+            .get("connected")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .collect();
+        Ok(ProviderCatalog { all, connected })
+    }
+
+    pub async fn list_custom_provider_ids(&mut self) -> Result<Vec<String>, HostError> {
+        let response = self.send("GET", "/global/config", None).await?;
+        ensure_success(response.status, "provider/custom-list")?;
+        let body = serde_json::from_str::<serde_json::Value>(&response.body).map_err(|error| {
+            HostError::Driver(format!("invalid OpenCode provider config: {error}"))
+        })?;
+        let mut ids = body
+            .get("provider")
+            .and_then(serde_json::Value::as_object)
+            .map(|providers| {
+                providers
+                    .iter()
+                    .filter(|(_, provider)| {
+                        provider.get("npm").is_some()
+                            || provider
+                                .pointer("/options/baseURL")
+                                .and_then(serde_json::Value::as_str)
+                                .is_some()
+                    })
+                    .map(|(id, _)| id.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        ids.sort();
+        Ok(ids)
     }
 
     pub async fn get_default_model(&mut self) -> Result<Option<String>, HostError> {
@@ -1431,6 +1516,42 @@ mod tests {
         assert!(calls
             .iter()
             .all(|call| call.headers.iter().any(|(_, value)| value == "Basic dTpw")));
+    }
+
+    #[test]
+    fn provider_control_normalizes_catalog_and_custom_ids_without_raw_dtos() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"provider":{"research":{"name":"Research","npm":"@ai-sdk/openai-compatible","options":{"baseURL":"https://research.test/v1"}},"cloud":{"name":"Cloud"}}}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"all":[{"id":"cloud","name":"Cloud","env":["CLOUD_KEY"]}],"connected":["cloud"]}"#.into(),
+                },
+            ],
+        };
+        let mut control = OpenCodeProviderControl::new(fake, "http://x/", "u", "p");
+
+        let catalog = block_on(control.list_provider_catalog()).unwrap();
+        assert_eq!(catalog.all[0].id, "cloud");
+        assert_eq!(catalog.connected, vec!["cloud"]);
+        assert_eq!(
+            block_on(control.list_custom_provider_ids()).unwrap(),
+            vec!["research"]
+        );
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls[0].url, "http://x/provider");
+        assert_eq!(calls[1].url, "http://x/global/config");
+        assert!(calls.iter().all(|call| !call
+            .body
+            .as_deref()
+            .unwrap_or_default()
+            .contains("apiKey")));
     }
 
     #[test]

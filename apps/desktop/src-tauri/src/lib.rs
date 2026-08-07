@@ -266,6 +266,8 @@ pub fn run() {
             acp_consumer::acp_probe_runtime,
             acp_host::acp_host_engines,
             acp_host::acp_host_list_providers,
+            acp_host::acp_host_list_provider_catalog,
+            acp_host::acp_host_list_custom_provider_ids,
             acp_host::acp_host_get_default_model,
             acp_host::acp_host_set_default_model,
             acp_host::acp_host_add_custom_provider,

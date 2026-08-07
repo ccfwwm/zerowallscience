@@ -255,6 +255,9 @@ export function SettingsPage() {
     // provider config the Models card renders — reach it with a transient client
     // so the catalog loads instead of hanging on "正在加载模型目录…".
     const providerControl = getProviderControlClient();
+    // Provider calls below are Host-owned on desktop. The temporary client is
+    // retained only for the still-unmigrated MCP auxiliary list and is removed
+    // by the following typed MCP control-plane milestone.
     const client = getClient() ?? (await getOrCreateOpenCodeClient());
     if (!providerControl && !client) return null;
     // The model catalog (listProviders) is what the Models card renders — only
@@ -270,8 +273,8 @@ export function SettingsPage() {
     }
     try {
       const [c, custom, mcp] = await Promise.all([
-        client?.listProviderCatalog() ?? Promise.resolve({ all: [] }),
-        client?.listCustomProviderIds() ?? Promise.resolve([]),
+        providerControl?.listProviderCatalog() ?? Promise.resolve({ all: [], connected: [] }),
+        providerControl?.listCustomProviderIds() ?? Promise.resolve([]),
         client?.listMcpServers().catch(() => []) ?? Promise.resolve([]),
       ]);
       setCatalog(c.all);

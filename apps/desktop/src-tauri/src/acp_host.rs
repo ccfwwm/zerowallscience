@@ -8,7 +8,7 @@ use zerowall_acp::AcpAgentProfile;
 use zerowall_acp_host::acp_process::AcpProcessDriver;
 use zerowall_acp_host::opencode::{
     CustomProviderRequest, HttpOpenCodeTransport, OpenCodeDriver, OpenCodeProviderControl,
-    ProviderInfo,
+    ProviderCatalog, ProviderInfo,
 };
 use zerowall_acp_host::{
     AcpHost, AcpHostDriver, AgentBinding, AgentEvent, CredentialRef, HostDriverKind, HostError,
@@ -567,6 +567,22 @@ fn validate_custom_provider(request: &CustomProviderRequest) -> Result<(), Strin
 pub async fn acp_host_list_providers(app: AppHandle) -> Result<Vec<ProviderInfo>, String> {
     build_provider_control(&app)?
         .list_providers()
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_list_provider_catalog(app: AppHandle) -> Result<ProviderCatalog, String> {
+    build_provider_control(&app)?
+        .list_provider_catalog()
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_list_custom_provider_ids(app: AppHandle) -> Result<Vec<String>, String> {
+    build_provider_control(&app)?
+        .list_custom_provider_ids()
         .await
         .map_err(error_string)
 }
