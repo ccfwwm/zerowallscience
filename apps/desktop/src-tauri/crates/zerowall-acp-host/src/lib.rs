@@ -134,6 +134,14 @@ pub enum AgentEvent {
         tool_call_id: String,
         status: String,
         title: Option<String>,
+        tool: Option<String>,
+        input: Option<serde_json::Value>,
+        output: Option<String>,
+        partial_output: Option<String>,
+        diff: Option<String>,
+        started_at: Option<u64>,
+        ended_at: Option<u64>,
+        child_session_id: Option<String>,
     },
     #[serde(rename = "plan.updated")]
     PlanUpdated {
@@ -1198,6 +1206,14 @@ mod tests {
             tool_call_id: "tool-1".into(),
             status: "running".into(),
             title: None,
+            tool: None,
+            input: None,
+            output: None,
+            partial_output: None,
+            diff: None,
+            started_at: None,
+            ended_at: None,
+            child_session_id: None,
         };
         let value = serde_json::to_value(event).unwrap();
         assert_eq!(value["type"], "tool.updated");

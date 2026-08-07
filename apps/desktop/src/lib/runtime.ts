@@ -90,7 +90,7 @@ import {
 } from "./sub2api-provision";
 import { kernelReset } from "./kernel";
 import { moveScrollMemory } from "./scrollMemory";
-import { deriveArtifact } from "./artifacts";
+import { deriveArtifact, refToArtifactBlock } from "./artifacts";
 import { provenanceInputsFromEvent, recordProvenance } from "./provenance";
 import { recordRun, runInputFromEvent } from "./runs";
 import { recordUsage, usageInputFromEvent } from "./usage";
@@ -3459,6 +3459,16 @@ export function foldEvent(
   const blocks = [...state.blocks];
   const index = { ...state.index };
   switch (event.type) {
+    case "artifact.created": {
+      const artifact = refToArtifactBlock(event.artifactId);
+      const key = `artifact:${artifact.path}`;
+      if (key in index) blocks[index[key]] = artifact;
+      else {
+        blocks.push(artifact);
+        index[key] = blocks.length - 1;
+      }
+      return { blocks, index };
+    }
     case "text.updated": {
       // Chat Completions models stream reasoning inline as <think>…</think>;
       // pull it out first so it renders as a reasoning block, not raw tags.

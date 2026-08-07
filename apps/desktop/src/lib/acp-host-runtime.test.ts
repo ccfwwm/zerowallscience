@@ -135,6 +135,65 @@ describe("ACP Host runtime adapter", () => {
     }]);
   });
 
+  it("forwards rich tool data and artifact paths without exposing OpenCode DTOs", async () => {
+    const events = [
+      {
+        type: "tool.updated",
+        data: {
+          session_id: "host-session-1",
+          tool_call_id: "tool-1",
+          status: "completed",
+          title: "Write report",
+          tool: "edit",
+          input: { filePath: "reports/final.md" },
+          output: "done",
+          diff: "+ result",
+          partial_output: "writing",
+          started_at: 10,
+          ended_at: 20,
+          child_session_id: "child-1",
+        },
+      },
+      {
+        type: "artifact.created",
+        data: { session_id: "host-session-1", artifact_id: "reports/final.md" },
+      },
+    ];
+    const invoke = (async <T = unknown>(command: string, args?: Record<string, unknown>) => {
+      if (command === "acp_host_events" && events.length > 0) return events.splice(0) as T;
+      return fakeInvoke()(command, args);
+    }) as AcpHostInvoke;
+    const tools: unknown[] = [];
+    const files: string[] = [];
+    const deps = createAcpHostRuntimeDeps(invoke);
+    await deps.subscribe({
+      onToolCall: (tool) => tools.push(tool),
+      onFileWritten: (path) => files.push(path),
+    });
+    await deps.launch({
+      profileId: "codex",
+      conversationId: "conversation-1",
+      projectRoot: "C:/science",
+      gateway: { providerId: "cloud", baseUrl: "https://api.example.test/v1", model: "gpt-5.4" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(tools).toEqual([{
+      toolCallId: "tool-1",
+      status: "completed",
+      title: "Write report",
+      kind: "edit",
+      rawInput: { filePath: "reports/final.md" },
+      rawOutput: "done",
+      diff: "+ result",
+      partialOutput: "writing",
+      startedAt: 10,
+      endedAt: 20,
+      childSessionId: "child-1",
+    }]);
+    expect(files).toEqual(["reports/final.md"]);
+  });
+
   it("detaches on shutdown without deleting persisted Host sessions", async () => {
     const calls: string[] = [];
     const invoke = (async (command: string, args?: Record<string, unknown>) => {

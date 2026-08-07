@@ -110,6 +110,14 @@ function forwardEvent(handlers: AcpEventHandlers, event: AgentEvent): void {
               : event.status === "failed"
                 ? "failed"
                 : event.status,
+        ...(event.tool ? { kind: event.tool } : {}),
+        ...(event.input ? { rawInput: event.input } : {}),
+        ...(event.output ? { rawOutput: event.output } : {}),
+        ...(event.diff ? { diff: event.diff } : {}),
+        ...(event.partialOutput ? { partialOutput: event.partialOutput } : {}),
+        ...(event.startedAt !== undefined ? { startedAt: event.startedAt } : {}),
+        ...(event.endedAt !== undefined ? { endedAt: event.endedAt } : {}),
+        ...(event.childSessionId ? { childSessionId: event.childSessionId } : {}),
       });
       break;
     case "plan.updated":
@@ -158,8 +166,7 @@ function forwardEvent(handlers: AcpEventHandlers, event: AgentEvent): void {
       });
       break;
     case "artifact.created":
-      // These are consumed by the unified event reducer in the next migration
-      // step. The compatibility reducer must not invent legacy request ids.
+      handlers.onFileWritten?.(event.artifactId);
       break;
   }
 }

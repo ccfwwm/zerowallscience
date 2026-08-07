@@ -639,12 +639,41 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                             .or_else(|| part.get("status"))
                             .and_then(|v| v.as_str())
                             .unwrap_or("updated");
-                        let title = part.get("tool").and_then(|v| v.as_str()).map(str::to_owned);
+                        let state = part.get("state").unwrap_or(part);
+                        let title = state
+                            .get("title")
+                            .or_else(|| part.get("title"))
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned);
                         self.events.push(crate::AgentEvent::ToolUpdated {
                             session_id: session_id.into(),
                             tool_call_id: id.into(),
                             status: status.into(),
                             title,
+                            tool: part.get("tool").and_then(|v| v.as_str()).map(str::to_owned),
+                            input: state
+                                .get("input")
+                                .cloned()
+                                .filter(|value| value.is_object()),
+                            output: state
+                                .get("output")
+                                .and_then(|v| v.as_str())
+                                .map(str::to_owned),
+                            partial_output: state
+                                .pointer("/metadata/output")
+                                .and_then(|v| v.as_str())
+                                .map(str::to_owned),
+                            diff: state
+                                .pointer("/metadata/diff")
+                                .and_then(|v| v.as_str())
+                                .map(str::to_owned),
+                            started_at: state.pointer("/time/start").and_then(|v| v.as_u64()),
+                            ended_at: state.pointer("/time/end").and_then(|v| v.as_u64()),
+                            child_session_id: state
+                                .pointer("/metadata/sessionId")
+                                .or_else(|| state.pointer("/metadata/sessionID"))
+                                .and_then(|v| v.as_str())
+                                .map(str::to_owned),
                         });
                     }
                     _ => {}
@@ -717,6 +746,32 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                         tool_call_id: id.into(),
                         status: status.into(),
                         title,
+                        tool: props
+                            .get("tool")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned),
+                        input: props
+                            .get("input")
+                            .cloned()
+                            .filter(|value| value.is_object()),
+                        output: props
+                            .get("output")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned),
+                        partial_output: props
+                            .get("partialOutput")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned),
+                        diff: props
+                            .get("diff")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned),
+                        started_at: props.get("startedAt").and_then(|v| v.as_u64()),
+                        ended_at: props.get("endedAt").and_then(|v| v.as_u64()),
+                        child_session_id: props
+                            .get("childSessionId")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned),
                     });
                 }
                 "permission.asked" | "permission.requested" => {
@@ -862,13 +917,18 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                     }
                 }
                 "message.updated" | "usage.updated" => {
-                    let usage = props.get("usage").unwrap_or(props);
+                    let usage = props
+                        .pointer("/info/tokens")
+                        .or_else(|| props.get("usage"))
+                        .unwrap_or(props);
                     let input = usage
-                        .get("inputTokens")
+                        .get("input")
+                        .or_else(|| usage.get("inputTokens"))
                         .or_else(|| usage.get("input_tokens"))
                         .and_then(|v| v.as_u64());
                     let output = usage
-                        .get("outputTokens")
+                        .get("output")
+                        .or_else(|| usage.get("outputTokens"))
                         .or_else(|| usage.get("output_tokens"))
                         .and_then(|v| v.as_u64());
                     if let (Some(input_tokens), Some(output_tokens)) = (input, output) {
@@ -1410,7 +1470,10 @@ mod tests {
     #[test]
     fn maps_real_message_part_updated_payloads() {
         let calls = Arc::new(Mutex::new(Vec::new()));
-        let sse = "data: {\"type\":\"message.part.updated\",\"properties\":{\"part\":{\"sessionID\":\"s1\",\"id\":\"p1\",\"type\":\"text\",\"text\":\"nested text\"}}}\n";
+        let sse = concat!(
+            "data: {\"type\":\"message.part.updated\",\"properties\":{\"part\":{\"sessionID\":\"s1\",\"id\":\"p1\",\"type\":\"text\",\"text\":\"nested text\"}}}\n",
+            "data: {\"type\":\"message.part.updated\",\"properties\":{\"part\":{\"sessionID\":\"s1\",\"id\":\"p2\",\"callID\":\"tool-1\",\"type\":\"tool\",\"tool\":\"write\",\"state\":{\"status\":\"completed\",\"title\":\"Write report\",\"input\":{\"filePath\":\"reports/final.md\"},\"output\":\"done\",\"metadata\":{\"diff\":\"+ result\"},\"time\":{\"start\":10,\"end\":20}}}}}\n",
+        );
         let fake = Fake {
             calls,
             responses: vec![
@@ -1435,7 +1498,36 @@ mod tests {
             attachments: Vec::new(),
         }))
         .unwrap();
-        assert!(driver.take_events().iter().any(|event| matches!(event, crate::AgentEvent::TextDelta { delta, .. } if delta == "nested text")));
+        let events = driver.take_events();
+        assert!(events.iter().any(|event| matches!(event, crate::AgentEvent::TextDelta { delta, .. } if delta == "nested text")));
+        assert!(events.iter().any(|event| matches!(event,
+            crate::AgentEvent::ToolUpdated { tool_call_id, tool, input, output, diff, started_at, ended_at, .. }
+                if tool_call_id == "tool-1"
+                    && tool.as_deref() == Some("write")
+                    && input.as_ref().and_then(|value| value.get("filePath")).and_then(|value| value.as_str()) == Some("reports/final.md")
+                    && output.as_deref() == Some("done")
+                    && diff.as_deref() == Some("+ result")
+                    && *started_at == Some(10)
+                    && *ended_at == Some(20)
+        )));
+    }
+
+    #[test]
+    fn maps_real_message_updated_token_usage() {
+        let fake = Fake {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            responses: vec![],
+        };
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
+        driver.map_events(
+            "s1",
+            "data: {\"type\":\"message.updated\",\"properties\":{\"info\":{\"sessionID\":\"s1\",\"tokens\":{\"input\":12,\"output\":8,\"reasoning\":3,\"cache\":{\"read\":4,\"write\":2}}}}}\n\n",
+        );
+
+        assert!(driver.take_events().iter().any(|event| matches!(event,
+            crate::AgentEvent::UsageUpdated { input_tokens, output_tokens, .. }
+                if *input_tokens == 12 && *output_tokens == 8
+        )));
     }
 
     #[test]

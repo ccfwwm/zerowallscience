@@ -475,6 +475,59 @@ describe("AcpHostClient", () => {
     }]);
   });
 
+  it("normalizes rich tool updates and artifact paths for the desktop reducer", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_launch") return invokeMock()(command);
+      if (command === "acp_host_events") {
+        return [
+          {
+            type: "tool.updated",
+            data: {
+              session_id: "agent-session-1",
+              tool_call_id: "tool-1",
+              status: "completed",
+              title: "Write report",
+              tool: "edit",
+              input: { filePath: "reports/final.md" },
+              output: "done",
+              diff: "+ result",
+              started_at: 10,
+              ended_at: 20,
+            },
+          },
+          {
+            type: "artifact.created",
+            data: { session_id: "agent-session-1", artifact_id: "reports/final.md" },
+          },
+        ];
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+    await client.launch(launchRequest);
+
+    await expect(client.drainEvents("agent-session-1")).resolves.toEqual([
+      {
+        type: "tool.updated",
+        sessionId: "agent-session-1",
+        toolCallId: "tool-1",
+        status: "completed",
+        title: "Write report",
+        tool: "edit",
+        input: { filePath: "reports/final.md" },
+        output: "done",
+        diff: "+ result",
+        startedAt: 10,
+        endedAt: 20,
+      },
+      {
+        type: "artifact.created",
+        sessionId: "agent-session-1",
+        artifactId: "reports/final.md",
+      },
+    ]);
+  });
+
   it("rejects a silent binding change for an existing session", async () => {
     const invoke = invokeMock();
     const client = new AcpHostClient({ invoke });

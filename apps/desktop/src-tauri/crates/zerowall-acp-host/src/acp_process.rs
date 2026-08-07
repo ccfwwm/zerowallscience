@@ -364,6 +364,20 @@ impl AcpEventMapper {
                     tool_call_id,
                     status,
                     title,
+                    tool: string_field(&tool, &["kind", "tool", "name"]),
+                    input: tool
+                        .get("rawInput")
+                        .cloned()
+                        .filter(|value| !value.is_null()),
+                    output: tool
+                        .get("rawOutput")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned),
+                    partial_output: None,
+                    diff: None,
+                    started_at: None,
+                    ended_at: None,
+                    child_session_id: None,
                 });
             }
             AcpEvent::Plan(plan) => self.events.push(AgentEvent::PlanUpdated {

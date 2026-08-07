@@ -224,6 +224,19 @@ describe("AcpRuntime questions", () => {
 });
 
 describe("AcpRuntime event translation", () => {
+  it("emits Host file writes as artifact events for the shared thread reducer", async () => {
+    const { runtime, fire, events } = harness();
+    await runtime.connect();
+
+    fire().onFileWritten?.("reports/final.md");
+
+    expect(events).toContainEqual({
+      type: "artifact.created",
+      sessionId: "codex",
+      artifactId: "reports/final.md",
+    });
+  });
+
   it("accumulates message chunks into a full-value text.updated per message id", async () => {
     vi.useFakeTimers();
     try {

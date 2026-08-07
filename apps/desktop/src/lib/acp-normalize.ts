@@ -86,6 +86,11 @@ interface AcpToolCall {
   locations?: { path?: string; line?: number }[];
   rawInput?: Record<string, unknown> | null;
   rawOutput?: unknown;
+  diff?: string;
+  partialOutput?: string;
+  startedAt?: number;
+  endedAt?: number;
+  childSessionId?: string;
 }
 
 /** Concatenate the text of every `content`-variant block, dropping empties. */
@@ -139,7 +144,7 @@ export function acpToolCallToEvent(
   }
 
   const text = collectText(call.content);
-  const diff = collectDiff(call.content);
+  const diff = call.diff || collectDiff(call.content);
   // rawOutput is arbitrary JSON; surface only a string form as tool output.
   const rawOut =
     typeof call.rawOutput === "string" ? call.rawOutput : undefined;
@@ -155,5 +160,9 @@ export function acpToolCallToEvent(
     ...(Object.keys(input).length ? { input } : {}),
     ...(output ? { output } : {}),
     ...(diff ? { diff } : {}),
+    ...(call.partialOutput ? { partialOutput: call.partialOutput } : {}),
+    ...(typeof call.startedAt === "number" ? { startedAt: call.startedAt } : {}),
+    ...(typeof call.endedAt === "number" ? { endedAt: call.endedAt } : {}),
+    ...(call.childSessionId ? { childSessionId: call.childSessionId } : {}),
   };
 }

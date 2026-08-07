@@ -59,6 +59,14 @@ export type AgentEvent =
       toolCallId: string;
       status: string;
       title: string | null;
+      tool?: string;
+      input?: Record<string, unknown>;
+      output?: string;
+      partialOutput?: string;
+      diff?: string;
+      startedAt?: number;
+      endedAt?: number;
+      childSessionId?: string;
     }
   | { type: "plan.updated"; sessionId: string; plan: unknown }
   | {
@@ -487,6 +495,14 @@ function normalizeEvent(raw: RawEvent): AgentEvent {
         toolCallId: stringValue(data, "tool_call_id", "toolCallId"),
         status: stringValue(data, "status"),
         title: nullableString(data, "title"),
+        ...optionalStringField(data, "tool"),
+        ...optionalRecordField(data, "input"),
+        ...optionalStringField(data, "output"),
+        ...optionalStringField(data, "partial_output", "partialOutput"),
+        ...optionalStringField(data, "diff"),
+        ...optionalNumberField(data, "started_at", "startedAt"),
+        ...optionalNumberField(data, "ended_at", "endedAt"),
+        ...optionalStringField(data, "child_session_id", "childSessionId"),
       };
     case "plan.updated":
       return { type: raw.type, sessionId, plan: data.plan };
@@ -574,4 +590,30 @@ function numberValue(value: Record<string, unknown>, ...keys: string[]): number 
   const result = keys.map((key) => value[key]).find((item) => typeof item === "number");
   if (typeof result !== "number") throw new Error(`missing number field ${keys[0]}`);
   return result;
+}
+
+function optionalStringField(
+  value: Record<string, unknown>,
+  ...keys: string[]
+): Record<string, string> {
+  const result = keys.map((key) => value[key]).find((item) => typeof item === "string");
+  return typeof result === "string" ? { [keys[keys.length - 1]]: result } : {};
+}
+
+function optionalNumberField(
+  value: Record<string, unknown>,
+  ...keys: string[]
+): Record<string, number> {
+  const result = keys.map((key) => value[key]).find((item) => typeof item === "number");
+  return typeof result === "number" ? { [keys[keys.length - 1]]: result } : {};
+}
+
+function optionalRecordField(
+  value: Record<string, unknown>,
+  key: string,
+): Record<string, Record<string, unknown>> {
+  const result = value[key];
+  return result && typeof result === "object" && !Array.isArray(result)
+    ? { [key]: result as Record<string, unknown> }
+    : {};
 }

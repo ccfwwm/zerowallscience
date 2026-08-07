@@ -180,6 +180,21 @@ describe("foldEvent", () => {
     expect(s.blocks.some((b) => b.kind === "tool-call")).toBe(true);
   });
 
+  it("surfaces a Host artifact event without inventing a tool call", () => {
+    const s = foldAll([
+      { type: "artifact.created", sessionId: S, artifactId: "reports/final.md" },
+      { type: "artifact.created", sessionId: S, artifactId: "reports/final.md" },
+    ]);
+    expect(s.blocks).toHaveLength(1);
+    expect(s.blocks[0]).toMatchObject({
+      kind: "artifact",
+      path: "reports/final.md",
+      filename: "final.md",
+      artifact: "report",
+      language: "markdown",
+    });
+  });
+
   it("carries a running bash step's live output tail, \\r-folded; completion clears it", () => {
     const s1 = foldAll([
       { type: "tool.updated", sessionId: S, callId: "c1", tool: "bash", status: "running", input: { command: "python train.py" }, startedAt: 1000, partialOutput: "epoch 1:  10%\repoch 1:  50%\n" },

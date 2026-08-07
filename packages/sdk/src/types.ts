@@ -169,6 +169,11 @@ export interface PermissionResolvedEvent {
   sessionId: string;
   requestId: string;
 }
+export interface ArtifactCreatedEvent {
+  type: "artifact.created";
+  sessionId: string;
+  artifactId: string;
+}
 export interface RuntimeErrorEvent {
   type: "error";
   sessionId?: string;
@@ -188,7 +193,8 @@ export type OpenCodeEvent =
   | QuestionAskedEvent
   | QuestionResolvedEvent
   | PermissionAskedEvent
-  | PermissionResolvedEvent;
+  | PermissionResolvedEvent
+  | ArtifactCreatedEvent;
 
 /** Approve a permission once, always (persist a rule), or reject it. */
 export type PermissionReply = "once" | "always" | "reject";

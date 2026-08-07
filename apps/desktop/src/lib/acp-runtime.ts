@@ -263,6 +263,9 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
         const event = acpToolCallToEvent(this.sessionId, payload);
         if (event) this.emit(event);
       },
+      onFileWritten: (path) => {
+        this.emit({ type: "artifact.created", sessionId: this.sessionId, artifactId: path });
+      },
       onUsage: (payload) => this.onUsage(payload),
       onHostPermission: (payload) => {
         this.permissionOptions.set(payload.request_id, payload.options);
