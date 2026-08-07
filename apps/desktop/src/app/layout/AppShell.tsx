@@ -18,6 +18,7 @@ import { isGatewayWeb, gatewayToken, setUnauthorizedHandler } from "@/lib/webMod
 import { WebTokenGate } from "@/components/web/WebTokenGate";
 import { DesktopLoginGate } from "@/components/auth/DesktopLoginGate";
 import { DesktopEnvironmentGate } from "@/components/environment/DesktopEnvironmentGate";
+import { WorkflowRunApprovalDialog } from "@/components/workflow/WorkflowRunApprovalDialog";
 import { useIsMobile } from "@/lib/useIsMobile";
 import { leaves, useLayoutStore, type SplitDir } from "@/lib/layout";
 
@@ -266,6 +267,7 @@ export function AppShell() {
       <CommandPalette />
       <Toaster />
       <PaneDragGhost />
+      <WorkflowRunApprovalDialog />
       {updateOpen && latestUpdate && (
         <UpdateDialog
           latest={latestUpdate}

@@ -118,6 +118,11 @@
       "resume": "Resume workflow",
       "retry": "Retry workflow",
       "cancel": "Cancel workflow"
+    },
+    "approval": {
+      "title": "Approve workflow run",
+      "body": "{{run}} will run {{language}}{{notebook}} code in the current workspace.",
+      "confirm": "Run code"
     }
   },
   "notFound": {

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 /**
@@ -8,12 +8,14 @@ import { useTranslation } from "react-i18next";
 export function ConfirmDialog({
   title,
   body,
+  details,
   confirmLabel,
   onConfirm,
   onCancel,
 }: {
   title: string;
   body: string;
+  details?: ReactNode;
   confirmLabel: string;
   onConfirm: () => void;
   onCancel: () => void;
@@ -36,11 +38,12 @@ export function ConfirmDialog({
       <div
         role="alertdialog"
         aria-label={title}
-        className="w-[360px] rounded-card border border-border bg-surface p-4 shadow-card"
+        className="w-[min(560px,calc(100vw-32px))] rounded-card border border-border bg-surface p-4 shadow-card"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-sm font-medium text-text">{title}</div>
         <p className="mt-1.5 text-sm text-muted">{body}</p>
+        {details ? <div className="mt-3">{details}</div> : null}
         {/* Destructive action on the left, Cancel on the right and focused by
             default — so the safe choice is where the primary button usually
             sits and Enter/Space never triggers the destructive one. */}

@@ -106,7 +106,8 @@
     "empty": "Aucune exécution pour le moment.",
     "desktopOnly": "Les exécutions sont disponibles dans l'application de bureau.",
     "status": { "pending": "En attente", "running": "En cours", "paused": "En pause", "completed": "Terminée", "failed": "Échec", "cancelled": "Annulée" },
-    "action": { "pause": "Mettre en pause", "resume": "Reprendre", "retry": "Réessayer", "cancel": "Annuler" }
+    "action": { "pause": "Mettre en pause", "resume": "Reprendre", "retry": "Réessayer", "cancel": "Annuler" },
+    "approval": { "title": "Approuver l'exécution du workflow", "body": "{{run}} exécutera du code {{language}}{{notebook}} dans l'espace de travail actuel.", "confirm": "Exécuter le code" }
   },
   "notFound": {
     "title": "404 — Introuvable",

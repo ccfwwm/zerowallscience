@@ -2051,7 +2051,13 @@ describe("workflow controls", () => {
     mocks.workflowControls.resume.mockResolvedValue({ ...run, state: "running" });
     mocks.workflowControls.retry.mockResolvedValue({ ...run, state: "running" });
     mocks.workflowControls.cancel.mockResolvedValue({ ...run, state: "cancelled" });
-    useRuntimeStore.setState({ workflowRuns: { [run.id]: run as never }, webReadOnly: false });
+    const replyWorkflowRunApproval = vi.fn();
+    useRuntimeStore.setState({
+      workflowRuns: { [run.id]: run as never },
+      workflowRunApproval: { runId: run.id, runName: run.name, language: "python", code: "print(42)" },
+      replyWorkflowRunApproval,
+      webReadOnly: false,
+    });
 
     await useRuntimeStore.getState().pauseWorkflow(run.id);
     await useRuntimeStore.getState().resumeWorkflow(run.id);
@@ -2062,6 +2068,7 @@ describe("workflow controls", () => {
     expect(mocks.workflowControls.resume).toHaveBeenCalledWith(run.id);
     expect(mocks.workflowControls.retry).toHaveBeenCalledWith(run.id);
     expect(mocks.workflowControls.cancel).toHaveBeenCalledWith(run.id);
+    expect(replyWorkflowRunApproval).toHaveBeenCalledWith(false);
     expect(useRuntimeStore.getState().workflowRuns[run.id]?.state).toBe("cancelled");
   });
 });

@@ -93,7 +93,7 @@ export const BUILTIN_WORKFLOWS: readonly WorkflowDefinition[] = [
     id: "reproducible-experiment",
     name: "Reproducible experiment",
     nodes: [
-      builtinNode("prepare-experiment", "agent", [], { input: { task: "Prepare a reproducible experiment plan." } }),
+      builtinNode("prepare-experiment", "agent", [], { input: { task: "Prepare a reproducible experiment recipe. Return JSON only with language (python or r), code, optional notebook relative path, and optional timeoutMs. Do not include shell commands, package installation, remote access, or destructive operations." } }),
       builtinNode("run-experiment", "run", ["prepare-experiment"], { mutation: true, input: { operation: "run" } }),
       builtinNode("capture-results", "artifact", ["run-experiment"], { input: { artifactType: "experiment-results" } }),
     ],
@@ -232,6 +232,10 @@ export class WorkflowScheduler {
               skillsSnapshot: clone(node.skillsSnapshot ?? []),
             }),
             dependsOn: [...node.dependsOn],
+            // Artifact nodes always write to the workspace through the
+            // control plane, so they cannot opt out of the global mutation
+            // lane even when a custom definition omits `mutation: true`.
+            mutation: node.kind === "artifact" ? true : node.mutation,
             state: "pending",
             attempts: 0,
           },

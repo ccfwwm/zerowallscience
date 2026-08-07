@@ -118,6 +118,11 @@
       "resume": "恢复工作流",
       "retry": "重试工作流",
       "cancel": "取消工作流"
+    },
+    "approval": {
+      "title": "批准工作流运行",
+      "body": "{{run}} 将在当前工作区运行 {{language}}{{notebook}} 代码。",
+      "confirm": "运行代码"
     }
   },
   "notFound": {

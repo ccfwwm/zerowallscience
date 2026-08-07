@@ -45,6 +45,18 @@ describe("WorkflowScheduler", () => {
     }
   });
 
+  it("requires the reproducible experiment planner to return a safe local recipe", () => {
+    const node = BUILTIN_WORKFLOWS
+      .find((workflow) => workflow.id === "reproducible-experiment")
+      ?.nodes.find((candidate) => candidate.id === "prepare-experiment");
+    expect(node?.input).toMatchObject({
+      task: expect.stringContaining("Return JSON only with language (python or r), code"),
+    });
+    expect(node?.input).toMatchObject({
+      task: expect.stringContaining("Do not include shell commands"),
+    });
+  });
+
   it("freezes the resolved binding and capability snapshots per node", async () => {
     const scheduler = new WorkflowScheduler(executorFor([]), memoryPersistence());
     const run = await scheduler.createRun({
@@ -232,6 +244,32 @@ describe("WorkflowScheduler", () => {
     await Promise.all([scheduler.start(first.id), scheduler.start(second.id)]);
 
     expect(maxActiveMutations).toBe(1);
+  });
+
+  it("automatically serializes artifact writes across concurrent workflow runs", async () => {
+    let activeWrites = 0;
+    let maxActiveWrites = 0;
+    const scheduler = new WorkflowScheduler({
+      execute: async () => {
+        activeWrites += 1;
+        maxActiveWrites = Math.max(maxActiveWrites, activeWrites);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        activeWrites -= 1;
+      },
+    }, memoryPersistence());
+    const definition = (id: string) => ({
+      id,
+      name: id,
+      nodes: [{ id: "artifact", kind: "artifact" as const, dependsOn: [] }],
+    });
+    const first = await scheduler.createRun(definition("artifact-first"), "artifact-run-first");
+    const second = await scheduler.createRun(definition("artifact-second"), "artifact-run-second");
+
+    await Promise.all([scheduler.start(first.id), scheduler.start(second.id)]);
+
+    expect(maxActiveWrites).toBe(1);
+    expect((await scheduler.get(first.id))?.nodes.artifact.mutation).toBe(true);
+    expect((await scheduler.get(second.id))?.nodes.artifact.mutation).toBe(true);
   });
 
   it("does not start a second pump when start is called twice", async () => {

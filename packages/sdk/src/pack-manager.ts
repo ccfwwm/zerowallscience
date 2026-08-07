@@ -225,7 +225,8 @@ export class SciencePackManager implements ISciencePackManager {
   async install(source: string): Promise<InstalledPack> {
     const fs = await import("fs/promises");
 
-    // Future: support remote URLs and tar.gz archives.
+    // Remote catalog resolution belongs to the signed Environment Bootstrapper;
+    // this manager only accepts a verified local staging directory.
     if (!(await this.isDirectory(source))) {
       throw new Error("Only local directory installation is currently supported");
     }
@@ -306,7 +307,7 @@ export class SciencePackManager implements ISciencePackManager {
     if (!source) {
       throw new Error(
         `Upgrade of ${packId} requires a source directory containing the new version ` +
-          `(remote catalog downloads are not implemented yet)`,
+          `(resolve remote artifacts through the signed Environment Bootstrapper first)`,
       );
     }
     if (!(await this.isDirectory(source))) {

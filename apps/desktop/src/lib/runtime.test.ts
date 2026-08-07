@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { OpenCodeEvent, HistoryMessage } from "@zerowall/sdk";
 import {
   datedWorkspaceName,
+  buildSkillInstallPrompt,
   foldCarriageReturns,
   foldEvent,
   historyToThread,
@@ -85,6 +86,19 @@ describe("datedWorkspaceName", () => {
   it("formats a zero-padded YYYY-MM-DD-HHMM folder name", () => {
     expect(datedWorkspaceName(new Date(2026, 6, 4, 16, 5))).toBe("2026-07-04-1605");
     expect(datedWorkspaceName(new Date(2026, 0, 9, 3, 40))).toBe("2026-01-09-0340");
+  });
+});
+
+describe("buildSkillInstallPrompt", () => {
+  it("uses the active ACP project skill store without vendor-specific instructions", () => {
+    const prompt = buildSkillInstallPrompt("https://example.test/skill.md");
+
+    expect(prompt).toContain("https://example.test/skill.md");
+    expect(prompt).toContain("current ACP engine");
+    expect(prompt).toContain("project skill directory");
+    expect(prompt).not.toContain("OpenCode");
+    expect(prompt).not.toContain("customize-opencode");
+    expect(prompt).not.toContain(".opencode");
   });
 });
 

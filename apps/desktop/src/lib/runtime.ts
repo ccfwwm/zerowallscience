@@ -94,6 +94,7 @@ import {
   AcpWorkflowExecutor,
   TauriWorkflowPersistence,
   createWorkflowControlExecutor,
+  createWorkflowRunAdapter,
 } from "./workflow-runtime";
 import { isLegacyAcpConversationId, toAcpHostLaunchRequest } from "./acp-host-runtime";
 import {
@@ -123,6 +124,22 @@ import { toast } from "@/lib/toast";
 import i18n from "@/i18n";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Build the engine-neutral instruction used by the Skills control surface.
+ * The active ACP driver owns the actual project directory convention; the
+ * renderer must not encode a vendor-specific path or customization command. */
+export function buildSkillInstallPrompt(text: string): string {
+  return (
+    "Install the following as a project Skill for the current ACP engine. " +
+    "Use the prepared project skill directory discovered by the active engine; " +
+    "do not write to a global directory or invoke vendor-specific customization helpers. " +
+    "If it is a URL, fetch it only with the user's permission; if it is Markdown, " +
+    "save it as a SKILL.md in a new named skill directory. Validate the manifest " +
+    "front matter and reply with the installed skill id and version.\n\n---\n" +
+    text
+  );
+}
+
 const URL_KEY = "zerowall.opencodeUrl";
 const HIDDEN_KEY = "zerowall.hiddenExamples";
 // The composer's chosen reasoning-effort variant, kept across restarts (favorites
@@ -218,6 +235,35 @@ let workflowScheduler: WorkflowScheduler | null = null;
 
 type WorkflowControlAction = "pause" | "resume" | "retry" | "cancel";
 
+export interface WorkflowRunApprovalRequest {
+  runId: string;
+  runName: string;
+  language: "python" | "r";
+  code: string;
+  notebook?: string;
+}
+
+let workflowRunApprovalResolver: ((allow: boolean) => void) | null = null;
+
+function requestWorkflowRunApproval(
+  context: WorkflowExecutionContext,
+  recipe: { language: "python" | "r"; code: string; notebook?: string },
+): Promise<boolean> {
+  workflowRunApprovalResolver?.(false);
+  return new Promise<boolean>((resolve) => {
+    workflowRunApprovalResolver = resolve;
+    useRuntimeStore.setState({
+      workflowRunApproval: {
+        runId: context.run.id,
+        runName: context.run.name,
+        language: recipe.language,
+        code: recipe.code,
+        notebook: recipe.notebook,
+      },
+    });
+  });
+}
+
 function resolveWorkflowSnapshot(
   nodeId: string,
   overrides?: { mcpAllowList?: string[]; skillsSnapshot?: SkillSnapshot[] },
@@ -253,6 +299,10 @@ function getWorkflowScheduler(): WorkflowScheduler {
     const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
     return tauriInvoke<T>(command, args);
   };
+  const runAdapter = createWorkflowRunAdapter({
+    invoke,
+    requestApproval: requestWorkflowRunApproval,
+  });
   const executor = new AcpWorkflowExecutor({
     invoke,
     resolveLaunch: (context: WorkflowExecutionContext) => {
@@ -290,7 +340,11 @@ function getWorkflowScheduler(): WorkflowScheduler {
       };
     },
     resolveSnapshot: ({ nodeId }) => resolveWorkflowSnapshot(nodeId),
-    executeControl: createWorkflowControlExecutor({ writeText: addTextToWorkspace }),
+    executeControl: createWorkflowControlExecutor({
+      writeText: addTextToWorkspace,
+      executeRun: runAdapter.execute,
+    }),
+    cancelControl: runAdapter.cancel,
   });
   workflowScheduler = new WorkflowScheduler(executor, persistence);
   workflowScheduler.onEvent((event) => {
@@ -370,6 +424,8 @@ interface RuntimeState {
   sessions: SessionMeta[];
   /** Durable DAG runs driven by the unified ACP Host. */
   workflowRuns: Record<string, WorkflowRun>;
+  workflowRunApproval: WorkflowRunApprovalRequest | null;
+  replyWorkflowRunApproval: (allow: boolean) => void;
   startWorkflow: (workflowId: string, sessionId?: string, draftKey?: string) => Promise<string | null>;
   pauseWorkflow: (runId: string) => Promise<void>;
   resumeWorkflow: (runId: string) => Promise<void>;
@@ -1740,6 +1796,13 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   acpProfileId: initialAcpProfileId(),
   sessions: [],
   workflowRuns: {},
+  workflowRunApproval: null,
+  replyWorkflowRunApproval: (allow) => {
+    const resolve = workflowRunApprovalResolver;
+    workflowRunApprovalResolver = null;
+    set({ workflowRunApproval: null });
+    resolve?.(allow);
+  },
   startWorkflow: async (workflowId, _sessionId, _draftKey) => {
     const state = get();
     if (state.webReadOnly || !isTauri) {
@@ -1804,6 +1867,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   },
   cancelWorkflow: async (runId) => {
     try {
+      if (get().workflowRunApproval?.runId === runId) {
+        get().replyWorkflowRunApproval(false);
+      }
       const run = await applyWorkflowControl("cancel", runId);
       set((current) => ({ workflowRuns: { ...current.workflowRuns, [run.id]: run }, error: null }));
     } catch (error) {
@@ -3438,7 +3504,8 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     set({ hiddenExamples: next });
   },
 
-  // Install a skill by asking the agent (uses OpenCode's customize-opencode skill) (#1).
+  // Install a skill through the active ACP engine; transport-specific details
+  // stay inside the Host and are never encoded in the desktop control surface.
   installSkill: async (text) => {
     if (!client) {
       set({ error: "Connect the runtime first to install skills." });
@@ -3448,11 +3515,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       const id = await client.createSession();
       set((s) => ({ currentId: id, threads: { ...s.threads, [id]: { ...emptyThread(), loaded: true } } }));
       await get().refreshSessions();
-      const prompt =
-        "Install the following as an OpenCode skill for this project. Use the " +
-        "customize-opencode skill. If it is a URL, fetch it; if it is Markdown, save it as " +
-        "a skill file under .opencode/skills/<name>/SKILL.md. Then reply with the installed skill's name.\n\n---\n" +
-        text;
+      const prompt = buildSkillInstallPrompt(text);
       set((s) => {
         const cur = s.threads[id];
         return {

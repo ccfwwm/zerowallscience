@@ -106,7 +106,8 @@
     "empty": "아직 실행한 워크플로가 없습니다.",
     "desktopOnly": "워크플로 실행은 데스크톱 앱에서 사용할 수 있습니다.",
     "status": { "pending": "대기 중", "running": "실행 중", "paused": "일시 중지", "completed": "완료", "failed": "실패", "cancelled": "취소됨" },
-    "action": { "pause": "워크플로 일시 중지", "resume": "워크플로 재개", "retry": "워크플로 재시도", "cancel": "워크플로 취소" }
+    "action": { "pause": "워크플로 일시 중지", "resume": "워크플로 재개", "retry": "워크플로 재시도", "cancel": "워크플로 취소" },
+    "approval": { "title": "워크플로 실행 승인", "body": "{{run}}이(가) 현재 작업 공간에서 {{language}}{{notebook}} 코드를 실행합니다.", "confirm": "코드 실행" }
   },
   "notFound": {
     "title": "404 — 찾을 수 없음",

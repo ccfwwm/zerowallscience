@@ -106,7 +106,8 @@
     "empty": "Aún no hay ejecuciones.",
     "desktopOnly": "Las ejecuciones están disponibles en la aplicación de escritorio.",
     "status": { "pending": "Pendiente", "running": "En ejecución", "paused": "Pausado", "completed": "Completado", "failed": "Fallido", "cancelled": "Cancelado" },
-    "action": { "pause": "Pausar flujo", "resume": "Reanudar flujo", "retry": "Reintentar flujo", "cancel": "Cancelar flujo" }
+    "action": { "pause": "Pausar flujo", "resume": "Reanudar flujo", "retry": "Reintentar flujo", "cancel": "Cancelar flujo" },
+    "approval": { "title": "Aprobar ejecución del flujo", "body": "{{run}} ejecutará código {{language}}{{notebook}} en el espacio de trabajo actual.", "confirm": "Ejecutar código" }
   },
   "notFound": {
     "title": "404 — No encontrado",

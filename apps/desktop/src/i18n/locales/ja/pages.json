@@ -106,7 +106,8 @@
     "empty": "ワークフローの実行はまだありません。",
     "desktopOnly": "ワークフローの実行はデスクトップアプリで利用できます。",
     "status": { "pending": "保留中", "running": "実行中", "paused": "一時停止", "completed": "完了", "failed": "失敗", "cancelled": "キャンセル済み" },
-    "action": { "pause": "一時停止", "resume": "再開", "retry": "再試行", "cancel": "キャンセル" }
+    "action": { "pause": "一時停止", "resume": "再開", "retry": "再試行", "cancel": "キャンセル" },
+    "approval": { "title": "ワークフロー実行の承認", "body": "{{run}} は現在のワークスペースで {{language}}{{notebook}} コードを実行します。", "confirm": "コードを実行" }
   },
   "notFound": {
     "title": "404 — 見つかりません",

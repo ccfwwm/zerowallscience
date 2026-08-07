@@ -106,7 +106,8 @@
     "empty": "Noch keine Workflow-Ausführungen.",
     "desktopOnly": "Workflow-Ausführungen sind in der Desktop-App verfügbar.",
     "status": { "pending": "Ausstehend", "running": "Läuft", "paused": "Pausiert", "completed": "Abgeschlossen", "failed": "Fehlgeschlagen", "cancelled": "Abgebrochen" },
-    "action": { "pause": "Workflow pausieren", "resume": "Workflow fortsetzen", "retry": "Workflow wiederholen", "cancel": "Workflow abbrechen" }
+    "action": { "pause": "Workflow pausieren", "resume": "Workflow fortsetzen", "retry": "Workflow wiederholen", "cancel": "Workflow abbrechen" },
+    "approval": { "title": "Workflow-Ausführung bestätigen", "body": "{{run}} führt {{language}}{{notebook}}-Code im aktuellen Arbeitsbereich aus.", "confirm": "Code ausführen" }
   },
   "notFound": {
     "title": "404 — Nicht gefunden",
