@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 22:13 · Completed the local release gate: the production desktop frontend build succeeds and the independent Environment Bootstrapper security suite passes 6/6; clean-machine installs, production-key signing, and interrupted-update rollback remain external release validations.
+
 2026-08-07 22:11 · Hardened the provider settings tests against full-suite load by replacing long per-keystroke setup with direct form changes and awaiting the controlled collapse render; the complete desktop Vitest suite now exits cleanly, with ACP Host 19/19, secret store 19/19, brand, and release contracts also passing.
 
 2026-08-07 22:08 · Removed the last desktop-facing getClient/getOrCreateOpenCodeClient exports so provider and MCP settings remain behind ACP Host control boundaries; focused model/provider tests pass 32/32 and desktop typecheck passes.
