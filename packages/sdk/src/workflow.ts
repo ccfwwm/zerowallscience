@@ -83,7 +83,7 @@ export const BUILTIN_WORKFLOWS: readonly WorkflowDefinition[] = [
     id: "paper-search-deduplication",
     name: "Paper search and deduplication",
     nodes: [
-      builtinNode("search-papers", "agent", [], { input: { task: "Search the configured scholarly sources." } }),
+      builtinNode("search-papers", "agent", [], { input: { task: "Search the configured scholarly sources. Return only JSON with a papers array containing title, DOI, URL, authors, and year when available." } }),
       builtinNode("deduplicate-papers", "tool", ["search-papers"], { input: { operation: "deduplicate" } }),
       builtinNode("paper-catalog", "artifact", ["deduplicate-papers"], { input: { artifactType: "paper-catalog" } }),
     ],

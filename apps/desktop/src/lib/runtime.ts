@@ -42,6 +42,7 @@ import reviewerAgent from "../../../../runtime/agents/reviewer.json";
 import bookmarkerAgent from "../../../../runtime/agents/bookmarker.json";
 import {
   detectTools as probeTools,
+  addTextToWorkspace,
   commitWorkspaceSnapshot,
   workspaceSnapshotTip,
   previewTurnUndo,
@@ -77,7 +78,11 @@ import { AcpRuntime } from "./acp-runtime";
 import { acpListMcpServers, acpListSkills, type AcpLaunchRequest } from "./acp";
 import { acpPresetById } from "./acp-presets";
 import { buildAcpLaunchRequest, clearAcpConfig, loadAcpConfig, saveAcpConfig } from "./acp-config";
-import { AcpWorkflowExecutor, TauriWorkflowPersistence } from "./workflow-runtime";
+import {
+  AcpWorkflowExecutor,
+  TauriWorkflowPersistence,
+  createWorkflowControlExecutor,
+} from "./workflow-runtime";
 import { isLegacyAcpConversationId, toAcpHostLaunchRequest } from "./acp-host-runtime";
 import {
   deriveAcpConfigs,
@@ -271,6 +276,7 @@ function getWorkflowScheduler(): WorkflowScheduler {
       };
     },
     resolveSnapshot: ({ nodeId }) => resolveWorkflowSnapshot(nodeId),
+    executeControl: createWorkflowControlExecutor({ writeText: addTextToWorkspace }),
   });
   workflowScheduler = new WorkflowScheduler(executor, persistence);
   workflowScheduler.onEvent((event) => {

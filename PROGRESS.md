@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 16:00 · Workflow control nodes no longer report placeholder success: deduplication now executes deterministically, artifact nodes write real workspace outputs, unsupported operations fail explicitly, and run nodes require a future approved execution adapter; workflow tests 20/20 and typecheck pass.
+
 2026-08-07 15:53 · Desktop runtime switching now normalizes null or stale engine IDs to Host-owned OpenCode, so all desktop turns stay on the unified ACP Host while the gateway web compatibility path remains separate; runtime store 114/114 and typecheck pass.
 
 2026-08-07 15:46 · Unified ACP tool events now preserve normalized tool/input/output/diff/timing metadata, Codex/Claude file-write events render as deduplicated chat artifacts, OpenCode real message token payloads produce usage updates, and targeted Host 42/42, Tauri host 14/14, frontend 119/119, and typecheck pass.
