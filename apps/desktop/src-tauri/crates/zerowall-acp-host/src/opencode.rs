@@ -431,6 +431,139 @@ impl<T: OpenCodeTransport> OpenCodeProviderControl<T> {
         ensure_success(response.status, "provider/remove")
     }
 
+    pub async fn clear_default_custom_model_context_limits(&mut self) -> Result<(), HostError> {
+        let providers = self
+            .global_provider_config("provider/context-cleanup")
+            .await?;
+        let mut provider_patch = serde_json::Map::new();
+        for (provider_id, provider) in providers {
+            if !is_custom_provider_config(&provider) {
+                continue;
+            }
+            let mut model_patch = serde_json::Map::new();
+            for (model_id, model) in provider
+                .get("models")
+                .and_then(serde_json::Value::as_object)
+                .into_iter()
+                .flatten()
+            {
+                let context = model
+                    .pointer("/limit/context")
+                    .and_then(serde_json::Value::as_u64);
+                let output = model
+                    .pointer("/limit/output")
+                    .and_then(serde_json::Value::as_u64);
+                if context == Some(128_000) && output == Some(0) {
+                    model_patch.insert(
+                        model_id.clone(),
+                        json!({"limit": {"context": 0, "output": 0}}),
+                    );
+                }
+            }
+            if !model_patch.is_empty() {
+                provider_patch.insert(provider_id, json!({"models": model_patch}));
+            }
+        }
+        self.patch_provider_config(provider_patch, "provider/context-cleanup")
+            .await
+    }
+
+    pub async fn remove_legacy_provider_entries(&mut self) -> Result<(), HostError> {
+        let providers = self
+            .global_provider_config("provider/legacy-cleanup")
+            .await?;
+        let provider_patch = providers
+            .keys()
+            .filter(|provider_id| {
+                provider_id.as_str() == "sub2api" || provider_id.starts_with("sub2api-")
+            })
+            .map(|provider_id| (provider_id.clone(), serde_json::Value::Null))
+            .collect();
+        self.patch_provider_config(provider_patch, "provider/legacy-cleanup")
+            .await
+    }
+
+    pub async fn ensure_custom_providers_image_capable(&mut self) -> Result<(), HostError> {
+        let providers = self
+            .global_provider_config("provider/image-capability")
+            .await?;
+        let mut provider_patch = serde_json::Map::new();
+        for (provider_id, provider) in providers {
+            if !is_custom_provider_config(&provider) {
+                continue;
+            }
+            let mut model_patch = serde_json::Map::new();
+            for (model_id, model) in provider
+                .get("models")
+                .and_then(serde_json::Value::as_object)
+                .into_iter()
+                .flatten()
+            {
+                let has_attachment =
+                    model.get("attachment").and_then(serde_json::Value::as_bool) == Some(true);
+                let has_image = model
+                    .pointer("/modalities/input")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|modalities| {
+                        modalities
+                            .iter()
+                            .any(|value| value.as_str() == Some("image"))
+                    });
+                if has_attachment && has_image {
+                    continue;
+                }
+                let output = model
+                    .pointer("/modalities/output")
+                    .and_then(serde_json::Value::as_array)
+                    .cloned()
+                    .map(serde_json::Value::Array)
+                    .unwrap_or_else(|| json!(["text"]));
+                model_patch.insert(
+                    model_id.clone(),
+                    json!({
+                        "attachment": true,
+                        "modalities": {"input": ["text", "image"], "output": output},
+                    }),
+                );
+            }
+            if !model_patch.is_empty() {
+                provider_patch.insert(provider_id, json!({"models": model_patch}));
+            }
+        }
+        self.patch_provider_config(provider_patch, "provider/image-capability")
+            .await
+    }
+
+    async fn global_provider_config(
+        &mut self,
+        operation: &str,
+    ) -> Result<serde_json::Map<String, serde_json::Value>, HostError> {
+        let response = self.send("GET", "/global/config", None).await?;
+        ensure_success(response.status, operation)?;
+        let mut body =
+            serde_json::from_str::<serde_json::Value>(&response.body).map_err(|error| {
+                HostError::Driver(format!("invalid OpenCode provider config: {error}"))
+            })?;
+        Ok(body
+            .get_mut("provider")
+            .and_then(serde_json::Value::as_object_mut)
+            .map(std::mem::take)
+            .unwrap_or_default())
+    }
+
+    async fn patch_provider_config(
+        &mut self,
+        provider_patch: serde_json::Map<String, serde_json::Value>,
+        operation: &str,
+    ) -> Result<(), HostError> {
+        if provider_patch.is_empty() {
+            return Ok(());
+        }
+        let body = json!({"provider": provider_patch}).to_string();
+        let response = self.send("PATCH", "/global/config", Some(&body)).await?;
+        ensure_success(response.status, operation)
+    }
+
     async fn send(
         &mut self,
         method: &str,
@@ -451,6 +584,14 @@ impl<T: OpenCodeTransport> OpenCodeProviderControl<T> {
             .await
             .map_err(HostError::Driver)
     }
+}
+
+fn is_custom_provider_config(provider: &serde_json::Value) -> bool {
+    provider.get("npm").is_some()
+        || provider
+            .pointer("/options/baseURL")
+            .and_then(serde_json::Value::as_str)
+            .is_some()
 }
 
 /// Typed MCP configuration control owned by the unified Host. OpenCode paths,
@@ -1875,6 +2016,179 @@ mod tests {
 
         let error = block_on(control.get_provider_region("amazon-bedrock")).unwrap_err();
         assert!(error.to_string().contains("provider-region/get"));
+    }
+
+    #[test]
+    fn provider_maintenance_clears_only_legacy_blind_context_limits() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"provider":{"research":{"npm":"@ai-sdk/openai-compatible","options":{"baseURL":"https://models.test/v1"},"models":{"blind":{"name":"Blind","limit":{"context":128000,"output":0}},"probed":{"name":"Probed","limit":{"context":131072,"output":4096}},"unlimited":{"name":"Unlimited"}}},"builtin":{"models":{"model":{"limit":{"context":128000,"output":0}}}}}}"#.into(),
+                },
+            ],
+        };
+        let mut control = OpenCodeProviderControl::new(fake, "http://x/", "u", "p");
+
+        block_on(control.clear_default_custom_model_context_limits()).unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].method, "GET");
+        assert_eq!(calls[0].url, "http://x/global/config");
+        assert_eq!(calls[1].method, "PATCH");
+        assert_eq!(calls[1].url, "http://x/global/config");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(calls[1].body.as_deref().unwrap()).unwrap(),
+            json!({
+                "provider": {
+                    "research": {
+                        "models": {
+                            "blind": {"limit": {"context": 0, "output": 0}}
+                        }
+                    }
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn provider_maintenance_context_cleanup_is_a_noop_after_normalization() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![TransportResponse {
+                status: 200,
+                body: r#"{"provider":{"research":{"npm":"@ai-sdk/openai-compatible","models":{"reset":{"limit":{"context":0,"output":0}},"probed":{"limit":{"context":131072,"output":4096}}}}}}"#.into(),
+            }],
+        };
+        let mut control = OpenCodeProviderControl::new(fake, "http://x/", "u", "p");
+
+        block_on(control.clear_default_custom_model_context_limits()).unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].method, "GET");
+    }
+
+    #[test]
+    fn provider_maintenance_removes_legacy_provider_entries_in_one_patch() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"provider":{"sub2api":{"models":{}},"sub2api-40":{"models":{}},"zerowall-40":{"models":{}},"research":{"models":{}}}}"#.into(),
+                },
+            ],
+        };
+        let mut control = OpenCodeProviderControl::new(fake, "http://x/", "u", "p");
+
+        block_on(control.remove_legacy_provider_entries()).unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].method, "GET");
+        assert_eq!(calls[1].method, "PATCH");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(calls[1].body.as_deref().unwrap()).unwrap(),
+            json!({"provider": {"sub2api": null, "sub2api-40": null}})
+        );
+    }
+
+    #[test]
+    fn provider_maintenance_legacy_cleanup_is_a_noop_without_legacy_entries() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![TransportResponse {
+                status: 200,
+                body: r#"{"provider":{"zerowall-40":{"models":{}},"research":{"models":{}}}}"#
+                    .into(),
+            }],
+        };
+        let mut control = OpenCodeProviderControl::new(fake, "http://x/", "u", "p");
+
+        block_on(control.remove_legacy_provider_entries()).unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].method, "GET");
+    }
+
+    #[test]
+    fn provider_maintenance_backfills_image_capability_for_custom_models() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"provider":{"research":{"options":{"baseURL":"https://models.test/v1"},"models":{"legacy":{"name":"Legacy"},"partial":{"attachment":true,"modalities":{"input":["text"],"output":["text","json"]}},"ready":{"attachment":true,"modalities":{"input":["text","image"],"output":["text"]}}}},"builtin":{"models":{"legacy":{"name":"Do not touch"}}}}}"#.into(),
+                },
+            ],
+        };
+        let mut control = OpenCodeProviderControl::new(fake, "http://x/", "u", "p");
+
+        block_on(control.ensure_custom_providers_image_capable()).unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].method, "GET");
+        assert_eq!(calls[1].method, "PATCH");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(calls[1].body.as_deref().unwrap()).unwrap(),
+            json!({
+                "provider": {
+                    "research": {
+                        "models": {
+                            "legacy": {
+                                "attachment": true,
+                                "modalities": {"input": ["text", "image"], "output": ["text"]}
+                            },
+                            "partial": {
+                                "attachment": true,
+                                "modalities": {"input": ["text", "image"], "output": ["text", "json"]}
+                            }
+                        }
+                    }
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn provider_maintenance_image_backfill_is_a_noop_when_models_are_ready() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![TransportResponse {
+                status: 200,
+                body: r#"{"provider":{"research":{"npm":"@ai-sdk/openai-compatible","models":{"ready":{"attachment":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}"#.into(),
+            }],
+        };
+        let mut control = OpenCodeProviderControl::new(fake, "http://x/", "u", "p");
+
+        block_on(control.ensure_custom_providers_image_capable()).unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].method, "GET");
     }
 
     #[test]

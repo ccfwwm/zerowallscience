@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 19:35 · Desktop provider maintenance now routes through typed ACP Host commands; Rust-only OpenCode control cleans legacy context limits, removes stale provider entries, and backfills image capability with idempotent PATCH behavior, verified by SDK 32/32, ACP Host 56/56, Tauri acp_host 19/19, and desktop typecheck.
+
 2026-08-07 19:15 · Removed the unreachable desktop Settings OAuth renderer state machine and OpenCode OAuth calls; provider connection now remains API-key/region based until a Keychain-safe Host OAuth flow is implemented, with an ACP boundary contract test passing.
 
 2026-08-07 18:55 · ACP sessions now freeze normalized MCP allow-lists and four-field Skills snapshots across SDK, Rust Host/Tauri, Workflow recovery, and ordinary desktop conversation discovery; focused SDK/Desktop/Rust tests and desktop typecheck pass.

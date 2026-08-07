@@ -70,6 +70,19 @@ function invokeMock(): AcpHostInvoke {
 }
 
 describe("AcpHostClient", () => {
+  it("routes desktop provider maintenance through typed Host commands", async () => {
+    const invoke = vi.fn(async () => undefined) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    await client.clearDefaultCustomModelContextLimits();
+    await client.removeLegacyProviderEntries();
+    await client.ensureCustomProvidersImageCapable();
+
+    expect(invoke).toHaveBeenNthCalledWith(1, "acp_host_clear_default_custom_model_context_limits");
+    expect(invoke).toHaveBeenNthCalledWith(2, "acp_host_remove_legacy_provider_entries");
+    expect(invoke).toHaveBeenNthCalledWith(3, "acp_host_ensure_custom_providers_image_capable");
+  });
+
   it("serializes normalized capability snapshots without non-canonical skill fields", async () => {
     const skills: SkillSnapshot[] = [
       {

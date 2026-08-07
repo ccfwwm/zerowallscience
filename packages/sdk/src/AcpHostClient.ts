@@ -249,6 +249,18 @@ export class AcpHostClient {
     await this.invoke("acp_host_remove_custom_provider", { providerId });
   }
 
+  async clearDefaultCustomModelContextLimits(): Promise<void> {
+    await this.invoke("acp_host_clear_default_custom_model_context_limits");
+  }
+
+  async removeLegacyProviderEntries(): Promise<void> {
+    await this.invoke("acp_host_remove_legacy_provider_entries");
+  }
+
+  async ensureCustomProvidersImageCapable(): Promise<void> {
+    await this.invoke("acp_host_ensure_custom_providers_image_capable");
+  }
+
   async listMcpServers(): Promise<McpServer[]> {
     return this.invoke<McpServer[]>("acp_host_list_mcp_servers");
   }

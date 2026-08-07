@@ -777,6 +777,32 @@ pub async fn acp_host_remove_custom_provider(
 }
 
 #[tauri::command]
+pub async fn acp_host_clear_default_custom_model_context_limits(
+    app: AppHandle,
+) -> Result<(), String> {
+    build_provider_control(&app)?
+        .clear_default_custom_model_context_limits()
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_remove_legacy_provider_entries(app: AppHandle) -> Result<(), String> {
+    build_provider_control(&app)?
+        .remove_legacy_provider_entries()
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_ensure_custom_providers_image_capable(app: AppHandle) -> Result<(), String> {
+    build_provider_control(&app)?
+        .ensure_custom_providers_image_capable()
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
 pub async fn acp_host_list_mcp_servers(app: AppHandle) -> Result<Vec<McpServer>, String> {
     build_mcp_control(&app)?
         .list_mcp_servers()

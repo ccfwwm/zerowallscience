@@ -1182,14 +1182,7 @@ export function getClient(): OpenCodeClient | null {
   return opencodeClient;
 }
 
-/** Typed provider configuration boundary. Desktop calls Tauri ACP Host
- * commands; the gateway web client retains its same-origin OpenCode client. */
-export function getProviderControlClient(): Pick<
-  AcpHostClient,
-  "listProviders" | "listProviderCatalog" | "listCustomProviderIds" | "getDefaultModel" | "setDefaultModel" | "getProviderRegion" | "setProviderRegion" | "addCustomProvider" | "removeCustomProvider"
-> | OpenCodeClient | null {
-  if (isGatewayWeb) return opencodeClient;
-  if (!isTauri) return opencodeClient;
+function getOrCreateAcpHostControlClient(): AcpHostClient {
   if (!providerControlClient) {
     const invoke: AcpHostInvoke = async <T>(command: string, args?: Record<string, unknown>) => {
       const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
@@ -1200,6 +1193,28 @@ export function getProviderControlClient(): Pick<
   return providerControlClient;
 }
 
+/** Typed provider configuration boundary. Desktop calls Tauri ACP Host
+ * commands; the gateway web client retains its same-origin OpenCode client. */
+export function getProviderControlClient(): Pick<
+  AcpHostClient,
+  | "listProviders"
+  | "listProviderCatalog"
+  | "listCustomProviderIds"
+  | "getDefaultModel"
+  | "setDefaultModel"
+  | "getProviderRegion"
+  | "setProviderRegion"
+  | "addCustomProvider"
+  | "removeCustomProvider"
+  | "clearDefaultCustomModelContextLimits"
+  | "removeLegacyProviderEntries"
+  | "ensureCustomProvidersImageCapable"
+> | OpenCodeClient | null {
+  if (isGatewayWeb) return opencodeClient;
+  if (!isTauri) return opencodeClient;
+  return getOrCreateAcpHostControlClient();
+}
+
 /** Typed MCP configuration boundary. Desktop calls Tauri ACP Host commands;
  * the gateway web client retains its same-origin OpenCode compatibility path. */
 export function getMcpControlClient(): Pick<
@@ -1208,14 +1223,7 @@ export function getMcpControlClient(): Pick<
 > | OpenCodeClient | null {
   if (isGatewayWeb) return opencodeClient;
   if (!isTauri) return opencodeClient;
-  if (!providerControlClient) {
-    const invoke: AcpHostInvoke = async <T>(command: string, args?: Record<string, unknown>) => {
-      const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
-      return tauriInvoke<T>(command, args);
-    };
-    providerControlClient = new AcpHostClient({ invoke });
-  }
-  return providerControlClient;
+  return getOrCreateAcpHostControlClient();
 }
 
 /** The default-model key ("providerId/model") for an ACP preset, from its stored
@@ -2571,7 +2579,11 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         // Best-effort: deferred into a promise chain so no failure — even a
         // synchronous throw — can flip an otherwise successful connect.
         void Promise.resolve()
-          .then(() => c.clearDefaultCustomModelContextLimits())
+          .then(() =>
+            isTauri
+              ? getOrCreateAcpHostControlClient().clearDefaultCustomModelContextLimits()
+              : c.clearDefaultCustomModelContextLimits(),
+          )
           .catch((err) =>
             logDebug(`context-limit cleanup skipped: ${err instanceof Error ? err.message : String(err)}`),
           );
@@ -2585,7 +2597,11 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       if (!isGatewayWeb && !legacySub2apiMigrated) {
         legacySub2apiMigrated = true;
         void Promise.resolve()
-          .then(() => migrateLegacySub2apiProviders(c))
+          .then(() =>
+            isTauri
+              ? getOrCreateAcpHostControlClient().removeLegacyProviderEntries()
+              : migrateLegacySub2apiProviders(c),
+          )
           .catch((err) =>
             logDebug(`legacy sub2api migration skipped: ${err instanceof Error ? err.message : String(err)}`),
           );
@@ -2600,7 +2616,11 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       if (!isGatewayWeb && !imageCapabilityBackfilled) {
         imageCapabilityBackfilled = true;
         void Promise.resolve()
-          .then(() => c.ensureCustomProvidersImageCapable())
+          .then(() =>
+            isTauri
+              ? getOrCreateAcpHostControlClient().ensureCustomProvidersImageCapable()
+              : c.ensureCustomProvidersImageCapable(),
+          )
           .catch((err) =>
             logDebug(`image capability backfill skipped: ${err instanceof Error ? err.message : String(err)}`),
           );
