@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 21:31 · Added a dedicated ChatGPT-style Workflows workspace at `/workflows`; the sidebar now opens the workflow library, four built-in workflows expose concise launch actions, recent runs show node progress and pause/resume/retry/cancel controls, Runtime Store control delegation is covered, and app/environment update guards now count active MCP tool calls and running jobs instead of hard-coded zeroes; focused workflow/activity tests, SDK workflow tests, i18n parity, and desktop typecheck pass.
+
 2026-08-07 21:03 · Desktop workflow progress cards now expose engine-agnostic pause, resume, retry, and cancel controls through Runtime Store methods backed by the durable WorkflowScheduler; terminal runs expose no stale actions, verified by workflow controls 4/4, workflow runtime/starters 15/15, desktop typecheck, and diff check.
 
 2026-08-07 20:48 · Application releases now publish target-specific Ed25519-signed installer manifests; production builds embed the public key, update discovery fails closed when the signed manifest is missing or mismatched, and the verified manifest binds release tag, platform, HTTPS asset, size, and SHA-256 before download, verified by Rust 395/395, signing/package scripts 6/6, workflow YAML parsing, desktop typecheck, and diff check.

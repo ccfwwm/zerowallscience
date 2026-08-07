@@ -76,6 +76,7 @@
     "close": "Cerrar",
     "later": "Más tarde",
     "download": "Descargar actualización",
+    "cancelDownload": "Cancelar",
     "downloading": "Descargando...",
     "openInstaller": "Abrir instalador",
     "openRelease": "Abrir release",

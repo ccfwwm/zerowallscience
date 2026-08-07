@@ -129,6 +129,15 @@
   "workflow": {
     "progressAria": "워크플로 진행률"
   },
+  "workflow": {
+    "progressAria": "워크플로 진행률",
+    "action": {
+      "pause": { "aria": "워크플로 일시 중지", "title": "워크플로 일시 중지" },
+      "resume": { "aria": "워크플로 재개", "title": "워크플로 재개" },
+      "retry": { "aria": "워크플로 재시도", "title": "워크플로 재시도" },
+      "cancel": { "aria": "워크플로 취소", "title": "워크플로 취소" }
+    }
+  },
   "starters": {
     "newSession": "새 세션",
     "heading": "무엇을 살펴볼까요?",

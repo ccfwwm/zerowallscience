@@ -95,6 +95,19 @@
     },
     "disconnected": "Conecta el entorno de ejecución para listar las habilidades y agentes que ha cargado."
   },
+  "workflows": {
+    "title": "Flujos de trabajo",
+    "description": "Ejecuta un flujo de investigación y sigue cada paso.",
+    "library": "Biblioteca de flujos",
+    "runs": "Ejecuciones recientes",
+    "nodeCount": "{{count}} pasos",
+    "completed": "{{completed}}/{{total}} completados",
+    "run": "Ejecutar flujo",
+    "empty": "Aún no hay ejecuciones.",
+    "desktopOnly": "Las ejecuciones están disponibles en la aplicación de escritorio.",
+    "status": { "pending": "Pendiente", "running": "En ejecución", "paused": "Pausado", "completed": "Completado", "failed": "Fallido", "cancelled": "Cancelado" },
+    "action": { "pause": "Pausar flujo", "resume": "Reanudar flujo", "retry": "Reintentar flujo", "cancel": "Cancelar flujo" }
+  },
   "notFound": {
     "title": "404 — No encontrado",
     "hint": "Esta página no existe.",

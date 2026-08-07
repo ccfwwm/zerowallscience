@@ -95,6 +95,19 @@
     },
     "disconnected": "Verbinden Sie die Runtime, um die geladenen Skills und Agenten aufzulisten."
   },
+  "workflows": {
+    "title": "Workflows",
+    "description": "Führe einen Forschungs-Workflow aus und verfolge jeden Schritt.",
+    "library": "Workflow-Bibliothek",
+    "runs": "Letzte Ausführungen",
+    "nodeCount": "{{count}} Schritte",
+    "completed": "{{completed}}/{{total}} abgeschlossen",
+    "run": "Workflow ausführen",
+    "empty": "Noch keine Workflow-Ausführungen.",
+    "desktopOnly": "Workflow-Ausführungen sind in der Desktop-App verfügbar.",
+    "status": { "pending": "Ausstehend", "running": "Läuft", "paused": "Pausiert", "completed": "Abgeschlossen", "failed": "Fehlgeschlagen", "cancelled": "Abgebrochen" },
+    "action": { "pause": "Workflow pausieren", "resume": "Workflow fortsetzen", "retry": "Workflow wiederholen", "cancel": "Workflow abbrechen" }
+  },
   "notFound": {
     "title": "404 — Nicht gefunden",
     "hint": "Diese Seite existiert nicht.",

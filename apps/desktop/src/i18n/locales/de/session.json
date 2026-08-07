@@ -129,6 +129,15 @@
   "workflow": {
     "progressAria": "Workflow-Fortschritt"
   },
+  "workflow": {
+    "progressAria": "Workflow-Fortschritt",
+    "action": {
+      "pause": { "aria": "Workflow pausieren", "title": "Workflow pausieren" },
+      "resume": { "aria": "Workflow fortsetzen", "title": "Workflow fortsetzen" },
+      "retry": { "aria": "Workflow wiederholen", "title": "Workflow wiederholen" },
+      "cancel": { "aria": "Workflow abbrechen", "title": "Workflow abbrechen" }
+    }
+  },
   "starters": {
     "newSession": "Neue Sitzung",
     "heading": "Was sollen wir untersuchen?",

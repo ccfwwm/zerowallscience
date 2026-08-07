@@ -8,6 +8,7 @@ import { CommandPalette } from "@/components/command-palette/CommandPalette";
 import { PaneDragGhost } from "@/components/session/PaneDragGhost";
 import { Toaster } from "@/components/ui/Toaster";
 import { useRuntimeStore } from "@/lib/runtime";
+import { runtimeActivitySnapshot } from "@/lib/runtime-activity";
 import { ensureDefaultConnectors, ensureSetupProgressListener, healJupyterMcpEnv } from "@/lib/setup";
 import { useOverlayTitlebar, useUiStore } from "@/lib/store";
 import { overlayTitlebarStyle } from "@/lib/titlebar";
@@ -37,6 +38,8 @@ export function AppShell() {
   const totalBytes = useUpdateStore((s) => s.totalBytes);
   const agentTurns = useRuntimeStore((s) => Object.keys(s.runningSessions).length);
   const workflowRuns = useRuntimeStore((s) => Object.values(s.workflowRuns).filter((run) => ["pending", "running", "paused", "failed"].includes(run.state)).length);
+  const mcpMutations = useRuntimeStore((s) => runtimeActivitySnapshot(s).mcpMutations);
+  const runActivities = useRuntimeStore((s) => runtimeActivitySnapshot(s).runActivities);
 
   useEffect(() => {
     if (updateAvailable && !import.meta.env.TEST) setUpdateOpen(true);
@@ -268,7 +271,7 @@ export function AppShell() {
           latest={latestUpdate}
           status={downloadStatus}
           downloadedPath={downloadedPath}
-          onDownload={() => void download({ agentTurns, workflowRuns, mcpMutations: 0, runActivities: 0 })}
+          onDownload={() => void download({ agentTurns, workflowRuns, mcpMutations, runActivities })}
           onCancel={() => void cancelDownload()}
           downloadedBytes={downloadedBytes}
           totalBytes={totalBytes}

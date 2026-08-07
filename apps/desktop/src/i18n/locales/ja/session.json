@@ -129,6 +129,15 @@
   "workflow": {
     "progressAria": "ワークフローの進行状況"
   },
+  "workflow": {
+    "progressAria": "ワークフローの進捗",
+    "action": {
+      "pause": { "aria": "ワークフローを一時停止", "title": "ワークフローを一時停止" },
+      "resume": { "aria": "ワークフローを再開", "title": "ワークフローを再開" },
+      "retry": { "aria": "ワークフローを再試行", "title": "ワークフローを再試行" },
+      "cancel": { "aria": "ワークフローをキャンセル", "title": "ワークフローをキャンセル" }
+    }
+  },
   "starters": {
     "newSession": "新規セッション",
     "heading": "何を調べますか？",

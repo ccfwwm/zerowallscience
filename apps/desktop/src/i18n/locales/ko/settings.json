@@ -76,6 +76,7 @@
     "close": "닫기",
     "later": "나중에",
     "download": "업데이트 다운로드",
+    "cancelDownload": "취소",
     "downloading": "다운로드 중...",
     "openInstaller": "설치 프로그램 열기",
     "openRelease": "릴리스 열기",

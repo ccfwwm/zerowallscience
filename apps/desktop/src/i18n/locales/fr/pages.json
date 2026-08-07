@@ -95,6 +95,19 @@
     },
     "disconnected": "Connectez le runtime pour lister les compétences et agents qu'il a chargés."
   },
+  "workflows": {
+    "title": "Workflows",
+    "description": "Lancez un workflow de recherche et suivez chaque étape.",
+    "library": "Bibliothèque de workflows",
+    "runs": "Exécutions récentes",
+    "nodeCount": "{{count}} étapes",
+    "completed": "{{completed}}/{{total}} terminées",
+    "run": "Lancer le workflow",
+    "empty": "Aucune exécution pour le moment.",
+    "desktopOnly": "Les exécutions sont disponibles dans l'application de bureau.",
+    "status": { "pending": "En attente", "running": "En cours", "paused": "En pause", "completed": "Terminée", "failed": "Échec", "cancelled": "Annulée" },
+    "action": { "pause": "Mettre en pause", "resume": "Reprendre", "retry": "Réessayer", "cancel": "Annuler" }
+  },
   "notFound": {
     "title": "404 — Introuvable",
     "hint": "Cette page n'existe pas.",

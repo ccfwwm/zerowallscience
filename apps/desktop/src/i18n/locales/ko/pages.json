@@ -95,6 +95,19 @@
     },
     "disconnected": "런타임을 연결하면 로드된 스킬과 에이전트 목록을 볼 수 있습니다."
   },
+  "workflows": {
+    "title": "워크플로",
+    "description": "연구 워크플로를 실행하고 각 단계를 추적합니다.",
+    "library": "워크플로 라이브러리",
+    "runs": "최근 실행",
+    "nodeCount": "{{count}}단계",
+    "completed": "{{completed}}/{{total}} 완료",
+    "run": "워크플로 실행",
+    "empty": "아직 실행한 워크플로가 없습니다.",
+    "desktopOnly": "워크플로 실행은 데스크톱 앱에서 사용할 수 있습니다.",
+    "status": { "pending": "대기 중", "running": "실행 중", "paused": "일시 중지", "completed": "완료", "failed": "실패", "cancelled": "취소됨" },
+    "action": { "pause": "워크플로 일시 중지", "resume": "워크플로 재개", "retry": "워크플로 재시도", "cancel": "워크플로 취소" }
+  },
   "notFound": {
     "title": "404 — 찾을 수 없음",
     "hint": "이 페이지는 존재하지 않습니다.",

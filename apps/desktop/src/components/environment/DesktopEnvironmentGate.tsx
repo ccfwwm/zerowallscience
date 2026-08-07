@@ -3,6 +3,7 @@ import { Download, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useEnvironmentUpdateStore } from "@/lib/environment-update";
 import { useRuntimeStore } from "@/lib/runtime";
+import { runtimeActivitySnapshot } from "@/lib/runtime-activity";
 import { isTauri } from "@/lib/tauri";
 import { isGatewayWeb } from "@/lib/webMode";
 
@@ -20,6 +21,8 @@ export function DesktopEnvironmentGate({ children }: { children: ReactNode }) {
         ["pending", "running", "paused"].includes(run.state),
       ).length,
   );
+  const mcpMutations = useRuntimeStore((state) => runtimeActivitySnapshot(state).mcpMutations);
+  const runActivities = useRuntimeStore((state) => runtimeActivitySnapshot(state).runActivities);
   const [loaded, setLoaded] = useState(!isTauri || isGatewayWeb);
   const [busy, setBusy] = useState(false);
   const [bypassed, setBypassed] = useState(false);
@@ -50,8 +53,8 @@ export function DesktopEnvironmentGate({ children }: { children: ReactNode }) {
       const installed = await install({
         agentTurns,
         workflowRuns,
-        mcpMutations: 0,
-        runActivities: 0,
+        mcpMutations,
+        runActivities,
       });
       if (!installed?.currentVersion) return;
       await useRuntimeStore.getState().bootstrap();

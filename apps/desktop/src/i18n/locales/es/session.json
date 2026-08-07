@@ -129,6 +129,15 @@
   "workflow": {
     "progressAria": "Progreso del flujo de trabajo"
   },
+  "workflow": {
+    "progressAria": "Progreso del flujo",
+    "action": {
+      "pause": { "aria": "Pausar flujo", "title": "Pausar flujo" },
+      "resume": { "aria": "Reanudar flujo", "title": "Reanudar flujo" },
+      "retry": { "aria": "Reintentar flujo", "title": "Reintentar flujo" },
+      "cancel": { "aria": "Cancelar flujo", "title": "Cancelar flujo" }
+    }
+  },
   "starters": {
     "newSession": "Nueva sesión",
     "heading": "¿Qué investigamos?",

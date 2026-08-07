@@ -97,6 +97,12 @@ const mocks = vi.hoisted(() => ({
   acpUnlisten: vi.fn(),
   /** The handlers AcpRuntime subscribed; drive the event stream through them. */
   acpHandlers: {} as Record<string, (p: unknown) => void>,
+  workflowControls: {
+    pause: vi.fn(),
+    resume: vi.fn(),
+    retry: vi.fn(),
+    cancel: vi.fn(),
+  },
 }));
 
 vi.mock("./tauri", () => ({
@@ -106,6 +112,7 @@ vi.mock("./tauri", () => ({
   startRuntime: mocks.startRuntime,
   workspacePath: async () => "/ws/base",
   setWorkspace: mocks.setWorkspace,
+  addTextToWorkspace: vi.fn(async () => "/ws/base/workflow-artifact.txt"),
   newDatedWorkspace: mocks.newDatedWorkspace,
   markSession: async () => {},
   commitWorkspaceSnapshot: mocks.commitWorkspaceSnapshot,
@@ -169,6 +176,7 @@ vi.mock("@zerowall/sdk", async () => {
   const { ZeroWallClient } = await import("../../../../packages/sdk/src/ZeroWallClient");
   const { BaseAgentRuntime } = await import("../../../../packages/sdk/src/base-runtime");
   const actual = await import("../../../../packages/sdk/src/pack-registry");
+  const workflow = await import("../../../../packages/sdk/src/workflow");
   class OpenCodeClient {
     private statusCb: (s: string) => void = () => {};
     constructor(opts: Record<string, unknown>) {
@@ -311,9 +319,20 @@ vi.mock("@zerowall/sdk", async () => {
     async addCustomProvider() {}
     async removeCustomProvider() {}
   }
+  class WorkflowScheduler {
+    pause = mocks.workflowControls.pause;
+    resume = mocks.workflowControls.resume;
+    retry = mocks.workflowControls.retry;
+    cancel = mocks.workflowControls.cancel;
+    onEvent() {
+      return () => {};
+    }
+  }
   return {
     OpenCodeClient,
     AcpHostClient,
+    WorkflowScheduler,
+    BUILTIN_WORKFLOWS: workflow.BUILTIN_WORKFLOWS,
     ZeroWallClient,
     BaseAgentRuntime,
     DEFAULT_OPENCODE_URL: "http://127.0.0.1:4096",
@@ -358,6 +377,7 @@ beforeEach(async () => {
   mocks.skillsGate = null;
   mocks.failSetModel = false;
   mocks.acpSessionId = null;
+  for (const method of Object.values(mocks.workflowControls)) method.mockReset();
   mocks.notifyPermissionRequest.mockResolvedValue(true);
   useRuntimeStore.setState({
     currentId: null,
@@ -380,6 +400,7 @@ beforeEach(async () => {
     // Every test starts on OpenCode; the ACP factory tests opt in explicitly.
     acpProfileId: null,
     turnUndoBaseline: {},
+    workflowRuns: {},
   });
   await useRuntimeStore.getState().connect();
   expect(useRuntimeStore.getState().status).toBe("ready");
@@ -2012,5 +2033,35 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     expect(useRuntimeStore.getState().threads["acp-session-1"]?.blocks).toHaveLength(1);
     expect(useRuntimeStore.getState().threads["acp-session-2"]?.blocks).toEqual([]);
     window.localStorage.removeItem("zerowall.acp.config.codex");
+  });
+});
+
+describe("workflow controls", () => {
+  it("delegates pause, resume, retry, and cancel through the scheduler", async () => {
+    const run = {
+      id: "run-controls",
+      workflowId: "literature-evidence-review",
+      name: "Literature evidence review",
+      state: "paused",
+      nodes: {},
+      createdAt: "2026-08-07T00:00:00.000Z",
+      updatedAt: "2026-08-07T00:00:00.000Z",
+    };
+    mocks.workflowControls.pause.mockResolvedValue({ ...run, state: "paused" });
+    mocks.workflowControls.resume.mockResolvedValue({ ...run, state: "running" });
+    mocks.workflowControls.retry.mockResolvedValue({ ...run, state: "running" });
+    mocks.workflowControls.cancel.mockResolvedValue({ ...run, state: "cancelled" });
+    useRuntimeStore.setState({ workflowRuns: { [run.id]: run as never }, webReadOnly: false });
+
+    await useRuntimeStore.getState().pauseWorkflow(run.id);
+    await useRuntimeStore.getState().resumeWorkflow(run.id);
+    await useRuntimeStore.getState().retryWorkflow(run.id);
+    await useRuntimeStore.getState().cancelWorkflow(run.id);
+
+    expect(mocks.workflowControls.pause).toHaveBeenCalledWith(run.id);
+    expect(mocks.workflowControls.resume).toHaveBeenCalledWith(run.id);
+    expect(mocks.workflowControls.retry).toHaveBeenCalledWith(run.id);
+    expect(mocks.workflowControls.cancel).toHaveBeenCalledWith(run.id);
+    expect(useRuntimeStore.getState().workflowRuns[run.id]?.state).toBe("cancelled");
   });
 });

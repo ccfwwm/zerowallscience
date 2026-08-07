@@ -95,6 +95,31 @@
     },
     "disconnected": "连接运行时以列出其已加载的技能和代理。"
   },
+  "workflows": {
+    "title": "工作流",
+    "description": "运行科研工作流并跟踪每个步骤。",
+    "library": "工作流库",
+    "runs": "最近运行",
+    "nodeCount": "{{count}} 个步骤",
+    "completed": "已完成 {{completed}}/{{total}}",
+    "run": "运行工作流",
+    "empty": "尚无工作流运行。",
+    "desktopOnly": "工作流运行仅在桌面应用中可用。",
+    "status": {
+      "pending": "等待中",
+      "running": "运行中",
+      "paused": "已暂停",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消"
+    },
+    "action": {
+      "pause": "暂停工作流",
+      "resume": "恢复工作流",
+      "retry": "重试工作流",
+      "cancel": "取消工作流"
+    }
+  },
   "notFound": {
     "title": "404 — 未找到",
     "hint": "此页面不存在。",

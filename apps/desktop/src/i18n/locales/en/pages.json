@@ -95,6 +95,31 @@
     },
     "disconnected": "Connect the runtime to list the skills and agents it has loaded."
   },
+  "workflows": {
+    "title": "Workflows",
+    "description": "Run a focused research workflow and track each step.",
+    "library": "Workflow library",
+    "runs": "Recent runs",
+    "nodeCount": "{{count}} steps",
+    "completed": "{{completed}}/{{total}} completed",
+    "run": "Run workflow",
+    "empty": "No workflow runs yet.",
+    "desktopOnly": "Workflow runs are available in the desktop app.",
+    "status": {
+      "pending": "Pending",
+      "running": "Running",
+      "paused": "Paused",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "action": {
+      "pause": "Pause workflow",
+      "resume": "Resume workflow",
+      "retry": "Retry workflow",
+      "cancel": "Cancel workflow"
+    }
+  },
   "notFound": {
     "title": "404 — Not found",
     "hint": "This page does not exist.",

@@ -10,6 +10,7 @@ import { GraphPage } from "./routes/GraphPage";
 import { ReviewPage } from "./routes/ReviewPage";
 import { ProjectsPage } from "./routes/ProjectsPage";
 import { SettingsPage } from "./routes/SettingsPage";
+import { WorkflowsPage } from "./routes/WorkflowsPage";
 import { NotFound } from "./routes/NotFound";
 
 export const routes: RouteObject[] = [
@@ -25,6 +26,7 @@ export const routes: RouteObject[] = [
       { path: "notebooks", element: <NotebooksPage /> },
       { path: "files", element: <FilesPage /> },
       { path: "runs", element: <RunsPage /> },
+      { path: "workflows", element: <WorkflowsPage /> },
       { path: "graph", element: <GraphPage /> },
       { path: "review", element: <ReviewPage /> },
       { path: "projects", element: <ProjectsPage /> },

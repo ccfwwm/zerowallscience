@@ -76,6 +76,7 @@
     "close": "閉じる",
     "later": "後で",
     "download": "更新をダウンロード",
+    "cancelDownload": "キャンセル",
     "downloading": "ダウンロード中...",
     "openInstaller": "インストーラーを開く",
     "openRelease": "リリースを開く",

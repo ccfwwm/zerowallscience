@@ -590,7 +590,7 @@ export function Sidebar({ project }: { project: Project }) {
             <NavRow
               icon={<Workflow size={16} />}
               label={t("items.workflows")}
-              onClick={startNew}
+              onClick={() => navigate("/workflows")}
             />
           )}
           <button

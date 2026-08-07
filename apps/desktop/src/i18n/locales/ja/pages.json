@@ -95,6 +95,19 @@
     },
     "disconnected": "読み込まれたスキルとエージェントを一覧表示するには、ランタイムに接続してください。"
   },
+  "workflows": {
+    "title": "ワークフロー",
+    "description": "研究ワークフローを実行し、各ステップを追跡します。",
+    "library": "ワークフローライブラリ",
+    "runs": "最近の実行",
+    "nodeCount": "{{count}} ステップ",
+    "completed": "{{completed}}/{{total}} 完了",
+    "run": "ワークフローを実行",
+    "empty": "ワークフローの実行はまだありません。",
+    "desktopOnly": "ワークフローの実行はデスクトップアプリで利用できます。",
+    "status": { "pending": "保留中", "running": "実行中", "paused": "一時停止", "completed": "完了", "failed": "失敗", "cancelled": "キャンセル済み" },
+    "action": { "pause": "一時停止", "resume": "再開", "retry": "再試行", "cancel": "キャンセル" }
+  },
   "notFound": {
     "title": "404 — 見つかりません",
     "hint": "このページは存在しません。",
