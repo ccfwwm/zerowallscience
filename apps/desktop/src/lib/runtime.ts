@@ -1180,7 +1180,7 @@ export function getClient(): OpenCodeClient | null {
  * commands; the gateway web client retains its same-origin OpenCode client. */
 export function getProviderControlClient(): Pick<
   AcpHostClient,
-  "listProviders" | "listProviderCatalog" | "listCustomProviderIds" | "getDefaultModel" | "setDefaultModel" | "addCustomProvider" | "removeCustomProvider"
+  "listProviders" | "listProviderCatalog" | "listCustomProviderIds" | "getDefaultModel" | "setDefaultModel" | "getProviderRegion" | "setProviderRegion" | "addCustomProvider" | "removeCustomProvider"
 > | OpenCodeClient | null {
   if (isGatewayWeb) return opencodeClient;
   if (!isTauri) return opencodeClient;

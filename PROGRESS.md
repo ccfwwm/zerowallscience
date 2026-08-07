@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 18:11 · Amazon Bedrock provider-region reads and writes now use typed ACP Host commands on desktop while Gateway Web retains the compatible OpenCode client path; SDK 121/121, Host 47/47, Settings 12/12, and desktop typecheck pass.
+
 2026-08-07 17:45 · Jupyter setup now keeps the token only in the OS Keychain, registers MCP through Rust with an `{env:JUPYTER_TOKEN}` placeholder, and opens JupyterLab without exposing the token to the renderer; Jupyter 3/3, ACP Host 16/16, setup 10/10, and desktop typecheck pass.
 
 2026-08-07 17:18 · ACP Host MCP listings now redact secret-like local environment fields and all remote headers before returning public server metadata; the raw values remain internal to the Host driver.

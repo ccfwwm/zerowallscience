@@ -483,7 +483,9 @@ export function SettingsPage() {
   const saveKey = (providerID: string) =>
     run(t("toast.couldNotSaveKey"), async () => {
       if (providerID === "amazon-bedrock") {
-        await getClient()!.setProviderRegion(providerID, bedrockRegion.trim());
+        const control = getProviderControlClient();
+        if (!control) throw new Error(t("providers.connectPrompt"));
+        await control.setProviderRegion(providerID, bedrockRegion.trim());
       }
       await setProviderSecret(providerID, keyInput.trim());
       cancelOAuth(); // a pending browser login for this panel is now moot
@@ -653,7 +655,8 @@ export function SettingsPage() {
       }
       try {
         const control = getProviderControlClient();
-        const provs = await (control?.listProviders() ?? getClient()!.listProviders());
+        if (!control) throw new Error(t("providers.connectPrompt"));
+        const provs = await control.listProviders();
         void logDebug(`[provider] after removing ${providerID}: providers=[${provs.map((p) => p.id).join(",")}]`);
       } catch (e) {
         void logDebug(`[provider] post-remove probe failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -844,11 +847,11 @@ export function SettingsPage() {
     /^[a-z]{2}(?:-gov)?-[a-z]+-\d+$/.test(bedrockRegion.trim());
   useEffect(() => {
     if (selected?.id !== "amazon-bedrock") return;
-    const client = getClient();
-    if (!client) return;
+    const control = getProviderControlClient();
+    if (!control) return;
     let active = true;
     setBedrockRegionLoading(true);
-    void client
+    void control
       .getProviderRegion(selected.id)
       .then((region) => {
         if (active) setBedrockRegion(region ?? "");

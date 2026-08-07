@@ -171,6 +171,7 @@ describe("Settings model browser integration", () => {
     ]);
     vi.mocked(client.getProviderRegion).mockResolvedValue("eu-west-1");
     mockCatalogClients(client);
+    vi.mocked(runtime.getClient).mockReturnValue(null);
     await renderSettings();
 
     await userEvent.click(screen.getByRole("button", { name: "Manage" }));

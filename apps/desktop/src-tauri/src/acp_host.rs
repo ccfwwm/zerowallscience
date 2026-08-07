@@ -609,6 +609,24 @@ fn validate_mcp_request(request: &McpServerRequest) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_provider_region(value: &str) -> Result<(), String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("provider region is required".into());
+    }
+    if !value
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
+    {
+        return Err("provider region contains unsupported characters".into());
+    }
+    let normalized = value.to_ascii_lowercase();
+    if normalized.contains("token") || normalized.contains("key") {
+        return Err("provider region contains reserved credential text".into());
+    }
+    Ok(())
+}
+
 fn validate_mcp_environment(
     values: &std::collections::BTreeMap<String, String>,
 ) -> Result<(), String> {
@@ -626,7 +644,10 @@ fn validate_mcp_environment(
 }
 
 fn is_mcp_secret_placeholder(value: &str) -> bool {
-    let Some(name) = value.strip_prefix("{env:").and_then(|v| v.strip_suffix('}')) else {
+    let Some(name) = value
+        .strip_prefix("{env:")
+        .and_then(|v| v.strip_suffix('}'))
+    else {
         return false;
     };
     !name.is_empty()
@@ -685,6 +706,32 @@ pub async fn acp_host_set_default_model(app: AppHandle, model: String) -> Result
     }
     build_provider_control(&app)?
         .set_default_model(&model)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_get_provider_region(
+    app: AppHandle,
+    provider_id: String,
+) -> Result<Option<String>, String> {
+    validate_provider_id(&provider_id)?;
+    build_provider_control(&app)?
+        .get_provider_region(&provider_id)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_set_provider_region(
+    app: AppHandle,
+    provider_id: String,
+    region: String,
+) -> Result<(), String> {
+    validate_provider_id(&provider_id)?;
+    validate_provider_region(&region)?;
+    build_provider_control(&app)?
+        .set_provider_region(&provider_id, region.trim())
         .await
         .map_err(error_string)
 }
@@ -1405,6 +1452,17 @@ mod tests {
             },
         };
         assert!(validate_mcp_request(&raw_header).is_err());
+    }
+
+    #[test]
+    fn provider_region_validation_accepts_region_ids_and_rejects_secret_material() {
+        assert!(validate_provider_region("eu-central-1").is_ok());
+        assert!(validate_provider_region("us_gov.west-1").is_ok());
+        assert!(validate_provider_region("").is_err());
+        assert!(validate_provider_region("eu west 1").is_err());
+        assert!(validate_provider_region("token-eu-west-1").is_err());
+        assert!(validate_provider_region("api-key-eu-west-1").is_err());
+        assert!(validate_provider_id("amazon/bedrock").is_err());
     }
 
     #[test]

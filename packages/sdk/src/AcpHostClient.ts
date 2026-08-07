@@ -208,6 +208,14 @@ export class AcpHostClient {
     await this.invoke("acp_host_set_default_model", { model });
   }
 
+  async getProviderRegion(providerId: string): Promise<string | null> {
+    return this.invoke<string | null>("acp_host_get_provider_region", { providerId });
+  }
+
+  async setProviderRegion(providerId: string, region: string): Promise<void> {
+    await this.invoke("acp_host_set_provider_region", { providerId, region });
+  }
+
   async addCustomProvider(id: string, options: AcpHostCustomProviderOptions): Promise<void> {
     await this.invoke("acp_host_add_custom_provider", {
       request: {

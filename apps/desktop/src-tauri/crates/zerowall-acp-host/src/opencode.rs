@@ -350,6 +350,43 @@ impl<T: OpenCodeTransport> OpenCodeProviderControl<T> {
         ensure_success(response.status, "default-model/set")
     }
 
+    pub async fn get_provider_region(
+        &mut self,
+        provider_id: &str,
+    ) -> Result<Option<String>, HostError> {
+        let response = self.send("GET", "/global/config", None).await?;
+        ensure_success(response.status, "provider-region/get")?;
+        let body = serde_json::from_str::<serde_json::Value>(&response.body).map_err(|error| {
+            HostError::Driver(format!("invalid OpenCode provider config: {error}"))
+        })?;
+        Ok(body
+            .get("provider")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|providers| providers.get(provider_id))
+            .and_then(|provider| provider.pointer("/options/region"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|region| !region.is_empty())
+            .map(str::to_owned))
+    }
+
+    pub async fn set_provider_region(
+        &mut self,
+        provider_id: &str,
+        region: &str,
+    ) -> Result<(), HostError> {
+        let body = json!({
+            "provider": {
+                provider_id: {
+                    "options": {"region": region}
+                }
+            }
+        })
+        .to_string();
+        let response = self.send("PATCH", "/global/config", Some(&body)).await?;
+        ensure_success(response.status, "provider-region/set")
+    }
+
     pub async fn add_custom_provider(
         &mut self,
         request: CustomProviderRequest,
@@ -1780,6 +1817,62 @@ mod tests {
             .as_deref()
             .unwrap_or_default()
             .contains("apiKey")));
+    }
+
+    #[test]
+    fn provider_region_control_parses_and_patches_typed_config() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"provider":{"amazon-bedrock":{"options":{"region":"eu-west-1"}}}}"#
+                        .into(),
+                },
+            ],
+        };
+        let mut control = OpenCodeProviderControl::new(fake, "http://x/", "u", "p");
+
+        assert_eq!(
+            block_on(control.get_provider_region("amazon-bedrock"))
+                .unwrap()
+                .as_deref(),
+            Some("eu-west-1")
+        );
+        block_on(control.set_provider_region("amazon-bedrock", "eu-central-1")).unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls[0].method, "GET");
+        assert_eq!(calls[0].url, "http://x/global/config");
+        assert_eq!(calls[1].method, "PATCH");
+        assert_eq!(
+            calls[1].body.as_deref(),
+            Some(r#"{"provider":{"amazon-bedrock":{"options":{"region":"eu-central-1"}}}}"#)
+        );
+        assert!(calls
+            .iter()
+            .all(|call| call.headers.iter().any(|(_, value)| value == "Basic dTpw")));
+        assert!(!calls[1].body.as_deref().unwrap().contains("Authorization"));
+    }
+
+    #[test]
+    fn provider_region_control_rejects_error_status() {
+        let fake = Fake {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            responses: vec![TransportResponse {
+                status: 500,
+                body: "upstream failed".into(),
+            }],
+        };
+        let mut control = OpenCodeProviderControl::new(fake, "http://x/", "u", "p");
+
+        let error = block_on(control.get_provider_region("amazon-bedrock")).unwrap_err();
+        assert!(error.to_string().contains("provider-region/get"));
     }
 
     #[test]

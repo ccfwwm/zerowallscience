@@ -126,6 +126,25 @@ describe("AcpHostClient", () => {
     expect(invoke).toHaveBeenCalledWith("acp_host_list_custom_provider_ids");
   });
 
+  it("uses typed Host commands for provider region control", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_get_provider_region") return "eu-west-1";
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    await expect(client.getProviderRegion("amazon-bedrock")).resolves.toBe("eu-west-1");
+    await client.setProviderRegion("amazon-bedrock", "eu-central-1");
+
+    expect(invoke).toHaveBeenCalledWith("acp_host_get_provider_region", {
+      providerId: "amazon-bedrock",
+    });
+    expect(invoke).toHaveBeenCalledWith("acp_host_set_provider_region", {
+      providerId: "amazon-bedrock",
+      region: "eu-central-1",
+    });
+  });
+
   it("uses typed Host commands for MCP control without exposing transport auth", async () => {
     const invoke = vi.fn(async (command: string) => {
       if (command === "acp_host_list_mcp_servers") {

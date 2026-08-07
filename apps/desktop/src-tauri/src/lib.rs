@@ -271,6 +271,8 @@ pub fn run() {
             acp_host::acp_host_list_custom_provider_ids,
             acp_host::acp_host_get_default_model,
             acp_host::acp_host_set_default_model,
+            acp_host::acp_host_get_provider_region,
+            acp_host::acp_host_set_provider_region,
             acp_host::acp_host_add_custom_provider,
             acp_host::acp_host_remove_custom_provider,
             acp_host::acp_host_list_mcp_servers,
