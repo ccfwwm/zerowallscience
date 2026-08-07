@@ -84,6 +84,8 @@ const mocks = vi.hoisted(() => ({
   })),
   acpPrompt: vi.fn(async () => {}),
   acpSetModel: vi.fn(async () => {}),
+  /** Actual session id returned by the unified Host after launch. */
+  acpSessionId: null as string | null,
   acpShutdown: vi.fn(async () => ({
     phase: "idle",
     profile_id: null,
@@ -131,21 +133,26 @@ vi.mock("./acp", () => ({
     return mocks.acpUnlisten;
   }),
 }));
-vi.mock("./acp-host-runtime", () => ({
-  createAcpHostRuntimeDeps: () => ({
-    launch: mocks.acpLaunch,
-    prompt: mocks.acpPrompt,
-    setModel: mocks.acpSetModel,
-    cancel: vi.fn(async () => {}),
-    respondPermission: vi.fn(async () => {}),
-    shutdown: mocks.acpShutdown,
-    subscribe: vi.fn(async (handlers: unknown) => {
-      mocks.acpHandlers = handlers as Record<string, (payload: unknown) => void>;
-      return mocks.acpUnlisten;
+vi.mock("./acp-host-runtime", async () => {
+  const actual = await vi.importActual<typeof import("./acp-host-runtime")>("./acp-host-runtime");
+  return {
+    ...actual,
+    createAcpHostRuntimeDeps: () => ({
+      launch: mocks.acpLaunch,
+      prompt: mocks.acpPrompt,
+      setModel: mocks.acpSetModel,
+      currentSessionId: () => mocks.acpSessionId,
+      cancel: vi.fn(async () => {}),
+      respondPermission: vi.fn(async () => {}),
+      shutdown: mocks.acpShutdown,
+      subscribe: vi.fn(async (handlers: unknown) => {
+        mocks.acpHandlers = handlers as Record<string, (payload: unknown) => void>;
+        return mocks.acpUnlisten;
+      }),
+      listSkills: vi.fn(async () => []),
     }),
-    listSkills: vi.fn(async () => []),
-  }),
-}));
+  };
+});
 vi.mock("@zerowall/sdk", async () => {
   // The REAL ZeroWallClient — the store's P2 path (agent routing, handoff log,
   // session snapshots) is only meaningfully covered if it runs. It is a thin
@@ -333,6 +340,7 @@ beforeEach(async () => {
   ];
   mocks.skillsGate = null;
   mocks.failSetModel = false;
+  mocks.acpSessionId = null;
   mocks.notifyPermissionRequest.mockResolvedValue(true);
   useRuntimeStore.setState({
     currentId: null,
@@ -1669,6 +1677,49 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     );
     expect(mocks.clientOpts).toEqual([]);
     expect(useRuntimeStore.getState().sessions).toEqual([{ id: "opencode", title: "OpenCode" }]);
+  });
+
+  it("rebinds legacy ACP conversation state to the OpenCode Host session", async () => {
+    const legacyId = "acp:codex";
+    const hostId = "ses_migrated";
+    mocks.acpSessionId = hostId;
+    useRuntimeStore.setState({
+      currentId: legacyId,
+      sessions: [{ id: legacyId, title: "Legacy research" }],
+      threads: {
+        [legacyId]: { blocks: [{ kind: "user", text: "preserve me" }], index: {}, loaded: true },
+      },
+      panes: {
+        [legacyId]: { artifact: null, showFiles: true, showRuns: false, showReview: false },
+      },
+      sessionAgents: { [legacyId]: "plan" },
+      sessionModels: { [legacyId]: "cloud/gpt-5.4" },
+      sessionVariants: { [legacyId]: "high" },
+      sendingSessions: { [legacyId]: true },
+    });
+
+    await useRuntimeStore.getState().switchRuntime("opencode");
+
+    const state = useRuntimeStore.getState();
+    expect(state.currentId).toBe(hostId);
+    expect(state.threads[hostId]?.blocks).toEqual([{ kind: "user", text: "preserve me" }]);
+    expect(state.panes[hostId]?.showFiles).toBe(true);
+    expect(state.sessionAgents[hostId]).toBe("plan");
+    expect(state.sessionModels[hostId]).toBe("cloud/gpt-5.4");
+    expect(state.sessionVariants[hostId]).toBe("high");
+    expect(state.sendingSessions[hostId]).toBe(true);
+    expect(state.threads[legacyId]).toBeUndefined();
+    expect(state.panes[legacyId]).toBeUndefined();
+    expect(state.sessionAgents[legacyId]).toBeUndefined();
+    expect(state.sessionModels[legacyId]).toBeUndefined();
+    expect(state.sessionVariants[legacyId]).toBeUndefined();
+    expect(state.sendingSessions[legacyId]).toBeUndefined();
+    expect(JSON.parse(window.localStorage.getItem("zerowall.session.models.v1")!)).toEqual({
+      [hostId]: "cloud/gpt-5.4",
+    });
+    expect(JSON.parse(window.localStorage.getItem("zerowall.session.variants.v1")!)).toEqual({
+      [hostId]: "high",
+    });
   });
 
   it("routes ACP agent text through the shared fold pipeline into a thread", async () => {

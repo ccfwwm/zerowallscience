@@ -78,7 +78,7 @@ import { acpListMcpServers, acpListSkills, type AcpLaunchRequest } from "./acp";
 import { acpPresetById } from "./acp-presets";
 import { buildAcpLaunchRequest, clearAcpConfig, loadAcpConfig, saveAcpConfig } from "./acp-config";
 import { AcpWorkflowExecutor, TauriWorkflowPersistence } from "./workflow-runtime";
-import { toAcpHostLaunchRequest } from "./acp-host-runtime";
+import { isLegacyAcpConversationId, toAcpHostLaunchRequest } from "./acp-host-runtime";
 import {
   deriveAcpConfigs,
   loadProtocol,
@@ -790,6 +790,45 @@ export function rootSessionOf(parents: Record<string, string>, sessionId: string
   let cur = sessionId;
   for (let hop = 0; parents[cur] && hop < 10; hop++) cur = parents[cur];
   return cur;
+}
+
+function moveSessionRecordKey<T>(record: Record<string, T>, previous: string, next: string): Record<string, T> {
+  if (!(previous in record) || previous === next) return record;
+  const moved = { ...record, [next]: record[previous] };
+  delete moved[previous];
+  return moved;
+}
+
+function rebindLegacyAcpConversation(
+  set: StoreSet,
+  get: StoreGet,
+  previous: string | null | undefined,
+  next: string,
+): void {
+  if (!isLegacyAcpConversationId(previous) || !previous || previous === next) return;
+  set((state) => {
+    const sessions = state.sessions
+      .filter((session) => session.id !== next)
+      .map((session) => session.id === previous ? { ...session, id: next } : session);
+    return {
+      currentId: state.currentId === previous ? next : state.currentId,
+      sessions,
+      threads: moveSessionRecordKey(state.threads, previous, next),
+      panes: moveSessionRecordKey(state.panes, previous, next),
+      sessionAgents: moveSessionRecordKey(state.sessionAgents, previous, next),
+      sessionModels: moveSessionRecordKey(state.sessionModels, previous, next),
+      sessionVariants: moveSessionRecordKey(state.sessionVariants, previous, next),
+      sendingSessions: moveSessionRecordKey(state.sendingSessions, previous, next),
+      runningSessions: moveSessionRecordKey(state.runningSessions, previous, next),
+      shellTurns: moveSessionRecordKey(state.shellTurns, previous, next),
+      stepCounts: moveSessionRecordKey(state.stepCounts, previous, next),
+      retryNotices: moveSessionRecordKey(state.retryNotices, previous, next),
+      turnUndoBaseline: moveSessionRecordKey(state.turnUndoBaseline, previous, next),
+    };
+  });
+  saveRecord(SESSION_MODELS_KEY, get().sessionModels);
+  saveRecord(SESSION_VARIANTS_KEY, get().sessionVariants);
+  moveScrollMemory(`chat:${previous}`, `chat:${next}`);
 }
 
 type StoreSet = {
@@ -2343,6 +2382,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           if (!ownsConnection()) return;
           void logDebug("ACP connect OK");
           set({ error: null });
+          rebindLegacyAcpConversation(set, get, request.conversationId, acp.currentSessionId());
           await get().refreshSessions();
           if (!ownsConnection()) return;
           if (!get().currentId) {

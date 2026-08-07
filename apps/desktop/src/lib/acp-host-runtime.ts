@@ -58,6 +58,23 @@ function hostEngine(profileId: string): AgentEngine {
   throw new Error(`Unsupported ACP Host engine: ${profileId}`);
 }
 
+/**
+ * ACP versions before the unified Host used profile-shaped conversation ids.
+ * They are local UI keys, not OpenCode server sessions, so never ask the
+ * OpenCode Driver to load them as persisted history.
+ */
+export function isLegacyAcpConversationId(id: string | null | undefined): boolean {
+  return Boolean(id && (id === "codex" || id === "claude-code" || id.startsWith("acp:")));
+}
+
+export function resolveHostSessionId(request: AcpLaunchRequest): string {
+  const requested = request.conversationId?.trim();
+  if (request.profileId === "opencode" && isLegacyAcpConversationId(requested)) {
+    return request.profileId;
+  }
+  return requested || request.profileId;
+}
+
 export function toAcpHostLaunchRequest(request: AcpLaunchRequest, sessionId: string) {
   return {
     engine: hostEngine(request.profileId),
@@ -186,9 +203,7 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
       const client = new AcpHostClient({ invoke });
       const engine = hostEngine(request.profileId);
       await client.initialize(engine);
-      const session = await client.launch(
-        toAcpHostLaunchRequest(request, request.conversationId?.trim() || request.profileId),
-      );
+      const session = await client.launch(toAcpHostLaunchRequest(request, resolveHostSessionId(request)));
       hostState = { client, sessionId: session.id, unsubscribe: null };
       if (pendingHandlers) attach(pendingHandlers);
       return {

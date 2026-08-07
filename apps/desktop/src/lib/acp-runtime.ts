@@ -417,6 +417,10 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
 
   // ---- sessions ----
 
+  currentSessionId(): string {
+    return this.sessionId;
+  }
+
   async createSession(): Promise<string> {
     if (!this.initialSessionClaimed) {
       this.initialSessionClaimed = true;
