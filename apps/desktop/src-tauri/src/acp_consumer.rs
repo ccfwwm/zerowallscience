@@ -10,12 +10,11 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use futures::channel::oneshot;
-use futures::StreamExt;
 use tauri::{AppHandle, Emitter, Manager, State};
 use sha2::{Digest, Sha256};
 use zerowall_acp::{
-    AcpAgentProfile, AcpClient, AcpEvent, AcpEventErrorKind, AcpHandshakeStage, AcpMcpServer,
-    AcpTokenUsage, PromptAttachment,
+    AcpAgentProfile, AcpClient, AcpEvent, AcpEventErrorKind, AcpEventReceiver, AcpHandshakeStage,
+    AcpMcpServer, AcpTokenUsage, PromptAttachment,
 };
 
 const CLAUDE_PROFILE_ID: &str = "claude-code";
@@ -1936,14 +1935,14 @@ struct ExecApprovalPayload {
 /// in the consumer state keyed by a fresh id and emit that id to the frontend.
 fn pump_events(
     app: AppHandle,
-    mut events: futures::channel::mpsc::UnboundedReceiver<AcpEvent>,
+    mut events: AcpEventReceiver,
     epoch: u64,
     tool_workspace: PathBuf,
     started: Instant,
     mut ready: Option<oneshot::Sender<Result<(), String>>>,
 ) {
     tauri::async_runtime::spawn(async move {
-        while let Some(event) = events.next().await {
+        while let Some(event) = events.recv().await {
             let state = app.state::<AcpConsumerState>();
             let (current, diagnostic, status) = {
                 let mut inner = state.inner.lock().unwrap();

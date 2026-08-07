@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-08 01:59 · ACP prompt/model/event channels now apply bounded backpressure, OpenCode limits pending events to 256 and rejects SSE buffers above 1 MiB without retaining payloads, and both the legacy consumer and unified Host use the bounded receiver; ACP 23/23 plus 21/21 reliability, Host 58/58, Tauri 397/397, focused Clippy, and diff checks pass.
+
 2026-08-08 01:31 · The Environment Bootstrapper now runs without manual manifest/key arguments in signed release builds, resumes stable partial downloads with HTTP Range, verifies exact size and SHA-256 before install, and cleans failed install staging; Bootstrapper 11/11, Clippy, release contracts 8/8, and diff checks pass.
 
 2026-08-08 01:00 · Workflow execution now shows the complete bounded recipe before approval, rejects unknown Python/R imports plus shell/dependency-install/remote/destructive capabilities, converts kernel `ok: false` into a structured failed node, and forces all artifact writes through the mutation lane; desktop 149/149 files and 1359/1359 tests, SDK 132/132, typecheck, lint, production build, and diff checks pass.

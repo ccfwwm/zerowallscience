@@ -2,11 +2,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use futures::channel::mpsc;
-use futures::StreamExt;
 use zerowall_acp::{
-    AcpAgentProfile, AcpClient, AcpEvent, AcpEventErrorKind, AcpHandshakeStage, AcpLaunchOptions,
-    AcpSessionStart, PromptAttachment,
+    AcpAgentProfile, AcpClient, AcpError, AcpEvent, AcpEventErrorKind, AcpEventReceiver,
+    AcpHandshakeStage, AcpLaunchOptions, AcpSessionStart, PromptAttachment,
 };
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
@@ -67,26 +65,20 @@ fn options() -> AcpLaunchOptions {
     }
 }
 
-fn launch(
-    mode: &str,
-) -> (
-    AcpClient,
-    mpsc::UnboundedReceiver<AcpEvent>,
-    tokio::task::JoinHandle<()>,
-) {
+fn launch(mode: &str) -> (AcpClient, AcpEventReceiver, tokio::task::JoinHandle<()>) {
     let (client, events, driver) =
         AcpClient::launch_with_options(&profile(mode, vec![]), std::env::temp_dir(), options());
     (client, events, tokio::spawn(driver))
 }
 
-async fn next_event(events: &mut mpsc::UnboundedReceiver<AcpEvent>) -> AcpEvent {
-    tokio::time::timeout(Duration::from_secs(2), events.next())
+async fn next_event(events: &mut AcpEventReceiver) -> AcpEvent {
+    tokio::time::timeout(Duration::from_secs(2), events.recv())
         .await
         .expect("event timeout")
         .expect("event stream closed")
 }
 
-async fn wait_ready(events: &mut mpsc::UnboundedReceiver<AcpEvent>) {
+async fn wait_ready(events: &mut AcpEventReceiver) {
     loop {
         if matches!(next_event(events).await, AcpEvent::Ready { .. }) {
             return;
@@ -600,18 +592,7 @@ async fn second_prompt_is_rejected_as_busy() {
     let (client, mut events, driver) = launch("hung-prompt");
     wait_ready(&mut events).await;
     client.prompt("first").unwrap();
-    client.prompt("second").unwrap();
-
-    loop {
-        if matches!(
-            next_event(&mut events).await,
-            AcpEvent::Error {
-                kind: AcpEventErrorKind::PromptBusy
-            }
-        ) {
-            break;
-        }
-    }
+    assert!(matches!(client.prompt("second"), Err(AcpError::Busy)));
 
     client.shutdown().unwrap();
     tokio::time::timeout(Duration::from_secs(2), driver)
@@ -686,22 +667,14 @@ fn temp_marker(label: &str) -> PathBuf {
 
 fn launch_with_prompt_marker(
     marker: &Path,
-) -> (
-    AcpClient,
-    mpsc::UnboundedReceiver<AcpEvent>,
-    tokio::task::JoinHandle<()>,
-) {
+) -> (AcpClient, AcpEventReceiver, tokio::task::JoinHandle<()>) {
     launch_with_mode_and_prompt_marker("hung-prompt", marker)
 }
 
 fn launch_with_mode_and_prompt_marker(
     mode: &str,
     marker: &Path,
-) -> (
-    AcpClient,
-    mpsc::UnboundedReceiver<AcpEvent>,
-    tokio::task::JoinHandle<()>,
-) {
+) -> (AcpClient, AcpEventReceiver, tokio::task::JoinHandle<()>) {
     let (client, events, driver) = AcpClient::launch_with_options(
         &profile(
             mode,

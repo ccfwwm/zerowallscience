@@ -20,6 +20,9 @@ pub struct TransportResponse {
 pub type TransportEventStream =
     Pin<Box<dyn Stream<Item = Result<Vec<u8>, String>> + Send + 'static>>;
 
+const MAX_PENDING_AGENT_EVENTS: usize = 256;
+const MAX_SSE_BUFFER_BYTES: usize = 1024 * 1024;
+
 #[async_trait]
 pub trait OpenCodeTransport: Send {
     async fn send(
@@ -1198,6 +1201,14 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
     }
 
     fn poll_event_stream(&mut self) {
+        self.map_complete_frames();
+        if self.events.len() >= MAX_PENDING_AGENT_EVENTS {
+            return;
+        }
+        if self.event_stream.is_none() {
+            self.map_remaining_buffer();
+            return;
+        }
         loop {
             let next = self
                 .event_stream
@@ -1205,8 +1216,20 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                 .and_then(|stream| stream.next().now_or_never());
             match next {
                 Some(Some(Ok(chunk))) => {
+                    if self.event_buffer.len().saturating_add(chunk.len()) > MAX_SSE_BUFFER_BYTES {
+                        self.event_buffer.clear();
+                        self.events.push(crate::AgentEvent::Error {
+                            session_id: self.event_session_id.clone(),
+                            message: "OpenCode SSE buffer limit exceeded".into(),
+                        });
+                        self.event_stream = None;
+                        break;
+                    }
                     self.event_buffer.extend_from_slice(&chunk);
                     self.map_complete_frames();
+                    if self.events.len() >= MAX_PENDING_AGENT_EVENTS {
+                        break;
+                    }
                 }
                 Some(Some(Err(error))) => {
                     self.events.push(crate::AgentEvent::Error {
@@ -1217,8 +1240,8 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                     break;
                 }
                 Some(None) => {
-                    self.map_remaining_buffer();
                     self.event_stream = None;
+                    self.map_remaining_buffer();
                     break;
                 }
                 None => break,
@@ -1227,7 +1250,10 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
     }
 
     fn map_complete_frames(&mut self) {
-        while let Some(end) = sse_frame_end(&self.event_buffer) {
+        while self.events.len() < MAX_PENDING_AGENT_EVENTS {
+            let Some(end) = sse_frame_end(&self.event_buffer) else {
+                break;
+            };
             let frame = self.event_buffer.drain(..end).collect::<Vec<_>>();
             let session_id = self.event_session_id.clone().unwrap_or_default();
             self.map_events(&session_id, &String::from_utf8_lossy(&frame));
@@ -1235,7 +1261,7 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
     }
 
     fn map_remaining_buffer(&mut self) {
-        if self.event_buffer.is_empty() {
+        if self.event_buffer.is_empty() || self.events.len() >= MAX_PENDING_AGENT_EVENTS {
             return;
         }
         let frame = std::mem::take(&mut self.event_buffer);
@@ -1847,6 +1873,36 @@ mod tests {
             let split = body.iter().position(|byte| *byte == b'"').unwrap_or(10);
             let chunks = vec![Ok(body[..split].to_vec()), Ok(body[split..].to_vec())];
             Ok((200, Box::pin(stream::iter(chunks))))
+        }
+    }
+
+    struct OversizedEventFake;
+
+    #[async_trait]
+    impl OpenCodeTransport for OversizedEventFake {
+        async fn send(
+            &mut self,
+            _method: &str,
+            _path: &str,
+            _headers: &[(String, String)],
+            _body: Option<&str>,
+        ) -> Result<TransportResponse, String> {
+            Ok(TransportResponse {
+                status: 200,
+                body: String::new(),
+            })
+        }
+
+        async fn stream(
+            &mut self,
+            _method: &str,
+            _path: &str,
+            _headers: &[(String, String)],
+        ) -> Result<(u16, TransportEventStream), String> {
+            Ok((
+                200,
+                Box::pin(stream::iter(vec![Ok(vec![b'x'; 1024 * 1024 + 1])])),
+            ))
         }
     }
     fn binding() -> AgentBinding {
@@ -2558,6 +2614,51 @@ mod tests {
         assert!(events
             .iter()
             .any(|event| matches!(event, crate::AgentEvent::SessionIdle { session_id } if session_id == "s1")));
+    }
+
+    #[test]
+    fn sse_mapping_stops_at_the_pending_event_capacity() {
+        let fake = Fake {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            responses: Vec::new(),
+        };
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
+        driver.event_session_id = Some("s1".into());
+        driver.event_buffer = (0..300)
+            .map(|index| {
+                format!(
+                    "data: {{\"type\":\"text.updated\",\"properties\":{{\"sessionID\":\"s1\",\"delta\":\"{index}\"}}}}\n\n"
+                )
+            })
+            .collect::<String>()
+            .into_bytes();
+
+        driver.map_complete_frames();
+
+        assert_eq!(driver.take_events().len(), 256);
+        assert!(!driver.event_buffer.is_empty());
+        driver.map_complete_frames();
+        assert_eq!(driver.take_events().len(), 44);
+        assert!(driver.event_buffer.is_empty());
+    }
+
+    #[test]
+    fn oversized_sse_frame_fails_closed_without_retaining_the_payload() {
+        let mut driver = OpenCodeDriver::new(OversizedEventFake, "http://x", "u", "p", binding());
+        block_on(driver.prompt(PromptRequest {
+            session_id: "s1".into(),
+            prompt: "hello".into(),
+            attachments: Vec::new(),
+        }))
+        .unwrap();
+
+        let events = driver.drain_events();
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            crate::AgentEvent::Error { message, .. } if message.contains("SSE buffer limit")
+        )));
+        assert!(driver.event_buffer.is_empty());
     }
 
     #[test]

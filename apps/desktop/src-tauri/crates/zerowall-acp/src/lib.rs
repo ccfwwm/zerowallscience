@@ -46,16 +46,16 @@ use agent_client_protocol::schema::v1::{
     PromptRequest, PromptResponse, ReadTextFileRequest, ReadTextFileResponse,
     ReleaseTerminalRequest, ReleaseTerminalResponse, RequestPermissionOutcome,
     RequestPermissionRequest, RequestPermissionResponse, ResumeSessionRequest,
-    SelectedPermissionOutcome, SessionNotification, SessionUpdate, StopReason,
-    TerminalExitStatus, TerminalId, TerminalOutputRequest, TerminalOutputResponse,
-    WaitForTerminalExitRequest, WaitForTerminalExitResponse, WriteTextFileRequest,
-    WriteTextFileResponse,
+    SelectedPermissionOutcome, SessionNotification, SessionUpdate, StopReason, TerminalExitStatus,
+    TerminalId, TerminalOutputRequest, TerminalOutputResponse, WaitForTerminalExitRequest,
+    WaitForTerminalExitResponse, WriteTextFileRequest, WriteTextFileResponse,
 };
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::{Agent, Client, ConnectTo, ConnectionTo, Lines, Responder};
-use futures::channel::{mpsc, oneshot};
-use futures::{AsyncBufReadExt, AsyncReadExt as FuturesAsyncReadExt, AsyncWriteExt, StreamExt};
+use futures::channel::oneshot;
+use futures::{AsyncBufReadExt, AsyncReadExt as FuturesAsyncReadExt, AsyncWriteExt};
 use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::sync::mpsc;
 use tracing::instrument::WithSubscriber;
 
 const DEFAULT_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -64,6 +64,8 @@ const SAFE_PROTOCOL_FAILURE: &str = "ACP protocol request failed";
 const PROCESS_TERMINATION_FAILURE: &str = "ACP process tree termination failed";
 const STDERR_TAIL_CAPACITY: usize = 64 * 1024;
 const STDERR_DIAGNOSTIC_PREFIX: &str = "\nACP stderr tail:\n";
+const ACP_COMMAND_CHANNEL_CAPACITY: usize = 1;
+const ACP_EVENT_CHANNEL_CAPACITY: usize = 256;
 
 /// A launchable external ACP agent: the command to run and the environment to
 /// run it in.
@@ -331,11 +333,20 @@ pub enum AcpEvent {
     },
 }
 
+/// Bounded stream of normalized events emitted by one ACP session.
+pub type AcpEventReceiver = mpsc::Receiver<AcpEvent>;
+
+async fn emit_event(sender: &mpsc::Sender<AcpEvent>, event: AcpEvent) -> bool {
+    sender.send(event).await.is_ok()
+}
+
 /// Errors from launching or driving an ACP session.
 #[derive(Debug)]
 pub enum AcpError {
     /// The session's command channel is closed (the agent task has exited).
     Closed,
+    /// The bounded command queue already contains a request.
+    Busy,
     /// An error surfaced by the SDK or transport.
     Protocol(String),
 }
@@ -344,6 +355,7 @@ impl std::fmt::Display for AcpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AcpError::Closed => write!(f, "ACP session is closed"),
+            AcpError::Busy => write!(f, "ACP session command queue is busy"),
             AcpError::Protocol(msg) => write!(f, "ACP protocol error: {msg}"),
         }
     }
@@ -358,8 +370,8 @@ impl std::error::Error for AcpError {}
 /// task observe the closure and tear the agent down.
 #[derive(Clone)]
 pub struct AcpClient {
-    prompts: mpsc::UnboundedSender<PromptCommand>,
-    model: mpsc::UnboundedSender<SetModelCommand>,
+    prompts: mpsc::Sender<PromptCommand>,
+    model: mpsc::Sender<SetModelCommand>,
     cancel: tokio::sync::watch::Sender<u64>,
     cancel_generation: Arc<AtomicU64>,
     shutdown: tokio::sync::watch::Sender<bool>,
@@ -403,11 +415,11 @@ pub struct PromptAttachment {
 }
 
 struct SessionControl {
-    prompt_rx: mpsc::UnboundedReceiver<PromptCommand>,
-    model_rx: mpsc::UnboundedReceiver<SetModelCommand>,
+    prompt_rx: mpsc::Receiver<PromptCommand>,
+    model_rx: mpsc::Receiver<SetModelCommand>,
     cancel_rx: tokio::sync::watch::Receiver<u64>,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
-    event_tx: mpsc::UnboundedSender<AcpEvent>,
+    event_tx: mpsc::Sender<AcpEvent>,
     diagnostics: ProcessDiagnostics,
 }
 
@@ -516,7 +528,7 @@ impl AcpClient {
         cwd: PathBuf,
     ) -> (
         AcpClient,
-        mpsc::UnboundedReceiver<AcpEvent>,
+        AcpEventReceiver,
         impl std::future::Future<Output = ()> + Send,
     ) {
         Self::launch_with_options(profile, cwd, AcpLaunchOptions::default())
@@ -529,7 +541,7 @@ impl AcpClient {
         start: AcpSessionStart,
     ) -> (
         AcpClient,
-        mpsc::UnboundedReceiver<AcpEvent>,
+        AcpEventReceiver,
         impl std::future::Future<Output = ()> + Send,
     ) {
         Self::launch_session_with_options(profile, cwd, start, AcpLaunchOptions::default())
@@ -541,11 +553,7 @@ impl AcpClient {
         profile: &AcpAgentProfile,
         cwd: PathBuf,
         options: AcpLaunchOptions,
-    ) -> (
-        AcpClient,
-        mpsc::UnboundedReceiver<AcpEvent>,
-        impl Future<Output = ()> + Send,
-    ) {
+    ) -> (AcpClient, AcpEventReceiver, impl Future<Output = ()> + Send) {
         Self::launch_session_with_options(profile, cwd, AcpSessionStart::New, options)
     }
 
@@ -555,17 +563,13 @@ impl AcpClient {
         cwd: PathBuf,
         start: AcpSessionStart,
         options: AcpLaunchOptions,
-    ) -> (
-        AcpClient,
-        mpsc::UnboundedReceiver<AcpEvent>,
-        impl Future<Output = ()> + Send,
-    ) {
-        let (prompt_tx, prompt_rx) = mpsc::unbounded::<PromptCommand>();
-        let (model_tx, model_rx) = mpsc::unbounded::<SetModelCommand>();
+    ) -> (AcpClient, AcpEventReceiver, impl Future<Output = ()> + Send) {
+        let (prompt_tx, prompt_rx) = mpsc::channel::<PromptCommand>(ACP_COMMAND_CHANNEL_CAPACITY);
+        let (model_tx, model_rx) = mpsc::channel::<SetModelCommand>(ACP_COMMAND_CHANNEL_CAPACITY);
         let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(0_u64);
         let cancel_generation = Arc::new(AtomicU64::new(0));
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-        let (event_tx, event_rx) = mpsc::unbounded::<AcpEvent>();
+        let (event_tx, event_rx) = mpsc::channel::<AcpEvent>(ACP_EVENT_CHANNEL_CAPACITY);
         let diagnostics = ProcessDiagnostics::new(profile);
         let session_meta = profile.session_meta.clone();
         let mcp_servers = profile.mcp_servers.clone();
@@ -622,11 +626,14 @@ impl AcpClient {
         let content = prompt_content(text.into(), attachments);
         self.diagnostics.remember_content(&content);
         self.prompts
-            .unbounded_send(PromptCommand {
+            .try_send(PromptCommand {
                 content,
                 cancel_generation: self.cancel_generation.load(Ordering::SeqCst),
             })
-            .map_err(|_| AcpError::Closed)
+            .map_err(|error| match error {
+                mpsc::error::TrySendError::Closed(_) => AcpError::Closed,
+                mpsc::error::TrySendError::Full(_) => AcpError::Busy,
+            })
     }
 
     /// Change the model for the existing ACP session without restarting the
@@ -637,10 +644,11 @@ impl AcpClient {
         }
         let (reply_tx, reply_rx) = oneshot::channel();
         self.model
-            .unbounded_send(SetModelCommand {
+            .send(SetModelCommand {
                 model_id: model_id.into(),
                 reply: reply_tx,
             })
+            .await
             .map_err(|_| AcpError::Closed)?;
         reply_rx.await.map_err(|_| AcpError::Closed)?
     }
@@ -708,7 +716,7 @@ async fn run_session(
             move |notification: SessionNotification, _cx| {
                 let tx = notify_tx.clone();
                 async move {
-                    forward_notification(&tx, notification.update);
+                    forward_notification(&tx, notification.update).await;
                     Ok(())
                 }
             },
@@ -745,7 +753,7 @@ async fn run_session(
                 let root = write_root.clone();
                 let tx = write_tx.clone();
                 async move {
-                    match handle_write(&root, &tx, request) {
+                    match handle_write(&root, &tx, request).await {
                         Ok(response) => responder.respond(response),
                         Err(err) => Err(err),
                     }
@@ -841,9 +849,13 @@ async fn run_session(
     // `Exited`. If the connection itself failed before the closure ran, report
     // it on a sender clone that outlives the builder.
     if let Err(err) = result {
-        let _ = fallback_tx.unbounded_send(AcpEvent::Exited {
-            error: Some(safe_protocol_error(&err, &diagnostics)),
-        });
+        let _ = emit_event(
+            &fallback_tx,
+            AcpEvent::Exited {
+                error: Some(safe_protocol_error(&err, &diagnostics)),
+            },
+        )
+        .await;
     }
 }
 
@@ -877,9 +889,13 @@ async fn drive(
             .write_text_file(true))
         .terminal(true);
     let deadline = tokio::time::Instant::now() + handshake_timeout;
-    let _ = event_tx.unbounded_send(AcpEvent::HandshakeStarted {
-        stage: AcpHandshakeStage::Initialize,
-    });
+    let _ = emit_event(
+        &event_tx,
+        AcpEvent::HandshakeStarted {
+            stage: AcpHandshakeStage::Initialize,
+        },
+    )
+    .await;
     let initialize = cx
         .send_request(InitializeRequest::new(ProtocolVersion::V1).client_capabilities(capabilities))
         .block_task();
@@ -892,26 +908,40 @@ async fn drive(
         &event_tx,
     )
     .await?;
-    let Some(initialize) = initialize else { return Ok(()); };
+    let Some(initialize) = initialize else {
+        return Ok(());
+    };
 
     let unsupported_restore = match &start {
-        AcpSessionStart::Load { .. } if !initialize.agent_capabilities.load_session => {
-            Some((AcpHandshakeStage::SessionLoad, "ACP agent does not advertise session/load"))
-        }
+        AcpSessionStart::Load { .. } if !initialize.agent_capabilities.load_session => Some((
+            AcpHandshakeStage::SessionLoad,
+            "ACP agent does not advertise session/load",
+        )),
         AcpSessionStart::Resume { .. }
-            if initialize.agent_capabilities.session_capabilities.resume.is_none() =>
+            if initialize
+                .agent_capabilities
+                .session_capabilities
+                .resume
+                .is_none() =>
         {
-            Some((AcpHandshakeStage::SessionResume, "ACP agent does not advertise session/resume"))
+            Some((
+                AcpHandshakeStage::SessionResume,
+                "ACP agent does not advertise session/resume",
+            ))
         }
         _ => None,
     };
     if let Some((stage, message)) = unsupported_restore {
-        let _ = event_tx.unbounded_send(AcpEvent::Error {
-            kind: AcpEventErrorKind::HandshakeFailed {
-                stage,
-                message: message.to_string(),
+        let _ = emit_event(
+            &event_tx,
+            AcpEvent::Error {
+                kind: AcpEventErrorKind::HandshakeFailed {
+                    stage,
+                    message: message.to_string(),
+                },
             },
-        });
+        )
+        .await;
         return Ok(());
     }
 
@@ -935,7 +965,7 @@ async fn drive(
     let session_id = match start {
         AcpSessionStart::New => {
             let stage = AcpHandshakeStage::SessionNew;
-            let _ = event_tx.unbounded_send(AcpEvent::HandshakeStarted { stage });
+            let _ = emit_event(&event_tx, AcpEvent::HandshakeStarted { stage }).await;
             let session_request = NewSessionRequest::new(cwd.clone())
                 .mcp_servers(mcp_servers.clone())
                 .meta(session_meta.clone());
@@ -943,20 +973,28 @@ async fn drive(
             let session_result = await_handshake_stage(
                 session,
                 stage,
-                std::cmp::min(deadline, tokio::time::Instant::now() + Duration::from_secs(5)),
+                std::cmp::min(
+                    deadline,
+                    tokio::time::Instant::now() + Duration::from_secs(5),
+                ),
                 &mut prompt_rx,
                 &mut shutdown_rx,
                 &event_tx,
-            ).await;
+            )
+            .await;
             let session = match session_result {
                 Ok(Some(session)) => session,
                 Ok(None) => return Ok(()),
                 Err(_) if !mcp_servers.is_empty() => {
                     // A slow or broken MCP must never prevent the primary ACP session
                     // from becoming usable. Retry session/new once without MCP.
-                    let fallback = cx.send_request(
-                        NewSessionRequest::new(cwd).mcp_servers(Vec::new()).meta(session_meta),
-                    ).block_task();
+                    let fallback = cx
+                        .send_request(
+                            NewSessionRequest::new(cwd)
+                                .mcp_servers(Vec::new())
+                                .meta(session_meta),
+                        )
+                        .block_task();
                     match await_handshake_stage(
                         fallback,
                         stage,
@@ -964,7 +1002,9 @@ async fn drive(
                         &mut prompt_rx,
                         &mut shutdown_rx,
                         &event_tx,
-                    ).await? {
+                    )
+                    .await?
+                    {
                         Some(session) => session,
                         None => return Ok(()),
                     }
@@ -975,18 +1015,22 @@ async fn drive(
         }
         AcpSessionStart::Load { session_id } => {
             let stage = AcpHandshakeStage::SessionLoad;
-            let _ = event_tx.unbounded_send(AcpEvent::HandshakeStarted { stage });
+            let _ = emit_event(&event_tx, AcpEvent::HandshakeStarted { stage }).await;
             let request = LoadSessionRequest::new(session_id.clone(), cwd.clone())
                 .mcp_servers(mcp_servers.clone())
                 .meta(session_meta.clone());
             let result = await_handshake_stage(
                 cx.send_request(request).block_task(),
                 stage,
-                std::cmp::min(deadline, tokio::time::Instant::now() + Duration::from_secs(5)),
+                std::cmp::min(
+                    deadline,
+                    tokio::time::Instant::now() + Duration::from_secs(5),
+                ),
                 &mut prompt_rx,
                 &mut shutdown_rx,
                 &event_tx,
-            ).await;
+            )
+            .await;
             match result {
                 Ok(Some(_)) => session_id,
                 Ok(None) => return Ok(()),
@@ -1001,7 +1045,9 @@ async fn drive(
                         &mut prompt_rx,
                         &mut shutdown_rx,
                         &event_tx,
-                    ).await? {
+                    )
+                    .await?
+                    {
                         Some(_) => session_id,
                         None => return Ok(()),
                     }
@@ -1011,18 +1057,22 @@ async fn drive(
         }
         AcpSessionStart::Resume { session_id } => {
             let stage = AcpHandshakeStage::SessionResume;
-            let _ = event_tx.unbounded_send(AcpEvent::HandshakeStarted { stage });
+            let _ = emit_event(&event_tx, AcpEvent::HandshakeStarted { stage }).await;
             let request = ResumeSessionRequest::new(session_id.clone(), cwd.clone())
                 .mcp_servers(mcp_servers.clone())
                 .meta(session_meta.clone());
             let result = await_handshake_stage(
                 cx.send_request(request).block_task(),
                 stage,
-                std::cmp::min(deadline, tokio::time::Instant::now() + Duration::from_secs(5)),
+                std::cmp::min(
+                    deadline,
+                    tokio::time::Instant::now() + Duration::from_secs(5),
+                ),
                 &mut prompt_rx,
                 &mut shutdown_rx,
                 &event_tx,
-            ).await;
+            )
+            .await;
             match result {
                 Ok(Some(_)) => session_id,
                 Ok(None) => return Ok(()),
@@ -1037,7 +1087,9 @@ async fn drive(
                         &mut prompt_rx,
                         &mut shutdown_rx,
                         &event_tx,
-                    ).await? {
+                    )
+                    .await?
+                    {
                         Some(_) => session_id,
                         None => return Ok(()),
                     }
@@ -1046,9 +1098,13 @@ async fn drive(
             }
         }
     };
-    let _ = event_tx.unbounded_send(AcpEvent::Ready {
-        session_id: session_id.to_string(),
-    });
+    let _ = emit_event(
+        &event_tx,
+        AcpEvent::Ready {
+            session_id: session_id.to_string(),
+        },
+    )
+    .await;
     cancel_rx.borrow_and_update();
 
     // 3. Pump prompts while cancellation and shutdown remain out-of-band.
@@ -1083,13 +1139,17 @@ async fn drive(
                     if let Some(prompt) = in_flight.take() {
                         prompt.abort();
                     }
-                    let _ = event_tx.unbounded_send(AcpEvent::TurnEnded {
-                        stop_reason: "cancelled".to_string(),
-                        usage: None,
-                    });
+                    let _ = emit_event(
+                        &event_tx,
+                        AcpEvent::TurnEnded {
+                            stop_reason: "cancelled".to_string(),
+                            usage: None,
+                        },
+                    )
+                    .await;
                 }
             }
-            model = model_rx.next() => {
+            model = model_rx.recv() => {
                 let Some(model) = model else {
                     break;
                 };
@@ -1123,21 +1183,29 @@ async fn drive(
                 };
                 let _ = model.reply.send(result);
             }
-            prompt = prompt_rx.next() => {
+            prompt = prompt_rx.recv() => {
                 let Some(prompt) = prompt else {
                     break;
                 };
                 if in_flight.is_some() {
-                    let _ = event_tx.unbounded_send(AcpEvent::Error {
-                        kind: AcpEventErrorKind::PromptBusy,
-                    });
+                    let _ = emit_event(
+                        &event_tx,
+                        AcpEvent::Error {
+                            kind: AcpEventErrorKind::PromptBusy,
+                        },
+                    )
+                    .await;
                     continue;
                 }
                 if prompt.cancel_generation < *cancel_rx.borrow() {
-                    let _ = event_tx.unbounded_send(AcpEvent::TurnEnded {
-                        stop_reason: "cancelled".to_string(),
-                        usage: None,
-                    });
+                    let _ = emit_event(
+                        &event_tx,
+                        AcpEvent::TurnEnded {
+                            stop_reason: "cancelled".to_string(),
+                            usage: None,
+                        },
+                    )
+                    .await;
                     continue;
                 }
                 let prompt_cx = cx.clone();
@@ -1150,27 +1218,39 @@ async fn drive(
                 in_flight = None;
                 match response.expect("prompt completion is only polled while present") {
                     Ok(Ok(response)) => {
-                        let _ = event_tx.unbounded_send(AcpEvent::TurnEnded {
-                            stop_reason: stop_reason_str(response.stop_reason).to_string(),
-                            usage: response.usage.as_ref().map(token_usage_from_acp),
-                        });
+                        let _ = emit_event(
+                            &event_tx,
+                            AcpEvent::TurnEnded {
+                                stop_reason: stop_reason_str(response.stop_reason).to_string(),
+                                usage: response.usage.as_ref().map(token_usage_from_acp),
+                            },
+                        )
+                        .await;
                     }
                     Ok(Err(err)) => {
                         let message = "ACP prompt request failed".to_string();
-                        let _ = event_tx.unbounded_send(AcpEvent::Error {
-                            kind: AcpEventErrorKind::PromptFailed {
-                                message,
+                        let _ = emit_event(
+                            &event_tx,
+                            AcpEvent::Error {
+                                kind: AcpEventErrorKind::PromptFailed {
+                                    message,
+                                },
                             },
-                        });
+                        )
+                        .await;
                         return Err(err);
                     }
                     Err(_) => {
                         let message = "ACP prompt task stopped unexpectedly".to_string();
-                        let _ = event_tx.unbounded_send(AcpEvent::Error {
-                            kind: AcpEventErrorKind::PromptFailed {
-                                message,
+                        let _ = emit_event(
+                            &event_tx,
+                            AcpEvent::Error {
+                                kind: AcpEventErrorKind::PromptFailed {
+                                    message,
+                                },
                             },
-                        });
+                        )
+                        .await;
                         return Err(agent_client_protocol::util::internal_error(
                             "ACP prompt task stopped unexpectedly",
                         ));
@@ -1180,7 +1260,7 @@ async fn drive(
         }
     }
 
-    let _ = event_tx.unbounded_send(AcpEvent::Exited { error: None });
+    let _ = emit_event(&event_tx, AcpEvent::Exited { error: None }).await;
     Ok(())
 }
 
@@ -1188,48 +1268,60 @@ async fn await_handshake_stage<T>(
     future: impl Future<Output = Result<T, agent_client_protocol::Error>>,
     stage: AcpHandshakeStage,
     deadline: tokio::time::Instant,
-    prompt_rx: &mut mpsc::UnboundedReceiver<PromptCommand>,
+    prompt_rx: &mut mpsc::Receiver<PromptCommand>,
     shutdown_rx: &mut tokio::sync::watch::Receiver<bool>,
-    event_tx: &mpsc::UnboundedSender<AcpEvent>,
+    event_tx: &mpsc::Sender<AcpEvent>,
 ) -> Result<Option<T>, agent_client_protocol::Error> {
     tokio::pin!(future);
     loop {
         tokio::select! {
             biased;
             _ = shutdown_rx.changed() => {
-                let _ = event_tx.unbounded_send(AcpEvent::Exited { error: None });
+                let _ = emit_event(event_tx, AcpEvent::Exited { error: None }).await;
                 return Ok(None);
             }
             result = &mut future => {
                 return match result {
                     Ok(value) => Ok(Some(value)),
                     Err(err) => {
-                        let _ = event_tx.unbounded_send(AcpEvent::Error {
-                            kind: AcpEventErrorKind::HandshakeFailed {
-                                stage,
-                                message: SAFE_PROTOCOL_FAILURE.to_string(),
+                        let _ = emit_event(
+                            event_tx,
+                            AcpEvent::Error {
+                                kind: AcpEventErrorKind::HandshakeFailed {
+                                    stage,
+                                    message: SAFE_PROTOCOL_FAILURE.to_string(),
+                                },
                             },
-                        });
+                        )
+                        .await;
                         Err(err)
                     }
                 };
             }
             _ = tokio::time::sleep_until(deadline) => {
-                let _ = event_tx.unbounded_send(AcpEvent::Error {
-                    kind: AcpEventErrorKind::HandshakeTimeout { stage },
-                });
+                let _ = emit_event(
+                    event_tx,
+                    AcpEvent::Error {
+                        kind: AcpEventErrorKind::HandshakeTimeout { stage },
+                    },
+                )
+                .await;
                 return Err(agent_client_protocol::util::internal_error(format!(
                     "ACP {stage:?} handshake timed out"
                 )));
             }
-            prompt = prompt_rx.next() => {
+            prompt = prompt_rx.recv() => {
                 if prompt.is_none() {
-                    let _ = event_tx.unbounded_send(AcpEvent::Exited { error: None });
+                    let _ = emit_event(event_tx, AcpEvent::Exited { error: None }).await;
                     return Ok(None);
                 }
-                let _ = event_tx.unbounded_send(AcpEvent::Error {
-                    kind: AcpEventErrorKind::PromptNotReady,
-                });
+                let _ = emit_event(
+                    event_tx,
+                    AcpEvent::Error {
+                        kind: AcpEventErrorKind::PromptNotReady,
+                    },
+                )
+                .await;
             }
         }
     }
@@ -1742,7 +1834,7 @@ unsafe extern "system" {
 }
 
 /// Map a `SessionUpdate` to the host-facing event, if it carries one we surface.
-fn forward_notification(tx: &mpsc::UnboundedSender<AcpEvent>, update: SessionUpdate) {
+async fn forward_notification(tx: &mpsc::Sender<AcpEvent>, update: SessionUpdate) {
     let event = match update {
         SessionUpdate::AgentMessageChunk(chunk) => Some(AcpEvent::AgentMessage {
             message_id: chunk.message_id.map(|id| id.to_string()),
@@ -1762,17 +1854,14 @@ fn forward_notification(tx: &mpsc::UnboundedSender<AcpEvent>, update: SessionUpd
         SessionUpdate::UsageUpdate(usage) => Some(AcpEvent::Usage(AcpUsageUpdate {
             used: usage.used,
             size: usage.size,
-            token_usage: usage
-                .meta
-                .as_ref()
-                .and_then(token_usage_from_meta),
+            token_usage: usage.meta.as_ref().and_then(token_usage_from_meta),
         })),
         // User-message echoes, command lists, mode/config/session-info updates,
         // and any future non-exhaustive variants are not surfaced here.
         _ => None,
     };
     if let Some(event) = event {
-        let _ = tx.unbounded_send(event);
+        let _ = emit_event(tx, event).await;
     }
 }
 
@@ -1783,25 +1872,44 @@ fn forward_notification(tx: &mpsc::UnboundedSender<AcpEvent>, update: SessionUpd
 /// key. Only numeric token counters are accepted.
 fn token_usage_from_meta(meta: &agent_client_protocol::schema::v1::Meta) -> Option<AcpTokenUsage> {
     fn number(value: &serde_json::Value, keys: &[&str]) -> Option<u64> {
-        keys.iter().find_map(|key| value.get(*key)).and_then(|value| {
-            value.as_u64().or_else(|| value.as_i64().and_then(|v| u64::try_from(v).ok()))
-        })
+        keys.iter()
+            .find_map(|key| value.get(*key))
+            .and_then(|value| {
+                value
+                    .as_u64()
+                    .or_else(|| value.as_i64().and_then(|v| u64::try_from(v).ok()))
+            })
     }
 
     fn walk(value: &serde_json::Value) -> Option<AcpTokenUsage> {
         let object = value.as_object()?;
         let input = number(
             value,
-            &["input_tokens", "prompt_tokens", "inputTokens", "promptTokens"],
+            &[
+                "input_tokens",
+                "prompt_tokens",
+                "inputTokens",
+                "promptTokens",
+            ],
         );
         let output = number(
             value,
-            &["output_tokens", "completion_tokens", "outputTokens", "completionTokens"],
+            &[
+                "output_tokens",
+                "completion_tokens",
+                "outputTokens",
+                "completionTokens",
+            ],
         );
         if let (Some(input_tokens), Some(output_tokens)) = (input, output) {
             let thought_tokens = number(
                 value,
-                &["thought_tokens", "reasoning_tokens", "thoughtTokens", "reasoningTokens"],
+                &[
+                    "thought_tokens",
+                    "reasoning_tokens",
+                    "thoughtTokens",
+                    "reasoningTokens",
+                ],
             )
             .unwrap_or(0);
             let cached_read_tokens = number(
@@ -1817,7 +1925,12 @@ fn token_usage_from_meta(meta: &agent_client_protocol::schema::v1::Meta) -> Opti
             .unwrap_or(0);
             let cached_write_tokens = number(
                 value,
-                &["cached_write_tokens", "cache_creation_input_tokens", "cachedWriteTokens", "cacheCreationInputTokens"],
+                &[
+                    "cached_write_tokens",
+                    "cache_creation_input_tokens",
+                    "cachedWriteTokens",
+                    "cacheCreationInputTokens",
+                ],
             )
             .unwrap_or(0);
             let total_tokens = number(value, &["total_tokens", "totalTokens"])
@@ -1839,7 +1952,7 @@ fn token_usage_from_meta(meta: &agent_client_protocol::schema::v1::Meta) -> Opti
 
 /// Emit a `Permission` event and await the host's decision.
 async fn ask_permission(
-    tx: &mpsc::UnboundedSender<AcpEvent>,
+    tx: &mpsc::Sender<AcpEvent>,
     request: RequestPermissionRequest,
 ) -> RequestPermissionOutcome {
     let options = request
@@ -1853,13 +1966,15 @@ async fn ask_permission(
     let request_json = serde_json::to_value(&request).unwrap_or(serde_json::Value::Null);
 
     let (reply_tx, reply_rx) = oneshot::channel::<Option<String>>();
-    if tx
-        .unbounded_send(AcpEvent::Permission {
+    if !emit_event(
+        tx,
+        AcpEvent::Permission {
             request: request_json,
             options,
             reply: reply_tx,
-        })
-        .is_err()
+        },
+    )
+    .await
     {
         // Host is gone: fail closed.
         return RequestPermissionOutcome::Cancelled;
@@ -1973,9 +2088,9 @@ fn slice_lines(content: &str, line: Option<u32>, limit: Option<u32>) -> String {
 /// Handle an `fs/write_text_file` request: sandbox the path, create parents,
 /// write, and emit `FileWritten` so the host records provenance. A rejected or
 /// failed write becomes a protocol error.
-fn handle_write(
+async fn handle_write(
     root: &Path,
-    event_tx: &mpsc::UnboundedSender<AcpEvent>,
+    event_tx: &mpsc::Sender<AcpEvent>,
     request: WriteTextFileRequest,
 ) -> Result<WriteTextFileResponse, agent_client_protocol::Error> {
     let path =
@@ -1984,9 +2099,13 @@ fn handle_write(
         std::fs::create_dir_all(parent).map_err(agent_client_protocol::util::internal_error)?;
     }
     std::fs::write(&path, &request.content).map_err(agent_client_protocol::util::internal_error)?;
-    let _ = event_tx.unbounded_send(AcpEvent::FileWritten {
-        path: path.to_string_lossy().to_string(),
-    });
+    let _ = emit_event(
+        event_tx,
+        AcpEvent::FileWritten {
+            path: path.to_string_lossy().to_string(),
+        },
+    )
+    .await;
     Ok(WriteTextFileResponse::new())
 }
 
@@ -2061,7 +2180,10 @@ fn unsupported_windows_shell_command(command: &str, args: &[String]) -> Option<S
     );
     let posix_find = executable == "find"
         && args.iter().any(|arg| {
-            matches!(arg.as_str(), "-maxdepth" | "-mindepth" | "-type" | "-name" | "-iname")
+            matches!(
+                arg.as_str(),
+                "-maxdepth" | "-mindepth" | "-type" | "-name" | "-iname"
+            )
         });
     if !(posix_only || posix_find) {
         return None;
@@ -2090,7 +2212,7 @@ impl TerminalManager {
 async fn handle_create_terminal(
     manager: &TerminalManager,
     root: &Path,
-    event_tx: &mpsc::UnboundedSender<AcpEvent>,
+    event_tx: &mpsc::Sender<AcpEvent>,
     request: CreateTerminalRequest,
 ) -> Result<CreateTerminalResponse, agent_client_protocol::Error> {
     // Resolve and sandbox the working directory before asking for approval, so
@@ -2108,8 +2230,9 @@ async fn handle_create_terminal(
 
     // Approval gate: command execution requires an explicit host decision.
     let (reply_tx, reply_rx) = oneshot::channel::<bool>();
-    if event_tx
-        .unbounded_send(AcpEvent::ExecApproval {
+    if !emit_event(
+        event_tx,
+        AcpEvent::ExecApproval {
             command: request.command.clone(),
             args: request.args.clone(),
             cwd: request
@@ -2117,8 +2240,9 @@ async fn handle_create_terminal(
                 .as_ref()
                 .map(|_| cwd.to_string_lossy().to_string()),
             reply: reply_tx,
-        })
-        .is_err()
+        },
+    )
+    .await
     {
         return Err(agent_client_protocol::util::internal_error(
             "host unavailable for command approval",
@@ -2405,7 +2529,10 @@ mod tests {
         .expect("POSIX find flags must not be executed by Windows find.exe");
         assert!(error.contains("PowerShell"));
         assert!(error.contains("Get-ChildItem"));
-        assert!(unsupported_windows_shell_command("powershell.exe", &["-Command".to_string()]).is_none());
+        assert!(
+            unsupported_windows_shell_command("powershell.exe", &["-Command".to_string()])
+                .is_none()
+        );
     }
 
     #[test]
@@ -2521,8 +2648,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn usage_update_extracts_provider_counters_from_meta() {
+    #[tokio::test]
+    async fn usage_update_extracts_provider_counters_from_meta() {
         use agent_client_protocol::schema::v1::{SessionUpdate, UsageUpdate};
 
         let mut provider = serde_json::Map::new();
@@ -2534,14 +2661,22 @@ mod tests {
         meta.insert("provider_usage".into(), serde_json::Value::Object(provider));
 
         let update = SessionUpdate::UsageUpdate(UsageUpdate::new(157, 200_000).meta(meta));
-        let (tx, mut rx) = mpsc::unbounded();
-        forward_notification(&tx, update);
-        let event = futures::executor::block_on(rx.next()).expect("usage event");
+        let (tx, mut rx) = mpsc::channel(1);
+        forward_notification(&tx, update).await;
+        let event = rx.recv().await.expect("usage event");
         match event {
             AcpEvent::Usage(usage) => {
                 assert_eq!(usage.used, 157);
                 assert_eq!(usage.size, 200_000);
-                assert_eq!(usage.token_usage.map(|u| (u.input_tokens, u.output_tokens, u.thought_tokens, u.cached_read_tokens)), Some((120, 37, 5, 20)));
+                assert_eq!(
+                    usage.token_usage.map(|u| (
+                        u.input_tokens,
+                        u.output_tokens,
+                        u.thought_tokens,
+                        u.cached_read_tokens
+                    )),
+                    Some((120, 37, 5, 20))
+                );
             }
             other => panic!("expected usage event, got {other:?}"),
         }
@@ -2627,6 +2762,24 @@ mod tests {
         drop(_driver);
         // After the driver (and its command_rx) is dropped, sends fail.
         assert!(matches!(client.prompt("hi"), Err(AcpError::Closed)));
+    }
+
+    #[test]
+    fn prompt_channel_rejects_more_than_one_queued_turn() {
+        let profile = AcpAgentProfile {
+            id: "missing".into(),
+            label: "Missing".into(),
+            command: "definitely-not-a-real-acp-agent".into(),
+            args: Vec::new(),
+            env: Vec::new(),
+            env_remove: Vec::new(),
+            session_meta: None,
+            mcp_servers: Vec::new(),
+        };
+        let (client, _events, _driver) = AcpClient::launch(&profile, PathBuf::from("."));
+
+        assert!(client.prompt("first").is_ok());
+        assert!(client.prompt("second").is_err());
     }
 
     #[cfg(test)]
@@ -2725,7 +2878,7 @@ mod tests {
         // A rejecting host would fail-close; here we approve and verify the
         // command actually spawns, streams output, and reports a clean exit.
         let manager = TerminalManager::default();
-        let (event_tx, mut event_rx) = mpsc::unbounded::<AcpEvent>();
+        let (event_tx, mut event_rx) = mpsc::channel::<AcpEvent>(1);
         let root = std::env::temp_dir();
 
         #[cfg(windows)]
@@ -2737,7 +2890,7 @@ mod tests {
 
         // Approve out-of-band: consume the ExecApproval event and answer true.
         let approver = tokio::spawn(async move {
-            if let Some(AcpEvent::ExecApproval { reply, .. }) = event_rx.next().await {
+            if let Some(AcpEvent::ExecApproval { reply, .. }) = event_rx.recv().await {
                 let _ = reply.send(true);
             }
         });
@@ -2760,7 +2913,7 @@ mod tests {
     #[tokio::test]
     async fn rejected_command_never_spawns() {
         let manager = TerminalManager::default();
-        let (event_tx, mut event_rx) = mpsc::unbounded::<AcpEvent>();
+        let (event_tx, mut event_rx) = mpsc::channel::<AcpEvent>(1);
         let root = std::env::temp_dir();
 
         #[cfg(windows)]
@@ -2771,7 +2924,7 @@ mod tests {
             .args(vec!["-c".into(), "echo nope".into()]);
 
         let rejecter = tokio::spawn(async move {
-            if let Some(AcpEvent::ExecApproval { reply, .. }) = event_rx.next().await {
+            if let Some(AcpEvent::ExecApproval { reply, .. }) = event_rx.recv().await {
                 let _ = reply.send(false);
             }
         });

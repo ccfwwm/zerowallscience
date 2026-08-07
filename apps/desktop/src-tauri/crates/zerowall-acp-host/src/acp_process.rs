@@ -1,9 +1,10 @@
 use crate::{AgentEvent, HostError, PermissionOption};
 use futures::channel::oneshot;
-use futures::StreamExt;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use zerowall_acp::{AcpAgentProfile, AcpClient, AcpEvent, AcpSessionStart, AcpTokenUsage};
+use zerowall_acp::{
+    AcpAgentProfile, AcpClient, AcpEvent, AcpEventReceiver, AcpSessionStart, AcpTokenUsage,
+};
 
 use crate::{
     AcpHostDriver, AgentBinding, DriverCapabilities, HostDriverKind, InitializeRequest,
@@ -22,7 +23,7 @@ pub struct AcpProcessDriver {
     cwd: PathBuf,
     binding: AgentBinding,
     client: Option<AcpClient>,
-    events: Option<futures::channel::mpsc::UnboundedReceiver<AcpEvent>>,
+    events: Option<AcpEventReceiver>,
     driver_task: Option<tokio::task::JoinHandle<()>>,
     mapper: AcpEventMapper,
     session_id: Option<String>,
@@ -69,7 +70,7 @@ impl AcpProcessDriver {
     }
 
     async fn next_event(&mut self) -> Option<AcpEvent> {
-        self.events.as_mut()?.next().await
+        self.events.as_mut()?.recv().await
     }
 
     async fn wait_for_ready(&mut self) -> Result<String, HostError> {
