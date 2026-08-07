@@ -81,6 +81,9 @@ jobs:
       - name: Version contract
         run: pnpm run test:version
 
+      - name: Release contracts
+        run: pnpm run test:release-contracts
+
   rust:
     name: rust (${{ matrix.platform }})
     strategy:
@@ -147,3 +150,19 @@ jobs:
       - name: Clippy
         working-directory: apps/desktop/src-tauri
         run: cargo clippy -- -D warnings
+
+  bootstrapper:
+    name: environment bootstrapper (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Bootstrapper unit tests
+        run: cargo test --manifest-path apps/environment-bootstrapper/Cargo.toml
