@@ -591,14 +591,59 @@ fn validate_mcp_name(value: &str) -> Result<(), String> {
 fn validate_mcp_request(request: &McpServerRequest) -> Result<(), String> {
     validate_mcp_name(&request.name)?;
     match &request.config {
-        McpConfig::Local { command, .. } => {
+        McpConfig::Local {
+            command,
+            environment,
+            ..
+        } => {
             if command.is_empty() || command.iter().any(|part| part.trim().is_empty()) {
                 return Err("local MCP command must contain non-empty arguments".into());
             }
+            validate_mcp_environment(environment)?;
         }
-        McpConfig::Remote { url, .. } => validate_base_url(url)?,
+        McpConfig::Remote { url, headers, .. } => {
+            validate_base_url(url)?;
+            validate_mcp_environment(headers)?;
+        }
     }
     Ok(())
+}
+
+fn validate_mcp_environment(
+    values: &std::collections::BTreeMap<String, String>,
+) -> Result<(), String> {
+    for (name, value) in values {
+        if name.trim().is_empty() {
+            return Err("MCP environment/header name is required".into());
+        }
+        if is_sensitive_mcp_field(name) && !is_mcp_secret_placeholder(value) {
+            return Err(format!(
+                "MCP secret field {name} must use a keychain environment placeholder"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn is_mcp_secret_placeholder(value: &str) -> bool {
+    let Some(name) = value.strip_prefix("{env:").and_then(|v| v.strip_suffix('}')) else {
+        return false;
+    };
+    !name.is_empty()
+        && name.chars().all(|character| {
+            character.is_ascii_uppercase() || character.is_ascii_digit() || character == '_'
+        })
+}
+
+fn is_sensitive_mcp_field(name: &str) -> bool {
+    let normalized = name.trim().to_ascii_uppercase().replace('-', "_");
+    normalized == "AUTHORIZATION"
+        || normalized == "COOKIE"
+        || normalized.ends_with("_API_KEY")
+        || normalized.ends_with("_TOKEN")
+        || normalized.ends_with("_SECRET")
+        || normalized.ends_with("_PASSWORD")
+        || normalized.ends_with("_CREDENTIAL")
 }
 
 #[tauri::command]
@@ -713,10 +758,69 @@ pub async fn acp_host_ensure_mcp_environment(
     environment: std::collections::BTreeMap<String, String>,
 ) -> Result<(), String> {
     validate_mcp_name(&name)?;
+    validate_mcp_environment(&environment)?;
     build_mcp_control(&app)?
         .ensure_mcp_environment(&name, environment)
         .await
         .map_err(error_string)
+}
+
+fn jupyter_mcp_request(
+    server: zerowall_acp::AcpMcpServer,
+) -> Result<(McpServerRequest, String), String> {
+    let token = server
+        .env
+        .iter()
+        .find(|(name, _)| name == "JUPYTER_TOKEN")
+        .map(|(_, value)| value.clone())
+        .ok_or_else(|| "Jupyter token is unavailable".to_owned())?;
+    let mut environment = std::collections::BTreeMap::new();
+    for (name, value) in server.env {
+        environment.insert(
+            name.clone(),
+            if name == "JUPYTER_TOKEN" {
+                "{env:JUPYTER_TOKEN}".to_owned()
+            } else {
+                value
+            },
+        );
+    }
+    let mut command = vec![server.command];
+    command.extend(server.args);
+    let request = McpServerRequest {
+        name: "jupyter".to_owned(),
+        config: McpConfig::Local {
+            command,
+            enabled: Some(true),
+            environment,
+        },
+    };
+    validate_mcp_request(&request)?;
+    Ok((request, token))
+}
+
+/// Register app-managed Jupyter without returning its token to the renderer.
+#[tauri::command]
+pub async fn acp_host_register_jupyter_mcp(
+    app: AppHandle,
+    state: State<'_, crate::runtime::RuntimeState>,
+) -> Result<(), String> {
+    let server = crate::jupyter::acp_mcp_server(&app)
+        .ok_or_else(|| "Jupyter is not installed and running".to_owned())?;
+    let (request, token) = jupyter_mcp_request(server)?;
+    crate::secret_store::persist_connector_secret_for_app(
+        &app,
+        "jupyter",
+        "JUPYTER_TOKEN",
+        &token,
+    )?;
+    build_mcp_control(&app)?
+        .add_mcp_server(request)
+        .await
+        .map_err(error_string)?;
+    crate::runtime::restart_sidecar_if_running(&app, &state)
+        .map(|_| ())
+        .map_err(|error| format!("restart OpenCode after Jupyter registration: {error}"))
 }
 
 fn chrono_like_timestamp() -> String {
@@ -1259,6 +1363,66 @@ mod tests {
             },
             calls,
         ))
+    }
+
+    #[test]
+    fn mcp_request_rejects_raw_secret_material_but_accepts_keychain_placeholders() {
+        let raw = McpServerRequest {
+            name: "papers".into(),
+            config: McpConfig::Local {
+                command: vec!["python".into(), "-m".into(), "papers".into()],
+                enabled: Some(true),
+                environment: std::collections::BTreeMap::from([(
+                    "PAPERS_API_KEY".into(),
+                    "secret-value".into(),
+                )]),
+            },
+        };
+        assert!(validate_mcp_request(&raw).is_err());
+
+        let placeholder = McpServerRequest {
+            name: "papers".into(),
+            config: McpConfig::Local {
+                command: vec!["python".into(), "-m".into(), "papers".into()],
+                enabled: Some(true),
+                environment: std::collections::BTreeMap::from([(
+                    "PAPERS_API_KEY".into(),
+                    "{env:PAPERS_API_KEY}".into(),
+                )]),
+            },
+        };
+        assert!(validate_mcp_request(&placeholder).is_ok());
+
+        let raw_header = McpServerRequest {
+            name: "remote".into(),
+            config: McpConfig::Remote {
+                url: "https://mcp.example.test".into(),
+                enabled: Some(true),
+                headers: std::collections::BTreeMap::from([(
+                    "Authorization".into(),
+                    "Bearer secret-value".into(),
+                )]),
+            },
+        };
+        assert!(validate_mcp_request(&raw_header).is_err());
+    }
+
+    #[test]
+    fn jupyter_registration_separates_keychain_secret_from_public_mcp_config() {
+        let (request, token) = jupyter_mcp_request(zerowall_acp::AcpMcpServer {
+            name: "jupyter".into(),
+            command: "jupyter-mcp-server".into(),
+            args: vec!["serve".into()],
+            env: vec![
+                ("JUPYTER_URL".into(), "http://127.0.0.1:9000".into()),
+                ("JUPYTER_TOKEN".into(), "secret-value".into()),
+            ],
+        })
+        .unwrap();
+        assert_eq!(token, "secret-value");
+        let config = serde_json::to_string(&request.config).unwrap();
+        assert!(config.contains("{env:JUPYTER_TOKEN}"));
+        assert!(!config.contains("secret-value"));
     }
 
     #[test]

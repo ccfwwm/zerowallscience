@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   /** Resolver for the in-flight setupJupyter promise, so tests hold it open. */
   resolveSetup: (() => {}) as () => void,
   setupJupyter: vi.fn(),
+  registerJupyterMcp: vi.fn(async () => {}),
   setupScienceMcp: vi.fn(async (_pkg: string) => "/env/bin/python"),
   setConnectorSecret: vi.fn(async () => {}),
   /** MCP entries currently in the config, mutated by addMcpServer below so
@@ -46,9 +47,9 @@ vi.mock("./tauri", () => ({
   setupJupyter: mocks.setupJupyter,
   startJupyter: async () => ({
     url: "http://127.0.0.1:9",
-    token: "tok",
     mcp_command: "/env/bin/jupyter-mcp-server",
   }),
+  registerJupyterMcp: mocks.registerJupyterMcp,
   setupScienceMcp: mocks.setupScienceMcp,
   watchSetupProgress: async () => () => {},
   agentBrowserBin: mocks.agentBrowserBin,
@@ -97,7 +98,8 @@ describe("setup store", () => {
     expect(s.jupyterBusy).toBe(false);
     expect(s.line).toBeNull();
     expect(s.generation).toBe(gen0 + 1);
-    expect(mocks.addMcpServer).toHaveBeenCalledWith("jupyter", expect.anything());
+    expect(mocks.registerJupyterMcp).toHaveBeenCalledTimes(1);
+    expect(mocks.addMcpServer).not.toHaveBeenCalledWith("jupyter", expect.anything());
   });
 
   it("ignores a second concurrent enableJupyter — no colliding provisioning run", async () => {

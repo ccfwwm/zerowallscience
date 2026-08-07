@@ -10,6 +10,7 @@ import { getMcpControlClient, useRuntimeStore } from "./runtime";
 import {
   setupJupyter,
   startJupyter,
+  registerJupyterMcp,
   setupScienceMcp,
   watchSetupProgress,
   agentBrowserBin,
@@ -97,25 +98,8 @@ export const useSetupStore = create<SetupState>((set, get) => ({
       toast.success("Setting up Jupyter — first run downloads a few hundred MB, please wait…");
       await setupJupyter();
       const s = await startJupyter();
-      if (!s.url || !s.token || !s.mcp_command) throw new Error("setup finished incomplete");
-      const mcpControl = getMcpControlClient();
-      if (!mcpControl) throw new Error("MCP control is unavailable");
-      await mcpControl.addMcpServer("jupyter", {
-        type: "local",
-        command: [s.mcp_command],
-        enabled: true,
-        // START_NEW_RUNTIME=false: jupyter-mcp-server's `serve` defaults it to
-        // true, which starts a kernel SYNCHRONOUSLY at launch — before the stdio
-        // MCP handshake — so a slow/wedged kernel makes `initialize` never return
-        // and OpenCode marks the connector "failed". Off, it answers the
-        // handshake immediately and connects the kernel lazily on first tool use.
-        environment: {
-          JUPYTER_URL: s.url,
-          JUPYTER_TOKEN: s.token,
-          START_NEW_RUNTIME: "false",
-          ALLOW_IMG_OUTPUT: "true",
-        },
-      });
+      if (!s.url || !s.mcp_command) throw new Error("setup finished incomplete");
+      await registerJupyterMcp();
       toast.success("Jupyter MCP enabled — the agent can now drive notebooks.");
       await useRuntimeStore.getState().loadCatalog();
     } catch (e) {

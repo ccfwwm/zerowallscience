@@ -269,6 +269,39 @@ pub(crate) fn persist_for_app(
     save_registry(&path, &registry)
 }
 
+/// Store one connector environment secret for a Rust-owned integration. The
+/// value never crosses the Tauri renderer boundary.
+pub(crate) fn persist_connector_secret_for_app(
+    app: &AppHandle,
+    connector_id: &str,
+    environment: &str,
+    value: &str,
+) -> Result<(), String> {
+    let reference =
+        SecretReference::environment(SecretKind::Connector, connector_id, environment)?;
+    persist_for_app(app, reference, value.trim())
+}
+
+/// Read a connector secret for Rust-owned process wiring. This is intentionally
+/// not exposed as a Tauri command, so renderer code can never retrieve it.
+pub(crate) fn connector_secret_for_app(
+    app: &AppHandle,
+    connector_id: &str,
+    environment: &str,
+) -> Result<Option<String>, String> {
+    let reference =
+        SecretReference::environment(SecretKind::Connector, connector_id, environment)?;
+    let registry = load_registry(&registry_path(app)?)?;
+    if !registry
+        .entries
+        .iter()
+        .any(|entry| entry.account == reference.account)
+    {
+        return Ok(None);
+    }
+    KeyringCredentialStore.get(&reference.account)
+}
+
 fn remove_for_app(app: &AppHandle, account: &str) -> Result<bool, String> {
     let path = registry_path(app)?;
     let backend = KeyringCredentialStore;

@@ -531,7 +531,6 @@ export interface JupyterStatus {
   installed: boolean;
   running: boolean;
   url: string | null;
-  token: string | null;
   mcp_command: string | null;
 }
 
@@ -556,6 +555,13 @@ export async function startJupyter(): Promise<JupyterStatus> {
   return invoke<JupyterStatus>("start_jupyter");
 }
 
+/** Register Jupyter MCP inside Rust; its token never enters the renderer. */
+export async function registerJupyterMcp(): Promise<void> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("acp_host_register_jupyter_mcp");
+}
+
 /** Open the app-managed JupyterLab in the system browser, starting the server
  *  if needed. Returns false when Jupyter has not been set up yet (the caller
  *  should point the user at Settings). Same env the agent drives, same files.
@@ -565,15 +571,8 @@ export async function startJupyter(): Promise<JupyterStatus> {
  *  home. Only pass a path you know is under the workspace root. */
 export async function openJupyterLab(notebook?: string): Promise<boolean> {
   if (!isTauri) return false;
-  const st = await jupyterStatus();
-  if (!st?.installed) return false;
-  const s = await startJupyter(); // idempotent; yields the fixed url + token
-  if (!s.url || !s.token) return false;
-  const rel = notebook?.trim().replace(/^\/+/, "");
-  // Encode each segment but keep the "/" separators so nested paths resolve.
-  const tree = rel ? "/tree/" + rel.split("/").map(encodeURIComponent).join("/") : "";
-  await openExternal(`${s.url}/lab${tree}?token=${encodeURIComponent(s.token)}`);
-  return true;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<boolean>("open_jupyter_lab", { notebook: notebook ?? null });
 }
 
 /** The interpreter local Python kernels resolve to, and where it came from. */

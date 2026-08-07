@@ -52,13 +52,18 @@ pub(crate) fn acp_mcp_server(app: &AppHandle) -> Option<AcpMcpServer> {
     if !status.installed || !status.running {
         return None;
     }
+    let meta = load_meta(app)?;
+    let token = load_token(app)?;
     Some(AcpMcpServer {
         name: "jupyter".to_string(),
         command: status.mcp_command?,
         args: Vec::new(),
         env: vec![
-            ("JUPYTER_URL".to_string(), status.url?),
-            ("JUPYTER_TOKEN".to_string(), status.token?),
+            (
+                "JUPYTER_URL".to_string(),
+                format!("http://127.0.0.1:{}", meta.port),
+            ),
+            ("JUPYTER_TOKEN".to_string(), token),
             ("START_NEW_RUNTIME".to_string(), "false".to_string()),
             ("ALLOW_IMG_OUTPUT".to_string(), "true".to_string()),
         ],
@@ -135,17 +140,61 @@ pub(crate) fn env_python(app: &AppHandle) -> Option<PathBuf> {
     bin(app, "python").ok().filter(|p| p.exists())
 }
 
-/// Port + token are chosen once at setup and reused so the MCP config entry
-/// (which carries JUPYTER_URL/JUPYTER_TOKEN) stays valid across app restarts.
+/// The non-secret server port is persisted. The token lives only in the OS
+/// keychain and is materialized inside Rust when launching Jupyter or MCP.
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 struct ServerMeta {
     port: u16,
-    token: String,
+}
+
+#[derive(serde::Deserialize)]
+struct StoredServerMeta {
+    port: u16,
+    #[serde(default)]
+    token: Option<String>,
 }
 
 fn load_meta(app: &AppHandle) -> Option<ServerMeta> {
-    let text = std::fs::read_to_string(server_meta_path(app).ok()?).ok()?;
-    serde_json::from_str(&text).ok()
+    let path = server_meta_path(app).ok()?;
+    let text = std::fs::read_to_string(&path).ok()?;
+    let stored = serde_json::from_str::<StoredServerMeta>(&text).ok()?;
+    let meta = ServerMeta { port: stored.port };
+    if let Some(token) = stored.token.filter(|value| !value.trim().is_empty()) {
+        if crate::secret_store::persist_connector_secret_for_app(
+            app,
+            "jupyter",
+            "JUPYTER_TOKEN",
+            &token,
+        )
+        .is_ok()
+        {
+            if let Ok(json) = serde_json::to_string(&meta) {
+                let _ = std::fs::write(&path, json);
+                crate::runtime::tighten_private(&path);
+            }
+        }
+    }
+    Some(meta)
+}
+
+fn load_token(app: &AppHandle) -> Option<String> {
+    crate::secret_store::connector_secret_for_app(app, "jupyter", "JUPYTER_TOKEN")
+        .ok()
+        .flatten()
+}
+
+fn ensure_token(app: &AppHandle) -> Result<String, String> {
+    if let Some(token) = load_token(app) {
+        return Ok(token);
+    }
+    let token = random_token();
+    crate::secret_store::persist_connector_secret_for_app(
+        app,
+        "jupyter",
+        "JUPYTER_TOKEN",
+        &token,
+    )?;
+    Ok(token)
 }
 
 // CSPRNG on every platform — the old Windows fallback (pid + nanos) was
@@ -160,7 +209,6 @@ pub struct JupyterStatus {
     pub installed: bool,
     pub running: bool,
     pub url: Option<String>,
-    pub token: Option<String>,
     /// Absolute jupyter-mcp-server path for the MCP config entry.
     pub mcp_command: Option<String>,
 }
@@ -173,7 +221,6 @@ fn status_of(app: &AppHandle, state: &JupyterState) -> JupyterStatus {
         installed,
         running,
         url: meta.as_ref().map(|m| format!("http://127.0.0.1:{}", m.port)),
-        token: meta.map(|m| m.token),
         mcp_command: bin(app, "jupyter-mcp-server")
             .ok()
             .filter(|p| p.exists())
@@ -213,15 +260,16 @@ pub async fn setup_jupyter(app: AppHandle) -> Result<(), String> {
     args.extend(PIP_SPEC.iter().map(|s| s.to_string()));
     crate::uv::run_uv(&app, "jupyter", args, "uv pip install").await?;
 
-    // Fix port + token once so the MCP config entry stays valid.
+    // Fix the port once; the token is keychain-backed and never written here.
     if load_meta(&app).is_none() {
-        let meta = ServerMeta { port: free_port(), token: random_token() };
+        let meta = ServerMeta { port: free_port() };
         std::fs::write(
             server_meta_path(&app)?,
             serde_json::to_string(&meta).map_err(|e| e.to_string())?,
         )
         .map_err(|e| e.to_string())?;
     }
+    ensure_token(&app)?;
     Ok(())
 }
 
@@ -245,6 +293,7 @@ fn spawn_lab(app: &AppHandle, state: &JupyterState) -> Result<JupyterStatus, Str
         return Err("Jupyter is not set up yet".into());
     }
     let meta = load_meta(app).ok_or("Jupyter setup is incomplete (no server meta)")?;
+    let token = ensure_token(app)?;
     let workspace = workspace_dir(app)?;
 
     kill_orphan_jupyter(app);
@@ -258,7 +307,7 @@ fn spawn_lab(app: &AppHandle, state: &JupyterState) -> Result<JupyterStatus, Str
             "127.0.0.1".to_string(),
             "--port".to_string(),
             meta.port.to_string(),
-            format!("--IdentityProvider.token={}", meta.token),
+            format!("--IdentityProvider.token={token}"),
             format!("--ServerApp.root_dir={}", workspace.to_string_lossy()),
         ])
         .current_dir(workspace);
@@ -271,6 +320,65 @@ fn spawn_lab(app: &AppHandle, state: &JupyterState) -> Result<JupyterStatus, Str
     *state.child.lock().unwrap() = Some(child);
     *state.running.lock().unwrap() = true;
     Ok(status_of(app, state))
+}
+
+fn encode_url_path_segment(value: &str) -> String {
+    value
+        .as_bytes()
+        .iter()
+        .map(|byte| {
+            if byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.' | b'~') {
+                (*byte as char).to_string()
+            } else {
+                format!("%{byte:02X}")
+            }
+        })
+        .collect()
+}
+
+fn jupyter_lab_url(base_url: &str, token: &str, notebook: Option<&str>) -> Result<String, String> {
+    if !base_url.starts_with("http://127.0.0.1:") || token.is_empty() {
+        return Err("invalid Jupyter session endpoint".into());
+    }
+    let rel = notebook.unwrap_or_default().trim().trim_start_matches('/');
+    let mut tree = String::new();
+    if !rel.is_empty() {
+        let segments = rel.split('/').collect::<Vec<_>>();
+        if segments.iter().any(|segment| segment.is_empty() || *segment == "..") {
+            return Err("notebook path must remain inside the active workspace".into());
+        }
+        tree.push_str("/tree/");
+        tree.push_str(
+            &segments
+                .into_iter()
+                .map(encode_url_path_segment)
+                .collect::<Vec<_>>()
+                .join("/"),
+        );
+    }
+    Ok(format!("{base_url}/lab{tree}?token={token}"))
+}
+
+/// Open JupyterLab without returning its token to the renderer.
+#[tauri::command]
+pub fn open_jupyter_lab(app: AppHandle, notebook: Option<String>) -> Result<bool, String> {
+    let state = app.state::<JupyterState>();
+    let _guard = state.lifecycle.lock().unwrap();
+    if !bin(&app, "jupyter-lab")?.exists() {
+        return Ok(false);
+    }
+    if !*state.running.lock().unwrap() {
+        spawn_lab(&app, &state)?;
+    }
+    let meta = load_meta(&app).ok_or("Jupyter setup is incomplete")?;
+    let token = ensure_token(&app)?;
+    let url = jupyter_lab_url(
+        &format!("http://127.0.0.1:{}", meta.port),
+        &token,
+        notebook.as_deref(),
+    )?;
+    opener::open(&url).map_err(|e| format!("open JupyterLab failed: {e}"))?;
+    Ok(true)
 }
 
 /// Follow a workspace switch: a running jupyter-lab keeps the root_dir it was
@@ -299,4 +407,46 @@ pub fn kill_jupyter(state: &JupyterState) {
         let _ = child.kill();
     }
     *state.running.lock().unwrap() = false;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_status_does_not_serialize_jupyter_token() {
+        let status = JupyterStatus {
+            installed: true,
+            running: true,
+            url: Some("http://127.0.0.1:9000".into()),
+            mcp_command: Some("jupyter-mcp-server".into()),
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(!json.contains("token"));
+    }
+
+    #[test]
+    fn persisted_server_meta_contains_port_only_and_accepts_legacy_token_for_migration() {
+        let json = serde_json::to_string(&ServerMeta { port: 9000 }).unwrap();
+        assert_eq!(json, r#"{"port":9000}"#);
+        let legacy: StoredServerMeta =
+            serde_json::from_str(r#"{"port":9000,"token":"legacy-secret"}"#).unwrap();
+        assert_eq!(legacy.token.as_deref(), Some("legacy-secret"));
+    }
+
+    #[test]
+    fn jupyter_lab_url_encodes_relative_notebook_path_without_exposing_raw_secrets() {
+        let url = jupyter_lab_url(
+            "http://127.0.0.1:9000",
+            "aabbccdd",
+            Some("folder/my notebook.ipynb"),
+        )
+        .unwrap();
+        assert_eq!(
+            url,
+            "http://127.0.0.1:9000/lab/tree/folder/my%20notebook.ipynb?token=aabbccdd"
+        );
+        assert!(jupyter_lab_url("http://127.0.0.1:9000", "aabbccdd", Some("../secret"))
+            .is_err());
+    }
 }

@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 17:45 · Jupyter setup now keeps the token only in the OS Keychain, registers MCP through Rust with an `{env:JUPYTER_TOKEN}` placeholder, and opens JupyterLab without exposing the token to the renderer; Jupyter 3/3, ACP Host 16/16, setup 10/10, and desktop typecheck pass.
+
 2026-08-07 17:18 · ACP Host MCP listings now redact secret-like local environment fields and all remote headers before returning public server metadata; the raw values remain internal to the Host driver.
 
 2026-08-07 17:08 · Desktop MCP listing, add/remove, reconnect, and environment repair now use typed ACP Host commands while Gateway Web retains an OpenCodeClient compatibility path; SDK 120/120, Host 45/45, Tauri acp_host 14/14, desktop targets 136/136, and typecheck pass.
