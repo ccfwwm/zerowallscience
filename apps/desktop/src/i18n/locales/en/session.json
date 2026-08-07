@@ -127,7 +127,13 @@
     "reviewDescription": "Review this session's science and file findings"
   },
   "workflow": {
-    "progressAria": "Workflow progress"
+    "progressAria": "Workflow progress",
+    "action": {
+      "pause": { "aria": "Pause workflow", "title": "Pause workflow" },
+      "resume": { "aria": "Resume workflow", "title": "Resume workflow" },
+      "retry": { "aria": "Retry workflow", "title": "Retry workflow" },
+      "cancel": { "aria": "Cancel workflow", "title": "Cancel workflow" }
+    }
   },
   "starters": {
     "newSession": "New session",

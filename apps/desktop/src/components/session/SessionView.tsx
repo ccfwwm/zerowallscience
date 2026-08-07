@@ -9,11 +9,14 @@ import {
   Loader2,
   MoreHorizontal,
   NotebookPen,
+  Pause,
   PanelBottom,
   PanelLeft,
   PanelRight,
   PlugZap,
   Plus,
+  Play,
+  RotateCcw,
   ShieldCheck,
   X,
 } from "lucide-react";
@@ -48,6 +51,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { toast } from "@/lib/toast";
 import type { TurnUndoEntry } from "@/lib/tauri";
 import { cn } from "@/lib/cn";
+import { workflowActionsForState, type WorkflowAction } from "@/lib/workflow-controls";
 
 /**
  * One agent session — header + conversation + composer + optional right pane.
@@ -120,6 +124,10 @@ export function SessionView({
   const connect = useRuntimeStore((s) => s.connect);
   const sendPrompt = useRuntimeStore((s) => s.sendPrompt);
   const startWorkflow = useRuntimeStore((s) => s.startWorkflow);
+  const pauseWorkflow = useRuntimeStore((s) => s.pauseWorkflow);
+  const resumeWorkflow = useRuntimeStore((s) => s.resumeWorkflow);
+  const retryWorkflow = useRuntimeStore((s) => s.retryWorkflow);
+  const cancelWorkflow = useRuntimeStore((s) => s.cancelWorkflow);
   const runReview = useRuntimeStore((s) => s.runReview);
   const runShell = useRuntimeStore((s) => s.runShell);
   const runCommand = useRuntimeStore((s) => s.runCommand);
@@ -686,7 +694,14 @@ export function SessionView({
               <WorkflowStarters onPick={(starter) => void onWorkflowPick(starter)} />
             )}
             {Object.values(workflowRuns).filter((run) => ["pending", "running", "paused", "failed"].includes(run.state)).slice(-1).map((run) => (
-              <WorkflowProgressCard key={run.id} run={run} />
+              <WorkflowProgressCard
+                key={run.id}
+                run={run}
+                onPause={pauseWorkflow}
+                onResume={resumeWorkflow}
+                onRetry={retryWorkflow}
+                onCancel={cancelWorkflow}
+              />
             ))}
             {historyLoading && <ThreadSkeleton />}
             {!historyLoading && thread && (
@@ -872,16 +887,61 @@ export function SessionView({
   );
 }
 
-function WorkflowProgressCard({ run }: { run: WorkflowRun }) {
+function WorkflowProgressCard({
+  run,
+  onPause,
+  onResume,
+  onRetry,
+  onCancel,
+}: {
+  run: WorkflowRun;
+  onPause: (runId: string) => Promise<void>;
+  onResume: (runId: string) => Promise<void>;
+  onRetry: (runId: string) => Promise<void>;
+  onCancel: (runId: string) => Promise<void>;
+}) {
   const { t } = useTranslation("session");
+  const [busy, setBusy] = useState(false);
   const nodes = Object.values(run.nodes);
   const completed = nodes.filter((node) => node.state === "completed").length;
+  const actions = workflowActionsForState(run.state);
+  const action = async (kind: WorkflowAction) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (kind === "pause") await onPause(run.id);
+      else if (kind === "resume") await onResume(run.id);
+      else if (kind === "retry") await onRetry(run.id);
+      else await onCancel(run.id);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const icons: Record<WorkflowAction, React.ReactNode> = {
+    pause: <Pause size={12} />,
+    resume: <Play size={12} />,
+    retry: <RotateCcw size={12} />,
+    cancel: <X size={12} />,
+  };
   return (
     <section className="rounded-card border border-border bg-surface px-3.5 py-3 shadow-card" aria-label={t("workflow.progressAria")}>
       <div className="flex items-center gap-2">
         <FlaskConical size={14} className="text-accent" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">{run.name}</span>
         <span className="text-xs tabular-nums text-muted">{completed}/{nodes.length}</span>
+        {actions.map((kind) => (
+          <button
+            key={kind}
+            type="button"
+            className="rounded p-1 text-muted hover:bg-surface-2 hover:text-text disabled:opacity-50"
+            aria-label={t(`workflow.action.${kind}.aria`)}
+            title={t(`workflow.action.${kind}.title`)}
+            disabled={busy}
+            onClick={() => void action(kind)}
+          >
+            {icons[kind]}
+          </button>
+        ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {nodes.map((node) => (

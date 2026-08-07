@@ -127,7 +127,13 @@
     "reviewDescription": "审查本 session 的科研产出与文件"
   },
   "workflow": {
-    "progressAria": "工作流进度"
+    "progressAria": "工作流进度",
+    "action": {
+      "pause": { "aria": "暂停工作流", "title": "暂停工作流" },
+      "resume": { "aria": "恢复工作流", "title": "恢复工作流" },
+      "retry": { "aria": "重试工作流", "title": "重试工作流" },
+      "cancel": { "aria": "取消工作流", "title": "取消工作流" }
+    }
   },
   "starters": {
     "newSession": "新建会话",

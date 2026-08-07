@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 21:03 · Desktop workflow progress cards now expose engine-agnostic pause, resume, retry, and cancel controls through Runtime Store methods backed by the durable WorkflowScheduler; terminal runs expose no stale actions, verified by workflow controls 4/4, workflow runtime/starters 15/15, desktop typecheck, and diff check.
+
 2026-08-07 20:48 · Application releases now publish target-specific Ed25519-signed installer manifests; production builds embed the public key, update discovery fails closed when the signed manifest is missing or mismatched, and the verified manifest binds release tag, platform, HTTPS asset, size, and SHA-256 before download, verified by Rust 395/395, signing/package scripts 6/6, workflow YAML parsing, desktop typecheck, and diff check.
 
 2026-08-07 20:34 · Application updates now use a dedicated native control state with streamed progress, resumable `.download` staging, cancellation that preserves partial bytes for retry, SHA-256 verification, atomic installer commit, restart-required status, and desktop activity guards; focused update/environment/ACP/runtime tests 175/175, Rust full library tests 391/391, package split/manifest tests 3/3, desktop typecheck, and diff check pass.

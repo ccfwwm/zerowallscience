@@ -211,6 +211,8 @@ function buildOpenCodeHostLaunchRequest(
 
 let workflowScheduler: WorkflowScheduler | null = null;
 
+type WorkflowControlAction = "pause" | "resume" | "retry" | "cancel";
+
 function resolveWorkflowSnapshot(
   nodeId: string,
   overrides?: { mcpAllowList?: string[]; skillsSnapshot?: SkillSnapshot[] },
@@ -298,6 +300,20 @@ function getWorkflowScheduler(): WorkflowScheduler {
   });
   return workflowScheduler;
 }
+
+async function applyWorkflowControl(action: WorkflowControlAction, runId: string): Promise<WorkflowRun> {
+  const scheduler = getWorkflowScheduler();
+  switch (action) {
+    case "pause":
+      return scheduler.pause(runId);
+    case "resume":
+      return scheduler.resume(runId);
+    case "retry":
+      return scheduler.retry(runId);
+    case "cancel":
+      return scheduler.cancel(runId);
+  }
+}
 function initialSelectedAgent(): AgentRole {
   if (typeof window === "undefined") return "general";
   return (window.localStorage.getItem(SELECTED_AGENT_KEY) as AgentRole) || "general";
@@ -350,6 +366,10 @@ interface RuntimeState {
   /** Durable DAG runs driven by the unified ACP Host. */
   workflowRuns: Record<string, WorkflowRun>;
   startWorkflow: (workflowId: string, sessionId?: string, draftKey?: string) => Promise<string | null>;
+  pauseWorkflow: (runId: string) => Promise<void>;
+  resumeWorkflow: (runId: string) => Promise<void>;
+  retryWorkflow: (runId: string) => Promise<void>;
+  cancelWorkflow: (runId: string) => Promise<void>;
   recoverWorkflows: () => Promise<void>;
   currentId: string | null;
   threads: Record<string, Thread>;
@@ -1791,6 +1811,38 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     } catch (error) {
       set({ error: error instanceof Error ? error.message : String(error) });
       return null;
+    }
+  },
+  pauseWorkflow: async (runId) => {
+    try {
+      const run = await applyWorkflowControl("pause", runId);
+      set((current) => ({ workflowRuns: { ...current.workflowRuns, [run.id]: run }, error: null }));
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
+    }
+  },
+  resumeWorkflow: async (runId) => {
+    try {
+      const run = await applyWorkflowControl("resume", runId);
+      set((current) => ({ workflowRuns: { ...current.workflowRuns, [run.id]: run }, error: null }));
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
+    }
+  },
+  retryWorkflow: async (runId) => {
+    try {
+      const run = await applyWorkflowControl("retry", runId);
+      set((current) => ({ workflowRuns: { ...current.workflowRuns, [run.id]: run }, error: null }));
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
+    }
+  },
+  cancelWorkflow: async (runId) => {
+    try {
+      const run = await applyWorkflowControl("cancel", runId);
+      set((current) => ({ workflowRuns: { ...current.workflowRuns, [run.id]: run }, error: null }));
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
     }
   },
   recoverWorkflows: async () => {
