@@ -24,6 +24,7 @@ export function LiveSessionPage() {
   const location = useLocation();
 
   const tree = useLayoutStore((s) => s.tree);
+  const groups = useLayoutStore((s) => s.groups);
   const focusedLeafId = useLayoutStore((s) => s.focusedLeafId);
   const pruneSessions = useLayoutStore((s) => s.pruneSessions);
   const focusedLeaf = tree && focusedLeafId ? findLeaf(tree, focusedLeafId) : null;
@@ -169,12 +170,16 @@ export function LiveSessionPage() {
       <EmptyGroup />
     );
   }
-  // Desktop: the group tab strip owns the window titlebar; below it, the pane
-  // tree, or the drag-a-session onboarding for an empty group.
+  // A lone conversation should look like a workbench, not a terminal mux. The
+  // screen strip appears only once it has something meaningful to manage; the
+  // solo pane owns the native titlebar clearance while the strip is hidden.
+  const showGroupTabs = !tree || groups.length > 1 || leaves(tree).length > 1;
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <GroupTabs />
-      <div className="min-h-0 flex-1">{tree ? <PaneTree /> : <EmptyGroup />}</div>
+      {showGroupTabs && <GroupTabs />}
+      <div className="min-h-0 flex-1">
+        {tree ? <PaneTree chromeAsTitlebar={!showGroupTabs} /> : <EmptyGroup />}
+      </div>
     </div>
   );
 }

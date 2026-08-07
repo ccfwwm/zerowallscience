@@ -1,8 +1,10 @@
-import { screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderAt } from "@/test/render";
 import { setGatewayToken, clearGatewayToken } from "@/lib/webMode";
 import { PHONE_WIDTH, setViewportWidth } from "@/test/viewport";
+import { useLayoutStore } from "@/lib/layout";
 
 // `isGatewayWeb` is a load-time constant (see webMode.test.ts for how it is
 // derived from the gateway's injected flag). Swap it for a switch so both modes
@@ -26,12 +28,35 @@ const SPLIT_RIGHT = /^Split right/;
 const SPLIT_DOWN = /^Split down/;
 
 describe("Live session surface where tiling cannot work", () => {
-  it("gives a desktop window the screen tabs and the split controls", async () => {
+  it("keeps engine and model selection visible before the desktop runtime connects", async () => {
     renderAt("/live");
-    expect(await screen.findByLabelText(SPLIT_RIGHT)).toBeInTheDocument();
-    expect(screen.getByLabelText(SPLIT_DOWN)).toBeInTheDocument();
+
+    expect(await screen.findByRole("button", { name: "Switch engine" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Switch model" })).toBeInTheDocument();
+  });
+
+  it("keeps desktop tiling controls inside the pane actions menu", async () => {
+    const initialGroupId = useLayoutStore.getState().activeGroupId;
+    renderAt("/live");
+    const actions = await screen.findByRole("button", { name: "Pane actions" });
+    expect(screen.queryByLabelText(SPLIT_RIGHT)).toBeNull();
+    expect(screen.queryByLabelText(SPLIT_DOWN)).toBeNull();
+    expect(screen.queryByLabelText("Zoom this pane")).toBeNull();
+    expect(screen.queryByLabelText("New screen")).toBeNull();
+
+    await userEvent.click(actions);
+    expect(screen.getByRole("menuitem", { name: "New screen" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: SPLIT_RIGHT })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: SPLIT_DOWN })).toBeInTheDocument();
+    expect(screen.getByText("100%")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("menuitem", { name: "New screen" }));
     expect(screen.getByLabelText("New screen")).toBeInTheDocument();
-    expect(screen.getByLabelText("Zoom this pane")).toBeInTheDocument();
+
+    act(() => {
+      useLayoutStore.getState().closeGroup(useLayoutStore.getState().activeGroupId);
+    });
+    expect(useLayoutStore.getState().activeGroupId).toBe(initialGroupId);
   });
 
   it("shows a phone one session at a time, with no way to tile it", async () => {

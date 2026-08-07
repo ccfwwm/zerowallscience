@@ -7,11 +7,13 @@ import {
   FlaskConical,
   FolderOpen,
   Loader2,
+  MoreHorizontal,
   NotebookPen,
   PanelBottom,
   PanelLeft,
   PanelRight,
   PlugZap,
+  Plus,
   ShieldCheck,
   X,
 } from "lucide-react";
@@ -148,6 +150,7 @@ export function SessionView({
   const setAgentMode = useRuntimeStore((s) => s.setAgentMode);
   const bindSession = useLayoutStore((s) => s.bindSession);
   const dockSession = useLayoutStore((s) => s.dockSession);
+  const addGroup = useLayoutStore((s) => s.addGroup);
   const setLeafZoom = useLayoutStore((s) => s.setLeafZoom);
   // Any real interaction with a tentative (preview) screen pins it (#3).
   const pinEphemeral = useLayoutStore((s) => s.pinEphemeral);
@@ -547,38 +550,16 @@ export function SessionView({
               {solo && <span>{t("live.reviewToggle.label")}</span>}
             </button>
           )}
-          {/* Split this pane — the visible, discoverable way to tile (no
-              keyboard shortcut needed). Right = side-by-side, down = stacked. */}
+          {/* Keep tiling available without turning the default research surface
+              into a terminal-style toolbar. */}
           {canSplit && (
-            <>
-              <ZoomMenu zoom={zoom} onPick={(z) => setLeafZoom(leafId, z)} />
-              <button
-                onClick={() => void onSplit("right")}
-                className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-text"
-                title={t("group.splitRight")}
-                aria-label={t("group.splitRight")}
-              >
-                <PanelRight size={13} strokeWidth={1.5} />
-              </button>
-              <button
-                onClick={() => void onSplit("bottom")}
-                className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-text"
-                title={t("group.splitDown")}
-                aria-label={t("group.splitDown")}
-              >
-                <PanelBottom size={13} strokeWidth={1.5} />
-              </button>
-              {onClose && (
-                <button
-                  onClick={onClose}
-                  className="rounded-md p-1 text-muted transition-colors hover:bg-border hover:text-error"
-                  title={t("group.closePane")}
-                  aria-label={t("group.closePane")}
-                >
-                  <X size={13} strokeWidth={1.5} />
-                </button>
-              )}
-            </>
+            <PaneActionsMenu
+              zoom={zoom}
+              onZoom={(value) => setLeafZoom(leafId, value)}
+              onSplit={onSplit}
+              onNewScreen={addGroup}
+              onClose={onClose}
+            />
           )}
           {/* The green "ready" dot is noise per pane — only surface trouble. */}
           {displayStatus !== "ready" && <ConnBadge status={displayStatus} />}
@@ -851,7 +832,7 @@ export function SessionView({
               onApprovalModeChange={(mode) => void setApprovalMode(mode)}
               agentMode={planAvailable ? agentMode : undefined}
               onAgentModeChange={planAvailable ? (mode) => setAgentMode(mode, key) : undefined}
-              showModelPicker={connected && !webReadOnly}
+              showModelPicker={!webReadOnly}
               modelSessionId={key}
               showWorkspaceChip={eid === null}
             />
@@ -926,51 +907,101 @@ function WorkflowProgressCard({ run }: { run: WorkflowRun }) {
   );
 }
 
-/** Per-pane zoom control: a compact "NN%" button opening preset levels. Lets a
- *  narrow tiled pane shrink its content so the text isn't oversized. */
+/** Advanced pane controls stay one click away without crowding the default
+ *  ChatGPT-style conversation header. */
 const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5];
-function ZoomMenu({ zoom, onPick }: { zoom: number; onPick: (z: number) => void }) {
+function PaneActionsMenu({
+  zoom,
+  onZoom,
+  onSplit,
+  onNewScreen,
+  onClose,
+}: {
+  zoom: number;
+  onZoom: (value: number) => void;
+  onSplit: (edge: "right" | "bottom") => void;
+  onNewScreen: () => void;
+  onClose?: () => void;
+}) {
   const { t } = useTranslation("session");
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
+  const splitRight = () => onSplit("right");
+  const splitDown = () => onSplit("bottom");
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="rounded-md px-1 py-1 text-xs tabular-nums text-muted transition-colors hover:bg-surface-2 hover:text-text"
-        title={t("group.zoom")}
-        aria-label={t("group.zoom")}
-      >
-        {Math.round(zoom * 100)}%
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 flex flex-col rounded-md border border-border bg-surface p-1 shadow-card">
-          {ZOOM_LEVELS.map((z) => (
-            <button
-              key={z}
-              onClick={() => {
-                onPick(z);
-                setOpen(false);
-              }}
-              className={cn(
-                "rounded px-3 py-1 text-left text-xs tabular-nums hover:bg-surface-2",
-                z === zoom ? "text-text" : "text-muted",
-              )}
-            >
-              {Math.round(z * 100)}%
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          className="rounded-md p-1 text-muted outline-none transition-colors hover:bg-surface-2 hover:text-text"
+          title={t("group.actions")}
+          aria-label={t("group.actions")}
+        >
+          <MoreHorizontal size={14} />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={4}
+          className="z-50 min-w-[210px] rounded-card border border-border bg-surface p-1 text-xs text-text shadow-pop"
+        >
+          <DropdownMenu.Label className="px-2 py-1 text-[11px] text-muted">
+            {t("group.zoom")}
+          </DropdownMenu.Label>
+          <DropdownMenu.RadioGroup
+            value={String(zoom)}
+            onValueChange={(value) => onZoom(Number(value))}
+          >
+            <div className="grid grid-cols-5 gap-0.5 px-1 pb-1">
+              {ZOOM_LEVELS.map((value) => (
+                <DropdownMenu.RadioItem
+                  key={value}
+                  value={String(value)}
+                  className={cn(
+                    "cursor-pointer rounded-input px-1.5 py-1 text-center tabular-nums outline-none data-[highlighted]:bg-surface-2",
+                    value === zoom ? "bg-surface-2 text-text" : "text-muted",
+                  )}
+                >
+                  {Math.round(value * 100)}%
+                </DropdownMenu.RadioItem>
+              ))}
+            </div>
+          </DropdownMenu.RadioGroup>
+          <DropdownMenu.Separator className="my-1 h-px bg-border-faint" />
+          <DropdownMenu.Item
+            onSelect={onNewScreen}
+            className="flex cursor-pointer items-center gap-2 rounded-input px-2 py-1.5 outline-none data-[highlighted]:bg-surface-2"
+          >
+            <Plus size={13} className="text-muted" />
+            {t("group.newTab")}
+          </DropdownMenu.Item>
+          <DropdownMenu.Item
+            onSelect={splitRight}
+            className="flex cursor-pointer items-center gap-2 rounded-input px-2 py-1.5 outline-none data-[highlighted]:bg-surface-2"
+          >
+            <PanelRight size={13} className="text-muted" />
+            {t("group.splitRight")}
+          </DropdownMenu.Item>
+          <DropdownMenu.Item
+            onSelect={splitDown}
+            className="flex cursor-pointer items-center gap-2 rounded-input px-2 py-1.5 outline-none data-[highlighted]:bg-surface-2"
+          >
+            <PanelBottom size={13} className="text-muted" />
+            {t("group.splitDown")}
+          </DropdownMenu.Item>
+          {onClose && (
+            <>
+              <DropdownMenu.Separator className="my-1 h-px bg-border-faint" />
+              <DropdownMenu.Item
+                onSelect={onClose}
+                className="flex cursor-pointer items-center gap-2 rounded-input px-2 py-1.5 text-error outline-none data-[highlighted]:bg-surface-2"
+              >
+                <X size={13} />
+                {t("group.closePane")}
+              </DropdownMenu.Item>
+            </>
+          )}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 

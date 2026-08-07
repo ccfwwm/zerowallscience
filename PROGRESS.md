@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 08:04 · P5 live workbench now keeps Engine and Model visible before connection, hides the single-screen tab strip, and moves zoom/new-screen/split actions into one pane menu while preserving multi-screen and tiled layouts; 68 focused tests, typecheck, and live 1440×900 inspection pass.
+
 2026-08-07 07:47 · The app update dialog no longer mixes English fallback labels into Chinese: close, defer, download, downloading, and installer actions now use complete locale resources; the i18n regression test, typecheck, ESLint, and live desktop-page check pass.
 
 2026-08-07 07:40 · P5 desktop navigation now matches the approved workbench direction: New chat, Search, Workflows, and a collapsed Research tools group lead the sidebar while preserving projects, settings, and gateway web capability guards; sidebar tests 12/12 and TypeScript checks pass.

@@ -11,7 +11,7 @@ import { SessionView } from "./SessionView";
  * click-to-focus ring. A zoomed leaf renders alone, full-area, without
  * discarding the tree.
  */
-export function PaneTree() {
+export function PaneTree({ chromeAsTitlebar = false }: { chromeAsTitlebar?: boolean } = {}) {
   const tree = useLayoutStore((s) => s.tree);
   const focusedLeafId = useLayoutStore((s) => s.focusedLeafId);
   const zoomedLeafId = useLayoutStore((s) => s.zoomedLeafId);
@@ -25,21 +25,23 @@ export function PaneTree() {
   if (zoomedLeafId) {
     const zoomed = allLeaves.find((l) => l.id === zoomedLeafId);
     if (zoomed) {
-      return <Leaf leafId={zoomed.id} sessionId={zoomed.sessionId} zoom={zoomed.zoom ?? 1} focused solo />;
+      return <Leaf leafId={zoomed.id} sessionId={zoomed.sessionId} zoom={zoomed.zoom ?? 1} focused solo chromeAsTitlebar={chromeAsTitlebar} />;
     }
   }
 
-  return <Node node={tree} focusedLeafId={focusedLeafId ?? ""} solo={solo} />;
+  return <Node node={tree} focusedLeafId={focusedLeafId ?? ""} solo={solo} chromeAsTitlebar={chromeAsTitlebar} />;
 }
 
 function Node({
   node,
   focusedLeafId,
   solo,
+  chromeAsTitlebar,
 }: {
   node: PaneNode;
   focusedLeafId: string;
   solo: boolean;
+  chromeAsTitlebar: boolean;
 }) {
   if (node.kind === "leaf") {
     return (
@@ -50,6 +52,7 @@ function Node({
         zoom={node.zoom ?? (solo ? 1 : 0.75)}
         focused={node.id === focusedLeafId}
         solo={solo}
+        chromeAsTitlebar={chromeAsTitlebar && solo}
       />
     );
   }
@@ -110,7 +113,7 @@ function Split({
             ) : null
           }
         >
-          <Node node={child} focusedLeafId={focusedLeafId} solo={false} />
+          <Node node={child} focusedLeafId={focusedLeafId} solo={false} chromeAsTitlebar={false} />
         </FragmentChild>
       ))}
     </div>
@@ -188,12 +191,14 @@ function Leaf({
   zoom,
   focused,
   solo,
+  chromeAsTitlebar,
 }: {
   leafId: string;
   sessionId: string | null;
   zoom: number;
   focused: boolean;
   solo: boolean;
+  chromeAsTitlebar?: boolean;
 }) {
   const focusLeaf = useLayoutStore((s) => s.focusLeaf);
   const closePane = useLayoutStore((s) => s.closePane);
@@ -219,7 +224,7 @@ function Leaf({
         sessionId={sessionId}
         leafId={leafId}
         focused={focused}
-        chromeAsTitlebar={false}
+        chromeAsTitlebar={chromeAsTitlebar}
         zoom={zoom}
         solo={solo}
         onClose={solo ? undefined : () => closePane(leafId)}
