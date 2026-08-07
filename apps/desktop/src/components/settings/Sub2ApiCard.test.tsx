@@ -78,9 +78,10 @@ vi.mock("@/lib/runtime", () => {
   };
   return {
     getClient: () => client,
-    // The card now resolves its OpenCode client through this (ACP-safe) path, so
-    // the mock must supply it too — otherwise the save handler bails on a null.
-    getOrCreateOpenCodeClient: () => Promise.resolve(client),
+    getProviderControlClient: () => client,
+    getOrCreateOpenCodeClient: () => Promise.reject(
+      new Error("desktop provider writes must not create an OpenCodeClient"),
+    ),
     useRuntimeStore,
   };
 });

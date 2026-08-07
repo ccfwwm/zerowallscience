@@ -204,11 +204,13 @@ describe("Settings model browser integration", () => {
     ).mockImplementation(setProviderSecret);
     const client = catalogClient();
     const addCustomProvider = vi.fn().mockResolvedValue(undefined);
-    Object.assign(client, { addCustomProvider });
-    // ACP owns the active chat client, so the provider editor must use the
-    // always-running OpenCode sidecar rather than reject the save.
-    vi.spyOn(runtime, "getClient").mockReturnValue(null);
-    vi.spyOn(runtime, "getOrCreateOpenCodeClient").mockResolvedValue(client);
+    vi.spyOn(runtime, "getClient").mockReturnValue(client);
+    vi.spyOn(runtime, "getProviderControlClient").mockReturnValue({
+      addCustomProvider,
+    } as unknown as ReturnType<typeof runtime.getProviderControlClient>);
+    vi.spyOn(runtime, "getOrCreateOpenCodeClient").mockRejectedValue(
+      new Error("desktop provider writes must not create an OpenCodeClient"),
+    );
     await renderSettings();
 
     await userEvent.click(screen.getAllByRole("button", { name: "Custom endpoint" })[0]);

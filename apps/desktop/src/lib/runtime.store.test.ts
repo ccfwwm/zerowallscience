@@ -295,8 +295,16 @@ vi.mock("@zerowall/sdk", async () => {
       this.statusCb("offline");
     }
   }
+  class AcpHostClient {
+    async listProviders() { return mocks.providers; }
+    async getDefaultModel() { return mocks.currentModel; }
+    async setDefaultModel(model: string) { mocks.setDefaultModelSpy(model); mocks.currentModel = model; }
+    async addCustomProvider() {}
+    async removeCustomProvider() {}
+  }
   return {
     OpenCodeClient,
+    AcpHostClient,
     ZeroWallClient,
     BaseAgentRuntime,
     DEFAULT_OPENCODE_URL: "http://127.0.0.1:4096",

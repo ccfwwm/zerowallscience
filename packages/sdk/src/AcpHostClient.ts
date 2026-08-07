@@ -1,5 +1,5 @@
 import type { PromptAttachment } from "./runtime";
-import type { HistoryMessage } from "./types";
+import type { HistoryMessage, ProviderInfo } from "./types";
 
 export type AgentEngine = "codex" | "claude-code" | "opencode";
 
@@ -127,6 +127,14 @@ export interface AcpHostClientOptions {
   pollIntervalMs?: number;
 }
 
+export interface AcpHostCustomProviderOptions {
+  name: string;
+  npm: string;
+  baseURL: string;
+  models: string[];
+  contexts?: Record<string, number>;
+}
+
 interface RawBinding {
   engine: AgentEngine;
   profile: string;
@@ -172,6 +180,35 @@ export class AcpHostClient {
   constructor(options: AcpHostClientOptions) {
     this.invoke = options.invoke;
     this.pollIntervalMs = options.pollIntervalMs ?? 50;
+  }
+
+  async listProviders(): Promise<ProviderInfo[]> {
+    return this.invoke<ProviderInfo[]>("acp_host_list_providers");
+  }
+
+  async getDefaultModel(): Promise<string | null> {
+    return this.invoke<string | null>("acp_host_get_default_model");
+  }
+
+  async setDefaultModel(model: string): Promise<void> {
+    await this.invoke("acp_host_set_default_model", { model });
+  }
+
+  async addCustomProvider(id: string, options: AcpHostCustomProviderOptions): Promise<void> {
+    await this.invoke("acp_host_add_custom_provider", {
+      request: {
+        id,
+        name: options.name,
+        npm: options.npm,
+        baseUrl: options.baseURL,
+        models: [...options.models],
+        contexts: { ...(options.contexts ?? {}) },
+      },
+    });
+  }
+
+  async removeCustomProvider(providerId: string): Promise<void> {
+    await this.invoke("acp_host_remove_custom_provider", { providerId });
   }
 
   async listEngines(): Promise<AcpHostEngineInfo[]> {

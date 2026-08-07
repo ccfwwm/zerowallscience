@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 16:22 · Provider catalog, default-model, and custom-provider control now use typed ACP Host commands on desktop, with OpenCodeClient retained only behind the explicit Gateway Web compatibility path; SDK, Tauri Host, Settings, Sub2ApiCard, and auto-provision tests pass.
+
 2026-08-07 16:00 · Workflow control nodes no longer report placeholder success: deduplication now executes deterministically, artifact nodes write real workspace outputs, unsupported operations fail explicitly, and run nodes require a future approved execution adapter; workflow tests 20/20 and typecheck pass.
 
 2026-08-07 15:53 · Desktop runtime switching now normalizes null or stale engine IDs to Host-owned OpenCode, so all desktop turns stay on the unified ACP Host while the gateway web compatibility path remains separate; runtime store 114/114 and typecheck pass.

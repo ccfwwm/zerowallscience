@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use zerowall_acp::AcpAgentProfile;
 use zerowall_acp_host::acp_process::AcpProcessDriver;
-use zerowall_acp_host::opencode::{HttpOpenCodeTransport, OpenCodeDriver};
+use zerowall_acp_host::opencode::{
+    CustomProviderRequest, HttpOpenCodeTransport, OpenCodeDriver, OpenCodeProviderControl,
+    ProviderInfo,
+};
 use zerowall_acp_host::{
     AcpHost, AcpHostDriver, AgentBinding, AgentEvent, CredentialRef, HostDriverKind, HostError,
     NewSessionRequest, PromptAttachment, PromptResponse, SessionState, SessionStatus,
@@ -513,6 +516,102 @@ fn build_opencode_driver(
         crate::runtime::server_password(),
         session_binding,
     ))
+}
+
+fn build_provider_control(
+    app: &AppHandle,
+) -> Result<OpenCodeProviderControl<HttpOpenCodeTransport>, String> {
+    let runtime = app.state::<crate::runtime::RuntimeState>();
+    let base_url = crate::runtime::sidecar_url(runtime.inner())
+        .ok_or_else(|| "OpenCode runtime is not running".to_owned())?;
+    Ok(OpenCodeProviderControl::new(
+        HttpOpenCodeTransport::new(),
+        base_url,
+        "opencode",
+        crate::runtime::server_password(),
+    ))
+}
+
+fn validate_provider_id(value: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err("provider_id is required".into());
+    }
+    if !value
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
+    {
+        return Err("provider_id contains unsupported characters".into());
+    }
+    Ok(())
+}
+
+fn validate_custom_provider(request: &CustomProviderRequest) -> Result<(), String> {
+    validate_provider_id(&request.id)?;
+    for (name, value) in [
+        ("name", request.name.as_str()),
+        ("npm", request.npm.as_str()),
+        ("base_url", request.base_url.as_str()),
+    ] {
+        if value.trim().is_empty() {
+            return Err(format!("{name} is required"));
+        }
+    }
+    validate_base_url(&request.base_url)?;
+    if request.models.is_empty() || request.models.iter().any(|model| model.trim().is_empty()) {
+        return Err("at least one non-empty model is required".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn acp_host_list_providers(app: AppHandle) -> Result<Vec<ProviderInfo>, String> {
+    build_provider_control(&app)?
+        .list_providers()
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_get_default_model(app: AppHandle) -> Result<Option<String>, String> {
+    build_provider_control(&app)?
+        .get_default_model()
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_set_default_model(app: AppHandle, model: String) -> Result<(), String> {
+    if model.trim().is_empty() || !model.contains('/') {
+        return Err("model must use provider/model format".into());
+    }
+    build_provider_control(&app)?
+        .set_default_model(&model)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_add_custom_provider(
+    app: AppHandle,
+    request: CustomProviderRequest,
+) -> Result<(), String> {
+    validate_custom_provider(&request)?;
+    build_provider_control(&app)?
+        .add_custom_provider(request)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_remove_custom_provider(
+    app: AppHandle,
+    provider_id: String,
+) -> Result<(), String> {
+    validate_provider_id(&provider_id)?;
+    build_provider_control(&app)?
+        .remove_custom_provider(&provider_id)
+        .await
+        .map_err(error_string)
 }
 
 fn chrono_like_timestamp() -> String {

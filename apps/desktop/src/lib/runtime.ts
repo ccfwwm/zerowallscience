@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  AcpHostClient,
   OpenCodeClient,
   ZeroWallClient,
   DEFAULT_OPENCODE_URL,
@@ -577,6 +578,7 @@ interface RuntimeState {
 // provider/MCP surface that lives outside the AgentRuntime contract.
 let client: AgentRuntime | null = null;
 let opencodeClient: OpenCodeClient | null = null;
+let providerControlClient: AcpHostClient | null = null;
 /** Every connect owns one generation. A launch can reject only after its child
  * is closed during a runtime switch; that obsolete completion must never paint
  * an error over the agent that replaced it. */
@@ -1172,6 +1174,24 @@ async function revertToMessage(
 /** The live OpenCode client (Settings talks to the runtime's config API directly). */
 export function getClient(): OpenCodeClient | null {
   return opencodeClient;
+}
+
+/** Typed provider configuration boundary. Desktop calls Tauri ACP Host
+ * commands; the gateway web client retains its same-origin OpenCode client. */
+export function getProviderControlClient(): Pick<
+  AcpHostClient,
+  "listProviders" | "getDefaultModel" | "setDefaultModel" | "addCustomProvider" | "removeCustomProvider"
+> | OpenCodeClient | null {
+  if (isGatewayWeb) return opencodeClient;
+  if (!isTauri) return opencodeClient;
+  if (!providerControlClient) {
+    const invoke: AcpHostInvoke = async <T>(command: string, args?: Record<string, unknown>) => {
+      const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
+      return tauriInvoke<T>(command, args);
+    };
+    providerControlClient = new AcpHostClient({ invoke });
+  }
+  return providerControlClient;
 }
 
 /** The default-model key ("providerId/model") for an ACP preset, from its stored
@@ -1957,12 +1977,10 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     const ownsCatalog = () =>
       client === catalogClient && runtimeConnectEpoch === catalogEpoch;
     try {
-      // listProviders is OpenCodeClient-only. In OpenCode mode opencodeClient
-      // equals `client`. In ACP mode opencodeClient is torn down, but the
-      // sidecar keeps running in the background — create a transient client so
-      // the model picker stays populated while the user is on the ACP runtime.
+      // Provider configuration uses typed Host commands on desktop. Gateway Web
+      // keeps the same-origin OpenCode client as its explicit compatibility edge.
       const catalogOpenCodeClient = opencodeClient;
-      const oc = catalogOpenCodeClient ?? await getOrCreateOpenCodeClient().catch(() => null);
+      const providerControl = getProviderControlClient();
       if (!ownsCatalog()) return;
       // In ACP mode the active runtime advertises no portable model catalog;
       // the live session model is the
@@ -1972,9 +1990,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       const [firstSkills, agents, clientDefaultModel, commands, providers] = await Promise.all([
         catalogClient.listSkills(),
         catalogClient.listAgents(),
-        catalogClient.getDefaultModel().catch(() => null),
+        providerControl?.getDefaultModel().catch(() => null) ?? Promise.resolve(null),
         catalogClient.listCommands().catch(() => []),
-        oc ? oc.listProviders().catch(() => []) : Promise.resolve([]),
+        providerControl?.listProviders().catch(() => []) ?? Promise.resolve([]),
       ]);
       if (!ownsCatalog()) return;
       const defaultModel = acpId ? acpDefaultModelKey(acpId) : clientDefaultModel;
@@ -2038,7 +2056,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
             // Call the underlying client directly to avoid triggering a reconnect
             // inside loadCatalog (which would cause infinite recursion). The
             // reconnect that called loadCatalog is already in progress.
-            await catalogClient.setDefaultModel(next);
+            await (providerControl?.setDefaultModel(next) ?? catalogClient.setDefaultModel(next));
             if (!ownsCatalog()) return;
             set({ defaultModel: next });
             toast.success(
@@ -2142,6 +2160,12 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           void logDebug(`[acp] setDefaultModel → ${target} (in-session ${acpId})`);
           try {
             await activeClient.setDefaultModel(target);
+            if (acpId === "opencode") {
+              // Persist the OpenCode default through the typed Host control
+              // plane; the active ACP session still receives its own model
+              // update above so the current turn remains responsive.
+              await getProviderControlClient()?.setDefaultModel(target);
+            }
             if (get().acpProfileId !== acpId) return;
             // Persist only after the adapter accepted the change. The next
             // runtime launch therefore starts with the last working model.
@@ -2199,9 +2223,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       // not recognized" vs. a stale config-vs-auth mismatch. Best-effort, never
       // fails the switch.
       try {
-        const oc = opencodeClient;
-        if (oc) {
-          const [applied, provs] = await Promise.all([oc.getDefaultModel(), oc.listProviders()]);
+        const control = getProviderControlClient();
+        if (control) {
+          const [applied, provs] = await Promise.all([control.getDefaultModel(), control.listProviders()]);
           void logDebug(
             `[provider] applied=${applied ?? "null"} providers=[${provs.map((p) => p.id).join(",")}]`,
           );
@@ -2307,14 +2331,14 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // is briefly unreachable (still restarting), leave it — the settings card's
     // autoSetup re-registers on next open, and the ACP path already has its
     // config from the saveAcpConfig calls above.
-    const oc = await getOrCreateOpenCodeClient();
-    if (!oc) {
+    const providerControl = getProviderControlClient();
+    if (!providerControl) {
       void logDebug("auto-provision: OpenCode sidecar unreachable — providers deferred");
       return;
     }
     const npm = npmForProtocol(loadProtocol());
     for (const p of named) {
-      await oc.addCustomProvider(p.providerId, {
+      await providerControl.addCustomProvider(p.providerId, {
         name: p.name,
         npm,
         baseURL: p.baseUrl,
@@ -2327,7 +2351,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     const def = pickDefaultModel(orderModels(primaryProv.models));
     if (def) {
       const primaryProviderId = providerIdForGroup(primary.id, primary.id);
-      await oc.setDefaultModel(`${primaryProviderId}/${def}`).catch((err) => {
+      await providerControl.setDefaultModel(`${primaryProviderId}/${def}`).catch((err) => {
         void logDebug(`auto-provision: setDefaultModel failed: ${err}`);
       });
     }
@@ -2350,7 +2374,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       if (!projectRoot) throw new Error("No active project workspace is available.");
       if (get().workspace !== projectRoot) set({ workspace: projectRoot });
       if (acpProfileId === "opencode" && !get().defaultModel) {
-        const controlClient = await getOrCreateOpenCodeClient();
+        const controlClient = getProviderControlClient();
         if (controlClient) {
           const [defaultModel, providers] = await Promise.all([
             controlClient.getDefaultModel().catch(() => null),

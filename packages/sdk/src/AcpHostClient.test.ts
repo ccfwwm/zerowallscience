@@ -66,6 +66,66 @@ function invokeMock(): AcpHostInvoke {
 }
 
 describe("AcpHostClient", () => {
+  it("uses typed Host commands for provider control without serializing secrets", async () => {
+    const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "acp_host_list_providers") {
+        return [{ id: "cloud", name: "Cloud", models: [{ id: "model", name: "Model" }] }];
+      }
+      if (command === "acp_host_get_default_model") return "cloud/model";
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    await expect(client.listProviders()).resolves.toEqual([
+      { id: "cloud", name: "Cloud", models: [{ id: "model", name: "Model" }] },
+    ]);
+    await expect(client.getDefaultModel()).resolves.toBe("cloud/model");
+    await client.setDefaultModel("cloud/model");
+    await client.addCustomProvider("research", {
+      name: "Research",
+      npm: "@ai-sdk/openai-compatible",
+      baseURL: "https://models.example.test/v1",
+      models: ["model-a"],
+      contexts: { "model-a": 131072 },
+    });
+    await client.removeCustomProvider("research");
+
+    expect(invoke).toHaveBeenCalledWith("acp_host_list_providers");
+    expect(invoke).toHaveBeenCalledWith("acp_host_get_default_model");
+    expect(invoke).toHaveBeenCalledWith("acp_host_set_default_model", { model: "cloud/model" });
+    expect(invoke).toHaveBeenCalledWith("acp_host_add_custom_provider", {
+      request: {
+        id: "research",
+        name: "Research",
+        npm: "@ai-sdk/openai-compatible",
+        baseUrl: "https://models.example.test/v1",
+        models: ["model-a"],
+        contexts: { "model-a": 131072 },
+      },
+    });
+    expect(invoke).toHaveBeenCalledWith("acp_host_remove_custom_provider", { providerId: "research" });
+    expect(JSON.stringify(invoke.mock.calls)).not.toContain("apiKey");
+  });
+
+  it("uses typed Host commands for provider catalog metadata", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_list_provider_catalog") {
+        return { all: [{ id: "cloud", name: "Cloud", env: ["CLOUD_KEY"] }], connected: ["cloud"] };
+      }
+      if (command === "acp_host_list_custom_provider_ids") return ["research"];
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    await expect(client.listProviderCatalog()).resolves.toEqual({
+      all: [{ id: "cloud", name: "Cloud", env: ["CLOUD_KEY"] }],
+      connected: ["cloud"],
+    });
+    await expect(client.listCustomProviderIds()).resolves.toEqual(["research"]);
+    expect(invoke).toHaveBeenCalledWith("acp_host_list_provider_catalog");
+    expect(invoke).toHaveBeenCalledWith("acp_host_list_custom_provider_ids");
+  });
+
   it("rejects a launched session bound to a different project root", async () => {
     const client = new AcpHostClient({ invoke: invokeMock() });
 

@@ -3,6 +3,7 @@ export { ZeroWallClient } from "./ZeroWallClient";
 export {
   AcpHostClient,
   type AcpHostClientOptions,
+  type AcpHostCustomProviderOptions,
   type AcpHostEngineInfo,
   type AcpHostInitializeResponse,
   type AcpHostInvoke,

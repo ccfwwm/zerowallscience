@@ -24,8 +24,9 @@ import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { useUiStore, ZOOM_MAX, ZOOM_MIN } from "@/lib/store";
 import { shippedLocales } from "@/i18n/config";
-import { getClient, getOrCreateOpenCodeClient, useRuntimeStore } from "@/lib/runtime";
+import { getClient, getOrCreateOpenCodeClient, getProviderControlClient, useRuntimeStore } from "@/lib/runtime";
 import { useUpdateStore } from "@/lib/update";
+import { isGatewayWeb } from "@/lib/webMode";
 import {
   agentBrowserProfiles,
   detectChrome,
@@ -253,14 +254,15 @@ export function SettingsPage() {
     // active runtime), but the sidecar still runs behind it and owns the
     // provider config the Models card renders — reach it with a transient client
     // so the catalog loads instead of hanging on "正在加载模型目录…".
+    const providerControl = getProviderControlClient();
     const client = getClient() ?? (await getOrCreateOpenCodeClient());
-    if (!client) return null;
+    if (!providerControl && !client) return null;
     // The model catalog (listProviders) is what the Models card renders — only
     // its failure means "catalog unavailable", and only when there is no last
     // good list to keep showing. The rest is auxiliary settings data.
     let fresh: ProviderInfo[] | null = null;
     try {
-      fresh = await client.listProviders();
+      fresh = await (providerControl?.listProviders() ?? client!.listProviders());
       setProviders(fresh);
       setCatalogState("ready");
     } catch {
@@ -268,9 +270,9 @@ export function SettingsPage() {
     }
     try {
       const [c, custom, mcp] = await Promise.all([
-        client.listProviderCatalog(),
-        client.listCustomProviderIds(),
-        client.listMcpServers().catch(() => []),
+        client?.listProviderCatalog() ?? Promise.resolve({ all: [] }),
+        client?.listCustomProviderIds() ?? Promise.resolve([]),
+        client?.listMcpServers().catch(() => []) ?? Promise.resolve([]),
       ]);
       setCatalog(c.all);
       setCustomIds(custom);
@@ -632,9 +634,10 @@ export function SettingsPage() {
       // after, distinguishing a config vs. auth-store mismatch.
       void logDebug(`[provider] disconnect ${providerID} (custom=${custom})`);
       if (custom) {
-        // Custom endpoints live in the config file; removal restarts the sidecar.
-        await removeConfigEntry("provider", providerID);
-        await useRuntimeStore.getState().connectRetry();
+        const control = getProviderControlClient();
+        if (!control) throw new Error(t("providers.connectPrompt"));
+        await control.removeCustomProvider(providerID);
+        if (isGatewayWeb) await useRuntimeStore.getState().connectRetry();
         // A custom provider's id is derived from its display name, and a key set
         // via the key panel is stored separately in the auth store keyed by that
         // id. Removing only the config entry leaves that credential behind, so
@@ -647,7 +650,8 @@ export function SettingsPage() {
         await removeProviderSecret(providerID);
       }
       try {
-        const provs = await getClient()!.listProviders();
+        const control = getProviderControlClient();
+        const provs = await (control?.listProviders() ?? getClient()!.listProviders());
         void logDebug(`[provider] after removing ${providerID}: providers=[${provs.map((p) => p.id).join(",")}]`);
       } catch (e) {
         void logDebug(`[provider] post-remove probe failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -706,19 +710,18 @@ export function SettingsPage() {
         const ctx = cContexts[m] ?? (Number.isFinite(typedCtx) && typedCtx > 0 ? typedCtx : 0);
         if (ctx > 0) contexts[m] = ctx;
       }
-      // Claude Code and Codex ACP own the active chat client, but provider
-      // configuration remains in the bundled OpenCode sidecar. Resolving a
-      // transient client here keeps custom endpoints usable in every runtime.
-      const client = getClient() ?? (await getOrCreateOpenCodeClient());
-      if (!client) throw new Error(t("providers.connectPrompt"));
-      await client.addCustomProvider(id, {
+      const control = getProviderControlClient();
+      if (!control) throw new Error(t("providers.connectPrompt"));
+      // Store the secret first; the Rust command restarts the sidecar and the
+      // typed Host write then sees only a keychain-backed credential reference.
+      if (cKey.trim()) await setProviderSecret(id, cKey.trim());
+      await control.addCustomProvider(id, {
         name: cName.trim(),
         npm: cNpm,
         baseURL: cUrl.trim(),
         models,
         contexts,
       });
-      if (cKey.trim()) await setProviderSecret(id, cKey.trim());
       toast.success(t("toast.endpointAdded", { name: cName.trim() }));
       setShowCustom(false);
       setCName("");
