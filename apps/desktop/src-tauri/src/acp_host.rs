@@ -3,6 +3,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
 use zerowall_acp::AcpAgentProfile;
 use zerowall_acp_host::acp_process::AcpProcessDriver;
@@ -411,12 +412,19 @@ fn process_profile(
         .ok_or_else(|| "provider credential is not available in the OS keychain".to_owned())?;
     let adapter = resolve_adapter_path(app, request.engine)?;
     let runtime_cli = resolve_runtime_cli_path(app, request.engine)?;
-    let runtime_home = workspace
-        .join(".zerowall")
-        .join("acp")
-        .join(&request.profile_id);
+    let runtime_home = process_runtime_home(workspace, request);
     std::fs::create_dir_all(&runtime_home)
         .map_err(|error| format!("create ACP runtime directory: {error}"))?;
+    let snapshots = request.skills_snapshot.as_deref().unwrap_or_default();
+    let skill_store = workspace.join(".zerowall").join("skills-store");
+    if !snapshots.is_empty() {
+        crate::runtime::deploy_bundled_skills_to(app, &skill_store)?;
+    }
+    crate::runtime::materialize_skill_snapshots(
+        &skill_store,
+        &runtime_home.join("skills"),
+        snapshots,
+    )?;
     // MCP discovery is best-effort: an unavailable optional connector must not
     // prevent the unified ACP Host from starting the primary session.
     let mut mcp_servers = crate::science_mcp::acp_mcp_servers(app).unwrap_or_default();
@@ -481,6 +489,20 @@ fn process_profile(
         session_meta: None,
         mcp_servers,
     })
+}
+
+fn process_runtime_home(workspace: &Path, request: &AcpHostLaunchRequest) -> PathBuf {
+    let engine = match request.engine {
+        HostDriverKind::Codex => "codex",
+        HostDriverKind::ClaudeCode => "claude-code",
+        HostDriverKind::OpenCode => "opencode",
+    };
+    let session = format!("{:x}", Sha256::digest(request.session_id.as_bytes()));
+    workspace
+        .join(".zerowall")
+        .join("acp")
+        .join(engine)
+        .join(session)
 }
 
 fn binding(request: &AcpHostLaunchRequest, workspace: &Path) -> AgentBinding {
@@ -1512,6 +1534,21 @@ mod tests {
         let session_binding = binding(&normalized, &root);
         assert_eq!(session_binding.mcp_allow_list, vec!["datasets", "papers"]);
         assert_eq!(session_binding.skills_snapshot.len(), 1);
+    }
+
+    #[test]
+    fn process_runtime_home_is_session_isolated_and_uses_no_raw_session_path() {
+        let root = PathBuf::from("C:/science");
+        let first = test_launch_request(HostDriverKind::Codex, &root, "../unsafe/session");
+        let second = test_launch_request(HostDriverKind::Codex, &root, "other-session");
+
+        let first_home = process_runtime_home(&root, &first);
+        let second_home = process_runtime_home(&root, &second);
+
+        assert!(first_home.starts_with(root.join(".zerowall/acp/codex")));
+        assert_ne!(first_home, second_home);
+        assert!(!first_home.to_string_lossy().contains("unsafe"));
+        assert!(!first_home.to_string_lossy().contains(".."));
     }
 
     #[test]

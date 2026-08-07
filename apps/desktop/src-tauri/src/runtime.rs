@@ -4,6 +4,7 @@
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
@@ -293,6 +294,139 @@ pub(crate) fn deploy_bundled_skills_for_acp(
     if !all_ok { return Err("bundled scientific skills are unavailable".into()); }
     prune_stale_skills(discovery, &bundled);
     Ok(())
+}
+
+/// Materialize exactly one immutable session snapshot into an adapter-owned
+/// discovery directory. Snapshot hashes cover SKILL.md, while the complete
+/// skill directory is copied only after every requested hash has been verified.
+pub(crate) fn materialize_skill_snapshots(
+    store: &Path,
+    discovery: &Path,
+    snapshots: &[zerowall_acp_host::SkillSnapshot],
+) -> Result<(), String> {
+    if materialized_snapshot_matches(discovery, snapshots) {
+        return Ok(());
+    }
+    let parent = discovery
+        .parent()
+        .ok_or_else(|| "skill discovery directory has no parent".to_string())?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("create skill discovery parent: {error}"))?;
+    let nonce = random_hex(8);
+    let staging = parent.join(format!(".skills-staging-{nonce}"));
+    let backup = parent.join(format!(".skills-backup-{nonce}"));
+    std::fs::create_dir_all(&staging)
+        .map_err(|error| format!("create skill snapshot staging: {error}"))?;
+
+    let staged = (|| {
+        for snapshot in snapshots {
+            let source = find_snapshot_skill(store, &snapshot.id)?;
+            let skill_file = source.join("SKILL.md");
+            let bytes = std::fs::read(&skill_file)
+                .map_err(|error| format!("read skill {}: {error}", snapshot.id))?;
+            let actual = format!("{:x}", Sha256::digest(&bytes));
+            if !actual.eq_ignore_ascii_case(snapshot.sha256.trim()) {
+                return Err(format!(
+                    "skill {} SHA-256 does not match the session snapshot",
+                    snapshot.id
+                ));
+            }
+            let name = source
+                .file_name()
+                .ok_or_else(|| format!("skill {} has no directory name", snapshot.id))?;
+            copy_dir(&source, &staging.join(name))
+                .map_err(|error| format!("copy skill {}: {error}", snapshot.id))?;
+        }
+        Ok(())
+    })();
+    if let Err(error) = staged {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+
+    let had_previous = discovery.exists();
+    if had_previous {
+        std::fs::rename(discovery, &backup)
+            .map_err(|error| format!("stage previous skill snapshot: {error}"))?;
+    }
+    if let Err(error) = std::fs::rename(&staging, discovery) {
+        if had_previous {
+            let _ = std::fs::rename(&backup, discovery);
+        }
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(format!("activate skill snapshot: {error}"));
+    }
+    if had_previous {
+        let _ = std::fs::remove_dir_all(backup);
+    }
+    Ok(())
+}
+
+fn materialized_snapshot_matches(
+    discovery: &Path,
+    snapshots: &[zerowall_acp_host::SkillSnapshot],
+) -> bool {
+    let Ok(entries) = std::fs::read_dir(discovery) else {
+        return false;
+    };
+    let installed = entries
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().join("SKILL.md").is_file())
+        .count();
+    if installed != snapshots.len() {
+        return false;
+    }
+    snapshots.iter().all(|snapshot| {
+        find_snapshot_skill(discovery, &snapshot.id)
+            .ok()
+            .and_then(|source| std::fs::read(source.join("SKILL.md")).ok())
+            .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
+            .is_some_and(|actual| actual.eq_ignore_ascii_case(snapshot.sha256.trim()))
+    })
+}
+
+fn find_snapshot_skill(store: &Path, requested_id: &str) -> Result<PathBuf, String> {
+    let entries = std::fs::read_dir(store)
+        .map_err(|error| format!("read managed skill store: {error}"))?;
+    let mut matches = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("read managed skill entry: {error}"))?;
+        if !entry
+            .file_type()
+            .map_err(|error| format!("read managed skill type: {error}"))?
+            .is_dir()
+        {
+            continue;
+        }
+        let path = entry.path();
+        let skill_file = path.join("SKILL.md");
+        let Ok(source) = std::fs::read_to_string(&skill_file) else {
+            continue;
+        };
+        let directory_id = entry.file_name();
+        let directory_id = directory_id.to_string_lossy();
+        let manifest_id = skill_manifest_name(&source).unwrap_or(&directory_id);
+        if requested_id == directory_id || requested_id == manifest_id {
+            matches.push(path);
+        }
+    }
+    match matches.len() {
+        1 => Ok(matches.remove(0)),
+        0 => Err(format!("skill {requested_id} is not installed")),
+        _ => Err(format!("skill {requested_id} is ambiguous")),
+    }
+}
+
+fn skill_manifest_name(source: &str) -> Option<&str> {
+    let header = source
+        .strip_prefix("---")?
+        .split_once("\n---")?
+        .0;
+    header.lines().find_map(|line| {
+        line.strip_prefix("name:")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    })
 }
 
 /// Ship the bundled goal plugin (one self-contained JS file, see
@@ -1106,14 +1240,16 @@ pub fn kill_child(state: &RuntimeState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        auth_has_provider, prepare_workspace_dir, prune_stale_skills, random_hex,
-        remove_key_from_config, resolve_proxy_env, sync_skill_pack, validate_proxy_url,
-        initialize_project_runtime_dirs,
+        auth_has_provider, initialize_project_runtime_dirs, materialize_skill_snapshots,
+        prepare_workspace_dir, prune_stale_skills, random_hex, remove_key_from_config,
+        resolve_proxy_env, sync_skill_pack, validate_proxy_url,
         SKILL_RESOURCES,
     };
+    use sha2::{Digest, Sha256};
     #[cfg(target_os = "macos")]
     use super::parse_scutil_proxy;
     use std::fs;
+    use zerowall_acp_host::{SkillScope, SkillSnapshot};
 
     #[test]
     fn environment_opencode_path_prefers_active_version_binary() {
@@ -1389,6 +1525,106 @@ mod tests {
         assert_eq!(
             fs::read_to_string(dst.join("literature-survey/SKILL.md")).unwrap(),
             "s"
+        );
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn materializes_only_the_verified_skill_snapshot_with_all_supporting_files() {
+        let tmp = std::env::temp_dir().join(format!(
+            "skill-snapshot-materialize-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        let store = tmp.join("store");
+        let discovery = tmp.join("runtime/skills");
+        let skill = "---\nname: review\n---\nReview papers.";
+        write(&store.join("review/SKILL.md"), skill);
+        write(&store.join("review/references/guide.md"), "guide");
+        write(&store.join("unused/SKILL.md"), "---\nname: unused\n---\nUnused.");
+        let sha256 = format!("{:x}", Sha256::digest(skill.as_bytes()));
+
+        materialize_skill_snapshots(
+            &store,
+            &discovery,
+            &[SkillSnapshot {
+                id: "review".into(),
+                version: "installed".into(),
+                scope: SkillScope::Conversation,
+                sha256,
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(discovery.join("review/references/guide.md")).unwrap(),
+            "guide"
+        );
+        assert!(!discovery.join("unused").exists());
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn skill_snapshot_hash_mismatch_keeps_the_previous_discovery_tree() {
+        let tmp = std::env::temp_dir().join(format!(
+            "skill-snapshot-mismatch-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        let store = tmp.join("store");
+        let discovery = tmp.join("runtime/skills");
+        write(&store.join("review/SKILL.md"), "tampered");
+        write(&discovery.join("previous/SKILL.md"), "previous");
+
+        let error = materialize_skill_snapshots(
+            &store,
+            &discovery,
+            &[SkillSnapshot {
+                id: "review".into(),
+                version: "installed".into(),
+                scope: SkillScope::WorkflowNode,
+                sha256: "00".repeat(32),
+            }],
+        )
+        .unwrap_err();
+
+        assert!(error.contains("SHA-256"), "{error}");
+        assert_eq!(
+            fs::read_to_string(discovery.join("previous/SKILL.md")).unwrap(),
+            "previous"
+        );
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn valid_materialized_snapshot_survives_a_managed_store_upgrade() {
+        let tmp = std::env::temp_dir().join(format!(
+            "skill-snapshot-reuse-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        let store = tmp.join("store");
+        let discovery = tmp.join("runtime/skills");
+        let pinned = "---\nname: review\n---\nPinned version.";
+        write(&store.join("review/SKILL.md"), "---\nname: review\n---\nNew version.");
+        write(&discovery.join("review/SKILL.md"), pinned);
+        let sha256 = format!("{:x}", Sha256::digest(pinned.as_bytes()));
+
+        materialize_skill_snapshots(
+            &store,
+            &discovery,
+            &[SkillSnapshot {
+                id: "review".into(),
+                version: "installed".into(),
+                scope: SkillScope::Conversation,
+                sha256,
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(discovery.join("review/SKILL.md")).unwrap(),
+            pinned
         );
         fs::remove_dir_all(&tmp).unwrap();
     }
