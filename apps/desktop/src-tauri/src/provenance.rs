@@ -237,9 +237,32 @@ pub(crate) fn content_hash(text: &str) -> String {
 }
 
 /// Write `freeze` to a content-addressed lockfile (once) and return its snapshot.
+fn redact_url_credentials(text: &str) -> String {
+    let mut output = text.to_string();
+    let mut search_from = 0;
+    while let Some(scheme_offset) = output[search_from..].find("://") {
+        let authority_start = search_from + scheme_offset + 3;
+        let authority_end = output[authority_start..]
+            .char_indices()
+            .find_map(|(offset, ch)| {
+                (ch.is_whitespace() || matches!(ch, '/' | '?' | '#')).then_some(authority_start + offset)
+            })
+            .unwrap_or(output.len());
+        let Some(at_offset) = output[authority_start..authority_end].rfind('@') else {
+            search_from = authority_end;
+            continue;
+        };
+        let at = authority_start + at_offset;
+        output.replace_range(authority_start..at, "[REDACTED]");
+        search_from = authority_start + "[REDACTED]@".len();
+    }
+    output
+}
+
 fn write_lockfile(root: &Path, freeze: &str) -> Result<PackageSnapshot, String> {
+    let freeze = redact_url_credentials(freeze);
     let count = freeze.lines().filter(|l| !l.trim().is_empty()).count() as u32;
-    let hash = content_hash(freeze);
+    let hash = content_hash(&freeze);
     let dir = root.join(STORE_DIR).join(ENV_DIR);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(format!("{hash}.txt"));
@@ -474,6 +497,75 @@ fn cap_content(mut c: String) -> String {
     c
 }
 
+fn is_sensitive_provenance_path(path: &str) -> bool {
+    let Some(name) = Path::new(path).file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let name = name.to_ascii_lowercase();
+    name == ".env"
+        || name.starts_with(".env.")
+        || matches!(name.as_str(), ".npmrc" | ".pypirc" | ".netrc" | "auth.json" | "credentials" | "credentials.json")
+        || name.ends_with(".pem")
+        || name.ends_with(".key")
+        || name.ends_with(".p12")
+        || name.ends_with(".pfx")
+        || name == "id_rsa"
+        || name == "id_ed25519"
+}
+
+fn contains_secret_label(label: &str) -> bool {
+    let normalized: String = label
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect();
+    ["apikey", "token", "password", "secret", "authorization", "credential", "totp", "twofactor", "2fa"]
+        .iter()
+        .any(|needle| normalized.contains(needle))
+}
+
+fn redact_inline_marker(mut line: String, marker: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    let Some(marker_start) = lower.find(marker) else {
+        return line;
+    };
+    let value_start = marker_start + marker.len();
+    let value_end = line[value_start..]
+        .char_indices()
+        .find_map(|(offset, ch)| {
+            (ch.is_whitespace() || matches!(ch, '"' | '\'' | ',' | ';')).then_some(value_start + offset)
+        })
+        .unwrap_or(line.len());
+    if value_end > value_start {
+        line.replace_range(value_start..value_end, "[REDACTED]");
+    }
+    line
+}
+
+fn redact_provenance_text(text: String) -> String {
+    let had_trailing_newline = text.ends_with('\n');
+    let mut redacted = text
+        .lines()
+        .map(|line| {
+            let body = line.trim_start_matches(|ch: char| ch == '+' || ch == '-' || ch.is_whitespace());
+            if let Some((separator, _)) = body.char_indices().find(|(_, ch)| *ch == '=' || *ch == ':') {
+                if contains_secret_label(&body[..separator]) {
+                    let prefix_len = line.len() - body.len();
+                    return format!("{}{}{}[REDACTED]", &line[..prefix_len], &body[..separator], &body[separator..=separator]);
+                }
+            }
+            ["bearer ", "--api-key ", "--api_key ", "--token ", "--password ", "--secret "]
+                .into_iter()
+                .fold(line.to_string(), redact_inline_marker)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    if had_trailing_newline {
+        redacted.push('\n');
+    }
+    redacted
+}
+
 /// Append one version record for `path`, assigning the next version number.
 #[allow(clippy::too_many_arguments)]
 pub fn append_record(
@@ -489,6 +581,7 @@ pub fn append_record(
     run_id: Option<String>,
 ) -> Result<ProvenanceRecord, String> {
     let rel = normalize_rel(root, path)?;
+    let sensitive_path = is_sensitive_provenance_path(&rel);
     let file = store_file(root);
     if let Some(dir) = file.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("provenance dir failed: {e}"))?;
@@ -510,9 +603,13 @@ pub fn append_record(
         tool: tool.to_string(),
         session_id,
         model,
-        content: content.map(cap_content),
-        diff: diff.map(cap_content),
-        log,
+        content: (!sensitive_path)
+            .then(|| content.map(|value| cap_content(redact_provenance_text(value))))
+            .flatten(),
+        diff: (!sensitive_path)
+            .then(|| diff.map(|value| cap_content(redact_provenance_text(value))))
+            .flatten(),
+        log: log.map(redact_provenance_text),
         env,
         run_id,
     };
@@ -570,7 +667,7 @@ pub fn link_run_outputs(
             model: model.clone(),
             content: None,
             diff: None,
-            log: log.clone(),
+            log: log.clone().map(redact_provenance_text),
             env: env.clone(),
             run_id: Some(run_id.clone()),
         };
@@ -924,6 +1021,80 @@ mod tests {
         let capped = cap_content(big);
         assert!(capped.len() <= CONTENT_CAP + 20);
         assert!(capped.ends_with("[truncated]"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn package_lockfile_redacts_url_credentials() {
+        let root = temp_root("lockfile-secret");
+        let snapshot = super::write_lockfile(
+            &root,
+            "private-pkg @ git+https://oauth2:freeze-secret@example.test/repo.git\n",
+        )
+        .unwrap();
+        let lock = root.join(".zerowall/env").join(format!("{}.txt", snapshot.hash));
+        let stored = std::fs::read_to_string(lock).unwrap();
+
+        assert!(!stored.contains("freeze-secret"));
+        assert!(stored.contains("https://[REDACTED]@example.test/repo.git"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn provenance_redacts_secret_values_before_writing_jsonl() {
+        let root = temp_root("secret-redaction");
+        let record = append_record(
+            &root,
+            "notes/config.txt",
+            "write",
+            None,
+            None,
+            Some(
+                "OPENAI_API_KEY=sk-provenance-secret\nnormal_value=visible\nAuthorization: Bearer bearer-secret"
+                    .into(),
+            ),
+            Some("+password: hunter2\n+result: visible".into()),
+            Some("request --api-key cli-secret completed".into()),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let jsonl = std::fs::read_to_string(root.join(".zerowall/provenance.jsonl")).unwrap();
+        for secret in ["sk-provenance-secret", "bearer-secret", "hunter2", "cli-secret"] {
+            assert!(!jsonl.contains(secret), "provenance leaked {secret}");
+        }
+        assert!(record.content.as_deref().unwrap_or_default().contains("normal_value=visible"));
+        assert!(record.diff.as_deref().unwrap_or_default().contains("+result: visible"));
+        assert!(jsonl.contains("[REDACTED]"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn provenance_never_captures_sensitive_file_content() {
+        let root = temp_root("secret-file");
+        let record = append_record(
+            &root,
+            ".env.local",
+            "write",
+            None,
+            None,
+            Some("SERVICE_TOKEN=env-file-secret".into()),
+            Some("+SERVICE_TOKEN=diff-secret".into()),
+            Some("write -> .env.local".into()),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(record.content.is_none());
+        assert!(record.diff.is_none());
+        let jsonl = std::fs::read_to_string(root.join(".zerowall/provenance.jsonl")).unwrap();
+        assert!(!jsonl.contains("env-file-secret"));
+        assert!(!jsonl.contains("diff-secret"));
 
         let _ = std::fs::remove_dir_all(root);
     }
