@@ -210,6 +210,15 @@ describe("group allowlist", () => {
 });
 
 describe("Sub2API panel", () => {
+  it("renders the public AI Platform brand without exposing the internal vendor name", async () => {
+    const { container } = render(<Sub2ApiCard />);
+
+    expect(await screen.findByText("AI Platform")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Sign in" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("tab", { name: "Create an account" })).toBeInTheDocument();
+    expect(container).not.toHaveTextContent(/Sub2API/i);
+  });
+
   it("renders nothing outside the desktop app", () => {
     mocks.isTauri = false;
     const { container, unmount } = render(<Sub2ApiCard />);

@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 21:43 · Added a rendered account-surface brand contract: the desktop AI Platform panel must expose sign-in and registration while never rendering the internal provider name; focused account, first-launch gate, and Simplified Chinese copy tests pass 24/24.
+
 2026-08-07 21:31 · Added a dedicated ChatGPT-style Workflows workspace at `/workflows`; the sidebar now opens the workflow library, four built-in workflows expose concise launch actions, recent runs show node progress and pause/resume/retry/cancel controls, Runtime Store control delegation is covered, and app/environment update guards now count active MCP tool calls and running jobs instead of hard-coded zeroes; focused workflow/activity tests, SDK workflow tests, i18n parity, and desktop typecheck pass.
 
 2026-08-07 21:03 · Desktop workflow progress cards now expose engine-agnostic pause, resume, retry, and cancel controls through Runtime Store methods backed by the durable WorkflowScheduler; terminal runs expose no stale actions, verified by workflow controls 4/4, workflow runtime/starters 15/15, desktop typecheck, and diff check.
