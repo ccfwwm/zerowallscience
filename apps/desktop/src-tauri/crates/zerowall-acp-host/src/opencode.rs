@@ -135,6 +135,29 @@ impl McpConfig {
             }
         }
     }
+
+    fn redact_secrets(mut self) -> Self {
+        match &mut self {
+            Self::Local { environment, .. } => {
+                environment.retain(|key, _| !is_secret_mcp_field(key));
+            }
+            Self::Remote { headers, .. } => {
+                headers.clear();
+            }
+        }
+        self
+    }
+}
+
+fn is_secret_mcp_field(key: &str) -> bool {
+    let normalized = key.trim().to_ascii_uppercase().replace('-', "_");
+    normalized == "AUTHORIZATION"
+        || normalized == "COOKIE"
+        || normalized.ends_with("_API_KEY")
+        || normalized.ends_with("_TOKEN")
+        || normalized.ends_with("_SECRET")
+        || normalized.ends_with("_PASSWORD")
+        || normalized.ends_with("_CREDENTIAL")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -444,7 +467,7 @@ impl<T: OpenCodeTransport> OpenCodeMcpControl<T> {
                     .get(&name)
                     .and_then(|value| value.status.clone())
                     .unwrap_or_else(|| "pending".into()),
-                config: configs.get(&name).cloned(),
+                config: configs.get(&name).cloned().map(McpConfig::redact_secrets),
                 name,
             })
             .collect())
@@ -1769,7 +1792,7 @@ mod tests {
                 TransportResponse { status: 200, body: String::new() },
                 TransportResponse {
                     status: 200,
-                    body: r#"{"mcp":{"papers":{"type":"local","command":["python","-m","papers"],"enabled":true,"environment":{"EXISTING":"value"}}}}"#.into(),
+                    body: r#"{"mcp":{"papers":{"type":"local","command":["python","-m","papers"],"enabled":true,"environment":{"EXISTING":"value","PAPERS_API_KEY":"secret-value"}}}}"#.into(),
                 },
                 TransportResponse { status: 200, body: String::new() },
                 TransportResponse { status: 200, body: String::new() },
@@ -1778,7 +1801,10 @@ mod tests {
                     body: r#"{"mcp":{"papers":{"type":"local","command":["python","-m","papers"],"enabled":true,"environment":{"EXISTING":"value"}}}}"#.into(),
                 },
                 TransportResponse { status: 200, body: String::new() },
-                TransportResponse { status: 200, body: r#"{}"#.into() },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local","command":["python","-m","papers"],"enabled":true,"environment":{"EXISTING":"value","PAPERS_API_KEY":"secret-value"}}}}"#.into(),
+                },
                 TransportResponse {
                     status: 200,
                     body: r#"{"papers":{"status":"connected"}}"#.into(),
@@ -1790,6 +1816,10 @@ mod tests {
         let servers = block_on(control.list_mcp_servers()).unwrap();
         assert_eq!(servers[0].name, "papers");
         assert_eq!(servers[0].status, "connected");
+        let public_json = serde_json::to_string(&servers).unwrap();
+        assert!(public_json.contains("EXISTING"));
+        assert!(!public_json.contains("PAPERS_API_KEY"));
+        assert!(!public_json.contains("secret-value"));
         block_on(control.add_mcp_server(McpServerRequest {
             name: "papers".into(),
             config: McpConfig::Local {
