@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ProviderCatalogEntry, ProviderInfo } from "@zerowall/sdk";
+import type { AcpHostClient, OpenCodeClient, ProviderCatalogEntry, ProviderInfo } from "@zerowall/sdk";
 import i18n from "@/i18n";
 import * as runtime from "@/lib/runtime";
 import * as tauri from "@/lib/tauri";
@@ -26,6 +26,19 @@ const providers: ProviderInfo[] = [
 
 let activeView: ReturnType<typeof render> | undefined;
 
+type ProviderControl = Exclude<
+  NonNullable<ReturnType<typeof runtime.getProviderControlClient>>,
+  OpenCodeClient
+> & {
+  listAuthMethods: ReturnType<typeof vi.fn>;
+  setProviderApiKey: ReturnType<typeof vi.fn>;
+};
+
+type McpControl = Pick<
+  AcpHostClient,
+  "listMcpServers" | "addMcpServer" | "removeMcpServer" | "reconnectMcpServer" | "ensureMcpEnvironment"
+>;
+
 function catalogClient(
   listProviders = vi.fn().mockResolvedValue(providers),
   catalog: ProviderCatalogEntry[] = [],
@@ -39,15 +52,14 @@ function catalogClient(
     getProviderRegion: vi.fn().mockResolvedValue(null),
     setProviderRegion: vi.fn().mockResolvedValue(undefined),
     setProviderApiKey: vi.fn().mockResolvedValue(undefined),
-  } as unknown as NonNullable<ReturnType<typeof runtime.getClient>>;
+  } as unknown as ProviderControl;
 }
 
 function mockCatalogClients(
   client = catalogClient(),
-): NonNullable<ReturnType<typeof runtime.getClient>> {
-  vi.spyOn(runtime, "getClient").mockReturnValue(client);
+): ProviderControl {
   vi.spyOn(runtime, "getProviderControlClient").mockReturnValue(client);
-  vi.spyOn(runtime, "getMcpControlClient").mockReturnValue(client);
+  vi.spyOn(runtime, "getMcpControlClient").mockReturnValue(client as unknown as McpControl);
   return client;
 }
 
@@ -171,7 +183,6 @@ describe("Settings model browser integration", () => {
     ]);
     vi.mocked(client.getProviderRegion).mockResolvedValue("eu-west-1");
     mockCatalogClients(client);
-    vi.mocked(runtime.getClient).mockReturnValue(null);
     await renderSettings();
 
     await userEvent.click(screen.getByRole("button", { name: "Manage" }));
@@ -221,9 +232,6 @@ describe("Settings model browser integration", () => {
       listCustomProviderIds: client.listCustomProviderIds,
       addCustomProvider,
     } as unknown as ReturnType<typeof runtime.getProviderControlClient>);
-    vi.spyOn(runtime, "getOrCreateOpenCodeClient").mockRejectedValue(
-      new Error("desktop provider writes must not create an OpenCodeClient"),
-    );
     await renderSettings();
 
     await userEvent.click(screen.getAllByRole("button", { name: "Custom endpoint" })[0]);

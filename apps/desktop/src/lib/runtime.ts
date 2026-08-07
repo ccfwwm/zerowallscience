@@ -603,7 +603,8 @@ interface RuntimeState {
 
 // The internal store depends only on the runtime-agnostic AgentRuntime contract
 // (see docs/rfc/agent-runtime.md). The concrete reference (opencodeClient) is
-// kept separately so getClient() can hand Settings/setup the full OpenCode
+// kept separately so the gateway compatibility path can hand Settings/setup
+// the full OpenCode
 // provider/MCP surface that lives outside the AgentRuntime contract.
 let client: AgentRuntime | null = null;
 let opencodeClient: OpenCodeClient | null = null;
@@ -1201,11 +1202,6 @@ async function revertToMessage(
   return true;
 }
 
-/** The live OpenCode client (Settings talks to the runtime's config API directly). */
-export function getClient(): OpenCodeClient | null {
-  return opencodeClient;
-}
-
 function getOrCreateAcpHostControlClient(): AcpHostClient {
   if (!providerControlClient) {
     const invoke: AcpHostInvoke = async <T>(command: string, args?: Record<string, unknown>) => {
@@ -1258,46 +1254,6 @@ function acpDefaultModelKey(presetId: string | null): string | null {
   if (!presetId) return null;
   const config = loadAcpConfig(presetId);
   return config ? `${config.providerId}/${config.model}` : null;
-}
-
-/**
- * Return the current OpenCode client, or create a transient one if ACP is the
- * active runtime (the OpenCode sidecar keeps running in the background even
- * when an ACP agent is selected; only the UI switched runtimes).
- *
- * Used by sub2api provider registration which must always target OpenCode's
- * config API regardless of which agent the user is chatting with.
- *
- * Resolves null when the sidecar is unreachable after 3 s so the caller can
- * surface a clear error instead of blocking forever.
- */
-export async function getOrCreateOpenCodeClient(): Promise<OpenCodeClient | null> {
-  if (opencodeClient) return opencodeClient;
-  // ACP is active — opencodeClient was torn down by the runtime switch.
-  // Recreate a short-lived client aimed at the same sidecar URL.
-  const state = useRuntimeStore.getState();
-  const baseUrl = state.serverUrl ?? DEFAULT_OPENCODE_URL;
-  try {
-    const [password, directory] = await Promise.all([
-      isTauri ? runtimePassword().catch(() => null) : Promise.resolve(null),
-      isTauri ? workspacePath().catch(() => null) : Promise.resolve(null),
-    ]);
-    const c = new OpenCodeClient({
-      baseUrl,
-      directory: directory ?? undefined,
-      password: password ?? undefined,
-    });
-    // Quick liveness check — 3 s hard timeout so we fail fast and never block.
-    await Promise.race([
-      c.listProviders(),
-      new Promise<never>((_, rej) =>
-        setTimeout(() => rej(new Error("OpenCode sidecar unreachable")), 3_000),
-      ),
-    ]);
-    return c;
-  } catch {
-    return null;
-  }
 }
 
 /**

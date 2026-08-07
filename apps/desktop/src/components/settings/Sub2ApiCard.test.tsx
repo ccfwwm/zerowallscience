@@ -77,11 +77,7 @@ vi.mock("@/lib/runtime", () => {
     setDefaultModel: mocks.setDefaultModel,
   };
   return {
-    getClient: () => client,
     getProviderControlClient: () => client,
-    getOrCreateOpenCodeClient: () => Promise.reject(
-      new Error("desktop provider writes must not create an OpenCodeClient"),
-    ),
     useRuntimeStore,
   };
 });

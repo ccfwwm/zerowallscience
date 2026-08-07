@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 22:08 · Removed the last desktop-facing getClient/getOrCreateOpenCodeClient exports so provider and MCP settings remain behind ACP Host control boundaries; focused model/provider tests pass 32/32 and desktop typecheck passes.
+
 2026-08-07 22:04 · Release verification now includes an explicit independent environment-signing contract in CI, a release-contracts package script, and Windows/Linux Environment Bootstrapper unit-test jobs; release contracts pass 7/7 and bootstrapper tests pass 6/6.
 
 2026-08-07 21:43 · Added a rendered account-surface brand contract: the desktop AI Platform panel must expose sign-in and registration while never rendering the internal provider name; focused account, first-launch gate, and Simplified Chinese copy tests pass 24/24.
