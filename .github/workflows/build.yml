@@ -228,6 +228,7 @@ jobs:
     if: ${{ !cancelled() }}
     env:
       ZEROWALL_ENV_UPDATE_PUBLIC_KEY: ${{ secrets.ZEROWALL_ENV_UPDATE_PUBLIC_KEY || vars.ZEROWALL_ENV_UPDATE_PUBLIC_KEY }}
+      ZEROWALL_APP_UPDATE_PUBLIC_KEY: ${{ secrets.ZEROWALL_APP_UPDATE_PUBLIC_KEY || vars.ZEROWALL_APP_UPDATE_PUBLIC_KEY }}
     strategy:
       fail-fast: false
       matrix:
@@ -274,13 +275,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Require environment update public key for releases
+      - name: Require update signing keys for releases
         if: github.ref_type == 'tag'
         shell: bash
+        env:
+          ZEROWALL_APP_UPDATE_PRIVATE_KEY: ${{ secrets.ZEROWALL_APP_UPDATE_PRIVATE_KEY }}
         run: |
           set -euo pipefail
           test -n "$ZEROWALL_ENV_UPDATE_PUBLIC_KEY" || {
             echo "::error::ZEROWALL_ENV_UPDATE_PUBLIC_KEY is required for release builds"
+            exit 1
+          }
+          test -n "$ZEROWALL_APP_UPDATE_PUBLIC_KEY" || {
+            echo "::error::ZEROWALL_APP_UPDATE_PUBLIC_KEY is required for release builds"
+            exit 1
+          }
+          test -n "$ZEROWALL_APP_UPDATE_PRIVATE_KEY" || {
+            echo "::error::ZEROWALL_APP_UPDATE_PRIVATE_KEY is required for release builds"
             exit 1
           }
 
@@ -294,6 +305,48 @@ jobs:
           # No tagName / releaseName: this action must NOT create a release here.
           # Releases are published to the public downloads repo by the upload
           # step below, from the bundles on disk (no artifact storage needed).
+
+      - name: Sign the platform application update manifest
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          ZEROWALL_APP_UPDATE_PRIVATE_KEY: ${{ secrets.ZEROWALL_APP_UPDATE_PRIVATE_KEY }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          bundle_dir="apps/desktop/src-tauri/target/$target/release/bundle"
+          installer=""
+          if [[ "$target" == *windows* ]]; then
+            installer="$(find "$bundle_dir" -name '*-setup.exe' -print -quit)"
+            if [[ -z "$installer" ]]; then installer="$(find "$bundle_dir" -name '*.msi' -print -quit)"; fi
+          elif [[ "$target" == *apple* ]]; then
+            installer="$(find "$bundle_dir" -name '*.dmg' -print -quit)"
+          else
+            installer="$(find "$bundle_dir" -name '*.deb' -print -quit)"
+            if [[ -z "$installer" ]]; then installer="$(find "$bundle_dir" -name '*.rpm' -print -quit)"; fi
+          fi
+          test -n "$installer" || {
+            echo "::error::no preferred installer found for signed manifest ($target)"
+            exit 1
+          }
+          if command -v sha256sum >/dev/null 2>&1; then
+            digest="$(sha256sum "$installer" | awk '{print $1}')"
+          else
+            digest="$(shasum -a 256 "$installer" | awk '{print $1}')"
+          fi
+          size="$(wc -c < "$installer" | tr -d ' ')"
+          asset_name="$(basename "$installer")"
+          manifest="$RUNNER_TEMP/zerowall-app-manifest-$target.json"
+          node scripts/app/build-manifest.mjs \
+            --version "$TAG" \
+            --target "$target" \
+            --asset-name "$asset_name" \
+            --asset-url "https://github.com/${DOWNLOADS_REPO}/releases/download/$TAG/$asset_name" \
+            --sha256 "$digest" \
+            --size "$size" \
+            --output "$manifest"
+          echo "APP_UPDATE_MANIFEST=$manifest" >> "$GITHUB_ENV"
 
       # Upload each installer directly to the draft release in the public
       # downloads repo. No actions/upload-artifact — avoids the artifact
@@ -317,6 +370,8 @@ jobs:
               found=$((found + 1))
             done < <(find "$bundle_dir" -name "*.$ext" 2>/dev/null || true)
           done
+          gh release upload "$TAG" "$APP_UPDATE_MANIFEST" \
+            --repo "$DOWNLOADS_REPO" --clobber
           echo "uploaded $found installer(s) for $target"
           if [ "$found" -eq 0 ]; then
             echo "::warning::no installers found for $target"

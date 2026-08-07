@@ -1,3 +1,5 @@
+use base64::Engine as _;
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{File, OpenOptions};
@@ -13,6 +15,111 @@ use tauri::Manager;
 const RELEASES_API_URL: &str =
     "https://api.github.com/repos/ccfwwm/zerowallscience-releases/releases/latest";
 const UPDATE_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const APP_UPDATE_ENVELOPE_SCHEMA: &str = "zerowall.science/app-update-envelope/v1";
+const APP_UPDATE_SCHEMA: &str = "zerowall.science/app-update/v1";
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppUpdateAsset {
+    pub name: String,
+    pub url: String,
+    pub sha256: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppUpdateManifest {
+    pub schema: String,
+    pub version: String,
+    pub target: String,
+    pub asset: AppUpdateAsset,
+}
+
+#[derive(Debug, Deserialize)]
+struct SignedAppUpdateEnvelope {
+    schema: String,
+    payload: String,
+    signature: String,
+}
+
+pub fn verify_app_update_manifest_with_public_key(
+    envelope_json: &str,
+    public_key: &[u8; 32],
+) -> Result<AppUpdateManifest, String> {
+    let envelope: SignedAppUpdateEnvelope = serde_json::from_str(envelope_json)
+        .map_err(|error| format!("invalid application update envelope: {error}"))?;
+    if envelope.schema != APP_UPDATE_ENVELOPE_SCHEMA {
+        return Err("unsupported application update envelope schema".into());
+    }
+    let signature_bytes = base64::engine::general_purpose::STANDARD
+        .decode(envelope.signature)
+        .map_err(|_| "invalid application update signature".to_string())?;
+    let signature = Signature::from_slice(&signature_bytes)
+        .map_err(|_| "invalid application update signature".to_string())?;
+    let verifying_key = VerifyingKey::from_bytes(public_key)
+        .map_err(|_| "invalid application update public key".to_string())?;
+    verifying_key
+        .verify(envelope.payload.as_bytes(), &signature)
+        .map_err(|_| "application update signature is invalid".to_string())?;
+    let manifest: AppUpdateManifest = serde_json::from_str(&envelope.payload)
+        .map_err(|error| format!("invalid application update manifest: {error}"))?;
+    validate_app_update_manifest(manifest)
+}
+
+fn validate_app_update_manifest(manifest: AppUpdateManifest) -> Result<AppUpdateManifest, String> {
+    if manifest.schema != APP_UPDATE_SCHEMA {
+        return Err("unsupported application update manifest schema".into());
+    }
+    validate_update_segment("version", &manifest.version)?;
+    validate_update_segment("target", &manifest.target)?;
+    validate_update_asset_name(&manifest.asset.name)?;
+    if manifest.asset.size_bytes == 0 {
+        return Err("application update asset size must be positive".into());
+    }
+    let url = reqwest::Url::parse(&manifest.asset.url)
+        .map_err(|_| "application update asset URL is invalid".to_string())?;
+    if url.scheme() != "https" || url.host_str().is_none() {
+        return Err("application update asset URL must use HTTPS".into());
+    }
+    if manifest.asset.sha256.len() != 64
+        || !manifest
+            .asset
+            .sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err("application update asset SHA-256 is invalid".into());
+    }
+    Ok(manifest)
+}
+
+fn validate_update_segment(label: &str, value: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value == "."
+        || value == ".."
+        || value.len() > 256
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        return Err(format!("application update {label} is unsafe"));
+    }
+    Ok(())
+}
+
+fn validate_update_asset_name(value: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value == "."
+        || value == ".."
+        || value.len() > 256
+        || value.contains(['/', '\\', ':'])
+        || value.chars().any(char::is_control)
+    {
+        return Err("application update asset name is unsafe".into());
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -166,10 +273,11 @@ pub async fn latest_release() -> Result<ReleaseInfo, String> {
 }
 
 fn fetch_latest_release() -> Result<ReleaseInfo, String> {
-    let text = reqwest::blocking::Client::builder()
+    let client = reqwest::blocking::Client::builder()
         .user_agent("ZeroWall Science update checker")
         .build()
-        .map_err(|e| format!("could not create HTTP client: {e}"))?
+        .map_err(|e| format!("could not create HTTP client: {e}"))?;
+    let text = client
         .get(RELEASES_API_URL)
         .send()
         .and_then(|r| r.error_for_status())
@@ -186,6 +294,37 @@ fn fetch_latest_release() -> Result<ReleaseInfo, String> {
         .html_url
         .filter(|value| !value.trim().is_empty())
         .ok_or("GitHub response had no release URL")?;
+    let public_key_text =
+        option_env!("ZEROWALL_APP_UPDATE_PUBLIC_KEY").filter(|value| !value.trim().is_empty());
+    if let Some(manifest_asset) = required_manifest_asset(&body.assets, public_key_text.is_some())?
+    {
+        let public_key_text =
+            public_key_text.ok_or("application update public key is not configured")?;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(public_key_text.trim())
+            .map_err(|_| "application update public key is invalid".to_string())?;
+        let public_key: [u8; 32] = decoded
+            .try_into()
+            .map_err(|_| "application update public key is invalid".to_string())?;
+        let envelope = client
+            .get(&manifest_asset.browser_download_url)
+            .send()
+            .and_then(|response| response.error_for_status())
+            .map_err(|error| format!("could not fetch application update manifest: {error}"))?
+            .text()
+            .map_err(|error| format!("could not read application update manifest: {error}"))?;
+        let manifest = verify_app_update_manifest_with_public_key(&envelope, &public_key)?;
+        validate_manifest_binding(&manifest, &version, target_triple())?;
+        return Ok(ReleaseInfo {
+            version: manifest.version,
+            url,
+            name: body.name,
+            published_at: body.published_at,
+            asset_url: Some(manifest.asset.url),
+            asset_name: Some(manifest.asset.name),
+            asset_sha256: Some(manifest.asset.sha256),
+        });
+    }
     let asset = select_asset(&body.assets);
     Ok(ReleaseInfo {
         version,
@@ -198,6 +337,51 @@ fn fetch_latest_release() -> Result<ReleaseInfo, String> {
             .and_then(|value| value.digest.clone())
             .and_then(|digest| digest.strip_prefix("sha256:").map(str::to_owned)),
     })
+}
+
+fn select_manifest_asset(assets: &[ApiAsset]) -> Option<&ApiAsset> {
+    let expected = format!("zerowall-app-manifest-{}.json", target_triple());
+    assets.iter().find(|asset| asset.name == expected)
+}
+
+fn required_manifest_asset(
+    assets: &[ApiAsset],
+    signature_verification_configured: bool,
+) -> Result<Option<&ApiAsset>, String> {
+    if !signature_verification_configured {
+        return Ok(None);
+    }
+    select_manifest_asset(assets)
+        .map(Some)
+        .ok_or_else(|| "signed application update manifest is missing".to_string())
+}
+
+fn validate_manifest_binding(
+    manifest: &AppUpdateManifest,
+    release_version: &str,
+    expected_target: &str,
+) -> Result<(), String> {
+    if manifest.version != release_version {
+        return Err("signed application update version does not match the release tag".into());
+    }
+    if manifest.target != expected_target {
+        return Err("signed application update target does not match this platform".into());
+    }
+    Ok(())
+}
+
+fn target_triple() -> &'static str {
+    if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        "x86_64-pc-windows-msvc"
+    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "aarch64-apple-darwin"
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        "x86_64-apple-darwin"
+    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        "x86_64-unknown-linux-gnu"
+    } else {
+        "unsupported"
+    }
 }
 
 fn select_asset(assets: &[ApiAsset]) -> Option<&ApiAsset> {
@@ -633,6 +817,70 @@ mod tests {
         assert!(guard.cancel_requested());
         drop(guard);
         assert!(!control.request_cancel());
+    }
+
+    #[test]
+    fn verifies_a_signed_application_manifest_before_using_its_asset() {
+        use ed25519_dalek::{Signer, SigningKey};
+        let signing_key = SigningKey::from_bytes(&[7_u8; 32]);
+        let payload = r#"{"schema":"zerowall.science/app-update/v1","version":"v0.4.58","target":"x86_64-pc-windows-msvc","asset":{"name":"ZeroWall_x64-setup.exe","url":"https://downloads.example/ZeroWall_x64-setup.exe","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sizeBytes":10}}"#;
+        let signature = base64::engine::general_purpose::STANDARD
+            .encode(signing_key.sign(payload.as_bytes()).to_bytes());
+        let envelope = format!(
+            r#"{{"schema":"zerowall.science/app-update-envelope/v1","payload":{payload:?},"signature":"{signature}"}}"#
+        );
+        let manifest = verify_app_update_manifest_with_public_key(
+            &envelope,
+            &signing_key.verifying_key().to_bytes(),
+        )
+        .unwrap();
+        assert_eq!(manifest.version, "v0.4.58");
+        assert_eq!(manifest.asset.name, "ZeroWall_x64-setup.exe");
+    }
+
+    #[test]
+    fn rejects_a_signed_application_manifest_with_a_tampered_payload() {
+        use ed25519_dalek::{Signer, SigningKey};
+        let signing_key = SigningKey::from_bytes(&[8_u8; 32]);
+        let payload = r#"{"schema":"zerowall.science/app-update/v1","version":"v0.4.58","target":"x86_64-pc-windows-msvc","asset":{"name":"ZeroWall_x64-setup.exe","url":"https://downloads.example/ZeroWall_x64-setup.exe","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sizeBytes":10}}"#;
+        let signature = base64::engine::general_purpose::STANDARD
+            .encode(signing_key.sign(payload.as_bytes()).to_bytes());
+        let envelope = format!(
+            r#"{{"schema":"zerowall.science/app-update-envelope/v1","payload":{payload:?},"signature":"{signature}"}}"#
+        )
+        .replace("v0.4.58", "v0.4.59");
+        assert!(verify_app_update_manifest_with_public_key(
+            &envelope,
+            &signing_key.verifying_key().to_bytes(),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn configured_signature_verification_fails_closed_without_a_manifest() {
+        assert!(required_manifest_asset(&[], true).is_err());
+        assert!(required_manifest_asset(&[], false).unwrap().is_none());
+    }
+
+    #[test]
+    fn signed_manifest_must_match_the_release_tag_and_platform() {
+        let manifest = AppUpdateManifest {
+            schema: APP_UPDATE_SCHEMA.into(),
+            version: "v0.4.58".into(),
+            target: "x86_64-pc-windows-msvc".into(),
+            asset: AppUpdateAsset {
+                name: "ZeroWall_x64-setup.exe".into(),
+                url: "https://downloads.example/ZeroWall_x64-setup.exe".into(),
+                sha256: "a".repeat(64),
+                size_bytes: 10,
+            },
+        };
+        assert!(validate_manifest_binding(&manifest, "v0.4.59", &manifest.target).is_err());
+        assert!(
+            validate_manifest_binding(&manifest, &manifest.version, "aarch64-apple-darwin")
+                .is_err()
+        );
+        assert!(validate_manifest_binding(&manifest, &manifest.version, &manifest.target).is_ok());
     }
 
     #[test]
