@@ -126,6 +126,9 @@
     "cleared": "聊天记录已清空。文件内容仍保留在同一个文件夹下。",
     "reviewDescription": "审查本 session 的科研产出与文件"
   },
+  "workflow": {
+    "progressAria": "工作流进度"
+  },
   "starters": {
     "newSession": "新建会话",
     "heading": "想研究什么？",

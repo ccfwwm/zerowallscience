@@ -8,6 +8,11 @@
   "runOn": "审查于 {{when}}",
   "findingCount_other": "{{count}} 条结论",
   "closeAria": "关闭审查面板",
+  "selection": {
+    "engine": "审查引擎",
+    "model": "审查模型",
+    "defaultModel": "默认"
+  },
   "empty": {
     "title": "还没有审查记录",
     "body": "运行一次审查，结论及其裁决会归档在这里，方便日后回溯。"

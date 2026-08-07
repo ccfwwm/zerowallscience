@@ -126,6 +126,9 @@
     "cleared": "Chat context cleared. Files stay in the same folder.",
     "reviewDescription": "Review this session's science and file findings"
   },
+  "workflow": {
+    "progressAria": "Workflow progress"
+  },
   "starters": {
     "newSession": "New session",
     "heading": "What should we look into?",

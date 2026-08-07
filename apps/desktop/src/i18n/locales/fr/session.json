@@ -126,6 +126,9 @@
     "cleared": "Contexte du chat effacé. Les fichiers restent dans le même dossier.",
     "reviewDescription": "Passer en revue la science et les fichiers de cette session"
   },
+  "workflow": {
+    "progressAria": "Progression du workflow"
+  },
   "starters": {
     "newSession": "Nouvelle session",
     "heading": "Qu'allons-nous examiner ?",

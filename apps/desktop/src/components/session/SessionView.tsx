@@ -254,7 +254,6 @@ export function SessionView({
     [
       openArtifact,
       sendPrompt,
-      runReview,
       editMessage,
       revertMessage,
       setComposerDraft,
@@ -879,10 +878,11 @@ export function SessionView({
 }
 
 function WorkflowProgressCard({ run }: { run: WorkflowRun }) {
+  const { t } = useTranslation("session");
   const nodes = Object.values(run.nodes);
   const completed = nodes.filter((node) => node.state === "completed").length;
   return (
-    <section className="rounded-card border border-border bg-surface px-3.5 py-3 shadow-card" aria-label="Workflow progress">
+    <section className="rounded-card border border-border bg-surface px-3.5 py-3 shadow-card" aria-label={t("workflow.progressAria")}>
       <div className="flex items-center gap-2">
         <FlaskConical size={14} className="text-accent" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">{run.name}</span>

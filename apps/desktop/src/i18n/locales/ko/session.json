@@ -126,6 +126,9 @@
     "cleared": "채팅 컨텍스트를 지웠습니다. 파일은 같은 폴더에 남아 있습니다.",
     "reviewDescription": "이 세션의 연구 결과와 파일을 검토"
   },
+  "workflow": {
+    "progressAria": "워크플로 진행률"
+  },
   "starters": {
     "newSession": "새 세션",
     "heading": "무엇을 살펴볼까요?",

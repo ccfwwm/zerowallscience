@@ -121,7 +121,7 @@ export function MoleculeView({ filename, text }: { filename: string; text: strin
     void draw();
     return () => {
       cancelled = true;
-      svgRef.current?.replaceChildren();
+      host.replaceChildren();
     };
   }, [viewMode, filename, text, t]);
 

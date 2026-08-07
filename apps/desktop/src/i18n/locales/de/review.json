@@ -9,6 +9,11 @@
   "findingCount_one": "{{count}} Befund",
   "findingCount_other": "{{count}} Befunde",
   "closeAria": "Prüfungsbereich schließen",
+  "selection": {
+    "engine": "Prüf-Engine",
+    "model": "Prüfmodell",
+    "defaultModel": "Standard"
+  },
   "empty": {
     "title": "Noch keine Prüfungen",
     "body": "Führe eine Prüfung aus, und ihre Befunde werden hier mitsamt Urteilen abgelegt, damit du später darauf zurückkommen kannst."

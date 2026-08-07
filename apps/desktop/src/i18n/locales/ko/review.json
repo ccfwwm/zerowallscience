@@ -8,6 +8,11 @@
   "runOn": "{{when}}에 검토됨",
   "findingCount_other": "발견 {{count}}건",
   "closeAria": "검토 패널 닫기",
+  "selection": {
+    "engine": "검토 엔진",
+    "model": "검토 모델",
+    "defaultModel": "기본값"
+  },
   "empty": {
     "title": "아직 검토가 없습니다",
     "body": "검토를 실행하면 발견 항목과 판정이 여기에 보관되어 나중에 다시 확인할 수 있습니다."

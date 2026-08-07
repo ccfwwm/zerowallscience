@@ -126,6 +126,9 @@
     "cleared": "チャット文脈を消去しました。ファイルは同じフォルダに残ります。",
     "reviewDescription": "このセッションの科学的成果とファイルをレビュー"
   },
+  "workflow": {
+    "progressAria": "ワークフローの進行状況"
+  },
   "starters": {
     "newSession": "新規セッション",
     "heading": "何を調べますか？",

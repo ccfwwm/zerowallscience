@@ -8,6 +8,11 @@
   "runOn": "{{when}} にレビュー",
   "findingCount_other": "{{count}} 件の指摘",
   "closeAria": "レビューパネルを閉じる",
+  "selection": {
+    "engine": "レビューエンジン",
+    "model": "レビューモデル",
+    "defaultModel": "デフォルト"
+  },
   "empty": {
     "title": "まだレビューがありません",
     "body": "レビューを実行すると、指摘とその判定がここに保存され、後から見直せます。"

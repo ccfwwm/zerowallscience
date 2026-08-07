@@ -9,6 +9,11 @@
   "findingCount_one": "{{count}} finding",
   "findingCount_other": "{{count}} findings",
   "closeAria": "Close review panel",
+  "selection": {
+    "engine": "Review engine",
+    "model": "Review model",
+    "defaultModel": "Default"
+  },
   "empty": {
     "title": "No reviews yet",
     "body": "Run a review and its findings will be filed here — verdicts and all — so you can revisit them later."

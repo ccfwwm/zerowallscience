@@ -126,6 +126,9 @@
     "cleared": "Chat-Kontext geleert. Dateien bleiben im selben Ordner.",
     "reviewDescription": "Wissenschaft und Dateien dieser Sitzung prüfen"
   },
+  "workflow": {
+    "progressAria": "Workflow-Fortschritt"
+  },
   "starters": {
     "newSession": "Neue Sitzung",
     "heading": "Was sollen wir untersuchen?",

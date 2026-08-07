@@ -126,6 +126,9 @@
     "cleared": "Contexto del chat borrado. Los archivos permanecen en la misma carpeta.",
     "reviewDescription": "Revisar la ciencia y los archivos de esta sesión"
   },
+  "workflow": {
+    "progressAria": "Progreso del flujo de trabajo"
+  },
   "starters": {
     "newSession": "Nueva sesión",
     "heading": "¿Qué investigamos?",

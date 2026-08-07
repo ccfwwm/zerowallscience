@@ -9,6 +9,11 @@
   "findingCount_one": "{{count}} constat",
   "findingCount_other": "{{count}} constats",
   "closeAria": "Fermer le panneau de revue",
+  "selection": {
+    "engine": "Moteur de revue",
+    "model": "Modèle de revue",
+    "defaultModel": "Par défaut"
+  },
   "empty": {
     "title": "Aucune revue pour l'instant",
     "body": "Lancez une revue et ses constats seront archivés ici, verdicts compris, pour les reconsulter plus tard."

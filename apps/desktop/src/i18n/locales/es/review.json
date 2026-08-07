@@ -9,6 +9,11 @@
   "findingCount_one": "{{count}} hallazgo",
   "findingCount_other": "{{count}} hallazgos",
   "closeAria": "Cerrar el panel de revisión",
+  "selection": {
+    "engine": "Motor de revisión",
+    "model": "Modelo de revisión",
+    "defaultModel": "Predeterminado"
+  },
   "empty": {
     "title": "Aún no hay revisiones",
     "body": "Ejecuta una revisión y sus hallazgos se archivarán aquí, con veredictos incluidos, para consultarlos más tarde."

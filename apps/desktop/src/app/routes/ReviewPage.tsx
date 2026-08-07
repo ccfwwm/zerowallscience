@@ -21,6 +21,12 @@ const BADGE: Record<FindingLevel, string> = {
   error: "bg-error/15 text-error ring-error/30",
 };
 
+const REVIEW_ENGINES = [
+  { id: "codex", label: "Codex" },
+  { id: "claude-code", label: "Claude Code" },
+  { id: "opencode", label: "OpenCode" },
+] as const;
+
 /**
  * The persisted review ledger — every ```review``` run this session filed into
  * the M006 store, newest first, with each finding's verdict, evidence, and
@@ -295,30 +301,32 @@ function ReviewSelection({
   onEngineChange: (value: string) => void;
   onModelChange: (value: string) => void;
 }) {
+  const { t } = useTranslation("review");
+
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
       <label className="inline-flex items-center gap-1.5">
-        <span>Review engine</span>
+        <span>{t("selection.engine")}</span>
         <select
-          aria-label="Review engine"
+          aria-label={t("selection.engine")}
           value={engine}
           onChange={(event) => onEngineChange(event.target.value)}
           className="rounded-input border border-border bg-surface-2 px-2 py-1 text-xs text-text"
         >
-          <option value="codex">Codex</option>
-          <option value="claude-code">Claude Code</option>
-          <option value="opencode">OpenCode</option>
+          {REVIEW_ENGINES.map((item) => (
+            <option key={item.id} value={item.id}>{item.label}</option>
+          ))}
         </select>
       </label>
       <label className="inline-flex items-center gap-1.5">
-        <span>Review model</span>
+        <span>{t("selection.model")}</span>
         <select
-          aria-label="Review model"
+          aria-label={t("selection.model")}
           value={model}
           onChange={(event) => onModelChange(event.target.value)}
           className="max-w-[240px] rounded-input border border-border bg-surface-2 px-2 py-1 text-xs text-text"
         >
-          <option value="">Default</option>
+          <option value="">{t("selection.defaultModel")}</option>
           {models.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
         </select>
       </label>
