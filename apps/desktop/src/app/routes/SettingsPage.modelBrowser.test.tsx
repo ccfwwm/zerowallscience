@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -235,10 +235,18 @@ describe("Settings model browser integration", () => {
     await renderSettings();
 
     await userEvent.click(screen.getAllByRole("button", { name: "Custom endpoint" })[0]);
-    await userEvent.type(screen.getByPlaceholderText("Name — e.g. Ollama, My DeepSeek gateway"), "Research gateway");
-    await userEvent.type(screen.getByPlaceholderText("Base URL — Ollama: http://127.0.0.1:11434/v1"), "https://models.example.test/v1");
-    await userEvent.type(screen.getByPlaceholderText("API key — optional, Ollama needs none"), "secret-value");
-    await userEvent.type(screen.getByPlaceholderText("Model ids, comma-separated"), "research-1, research-2");
+    fireEvent.change(screen.getByPlaceholderText("Name — e.g. Ollama, My DeepSeek gateway"), {
+      target: { value: "Research gateway" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Base URL — Ollama: http://127.0.0.1:11434/v1"), {
+      target: { value: "https://models.example.test/v1" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("API key — optional, Ollama needs none"), {
+      target: { value: "secret-value" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Model ids, comma-separated"), {
+      target: { value: "research-1, research-2" },
+    });
     await userEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
 
     await waitFor(() => expect(addCustomProvider).toHaveBeenCalledWith("research-gateway", {
@@ -276,7 +284,9 @@ describe("Settings model browser integration", () => {
     const collapse = screen.getByRole("button", { name: "Collapse" });
     expect(collapse).toBeEnabled();
     await userEvent.click(collapse);
-    expect(screen.queryByText("Connect the runtime to manage providers.")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText("Connect the runtime to manage providers.")).not.toBeInTheDocument();
+    });
   });
 
   it("shows a localized unavailable state when the initial provider refresh fails", async () => {

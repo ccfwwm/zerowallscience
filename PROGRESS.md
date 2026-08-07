@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 22:11 · Hardened the provider settings tests against full-suite load by replacing long per-keystroke setup with direct form changes and awaiting the controlled collapse render; the complete desktop Vitest suite now exits cleanly, with ACP Host 19/19, secret store 19/19, brand, and release contracts also passing.
+
 2026-08-07 22:08 · Removed the last desktop-facing getClient/getOrCreateOpenCodeClient exports so provider and MCP settings remain behind ACP Host control boundaries; focused model/provider tests pass 32/32 and desktop typecheck passes.
 
 2026-08-07 22:04 · Release verification now includes an explicit independent environment-signing contract in CI, a release-contracts package script, and Windows/Linux Environment Bootstrapper unit-test jobs; release contracts pass 7/7 and bootstrapper tests pass 6/6.
