@@ -1,11 +1,134 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::Manager;
 
 // Releases are published to the SEPARATE public downloads repo (see
 // `.github/workflows/build.yml` DOWNLOADS_REPO), not this private source repo.
-const RELEASES_API_URL: &str = "https://api.github.com/repos/ccfwwm/zerowallscience-releases/releases/latest";
+const RELEASES_API_URL: &str =
+    "https://api.github.com/repos/ccfwwm/zerowallscience-releases/releases/latest";
+const UPDATE_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum AppUpdatePhase {
+    Idle,
+    Downloading,
+    Verifying,
+    Ready,
+    RestartRequired,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppUpdateSnapshot {
+    pub phase: AppUpdatePhase,
+    pub message: Option<String>,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub target_path: Option<String>,
+}
+
+impl Default for AppUpdateSnapshot {
+    fn default() -> Self {
+        Self {
+            phase: AppUpdatePhase::Idle,
+            message: None,
+            downloaded_bytes: 0,
+            total_bytes: None,
+            target_path: None,
+        }
+    }
+}
+
+#[derive(Default)]
+struct AppUpdateOperation {
+    active_cancel: Option<Arc<AtomicBool>>,
+}
+
+pub struct AppUpdateControl {
+    operation: Mutex<AppUpdateOperation>,
+    status: Arc<Mutex<AppUpdateSnapshot>>,
+}
+
+impl Default for AppUpdateControl {
+    fn default() -> Self {
+        Self {
+            operation: Mutex::new(AppUpdateOperation::default()),
+            status: Arc::new(Mutex::new(AppUpdateSnapshot::default())),
+        }
+    }
+}
+
+pub struct AppUpdateGuard<'a> {
+    operation: &'a Mutex<AppUpdateOperation>,
+    cancel_requested: Arc<AtomicBool>,
+}
+
+impl Drop for AppUpdateGuard<'_> {
+    fn drop(&mut self) {
+        self.operation
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .active_cancel = None;
+    }
+}
+
+impl AppUpdateGuard<'_> {
+    fn cancel_requested(&self) -> bool {
+        self.cancel_requested.load(Ordering::Acquire)
+    }
+}
+
+impl AppUpdateControl {
+    fn try_begin(&self) -> Result<AppUpdateGuard<'_>, String> {
+        let mut operation = self
+            .operation
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if operation.active_cancel.is_some() {
+            return Err("an application update download is already running".into());
+        }
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        operation.active_cancel = Some(Arc::clone(&cancel_requested));
+        Ok(AppUpdateGuard {
+            operation: &self.operation,
+            cancel_requested,
+        })
+    }
+
+    fn request_cancel(&self) -> bool {
+        self.operation
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .active_cancel
+            .as_ref()
+            .is_some_and(|cancel| {
+                cancel.store(true, Ordering::Release);
+                true
+            })
+    }
+
+    fn set_status(&self, status: AppUpdateSnapshot) {
+        *self
+            .status
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = status;
+    }
+
+    fn status(&self) -> AppUpdateSnapshot {
+        self.status
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+}
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -55,8 +178,14 @@ fn fetch_latest_release() -> Result<ReleaseInfo, String> {
         .map_err(|e| format!("could not read GitHub releases response: {e}"))?;
     let body: ApiRelease = serde_json::from_str(&text)
         .map_err(|e| format!("could not parse GitHub releases response: {e}"))?;
-    let version = body.tag_name.filter(|value| !value.trim().is_empty()).ok_or("GitHub response had no release tag")?;
-    let url = body.html_url.filter(|value| !value.trim().is_empty()).ok_or("GitHub response had no release URL")?;
+    let version = body
+        .tag_name
+        .filter(|value| !value.trim().is_empty())
+        .ok_or("GitHub response had no release tag")?;
+    let url = body
+        .html_url
+        .filter(|value| !value.trim().is_empty())
+        .ok_or("GitHub response had no release URL")?;
     let asset = select_asset(&body.assets);
     Ok(ReleaseInfo {
         version,
@@ -65,7 +194,9 @@ fn fetch_latest_release() -> Result<ReleaseInfo, String> {
         published_at: body.published_at,
         asset_url: asset.map(|value| value.browser_download_url.clone()),
         asset_name: asset.map(|value| value.name.clone()),
-        asset_sha256: asset.and_then(|value| value.digest.clone()).and_then(|digest| digest.strip_prefix("sha256:").map(str::to_owned)),
+        asset_sha256: asset
+            .and_then(|value| value.digest.clone())
+            .and_then(|digest| digest.strip_prefix("sha256:").map(str::to_owned)),
     })
 }
 
@@ -77,11 +208,69 @@ fn select_asset(assets: &[ApiAsset]) -> Option<&ApiAsset> {
     } else {
         [".deb", ".rpm", ".AppImage"]
     };
-    preferred.iter().find_map(|suffix| assets.iter().find(|asset| asset.name.ends_with(suffix)))
+    preferred
+        .iter()
+        .find_map(|suffix| assets.iter().find(|asset| asset.name.ends_with(suffix)))
 }
 
 #[tauri::command]
-pub async fn download_update(app: tauri::AppHandle, url: String, filename: String, sha256: Option<String>) -> Result<String, String> {
+pub fn app_update_status(control: tauri::State<'_, AppUpdateControl>) -> AppUpdateSnapshot {
+    control.status()
+}
+
+#[tauri::command]
+pub fn app_update_cancel(
+    control: tauri::State<'_, AppUpdateControl>,
+) -> Result<AppUpdateSnapshot, String> {
+    if !control.request_cancel() {
+        return Err("no application update download is running".into());
+    }
+    let mut status = control.status();
+    status.message = Some("Cancelling application update...".into());
+    control.set_status(status.clone());
+    Ok(status)
+}
+
+#[tauri::command]
+pub async fn download_update(
+    app: tauri::AppHandle,
+    control: tauri::State<'_, AppUpdateControl>,
+    url: String,
+    filename: String,
+    sha256: Option<String>,
+) -> Result<String, String> {
+    let guard = control.try_begin()?;
+    let result = download_update_inner(&app, &control, &guard, url, filename, sha256).await;
+    if let Err(error) = &result {
+        let cancelled = guard.cancel_requested();
+        let previous = control.status();
+        control.set_status(AppUpdateSnapshot {
+            phase: if cancelled {
+                AppUpdatePhase::Idle
+            } else {
+                AppUpdatePhase::Failed
+            },
+            message: Some(if cancelled {
+                "Application update cancelled. Retry to continue.".into()
+            } else {
+                error.clone()
+            }),
+            downloaded_bytes: previous.downloaded_bytes,
+            total_bytes: previous.total_bytes,
+            target_path: None,
+        });
+    }
+    result
+}
+
+async fn download_update_inner(
+    app: &tauri::AppHandle,
+    control: &AppUpdateControl,
+    guard: &AppUpdateGuard<'_>,
+    url: String,
+    filename: String,
+    sha256: Option<String>,
+) -> Result<String, String> {
     let parsed = reqwest::Url::parse(&url).map_err(|_| "update URL is invalid".to_string())?;
     if parsed.scheme() != "https" || parsed.host_str().is_none() {
         return Err("updates require an HTTPS URL".to_string());
@@ -92,49 +281,250 @@ pub async fn download_update(app: tauri::AppHandle, url: String, filename: Strin
         .filter(|name| !name.is_empty() && *name != "." && *name != "..")
         .ok_or_else(|| "update filename is invalid".to_string())?
         .to_string();
-    let dir = app.path().app_data_dir().map_err(|error| format!("resolve update directory: {error}"))?.join("updates");
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("resolve update directory: {error}"))?
+        .join("updates");
     std::fs::create_dir_all(&dir).map_err(|error| format!("create update directory: {error}"))?;
     let staging = dir.join(format!("{safe_name}.download"));
     let target = dir.join(&safe_name);
-    let body = tauri::async_runtime::spawn_blocking(move || {
-        reqwest::blocking::Client::builder()
-            .user_agent("ZeroWall Science updater")
-            .build()
-            .map_err(|error| format!("create update client: {error}"))?
-            .get(parsed)
-            .send()
-            .and_then(|response| response.error_for_status())
-            .map_err(|error| format!("download update: {error}"))?
-            .bytes()
-            .map_err(|error| format!("read update: {error}"))
-    }).await.map_err(|error| format!("update download task failed: {error}"))??;
-    if let Some(expected) = sha256.filter(|value| !value.trim().is_empty()) {
-        let mut digest = Sha256::new();
-        digest.update(&body);
-        let actual = digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect::<String>();
-        if actual != expected.trim().trim_start_matches("sha256:") {
-            return Err(format!("update SHA-256 mismatch: expected {}, got {}", expected.trim(), actual));
-        }
+    let expected = sha256
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "the application installer has no SHA-256 digest".to_string())?;
+    let expected = expected
+        .trim()
+        .trim_start_matches("sha256:")
+        .to_ascii_lowercase();
+    if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("the application installer has an invalid SHA-256 digest".into());
     }
-    std::fs::write(&staging, &body).map_err(|error| format!("stage update: {error}"))?;
-    if target.exists() { std::fs::remove_file(&target).map_err(|error| format!("replace downloaded update: {error}"))?; }
-    std::fs::rename(&staging, &target).map_err(|error| format!("commit downloaded update: {error}"))?;
-    Ok(target.to_string_lossy().into_owned())
+
+    let existing_bytes = std::fs::metadata(&staging)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    control.set_status(AppUpdateSnapshot {
+        phase: AppUpdatePhase::Downloading,
+        message: None,
+        downloaded_bytes: existing_bytes,
+        total_bytes: None,
+        target_path: None,
+    });
+
+    let client = reqwest::Client::builder()
+        .user_agent("ZeroWall Science updater")
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(30 * 60))
+        .build()
+        .map_err(|error| format!("create update client: {error}"))?;
+    let mut request = client.get(parsed);
+    if existing_bytes > 0 {
+        request = request.header(reqwest::header::RANGE, format!("bytes={existing_bytes}-"));
+    }
+    let send = request.send();
+    tokio::pin!(send);
+    let response = loop {
+        tokio::select! {
+            result = &mut send => break result.map_err(|error| format!("download update: {error}"))?,
+            _ = tokio::time::sleep(UPDATE_CANCEL_POLL_INTERVAL) => {
+                if guard.cancel_requested() {
+                    return Err("application update cancelled".into());
+                }
+            }
+        }
+    };
+    let content_range = response
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let content_length = response.content_length();
+    let (mut downloaded_bytes, append, total_bytes) = download_write_plan(
+        existing_bytes,
+        response.status(),
+        content_range.as_deref(),
+        content_length,
+    )?;
+    let mut response = response
+        .error_for_status()
+        .map_err(|error| format!("download update: {error}"))?;
+    let mut options = OpenOptions::new();
+    options.create(true).write(true);
+    if append {
+        options.append(true);
+    } else {
+        options.truncate(true);
+    }
+    let mut output = options
+        .open(&staging)
+        .map_err(|error| format!("stage update: {error}"))?;
+    loop {
+        let next = response.chunk();
+        tokio::pin!(next);
+        let chunk = loop {
+            tokio::select! {
+                result = &mut next => break result.map_err(|error| format!("read update: {error}"))?,
+                _ = tokio::time::sleep(UPDATE_CANCEL_POLL_INTERVAL) => {
+                    if guard.cancel_requested() {
+                        output.sync_all().map_err(|error| format!("stage update: {error}"))?;
+                        return Err("application update cancelled".into());
+                    }
+                }
+            }
+        };
+        let Some(chunk) = chunk else { break };
+        output
+            .write_all(&chunk)
+            .map_err(|error| format!("stage update: {error}"))?;
+        downloaded_bytes = downloaded_bytes.saturating_add(chunk.len() as u64);
+        control.set_status(AppUpdateSnapshot {
+            phase: AppUpdatePhase::Downloading,
+            message: None,
+            downloaded_bytes,
+            total_bytes,
+            target_path: None,
+        });
+    }
+    output
+        .sync_all()
+        .map_err(|error| format!("stage update: {error}"))?;
+    if total_bytes.is_some_and(|total| total != downloaded_bytes) {
+        return Err("application installer download is incomplete".into());
+    }
+
+    control.set_status(AppUpdateSnapshot {
+        phase: AppUpdatePhase::Verifying,
+        message: None,
+        downloaded_bytes,
+        total_bytes,
+        target_path: None,
+    });
+    let actual = sha256_file(&staging)?;
+    if actual != expected {
+        let _ = std::fs::remove_file(&staging);
+        return Err(format!(
+            "update SHA-256 mismatch: expected {expected}, got {actual}"
+        ));
+    }
+    if target.exists() {
+        std::fs::remove_file(&target)
+            .map_err(|error| format!("replace downloaded update: {error}"))?;
+    }
+    std::fs::rename(&staging, &target)
+        .map_err(|error| format!("commit downloaded update: {error}"))?;
+    let target_path = target.to_string_lossy().into_owned();
+    control.set_status(AppUpdateSnapshot {
+        phase: AppUpdatePhase::Ready,
+        message: None,
+        downloaded_bytes,
+        total_bytes,
+        target_path: Some(target_path.clone()),
+    });
+    Ok(target_path)
+}
+
+fn download_write_plan(
+    existing_bytes: u64,
+    status: reqwest::StatusCode,
+    content_range: Option<&str>,
+    content_length: Option<u64>,
+) -> Result<(u64, bool, Option<u64>), String> {
+    if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+        return Err("server rejected the application update resume range".into());
+    }
+    if status == reqwest::StatusCode::PARTIAL_CONTENT {
+        let parsed = content_range
+            .and_then(|value| value.strip_prefix("bytes "))
+            .and_then(|value| value.split_once('/'))
+            .and_then(|(range, total)| {
+                let (start, end) = range.split_once('-')?;
+                Some((
+                    start.parse::<u64>().ok()?,
+                    end.parse::<u64>().ok()?,
+                    total.parse::<u64>().ok()?,
+                ))
+            });
+        let Some((start, end, total)) = parsed else {
+            return Err("server returned an invalid application update resume range".into());
+        };
+        let range_length = end
+            .checked_sub(start)
+            .and_then(|value| value.checked_add(1));
+        if start != existing_bytes
+            || end >= total
+            || range_length.is_none()
+            || content_length.is_some_and(|length| Some(length) != range_length)
+        {
+            return Err("server returned an invalid application update resume range".into());
+        }
+        return Ok((existing_bytes, existing_bytes > 0, Some(total)));
+    }
+    Ok((0, false, content_length))
+}
+
+fn sha256_file(path: &PathBuf) -> Result<String, String> {
+    let mut file = File::open(path).map_err(|error| format!("verify update: {error}"))?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|error| format!("verify update: {error}"))?;
+        if count == 0 {
+            break;
+        }
+        digest.update(&buffer[..count]);
+    }
+    Ok(digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 #[tauri::command]
-pub fn open_downloaded_update(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    let updates_dir = app.path().app_data_dir().map_err(|error| format!("resolve update directory: {error}"))?.join("updates").canonicalize().map_err(|error| format!("resolve update directory: {error}"))?;
-    let target = PathBuf::from(path).canonicalize().map_err(|error| format!("resolve downloaded update: {error}"))?;
+pub fn open_downloaded_update(
+    app: tauri::AppHandle,
+    control: tauri::State<'_, AppUpdateControl>,
+    path: String,
+) -> Result<(), String> {
+    let updates_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("resolve update directory: {error}"))?
+        .join("updates")
+        .canonicalize()
+        .map_err(|error| format!("resolve update directory: {error}"))?;
+    let target = PathBuf::from(path)
+        .canonicalize()
+        .map_err(|error| format!("resolve downloaded update: {error}"))?;
     if !target.starts_with(&updates_dir) || !target.is_file() {
         return Err("downloaded update path is outside the update directory".to_string());
     }
     #[cfg(windows)]
-    { std::process::Command::new(&target).spawn().map_err(|error| format!("open installer: {error}"))?; }
+    {
+        std::process::Command::new(&target)
+            .spawn()
+            .map_err(|error| format!("open installer: {error}"))?;
+    }
     #[cfg(target_os = "macos")]
-    { std::process::Command::new("open").arg(&target).spawn().map_err(|error| format!("open installer: {error}"))?; }
+    {
+        std::process::Command::new("open")
+            .arg(&target)
+            .spawn()
+            .map_err(|error| format!("open installer: {error}"))?;
+    }
     #[cfg(all(unix, not(target_os = "macos")))]
-    { std::process::Command::new("xdg-open").arg(&target).spawn().map_err(|error| format!("open installer: {error}"))?; }
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&target)
+            .spawn()
+            .map_err(|error| format!("open installer: {error}"))?;
+    }
+    let mut status = control.status();
+    status.phase = AppUpdatePhase::RestartRequired;
+    status.message = Some("Installer opened. Restart ZeroWall Science after installation.".into());
+    control.set_status(status);
     Ok(())
 }
 
@@ -205,6 +595,47 @@ mod tests {
     use super::*;
 
     #[test]
+    fn resumes_only_from_a_matching_partial_response() {
+        assert_eq!(
+            download_write_plan(
+                4,
+                reqwest::StatusCode::PARTIAL_CONTENT,
+                Some("bytes 4-9/10"),
+                Some(6),
+            )
+            .unwrap(),
+            (4, true, Some(10)),
+        );
+
+        assert!(download_write_plan(
+            4,
+            reqwest::StatusCode::PARTIAL_CONTENT,
+            Some("bytes 3-9/10"),
+            Some(7),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn restarts_when_a_server_ignores_the_range_header() {
+        assert_eq!(
+            download_write_plan(4, reqwest::StatusCode::OK, None, Some(10)).unwrap(),
+            (0, false, Some(10)),
+        );
+    }
+
+    #[test]
+    fn update_control_cancels_only_an_active_download() {
+        let control = AppUpdateControl::default();
+        assert!(!control.request_cancel());
+        let guard = control.try_begin().unwrap();
+        assert!(control.request_cancel());
+        assert!(guard.cancel_requested());
+        drop(guard);
+        assert!(!control.request_cancel());
+    }
+
+    #[test]
     fn parses_first_release_entry_from_atom() {
         let atom = r#"
 <feed>
@@ -220,7 +651,8 @@ mod tests {
             parse_latest_release(atom).unwrap(),
             ReleaseInfo {
                 version: "v0.1.8".into(),
-                url: "https://github.com/ccfwwm/zerowallscience-releases/releases/tag/v0.1.8".into(),
+                url: "https://github.com/ccfwwm/zerowallscience-releases/releases/tag/v0.1.8"
+                    .into(),
                 name: Some("ZeroWall Science v0.1.8".into()),
                 published_at: Some("2026-07-09T13:59:12Z".into()),
                 asset_url: None,
@@ -233,12 +665,23 @@ mod tests {
     #[test]
     fn selects_a_platform_installer_asset() {
         let assets = vec![
-            ApiAsset { name: "ZeroWall.tar.gz".into(), browser_download_url: "https://example.invalid/a".into(), digest: None },
-            ApiAsset { name: "ZeroWall_x64-setup.exe".into(), browser_download_url: "https://example.invalid/b".into(), digest: Some("sha256:abc".into()) },
+            ApiAsset {
+                name: "ZeroWall.tar.gz".into(),
+                browser_download_url: "https://example.invalid/a".into(),
+                digest: None,
+            },
+            ApiAsset {
+                name: "ZeroWall_x64-setup.exe".into(),
+                browser_download_url: "https://example.invalid/b".into(),
+                digest: Some("sha256:abc".into()),
+            },
         ];
         let selected = select_asset(&assets);
         if cfg!(windows) {
-            assert_eq!(selected.map(|asset| asset.name.as_str()), Some("ZeroWall_x64-setup.exe"));
+            assert_eq!(
+                selected.map(|asset| asset.name.as_str()),
+                Some("ZeroWall_x64-setup.exe")
+            );
         }
     }
 }

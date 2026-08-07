@@ -32,6 +32,11 @@ export function AppShell() {
   const downloadedPath = useUpdateStore((s) => s.downloadedPath);
   const downloadStatus = useUpdateStore((s) => s.downloadStatus);
   const download = useUpdateStore((s) => s.download);
+  const cancelDownload = useUpdateStore((s) => s.cancelDownload);
+  const downloadedBytes = useUpdateStore((s) => s.downloadedBytes);
+  const totalBytes = useUpdateStore((s) => s.totalBytes);
+  const agentTurns = useRuntimeStore((s) => Object.keys(s.runningSessions).length);
+  const workflowRuns = useRuntimeStore((s) => Object.values(s.workflowRuns).filter((run) => ["pending", "running", "paused", "failed"].includes(run.state)).length);
 
   useEffect(() => {
     if (updateAvailable && !import.meta.env.TEST) setUpdateOpen(true);
@@ -263,7 +268,10 @@ export function AppShell() {
           latest={latestUpdate}
           status={downloadStatus}
           downloadedPath={downloadedPath}
-          onDownload={() => void download()}
+          onDownload={() => void download({ agentTurns, workflowRuns, mcpMutations: 0, runActivities: 0 })}
+          onCancel={() => void cancelDownload()}
+          downloadedBytes={downloadedBytes}
+          totalBytes={totalBytes}
           onOpen={() => downloadedPath && void openDownloadedUpdate(downloadedPath)}
           onClose={() => setUpdateOpen(false)}
         />
@@ -274,11 +282,14 @@ export function AppShell() {
   );
 }
 
-function UpdateDialog({ latest, status, downloadedPath, onDownload, onOpen, onClose }: {
+function UpdateDialog({ latest, status, downloadedPath, downloadedBytes, totalBytes, onDownload, onCancel, onOpen, onClose }: {
   latest: { version: string; assetName?: string | null };
   status: "idle" | "downloading" | "ready" | "error";
   downloadedPath: string | null;
+  downloadedBytes: number;
+  totalBytes: number | null;
   onDownload: () => void;
+  onCancel: () => void;
   onOpen: () => void;
   onClose: () => void;
 }) {
@@ -295,12 +306,26 @@ function UpdateDialog({ latest, status, downloadedPath, onDownload, onOpen, onCl
           </div>
           <button aria-label={t("updates.close")} onClick={onClose} className="text-muted hover:text-text"><X size={15} /></button>
         </div>
+        {status === "downloading" && (
+          <div className="mt-4 space-y-2">
+            <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
+              <div
+                className="h-full rounded-full bg-accent transition-[width]"
+                style={{ width: totalBytes && totalBytes > 0 ? `${Math.min(100, (downloadedBytes / totalBytes) * 100)}%` : "35%" }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-muted">
+              <span>{totalBytes ? `${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}` : formatBytes(downloadedBytes)}</span>
+              <button onClick={onCancel} className="rounded px-2 py-1 hover:bg-surface-2">{t("updates.cancelDownload")}</button>
+            </div>
+          </div>
+        )}
         <div className="mt-5 flex justify-end gap-2">
           <button onClick={onClose} className="rounded-md px-3 py-1.5 text-xs text-muted hover:bg-surface-2">{t("updates.later")}</button>
           {status === "ready" && downloadedPath ? (
             <button onClick={onOpen} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg"><Download size={13} /> {t("updates.openInstaller")}</button>
           ) : (
-            <button disabled={status === "downloading"} onClick={onDownload} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg disabled:opacity-60">
+            <button onClick={onDownload} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg disabled:opacity-60" disabled={status === "downloading"}>
               {status === "downloading" ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
               {status === "downloading" ? t("updates.downloading") : t("updates.download")}
             </button>
@@ -309,4 +334,10 @@ function UpdateDialog({ latest, status, downloadedPath, onDownload, onOpen, onCl
       </section>
     </div>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

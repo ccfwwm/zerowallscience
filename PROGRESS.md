@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 20:34 · Application updates now use a dedicated native control state with streamed progress, resumable `.download` staging, cancellation that preserves partial bytes for retry, SHA-256 verification, atomic installer commit, restart-required status, and desktop activity guards; focused update/environment/ACP/runtime tests 175/175, Rust full library tests 391/391, package split/manifest tests 3/3, desktop typecheck, and diff check pass.
+
 2026-08-07 20:10 · ACP model changes now create immutable Host-bound sessions with optional context copying or a blank conversation; draft sends pass model snapshots into session creation, verified by ACP runtime 34/34, runtime store 115/115, ModelPicker 10/10, EnginePicker 5/5, desktop typecheck, ACP Host 56/56, Tauri acp_host 19/19, and diff check.
 
 2026-08-07 19:35 · Desktop provider maintenance now routes through typed ACP Host commands; Rust-only OpenCode control cleans legacy context limits, removes stale provider entries, and backfills image capability with idempotent PATCH behavior, verified by SDK 32/32, ACP Host 56/56, Tauri acp_host 19/19, and desktop typecheck.

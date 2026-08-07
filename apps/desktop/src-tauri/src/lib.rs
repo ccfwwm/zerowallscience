@@ -84,6 +84,7 @@ pub fn run() {
         .manage(sub2api::Sub2ApiState::default())
         .manage(acp_host::AcpHostState::default())
         .manage(acp_consumer::AcpConsumerState::default())
+        .manage(updates::AppUpdateControl::default())
         .manage(environment_update::EnvironmentUpdateControl::default())
         .setup(|app| {
             // Watch the active workspace so changes made outside the app (an
@@ -336,6 +337,8 @@ pub fn run() {
             tools::detect_tools,
             updates::latest_release,
             updates::download_update,
+            updates::app_update_status,
+            updates::app_update_cancel,
             updates::open_downloaded_update,
             environment_update::environment_update_status,
             environment_update::environment_update_manifest,

@@ -1,5 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const native = vi.hoisted(() => ({
+  cancel: vi.fn(),
+  download: vi.fn(),
+  latest: vi.fn(async () => null),
+  status: vi.fn(),
+}));
+
+vi.mock("./tauri", () => ({
+  appUpdateCancel: native.cancel,
+  appUpdateStatus: native.status,
+  downloadUpdate: native.download,
+  latestRelease: native.latest,
+}));
+
 import {
+  appUpdateBlockedReason,
   compareVersions,
   isNewerVersion,
   shouldAutoCheck,
@@ -72,6 +88,10 @@ describe("update store", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+    native.cancel.mockReset();
+    native.download.mockReset();
+    native.latest.mockReset().mockResolvedValue(null);
+    native.status.mockReset();
     useUpdateStore.setState({
       enabled: true,
       badgeEnabled: true,
@@ -83,6 +103,10 @@ describe("update store", () => {
       currentVersion: "0.1.7",
       hasUpdate: false,
       showBadge: false,
+      downloadStatus: "idle",
+      downloadedBytes: 0,
+      totalBytes: null,
+      downloadedPath: null,
     });
   });
 
@@ -104,5 +128,28 @@ describe("update store", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(useUpdateStore.getState().hasUpdate).toBe(true);
     expect(useUpdateStore.getState().showBadge).toBe(true);
+  });
+
+  it("blocks application updates while an agent turn or workflow is active", () => {
+    expect(appUpdateBlockedReason({ agentTurns: 1, workflowRuns: 0, mcpMutations: 0, runActivities: 0 })).toBe("agent-turn");
+    expect(appUpdateBlockedReason({ agentTurns: 0, workflowRuns: 1, mcpMutations: 0, runActivities: 0 })).toBe("workflow-run");
+    expect(appUpdateBlockedReason({ agentTurns: 0, workflowRuns: 0, mcpMutations: 0, runActivities: 0 })).toBeNull();
+  });
+
+  it("keeps the partial download available after cancellation so retry can resume", async () => {
+    native.cancel.mockResolvedValue({
+      phase: "downloading",
+      message: "Cancelling application update...",
+      downloadedBytes: 512,
+      totalBytes: 1024,
+      targetPath: null,
+    });
+    useUpdateStore.setState({ downloadStatus: "downloading", downloadedBytes: 256, totalBytes: 1024 });
+
+    await useUpdateStore.getState().cancelDownload();
+
+    expect(native.cancel).toHaveBeenCalledOnce();
+    expect(useUpdateStore.getState().downloadStatus).toBe("downloading");
+    expect(useUpdateStore.getState().downloadedBytes).toBe(512);
   });
 });

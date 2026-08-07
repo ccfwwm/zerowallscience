@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { downloadUpdate, latestRelease } from "./tauri";
+import { appUpdateCancel, appUpdateStatus, downloadUpdate, latestRelease, type AppUpdatePhase } from "./tauri";
 
 // The public downloads repo that actually holds the releases (see build.yml).
 const RELEASE_URL = "https://api.github.com/repos/ccfwwm/zerowallscience-releases/releases/latest";
@@ -33,6 +33,23 @@ interface GitHubRelease {
 type CheckStatus = "idle" | "checking" | "ready" | "error";
 export type DownloadStatus = "idle" | "downloading" | "ready" | "error";
 
+export interface AppUpdateActivitySnapshot {
+  agentTurns: number;
+  workflowRuns: number;
+  mcpMutations: number;
+  runActivities: number;
+}
+
+export type AppUpdateBlockReason = "agent-turn" | "workflow-run" | "mcp-mutation" | "run-activity";
+
+export function appUpdateBlockedReason(activity: AppUpdateActivitySnapshot): AppUpdateBlockReason | null {
+  if (activity.agentTurns > 0) return "agent-turn";
+  if (activity.workflowRuns > 0) return "workflow-run";
+  if (activity.mcpMutations > 0) return "mcp-mutation";
+  if (activity.runActivities > 0) return "run-activity";
+  return null;
+}
+
 interface UpdateState {
   enabled: boolean;
   badgeEnabled: boolean;
@@ -46,12 +63,17 @@ interface UpdateState {
   showBadge: boolean;
   downloadStatus: DownloadStatus;
   downloadedPath: string | null;
+  appUpdatePhase: AppUpdatePhase;
+  downloadedBytes: number;
+  totalBytes: number | null;
   setEnabled: (enabled: boolean) => void;
   setBadgeEnabled: (enabled: boolean) => void;
   dismissBadge: () => void;
   check: (opts?: { manual?: boolean; now?: number }) => Promise<void>;
   maybeAutoCheck: () => Promise<void>;
-  download: () => Promise<string | null>;
+  download: (activity?: AppUpdateActivitySnapshot) => Promise<string | null>;
+  cancelDownload: () => Promise<void>;
+  refreshDownloadStatus: () => Promise<void>;
 }
 
 function readBool(key: string, fallback: boolean): boolean {
@@ -170,11 +192,21 @@ const initial = {
   currentVersion: __APP_VERSION__,
 };
 
+const EMPTY_ACTIVITY: AppUpdateActivitySnapshot = {
+  agentTurns: 0,
+  workflowRuns: 0,
+  mcpMutations: 0,
+  runActivities: 0,
+};
+
 export const useUpdateStore = create<UpdateState>((set, get) => ({
   ...initial,
   status: "idle",
   downloadStatus: "idle",
   downloadedPath: null,
+  appUpdatePhase: "idle" as AppUpdatePhase,
+  downloadedBytes: 0,
+  totalBytes: null,
   error: null,
   ...derive(initial),
   setEnabled: (enabled) => {
@@ -220,7 +252,12 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     }
   },
   maybeAutoCheck: () => get().check({ manual: false }),
-  download: async () => {
+  download: async (activity = EMPTY_ACTIVITY) => {
+    const blocked = appUpdateBlockedReason(activity);
+    if (blocked) {
+      set({ error: `application update blocked by ${blocked}` });
+      return null;
+    }
     const latest = get().latest;
     if (!latest?.assetUrl || !latest.assetName) {
       set({ downloadStatus: "error", error: "No downloadable installer is available for this platform." });
@@ -231,13 +268,62 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       return null;
     }
     set({ downloadStatus: "downloading", error: null });
+    let stopped = false;
+    const poll = async () => {
+      if (stopped) return;
+      try {
+        const snapshot = await appUpdateStatus();
+        if (snapshot) {
+          set({
+            appUpdatePhase: snapshot.phase,
+            downloadedBytes: snapshot.downloadedBytes,
+            totalBytes: snapshot.totalBytes,
+            downloadedPath: snapshot.targetPath ?? get().downloadedPath,
+          });
+        }
+      } catch {
+        // The download command remains authoritative; status polling is best effort.
+      }
+      if (!stopped) window.setTimeout(() => void poll(), 250);
+    };
+    void poll();
     try {
       const path = await downloadUpdate(latest.assetUrl, latest.assetName, latest.assetSha256);
-      set({ downloadStatus: "ready", downloadedPath: path });
+      set({ downloadStatus: "ready", appUpdatePhase: "ready", downloadedPath: path, error: null });
       return path;
     } catch (error) {
-      set({ downloadStatus: "error", error: error instanceof Error ? error.message : String(error) });
+      const snapshot = await appUpdateStatus().catch(() => null);
+      set({
+        downloadStatus: snapshot?.phase === "idle" ? "idle" : "error",
+        appUpdatePhase: snapshot?.phase ?? "failed",
+        downloadedBytes: snapshot?.downloadedBytes ?? get().downloadedBytes,
+        totalBytes: snapshot?.totalBytes ?? get().totalBytes,
+        error: snapshot?.message ?? (error instanceof Error ? error.message : String(error)),
+      });
       return null;
+    } finally {
+      stopped = true;
+    }
+  },
+  cancelDownload: async () => {
+    try {
+      const snapshot = await appUpdateCancel();
+      set({
+        appUpdatePhase: snapshot.phase,
+        downloadedBytes: snapshot.downloadedBytes,
+        totalBytes: snapshot.totalBytes,
+        error: snapshot.message,
+      });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
+    }
+  },
+  refreshDownloadStatus: async () => {
+    try {
+      const snapshot = await appUpdateStatus();
+      if (snapshot) set({ appUpdatePhase: snapshot.phase, downloadedBytes: snapshot.downloadedBytes, totalBytes: snapshot.totalBytes, downloadedPath: snapshot.targetPath ?? get().downloadedPath });
+    } catch {
+      // Browser mode and older hosts do not expose native update status.
     }
   },
 }));

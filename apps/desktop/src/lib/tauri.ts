@@ -1073,6 +1073,28 @@ export async function downloadUpdate(url: string, filename: string, sha256?: str
   return invoke<string>("download_update", { url, filename, sha256: sha256 ?? null });
 }
 
+export type AppUpdatePhase = "idle" | "downloading" | "verifying" | "ready" | "restart-required" | "failed";
+
+export interface AppUpdateSnapshot {
+  phase: AppUpdatePhase;
+  message: string | null;
+  downloadedBytes: number;
+  totalBytes: number | null;
+  targetPath: string | null;
+}
+
+export async function appUpdateStatus(): Promise<AppUpdateSnapshot | null> {
+  if (!isTauri) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<AppUpdateSnapshot>("app_update_status");
+}
+
+export async function appUpdateCancel(): Promise<AppUpdateSnapshot> {
+  if (!isTauri) throw new Error("updates are available in the desktop app only");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<AppUpdateSnapshot>("app_update_cancel");
+}
+
 export async function openDownloadedUpdate(path: string): Promise<void> {
   if (!isTauri) throw new Error("updates are available in the desktop app only");
   const { invoke } = await import("@tauri-apps/api/core");

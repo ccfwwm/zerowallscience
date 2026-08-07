@@ -78,6 +78,7 @@
     "later": "Later",
     "download": "Download update",
     "downloading": "Downloading…",
+    "cancelDownload": "Cancel",
     "openInstaller": "Open installer",
     "hideBadge": "Hide badge",
     "autoCheck": "Check automatically",
