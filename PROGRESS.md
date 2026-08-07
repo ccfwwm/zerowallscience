@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 14:21 · Codex and Claude Host drivers no longer resolve ACP adapters from the user PATH, require app-managed adapter and private CLI roots, inject CODEX_PATH or CLAUDE_CODE_EXECUTABLE explicitly, and reuse the hardened inherited-auth environment removal; 379 Tauri tests, 35 Host tests, both Clippy gates, targeted rustfmt, and diff checks pass.
+
 2026-08-07 14:07 · Unified ACP Host sessions now detach without global deletion, enforce canonical workspace isolation across list/discover/load/close, route explicit OpenCode new sessions correctly, and preserve safe manual approval; 378 Tauri tests, 35 Host tests, full desktop tests, typecheck, ESLint, i18n parity, production build, both Clippy gates, targeted rustfmt, and diff checks pass.
 
 2026-08-07 11:22 · Environment update cancellation now remains reachable through downloading, verifying, and installing; Range responses bind to manifest size and validate actual EOF bytes, with 367 Rust tests, full frontend tests, lint, typecheck, Clippy, i18n parity, build, and diff checks passing.

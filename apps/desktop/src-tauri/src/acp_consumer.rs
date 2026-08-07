@@ -658,7 +658,7 @@ fn probe_runtime_with(
     })
 }
 
-fn bundled_cli_candidates(resource_root: &Path, profile_id: &str) -> Vec<PathBuf> {
+pub(crate) fn bundled_cli_candidates(resource_root: &Path, profile_id: &str) -> Vec<PathBuf> {
     // The installed runtime directories are named after the ACP profile, but
     // their npm entry points use the actual CLI command name (claude/codex).
     // Keeping this mapping explicit prevents a profile id such as
@@ -1139,7 +1139,7 @@ fn claude_environment(
     env
 }
 
-fn conflicting_parent_environment(profile_id: &str) -> Vec<String> {
+pub(crate) fn conflicting_parent_environment(profile_id: &str) -> Vec<String> {
     let names: &[&str] = match profile_id {
         CLAUDE_PROFILE_ID => &[
             "CLAUDE_CODE_OAUTH_TOKEN",

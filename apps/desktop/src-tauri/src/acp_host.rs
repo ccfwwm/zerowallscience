@@ -271,6 +271,14 @@ fn adapter_name(engine: HostDriverKind) -> Option<&'static str> {
     }
 }
 
+fn adapter_runtime_env_name(engine: HostDriverKind) -> Option<&'static str> {
+    match engine {
+        HostDriverKind::Codex => Some("CODEX_PATH"),
+        HostDriverKind::ClaudeCode => Some("CLAUDE_CODE_EXECUTABLE"),
+        HostDriverKind::OpenCode => None,
+    }
+}
+
 fn target_triple() -> &'static str {
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
         "x86_64-pc-windows-msvc"
@@ -321,6 +329,7 @@ fn resolve_adapter_path(app: &AppHandle, engine: HostDriverKind) -> Result<PathB
         resource_dir.as_deref(),
         Path::new(&executable),
     );
+    #[cfg(debug_assertions)]
     candidates.push(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("binaries")
@@ -330,17 +339,35 @@ fn resolve_adapter_path(app: &AppHandle, engine: HostDriverKind) -> Result<PathB
                 if cfg!(windows) { ".exe" } else { "" }
             )),
     );
-    if let Some(path) = std::env::var_os("PATH").and_then(|path| {
-        std::env::split_paths(&path)
-            .map(|dir| dir.join(&executable))
-            .find(|path| path.is_file())
-    }) {
-        candidates.push(path);
-    }
     candidates
         .into_iter()
         .find(|path| path.is_file())
         .ok_or_else(|| format!("{} adapter is not installed", name))
+}
+
+fn resolve_runtime_cli_path(app: &AppHandle, engine: HostDriverKind) -> Result<PathBuf, String> {
+    let profile_id = match engine {
+        HostDriverKind::Codex => "codex",
+        HostDriverKind::ClaudeCode => "claude-code",
+        HostDriverKind::OpenCode => {
+            return Err("OpenCode has no ACP child runtime executable".to_owned())
+        }
+    };
+    let mut roots = Vec::new();
+    if let Some(root) = crate::environment_update::active_environment_root(app)? {
+        roots.push(root);
+    }
+    if let Ok(root) = app.path().resource_dir() {
+        roots.push(root);
+    }
+    #[cfg(debug_assertions)]
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+
+    roots
+        .into_iter()
+        .flat_map(|root| crate::acp_consumer::bundled_cli_candidates(&root, profile_id))
+        .find(|path| path.is_file())
+        .ok_or_else(|| format!("{profile_id} runtime is not installed"))
 }
 
 fn workspace_root(app: &AppHandle) -> Result<PathBuf, String> {
@@ -357,6 +384,7 @@ fn process_profile(
     let key = crate::secret_store::provider_api_key(app, &request.credential.keychain_id)?
         .ok_or_else(|| "provider credential is not available in the OS keychain".to_owned())?;
     let adapter = resolve_adapter_path(app, request.engine)?;
+    let runtime_cli = resolve_runtime_cli_path(app, request.engine)?;
     let runtime_home = workspace
         .join(".zerowall")
         .join("acp")
@@ -371,7 +399,15 @@ fn process_profile(
             mcp_servers.retain(|server| allow_list.iter().any(|entry| entry == &server.name));
         }
     }
-    let mut env = vec![("ZERO_WALL_MODEL".into(), request.model.clone())];
+    let runtime_selector = adapter_runtime_env_name(request.engine)
+        .expect("process profiles are created only for process-backed engines");
+    let mut env = vec![
+        ("ZERO_WALL_MODEL".into(), request.model.clone()),
+        (
+            runtime_selector.into(),
+            runtime_cli.to_string_lossy().into_owned(),
+        ),
+    ];
     match request.engine {
         HostDriverKind::Codex => {
             env.extend([
@@ -397,19 +433,25 @@ fn process_profile(
         }
         HostDriverKind::OpenCode => unreachable!(),
     }
+    let mut env_remove = crate::acp_consumer::conflicting_parent_environment(&request.profile_id);
+    env_remove.extend([
+        "OPENAI_API_KEY".into(),
+        "ANTHROPIC_API_KEY".into(),
+        "ANTHROPIC_AUTH_TOKEN".into(),
+        "CODEX_HOME".into(),
+        "CODEX_PATH".into(),
+        "CLAUDE_CONFIG_DIR".into(),
+        "CLAUDE_CODE_EXECUTABLE".into(),
+    ]);
+    env_remove.sort();
+    env_remove.dedup();
     Ok(AcpAgentProfile {
         id: request.profile_id.clone(),
         label: format!("{:?}", request.engine),
         command: adapter.to_string_lossy().into_owned(),
         args: Vec::new(),
         env,
-        env_remove: vec![
-            "OPENAI_API_KEY".into(),
-            "ANTHROPIC_API_KEY".into(),
-            "ANTHROPIC_AUTH_TOKEN".into(),
-            "CODEX_HOME".into(),
-            "CLAUDE_CONFIG_DIR".into(),
-        ],
+        env_remove,
         session_meta: None,
         mcp_servers,
     })
@@ -493,7 +535,9 @@ pub fn acp_host_engines(app: AppHandle) -> Vec<AcpHostEngineInfo> {
                 }
             }
             HostDriverKind::Codex | HostDriverKind::ClaudeCode => {
-                match resolve_adapter_path(&app, engine) {
+                match resolve_adapter_path(&app, engine)
+                    .and_then(|_| resolve_runtime_cli_path(&app, engine))
+                {
                     Ok(_) => (true, None),
                     Err(error) => (false, Some(error)),
                 }
@@ -1020,6 +1064,19 @@ mod tests {
                 "C:/app-data/environment/versions/v1/codex-acp.exe"
             ))
         );
+    }
+
+    #[test]
+    fn adapter_runtime_env_names_are_engine_specific() {
+        assert_eq!(
+            adapter_runtime_env_name(HostDriverKind::Codex),
+            Some("CODEX_PATH")
+        );
+        assert_eq!(
+            adapter_runtime_env_name(HostDriverKind::ClaudeCode),
+            Some("CLAUDE_CODE_EXECUTABLE")
+        );
+        assert_eq!(adapter_runtime_env_name(HostDriverKind::OpenCode), None);
     }
 
     #[test]
