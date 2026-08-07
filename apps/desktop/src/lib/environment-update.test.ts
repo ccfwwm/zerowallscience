@@ -6,6 +6,7 @@ const native = vi.hoisted(() => ({
   manifest: vi.fn(),
   check: vi.fn(),
   install: vi.fn(),
+  cancel: vi.fn(),
   rollback: vi.fn(),
   status: vi.fn(),
 }));
@@ -14,6 +15,7 @@ vi.mock("./tauri", () => ({
   environmentUpdateManifest: native.manifest,
   environmentUpdateCheck: native.check,
   environmentUpdateInstall: native.install,
+  environmentUpdateCancel: native.cancel,
   environmentUpdateRollback: native.rollback,
   environmentUpdateStatus: native.status,
 }));
@@ -31,12 +33,16 @@ const available: EnvironmentUpdateSnapshot = {
   previousVersion: null,
   targetVersion: "1.1.0",
   message: null,
+  downloadedBytes: 0,
+  totalBytes: null,
+  currentComponent: null,
 };
 
 beforeEach(() => {
   native.manifest.mockReset();
   native.check.mockReset();
   native.install.mockReset();
+  native.cancel.mockReset();
   native.rollback.mockReset();
   native.status.mockReset();
   useEnvironmentUpdateStore.setState({ snapshot: null, envelopeJson: null, error: null });
@@ -120,5 +126,59 @@ describe("environment update store", () => {
     expect(result).toBeNull();
     expect(native.install).not.toHaveBeenCalled();
     expect(useEnvironmentUpdateStore.getState().error).toContain("Check for environment updates first");
+  });
+
+  it("polls native status while installation is running", async () => {
+    vi.useFakeTimers();
+    let resolveInstall!: (snapshot: EnvironmentUpdateSnapshot) => void;
+    native.install.mockReturnValue(new Promise<EnvironmentUpdateSnapshot>((resolve) => {
+      resolveInstall = resolve;
+    }));
+    native.status.mockResolvedValue({
+      ...available,
+      phase: "downloading",
+      downloadedBytes: 50,
+      totalBytes: 100,
+      currentComponent: "codex-acp",
+    });
+    useEnvironmentUpdateStore.setState({ envelopeJson: "signed" });
+
+    const installPromise = useEnvironmentUpdateStore.getState().install();
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(native.status).toHaveBeenCalled();
+    resolveInstall(available);
+    await installPromise;
+    vi.useRealTimers();
+  });
+
+  it("cancels an active installation without discarding the checked manifest", async () => {
+    native.cancel.mockResolvedValue({
+      ...available,
+      phase: "available",
+      message: "Environment update cancelled.",
+    });
+    useEnvironmentUpdateStore.setState({ envelopeJson: "signed" });
+
+    await useEnvironmentUpdateStore.getState().cancel();
+
+    expect(native.cancel).toHaveBeenCalledTimes(1);
+    expect(useEnvironmentUpdateStore.getState().envelopeJson).toBe("signed");
+    expect(useEnvironmentUpdateStore.getState().snapshot?.phase).toBe("available");
+  });
+
+  it("ignores a late status response after install has completed", async () => {
+    let resolveStatus!: (snapshot: EnvironmentUpdateSnapshot) => void;
+    native.status.mockReturnValue(new Promise<EnvironmentUpdateSnapshot>((resolve) => {
+      resolveStatus = resolve;
+    }));
+    native.install.mockResolvedValue(available);
+    useEnvironmentUpdateStore.setState({ envelopeJson: "signed" });
+
+    await useEnvironmentUpdateStore.getState().install();
+    resolveStatus({ ...available, phase: "downloading" });
+    await Promise.resolve();
+
+    expect(useEnvironmentUpdateStore.getState().snapshot?.phase).toBe("available");
   });
 });

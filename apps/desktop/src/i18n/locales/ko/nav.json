@@ -13,6 +13,9 @@
   },
   "items": {
     "new": "새로 만들기",
+    "search": "검색",
+    "workflows": "워크플로",
+    "researchTools": "연구 도구",
     "notebooks": "노트북",
     "files": "파일",
     "runs": "실행",

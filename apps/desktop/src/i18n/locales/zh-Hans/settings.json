@@ -100,6 +100,13 @@
     "setupSkip": "暂不安装，进入工作台",
     "check": "立即检查",
     "install": "安装",
+    "continueInstall": "继续安装",
+    "cancel": "取消",
+    "currentComponent": "{{component}}",
+    "preparingDownload": "正在准备下载",
+    "downloadProgress": "基础环境下载进度",
+    "cancellingMessage": "正在取消基础环境更新...",
+    "cancelledMessage": "基础环境更新已取消。",
     "rollback": "回滚",
     "phase": {
       "idle": "就绪",

@@ -13,6 +13,9 @@
   },
   "items": {
     "new": "Nouveau",
+    "search": "Rechercher",
+    "workflows": "Flux de travail",
+    "researchTools": "Outils de recherche",
     "notebooks": "Notebooks",
     "files": "Fichiers",
     "runs": "Exécutions",

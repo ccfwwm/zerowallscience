@@ -10,6 +10,7 @@ const store = vi.hoisted(() => ({
   refresh: vi.fn<() => Promise<void>>(),
   check: vi.fn<() => Promise<EnvironmentUpdateSnapshot | null>>(),
   install: vi.fn<() => Promise<EnvironmentUpdateSnapshot | null>>(),
+  cancel: vi.fn<() => Promise<EnvironmentUpdateSnapshot | null>>(),
   rollback: vi.fn<() => Promise<EnvironmentUpdateSnapshot | null>>(),
 }));
 
@@ -27,6 +28,7 @@ describe("EnvironmentUpdateCard", () => {
     store.refresh.mockReset().mockResolvedValue(undefined);
     store.check.mockReset().mockResolvedValue(null);
     store.install.mockReset().mockResolvedValue(null);
+    store.cancel.mockReset().mockResolvedValue(null);
     store.rollback.mockReset().mockResolvedValue(null);
   });
 
@@ -37,6 +39,9 @@ describe("EnvironmentUpdateCard", () => {
       previousVersion: "2026.7.4",
       targetVersion: "2026.8.2",
       message: "Restart ZeroWall Science to activate the environment.",
+      downloadedBytes: 0,
+      totalBytes: null,
+      currentComponent: null,
     };
     store.envelopeJson = "signed-envelope";
     render(<EnvironmentUpdateCard />);
@@ -70,6 +75,9 @@ describe("EnvironmentUpdateCard", () => {
       previousVersion: "2026.7.4",
       targetVersion: "2026.8.2",
       message: "SHA-256 verification failed.",
+      downloadedBytes: 0,
+      totalBytes: null,
+      currentComponent: null,
     };
     render(<EnvironmentUpdateCard />);
 
@@ -84,10 +92,53 @@ describe("EnvironmentUpdateCard", () => {
       previousVersion: "2026.8.1",
       targetVersion: "2026.8.2",
       message: "Restart ZeroWall Science to activate the environment.",
+      downloadedBytes: 0,
+      totalBytes: null,
+      currentComponent: null,
     };
     render(<EnvironmentUpdateCard />);
 
     expect(screen.getByText("Restart required")).toBeInTheDocument();
     expect(screen.getByText(/Restart ZeroWall Science/)).toBeInTheDocument();
+  });
+
+  it("shows live download progress and allows cancellation", async () => {
+    store.snapshot = {
+      phase: "downloading",
+      currentVersion: "2026.8.1",
+      previousVersion: null,
+      targetVersion: "2026.8.2",
+      message: null,
+      downloadedBytes: 50,
+      totalBytes: 100,
+      currentComponent: "codex-acp",
+    };
+    store.envelopeJson = "signed-envelope";
+    render(<EnvironmentUpdateCard />);
+
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.getByText("50 B / 100 B")).toBeInTheDocument();
+    expect(screen.getByText("codex-acp")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(store.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("labels a cancelled update as continue install", () => {
+    store.snapshot = {
+      phase: "available",
+      currentVersion: "2026.8.1",
+      previousVersion: null,
+      targetVersion: "2026.8.2",
+      message: "Environment update cancelled.",
+      downloadedBytes: 50,
+      totalBytes: 100,
+      currentComponent: "codex-acp",
+    };
+    store.envelopeJson = "signed-envelope";
+    render(<EnvironmentUpdateCard />);
+
+    expect(screen.getByRole("button", { name: "Continue install" })).toBeEnabled();
   });
 });

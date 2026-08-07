@@ -9,8 +9,8 @@ use std::io::{BufReader, Read, Write};
 use std::path::{Component as PathComponent, Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 use thiserror::Error;
 
@@ -36,6 +36,8 @@ pub enum EnvironmentUpdateError {
     InvalidManifest(String),
     #[error("download failed: {0}")]
     Download(String),
+    #[error("environment update cancelled")]
+    Cancelled,
     #[error("checksum mismatch for {component}: expected {expected}, got {actual}")]
     ChecksumMismatch {
         component: String,
@@ -134,6 +136,9 @@ pub struct EnvironmentUpdateStatus {
     pub phase: EnvironmentUpdatePhase,
     pub version: Option<String>,
     pub message: Option<String>,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub current_component: Option<String>,
 }
 
 impl Default for EnvironmentUpdateStatus {
@@ -142,6 +147,9 @@ impl Default for EnvironmentUpdateStatus {
             phase: EnvironmentUpdatePhase::Idle,
             version: None,
             message: None,
+            downloaded_bytes: 0,
+            total_bytes: None,
+            current_component: None,
         }
     }
 }
@@ -154,42 +162,114 @@ pub struct EnvironmentUpdateSnapshot {
     pub previous_version: Option<String>,
     pub target_version: Option<String>,
     pub message: Option<String>,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub current_component: Option<String>,
 }
 
 pub struct EnvironmentUpdateControl {
-    busy: AtomicBool,
-    status: Mutex<EnvironmentUpdateStatus>,
+    operation: Mutex<EnvironmentOperationState>,
+    status: Arc<Mutex<EnvironmentUpdateStatus>>,
+}
+
+#[derive(Default)]
+struct EnvironmentOperationState {
+    generation: u64,
+    active: Option<ActiveEnvironmentOperation>,
+}
+
+struct ActiveEnvironmentOperation {
+    generation: u64,
+    cancel_requested: Arc<AtomicBool>,
 }
 
 impl Default for EnvironmentUpdateControl {
     fn default() -> Self {
         Self {
-            busy: AtomicBool::new(false),
-            status: Mutex::new(EnvironmentUpdateStatus::default()),
+            operation: Mutex::new(EnvironmentOperationState::default()),
+            status: Arc::new(Mutex::new(EnvironmentUpdateStatus::default())),
         }
     }
 }
 
 pub struct EnvironmentOperationGuard<'a> {
-    busy: &'a AtomicBool,
+    operation: &'a Mutex<EnvironmentOperationState>,
+    generation: u64,
+    cancel_requested: Arc<AtomicBool>,
 }
 
 impl Drop for EnvironmentOperationGuard<'_> {
     fn drop(&mut self) {
-        self.busy.store(false, Ordering::Release);
+        let mut state = self
+            .operation
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state
+            .active
+            .as_ref()
+            .is_some_and(|active| active.generation == self.generation)
+        {
+            state.active = None;
+        }
+    }
+}
+
+impl EnvironmentOperationGuard<'_> {
+    fn cancel_token(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.cancel_requested)
     }
 }
 
 impl EnvironmentUpdateControl {
     pub fn try_begin(&self) -> Result<EnvironmentOperationGuard<'_>, EnvironmentUpdateError> {
-        self.busy
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| EnvironmentUpdateError::OperationInProgress)?;
-        Ok(EnvironmentOperationGuard { busy: &self.busy })
+        let mut state = self
+            .operation
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.active.is_some() {
+            return Err(EnvironmentUpdateError::OperationInProgress);
+        }
+        state.generation = state.generation.wrapping_add(1).max(1);
+        let generation = state.generation;
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        state.active = Some(ActiveEnvironmentOperation {
+            generation,
+            cancel_requested: Arc::clone(&cancel_requested),
+        });
+        Ok(EnvironmentOperationGuard {
+            operation: &self.operation,
+            generation,
+            cancel_requested,
+        })
+    }
+
+    pub fn request_cancel(&self) -> bool {
+        let state = self
+            .operation
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.active.as_ref().is_some_and(|active| {
+            active.cancel_requested.store(true, Ordering::Release);
+            true
+        })
+    }
+
+    pub fn cancellation_requested(&self) -> bool {
+        let state = self
+            .operation
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state
+            .active
+            .as_ref()
+            .is_some_and(|active| active.cancel_requested.load(Ordering::Acquire))
     }
 
     fn set_status(&self, status: EnvironmentUpdateStatus) {
-        *self.status.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = status;
+        *self
+            .status
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = status;
     }
 
     fn status(&self) -> EnvironmentUpdateStatus {
@@ -394,29 +474,164 @@ pub trait HealthRunner {
 
 pub struct HttpPackageDownloader {
     client: reqwest::blocking::Client,
+    status: Option<Arc<Mutex<EnvironmentUpdateStatus>>>,
+    cancel_requested: Option<Arc<AtomicBool>>,
 }
 
 impl HttpPackageDownloader {
     pub fn new() -> Result<Self, EnvironmentUpdateError> {
         let client = reqwest::blocking::Client::builder()
             .user_agent("ZeroWall Science environment installer")
+            .connect_timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(30 * 60))
             .build()
             .map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            status: None,
+            cancel_requested: None,
+        })
     }
+
+    fn with_control(
+        status: Arc<Mutex<EnvironmentUpdateStatus>>,
+        cancel_requested: Arc<AtomicBool>,
+    ) -> Result<Self, EnvironmentUpdateError> {
+        let mut downloader = Self::new()?;
+        downloader.status = Some(status);
+        downloader.cancel_requested = Some(cancel_requested);
+        Ok(downloader)
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.cancel_requested
+            .as_ref()
+            .is_some_and(|cancel| cancel.load(Ordering::Acquire))
+    }
+
+    fn report_progress(
+        &self,
+        phase: EnvironmentUpdatePhase,
+        component: &str,
+        downloaded_bytes: u64,
+        total_bytes: Option<u64>,
+    ) {
+        let Some(status) = &self.status else {
+            return;
+        };
+        let mut status = status
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        status.phase = phase;
+        status.current_component = Some(component.to_owned());
+        status.downloaded_bytes = downloaded_bytes;
+        status.total_bytes = total_bytes;
+    }
+}
+
+fn download_write_plan(
+    existing_bytes: u64,
+    status: reqwest::StatusCode,
+    content_range: Option<&str>,
+) -> Result<(u64, bool), EnvironmentUpdateError> {
+    if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+        return Err(EnvironmentUpdateError::Download(
+            "server rejected the resume range".into(),
+        ));
+    }
+    if status == reqwest::StatusCode::PARTIAL_CONTENT {
+        let start = content_range
+            .and_then(|value| value.strip_prefix("bytes "))
+            .and_then(|value| value.split_once('-'))
+            .and_then(|(start, _)| start.parse::<u64>().ok());
+        if start != Some(existing_bytes) {
+            return Err(EnvironmentUpdateError::Download(
+                "server returned an invalid resume range".into(),
+            ));
+        }
+        return Ok((existing_bytes, existing_bytes > 0));
+    }
+    Ok((0, false))
 }
 
 impl PackageDownloader for HttpPackageDownloader {
     fn download_to(&mut self, url: &str, target: &Path) -> Result<(), EnvironmentUpdateError> {
-        let mut response = self
-            .client
-            .get(url)
+        if self.is_cancelled() {
+            return Err(EnvironmentUpdateError::Cancelled);
+        }
+        let existing_bytes = fs::metadata(target)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        let mut request = self.client.get(url);
+        if existing_bytes > 0 {
+            request = request.header(reqwest::header::RANGE, format!("bytes={existing_bytes}-"));
+        }
+        let response = request
             .send()
-            .and_then(|response| response.error_for_status())
             .map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
-        let mut output = File::create(target)?;
-        std::io::copy(&mut response, &mut output)?;
+        let content_range = response
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let (mut downloaded_bytes, append) =
+            download_write_plan(existing_bytes, response.status(), content_range.as_deref())?;
+        let mut response = response
+            .error_for_status()
+            .map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
+        let total_bytes = response
+            .content_length()
+            .map(|remaining| downloaded_bytes.saturating_add(remaining));
+        let component = target
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("environment")
+            .trim_end_matches(".package");
+        self.report_progress(
+            EnvironmentUpdatePhase::Downloading,
+            component,
+            downloaded_bytes,
+            total_bytes,
+        );
+
+        let mut options = OpenOptions::new();
+        options.create(true).write(true);
+        if append {
+            options.append(true);
+        } else {
+            options.truncate(true);
+        }
+        let mut output = options.open(target)?;
+        let mut buffer = [0_u8; 64 * 1024];
+        loop {
+            if self.is_cancelled() {
+                output.sync_all()?;
+                return Err(EnvironmentUpdateError::Cancelled);
+            }
+            let read = match response.read(&mut buffer) {
+                Ok(read) => read,
+                Err(_) if self.is_cancelled() => return Err(EnvironmentUpdateError::Cancelled),
+                Err(error) => return Err(error.into()),
+            };
+            if read == 0 {
+                break;
+            }
+            output.write_all(&buffer[..read])?;
+            downloaded_bytes = downloaded_bytes.saturating_add(read as u64);
+            self.report_progress(
+                EnvironmentUpdatePhase::Downloading,
+                component,
+                downloaded_bytes,
+                total_bytes,
+            );
+        }
         output.sync_all()?;
+        self.report_progress(
+            EnvironmentUpdatePhase::Verifying,
+            component,
+            downloaded_bytes,
+            total_bytes,
+        );
         Ok(())
     }
 }
@@ -456,6 +671,12 @@ pub struct EnvironmentInstaller<D, H> {
     downloader: D,
     health: H,
     status: EnvironmentUpdateStatus,
+    control: Option<EnvironmentInstallControl>,
+}
+
+struct EnvironmentInstallControl {
+    status: Arc<Mutex<EnvironmentUpdateStatus>>,
+    cancel_requested: Arc<AtomicBool>,
 }
 
 impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
@@ -465,6 +686,45 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
             downloader,
             health,
             status: EnvironmentUpdateStatus::default(),
+            control: None,
+        }
+    }
+
+    fn with_control(
+        mut self,
+        status: Arc<Mutex<EnvironmentUpdateStatus>>,
+        cancel_requested: Arc<AtomicBool>,
+    ) -> Self {
+        self.control = Some(EnvironmentInstallControl {
+            status,
+            cancel_requested,
+        });
+        self
+    }
+
+    fn ensure_not_cancelled(&self) -> Result<(), EnvironmentUpdateError> {
+        if self
+            .control
+            .as_ref()
+            .is_some_and(|control| control.cancel_requested.load(Ordering::Acquire))
+        {
+            return Err(EnvironmentUpdateError::Cancelled);
+        }
+        Ok(())
+    }
+
+    fn report_phase(&mut self, phase: EnvironmentUpdatePhase, component: Option<&str>) {
+        self.status.phase = phase;
+        let Some(control) = &self.control else {
+            return;
+        };
+        let mut status = control
+            .status
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        status.phase = phase;
+        if let Some(component) = component {
+            status.current_component = Some(component.to_owned());
         }
     }
 
@@ -486,32 +746,38 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
     ) -> Result<CurrentEnvironment, EnvironmentUpdateError> {
         let manifest = validate_manifest(manifest.clone())?;
         self.layout.prepare()?;
-        let staging =
-            self.layout
-                .staging()
-                .join(format!("{}-{}", manifest.version, unique_nonce()));
-        fs::create_dir(&staging)?;
+        let staging = self.layout.staging().join(&manifest.version);
+        fs::create_dir_all(&staging)?;
         self.status = EnvironmentUpdateStatus {
             phase: EnvironmentUpdatePhase::Downloading,
             version: Some(manifest.version.clone()),
             message: None,
+            ..EnvironmentUpdateStatus::default()
         };
         let result = self.install_inner(&manifest, &staging);
-        let _ = fs::remove_dir_all(&staging);
         match result {
             Ok(state) => {
+                let _ = fs::remove_dir_all(&staging);
                 self.status = EnvironmentUpdateStatus {
                     phase: EnvironmentUpdatePhase::RestartRequired,
                     version: Some(state.current_version.clone()),
                     message: None,
+                    ..EnvironmentUpdateStatus::default()
                 };
                 Ok(state)
             }
             Err(error) => {
+                if !matches!(
+                    error,
+                    EnvironmentUpdateError::Download(_) | EnvironmentUpdateError::Cancelled
+                ) {
+                    let _ = fs::remove_dir_all(&staging);
+                }
                 self.status = EnvironmentUpdateStatus {
                     phase: EnvironmentUpdatePhase::Failed,
                     version: Some(manifest.version),
                     message: Some(error.to_string()),
+                    ..EnvironmentUpdateStatus::default()
                 };
                 Err(error)
             }
@@ -531,20 +797,37 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
         manifest: &EnvironmentManifest,
         staging: &Path,
     ) -> Result<CurrentEnvironment, EnvironmentUpdateError> {
+        self.ensure_not_cancelled()?;
         let version_dir = self.layout.versions().join(&manifest.version);
         if version_dir.exists() {
             let persisted = read_version_manifest(&version_dir)?;
+            self.report_phase(EnvironmentUpdatePhase::Installing, None);
             self.run_health_checks(&version_dir, &persisted.health_checks)?;
+            self.ensure_not_cancelled()?;
             return self.switch_current(&manifest.version);
         }
 
         let payload = staging.join("payload");
         let downloads = staging.join("downloads");
+        if payload.exists() {
+            fs::remove_dir_all(&payload)?;
+        }
         fs::create_dir(&payload)?;
-        fs::create_dir(&downloads)?;
+        fs::create_dir_all(&downloads)?;
         for component in &manifest.components {
+            self.ensure_not_cancelled()?;
             let package = downloads.join(format!("{}.package", component.id));
-            self.downloader.download_to(&component.url, &package)?;
+            if !package_matches_component(&package, component)? {
+                if component.size_bytes.is_some_and(|expected| {
+                    fs::metadata(&package)
+                        .map(|metadata| metadata.len() >= expected)
+                        .unwrap_or(false)
+                }) {
+                    fs::remove_file(&package)?;
+                }
+                self.downloader.download_to(&component.url, &package)?;
+            }
+            self.ensure_not_cancelled()?;
             if let Some(expected_size) = component.size_bytes {
                 let actual_size = fs::metadata(&package)?.len();
                 if actual_size != expected_size {
@@ -554,8 +837,9 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
                     )));
                 }
             }
-            self.status.phase = EnvironmentUpdatePhase::Verifying;
+            self.report_phase(EnvironmentUpdatePhase::Verifying, Some(&component.id));
             let actual = hash_file(&package)?;
+            self.ensure_not_cancelled()?;
             if !actual.eq_ignore_ascii_case(&component.sha256) {
                 return Err(EnvironmentUpdateError::ChecksumMismatch {
                     component: component.id.clone(),
@@ -563,15 +847,21 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
                     actual,
                 });
             }
-            self.status.phase = EnvironmentUpdatePhase::Installing;
+            self.report_phase(EnvironmentUpdatePhase::Installing, Some(&component.id));
+            self.ensure_not_cancelled()?;
             extract_component(component, &package, &payload)?;
+            self.ensure_not_cancelled()?;
         }
+        self.ensure_not_cancelled()?;
         fs::write(
             payload.join(VERSION_METADATA),
             serde_json::to_vec_pretty(manifest)?,
         )?;
+        self.report_phase(EnvironmentUpdatePhase::Installing, None);
         self.run_health_checks(&payload, &manifest.health_checks)?;
+        self.ensure_not_cancelled()?;
         fs::rename(&payload, &version_dir)?;
+        self.ensure_not_cancelled()?;
         self.switch_current(&manifest.version)
     }
 
@@ -597,6 +887,7 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
             phase: EnvironmentUpdatePhase::RolledBack,
             version: Some(target),
             message: None,
+            ..EnvironmentUpdateStatus::default()
         };
         Ok(state)
     }
@@ -607,6 +898,7 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
         checks: &[EnvironmentHealthCheck],
     ) -> Result<(), EnvironmentUpdateError> {
         for check in checks {
+            self.ensure_not_cancelled()?;
             let relative = Path::new(&check.executable);
             validate_relative_path(relative)?;
             let executable = version_dir.join(relative);
@@ -617,11 +909,13 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
                 )));
             }
             self.health.run(version_dir, &executable, &check.args)?;
+            self.ensure_not_cancelled()?;
         }
         Ok(())
     }
 
     fn switch_current(&self, version: &str) -> Result<CurrentEnvironment, EnvironmentUpdateError> {
+        self.ensure_not_cancelled()?;
         let previous = self.current()?;
         let previous_version = previous
             .as_ref()
@@ -649,6 +943,9 @@ fn update_snapshot(
         previous_version: current.and_then(|value| value.previous_version),
         target_version: status.version,
         message: status.message,
+        downloaded_bytes: status.downloaded_bytes,
+        total_bytes: status.total_bytes,
+        current_component: status.current_component,
     })
 }
 
@@ -666,7 +963,10 @@ pub fn active_environment_root(app: &tauri::AppHandle) -> Result<Option<PathBuf>
 }
 
 pub fn environment_executable_candidates(root: &Path, executable: &str) -> [PathBuf; 2] {
-    [root.join(executable), root.join("binaries").join(executable)]
+    [
+        root.join(executable),
+        root.join("binaries").join(executable),
+    ]
 }
 
 pub fn active_environment_executable(
@@ -745,7 +1045,8 @@ pub fn environment_update_status(
     app: tauri::AppHandle,
     control: tauri::State<'_, EnvironmentUpdateControl>,
 ) -> Result<EnvironmentUpdateSnapshot, String> {
-    update_snapshot(&app_environment_layout(&app)?, control.status()).map_err(|error| error.to_string())
+    update_snapshot(&app_environment_layout(&app)?, control.status())
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -759,18 +1060,19 @@ pub async fn environment_update_check(
         phase: EnvironmentUpdatePhase::Checking,
         version: None,
         message: None,
+        ..EnvironmentUpdateStatus::default()
     });
-    let verified = tauri::async_runtime::spawn_blocking(move || {
-        verify_environment_envelope(&envelope_json)
-    })
-    .await
-    .map_err(|error| format!("environment manifest verification task failed: {error}"))?;
+    let verified =
+        tauri::async_runtime::spawn_blocking(move || verify_environment_envelope(&envelope_json))
+            .await
+            .map_err(|error| format!("environment manifest verification task failed: {error}"))?;
     match verified {
         Ok(manifest) => {
             control.set_status(EnvironmentUpdateStatus {
                 phase: EnvironmentUpdatePhase::Available,
                 version: Some(manifest.version),
                 message: None,
+                ..EnvironmentUpdateStatus::default()
             });
         }
         Err(error) => {
@@ -778,6 +1080,7 @@ pub async fn environment_update_check(
                 phase: EnvironmentUpdatePhase::Failed,
                 version: None,
                 message: Some(error.to_string()),
+                ..EnvironmentUpdateStatus::default()
             });
             return Err(error.to_string());
         }
@@ -792,18 +1095,31 @@ pub async fn environment_update_install(
     control: tauri::State<'_, EnvironmentUpdateControl>,
     envelope_json: String,
 ) -> Result<EnvironmentUpdateSnapshot, String> {
-    let _operation = control.try_begin().map_err(|error| error.to_string())?;
+    let operation = control.try_begin().map_err(|error| error.to_string())?;
     let layout = app_environment_layout(&app)?;
     control.set_status(EnvironmentUpdateStatus {
         phase: EnvironmentUpdatePhase::Downloading,
         version: None,
         message: None,
+        ..EnvironmentUpdateStatus::default()
     });
     let task_layout = layout.clone();
+    let shared_status = Arc::clone(&control.status);
+    let cancel_requested = operation.cancel_token();
     let installed = tauri::async_runtime::spawn_blocking(move || {
         let manifest = verify_environment_envelope(&envelope_json)?;
-        let downloader = HttpPackageDownloader::new()?;
-        let mut installer = EnvironmentInstaller::new(task_layout, downloader, ProcessHealthRunner);
+        {
+            let mut status = shared_status
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            status.version = Some(manifest.version.clone());
+        }
+        let downloader = HttpPackageDownloader::with_control(
+            Arc::clone(&shared_status),
+            Arc::clone(&cancel_requested),
+        )?;
+        let mut installer = EnvironmentInstaller::new(task_layout, downloader, ProcessHealthRunner)
+            .with_control(shared_status, cancel_requested);
         installer.install(&manifest)
     })
     .await
@@ -813,17 +1129,40 @@ pub async fn environment_update_install(
             phase: EnvironmentUpdatePhase::RestartRequired,
             version: Some(current.current_version),
             message: None,
+            ..EnvironmentUpdateStatus::default()
         }),
+        Err(EnvironmentUpdateError::Cancelled) => {
+            let mut status = control.status();
+            status.phase = EnvironmentUpdatePhase::Available;
+            status.message = Some("Environment update cancelled.".into());
+            control.set_status(status);
+        }
         Err(error) => {
             control.set_status(EnvironmentUpdateStatus {
                 phase: EnvironmentUpdatePhase::Failed,
                 version: None,
                 message: Some(error.to_string()),
+                ..EnvironmentUpdateStatus::default()
             });
             return Err(error.to_string());
         }
     }
     update_snapshot(&layout, control.status()).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn environment_update_cancel(
+    app: tauri::AppHandle,
+    control: tauri::State<'_, EnvironmentUpdateControl>,
+) -> Result<EnvironmentUpdateSnapshot, String> {
+    if !control.request_cancel() {
+        return Err("no environment update operation is running".into());
+    }
+    let mut status = control.status();
+    status.message = Some("Cancelling environment update...".into());
+    control.set_status(status);
+    update_snapshot(&app_environment_layout(&app)?, control.status())
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -837,6 +1176,7 @@ pub async fn environment_update_rollback(
         phase: EnvironmentUpdatePhase::Installing,
         version: None,
         message: None,
+        ..EnvironmentUpdateStatus::default()
     });
     let task_layout = layout.clone();
     let rolled_back = tauri::async_runtime::spawn_blocking(move || {
@@ -851,12 +1191,14 @@ pub async fn environment_update_rollback(
             phase: EnvironmentUpdatePhase::RolledBack,
             version: Some(current.current_version),
             message: None,
+            ..EnvironmentUpdateStatus::default()
         }),
         Err(error) => {
             control.set_status(EnvironmentUpdateStatus {
                 phase: EnvironmentUpdatePhase::Failed,
                 version: None,
                 message: Some(error.to_string()),
+                ..EnvironmentUpdateStatus::default()
             });
             return Err(error.to_string());
         }
@@ -893,6 +1235,21 @@ fn hash_file(path: &Path) -> Result<String, EnvironmentUpdateError> {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect())
+}
+
+fn package_matches_component(
+    package: &Path,
+    component: &EnvironmentComponent,
+) -> Result<bool, EnvironmentUpdateError> {
+    if !package.is_file() {
+        return Ok(false);
+    }
+    if component.size_bytes.is_some_and(|expected| {
+        fs::metadata(package).map(|value| value.len()).ok() != Some(expected)
+    }) {
+        return Ok(false);
+    }
+    Ok(hash_file(package)?.eq_ignore_ascii_case(&component.sha256))
 }
 
 fn extract_component(
@@ -1162,6 +1519,32 @@ mod tests {
         verify_envelope_with_public_key(&envelope, &signing.verifying_key().to_bytes()).unwrap()
     }
 
+    fn verified_multi_manifest(version: &str, first: &[u8], second: &[u8]) -> EnvironmentManifest {
+        let signing = SigningKey::from_bytes(&[8; 32]);
+        let body = payload(
+            version,
+            serde_json::json!([
+                {
+                    "id": "first.exe",
+                    "url": "https://updates.example.test/first.exe",
+                    "sha256": sha256(first),
+                    "archive": "file",
+                    "sizeBytes": first.len(),
+                },
+                {
+                    "id": "second.exe",
+                    "url": "https://updates.example.test/second.exe",
+                    "sha256": sha256(second),
+                    "archive": "file",
+                    "sizeBytes": second.len(),
+                }
+            ]),
+            serde_json::json!([]),
+        );
+        let envelope = signed_envelope(&body, &signing);
+        verify_envelope_with_public_key(&envelope, &signing.verifying_key().to_bytes()).unwrap()
+    }
+
     #[derive(Default)]
     struct FakeDownloader {
         content: HashMap<String, Vec<u8>>,
@@ -1177,6 +1560,62 @@ mod tests {
             for chunk in bytes.chunks(3) {
                 file.write_all(chunk)?;
             }
+            Ok(())
+        }
+    }
+
+    struct InterruptOnceDownloader {
+        bytes: Vec<u8>,
+        interrupted: bool,
+    }
+
+    impl PackageDownloader for InterruptOnceDownloader {
+        fn download_to(&mut self, _url: &str, target: &Path) -> Result<(), EnvironmentUpdateError> {
+            if !self.interrupted {
+                self.interrupted = true;
+                let mut file = File::create(target)?;
+                file.write_all(&self.bytes[..3])?;
+                file.sync_all()?;
+                return Err(EnvironmentUpdateError::Download("interrupted".into()));
+            }
+
+            let offset = fs::metadata(target)?.len() as usize;
+            let mut file = OpenOptions::new().append(true).open(target)?;
+            file.write_all(&self.bytes[offset..])?;
+            file.sync_all()?;
+            Ok(())
+        }
+    }
+
+    struct InterruptSecondDownloader {
+        content: HashMap<String, Vec<u8>>,
+        calls: HashMap<String, usize>,
+        interrupted: bool,
+    }
+
+    struct CancelAfterDownload {
+        bytes: Vec<u8>,
+        cancel_requested: Arc<AtomicBool>,
+    }
+
+    impl PackageDownloader for CancelAfterDownload {
+        fn download_to(&mut self, _url: &str, target: &Path) -> Result<(), EnvironmentUpdateError> {
+            fs::write(target, &self.bytes)?;
+            self.cancel_requested.store(true, Ordering::Release);
+            Ok(())
+        }
+    }
+
+    impl PackageDownloader for InterruptSecondDownloader {
+        fn download_to(&mut self, url: &str, target: &Path) -> Result<(), EnvironmentUpdateError> {
+            *self.calls.entry(url.to_owned()).or_default() += 1;
+            let bytes = self.content.get(url).unwrap();
+            if url.ends_with("second.exe") && !self.interrupted {
+                self.interrupted = true;
+                fs::write(target, &bytes[..3])?;
+                return Err(EnvironmentUpdateError::Download("interrupted".into()));
+            }
+            fs::write(target, bytes)?;
             Ok(())
         }
     }
@@ -1204,6 +1643,31 @@ mod tests {
             {
                 return Err(EnvironmentUpdateError::HealthCheck("probe failed".into()));
             }
+            Ok(())
+        }
+    }
+
+    struct SharedStatusHealth {
+        status: Arc<Mutex<EnvironmentUpdateStatus>>,
+        observed: Arc<Mutex<Vec<EnvironmentUpdatePhase>>>,
+    }
+
+    impl HealthRunner for SharedStatusHealth {
+        fn run(
+            &mut self,
+            _version_dir: &Path,
+            _executable: &Path,
+            _args: &[String],
+        ) -> Result<(), EnvironmentUpdateError> {
+            let phase = self
+                .status
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phase;
+            self.observed
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(phase);
             Ok(())
         }
     }
@@ -1337,6 +1801,133 @@ mod tests {
     }
 
     #[test]
+    fn keeps_partial_downloads_and_resumes_from_the_stable_version_staging_directory() {
+        let root = temp_root("resume");
+        let bytes = b"tool-v1";
+        let mut installer = EnvironmentInstaller::new(
+            EnvironmentLayout::new(&root),
+            InterruptOnceDownloader {
+                bytes: bytes.to_vec(),
+                interrupted: false,
+            },
+            FakeHealth::default(),
+        );
+        let manifest = verified_manifest("v1", bytes);
+
+        assert!(matches!(
+            installer.install(&manifest),
+            Err(EnvironmentUpdateError::Download(_))
+        ));
+        let partial = root.join("environment/staging/v1/downloads/tool.exe.package");
+        assert_eq!(fs::read(&partial).unwrap(), &bytes[..3]);
+
+        let installed = installer.install(&manifest).unwrap();
+        assert_eq!(installed.current_version, "v1");
+        assert_eq!(
+            fs::read(root.join("environment/versions/v1/tool.exe")).unwrap(),
+            bytes
+        );
+        assert!(!root.join("environment/staging/v1").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn retry_skips_verified_packages_before_resuming_a_later_component() {
+        let root = temp_root("resume-multiple");
+        let first = b"first-tool";
+        let second = b"second-tool";
+        let first_url = "https://updates.example.test/first.exe".to_owned();
+        let second_url = "https://updates.example.test/second.exe".to_owned();
+        let mut installer = EnvironmentInstaller::new(
+            EnvironmentLayout::new(&root),
+            InterruptSecondDownloader {
+                content: HashMap::from([
+                    (first_url.clone(), first.to_vec()),
+                    (second_url.clone(), second.to_vec()),
+                ]),
+                calls: HashMap::new(),
+                interrupted: false,
+            },
+            FakeHealth::default(),
+        );
+        let manifest = verified_multi_manifest("v1", first, second);
+
+        assert!(matches!(
+            installer.install(&manifest),
+            Err(EnvironmentUpdateError::Download(_))
+        ));
+        installer.install(&manifest).unwrap();
+
+        assert_eq!(installer.downloader.calls.get(&first_url), Some(&1));
+        assert_eq!(installer.downloader.calls.get(&second_url), Some(&2));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn cancellation_after_download_stops_before_verification_and_switch() {
+        let root = temp_root("cancel-after-download");
+        let bytes = b"tool-v1";
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        let shared_status = Arc::new(Mutex::new(EnvironmentUpdateStatus::default()));
+        let mut installer = EnvironmentInstaller::new(
+            EnvironmentLayout::new(&root),
+            CancelAfterDownload {
+                bytes: bytes.to_vec(),
+                cancel_requested: Arc::clone(&cancel_requested),
+            },
+            FakeHealth::default(),
+        )
+        .with_control(shared_status, cancel_requested);
+
+        assert!(matches!(
+            installer.install(&verified_manifest("v1", bytes)),
+            Err(EnvironmentUpdateError::Cancelled)
+        ));
+        assert!(!root.join("environment/versions/v1").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reports_installing_to_shared_status_before_health_checks() {
+        let root = temp_root("shared-install-status");
+        let bytes = b"tool-v1";
+        let shared_status = Arc::new(Mutex::new(EnvironmentUpdateStatus::default()));
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        let mut downloader = FakeDownloader::default();
+        downloader.content.insert(
+            "https://updates.example.test/tool.exe".into(),
+            bytes.to_vec(),
+        );
+        let mut installer = EnvironmentInstaller::new(
+            EnvironmentLayout::new(&root),
+            downloader,
+            SharedStatusHealth {
+                status: Arc::clone(&shared_status),
+                observed: Arc::clone(&observed),
+            },
+        )
+        .with_control(Arc::clone(&shared_status), cancel_requested);
+
+        installer.install(&verified_manifest("v1", bytes)).unwrap();
+
+        assert_eq!(
+            *observed
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+            vec![EnvironmentUpdatePhase::Installing]
+        );
+        assert_eq!(
+            shared_status
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phase,
+            EnvironmentUpdatePhase::Installing
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn checksum_or_health_failure_does_not_switch_current() {
         let root = temp_root("failure");
         let bytes = b"tool-v1";
@@ -1393,6 +1984,64 @@ mod tests {
         ));
         drop(first);
         assert!(control.try_begin().is_ok());
+    }
+
+    #[test]
+    fn update_control_accepts_cancel_only_while_an_operation_is_running() {
+        let control = EnvironmentUpdateControl::default();
+        assert!(!control.request_cancel());
+
+        let operation = control.try_begin().unwrap();
+        assert!(control.request_cancel());
+        assert!(control.cancellation_requested());
+
+        drop(operation);
+        assert!(!control.cancellation_requested());
+        assert!(!control.request_cancel());
+    }
+
+    #[test]
+    fn stale_cancel_token_cannot_cancel_the_next_operation() {
+        let control = EnvironmentUpdateControl::default();
+        let first = control.try_begin().unwrap();
+        let stale_token = first.cancel_token();
+        drop(first);
+
+        let second = control.try_begin().unwrap();
+        stale_token.store(true, Ordering::Release);
+
+        assert!(!control.cancellation_requested());
+        assert!(!second.cancel_token().load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn http_resume_plan_appends_only_when_the_server_honors_the_range() {
+        assert_eq!(
+            download_write_plan(
+                5,
+                reqwest::StatusCode::PARTIAL_CONTENT,
+                Some("bytes 5-9/10")
+            )
+            .unwrap(),
+            (5, true)
+        );
+        assert_eq!(
+            download_write_plan(5, reqwest::StatusCode::OK, None).unwrap(),
+            (0, false)
+        );
+        assert!(download_write_plan(
+            5,
+            reqwest::StatusCode::PARTIAL_CONTENT,
+            Some("bytes 4-9/10")
+        )
+        .is_err());
+        assert!(download_write_plan(5, reqwest::StatusCode::PARTIAL_CONTENT, None).is_err());
+        assert!(download_write_plan(
+            5,
+            reqwest::StatusCode::RANGE_NOT_SATISFIABLE,
+            Some("bytes */5")
+        )
+        .is_err());
     }
 
     #[test]

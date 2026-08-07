@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   environmentUpdateCheck,
+  environmentUpdateCancel,
   environmentUpdateInstall,
   environmentUpdateManifest,
   environmentUpdateRollback,
@@ -65,6 +66,7 @@ export interface EnvironmentUpdateState {
   refresh: () => Promise<void>;
   check: () => Promise<EnvironmentUpdateSnapshot | null>;
   install: (activity?: EnvironmentActivitySnapshot) => Promise<EnvironmentUpdateSnapshot | null>;
+  cancel: () => Promise<EnvironmentUpdateSnapshot | null>;
   rollback: (activity?: EnvironmentActivitySnapshot) => Promise<EnvironmentUpdateSnapshot | null>;
 }
 
@@ -83,6 +85,8 @@ function assertUpdateAllowed(activity: EnvironmentActivitySnapshot = EMPTY_ACTIV
   const reason = environmentUpdateBlockedReason(activity);
   if (reason) throw new Error(`environment update blocked by ${reason}`);
 }
+
+let activeInstallOperation = 0;
 
 export const useEnvironmentUpdateStore = create<EnvironmentUpdateState>((set, get) => ({
   snapshot: null,
@@ -108,11 +112,46 @@ export const useEnvironmentUpdateStore = create<EnvironmentUpdateState>((set, ge
     }
   },
   install: async (activity = EMPTY_ACTIVITY) => {
+    let polling: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+    let operation = 0;
     try {
       assertUpdateAllowed(activity);
       const envelopeJson = get().envelopeJson;
       if (!envelopeJson) throw new Error("Check for environment updates first.");
+      operation = ++activeInstallOperation;
+      const poll = async () => {
+        if (stopped || operation !== activeInstallOperation) return;
+        try {
+          const snapshot = await environmentUpdateStatus();
+          if (!stopped && operation === activeInstallOperation && snapshot) set({ snapshot });
+        } catch {
+          // Status polling is best effort; the install command remains authoritative.
+        } finally {
+          if (!stopped && operation === activeInstallOperation) {
+            polling = setTimeout(() => {
+              polling = null;
+              void poll();
+            }, 250);
+          }
+        }
+      };
+      void poll();
       const snapshot = await environmentUpdateInstall(envelopeJson);
+      set({ snapshot, error: null });
+      return snapshot;
+    } catch (error) {
+      set({ error: errorText(error) });
+      return null;
+    } finally {
+      stopped = true;
+      if (polling) clearTimeout(polling);
+      polling = null;
+    }
+  },
+  cancel: async () => {
+    try {
+      const snapshot = await environmentUpdateCancel();
       set({ snapshot, error: null });
       return snapshot;
     } catch (error) {

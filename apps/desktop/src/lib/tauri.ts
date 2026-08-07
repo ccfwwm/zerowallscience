@@ -1096,6 +1096,9 @@ export interface EnvironmentUpdateSnapshot {
   previousVersion: string | null;
   targetVersion: string | null;
   message: string | null;
+  downloadedBytes: number;
+  totalBytes: number | null;
+  currentComponent: string | null;
 }
 
 export async function environmentUpdateManifest(): Promise<string> {
@@ -1120,6 +1123,12 @@ export async function environmentUpdateInstall(envelopeJson: string): Promise<En
   if (!isTauri) throw new Error("environment updates are available in the desktop app only");
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<EnvironmentUpdateSnapshot>("environment_update_install", { envelopeJson });
+}
+
+export async function environmentUpdateCancel(): Promise<EnvironmentUpdateSnapshot> {
+  if (!isTauri) throw new Error("environment updates are available in the desktop app only");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<EnvironmentUpdateSnapshot>("environment_update_cancel");
 }
 
 export async function environmentUpdateRollback(): Promise<EnvironmentUpdateSnapshot> {

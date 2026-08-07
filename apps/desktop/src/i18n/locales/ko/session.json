@@ -14,6 +14,7 @@
     "splitRight": "오른쪽으로 분할 — 옆에 새 세션 열기",
     "splitDown": "아래로 분할 — 아래에 새 세션 열기",
     "closePane": "이 창 닫기",
+    "actions": "창 작업",
     "zoom": "이 창 확대/축소",
     "empty": {
       "title": "빈 화면",

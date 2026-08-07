@@ -321,6 +321,7 @@ pub fn run() {
             environment_update::environment_update_manifest,
             environment_update::environment_update_check,
             environment_update::environment_update_install,
+            environment_update::environment_update_cancel,
             environment_update::environment_update_rollback,
             debug_log::log_debug
         ])

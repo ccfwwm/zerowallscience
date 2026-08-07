@@ -14,6 +14,7 @@
     "splitRight": "Diviser à droite — ouvrir une nouvelle session à côté",
     "splitDown": "Diviser en bas — ouvrir une nouvelle session en dessous",
     "closePane": "Fermer ce volet",
+    "actions": "Actions du volet",
     "zoom": "Zoom de ce volet",
     "empty": {
       "title": "Écran vide",

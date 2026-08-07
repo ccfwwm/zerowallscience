@@ -100,6 +100,13 @@
     "setupSkip": "Continue without environment",
     "check": "Check now",
     "install": "Install",
+    "continueInstall": "Continue install",
+    "cancel": "Cancel",
+    "currentComponent": "{{component}}",
+    "preparingDownload": "Preparing download",
+    "downloadProgress": "Environment download progress",
+    "cancellingMessage": "Cancelling environment update...",
+    "cancelledMessage": "Environment update cancelled.",
     "rollback": "Roll back",
     "phase": {
       "idle": "Ready",

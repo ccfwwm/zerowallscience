@@ -13,6 +13,9 @@
   },
   "items": {
     "new": "新規",
+    "search": "検索",
+    "workflows": "ワークフロー",
+    "researchTools": "研究ツール",
     "notebooks": "ノートブック",
     "files": "ファイル",
     "runs": "実行",

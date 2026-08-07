@@ -14,6 +14,7 @@
     "splitRight": "Nach rechts teilen — eine neue Sitzung daneben öffnen",
     "splitDown": "Nach unten teilen — eine neue Sitzung darunter öffnen",
     "closePane": "Dieses Bereich schließen",
+    "actions": "Bereichsaktionen",
     "zoom": "Dieses Bereich zoomen",
     "empty": {
       "title": "Leerer Bildschirm",
