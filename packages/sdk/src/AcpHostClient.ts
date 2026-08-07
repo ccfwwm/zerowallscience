@@ -1,5 +1,11 @@
 import type { PromptAttachment } from "./runtime";
-import type { HistoryMessage, ProviderCatalogEntry, ProviderInfo } from "./types";
+import type {
+  HistoryMessage,
+  McpConfig,
+  McpServer,
+  ProviderCatalogEntry,
+  ProviderInfo,
+} from "./types";
 
 export type AgentEngine = "codex" | "claude-code" | "opencode";
 
@@ -217,6 +223,26 @@ export class AcpHostClient {
 
   async removeCustomProvider(providerId: string): Promise<void> {
     await this.invoke("acp_host_remove_custom_provider", { providerId });
+  }
+
+  async listMcpServers(): Promise<McpServer[]> {
+    return this.invoke<McpServer[]>("acp_host_list_mcp_servers");
+  }
+
+  async addMcpServer(name: string, config: McpConfig): Promise<void> {
+    await this.invoke("acp_host_add_mcp_server", { request: { name, config } });
+  }
+
+  async removeMcpServer(name: string): Promise<void> {
+    await this.invoke("acp_host_remove_mcp_server", { name });
+  }
+
+  async reconnectMcpServer(name: string): Promise<void> {
+    await this.invoke("acp_host_reconnect_mcp_server", { name });
+  }
+
+  async ensureMcpEnvironment(name: string, environment: Record<string, string>): Promise<void> {
+    await this.invoke("acp_host_ensure_mcp_environment", { name, environment });
   }
 
   async listEngines(): Promise<AcpHostEngineInfo[]> {

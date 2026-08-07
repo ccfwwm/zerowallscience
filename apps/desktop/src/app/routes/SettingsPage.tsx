@@ -13,7 +13,6 @@ import {
   Search,
 } from "lucide-react";
 import type {
-  McpConfig,
   McpServer,
   OAuthAuthorization,
   ProviderAuthMethod,
@@ -24,7 +23,12 @@ import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { useUiStore, ZOOM_MAX, ZOOM_MIN } from "@/lib/store";
 import { shippedLocales } from "@/i18n/config";
-import { getClient, getOrCreateOpenCodeClient, getProviderControlClient, useRuntimeStore } from "@/lib/runtime";
+import {
+  getClient,
+  getMcpControlClient,
+  getProviderControlClient,
+  useRuntimeStore,
+} from "@/lib/runtime";
 import { useUpdateStore } from "@/lib/update";
 import { isGatewayWeb } from "@/lib/webMode";
 import {
@@ -42,7 +46,6 @@ import {
   pickFolder,
   providerSecretExists,
   pythonInterpreter,
-  removeConfigEntry,
   removeProviderSecret,
   setProviderSecret,
   setPythonPath,
@@ -250,22 +253,18 @@ export function SettingsPage() {
   const oauthAbort = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async (): Promise<ProviderInfo[] | null> => {
-    // In ACP mode the OpenCode client is torn down (an external agent is the
-    // active runtime), but the sidecar still runs behind it and owns the
-    // provider config the Models card renders — reach it with a transient client
-    // so the catalog loads instead of hanging on "正在加载模型目录…".
+    // The sidecar owns provider and MCP configuration even while another
+    // engine is active. Desktop reads both through typed Host controls; the
+    // gateway web client receives compatible OpenCode-backed controls.
     const providerControl = getProviderControlClient();
-    // Provider calls below are Host-owned on desktop. The temporary client is
-    // retained only for the still-unmigrated MCP auxiliary list and is removed
-    // by the following typed MCP control-plane milestone.
-    const client = getClient() ?? (await getOrCreateOpenCodeClient());
-    if (!providerControl && !client) return null;
+    const mcpControl = getMcpControlClient();
+    if (!providerControl) return null;
     // The model catalog (listProviders) is what the Models card renders — only
     // its failure means "catalog unavailable", and only when there is no last
     // good list to keep showing. The rest is auxiliary settings data.
     let fresh: ProviderInfo[] | null = null;
     try {
-      fresh = await (providerControl?.listProviders() ?? client!.listProviders());
+      fresh = await providerControl.listProviders();
       setProviders(fresh);
       setCatalogState("ready");
     } catch {
@@ -275,7 +274,7 @@ export function SettingsPage() {
       const [c, custom, mcp] = await Promise.all([
         providerControl?.listProviderCatalog() ?? Promise.resolve({ all: [], connected: [] }),
         providerControl?.listCustomProviderIds() ?? Promise.resolve([]),
-        client?.listMcpServers().catch(() => []) ?? Promise.resolve([]),
+        mcpControl?.listMcpServers().catch(() => []) ?? Promise.resolve([]),
       ]);
       setCatalog(c.all);
       setCustomIds(custom);
@@ -744,7 +743,9 @@ export function SettingsPage() {
         toast.error(t("toast.mcpFieldsRequired"));
         return;
       }
-      await getClient()!.addMcpServer(
+      const mcpControl = getMcpControlClient();
+      if (!mcpControl) throw new Error(t("providers.connectPrompt"));
+      await mcpControl.addMcpServer(
         name,
         mType === "local"
           ? { type: "local", command: target.split(/\s+/), enabled: true }
@@ -790,8 +791,10 @@ export function SettingsPage() {
 
   const disableBrowser = () =>
     run(t("toast.couldNotRemoveMcp"), async () => {
-      await removeConfigEntry("mcp", BROWSER_MCP_ID);
-      await useRuntimeStore.getState().connectRetry();
+      const mcpControl = getMcpControlClient();
+      if (!mcpControl) return;
+      await mcpControl.removeMcpServer(BROWSER_MCP_ID);
+      setMcpServers(await mcpControl.listMcpServers());
       toast.success(t("toast.mcpRemoved", { name: t("browser.label") }));
     });
 
@@ -806,8 +809,10 @@ export function SettingsPage() {
 
   const removeMcp = (name: string) =>
     run(t("toast.couldNotRemoveMcp"), async () => {
-      await removeConfigEntry("mcp", name);
-      await useRuntimeStore.getState().connectRetry();
+      const mcpControl = getMcpControlClient();
+      if (!mcpControl) return;
+      await mcpControl.removeMcpServer(name);
+      setMcpServers(await mcpControl.listMcpServers());
       toast.success(t("toast.mcpRemoved", { name }));
     });
 
@@ -816,15 +821,14 @@ export function SettingsPage() {
   // sidecar) and then ran connectRetry — a full reload the user experienced as
   // the page flashing. Instead, toggle just this server off→on via a live
   // config PATCH (applied without a restart) and re-poll only the MCP list.
-  const reconnectMcp = (name: string, config: McpConfig) =>
+  const reconnectMcp = (name: string) =>
     run(t("toast.couldNotReconnectMcp"), async () => {
-      const client = getClient();
-      if (!client) return;
+      const mcpControl = getMcpControlClient();
+      if (!mcpControl) return;
       setReconnecting(name);
       try {
-        await client.addMcpServer(name, { ...config, enabled: false });
-        await client.addMcpServer(name, { ...config, enabled: true });
-        setMcpServers(await client.listMcpServers());
+        await mcpControl.reconnectMcpServer(name);
+        setMcpServers(await mcpControl.listMcpServers());
         toast.success(t("toast.mcpReconnected", { name }));
       } finally {
         setReconnecting(null);
@@ -1608,7 +1612,7 @@ export function SettingsPage() {
                         {s.config && (
                           <button
                             className="flex items-center gap-1 text-xs text-accent transition-colors hover:text-accent/80 disabled:opacity-50"
-                            onClick={() => void reconnectMcp(s.name, s.config!)}
+                            onClick={() => void reconnectMcp(s.name)}
                             disabled={busy || reconnecting !== null}
                           >
                             {reconnecting === s.name ? (

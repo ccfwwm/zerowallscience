@@ -1194,6 +1194,24 @@ export function getProviderControlClient(): Pick<
   return providerControlClient;
 }
 
+/** Typed MCP configuration boundary. Desktop calls Tauri ACP Host commands;
+ * the gateway web client retains its same-origin OpenCode compatibility path. */
+export function getMcpControlClient(): Pick<
+  AcpHostClient,
+  "listMcpServers" | "addMcpServer" | "removeMcpServer" | "reconnectMcpServer" | "ensureMcpEnvironment"
+> | OpenCodeClient | null {
+  if (isGatewayWeb) return opencodeClient;
+  if (!isTauri) return opencodeClient;
+  if (!providerControlClient) {
+    const invoke: AcpHostInvoke = async <T>(command: string, args?: Record<string, unknown>) => {
+      const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
+      return tauriInvoke<T>(command, args);
+    };
+    providerControlClient = new AcpHostClient({ invoke });
+  }
+  return providerControlClient;
+}
+
 /** The default-model key ("providerId/model") for an ACP preset, from its stored
  *  Sub2Api config, or null when the agent has no gateway config (own login). An
  *  ACP agent's default is maintained by its live session, so the sidecar's own default is

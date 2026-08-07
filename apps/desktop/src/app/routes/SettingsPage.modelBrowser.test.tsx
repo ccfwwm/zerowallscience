@@ -47,6 +47,7 @@ function mockCatalogClients(
 ): NonNullable<ReturnType<typeof runtime.getClient>> {
   vi.spyOn(runtime, "getClient").mockReturnValue(client);
   vi.spyOn(runtime, "getProviderControlClient").mockReturnValue(client);
+  vi.spyOn(runtime, "getMcpControlClient").mockReturnValue(client);
   return client;
 }
 

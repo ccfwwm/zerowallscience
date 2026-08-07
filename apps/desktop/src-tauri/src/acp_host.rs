@@ -7,8 +7,8 @@ use tauri::{AppHandle, Manager, State};
 use zerowall_acp::AcpAgentProfile;
 use zerowall_acp_host::acp_process::AcpProcessDriver;
 use zerowall_acp_host::opencode::{
-    CustomProviderRequest, HttpOpenCodeTransport, OpenCodeDriver, OpenCodeProviderControl,
-    ProviderCatalog, ProviderInfo,
+    CustomProviderRequest, HttpOpenCodeTransport, McpConfig, McpServer, McpServerRequest,
+    OpenCodeDriver, OpenCodeMcpControl, OpenCodeProviderControl, ProviderCatalog, ProviderInfo,
 };
 use zerowall_acp_host::{
     AcpHost, AcpHostDriver, AgentBinding, AgentEvent, CredentialRef, HostDriverKind, HostError,
@@ -532,6 +532,18 @@ fn build_provider_control(
     ))
 }
 
+fn build_mcp_control(app: &AppHandle) -> Result<OpenCodeMcpControl<HttpOpenCodeTransport>, String> {
+    let runtime = app.state::<crate::runtime::RuntimeState>();
+    let base_url = crate::runtime::sidecar_url(runtime.inner())
+        .ok_or_else(|| "OpenCode runtime is not running".to_owned())?;
+    Ok(OpenCodeMcpControl::new(
+        HttpOpenCodeTransport::new(),
+        base_url,
+        "opencode",
+        crate::runtime::server_password(),
+    ))
+}
+
 fn validate_provider_id(value: &str) -> Result<(), String> {
     if value.trim().is_empty() {
         return Err("provider_id is required".into());
@@ -559,6 +571,32 @@ fn validate_custom_provider(request: &CustomProviderRequest) -> Result<(), Strin
     validate_base_url(&request.base_url)?;
     if request.models.is_empty() || request.models.iter().any(|model| model.trim().is_empty()) {
         return Err("at least one non-empty model is required".into());
+    }
+    Ok(())
+}
+
+fn validate_mcp_name(value: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err("MCP server name is required".into());
+    }
+    if !value
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
+    {
+        return Err("MCP server name contains unsupported characters".into());
+    }
+    Ok(())
+}
+
+fn validate_mcp_request(request: &McpServerRequest) -> Result<(), String> {
+    validate_mcp_name(&request.name)?;
+    match &request.config {
+        McpConfig::Local { command, .. } => {
+            if command.is_empty() || command.iter().any(|part| part.trim().is_empty()) {
+                return Err("local MCP command must contain non-empty arguments".into());
+            }
+        }
+        McpConfig::Remote { url, .. } => validate_base_url(url)?,
     }
     Ok(())
 }
@@ -626,6 +664,57 @@ pub async fn acp_host_remove_custom_provider(
     validate_provider_id(&provider_id)?;
     build_provider_control(&app)?
         .remove_custom_provider(&provider_id)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_list_mcp_servers(app: AppHandle) -> Result<Vec<McpServer>, String> {
+    build_mcp_control(&app)?
+        .list_mcp_servers()
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_add_mcp_server(
+    app: AppHandle,
+    request: McpServerRequest,
+) -> Result<(), String> {
+    validate_mcp_request(&request)?;
+    build_mcp_control(&app)?
+        .add_mcp_server(request)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_remove_mcp_server(app: AppHandle, name: String) -> Result<(), String> {
+    validate_mcp_name(&name)?;
+    build_mcp_control(&app)?
+        .remove_mcp_server(&name)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_reconnect_mcp_server(app: AppHandle, name: String) -> Result<(), String> {
+    validate_mcp_name(&name)?;
+    build_mcp_control(&app)?
+        .reconnect_mcp_server(&name)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn acp_host_ensure_mcp_environment(
+    app: AppHandle,
+    name: String,
+    environment: std::collections::BTreeMap<String, String>,
+) -> Result<(), String> {
+    validate_mcp_name(&name)?;
+    build_mcp_control(&app)?
+        .ensure_mcp_environment(&name, environment)
         .await
         .map_err(error_string)
 }

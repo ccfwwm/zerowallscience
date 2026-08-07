@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   loadCatalog: vi.fn(async () => {}),
   connectRetry: vi.fn(async () => true),
   /** Resolves ⇒ an entry existed and was removed; rejects ⇒ nothing to remove. */
-  removeConfigEntry: vi.fn(async () => {}),
+  removeMcpServer: vi.fn(async () => {}),
   agentBrowserBin: vi.fn(async () => "/bin/agent-browser"),
   detectChrome: vi.fn(async () => ({ path: "/Chrome", kind: "chrome" })),
   getProxySetting: vi.fn(async () => ({ effective: null })),
@@ -31,9 +31,11 @@ mocks.setupJupyter.mockImplementation(
 );
 
 vi.mock("./runtime", () => ({
-  getClient: () => ({
+  getMcpControlClient: () => ({
     addMcpServer: mocks.addMcpServer,
     listMcpServers: mocks.listMcpServers,
+    removeMcpServer: mocks.removeMcpServer,
+    ensureMcpEnvironment: vi.fn(async () => {}),
   }),
   useRuntimeStore: {
     getState: () => ({ loadCatalog: mocks.loadCatalog, connectRetry: mocks.connectRetry }),
@@ -49,7 +51,6 @@ vi.mock("./tauri", () => ({
   }),
   setupScienceMcp: mocks.setupScienceMcp,
   watchSetupProgress: async () => () => {},
-  removeConfigEntry: mocks.removeConfigEntry,
   agentBrowserBin: mocks.agentBrowserBin,
   detectChrome: mocks.detectChrome,
   getProxySetting: mocks.getProxySetting,
@@ -130,11 +131,11 @@ describe("setup store", () => {
   it("rewrites the browser entry from scratch on reconfigure — removes before re-adding", async () => {
     await useSetupStore.getState().enableBrowser({ headed: false, useSystemChrome: true });
 
-    expect(mocks.removeConfigEntry).toHaveBeenCalledWith("mcp", "browser-control");
-    // An existing entry was removed, so we wait for the restarted sidecar.
-    expect(mocks.connectRetry).toHaveBeenCalled();
+    expect(mocks.removeMcpServer).toHaveBeenCalledWith("browser-control");
+    // Typed Host removal applies live; it does not restart the sidecar.
+    expect(mocks.connectRetry).not.toHaveBeenCalled();
     // Remove must precede the re-add, or the add merges into the stale entry.
-    expect(mocks.removeConfigEntry.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(mocks.removeMcpServer.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.addMcpServer.mock.invocationCallOrder[0],
     );
     // The freshly written config carries no headed flag → it starts headless.
@@ -145,8 +146,8 @@ describe("setup store", () => {
     expect(config.environment?.AGENT_BROWSER_HEADED).toBeUndefined();
   });
 
-  it("first enable has no entry to remove — skips the sidecar wait, still adds", async () => {
-    mocks.removeConfigEntry.mockRejectedValueOnce(new Error("not in the config's mcp section"));
+  it("first enable tolerates a missing entry and still adds", async () => {
+    mocks.removeMcpServer.mockResolvedValueOnce(undefined);
 
     await useSetupStore.getState().enableBrowser({ headed: true, useSystemChrome: true });
 

@@ -108,6 +108,62 @@ pub struct CustomProviderRequest {
     pub contexts: BTreeMap<String, u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum McpConfig {
+    Local {
+        command: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        enabled: Option<bool>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        environment: BTreeMap<String, String>,
+    },
+    Remote {
+        url: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        enabled: Option<bool>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        headers: BTreeMap<String, String>,
+    },
+}
+
+impl McpConfig {
+    fn set_enabled(&mut self, value: bool) {
+        match self {
+            Self::Local { enabled, .. } | Self::Remote { enabled, .. } => {
+                *enabled = Some(value);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServer {
+    pub name: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<McpConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct McpServerRequest {
+    pub name: String,
+    pub config: McpConfig,
+}
+
+#[derive(Default, Deserialize)]
+struct OpenCodeMcpConfig {
+    #[serde(default)]
+    mcp: BTreeMap<String, McpConfig>,
+}
+
+#[derive(Default, Deserialize)]
+struct OpenCodeMcpStatus {
+    status: Option<String>,
+}
+
 /// Typed OpenCode configuration control owned by the unified Host. Raw HTTP
 /// paths and DTOs stay in Rust; callers receive only stable provider types.
 pub struct OpenCodeProviderControl<T> {
@@ -313,6 +369,154 @@ impl<T: OpenCodeTransport> OpenCodeProviderControl<T> {
         let body = json!({"provider": {provider_id: null}}).to_string();
         let response = self.send("PATCH", "/global/config", Some(&body)).await?;
         ensure_success(response.status, "provider/remove")
+    }
+
+    async fn send(
+        &mut self,
+        method: &str,
+        path: &str,
+        body: Option<&str>,
+    ) -> Result<TransportResponse, HostError> {
+        let mut headers = vec![("Authorization".into(), self.auth_header.clone())];
+        if body.is_some() {
+            headers.push(("Content-Type".into(), "application/json".into()));
+        }
+        self.transport
+            .send(
+                method,
+                &format!("{}{}", self.base_url, path),
+                &headers,
+                body,
+            )
+            .await
+            .map_err(HostError::Driver)
+    }
+}
+
+/// Typed MCP configuration control owned by the unified Host. OpenCode paths,
+/// Basic auth, and raw config/status DTOs never cross this Rust boundary.
+pub struct OpenCodeMcpControl<T> {
+    transport: T,
+    base_url: String,
+    auth_header: String,
+}
+
+impl<T: OpenCodeTransport> OpenCodeMcpControl<T> {
+    pub fn new(transport: T, base_url: impl Into<String>, username: &str, password: &str) -> Self {
+        Self {
+            transport,
+            base_url: base_url.into().trim_end_matches('/').to_owned(),
+            auth_header: format!("Basic {}", encode_base64(&format!("{username}:{password}"))),
+        }
+    }
+
+    pub async fn list_mcp_servers(&mut self) -> Result<Vec<McpServer>, HostError> {
+        let status_response = self.send("GET", "/mcp", None).await?;
+        let statuses = if (200..300).contains(&status_response.status) {
+            serde_json::from_str::<BTreeMap<String, OpenCodeMcpStatus>>(&status_response.body)
+                .map_err(|error| {
+                    HostError::Driver(format!("invalid OpenCode MCP status: {error}"))
+                })?
+        } else {
+            BTreeMap::new()
+        };
+        let config_response = self.send("GET", "/global/config", None).await?;
+        let configs = if (200..300).contains(&config_response.status) {
+            serde_json::from_str::<OpenCodeMcpConfig>(&config_response.body)
+                .map_err(|error| {
+                    HostError::Driver(format!("invalid OpenCode MCP config: {error}"))
+                })?
+                .mcp
+        } else {
+            BTreeMap::new()
+        };
+        let mut names = statuses
+            .keys()
+            .chain(configs.keys())
+            .cloned()
+            .collect::<Vec<_>>();
+        names.sort();
+        names.dedup();
+        Ok(names
+            .into_iter()
+            .map(|name| McpServer {
+                status: statuses
+                    .get(&name)
+                    .and_then(|value| value.status.clone())
+                    .unwrap_or_else(|| "pending".into()),
+                config: configs.get(&name).cloned(),
+                name,
+            })
+            .collect())
+    }
+
+    pub async fn add_mcp_server(&mut self, request: McpServerRequest) -> Result<(), HostError> {
+        self.write_mcp_config(&request.name, Some(request.config), "mcp/add")
+            .await
+    }
+
+    pub async fn remove_mcp_server(&mut self, name: &str) -> Result<(), HostError> {
+        self.write_mcp_config(name, None, "mcp/remove").await
+    }
+
+    pub async fn reconnect_mcp_server(&mut self, name: &str) -> Result<(), HostError> {
+        let mut enabled = self.mcp_config(name).await?;
+        let mut disabled = enabled.clone();
+        disabled.set_enabled(false);
+        self.write_mcp_config(name, Some(disabled), "mcp/disable")
+            .await?;
+        enabled.set_enabled(true);
+        self.write_mcp_config(name, Some(enabled), "mcp/enable")
+            .await
+    }
+
+    pub async fn ensure_mcp_environment(
+        &mut self,
+        name: &str,
+        environment: BTreeMap<String, String>,
+    ) -> Result<(), HostError> {
+        let mut config = self.mcp_config(name).await?;
+        match &mut config {
+            McpConfig::Local {
+                environment: current,
+                ..
+            } => {
+                if environment
+                    .iter()
+                    .all(|(key, value)| current.get(key) == Some(value))
+                {
+                    return Ok(());
+                }
+                current.extend(environment);
+            }
+            McpConfig::Remote { .. } => {
+                return Err(HostError::Driver(format!("MCP server {name} is not local")))
+            }
+        }
+        self.write_mcp_config(name, Some(config), "mcp/environment")
+            .await
+    }
+
+    async fn mcp_config(&mut self, name: &str) -> Result<McpConfig, HostError> {
+        let response = self.send("GET", "/global/config", None).await?;
+        ensure_success(response.status, "mcp/config")?;
+        let mut config = serde_json::from_str::<OpenCodeMcpConfig>(&response.body)
+            .map_err(|error| HostError::Driver(format!("invalid OpenCode MCP config: {error}")))?;
+        config
+            .mcp
+            .remove(name)
+            .ok_or_else(|| HostError::Driver(format!("MCP server {name} is not configured")))
+    }
+
+    async fn write_mcp_config(
+        &mut self,
+        name: &str,
+        config: Option<McpConfig>,
+        operation: &str,
+    ) -> Result<(), HostError> {
+        let body = json!({"mcp": {name: config}}).to_string();
+        let response = self.send("PATCH", "/global/config", Some(&body)).await?;
+        ensure_success(response.status, operation)
     }
 
     async fn send(
@@ -1467,6 +1671,7 @@ mod tests {
                 TransportResponse { status: 200, body: String::new() },
                 TransportResponse { status: 200, body: String::new() },
                 TransportResponse { status: 200, body: String::new() },
+                TransportResponse { status: 200, body: String::new() },
                 TransportResponse { status: 200, body: r#"{"model":"cloud/model"}"#.into() },
                 TransportResponse {
                     status: 200,
@@ -1552,6 +1757,71 @@ mod tests {
             .as_deref()
             .unwrap_or_default()
             .contains("apiKey")));
+    }
+
+    #[test]
+    fn mcp_control_owns_status_config_and_mutation_transport() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse { status: 200, body: String::new() },
+                TransportResponse { status: 200, body: String::new() },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local","command":["python","-m","papers"],"enabled":true,"environment":{"EXISTING":"value"}}}}"#.into(),
+                },
+                TransportResponse { status: 200, body: String::new() },
+                TransportResponse { status: 200, body: String::new() },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local","command":["python","-m","papers"],"enabled":true,"environment":{"EXISTING":"value"}}}}"#.into(),
+                },
+                TransportResponse { status: 200, body: String::new() },
+                TransportResponse { status: 200, body: r#"{}"#.into() },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"papers":{"status":"connected"}}"#.into(),
+                },
+            ],
+        };
+        let mut control = OpenCodeMcpControl::new(fake, "http://x/", "u", "p");
+
+        let servers = block_on(control.list_mcp_servers()).unwrap();
+        assert_eq!(servers[0].name, "papers");
+        assert_eq!(servers[0].status, "connected");
+        block_on(control.add_mcp_server(McpServerRequest {
+            name: "papers".into(),
+            config: McpConfig::Local {
+                command: vec!["python".into(), "-m".into(), "papers".into()],
+                enabled: Some(true),
+                environment: BTreeMap::new(),
+            },
+        }))
+        .unwrap();
+        block_on(control.reconnect_mcp_server("papers")).unwrap();
+        block_on(control.ensure_mcp_environment(
+            "papers",
+            BTreeMap::from([("SAFE_MODE".into(), "true".into())]),
+        ))
+        .unwrap();
+        block_on(control.remove_mcp_server("papers")).unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls[0].url, "http://x/mcp");
+        assert_eq!(calls[1].url, "http://x/global/config");
+        assert!(calls
+            .iter()
+            .all(|call| call.headers.iter().any(|(_, value)| value == "Basic dTpw")));
+        assert_eq!(
+            calls.last().and_then(|call| call.body.as_deref()),
+            Some(r#"{"mcp":{"papers":null}}"#)
+        );
+        assert!(calls.iter().all(|call| !call
+            .body
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Authorization")));
     }
 
     #[test]

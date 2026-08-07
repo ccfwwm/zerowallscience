@@ -814,6 +814,45 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
     if (!res.ok) throw await this.apiError(res, "Failed to add the MCP server");
   }
 
+  /** Remove an MCP entry. Used only by the gateway compatibility boundary;
+   *  desktop callers route this operation through the typed ACP Host. */
+  async removeMcpServer(name: string): Promise<void> {
+    const res = await this.fetchImpl(`${this.baseUrl}/global/config`, {
+      method: "PATCH",
+      headers: this.headers(true),
+      body: JSON.stringify({ mcp: { [name]: null } }),
+    });
+    if (!res.ok) throw await this.apiError(res, "Failed to remove the MCP server");
+  }
+
+  /** Toggle one configured MCP server without restarting the runtime. */
+  async reconnectMcpServer(name: string): Promise<void> {
+    const config = await this.getMcpServerConfig(name);
+    await this.addMcpServer(name, { ...config, enabled: false });
+    await this.addMcpServer(name, { ...config, enabled: true });
+  }
+
+  /** Merge non-secret environment switches into a local MCP entry. */
+  async ensureMcpEnvironment(name: string, environment: Record<string, string>): Promise<void> {
+    const config = await this.getMcpServerConfig(name);
+    if (config.type !== "local") throw new Error(`MCP server ${name} is not local`);
+    const current = config.environment ?? {};
+    if (Object.entries(environment).every(([key, value]) => current[key] === value)) return;
+    await this.addMcpServer(name, {
+      ...config,
+      environment: { ...current, ...environment },
+    });
+  }
+
+  private async getMcpServerConfig(name: string): Promise<McpConfig> {
+    const res = await this.fetchImpl(`${this.baseUrl}/global/config`, { headers: this.headers() });
+    if (!res.ok) throw await this.apiError(res, "Failed to read the MCP server");
+    const body = (await res.json()) as { mcp?: Record<string, McpConfig> };
+    const config = body.mcp?.[name];
+    if (!config) throw new Error(`MCP server ${name} is not configured`);
+    return config;
+  }
+
   /** The full provider catalog (~150 entries) and which ids are connected. */
   async listProviderCatalog(): Promise<{ all: ProviderCatalogEntry[]; connected: string[] }> {
     const res = await this.fetchImpl(`${this.baseUrl}/provider`, { headers: this.headers() });

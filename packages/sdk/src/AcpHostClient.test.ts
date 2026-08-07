@@ -126,6 +126,58 @@ describe("AcpHostClient", () => {
     expect(invoke).toHaveBeenCalledWith("acp_host_list_custom_provider_ids");
   });
 
+  it("uses typed Host commands for MCP control without exposing transport auth", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_list_mcp_servers") {
+        return [
+          {
+            name: "papers",
+            status: "connected",
+            config: { type: "local", command: ["python", "-m", "papers"], enabled: true },
+          },
+        ];
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    await expect(client.listMcpServers()).resolves.toEqual([
+      {
+        name: "papers",
+        status: "connected",
+        config: { type: "local", command: ["python", "-m", "papers"], enabled: true },
+      },
+    ]);
+    await client.addMcpServer("papers", {
+      type: "local",
+      command: ["python", "-m", "papers"],
+      enabled: true,
+    });
+    await client.reconnectMcpServer("papers");
+    await client.ensureMcpEnvironment("papers", { SAFE_MODE: "true" });
+    await client.removeMcpServer("papers");
+
+    expect(invoke).toHaveBeenCalledWith("acp_host_list_mcp_servers");
+    expect(invoke).toHaveBeenCalledWith("acp_host_add_mcp_server", {
+      request: {
+        name: "papers",
+        config: {
+          type: "local",
+          command: ["python", "-m", "papers"],
+          enabled: true,
+        },
+      },
+    });
+    expect(invoke).toHaveBeenCalledWith("acp_host_reconnect_mcp_server", { name: "papers" });
+    expect(invoke).toHaveBeenCalledWith("acp_host_ensure_mcp_environment", {
+      name: "papers",
+      environment: { SAFE_MODE: "true" },
+    });
+    expect(invoke).toHaveBeenCalledWith("acp_host_remove_mcp_server", { name: "papers" });
+    expect(JSON.stringify(invoke.mock.calls)).not.toContain("Authorization");
+    expect(JSON.stringify(invoke.mock.calls)).not.toContain("Basic ");
+  });
+
   it("rejects a launched session bound to a different project root", async () => {
     const client = new AcpHostClient({ invoke: invokeMock() });
 

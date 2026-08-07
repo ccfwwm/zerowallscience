@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 17:08 · Desktop MCP listing, add/remove, reconnect, and environment repair now use typed ACP Host commands while Gateway Web retains an OpenCodeClient compatibility path; SDK 120/120, Host 45/45, Tauri acp_host 14/14, desktop targets 136/136, and typecheck pass.
+
 2026-08-07 16:22 · Provider catalog, default-model, and custom-provider control now use typed ACP Host commands on desktop; the remaining MCP/OAuth compatibility calls are tracked separately, and SDK, Tauri Host, Settings, Sub2ApiCard, and auto-provision tests pass.
 
 2026-08-07 16:00 · Workflow control nodes no longer report placeholder success: deduplication now executes deterministically, artifact nodes write real workspace outputs, unsupported operations fail explicitly, and run nodes require a future approved execution adapter; workflow tests 20/20 and typecheck pass.

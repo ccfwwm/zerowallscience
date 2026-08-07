@@ -6,7 +6,7 @@
 // inviting a second click that collided on the same env dir. Owning it here
 // means the download is unaffected by which page is open.
 import { create } from "zustand";
-import { getClient, useRuntimeStore } from "./runtime";
+import { getMcpControlClient, useRuntimeStore } from "./runtime";
 import {
   setupJupyter,
   startJupyter,
@@ -15,7 +15,6 @@ import {
   agentBrowserBin,
   detectChrome,
   getProxySetting,
-  removeConfigEntry,
   setConnectorSecret,
   isTauri,
 } from "./tauri";
@@ -99,7 +98,9 @@ export const useSetupStore = create<SetupState>((set, get) => ({
       await setupJupyter();
       const s = await startJupyter();
       if (!s.url || !s.token || !s.mcp_command) throw new Error("setup finished incomplete");
-      await getClient()!.addMcpServer("jupyter", {
+      const mcpControl = getMcpControlClient();
+      if (!mcpControl) throw new Error("MCP control is unavailable");
+      await mcpControl.addMcpServer("jupyter", {
         type: "local",
         command: [s.mcp_command],
         enabled: true,
@@ -136,7 +137,9 @@ export const useSetupStore = create<SetupState>((set, get) => ({
       if (c.apiKeyEnv && key) {
         await setConnectorSecret(c.id, c.apiKeyEnv, key);
       }
-      await getClient()!.addMcpServer(c.id, connectorConfig(c, python));
+      const mcpControl = getMcpControlClient();
+      if (!mcpControl) throw new Error("MCP control is unavailable");
+      await mcpControl.addMcpServer(c.id, connectorConfig(c, python));
       toast.success(`${c.label} enabled — the agent can now use it from chat.`);
       await useRuntimeStore.getState().loadCatalog();
     } catch (e) {
@@ -149,7 +152,7 @@ export const useSetupStore = create<SetupState>((set, get) => ({
   // Sequential on purpose: every connector installs into the SAME shared uv env,
   // and two concurrent `uv pip install` runs against one env dir collide.
   enableRecommendedConnectors: async () => {
-    const client = getClient();
+    const client = getMcpControlClient();
     if (!client) return [];
     let configured: Set<string>;
     try {
@@ -198,14 +201,12 @@ export const useSetupStore = create<SetupState>((set, get) => ({
       // switching to the private browser, or clearing the domain allowlist)
       // only omits the env key, and the merge keeps the stale old value. Remove
       // the existing entry first so the environment is rewritten from scratch.
-      // removeConfigEntry rewrites the file and restarts the sidecar, so wait
-      // for it to come back before re-adding; the first enable has no entry to
-      // remove (it rejects) — skip the wait and go straight to the add.
-      const hadEntry = await removeConfigEntry("mcp", BROWSER_MCP_ID)
-        .then(() => true)
-        .catch(() => false);
-      if (hadEntry) await useRuntimeStore.getState().connectRetry();
-      await getClient()!.addMcpServer(BROWSER_MCP_ID, config);
+      // The typed Host removes the leaf with PATCH null, then adds the complete
+      // replacement. This stays live and avoids a whole-runtime restart.
+      const mcpControl = getMcpControlClient();
+      if (!mcpControl) throw new Error("MCP control is unavailable");
+      await mcpControl.removeMcpServer(BROWSER_MCP_ID);
+      await mcpControl.addMcpServer(BROWSER_MCP_ID, config);
       toast.success("Browser control enabled — the agent can now drive Chrome from chat.");
       await useRuntimeStore.getState().loadCatalog();
     } catch (e) {
@@ -256,22 +257,10 @@ export function ensureDefaultConnectors(): void {
  */
 export async function healJupyterMcpEnv(): Promise<void> {
   if (isGatewayWeb || !isTauri) return;
-  const client = getClient();
+  const client = getMcpControlClient();
   if (!client) return;
-  let config;
   try {
-    config = (await client.listMcpServers()).find((s) => s.name === "jupyter")?.config;
-  } catch {
-    return; // can't read the config — don't guess
-  }
-  if (!config || config.type !== "local") return;
-  const env = config.environment ?? {};
-  if ("START_NEW_RUNTIME" in env) return; // already healed
-  try {
-    await client.addMcpServer("jupyter", {
-      ...config,
-      environment: { ...env, START_NEW_RUNTIME: "false" },
-    });
+    await client.ensureMcpEnvironment("jupyter", { START_NEW_RUNTIME: "false" });
     await useRuntimeStore.getState().loadCatalog();
   } catch {
     /* best-effort: a failed heal must not block startup */
