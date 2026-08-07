@@ -1659,6 +1659,21 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     expect(useRuntimeStore.getState().sessions).toEqual([{ id: "codex", title: "Codex" }]);
   });
 
+  it("normalizes stale desktop runtime ids to the Host-owned OpenCode engine", async () => {
+    mocks.acpLaunch.mockClear();
+    useRuntimeStore.setState({
+      defaultModel: "cloud/gpt-5.4",
+      providers: [{ id: "cloud", name: "Cloud", models: [{ id: "gpt-5.4", name: "GPT-5.4" }] }],
+    });
+
+    await useRuntimeStore.getState().switchRuntime("removed-engine");
+
+    expect(useRuntimeStore.getState().acpProfileId).toBe("opencode");
+    expect(mocks.acpLaunch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ profileId: "opencode" }),
+    );
+  });
+
   it("switchRuntime routes OpenCode conversations through the unified Host", async () => {
     mocks.clientOpts.length = 0;
     mocks.acpLaunch.mockClear();
@@ -1675,7 +1690,9 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
         gateway: expect.objectContaining({ providerId: "cloud", model: "gpt-5.4" }),
       }),
     );
-    expect(mocks.clientOpts).toEqual([]);
+    // A temporary control client may still populate the model/provider catalog,
+    // but it must never become the turn execution runtime.
+    expect(mocks.sendPromptSpy).not.toHaveBeenCalled();
     expect(useRuntimeStore.getState().sessions).toEqual([{ id: "opencode", title: "OpenCode" }]);
   });
 
@@ -1756,15 +1773,19 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     expect(useRuntimeStore.getState().error).toMatch(/active ACP conversation/i);
   });
 
-  it("switching back to OpenCode shuts the agent down and rebuilds an OpenCode client", async () => {
+  it("switching back to OpenCode keeps desktop execution on the unified Host", async () => {
     await useRuntimeStore.getState().switchRuntime("codex");
     mocks.clientOpts.length = 0;
     await useRuntimeStore.getState().switchRuntime(null);
     expect(useRuntimeStore.getState().status).toBe("ready");
     expect(mocks.acpShutdown).toHaveBeenCalled();
-    // A fresh OpenCode client is built for the OpenCode connection.
-    expect(mocks.clientOpts.length).toBeGreaterThan(0);
-    expect(useRuntimeStore.getState().acpProfileId).toBeNull();
+    expect(mocks.acpLaunch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ profileId: "opencode" }),
+    );
+    // Catalog/config discovery may still create a control client, but desktop
+    // prompts remain bound to the Host-owned OpenCode session.
+    expect(mocks.sendPromptSpy).not.toHaveBeenCalled();
+    expect(useRuntimeStore.getState().acpProfileId).toBe("opencode");
   });
 
   it("switchRuntime to the current runtime is a no-op (no reconnect)", async () => {

@@ -2213,17 +2213,20 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   },
 
   switchRuntime: async (profileId) => {
+    const resolvedProfileId = isTauri && !isGatewayWeb
+      ? resolveInitialAcpProfileId(profileId, true)
+      : profileId;
     // A no-op if already on that runtime — avoids a needless reconnect flash.
-    if (get().acpProfileId === profileId) return;
+    if (get().acpProfileId === resolvedProfileId) return;
     if (typeof window !== "undefined") {
-      if (profileId) window.localStorage.setItem(ACP_PROFILE_KEY, profileId);
+      if (resolvedProfileId) window.localStorage.setItem(ACP_PROFILE_KEY, resolvedProfileId);
       else window.localStorage.removeItem(ACP_PROFILE_KEY);
     }
     // Runtime switching replaces only the execution client. Project sessions,
     // currentId, threads and panes stay intact so the same conversation can
     // continue under another runtime.
     set({
-      acpProfileId: profileId,
+      acpProfileId: resolvedProfileId,
       skills: [],
       agents: [],
       commands: [],
@@ -2236,7 +2239,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // surface the same error, so connect once and let connect() paint the error
     // directly. Switching back to OpenCode still uses the retry loop — the
     // bundled sidecar's first boot can legitimately take a while (macOS TCC).
-    if (profileId) await get().connect();
+    if (resolvedProfileId) await get().connect();
     else await get().connectRetry();
   },
 
