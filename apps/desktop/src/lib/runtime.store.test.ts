@@ -84,6 +84,8 @@ const mocks = vi.hoisted(() => ({
   })),
   acpPrompt: vi.fn(async () => {}),
   acpSetModel: vi.fn(async () => {}),
+  acpCreateSession: vi.fn(async (_request: unknown) => "acp-session-2"),
+  acpActivateSession: vi.fn(async (_sessionId: string) => {}),
   /** Actual session id returned by the unified Host after launch. */
   acpSessionId: null as string | null,
   acpShutdown: vi.fn(async () => ({
@@ -146,6 +148,8 @@ vi.mock("./acp-host-runtime", async () => {
       launch: mocks.acpLaunch,
       prompt: mocks.acpPrompt,
       setModel: mocks.acpSetModel,
+      createSession: mocks.acpCreateSession,
+      activateSession: mocks.acpActivateSession,
       currentSessionId: () => mocks.acpSessionId,
       cancel: vi.fn(async () => {}),
       respondPermission: vi.fn(async () => {}),
@@ -1968,6 +1972,45 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     expect(useRuntimeStore.getState().sessionModels["codex"]).toBeUndefined();
     expect(mocks.acpSetModel).toHaveBeenCalledWith("gpt-5-mini");
     expect(mocks.acpLaunch).not.toHaveBeenCalled();
+    window.localStorage.removeItem("zerowall.acp.config.codex");
+  });
+
+  it("forks an ACP session with a new immutable model binding", async () => {
+    window.localStorage.setItem(
+      "zerowall.acp.config.codex",
+      JSON.stringify({ providerId: "zerowall-2", baseUrl: "https://gw/v1", model: "gpt-5" }),
+    );
+    mocks.acpSessionId = "acp-session-1";
+    useRuntimeStore.setState({ currentId: "acp-session-1" });
+    await useRuntimeStore.getState().switchRuntime("codex");
+    useRuntimeStore.setState({
+      currentId: "acp-session-1",
+      threads: {
+        "acp-session-1": {
+          blocks: [{ kind: "user", text: "existing context" }],
+          index: {},
+          loaded: true,
+        },
+      },
+      sessionModels: { "acp-session-1": "zerowall-2/gpt-5" },
+      defaultModel: "zerowall-2/gpt-5",
+    });
+
+    const nextId = await useRuntimeStore.getState().forkAcpSessionWithModel("zerowall-2/gpt-5-mini");
+
+    expect(nextId).toBe("acp-session-2");
+    expect(mocks.acpCreateSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: expect.stringMatching(/^acp-/),
+        gateway: expect.objectContaining({ providerId: "zerowall-2", model: "gpt-5-mini" }),
+      }),
+    );
+    expect(mocks.acpActivateSession).toHaveBeenCalledWith("acp-session-2");
+    expect(useRuntimeStore.getState().currentId).toBe("acp-session-2");
+    expect(useRuntimeStore.getState().sessionModels["acp-session-1"]).toBe("zerowall-2/gpt-5");
+    expect(useRuntimeStore.getState().sessionModels["acp-session-2"]).toBe("zerowall-2/gpt-5-mini");
+    expect(useRuntimeStore.getState().threads["acp-session-1"]?.blocks).toHaveLength(1);
+    expect(useRuntimeStore.getState().threads["acp-session-2"]?.blocks).toEqual([]);
     window.localStorage.removeItem("zerowall.acp.config.codex");
   });
 });

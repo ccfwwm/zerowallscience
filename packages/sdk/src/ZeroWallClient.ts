@@ -228,8 +228,8 @@ export class ZeroWallClient implements AgentRuntime {
     return this.opencode.onEvent(listener);
   }
 
-  async createSession(): Promise<string> {
-    return this.opencode.createSession();
+  async createSession(options?: { model?: string | null }): Promise<string> {
+    return this.opencode.createSession(options);
   }
 
   async listSessions(): Promise<any[]> {

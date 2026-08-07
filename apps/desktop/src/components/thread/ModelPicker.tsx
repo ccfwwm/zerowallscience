@@ -8,10 +8,24 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronDown, ChevronRight, Cpu, Loader2, Search, Star, X, Zap } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Cpu,
+  Loader2,
+  MessageSquarePlus,
+  Search,
+  Star,
+  X,
+  Zap,
+} from "lucide-react";
 import { useRuntimeStore } from "@/lib/runtime";
+import { useUiStore } from "@/lib/store";
 import { useIsMobile } from "@/lib/useIsMobile";
 import { cn } from "@/lib/cn";
+import { contextFromBlocks } from "./EnginePicker";
 import {
   flattenModelOptions,
   filterModelOptions,
@@ -214,12 +228,23 @@ export function ModelPicker({ sessionId }: { sessionId?: string } = {}) {
   const sessionVariants = useRuntimeStore((s) => s.sessionVariants);
   const setSessionModel = useRuntimeStore((s) => s.setSessionModel);
   const setSessionVariant = useRuntimeStore((s) => s.setSessionVariant);
+  const acpProfileId = useRuntimeStore((s) => s.acpProfileId);
+  const currentId = useRuntimeStore((s) => s.currentId);
+  const threads = useRuntimeStore((s) => s.threads);
+  const forkAcpSessionWithModel = useRuntimeStore((s) => s.forkAcpSessionWithModel);
+  const setComposerDraft = useUiStore((s) => s.setComposerDraft);
   const switching = useRuntimeStore((s) => s.switching);
 
   // When bound to a session (a split pane), the picker sets THAT pane's model /
   // effort — no global sidecar config PATCH, so other panes are untouched.
   // Without a sessionId it drives the global default (unchanged behavior).
   const model = sessionId ? (sessionModels[sessionId] ?? defaultModel) : defaultModel;
+  const threadId = sessionId ?? currentId ?? undefined;
+  const blocks = threadId ? (threads[threadId]?.blocks ?? []) : [];
+  const hasContext = blocks.some(
+    (block) => block.kind === "user" || block.kind === "agent" || block.kind === "tool-call",
+  );
+  const immutableAcpSwitch = Boolean(acpProfileId && hasContext);
   const variantChoice = sessionId
     ? sessionVariants[sessionId] !== undefined
       ? sessionVariants[sessionId]
@@ -234,6 +259,7 @@ export function ModelPicker({ sessionId }: { sessionId?: string } = {}) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ModelFilter>({ kind: "all" });
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [pendingModel, setPendingModel] = useState<string | null>(null);
   // Bumped when a reasoning-capable model is picked → pulses the effort slider
   // so it's clear an effort can be set (and where).
   const [flash, setFlash] = useState(0);
@@ -250,6 +276,7 @@ export function ModelPicker({ sessionId }: { sessionId?: string } = {}) {
   }, [providers]);
 
   const current = options.find((o) => o.key === model);
+  const pendingOption = pendingModel ? options.find((o) => o.key === pendingModel) : undefined;
   const currentVariants = (model && variantsByKey.get(model)) || [];
   // The effort actually in force: the user's pick, but only when the current
   // model exposes it (else the model falls back to its own default — mirrors the
@@ -299,6 +326,10 @@ export function ModelPicker({ sessionId }: { sessionId?: string } = {}) {
   };
 
   const selectModel = async (key: string) => {
+    if (key !== model && immutableAcpSwitch) {
+      setPendingModel(key);
+      return;
+    }
     persistPrefs(recordRecent(prefs, key));
     // Reasoning-capable models keep the picker open so the user can dial in the
     // effort right after the switch (and the slider pulses to point it out);
@@ -315,6 +346,28 @@ export function ModelPicker({ sessionId }: { sessionId?: string } = {}) {
       } catch {
         // setDefaultModel records modelSwitchError / toasts on its own.
       }
+    }
+  };
+
+  const applyPendingModel = async (copyContext: boolean) => {
+    const key = pendingModel;
+    if (!key) return;
+    persistPrefs(recordRecent(prefs, key));
+    const context = copyContext ? contextFromBlocks(blocks) : "";
+    setPendingModel(null);
+    setOpen(false);
+    if (context) {
+      setComposerDraft(
+        `${t("composer.engine.continuePrompt", {
+          defaultValue: "Continue from this conversation context:",
+        })}\n\n${context}`,
+      );
+    }
+    try {
+      await forkAcpSessionWithModel(key);
+    } catch {
+      // The runtime action records the actionable error; keep the picker closed
+      // so the user can retry from the focused composer.
     }
   };
 
@@ -363,6 +416,42 @@ export function ModelPicker({ sessionId }: { sessionId?: string } = {}) {
         )}
       </div>
 
+      {pendingModel ? (
+        <div className="shrink-0 p-2">
+          <div className="flex items-center gap-2 px-1 py-2 text-xs font-medium text-text">
+            <span className="min-w-0 flex-1 truncate">
+              {t("composer.model.changeTo", {
+                defaultValue: "Switch to {{model}}",
+                model: pendingOption?.modelName ?? pendingModel,
+              })}
+            </span>
+            <button
+              aria-label={t("composer.engine.cancel", { defaultValue: "Cancel" })}
+              className="rounded-input p-1 text-muted hover:bg-surface-2 hover:text-text"
+              onClick={() => setPendingModel(null)}
+            >
+              <X size={13} />
+            </button>
+          </div>
+          <button
+            disabled={switching}
+            className="flex w-full items-center gap-2 rounded-input px-2 py-2 text-left text-xs text-text hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => void applyPendingModel(false)}
+          >
+            <MessageSquarePlus size={13} className="text-muted" />
+            {t("composer.engine.newConversation", { defaultValue: "New conversation" })}
+          </button>
+          <button
+            disabled={switching}
+            className="flex w-full items-center gap-2 rounded-input px-2 py-2 text-left text-xs text-text hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => void applyPendingModel(true)}
+          >
+            <Copy size={13} className="text-muted" />
+            {t("composer.engine.copyContext", { defaultValue: "Copy context" })}
+          </button>
+        </div>
+      ) : (
+        <>
       {/* Filter chips */}
       {options.length > 0 && (
         <div className="no-scrollbar flex shrink-0 gap-1 overflow-x-auto border-b border-faint px-2 py-1.5">
@@ -485,6 +574,8 @@ export function ModelPicker({ sessionId }: { sessionId?: string } = {}) {
       >
         {t("composer.model.manage")}
       </button>
+        </>
+      )}
     </div>
   );
 

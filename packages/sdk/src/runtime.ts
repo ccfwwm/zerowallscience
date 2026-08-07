@@ -61,7 +61,9 @@ export interface AgentRuntime {
   onEvent(listener: (event: OpenCodeEvent) => void): () => void;
 
   // ---- sessions (a conversation) ----
-  createSession(): Promise<string>;
+  /** Create a conversation. ACP callers may provide the model snapshot that
+   *  must be bound to the new session; HTTP runtimes ignore this hint. */
+  createSession(options?: { model?: string | null }): Promise<string>;
   listSessions(): Promise<SessionMeta[]>;
   deleteSession(sessionId: string): Promise<void>;
   getMessages(sessionId: string): Promise<HistoryMessage[]>;

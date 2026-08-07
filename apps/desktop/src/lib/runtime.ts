@@ -410,6 +410,9 @@ interface RuntimeState {
   sessionVariants: Record<string, string | null>;
   /** Set a session's model (per-pane); no sidecar config PATCH / reconnect. */
   setSessionModel: (sessionId: string, model: string) => Promise<void>;
+  /** Create and focus a new ACP Host session with an immutable model binding.
+   *  The existing session and its binding remain untouched. */
+  forkAcpSessionWithModel: (model: string) => Promise<string>;
   /** Set a session's reasoning effort (per-pane). */
   setSessionVariant: (sessionId: string, variant: string | null) => void;
 
@@ -965,7 +968,8 @@ async function performTurn(
           throw new Error("Runtime did not reconnect before creating the session.");
         }
       }
-      id = await withRetry(() => client!.createSession());
+      const requestedModel = modelForSession(get(), draftSrc).model;
+      id = await withRetry(() => client!.createSession({ model: requestedModel }));
 
       // P2: Create and save session model snapshot for reproducibility
       const snapshotState = get();
@@ -1838,6 +1842,53 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       return { sessionModels };
     });
     return Promise.resolve();
+  },
+  forkAcpSessionWithModel: async (model) => {
+    const activeClient = client;
+    const acpId = get().acpProfileId;
+    if (!activeClient || !acpId) throw new Error("An ACP engine must be connected before creating a model-bound session.");
+    const slash = model.indexOf("/");
+    if (slash <= 0 || slash === model.length - 1) throw new Error(`Malformed model id: ${model}`);
+    const sessionId = await activeClient.createSession({ model });
+    // The Host has activated the new session before returning. Persist the
+    // selection only after creation so the previous session's binding remains
+    // immutable and recoverable.
+    const providerId = model.slice(0, slash);
+    const modelId = model.slice(slash + 1);
+    const currentConfig = loadAcpConfig(acpId);
+    if (acpId === "opencode") {
+      await getProviderControlClient()?.setDefaultModel(model);
+    } else if (currentConfig) {
+      saveAcpConfig(acpId, {
+        providerId,
+        baseUrl: currentConfig.baseUrl,
+        model: modelId,
+        ...(currentConfig.platform ? { platform: currentConfig.platform } : {}),
+      });
+    }
+    const sessionModels = { ...get().sessionModels, [sessionId]: model };
+    set((s) => ({
+      currentId: sessionId,
+      defaultModel: model,
+      modelSwitchError: null,
+      sessionModels,
+      threads: { ...s.threads, [sessionId]: { ...emptyThread(), loaded: true } },
+      panes: {
+        ...s.panes,
+        [sessionId]: { artifact: null, showFiles: false, showRuns: false, showReview: false },
+      },
+    }));
+    saveRecord(SESSION_MODELS_KEY, sessionModels);
+    try {
+      const { createModelSnapshot, saveSessionSnapshot } = await import("./model-probe");
+      saveSessionSnapshot(
+        createModelSnapshot(sessionId, get().selectedAgent, model, undefined, undefined, undefined),
+      );
+    } catch (err) {
+      void logDebug(`Failed to save forked session snapshot: ${err}`);
+    }
+    await get().refreshSessions();
+    return sessionId;
   },
   setSessionVariant: (sessionId, variant) =>
     set((s) => {

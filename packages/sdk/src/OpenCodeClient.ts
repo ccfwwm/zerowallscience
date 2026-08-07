@@ -348,7 +348,7 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
   /** Create a new agent session, returning its id. Scoping is by the sidecar's
    *  working directory (set at spawn), not a query param — passing `?directory=`
    *  here routes the turn to a scope whose events the global stream never sees. */
-  async createSession(): Promise<string> {
+  async createSession(_options?: { model?: string | null }): Promise<string> {
     // The directory decides where the session lives and works — without it the
     // server would put it in the process's boot folder, not the active one.
     const res = await this.fetchWithTimeout(`${this.baseUrl}/session${this.dirQuery()}`, {

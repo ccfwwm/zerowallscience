@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 20:10 · ACP model changes now create immutable Host-bound sessions with optional context copying or a blank conversation; draft sends pass model snapshots into session creation, verified by ACP runtime 34/34, runtime store 115/115, ModelPicker 10/10, EnginePicker 5/5, desktop typecheck, ACP Host 56/56, Tauri acp_host 19/19, and diff check.
+
 2026-08-07 19:35 · Desktop provider maintenance now routes through typed ACP Host commands; Rust-only OpenCode control cleans legacy context limits, removes stale provider entries, and backfills image capability with idempotent PATCH behavior, verified by SDK 32/32, ACP Host 56/56, Tauri acp_host 19/19, and desktop typecheck.
 
 2026-08-07 19:15 · Removed the unreachable desktop Settings OAuth renderer state machine and OpenCode OAuth calls; provider connection now remains API-key/region based until a Keychain-safe Host OAuth flow is implemented, with an ACP boundary contract test passing.

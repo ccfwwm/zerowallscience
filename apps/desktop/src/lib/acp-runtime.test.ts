@@ -604,6 +604,22 @@ describe("AcpRuntime prompt + unsupported ops", () => {
     expect(deps.promptSession).toHaveBeenCalledWith("host-session-2", "hello", []);
   });
 
+  it("creates a new Host session with the requested immutable model snapshot", async () => {
+    const { deps } = makeDeps();
+    deps.currentSessionId = vi.fn(() => "host-session-1");
+    deps.createSession = vi.fn(async (request) => {
+      expect(request.gateway.providerId).toBe("new-provider");
+      expect(request.gateway.model).toBe("new-model");
+      return "host-session-2";
+    });
+    const runtime = new AcpRuntime(REQUEST, deps);
+    await runtime.connect();
+
+    expect(await runtime.createSession()).toBe("host-session-1");
+    expect(await runtime.createSession({ model: "new-provider/new-model" })).toBe("host-session-2");
+    expect(deps.createSession).toHaveBeenCalledOnce();
+  });
+
   it("forwards a prompt and its attachments while ignoring agent/model/variant", async () => {
     const { runtime, deps } = harness();
     await runtime.connect();

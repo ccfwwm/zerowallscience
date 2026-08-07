@@ -483,18 +483,44 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     return { ...this.request, mcpAllowList, skillsSnapshot };
   }
 
-  async createSession(): Promise<string> {
+  async createSession(options?: { model?: string | null }): Promise<string> {
+    const requestedModel = options?.model?.trim() || null;
+    const slash = requestedModel?.indexOf("/") ?? -1;
+    const requestedBinding = requestedModel && slash > 0
+      ? {
+          providerId: requestedModel.slice(0, slash),
+          model: requestedModel.slice(slash + 1),
+        }
+      : requestedModel
+        ? { providerId: this.request.gateway.providerId, model: requestedModel }
+        : null;
     if (!this.initialSessionClaimed) {
+      if (requestedBinding) await this.deps.setModel(requestedBinding.model);
       this.initialSessionClaimed = true;
       this.sessionId = this.deps.currentSessionId?.() ?? this.sessionId;
       return this.sessionId;
     }
-    if (!this.deps.createSession) return this.sessionId;
+    if (!this.deps.createSession) {
+      if (requestedBinding) {
+        throw new Error("ACP Host cannot create a new session with a model snapshot");
+      }
+      return this.sessionId;
+    }
     this.sessionSequence += 1;
     const requestedId = `acp-${Date.now()}-${this.sessionSequence}`;
+    const baseRequest = this.launchRequest ?? this.request;
     const sessionId = await this.deps.createSession({
-      ...(this.launchRequest ?? this.request),
+      ...baseRequest,
       conversationId: requestedId,
+      ...(requestedBinding
+        ? {
+            gateway: {
+              ...baseRequest.gateway,
+              providerId: requestedBinding.providerId,
+              model: requestedBinding.model,
+            },
+          }
+        : {}),
     });
     this.sessionId = sessionId;
     await this.deps.activateSession?.(sessionId);
