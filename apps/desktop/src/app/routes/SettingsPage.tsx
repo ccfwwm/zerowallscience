@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Check,
   ChevronRight,
@@ -14,8 +14,6 @@ import {
 } from "lucide-react";
 import type {
   McpServer,
-  OAuthAuthorization,
-  ProviderAuthMethod,
   ProviderCatalogEntry,
   ProviderInfo,
 } from "@zerowall/sdk";
@@ -24,7 +22,6 @@ import { useParams } from "react-router-dom";
 import { useUiStore, ZOOM_MAX, ZOOM_MIN } from "@/lib/store";
 import { shippedLocales } from "@/i18n/config";
 import {
-  getClient,
   getMcpControlClient,
   getProviderControlClient,
   useRuntimeStore,
@@ -44,7 +41,6 @@ import {
   logDebug,
   openWorkspaceBase,
   pickFolder,
-  providerSecretExists,
   pythonInterpreter,
   removeProviderSecret,
   setProviderSecret,
@@ -241,16 +237,6 @@ export function SettingsPage() {
   const [keyInput, setKeyInput] = useState("");
   const [bedrockRegion, setBedrockRegion] = useState("");
   const [bedrockRegionLoading, setBedrockRegionLoading] = useState(false);
-  const [promptInputs, setPromptInputs] = useState<Record<string, string>>({});
-  const [oauth, setOauth] = useState<
-    (OAuthAuthorization & { providerID: string; methodIndex: number }) | null
-  >(null);
-  const [codeInput, setCodeInput] = useState("");
-  // A pending browser-login wait: `oauthGen` invalidates it (cancel, restart,
-  // or connecting some other way), `oauthAbort` also cancels its in-flight
-  // callback request so retries never stack pending waits on the sidecar.
-  const oauthGen = useRef(0);
-  const oauthAbort = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async (): Promise<ProviderInfo[] | null> => {
     // The sidecar owns provider and MCP configuration even while another
@@ -459,14 +445,6 @@ export function SettingsPage() {
     }
   };
 
-  // Any action that cancels, restarts or bypasses the oauth flow must call
-  // this: it invalidates the pending browser wait and aborts its request.
-  const invalidateOauthWait = () => {
-    oauthGen.current++;
-    oauthAbort.current?.abort();
-    oauthAbort.current = null;
-  };
-
   const saveModel = async (model: string): Promise<boolean> => {
     // The store masks the whole apply with `switching` and records any failure
     // in `modelSwitchError`; this page only presents the outcome.
@@ -488,146 +466,9 @@ export function SettingsPage() {
         await control.setProviderRegion(providerID, bedrockRegion.trim());
       }
       await setProviderSecret(providerID, keyInput.trim());
-      cancelOAuth(); // a pending browser login for this panel is now moot
       setKeyInput("");
       setConnectQuery("");
       toast.success(t("toast.providerConnected", { providerID }));
-    });
-
-  const startOAuth = (providerID: string, methodIndex: number, inputs?: Record<string, string>) =>
-    run(t("toast.couldNotStartLogin"), async () => {
-      // Re-clicking while THIS login is already waiting must not re-authorize:
-      // a second authorize supersedes the pending one server-side, and some
-      // provider plugins (xai) then tear down the loopback callback server the
-      // new attempt just handed to the browser — every retry would fail. The
-      // existing wait keeps covering the flow; let it finish.
-      if (
-        oauth &&
-        oauth.providerID === providerID &&
-        oauth.methodIndex === methodIndex &&
-        oauthAbort.current
-      )
-        return;
-      invalidateOauthWait(); // this flow replaces any pending one
-      const gen = oauthGen.current;
-      const auth = await getClient()!.oauthAuthorize(providerID, methodIndex, inputs);
-      if (gen !== oauthGen.current) return; // cancelled while starting
-      setOauth({ ...auth, providerID, methodIndex });
-      await openExternal(auth.url);
-      // "auto" flows finish on the browser redirect — the callback call below
-      // WAITS for it, so run it in the background (never through `busy`, which
-      // would lock the whole page for as long as the browser tab stays open).
-      if (auth.method !== "code" && gen === oauthGen.current)
-        void waitForBrowserLogin(providerID, methodIndex, gen);
-    });
-
-  // Provider plugins hold a browser login open for minutes (xai: 5). Match
-  // that window when re-attaching a dropped callback wait below.
-  const OAUTH_WAIT_MS = 5 * 60 * 1000;
-
-  const waitForBrowserLogin = async (providerID: string, methodIndex: number, gen: number) => {
-    const deadline = Date.now() + OAUTH_WAIT_MS;
-    const active = () => gen === oauthGen.current;
-    // Ground truth that the login landed: the sidecar writes the provider's
-    // token to its credential store the moment the browser flow completes —
-    // even when the callback wait below never hears about it (loopback port
-    // collision, proxy, dropped redirect). The browser then shows "success"
-    // while the app looks frozen (#17). Only conclusive for a provider that
-    // had no credentials when the wait began.
-    const hadAuth = await providerSecretExists(providerID);
-    const loginLanded = async () => !hadAuth && (await providerSecretExists(providerID));
-
-    // The callback POST hangs open until the browser redirect lands, but the
-    // webview's native fetch enforces its own idle timeout (~60s in WKWebView)
-    // — far shorter than the provider's login window, and a slow browser login
-    // (2FA, consent) used to surface as "login did not complete" even though
-    // the browser then finished successfully. A network-level drop is NOT a
-    // failed login: the server keeps the pending attempt and a re-POST resumes
-    // waiting on it (opencode's ProviderAuth.callback re-invokes the stored
-    // pending closure; it is never consumed). Retry those; HTTP errors are the
-    // provider's real verdict and stay terminal.
-    type Verdict = { ok: boolean; viaStore: boolean; error?: unknown };
-    const callbackVerdict = async (): Promise<Verdict | null> => {
-      let lastError: unknown = new Error("Timed out waiting for the browser login");
-      while (Date.now() < deadline && active()) {
-        const abort = new AbortController();
-        oauthAbort.current = abort;
-        try {
-          await getClient()!.oauthCallback(providerID, methodIndex, undefined, abort.signal);
-          if (!active()) {
-            // Cancelled in the UI, but the login DID complete — refresh silently
-            // so the now-connected provider still shows up in the list.
-            await refreshAll();
-            return null;
-          }
-          return { ok: true, viaStore: false };
-        } catch (e) {
-          if (!active()) return null; // cancelled — the abort is expected
-          // Webview fetch failures (idle timeout, transient drop) are TypeError;
-          // apiError() throws plain Error for the server's HTTP verdicts.
-          if (e instanceof TypeError) {
-            lastError = e;
-            await new Promise((r) => setTimeout(r, 500));
-            continue;
-          }
-          return { ok: false, viaStore: false, error: e };
-        } finally {
-          if (oauthAbort.current === abort) oauthAbort.current = null;
-        }
-      }
-      // The login window closed without a verdict from the server.
-      return active() ? { ok: false, viaStore: false, error: lastError } : null;
-    };
-
-    // Race the server's verdict against the credential store: whichever
-    // reports first settles the wait. The watcher only ever reports success —
-    // silence just leaves the callback in charge.
-    let verdict = await new Promise<Verdict | null>((resolve) => {
-      void callbackVerdict().then(resolve);
-      void (async () => {
-        while (Date.now() < deadline && active()) {
-          await new Promise((r) => setTimeout(r, 2000));
-          if (!active()) return;
-          if (await loginLanded()) return resolve({ ok: true, viaStore: true });
-        }
-      })();
-    });
-    if (verdict === null || !active()) return; // cancelled
-    if (!verdict.ok && (await loginLanded())) {
-      // The server said failure (or timed out), but the credential store says
-      // the login landed — the callback signal was lost, not the login.
-      verdict = { ok: true, viaStore: true };
-    }
-    if (!active()) return; // superseded while re-checking the store
-    invalidateOauthWait(); // settled either way — stop the losing strategy
-    setOauth(null);
-    if (!verdict.ok) {
-      const err = verdict.error;
-      toast.error(`${t("toast.loginDidNotComplete")}: ${err instanceof Error ? err.message : String(err)}`);
-      return;
-    }
-    // A store-confirmed login skipped oauthCallback's cache invalidation — the
-    // provider list would still answer from the pre-login cache.
-    if (verdict.viaStore) await getClient()?.refreshProviderCache();
-    toast.success(t("toast.providerConnected", { providerID }));
-    await refreshAll();
-  };
-
-  const cancelOAuth = () => {
-    invalidateOauthWait();
-    setOauth(null);
-    setCodeInput("");
-  };
-
-  const completeOAuth = () =>
-    run(t("toast.loginDidNotComplete"), async () => {
-      if (!oauth) return;
-      const { providerID, methodIndex } = oauth;
-      invalidateOauthWait(); // the pasted code supersedes any browser wait
-      await getClient()!.oauthCallback(providerID, methodIndex, codeInput.trim() || undefined);
-      toast.success(t("toast.providerConnected", { providerID }));
-      setOauth(null);
-      setCodeInput("");
     });
 
   const disconnectProvider = (providerID: string) =>
@@ -866,15 +707,6 @@ export function SettingsPage() {
       active = false;
     };
   }, [selected?.id]);
-  // Every provider takes an API key via PUT /auth; special flows (OAuth) add to
-  // that. Keep each method's index in the provider's FULL upstream list — the
-  // authorize call is by that index, and filtering re-numbers positions (a
-  // provider whose api method precedes an oauth one would authorize the wrong
-  // method).
-  // OpenCode's OAuth callback persists auth.json. Keep browser OAuth hidden
-  // until the callback is adapted to return credentials directly to Keychain.
-  const oauthMethods: Array<{ method: ProviderAuthMethod; index: number }> = [];
-
   return (
     <div className="h-full overflow-y-auto">
       {/* Modest top padding: the AppShell titlebar strip already clears 48px. */}
@@ -1158,8 +990,6 @@ export function SettingsPage() {
                       value={connectQuery}
                       onChange={(e) => {
                         setConnectQuery(e.target.value);
-                        cancelOAuth();
-                        setPromptInputs({});
                       }}
                       placeholder={t("providers.searchPlaceholder", { count: catalog.length })}
                       className={inputCls("w-full pl-8")}
@@ -1175,50 +1005,6 @@ export function SettingsPage() {
 
                   {selected && (
                     <div className="mt-2 space-y-2">
-                      {oauthMethods.map(({ method: m, index: i }) =>
-                        m.type === "oauth" ? (
-                          <div key={i} className="space-y-1.5">
-                            {(m.prompts ?? []).map((pr) =>
-                              pr.type === "select" ? (
-                                <select
-                                  key={pr.key}
-                                  value={promptInputs[pr.key] ?? ""}
-                                  onChange={(e) =>
-                                    setPromptInputs((s) => ({ ...s, [pr.key]: e.target.value }))
-                                  }
-                                  className={selectCls("w-full")}
-                                >
-                                  <option value="">{pr.message}</option>
-                                  {(pr.options ?? []).map((o) => (
-                                    <option key={o.value} value={o.value}>
-                                      {o.label}
-                                      {o.hint ? ` — ${o.hint}` : ""}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <input
-                                  key={pr.key}
-                                  value={promptInputs[pr.key] ?? ""}
-                                  onChange={(e) =>
-                                    setPromptInputs((s) => ({ ...s, [pr.key]: e.target.value }))
-                                  }
-                                  placeholder={pr.message}
-                                  className={inputCls("w-full")}
-                                />
-                              ),
-                            )}
-                            <button
-                              className={btnGhost("gap-1.5")}
-                              onClick={() => void startOAuth(selected.id, i, promptInputs)}
-                              disabled={busy}
-                            >
-                              <ExternalLink size={12} /> {m.label}
-                            </button>
-                          </div>
-                        ) : null,
-                      )}
-
                       {selected.id === "amazon-bedrock" && (
                         <input
                           value={bedrockRegion}
@@ -1254,44 +1040,6 @@ export function SettingsPage() {
                     </div>
                   )}
 
-                  {oauth && (
-                    <div className="mt-2 space-y-2 rounded-input bg-surface-2 p-3">
-                      <p className="text-xs leading-relaxed text-muted">{oauth.instructions}</p>
-                      {oauth.method === "code" ? (
-                        <>
-                          <input
-                            value={codeInput}
-                            onChange={(e) => setCodeInput(e.target.value)}
-                            placeholder={t("providers.pasteCode")}
-                            className={inputCls("w-full font-mono")}
-                          />
-                          <button
-                            className={btnAccent()}
-                            onClick={() => void completeOAuth()}
-                            disabled={busy || !codeInput.trim()}
-                          >
-                            {busy ? (
-                              <Loader2 size={12} className="animate-spin" />
-                            ) : (
-                              <Check size={13} />
-                            )}
-                            {t("providers.completeLogin")}
-                          </button>
-                        </>
-                      ) : (
-                        <div className="flex items-center gap-2 text-xs text-muted">
-                          <Loader2 size={12} className="shrink-0 animate-spin" />
-                          {t("providers.waitingForBrowser")}
-                          <button
-                            className="text-muted underline transition-colors hover:text-text"
-                            onClick={cancelOAuth}
-                          >
-                            {t("common:actions.cancel")}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
 
                 {/* Custom endpoint */}

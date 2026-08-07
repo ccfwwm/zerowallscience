@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 19:15 · Removed the unreachable desktop Settings OAuth renderer state machine and OpenCode OAuth calls; provider connection now remains API-key/region based until a Keychain-safe Host OAuth flow is implemented, with an ACP boundary contract test passing.
+
 2026-08-07 18:55 · ACP sessions now freeze normalized MCP allow-lists and four-field Skills snapshots across SDK, Rust Host/Tauri, Workflow recovery, and ordinary desktop conversation discovery; focused SDK/Desktop/Rust tests and desktop typecheck pass.
 
 2026-08-07 18:11 · Amazon Bedrock provider-region reads and writes now use typed ACP Host commands on desktop while Gateway Web retains the compatible OpenCode client path; SDK 121/121, Host 47/47, Settings 12/12, and desktop typecheck pass.
