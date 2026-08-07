@@ -909,6 +909,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
             history: true,
             cancel: true,
             permission: true,
+            question: true,
             config: true,
             close_session: true,
             ..Default::default()
@@ -1491,6 +1492,26 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                             .and_then(|v| v.as_str())
                             .map(str::to_owned),
                     });
+                }
+                "todo.updated" | "plan.updated" => {
+                    let plan = props.get("todos").cloned().unwrap_or_else(|| props.clone());
+                    self.events.push(crate::AgentEvent::PlanUpdated {
+                        session_id: session_id.into(),
+                        plan,
+                    });
+                }
+                "file.edited" | "file.written" => {
+                    if let Some(path) = props
+                        .get("file")
+                        .or_else(|| props.get("path"))
+                        .and_then(|value| value.as_str())
+                        .filter(|path| !path.trim().is_empty())
+                    {
+                        self.events.push(crate::AgentEvent::ArtifactCreated {
+                            session_id: session_id.into(),
+                            artifact_id: path.into(),
+                        });
+                    }
                 }
                 "permission.asked" | "permission.requested" => {
                     let request_id = props
@@ -2432,7 +2453,7 @@ mod tests {
     #[test]
     fn prompt_maps_sse_events_and_cancel_aborts() {
         let calls = Arc::new(Mutex::new(Vec::new()));
-        let sse = "data: {\"type\":\"text.updated\",\"properties\":{\"sessionID\":\"s1\",\"delta\":\"hi\"}}\ndata: {\"type\":\"reasoning.updated\",\"properties\":{\"sessionID\":\"s1\",\"text\":\"why\"}}\ndata: {\"type\":\"tool.updated\",\"properties\":{\"sessionID\":\"s1\",\"callID\":\"t1\",\"status\":\"running\",\"title\":\"Search\"}}\ndata: {\"type\":\"permission.asked\",\"properties\":{\"sessionID\":\"s1\",\"id\":\"r1\",\"options\":[{\"id\":\"allow\",\"title\":\"Allow\"}]}}\ndata: {\"type\":\"question.asked\",\"properties\":{\"sessionID\":\"s1\",\"id\":\"q1\",\"questions\":[{\"question\":\"Continue?\",\"header\":\"Next\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue the run\"}],\"custom\":true}]}}\ndata: {\"type\":\"usage.updated\",\"properties\":{\"sessionID\":\"s1\",\"inputTokens\":2,\"outputTokens\":3}}\n";
+        let sse = "data: {\"type\":\"text.updated\",\"properties\":{\"sessionID\":\"s1\",\"delta\":\"hi\"}}\ndata: {\"type\":\"reasoning.updated\",\"properties\":{\"sessionID\":\"s1\",\"text\":\"why\"}}\ndata: {\"type\":\"tool.updated\",\"properties\":{\"sessionID\":\"s1\",\"callID\":\"t1\",\"status\":\"running\",\"title\":\"Search\"}}\ndata: {\"type\":\"todo.updated\",\"properties\":{\"sessionID\":\"s1\",\"todos\":[{\"content\":\"Inspect evidence\",\"status\":\"in_progress\"}]}}\ndata: {\"type\":\"file.edited\",\"properties\":{\"sessionID\":\"s1\",\"file\":\"reports/final.md\"}}\ndata: {\"type\":\"permission.asked\",\"properties\":{\"sessionID\":\"s1\",\"id\":\"r1\",\"options\":[{\"id\":\"allow\",\"title\":\"Allow\"}]}}\ndata: {\"type\":\"question.asked\",\"properties\":{\"sessionID\":\"s1\",\"id\":\"q1\",\"questions\":[{\"question\":\"Continue?\",\"header\":\"Next\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue the run\"}],\"custom\":true}]}}\ndata: {\"type\":\"usage.updated\",\"properties\":{\"sessionID\":\"s1\",\"inputTokens\":2,\"outputTokens\":3}}\n";
         let fake = Fake {
             calls: calls.clone(),
             responses: vec![
@@ -2451,6 +2472,7 @@ mod tests {
             ],
         };
         let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
+        assert!(driver.capabilities().question);
         block_on(driver.prompt(PromptRequest {
             session_id: "s1".into(),
             prompt: "hello".into(),
@@ -2465,6 +2487,8 @@ mod tests {
             .iter()
             .any(|e| matches!(e, crate::AgentEvent::ThoughtDelta { delta, .. } if delta == "why")));
         assert!(events.iter().any(|e| matches!(e, crate::AgentEvent::ToolUpdated { tool_call_id, .. } if tool_call_id == "t1")));
+        assert!(events.iter().any(|e| matches!(e, crate::AgentEvent::PlanUpdated { plan, .. } if plan.pointer("/0/content").and_then(serde_json::Value::as_str) == Some("Inspect evidence"))));
+        assert!(events.iter().any(|e| matches!(e, crate::AgentEvent::ArtifactCreated { artifact_id, .. } if artifact_id == "reports/final.md")));
         assert!(events.iter().any(|e| matches!(e, crate::AgentEvent::PermissionRequested { request_id, options, .. } if request_id == "r1" && options[0].id == "allow")));
         assert!(events.iter().any(|e| matches!(e, crate::AgentEvent::QuestionRequested { request_id, questions, .. } if request_id == "q1" && questions[0].question == "Continue?" && questions[0].options[0].label == "Yes")));
         assert!(events.iter().any(|e| matches!(

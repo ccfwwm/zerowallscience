@@ -167,6 +167,7 @@ pub struct DriverCapabilities {
     pub prompt: bool,
     pub cancel: bool,
     pub permission: bool,
+    pub question: bool,
     pub config: bool,
     pub mode: bool,
     pub close_session: bool,
@@ -941,6 +942,8 @@ impl AcpHost {
                 session_id: session_id.into(),
                 resumable: entry.resumable,
             })?;
+        let caps = driver.capabilities();
+        Self::require(entry.kind, "question", caps.question)?;
         driver
             .respond_question(QuestionResponseRequest {
                 session_id: session_id.into(),
@@ -1042,6 +1045,7 @@ fn declared_capabilities(kind: HostDriverKind) -> DriverCapabilities {
             prompt: true,
             cancel: true,
             permission: true,
+            question: true,
             config: true,
             close_session: true,
             ..Default::default()
@@ -1431,6 +1435,7 @@ mod tests {
                 && !caps.prompt
                 && !caps.cancel
                 && !caps.permission
+                && !caps.question
                 && !caps.config
                 && !caps.mode
                 && !caps.close_session
@@ -1517,6 +1522,13 @@ mod tests {
             Err(HostError::UnsupportedCapability { .. })
         ));
         block_on(host.respond_permission("s1", "req", Some("allow-once".into()))).unwrap();
+        assert_eq!(
+            block_on(host.respond_question("s1", "question", None)),
+            Err(HostError::UnsupportedCapability {
+                kind: HostDriverKind::Codex,
+                operation: "question",
+            })
+        );
         block_on(host.cancel("s1")).unwrap();
         block_on(host.close_session("s1")).unwrap();
         let calls = calls.lock().unwrap();
