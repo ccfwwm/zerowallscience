@@ -408,6 +408,8 @@ fn handshake_stage(stage: AcpHandshakeStage) -> &'static str {
     match stage {
         AcpHandshakeStage::Initialize => "initialize",
         AcpHandshakeStage::SessionNew => "session_new",
+        AcpHandshakeStage::SessionLoad => "session_load",
+        AcpHandshakeStage::SessionResume => "session_resume",
     }
 }
 

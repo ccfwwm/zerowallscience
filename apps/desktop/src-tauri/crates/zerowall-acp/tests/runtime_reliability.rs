@@ -6,7 +6,7 @@ use futures::channel::mpsc;
 use futures::StreamExt;
 use zerowall_acp::{
     AcpAgentProfile, AcpClient, AcpEvent, AcpEventErrorKind, AcpHandshakeStage, AcpLaunchOptions,
-    PromptAttachment,
+    AcpSessionStart, PromptAttachment,
 };
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
@@ -125,6 +125,82 @@ async fn handshake_becomes_ready_only_after_initialize_and_session_new() {
         .await
         .expect("driver shutdown timeout")
         .unwrap();
+}
+
+#[tokio::test]
+async fn session_load_restores_the_requested_session_and_accepts_a_prompt() {
+    let (client, mut events, driver) = AcpClient::launch_session_with_options(
+        &profile("assert-load", vec![]),
+        std::env::temp_dir(),
+        AcpSessionStart::Load {
+            session_id: "persisted-session".to_string(),
+        },
+        options(),
+    );
+    let driver = tokio::spawn(driver);
+
+    assert!(matches!(
+        next_event(&mut events).await,
+        AcpEvent::HandshakeStarted {
+            stage: AcpHandshakeStage::Initialize
+        }
+    ));
+    assert!(matches!(
+        next_event(&mut events).await,
+        AcpEvent::HandshakeStarted {
+            stage: AcpHandshakeStage::SessionLoad
+        }
+    ));
+    assert!(matches!(
+        next_event(&mut events).await,
+        AcpEvent::Ready { ref session_id } if session_id == "persisted-session"
+    ));
+
+    client.prompt("continue loaded session").unwrap();
+    assert!(matches!(
+        next_event(&mut events).await,
+        AcpEvent::TurnEnded { ref stop_reason, .. } if stop_reason == "end_turn"
+    ));
+    client.shutdown().unwrap();
+    driver.await.unwrap();
+}
+
+#[tokio::test]
+async fn session_resume_restores_the_requested_session_and_accepts_a_prompt() {
+    let (client, mut events, driver) = AcpClient::launch_session_with_options(
+        &profile("assert-resume", vec![]),
+        std::env::temp_dir(),
+        AcpSessionStart::Resume {
+            session_id: "persisted-session".to_string(),
+        },
+        options(),
+    );
+    let driver = tokio::spawn(driver);
+
+    assert!(matches!(
+        next_event(&mut events).await,
+        AcpEvent::HandshakeStarted {
+            stage: AcpHandshakeStage::Initialize
+        }
+    ));
+    assert!(matches!(
+        next_event(&mut events).await,
+        AcpEvent::HandshakeStarted {
+            stage: AcpHandshakeStage::SessionResume
+        }
+    ));
+    assert!(matches!(
+        next_event(&mut events).await,
+        AcpEvent::Ready { ref session_id } if session_id == "persisted-session"
+    ));
+
+    client.prompt("continue resumed session").unwrap();
+    assert!(matches!(
+        next_event(&mut events).await,
+        AcpEvent::TurnEnded { ref stop_reason, .. } if stop_reason == "end_turn"
+    ));
+    client.shutdown().unwrap();
+    driver.await.unwrap();
 }
 
 #[tokio::test]

@@ -11,11 +11,11 @@ import type {
 } from "../../shared/src/models";
 
 /**
- * ZeroWallClient — the single entry point for all agent interactions in
- * ZeroWall Science. Wraps OpenCodeClient (the bundled sidecar runtime) and
- * future SciencePlatformClient (remote ZeroWall Cloud gateway) behind a
- * uniform interface. The UI layer talks only to ZeroWallClient, never to
- * the underlying transports directly.
+ * ZeroWallClient — the role-routing facade for the unified agent boundary.
+ *
+ * Desktop ACP sessions use `AcpHostClient`/`AcpRuntime` directly. This facade
+ * remains for the Gateway Web compatibility transport, where role routing and
+ * provenance still need to sit above the vendor-neutral runtime interface.
  *
  * P2 Architecture:
  * - Maintains four Agent definitions (General, Research, Code, Data).
@@ -28,7 +28,7 @@ import type {
 export class ZeroWallClient implements AgentRuntime {
   // Config, refreshed by configure() as the catalog reloads. The history below
   // (handoff log, snapshots) deliberately outlives it — see configure().
-  private opencode: OpenCodeClient;
+  private transport: OpenCodeClient;
   private agents: Map<string, AgentDefinition>;
   private roleBindings: Record<AgentRole, RoleModelBinding>;
   private readonly handoffLog: AgentHandoff[] = [];
@@ -36,11 +36,15 @@ export class ZeroWallClient implements AgentRuntime {
   private availableProviders: Set<string> = new Set();
 
   constructor(opts: {
-    opencode: OpenCodeClient;
+    /** Preferred neutral name. `opencode` is retained for old Gateway Web callers. */
+    transport?: OpenCodeClient;
+    opencode?: OpenCodeClient;
     agents: Map<string, AgentDefinition>;
     roleBindings?: Record<AgentRole, RoleModelBinding>;
   }) {
-    this.opencode = opts.opencode;
+    this.transport = opts.transport ?? opts.opencode ?? (() => {
+      throw new Error("ZeroWallClient requires an agent transport");
+    })();
     this.agents = opts.agents;
     this.roleBindings = opts.roleBindings ?? ({} as any);
   }
@@ -49,7 +53,7 @@ export class ZeroWallClient implements AgentRuntime {
    * Refresh available providers (called after provider config changes).
    */
   async refreshProviders(): Promise<void> {
-    const providers = await this.opencode.listProviders();
+    const providers = await this.transport.listProviders();
     this.availableProviders = new Set(providers.map((p) => p.id));
   }
 
@@ -65,19 +69,22 @@ export class ZeroWallClient implements AgentRuntime {
    * second "user-selected" opening for a session that was already running.
    *
    * `opencode` must be re-supplied whenever the caller reconnects: a reconnect
-   * builds a fresh OpenCodeClient and closes the old one, so a client left
+   * builds a fresh compatibility transport and closes the old one, so a client left
    * holding the previous transport would send into a dead connection.
    *
    * Providers are passed in rather than fetched because the caller already has
    * a fresh list, which saves a round-trip through refreshProviders().
    */
   configure(opts: {
+    transport?: OpenCodeClient;
+    /** @deprecated Use `transport`; retained for Gateway Web compatibility. */
     opencode?: OpenCodeClient;
     agents?: Map<string, AgentDefinition>;
     roleBindings?: Record<AgentRole, RoleModelBinding>;
     providers?: Iterable<string>;
   }): void {
-    if (opts.opencode) this.opencode = opts.opencode;
+    if (opts.transport) this.transport = opts.transport;
+    else if (opts.opencode) this.transport = opts.opencode;
     if (opts.agents) this.agents = opts.agents;
     if (opts.roleBindings) this.roleBindings = opts.roleBindings;
     if (opts.providers) this.availableProviders = new Set(opts.providers);
@@ -202,46 +209,46 @@ export class ZeroWallClient implements AgentRuntime {
   }
 
   /**
-   * Forward all AgentRuntime methods to the active backend (OpenCode for now).
-   * In P2, this will route based on the agent role and model binding.
+   * Forward AgentRuntime methods to the active Gateway Web compatibility
+   * transport. Desktop ACP sessions do not enter this facade.
    */
 
   async connect(): Promise<void> {
-    // OpenCodeClient.connect is not async, but AgentRuntime requires it
-    // We'll call refreshProviders here to initialize the provider set
+    // AgentRuntime requires an async lifecycle; provider discovery initializes
+    // the routing catalog for the compatibility transport.
     await this.refreshProviders();
   }
 
   close(): void {
-    return this.opencode.close();
+    return this.transport.close();
   }
 
   getStatus(): any {
-    return this.opencode.getStatus();
+    return this.transport.getStatus();
   }
 
   onStatus(listener: (status: any) => void): () => void {
-    return this.opencode.onStatus(listener);
+    return this.transport.onStatus(listener);
   }
 
   onEvent(listener: (event: any) => void): () => void {
-    return this.opencode.onEvent(listener);
+    return this.transport.onEvent(listener);
   }
 
   async createSession(options?: { model?: string | null }): Promise<string> {
-    return this.opencode.createSession(options);
+    return this.transport.createSession(options);
   }
 
   async listSessions(): Promise<any[]> {
-    return this.opencode.listSessions();
+    return this.transport.listSessions();
   }
 
   async deleteSession(sessionId: string): Promise<void> {
-    return this.opencode.deleteSession(sessionId);
+    return this.transport.deleteSession(sessionId);
   }
 
   async getMessages(sessionId: string): Promise<any[]> {
-    return this.opencode.getMessages(sessionId);
+    return this.transport.getMessages(sessionId);
   }
 
   async sendPrompt(
@@ -252,67 +259,67 @@ export class ZeroWallClient implements AgentRuntime {
     variant?: string | null,
     attachments?: PromptAttachment[],
   ): Promise<void> {
-    return this.opencode.sendPrompt(sessionId, text, agent, model, variant, attachments);
+    return this.transport.sendPrompt(sessionId, text, agent, model, variant, attachments);
   }
 
   async abortSession(sessionId: string): Promise<void> {
-    return this.opencode.abortSession(sessionId);
+    return this.transport.abortSession(sessionId);
   }
 
   async revert(sessionId: string, messageID: string, partID?: string): Promise<void> {
-    return this.opencode.revert(sessionId, messageID, partID);
+    return this.transport.revert(sessionId, messageID, partID);
   }
 
   async unrevert(sessionId: string): Promise<void> {
-    return this.opencode.unrevert(sessionId);
+    return this.transport.unrevert(sessionId);
   }
 
   async listSkills(): Promise<any[]> {
-    return this.opencode.listSkills();
+    return this.transport.listSkills();
   }
 
   async listAgents(): Promise<any[]> {
-    return this.opencode.listAgents();
+    return this.transport.listAgents();
   }
 
   async listCommands(): Promise<any[]> {
-    return this.opencode.listCommands();
+    return this.transport.listCommands();
   }
 
   async getDefaultModel(): Promise<string | null> {
-    return this.opencode.getDefaultModel();
+    return this.transport.getDefaultModel();
   }
 
   async setDefaultModel(model: string): Promise<void> {
-    return this.opencode.setDefaultModel(model);
+    return this.transport.setDefaultModel(model);
   }
 
   async runShell(sessionId: string, command: string, agent?: string): Promise<void> {
-    return this.opencode.runShell(sessionId, command, agent);
+    return this.transport.runShell(sessionId, command, agent);
   }
 
   async runCommand(sessionId: string, command: string, args?: string): Promise<void> {
-    return this.opencode.runCommand(sessionId, command, args);
+    return this.transport.runCommand(sessionId, command, args);
   }
 
   async listQuestions(sessionId?: string): Promise<any[]> {
-    return this.opencode.listQuestions(sessionId);
+    return this.transport.listQuestions(sessionId);
   }
 
   async listPermissions(sessionId?: string): Promise<any[]> {
-    return this.opencode.listPermissions(sessionId);
+    return this.transport.listPermissions(sessionId);
   }
 
   async answerQuestion(requestId: string, answers: string[][]): Promise<void> {
-    return this.opencode.answerQuestion(requestId, answers);
+    return this.transport.answerQuestion(requestId, answers);
   }
 
   async rejectQuestion(requestId: string): Promise<void> {
-    return this.opencode.rejectQuestion(requestId);
+    return this.transport.rejectQuestion(requestId);
   }
 
   async replyPermission(requestId: string, reply: any): Promise<void> {
-    return this.opencode.replyPermission(requestId, reply);
+    return this.transport.replyPermission(requestId, reply);
   }
 
   // P2-specific methods (not part of AgentRuntime interface)
@@ -343,9 +350,9 @@ export class ZeroWallClient implements AgentRuntime {
       reasoning: this.roleBindings[role]?.reasoning,
     };
 
-    // Call underlying OpenCode client sendPrompt
+    // Call the active compatibility transport with the resolved binding.
     const sid = sessionId ?? await this.createSession();
-    await this.opencode.sendPrompt(sid, parts.join('\n'), enhancedOpts.agent, enhancedOpts.model, enhancedOpts.reasoning);
+    await this.transport.sendPrompt(sid, parts.join('\n'), enhancedOpts.agent, enhancedOpts.model, enhancedOpts.reasoning);
 
     // Capture snapshot on session creation
     if (!sessionId) {
@@ -364,41 +371,42 @@ export class ZeroWallClient implements AgentRuntime {
   }
 
   async cancel(sessionId: string): Promise<void> {
-    return this.opencode.abortSession(sessionId);
+    return this.transport.abortSession(sessionId);
   }
 
   async getSessions(): Promise<any[]> {
-    return this.opencode.listSessions();
+    return this.transport.listSessions();
   }
 
   async reply(permission: any): Promise<void> {
-    return this.opencode.replyPermission(permission.requestId, permission);
+    return this.transport.replyPermission(permission.requestId, permission);
   }
 
   async answer(questionId: string, answers: string[][]): Promise<void> {
-    return this.opencode.answerQuestion(questionId, answers);
+    return this.transport.answerQuestion(questionId, answers);
   }
 
   async getProviders(): Promise<any[]> {
-    return this.opencode.listProviders();
+    return this.transport.listProviders();
   }
 
   async getMcpConfig(): Promise<any> {
-    return this.opencode.listMcpServers();
+    return this.transport.listMcpServers();
   }
 
   async getSkills(): Promise<any[]> {
-    return this.opencode.listSkills();
+    return this.transport.listSkills();
   }
 
   async addCustomProvider(id: string, opts: any): Promise<void> {
-    return this.opencode.addCustomProvider(id, opts);
+    return this.transport.addCustomProvider(id, opts);
   }
 
   async clearDefaultCustomModelContextLimits(): Promise<void> {
-    return this.opencode.clearDefaultCustomModelContextLimits();
+    return this.transport.clearDefaultCustomModelContextLimits();
   }
 
-  // P2 extension methods (agent routing, model bindings, fallback)
-  // TODO: implement in subsequent commits
+  // P2 extension methods (agent routing, model bindings, fallback) are exposed
+  // by the immutable handoff log and session snapshots above. The concrete
+  // transport remains private to this compatibility facade.
 }

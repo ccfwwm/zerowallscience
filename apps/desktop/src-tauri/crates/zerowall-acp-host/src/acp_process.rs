@@ -3,7 +3,7 @@ use futures::channel::oneshot;
 use futures::StreamExt;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use zerowall_acp::{AcpAgentProfile, AcpClient, AcpEvent, AcpTokenUsage};
+use zerowall_acp::{AcpAgentProfile, AcpClient, AcpEvent, AcpSessionStart, AcpTokenUsage};
 
 use crate::{
     AcpHostDriver, AgentBinding, DriverCapabilities, HostDriverKind, InitializeRequest,
@@ -107,6 +107,30 @@ impl AcpProcessDriver {
             .map_err(|_| HostError::Driver("ACP startup timed out".into()))?
     }
 
+    async fn launch_session(&mut self, start: AcpSessionStart) -> Result<String, HostError> {
+        if self.client.is_some() {
+            return Err(HostError::Driver("ACP session already exists".into()));
+        }
+        if !matches!(start, AcpSessionStart::New) {
+            self.mapper = AcpEventMapper::new(String::new());
+        }
+        let (client, events, driver) =
+            AcpClient::launch_session(&self.profile, self.cwd.clone(), start);
+        self.client = Some(client);
+        self.events = Some(events);
+        self.driver_task = Some(tokio::spawn(driver));
+        match self.wait_for_ready().await {
+            Ok(session_id) => {
+                self.session_id = Some(session_id.clone());
+                Ok(session_id)
+            }
+            Err(error) => {
+                self.detach_process();
+                Err(error)
+            }
+        }
+    }
+
     fn require_session(&self, requested: &str) -> Result<&AcpClient, HostError> {
         if self.session_id.as_deref() != Some(requested) {
             return Err(HostError::SessionNotFound {
@@ -144,6 +168,8 @@ impl AcpHostDriver for AcpProcessDriver {
     fn capabilities(&self) -> DriverCapabilities {
         DriverCapabilities {
             new_session: true,
+            load_session: true,
+            resume_session: true,
             prompt: true,
             cancel: true,
             permission: true,
@@ -187,26 +213,12 @@ impl AcpHostDriver for AcpProcessDriver {
         &mut self,
         _request: NewSessionRequest,
     ) -> Result<SessionState, HostError> {
-        if self.client.is_some() {
-            return Err(HostError::Driver("ACP session already exists".into()));
-        }
-        let (client, events, driver) = AcpClient::launch(&self.profile, self.cwd.clone());
-        self.client = Some(client);
-        self.events = Some(events);
-        self.driver_task = Some(tokio::spawn(driver));
-        let actual_id = match self.wait_for_ready().await {
-            Ok(session_id) => session_id,
-            Err(error) => {
-                self.detach_process();
-                return Err(error);
-            }
-        };
-        self.session_id = Some(actual_id.clone());
+        let actual_id = self.launch_session(AcpSessionStart::New).await?;
         Ok(SessionState {
             id: actual_id,
             binding: self.binding.clone(),
             state: crate::SessionStatus::Ready,
-            resumable: false,
+            resumable: true,
             title: None,
             directory: None,
             parent_id: None,
@@ -215,17 +227,49 @@ impl AcpHostDriver for AcpProcessDriver {
         })
     }
 
-    async fn resume_session(&mut self, _: ResumeSessionRequest) -> Result<SessionState, HostError> {
-        Err(HostError::UnsupportedCapability {
-            kind: self.kind,
-            operation: "resume_session",
+    async fn resume_session(
+        &mut self,
+        request: ResumeSessionRequest,
+    ) -> Result<SessionState, HostError> {
+        self.detach_process();
+        let session_id = self
+            .launch_session(AcpSessionStart::Resume {
+                session_id: request.session_id.clone(),
+            })
+            .await?;
+        Ok(SessionState {
+            id: session_id,
+            binding: self.binding.clone(),
+            state: crate::SessionStatus::Ready,
+            resumable: true,
+            title: None,
+            directory: None,
+            parent_id: None,
+            created: None,
+            updated: None,
         })
     }
 
-    async fn load_session(&mut self, _: LoadSessionRequest) -> Result<SessionState, HostError> {
-        Err(HostError::UnsupportedCapability {
-            kind: self.kind,
-            operation: "load_session",
+    async fn load_session(
+        &mut self,
+        request: LoadSessionRequest,
+    ) -> Result<SessionState, HostError> {
+        self.detach_process();
+        let session_id = self
+            .launch_session(AcpSessionStart::Load {
+                session_id: request.session_id.clone(),
+            })
+            .await?;
+        Ok(SessionState {
+            id: session_id,
+            binding: self.binding.clone(),
+            state: crate::SessionStatus::Ready,
+            resumable: true,
+            title: None,
+            directory: None,
+            parent_id: None,
+            created: None,
+            updated: None,
         })
     }
 
@@ -742,8 +786,8 @@ mod tests {
         assert!(capabilities.permission);
         assert!(capabilities.config);
         assert!(capabilities.close_session);
-        assert!(!capabilities.resume_session);
-        assert!(!capabilities.load_session);
+        assert!(capabilities.resume_session);
+        assert!(capabilities.load_session);
         assert!(!capabilities.mode);
     }
 

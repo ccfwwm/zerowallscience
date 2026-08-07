@@ -42,11 +42,12 @@ use std::time::Duration;
 use agent_client_protocol::schema::v1::{
     ClientCapabilities, ContentBlock, CreateTerminalRequest, CreateTerminalResponse, EnvVariable,
     FileSystemCapabilities, ImageContent, InitializeRequest, KillTerminalRequest,
-    KillTerminalResponse, McpServer, McpServerStdio, NewSessionRequest, PromptRequest,
-    PromptResponse, ReadTextFileRequest, ReadTextFileResponse, ReleaseTerminalRequest,
-    ReleaseTerminalResponse, RequestPermissionOutcome, RequestPermissionRequest,
-    RequestPermissionResponse, SelectedPermissionOutcome, SessionNotification, SessionUpdate,
-    StopReason, TerminalExitStatus, TerminalId, TerminalOutputRequest, TerminalOutputResponse,
+    KillTerminalResponse, LoadSessionRequest, McpServer, McpServerStdio, NewSessionRequest,
+    PromptRequest, PromptResponse, ReadTextFileRequest, ReadTextFileResponse,
+    ReleaseTerminalRequest, ReleaseTerminalResponse, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, ResumeSessionRequest,
+    SelectedPermissionOutcome, SessionNotification, SessionUpdate, StopReason,
+    TerminalExitStatus, TerminalId, TerminalOutputRequest, TerminalOutputResponse,
     WaitForTerminalExitRequest, WaitForTerminalExitResponse, WriteTextFileRequest,
     WriteTextFileResponse,
 };
@@ -177,6 +178,10 @@ pub enum AcpHandshakeStage {
     Initialize,
     /// Creation of the workspace-rooted session.
     SessionNew,
+    /// Loading a persisted workspace-rooted session with its history.
+    SessionLoad,
+    /// Resuming a persisted workspace-rooted session without replaying history.
+    SessionResume,
 }
 
 /// A structured runtime error surfaced as an [`AcpEvent::Error`].
@@ -222,6 +227,17 @@ impl Default for AcpLaunchOptions {
             shutdown_grace: DEFAULT_SHUTDOWN_GRACE,
         }
     }
+}
+
+/// ACP session lifecycle operation to run after initialize succeeds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AcpSessionStart {
+    /// Create a new session.
+    New,
+    /// Load a persisted session and replay its history through notifications.
+    Load { session_id: String },
+    /// Resume a persisted session without replaying its history.
+    Resume { session_id: String },
 }
 
 /// Events emitted by a running ACP session, forwarded to the host.
@@ -506,11 +522,38 @@ impl AcpClient {
         Self::launch_with_options(profile, cwd, AcpLaunchOptions::default())
     }
 
+    /// Launch an agent and restore a specific ACP session lifecycle state.
+    pub fn launch_session(
+        profile: &AcpAgentProfile,
+        cwd: PathBuf,
+        start: AcpSessionStart,
+    ) -> (
+        AcpClient,
+        mpsc::UnboundedReceiver<AcpEvent>,
+        impl std::future::Future<Output = ()> + Send,
+    ) {
+        Self::launch_session_with_options(profile, cwd, start, AcpLaunchOptions::default())
+    }
+
     /// Launch with explicit timing bounds. This is primarily useful for tests
     /// and hosts that impose a stricter startup policy.
     pub fn launch_with_options(
         profile: &AcpAgentProfile,
         cwd: PathBuf,
+        options: AcpLaunchOptions,
+    ) -> (
+        AcpClient,
+        mpsc::UnboundedReceiver<AcpEvent>,
+        impl Future<Output = ()> + Send,
+    ) {
+        Self::launch_session_with_options(profile, cwd, AcpSessionStart::New, options)
+    }
+
+    /// Launch with an explicit session lifecycle operation and timing bounds.
+    pub fn launch_session_with_options(
+        profile: &AcpAgentProfile,
+        cwd: PathBuf,
+        start: AcpSessionStart,
         options: AcpLaunchOptions,
     ) -> (
         AcpClient,
@@ -546,6 +589,7 @@ impl AcpClient {
             options.handshake_timeout,
             session_meta,
             mcp_servers,
+            start,
         )
         .with_subscriber(tracing::subscriber::NoSubscriber::default());
 
@@ -629,6 +673,7 @@ async fn run_session(
     handshake_timeout: Duration,
     session_meta: Option<serde_json::Map<String, serde_json::Value>>,
     mcp_servers: Vec<AcpMcpServer>,
+    start: AcpSessionStart,
 ) {
     let event_tx = control.event_tx.clone();
     let diagnostics = control.diagnostics.clone();
@@ -786,6 +831,7 @@ async fn run_session(
                 handshake_timeout,
                 session_meta,
                 mcp_servers,
+                start,
             )
             .await
         })
@@ -809,6 +855,7 @@ async fn drive(
     handshake_timeout: Duration,
     session_meta: Option<serde_json::Map<String, serde_json::Value>>,
     mcp_servers: Vec<AcpMcpServer>,
+    start: AcpSessionStart,
 ) -> Result<(), agent_client_protocol::Error> {
     let SessionControl {
         mut prompt_rx,
@@ -836,7 +883,7 @@ async fn drive(
     let initialize = cx
         .send_request(InitializeRequest::new(ProtocolVersion::V1).client_capabilities(capabilities))
         .block_task();
-    if await_handshake_stage(
+    let initialize = await_handshake_stage(
         initialize,
         AcpHandshakeStage::Initialize,
         deadline,
@@ -844,16 +891,31 @@ async fn drive(
         &mut shutdown_rx,
         &event_tx,
     )
-    .await?
-    .is_none()
-    {
+    .await?;
+    let Some(initialize) = initialize else { return Ok(()); };
+
+    let unsupported_restore = match &start {
+        AcpSessionStart::Load { .. } if !initialize.agent_capabilities.load_session => {
+            Some((AcpHandshakeStage::SessionLoad, "ACP agent does not advertise session/load"))
+        }
+        AcpSessionStart::Resume { .. }
+            if initialize.agent_capabilities.session_capabilities.resume.is_none() =>
+        {
+            Some((AcpHandshakeStage::SessionResume, "ACP agent does not advertise session/resume"))
+        }
+        _ => None,
+    };
+    if let Some((stage, message)) = unsupported_restore {
+        let _ = event_tx.unbounded_send(AcpEvent::Error {
+            kind: AcpEventErrorKind::HandshakeFailed {
+                stage,
+                message: message.to_string(),
+            },
+        });
         return Ok(());
     }
 
     // 2. One session, rooted at the workspace.
-    let _ = event_tx.unbounded_send(AcpEvent::HandshakeStarted {
-        stage: AcpHandshakeStage::SessionNew,
-    });
     let mcp_servers: Vec<McpServer> = mcp_servers
         .into_iter()
         .map(|server| {
@@ -870,43 +932,120 @@ async fn drive(
             )
         })
         .collect();
-    let session_request = NewSessionRequest::new(cwd.clone())
-        .mcp_servers(mcp_servers.clone())
-        .meta(session_meta.clone());
-    let session = cx.send_request(session_request).block_task();
-    let session_result = await_handshake_stage(
-        session,
-        AcpHandshakeStage::SessionNew,
-        std::cmp::min(deadline, tokio::time::Instant::now() + Duration::from_secs(5)),
-        &mut prompt_rx,
-        &mut shutdown_rx,
-        &event_tx,
-    ).await;
-    let session = match session_result {
-        Ok(Some(session)) => session,
-        Ok(None) => return Ok(()),
-        Err(_) if !mcp_servers.is_empty() => {
-            // A slow or broken MCP must never prevent the primary ACP session
-            // from becoming usable. Retry session/new once without MCP; the
-            // supervisor can retry the individual server independently.
-            let fallback = cx.send_request(
-                NewSessionRequest::new(cwd).mcp_servers(Vec::new()).meta(session_meta),
-            ).block_task();
-            match await_handshake_stage(
-                fallback,
-                AcpHandshakeStage::SessionNew,
-                deadline,
+    let session_id = match start {
+        AcpSessionStart::New => {
+            let stage = AcpHandshakeStage::SessionNew;
+            let _ = event_tx.unbounded_send(AcpEvent::HandshakeStarted { stage });
+            let session_request = NewSessionRequest::new(cwd.clone())
+                .mcp_servers(mcp_servers.clone())
+                .meta(session_meta.clone());
+            let session = cx.send_request(session_request).block_task();
+            let session_result = await_handshake_stage(
+                session,
+                stage,
+                std::cmp::min(deadline, tokio::time::Instant::now() + Duration::from_secs(5)),
                 &mut prompt_rx,
                 &mut shutdown_rx,
                 &event_tx,
-            ).await? {
-                Some(session) => session,
-                None => return Ok(()),
+            ).await;
+            let session = match session_result {
+                Ok(Some(session)) => session,
+                Ok(None) => return Ok(()),
+                Err(_) if !mcp_servers.is_empty() => {
+                    // A slow or broken MCP must never prevent the primary ACP session
+                    // from becoming usable. Retry session/new once without MCP.
+                    let fallback = cx.send_request(
+                        NewSessionRequest::new(cwd).mcp_servers(Vec::new()).meta(session_meta),
+                    ).block_task();
+                    match await_handshake_stage(
+                        fallback,
+                        stage,
+                        deadline,
+                        &mut prompt_rx,
+                        &mut shutdown_rx,
+                        &event_tx,
+                    ).await? {
+                        Some(session) => session,
+                        None => return Ok(()),
+                    }
+                }
+                Err(error) => return Err(error),
+            };
+            session.session_id.to_string()
+        }
+        AcpSessionStart::Load { session_id } => {
+            let stage = AcpHandshakeStage::SessionLoad;
+            let _ = event_tx.unbounded_send(AcpEvent::HandshakeStarted { stage });
+            let request = LoadSessionRequest::new(session_id.clone(), cwd.clone())
+                .mcp_servers(mcp_servers.clone())
+                .meta(session_meta.clone());
+            let result = await_handshake_stage(
+                cx.send_request(request).block_task(),
+                stage,
+                std::cmp::min(deadline, tokio::time::Instant::now() + Duration::from_secs(5)),
+                &mut prompt_rx,
+                &mut shutdown_rx,
+                &event_tx,
+            ).await;
+            match result {
+                Ok(Some(_)) => session_id,
+                Ok(None) => return Ok(()),
+                Err(_) if !mcp_servers.is_empty() => {
+                    let fallback = LoadSessionRequest::new(session_id.clone(), cwd)
+                        .mcp_servers(Vec::new())
+                        .meta(session_meta);
+                    match await_handshake_stage(
+                        cx.send_request(fallback).block_task(),
+                        stage,
+                        deadline,
+                        &mut prompt_rx,
+                        &mut shutdown_rx,
+                        &event_tx,
+                    ).await? {
+                        Some(_) => session_id,
+                        None => return Ok(()),
+                    }
+                }
+                Err(error) => return Err(error),
             }
         }
-        Err(error) => return Err(error),
+        AcpSessionStart::Resume { session_id } => {
+            let stage = AcpHandshakeStage::SessionResume;
+            let _ = event_tx.unbounded_send(AcpEvent::HandshakeStarted { stage });
+            let request = ResumeSessionRequest::new(session_id.clone(), cwd.clone())
+                .mcp_servers(mcp_servers.clone())
+                .meta(session_meta.clone());
+            let result = await_handshake_stage(
+                cx.send_request(request).block_task(),
+                stage,
+                std::cmp::min(deadline, tokio::time::Instant::now() + Duration::from_secs(5)),
+                &mut prompt_rx,
+                &mut shutdown_rx,
+                &event_tx,
+            ).await;
+            match result {
+                Ok(Some(_)) => session_id,
+                Ok(None) => return Ok(()),
+                Err(_) if !mcp_servers.is_empty() => {
+                    let fallback = ResumeSessionRequest::new(session_id.clone(), cwd)
+                        .mcp_servers(Vec::new())
+                        .meta(session_meta);
+                    match await_handshake_stage(
+                        cx.send_request(fallback).block_task(),
+                        stage,
+                        deadline,
+                        &mut prompt_rx,
+                        &mut shutdown_rx,
+                        &event_tx,
+                    ).await? {
+                        Some(_) => session_id,
+                        None => return Ok(()),
+                    }
+                }
+                Err(error) => return Err(error),
+            }
+        }
     };
-    let session_id = session.session_id;
     let _ = event_tx.unbounded_send(AcpEvent::Ready {
         session_id: session_id.to_string(),
     });

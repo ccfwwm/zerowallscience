@@ -46,11 +46,18 @@ fn main() {
                     write_handshake_stderr("initialize timeout ordinary tail");
                 }
             }
-            Some("initialize") => respond(
-                &mut stdout,
-                id,
-                json!({"protocolVersion": 1, "agentCapabilities": {}}),
-            ),
+            Some("initialize") => {
+                let capabilities = match mode.as_str() {
+                    "assert-load" => json!({"loadSession": true}),
+                    "assert-resume" => json!({"sessionCapabilities": {"resume": {}}}),
+                    _ => json!({}),
+                };
+                respond(
+                    &mut stdout,
+                    id,
+                    json!({"protocolVersion": 1, "agentCapabilities": capabilities}),
+                )
+            }
             Some("session/new") if mode == "session-error" => respond_error(
                 &mut stdout,
                 id,
@@ -94,7 +101,28 @@ fn main() {
                     respond_error(&mut stdout, id, -32000, "MCP servers were missing");
                 }
             }
+            Some("session/new") if mode == "assert-load" || mode == "assert-resume" => {
+                respond_error(&mut stdout, id, -32000, "expected restored session")
+            }
             Some("session/new") => respond(&mut stdout, id, json!({"sessionId": "fake-session"})),
+            Some("session/load") if mode == "assert-load" => {
+                let valid = message.pointer("/params/sessionId")
+                    == Some(&Value::String("persisted-session".to_string()));
+                if valid {
+                    respond(&mut stdout, id, json!({}));
+                } else {
+                    respond_error(&mut stdout, id, -32000, "wrong load session id");
+                }
+            }
+            Some("session/resume") if mode == "assert-resume" => {
+                let valid = message.pointer("/params/sessionId")
+                    == Some(&Value::String("persisted-session".to_string()));
+                if valid {
+                    respond(&mut stdout, id, json!({}));
+                } else {
+                    respond_error(&mut stdout, id, -32000, "wrong resume session id");
+                }
+            }
             Some("session/set_model") => respond(&mut stdout, id, json!({})),
             Some("session/prompt") if mode == "hung-prompt" || mode == "cancel-ignores" => {
                 write_prompt_marker();

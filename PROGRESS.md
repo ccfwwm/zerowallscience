@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 22:41 · ACP process drivers now restore Codex/Claude sessions through capability-gated `session/load` or `session/resume`; the SDK routing facade and documentation now name the ACP Host as the desktop boundary while preserving Gateway Web compatibility, with ACP 43/43, Host 56/56, SDK, desktop ACP/runtime-store 162/162, and typecheck passing.
+
 2026-08-07 22:13 · Completed the local release gate: the production desktop frontend build succeeds and the independent Environment Bootstrapper security suite passes 6/6; clean-machine installs, production-key signing, and interrupted-update rollback remain external release validations.
 
 2026-08-07 22:11 · Hardened the provider settings tests against full-suite load by replacing long per-keystroke setup with direct form changes and awaiting the controlled collapse render; the complete desktop Vitest suite now exits cleanly, with ACP Host 19/19, secret store 19/19, brand, and release contracts also passing.

@@ -95,6 +95,18 @@ describe("ZeroWallClient", () => {
 
       expect(client).toBeDefined();
     });
+
+    it("accepts the neutral transport option for the Gateway Web facade", async () => {
+      const client = new ZeroWallClient({
+        transport: mockOpenCodeClient,
+        agents: agentDefinitions,
+        roleBindings,
+      });
+
+      await client.connect();
+
+      expect(mockOpenCodeClient.listProviders).toHaveBeenCalledOnce();
+    });
   });
 
   describe("provider refresh", () => {

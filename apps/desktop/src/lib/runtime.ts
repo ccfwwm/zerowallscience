@@ -443,7 +443,7 @@ interface RuntimeState {
   agentDefinitions: AgentDefinition[];
   /** Role-to-model bindings (primary + fallback per role). */
   agentBindings: Record<AgentRole, RoleModelBinding>;
-  /** ZeroWallClient instance (wraps OpenCodeClient with agent routing). */
+  /** Gateway Web role-routing facade; desktop turns use AcpRuntime directly. */
   zeroWallClient: ZeroWallClient | null;
   /** Set the active agent role and persist to localStorage. */
   setSelectedAgent: (role: AgentRole) => void;
@@ -1351,7 +1351,7 @@ async function loadAgentDefinitions(): Promise<AgentDefinition[]> {
 }
 
 /**
- * Point the P2 agent client at a freshly loaded catalog, creating it on first
+ * Point the Gateway Web role-routing facade at a freshly loaded catalog, creating it on first
  * use. `existing` is reused rather than replaced so the handoff log and session
  * snapshots survive a reconnect — see ZeroWallClient.configure().
  */
@@ -1367,8 +1367,9 @@ function syncZeroWallClient(
     agents.set(def.id, def);
   }
   const zwClient =
-    existing ?? new ZeroWallClient({ opencode: client, agents, roleBindings: bindings });
-  // `client` is re-supplied every time: connect() builds a new OpenCodeClient
+    existing ?? new ZeroWallClient({ transport: client, agents, roleBindings: bindings });
+  // `client` is re-supplied every time: the Gateway Web connect path builds a new
+  // compatibility transport
   // and closes the old one, so a reused zwClient must be re-pointed at it.
   zwClient.configure({ opencode: client, agents, roleBindings: bindings, providers });
   return zwClient;

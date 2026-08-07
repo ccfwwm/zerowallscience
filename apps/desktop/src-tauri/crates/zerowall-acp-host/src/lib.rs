@@ -974,6 +974,8 @@ fn declared_capabilities(kind: HostDriverKind) -> DriverCapabilities {
     match kind {
         HostDriverKind::Codex | HostDriverKind::ClaudeCode => DriverCapabilities {
             new_session: true,
+            load_session: true,
+            resume_session: true,
             prompt: true,
             cancel: true,
             permission: true,
@@ -1391,6 +1393,10 @@ mod tests {
         assert!(result.capabilities.prompt);
         assert!(result.capabilities.cancel);
         assert!(result.capabilities.close_session);
+
+        let codex = block_on(host.initialize(HostDriverKind::Codex)).unwrap();
+        assert!(codex.capabilities.load_session);
+        assert!(codex.capabilities.resume_session);
     }
 
     #[test]

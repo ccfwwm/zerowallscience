@@ -19,15 +19,13 @@ import type {
  * ONLY the surface a generic agent runtime must expose (lifecycle, sessions,
  * capability discovery, model selection, and interactive requests).
  *
- * Provider / MCP / OAuth configuration is deliberately OUT of scope — those are
- * configuration of a specific runtime (OpenCode today), not of "an agent
- * runtime" in general. Callers that need them go through the concrete
- * `OpenCodeClient` (e.g. `getClient()`), which `implements AgentRuntime`.
+ * Provider / MCP / OAuth configuration is deliberately OUT of scope. Desktop
+ * callers use the typed `AcpHostClient` control plane; the concrete
+ * `OpenCodeClient` remains an explicit Gateway Web compatibility transport.
  *
- * See `docs/rfc/agent-runtime.md` for the rationale. `OpenCodeClient` is the
- * default implementation (HTTP/SSE); `AcpRuntime` is the second, bridging
- * external ACP agents (Codex, Claude Code) over the Tauri host. Both implement
- * this interface so the app UI is agnostic to which runtime is active.
+ * See `docs/rfc/agent-runtime.md` for the rationale. `AcpRuntime` is the
+ * desktop implementation and bridges every engine through the Tauri Host;
+ * `OpenCodeClient` implements only the Gateway Web compatibility path.
  */
 /**
  * An inline file attached to a prompt turn, carried to the model as a real
