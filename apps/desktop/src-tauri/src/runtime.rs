@@ -1124,37 +1124,19 @@ mod tests {
         );
     }
 
-    /// A skill tree that `deploy_bundled_skills` looks for but the bundle never
-    /// ships resolves to nothing, and the deploy silently skips it. That is how
-    /// five of the six first-party trees — every skill the Science Packs in
-    /// `runtime/packs/` reference outside `core` — were absent on user machines
-    /// while the code looked correct.
+    /// Skills are managed environment assets, not application installer
+    /// resources. The release workflow must copy every tree into the signed
+    /// environment archive consumed by `managed_resource`.
     #[test]
-    fn bundle_resources_cover_every_skill_tree() {
+    fn environment_bundle_covers_every_skill_tree() {
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let config: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(manifest.join("tauri.conf.json")).unwrap(),
-        )
-        .unwrap();
-        let resources = config["bundle"]["resources"]
-            .as_object()
-            .expect("bundle.resources must be an object");
+        let workflow = std::fs::read_to_string(manifest.join("../../../.github/workflows/build.yml"))
+            .expect("environment bundle workflow must be present");
 
         for resource in SKILL_RESOURCES {
-            let target = format!("{resource}/");
-            let source = resources
-                .iter()
-                .find(|(_, v)| v.as_str() == Some(target.as_str()))
-                .map(|(k, _)| k.clone());
-            let source = source.unwrap_or_else(|| {
-                panic!(
-                    "skill resource `{resource}` is in SKILL_RESOURCES but no bundle.resources entry maps anything to `{target}`; the tree would be missing from the installer and silently skipped"
-                )
-            });
-            let dir = manifest.join(&source);
             assert!(
-                dir.is_dir(),
-                "bundle.resources maps `{source}` to `{target}` but that directory does not exist"
+                workflow.contains(&format!("$stage/{resource}")),
+                "environment bundle workflow does not stage managed skill tree `{resource}`"
             );
         }
     }
