@@ -7,10 +7,11 @@ use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, Read, Write};
 use std::path::{Component as PathComponent, Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 use thiserror::Error;
 
@@ -20,6 +21,9 @@ const VERSION_METADATA: &str = ".environment-manifest.json";
 const MAX_ARCHIVE_FILES: usize = 10_000;
 const MAX_EXTRACTED_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
+const HTTP_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const HEALTH_CHECK_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(60);
 const ENVIRONMENT_RELEASE_LATEST_BASE: &str =
     "https://github.com/ccfwwm/zerowallscience-releases/releases/latest/download";
 static NONCE: AtomicU64 = AtomicU64::new(1);
@@ -460,7 +464,12 @@ impl EnvironmentLayout {
 }
 
 pub trait PackageDownloader {
-    fn download_to(&mut self, url: &str, target: &Path) -> Result<(), EnvironmentUpdateError>;
+    fn download_to(
+        &mut self,
+        url: &str,
+        target: &Path,
+        expected_size: Option<u64>,
+    ) -> Result<(), EnvironmentUpdateError>;
 }
 
 pub trait HealthRunner {
@@ -469,18 +478,19 @@ pub trait HealthRunner {
         version_dir: &Path,
         executable: &Path,
         args: &[String],
+        cancel_requested: Option<&AtomicBool>,
     ) -> Result<(), EnvironmentUpdateError>;
 }
 
 pub struct HttpPackageDownloader {
-    client: reqwest::blocking::Client,
+    client: reqwest::Client,
     status: Option<Arc<Mutex<EnvironmentUpdateStatus>>>,
     cancel_requested: Option<Arc<AtomicBool>>,
 }
 
 impl HttpPackageDownloader {
     pub fn new() -> Result<Self, EnvironmentUpdateError> {
-        let client = reqwest::blocking::Client::builder()
+        let client = reqwest::Client::builder()
             .user_agent("ZeroWall Science environment installer")
             .connect_timeout(Duration::from_secs(15))
             .timeout(Duration::from_secs(30 * 60))
@@ -527,35 +537,13 @@ impl HttpPackageDownloader {
         status.downloaded_bytes = downloaded_bytes;
         status.total_bytes = total_bytes;
     }
-}
 
-fn download_write_plan(
-    existing_bytes: u64,
-    status: reqwest::StatusCode,
-    content_range: Option<&str>,
-) -> Result<(u64, bool), EnvironmentUpdateError> {
-    if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
-        return Err(EnvironmentUpdateError::Download(
-            "server rejected the resume range".into(),
-        ));
-    }
-    if status == reqwest::StatusCode::PARTIAL_CONTENT {
-        let start = content_range
-            .and_then(|value| value.strip_prefix("bytes "))
-            .and_then(|value| value.split_once('-'))
-            .and_then(|(start, _)| start.parse::<u64>().ok());
-        if start != Some(existing_bytes) {
-            return Err(EnvironmentUpdateError::Download(
-                "server returned an invalid resume range".into(),
-            ));
-        }
-        return Ok((existing_bytes, existing_bytes > 0));
-    }
-    Ok((0, false))
-}
-
-impl PackageDownloader for HttpPackageDownloader {
-    fn download_to(&mut self, url: &str, target: &Path) -> Result<(), EnvironmentUpdateError> {
+    async fn download_to_async(
+        &self,
+        url: &str,
+        target: &Path,
+        expected_size: Option<u64>,
+    ) -> Result<(), EnvironmentUpdateError> {
         if self.is_cancelled() {
             return Err(EnvironmentUpdateError::Cancelled);
         }
@@ -566,22 +554,41 @@ impl PackageDownloader for HttpPackageDownloader {
         if existing_bytes > 0 {
             request = request.header(reqwest::header::RANGE, format!("bytes={existing_bytes}-"));
         }
-        let response = request
-            .send()
-            .map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
+        let send = request.send();
+        tokio::pin!(send);
+        let response = loop {
+            tokio::select! {
+                result = &mut send => {
+                    break result.map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
+                }
+                _ = tokio::time::sleep(HTTP_CANCEL_POLL_INTERVAL) => {
+                    if self.is_cancelled() {
+                        return Err(EnvironmentUpdateError::Cancelled);
+                    }
+                }
+            }
+        };
         let content_range = response
             .headers()
             .get(reqwest::header::CONTENT_RANGE)
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned);
-        let (mut downloaded_bytes, append) =
-            download_write_plan(existing_bytes, response.status(), content_range.as_deref())?;
+        let content_length = response.content_length();
+        let (mut downloaded_bytes, append, range_total, response_end) = download_write_plan(
+            existing_bytes,
+            response.status(),
+            content_range.as_deref(),
+            content_length,
+            expected_size,
+        )?;
         let mut response = response
             .error_for_status()
             .map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
-        let total_bytes = response
-            .content_length()
-            .map(|remaining| downloaded_bytes.saturating_add(remaining));
+        let total_bytes = expected_size.or(range_total).or_else(|| {
+            response
+                .content_length()
+                .map(|remaining| downloaded_bytes.saturating_add(remaining))
+        });
         let component = target
             .file_name()
             .and_then(|name| name.to_str())
@@ -602,22 +609,27 @@ impl PackageDownloader for HttpPackageDownloader {
             options.truncate(true);
         }
         let mut output = options.open(target)?;
-        let mut buffer = [0_u8; 64 * 1024];
         loop {
-            if self.is_cancelled() {
-                output.sync_all()?;
-                return Err(EnvironmentUpdateError::Cancelled);
-            }
-            let read = match response.read(&mut buffer) {
-                Ok(read) => read,
-                Err(_) if self.is_cancelled() => return Err(EnvironmentUpdateError::Cancelled),
-                Err(error) => return Err(error.into()),
+            let next = response.chunk();
+            tokio::pin!(next);
+            let chunk = loop {
+                tokio::select! {
+                    result = &mut next => {
+                        break result.map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
+                    }
+                    _ = tokio::time::sleep(HTTP_CANCEL_POLL_INTERVAL) => {
+                        if self.is_cancelled() {
+                            output.sync_all()?;
+                            return Err(EnvironmentUpdateError::Cancelled);
+                        }
+                    }
+                }
             };
-            if read == 0 {
+            let Some(chunk) = chunk else {
                 break;
-            }
-            output.write_all(&buffer[..read])?;
-            downloaded_bytes = downloaded_bytes.saturating_add(read as u64);
+            };
+            output.write_all(&chunk)?;
+            downloaded_bytes = downloaded_bytes.saturating_add(chunk.len() as u64);
             self.report_progress(
                 EnvironmentUpdatePhase::Downloading,
                 component,
@@ -626,6 +638,11 @@ impl PackageDownloader for HttpPackageDownloader {
             );
         }
         output.sync_all()?;
+        if response_end.or(expected_size).is_some_and(|expected| expected != downloaded_bytes) {
+            return Err(EnvironmentUpdateError::Download(
+                "server returned an incomplete response body".into(),
+            ));
+        }
         self.report_progress(
             EnvironmentUpdatePhase::Verifying,
             component,
@@ -633,6 +650,70 @@ impl PackageDownloader for HttpPackageDownloader {
             total_bytes,
         );
         Ok(())
+    }
+}
+
+fn download_write_plan(
+    existing_bytes: u64,
+    status: reqwest::StatusCode,
+    content_range: Option<&str>,
+    content_length: Option<u64>,
+    expected_size: Option<u64>,
+) -> Result<(u64, bool, Option<u64>, Option<u64>), EnvironmentUpdateError> {
+    if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+        return Err(EnvironmentUpdateError::Download(
+            "server rejected the resume range".into(),
+        ));
+    }
+    if status == reqwest::StatusCode::PARTIAL_CONTENT {
+        let parsed = content_range
+            .and_then(|value| value.strip_prefix("bytes "))
+            .and_then(|value| value.split_once('/'))
+            .and_then(|(range, total)| {
+                let (start, end) = range.split_once('-')?;
+                Some((
+                    start.parse::<u64>().ok()?,
+                    end.parse::<u64>().ok()?,
+                    total.parse::<u64>().ok()?,
+                ))
+            });
+        let Some((start, end, total)) = parsed else {
+            return Err(EnvironmentUpdateError::Download(
+                "server returned an invalid resume range".into(),
+            ));
+        };
+        let range_length = end.checked_sub(start).and_then(|value| value.checked_add(1));
+        if start != existing_bytes
+            || end >= total
+            || range_length.is_none()
+            || content_length.is_some_and(|length| Some(length) != range_length)
+            || expected_size.is_some_and(|expected| expected != total)
+        {
+            return Err(EnvironmentUpdateError::Download(
+                "server returned an invalid resume range".into(),
+            ));
+        }
+        return Ok((
+            existing_bytes,
+            existing_bytes > 0,
+            Some(total),
+            end.checked_add(1),
+        ));
+    }
+    Ok((0, false, content_length, content_length))
+}
+
+impl PackageDownloader for HttpPackageDownloader {
+    fn download_to(
+        &mut self,
+        url: &str,
+        target: &Path,
+        expected_size: Option<u64>,
+    ) -> Result<(), EnvironmentUpdateError> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        runtime.block_on(self.download_to_async(url, target, expected_size))
     }
 }
 
@@ -644,25 +725,63 @@ impl HealthRunner for ProcessHealthRunner {
         version_dir: &Path,
         executable: &Path,
         args: &[String],
+        cancel_requested: Option<&AtomicBool>,
     ) -> Result<(), EnvironmentUpdateError> {
         let mut command = Command::new(executable);
-        command.args(args).current_dir(version_dir);
+        command
+            .args(args)
+            .current_dir(version_dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x0800_0000);
         }
-        let output = command
-            .output()
+        let mut child = command
+            .spawn()
             .map_err(|error| EnvironmentUpdateError::HealthCheck(error.to_string()))?;
-        if !output.status.success() {
-            return Err(EnvironmentUpdateError::HealthCheck(format!(
-                "{} exited with {}",
-                executable.display(),
-                output.status
-            )));
+        let started = Instant::now();
+        loop {
+            if cancellation_requested(cancel_requested) {
+                child.kill().map_err(|error| {
+                    EnvironmentUpdateError::HealthCheck(format!(
+                        "could not stop {}: {error}",
+                        executable.display()
+                    ))
+                })?;
+                child.wait().map_err(|error| {
+                    EnvironmentUpdateError::HealthCheck(format!(
+                        "could not reap {}: {error}",
+                        executable.display()
+                    ))
+                })?;
+                return Err(EnvironmentUpdateError::Cancelled);
+            }
+            if started.elapsed() >= HEALTH_CHECK_TIMEOUT {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(EnvironmentUpdateError::HealthCheck(format!(
+                    "{} timed out after {} seconds",
+                    executable.display(),
+                    HEALTH_CHECK_TIMEOUT.as_secs()
+                )));
+            }
+            match child
+                .try_wait()
+                .map_err(|error| EnvironmentUpdateError::HealthCheck(error.to_string()))?
+            {
+                Some(status) if status.success() => return Ok(()),
+                Some(status) => {
+                    return Err(EnvironmentUpdateError::HealthCheck(format!(
+                        "{} exited with {}",
+                        executable.display(),
+                        status
+                    )))
+                }
+                None => thread::sleep(HEALTH_CHECK_POLL_INTERVAL),
+            }
         }
-        Ok(())
     }
 }
 
@@ -703,11 +822,11 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
     }
 
     fn ensure_not_cancelled(&self) -> Result<(), EnvironmentUpdateError> {
-        if self
-            .control
-            .as_ref()
-            .is_some_and(|control| control.cancel_requested.load(Ordering::Acquire))
-        {
+        if cancellation_requested(
+            self.control
+                .as_ref()
+                .map(|control| control.cancel_requested.as_ref()),
+        ) {
             return Err(EnvironmentUpdateError::Cancelled);
         }
         Ok(())
@@ -809,6 +928,10 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
 
         let payload = staging.join("payload");
         let downloads = staging.join("downloads");
+        let cancel_requested = self
+            .control
+            .as_ref()
+            .map(|control| Arc::clone(&control.cancel_requested));
         if payload.exists() {
             fs::remove_dir_all(&payload)?;
         }
@@ -817,7 +940,7 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
         for component in &manifest.components {
             self.ensure_not_cancelled()?;
             let package = downloads.join(format!("{}.package", component.id));
-            if !package_matches_component(&package, component)? {
+            if !package_matches_component(&package, component, cancel_requested.as_deref())? {
                 if component.size_bytes.is_some_and(|expected| {
                     fs::metadata(&package)
                         .map(|metadata| metadata.len() >= expected)
@@ -825,7 +948,8 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
                 }) {
                     fs::remove_file(&package)?;
                 }
-                self.downloader.download_to(&component.url, &package)?;
+                self.downloader
+                    .download_to(&component.url, &package, component.size_bytes)?;
             }
             self.ensure_not_cancelled()?;
             if let Some(expected_size) = component.size_bytes {
@@ -838,7 +962,7 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
                 }
             }
             self.report_phase(EnvironmentUpdatePhase::Verifying, Some(&component.id));
-            let actual = hash_file(&package)?;
+            let actual = hash_file_cancellable(&package, cancel_requested.as_deref())?;
             self.ensure_not_cancelled()?;
             if !actual.eq_ignore_ascii_case(&component.sha256) {
                 return Err(EnvironmentUpdateError::ChecksumMismatch {
@@ -849,7 +973,12 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
             }
             self.report_phase(EnvironmentUpdatePhase::Installing, Some(&component.id));
             self.ensure_not_cancelled()?;
-            extract_component(component, &package, &payload)?;
+            extract_component(
+                component,
+                &package,
+                &payload,
+                cancel_requested.as_deref(),
+            )?;
             self.ensure_not_cancelled()?;
         }
         self.ensure_not_cancelled()?;
@@ -897,6 +1026,10 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
         version_dir: &Path,
         checks: &[EnvironmentHealthCheck],
     ) -> Result<(), EnvironmentUpdateError> {
+        let cancel_requested = self
+            .control
+            .as_ref()
+            .map(|control| Arc::clone(&control.cancel_requested));
         for check in checks {
             self.ensure_not_cancelled()?;
             let relative = Path::new(&check.executable);
@@ -908,7 +1041,12 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
                     check.executable
                 )));
             }
-            self.health.run(version_dir, &executable, &check.args)?;
+            self.health.run(
+                version_dir,
+                &executable,
+                &check.args,
+                cancel_requested.as_deref(),
+            )?;
             self.ensure_not_cancelled()?;
         }
         Ok(())
@@ -1219,11 +1357,29 @@ fn read_version_manifest(
     validate_manifest(manifest)
 }
 
-fn hash_file(path: &Path) -> Result<String, EnvironmentUpdateError> {
+fn cancellation_requested(cancel_requested: Option<&AtomicBool>) -> bool {
+    cancel_requested.is_some_and(|cancel| cancel.load(Ordering::Acquire))
+}
+
+fn ensure_operation_active(
+    cancel_requested: Option<&AtomicBool>,
+) -> Result<(), EnvironmentUpdateError> {
+    if cancellation_requested(cancel_requested) {
+        Err(EnvironmentUpdateError::Cancelled)
+    } else {
+        Ok(())
+    }
+}
+
+fn hash_file_cancellable(
+    path: &Path,
+    cancel_requested: Option<&AtomicBool>,
+) -> Result<String, EnvironmentUpdateError> {
     let mut reader = BufReader::new(File::open(path)?);
     let mut digest = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
     loop {
+        ensure_operation_active(cancel_requested)?;
         let count = reader.read(&mut buffer)?;
         if count == 0 {
             break;
@@ -1240,6 +1396,7 @@ fn hash_file(path: &Path) -> Result<String, EnvironmentUpdateError> {
 fn package_matches_component(
     package: &Path,
     component: &EnvironmentComponent,
+    cancel_requested: Option<&AtomicBool>,
 ) -> Result<bool, EnvironmentUpdateError> {
     if !package.is_file() {
         return Ok(false);
@@ -1249,26 +1406,32 @@ fn package_matches_component(
     }) {
         return Ok(false);
     }
-    Ok(hash_file(package)?.eq_ignore_ascii_case(&component.sha256))
+    Ok(hash_file_cancellable(package, cancel_requested)?
+        .eq_ignore_ascii_case(&component.sha256))
 }
 
 fn extract_component(
     component: &EnvironmentComponent,
     package: &Path,
     payload: &Path,
+    cancel_requested: Option<&AtomicBool>,
 ) -> Result<(), EnvironmentUpdateError> {
     match component.archive {
         EnvironmentArchive::File => {
             let target = payload.join(&component.id);
-            copy_new(package, &target)?;
+            copy_new(package, &target, cancel_requested)?;
         }
-        EnvironmentArchive::Zip => extract_zip(package, payload)?,
-        EnvironmentArchive::TarGz => extract_tar_gz(package, payload)?,
+        EnvironmentArchive::Zip => extract_zip(package, payload, cancel_requested)?,
+        EnvironmentArchive::TarGz => extract_tar_gz(package, payload, cancel_requested)?,
     }
     Ok(())
 }
 
-fn copy_new(source: &Path, target: &Path) -> Result<(), EnvironmentUpdateError> {
+fn copy_new(
+    source: &Path,
+    target: &Path,
+    cancel_requested: Option<&AtomicBool>,
+) -> Result<(), EnvironmentUpdateError> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -1277,12 +1440,34 @@ fn copy_new(source: &Path, target: &Path) -> Result<(), EnvironmentUpdateError> 
         .write(true)
         .create_new(true)
         .open(target)?;
-    std::io::copy(&mut input, &mut output)?;
+    copy_stream(&mut input, &mut output, cancel_requested)?;
     output.sync_all()?;
     Ok(())
 }
 
-fn extract_zip(package: &Path, payload: &Path) -> Result<(), EnvironmentUpdateError> {
+fn copy_stream<R: Read, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    cancel_requested: Option<&AtomicBool>,
+) -> Result<u64, EnvironmentUpdateError> {
+    let mut copied = 0_u64;
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        ensure_operation_active(cancel_requested)?;
+        let count = input.read(&mut buffer)?;
+        if count == 0 {
+            return Ok(copied);
+        }
+        output.write_all(&buffer[..count])?;
+        copied = copied.saturating_add(count as u64);
+    }
+}
+
+fn extract_zip(
+    package: &Path,
+    payload: &Path,
+    cancel_requested: Option<&AtomicBool>,
+) -> Result<(), EnvironmentUpdateError> {
     let mut archive = zip::ZipArchive::new(File::open(package)?)
         .map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
     let mut total = 0_u64;
@@ -1290,6 +1475,7 @@ fn extract_zip(package: &Path, payload: &Path) -> Result<(), EnvironmentUpdateEr
         return Err(EnvironmentUpdateError::ArchiveLimitExceeded);
     }
     for index in 0..archive.len() {
+        ensure_operation_active(cancel_requested)?;
         let mut entry = archive
             .by_index(index)
             .map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
@@ -1321,7 +1507,7 @@ fn extract_zip(package: &Path, payload: &Path) -> Result<(), EnvironmentUpdateEr
                 .write(true)
                 .create_new(true)
                 .open(target)?;
-            std::io::copy(&mut entry, &mut output)?;
+            copy_stream(&mut entry, &mut output, cancel_requested)?;
         } else {
             return Err(EnvironmentUpdateError::UnsupportedArchiveEntry(raw_name));
         }
@@ -1329,12 +1515,17 @@ fn extract_zip(package: &Path, payload: &Path) -> Result<(), EnvironmentUpdateEr
     Ok(())
 }
 
-fn extract_tar_gz(package: &Path, payload: &Path) -> Result<(), EnvironmentUpdateError> {
+fn extract_tar_gz(
+    package: &Path,
+    payload: &Path,
+    cancel_requested: Option<&AtomicBool>,
+) -> Result<(), EnvironmentUpdateError> {
     let decoder = GzDecoder::new(File::open(package)?);
     let mut archive = tar::Archive::new(decoder);
     let mut count = 0_usize;
     let mut total = 0_u64;
     for item in archive.entries()? {
+        ensure_operation_active(cancel_requested)?;
         count += 1;
         if count > MAX_ARCHIVE_FILES {
             return Err(EnvironmentUpdateError::ArchiveLimitExceeded);
@@ -1366,7 +1557,7 @@ fn extract_tar_gz(package: &Path, payload: &Path) -> Result<(), EnvironmentUpdat
                 .write(true)
                 .create_new(true)
                 .open(target)?;
-            std::io::copy(&mut entry, &mut output)?;
+            copy_stream(&mut entry, &mut output, cancel_requested)?;
         } else {
             return Err(EnvironmentUpdateError::UnsupportedArchiveEntry(
                 relative.display().to_string(),
@@ -1460,7 +1651,10 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::fs;
     use std::io::Write;
+    use std::net::TcpListener;
     use std::path::{Path, PathBuf};
+    use std::thread;
+    use std::time::{Duration, Instant};
 
     fn temp_root(label: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!(
@@ -1551,7 +1745,12 @@ mod tests {
     }
 
     impl PackageDownloader for FakeDownloader {
-        fn download_to(&mut self, url: &str, target: &Path) -> Result<(), EnvironmentUpdateError> {
+        fn download_to(
+            &mut self,
+            url: &str,
+            target: &Path,
+            _expected_size: Option<u64>,
+        ) -> Result<(), EnvironmentUpdateError> {
             let bytes = self
                 .content
                 .get(url)
@@ -1570,7 +1769,12 @@ mod tests {
     }
 
     impl PackageDownloader for InterruptOnceDownloader {
-        fn download_to(&mut self, _url: &str, target: &Path) -> Result<(), EnvironmentUpdateError> {
+        fn download_to(
+            &mut self,
+            _url: &str,
+            target: &Path,
+            _expected_size: Option<u64>,
+        ) -> Result<(), EnvironmentUpdateError> {
             if !self.interrupted {
                 self.interrupted = true;
                 let mut file = File::create(target)?;
@@ -1598,8 +1802,30 @@ mod tests {
         cancel_requested: Arc<AtomicBool>,
     }
 
+    struct CancelAfterFirstRead {
+        bytes: std::io::Cursor<Vec<u8>>,
+        cancel_requested: Arc<AtomicBool>,
+        reads: usize,
+    }
+
+    impl Read for CancelAfterFirstRead {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            let count = self.bytes.read(buffer)?;
+            self.reads += 1;
+            if self.reads == 1 {
+                self.cancel_requested.store(true, Ordering::Release);
+            }
+            Ok(count)
+        }
+    }
+
     impl PackageDownloader for CancelAfterDownload {
-        fn download_to(&mut self, _url: &str, target: &Path) -> Result<(), EnvironmentUpdateError> {
+        fn download_to(
+            &mut self,
+            _url: &str,
+            target: &Path,
+            _expected_size: Option<u64>,
+        ) -> Result<(), EnvironmentUpdateError> {
             fs::write(target, &self.bytes)?;
             self.cancel_requested.store(true, Ordering::Release);
             Ok(())
@@ -1607,7 +1833,12 @@ mod tests {
     }
 
     impl PackageDownloader for InterruptSecondDownloader {
-        fn download_to(&mut self, url: &str, target: &Path) -> Result<(), EnvironmentUpdateError> {
+        fn download_to(
+            &mut self,
+            url: &str,
+            target: &Path,
+            _expected_size: Option<u64>,
+        ) -> Result<(), EnvironmentUpdateError> {
             *self.calls.entry(url.to_owned()).or_default() += 1;
             let bytes = self.content.get(url).unwrap();
             if url.ends_with("second.exe") && !self.interrupted {
@@ -1633,6 +1864,7 @@ mod tests {
             version_dir: &Path,
             executable: &Path,
             _args: &[String],
+            _cancel_requested: Option<&AtomicBool>,
         ) -> Result<(), EnvironmentUpdateError> {
             self.calls.push(executable.to_path_buf());
             if self.fail_all
@@ -1658,6 +1890,7 @@ mod tests {
             _version_dir: &Path,
             _executable: &Path,
             _args: &[String],
+            _cancel_requested: Option<&AtomicBool>,
         ) -> Result<(), EnvironmentUpdateError> {
             let phase = self
                 .status
@@ -1888,6 +2121,137 @@ mod tests {
     }
 
     #[test]
+    fn cancellation_interrupts_a_large_component_hash() {
+        let root = temp_root("cancel-hash");
+        let package = root.join("large.bin");
+        File::create(&package)
+            .unwrap()
+            .set_len(64 * 1024 * 1024)
+            .unwrap();
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        let hash_cancel = Arc::clone(&cancel_requested);
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(10));
+            hash_cancel.store(true, Ordering::Release);
+        });
+
+        let started = Instant::now();
+        assert!(matches!(
+            hash_file_cancellable(&package, Some(&cancel_requested)),
+            Err(EnvironmentUpdateError::Cancelled)
+        ));
+        assert!(
+            started.elapsed() < Duration::from_millis(100),
+            "cancellation waited for the complete hash: {:?}",
+            started.elapsed()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn cancellation_interrupts_archive_entry_copying() {
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        let mut input = CancelAfterFirstRead {
+            bytes: std::io::Cursor::new(vec![7_u8; 128 * 1024]),
+            cancel_requested: Arc::clone(&cancel_requested),
+            reads: 0,
+        };
+        let mut output = Vec::new();
+
+        assert!(matches!(
+            copy_stream(&mut input, &mut output, Some(&cancel_requested)),
+            Err(EnvironmentUpdateError::Cancelled)
+        ));
+        assert_eq!(output.len(), 64 * 1024);
+    }
+
+    #[test]
+    fn cancellation_terminates_a_running_health_check() {
+        let root = temp_root("cancel-health");
+        #[cfg(windows)]
+        let executable = PathBuf::from(
+            std::env::var_os("ComSpec")
+                .unwrap_or_else(|| "C:\\Windows\\System32\\cmd.exe".into()),
+        );
+        #[cfg(windows)]
+        let args = vec![
+            "/D".into(),
+            "/C".into(),
+            "ping 127.0.0.1 -n 3 >NUL".into(),
+        ];
+        #[cfg(not(windows))]
+        let executable = PathBuf::from("/bin/sh");
+        #[cfg(not(windows))]
+        let args = vec!["-c".into(), "sleep 2".into()];
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        let runner_cancel = Arc::clone(&cancel_requested);
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(50));
+            cancel_requested.store(true, Ordering::Release);
+        });
+
+        let started = Instant::now();
+        let mut runner = ProcessHealthRunner;
+        assert!(matches!(
+            runner.run(&root, &executable, &args, Some(&runner_cancel)),
+            Err(EnvironmentUpdateError::Cancelled)
+        ));
+        assert!(
+            started.elapsed() < Duration::from_millis(500),
+            "cancellation waited for the health check to exit: {:?}",
+            started.elapsed()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn cancellation_interrupts_a_stalled_http_body() {
+        let root = temp_root("cancel-http");
+        let target = root.join("component.package");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request).unwrap();
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\nConnection: close\r\n\r\n")
+                .unwrap();
+            stream.flush().unwrap();
+            thread::sleep(Duration::from_millis(750));
+            let _ = stream.write_all(b"x");
+        });
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        let mut downloader = HttpPackageDownloader {
+            client: reqwest::Client::builder()
+                .no_proxy()
+                .timeout(Duration::from_secs(5))
+                .build()
+                .unwrap(),
+            status: Some(Arc::new(Mutex::new(EnvironmentUpdateStatus::default()))),
+            cancel_requested: Some(Arc::clone(&cancel_requested)),
+        };
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(50));
+            cancel_requested.store(true, Ordering::Release);
+        });
+
+        let started = Instant::now();
+        let result = downloader.download_to(&format!("http://{address}"), &target, Some(1));
+        assert!(
+            matches!(result, Err(EnvironmentUpdateError::Cancelled)),
+            "unexpected download result: {result:?}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_millis(300),
+            "cancellation waited for the HTTP body: {:?}",
+            started.elapsed()
+        );
+        server.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn reports_installing_to_shared_status_before_health_checks() {
         let root = temp_root("shared-install-status");
         let bytes = b"tool-v1";
@@ -2020,28 +2384,141 @@ mod tests {
             download_write_plan(
                 5,
                 reqwest::StatusCode::PARTIAL_CONTENT,
-                Some("bytes 5-9/10")
+                Some("bytes 5-9/10"),
+                Some(5),
+                Some(10),
             )
             .unwrap(),
-            (5, true)
+            (5, true, Some(10), Some(10))
         );
         assert_eq!(
-            download_write_plan(5, reqwest::StatusCode::OK, None).unwrap(),
-            (0, false)
+            download_write_plan(5, reqwest::StatusCode::OK, None, None, None).unwrap(),
+            (0, false, None, None)
         );
         assert!(download_write_plan(
             5,
             reqwest::StatusCode::PARTIAL_CONTENT,
-            Some("bytes 4-9/10")
+            Some("bytes 4-9/10"),
+            Some(6),
+            None,
         )
         .is_err());
-        assert!(download_write_plan(5, reqwest::StatusCode::PARTIAL_CONTENT, None).is_err());
+        assert!(download_write_plan(
+            5,
+            reqwest::StatusCode::PARTIAL_CONTENT,
+            None,
+            Some(5),
+            None,
+        )
+        .is_err());
+        assert!(download_write_plan(
+            5,
+            reqwest::StatusCode::PARTIAL_CONTENT,
+            Some("bytes 5-invalid"),
+            None,
+            None,
+        )
+        .is_err());
+        assert!(download_write_plan(
+            5,
+            reqwest::StatusCode::PARTIAL_CONTENT,
+            Some("bytes 5-4/10"),
+            None,
+            None,
+        )
+        .is_err());
+        assert!(download_write_plan(
+            5,
+            reqwest::StatusCode::PARTIAL_CONTENT,
+            Some("bytes 5-9/9"),
+            Some(5),
+            None,
+        )
+        .is_err());
+        assert!(download_write_plan(
+            5,
+            reqwest::StatusCode::PARTIAL_CONTENT,
+            Some("bytes 5-9/10"),
+            Some(4),
+            None,
+        )
+        .is_err());
         assert!(download_write_plan(
             5,
             reqwest::StatusCode::RANGE_NOT_SATISFIABLE,
-            Some("bytes */5")
+            Some("bytes */5"),
+            None,
+            None,
         )
         .is_err());
+    }
+
+    #[test]
+    fn http_resume_rejects_a_total_that_disagrees_with_the_manifest() {
+        let root = temp_root("wrong-http-total");
+        let target = root.join("component.package");
+        fs::write(&target, b"first").unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request).unwrap();
+            stream
+                .write_all(
+                    b"HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 5-9/10\r\nContent-Length: 5\r\nConnection: close\r\n\r\nnext!",
+                )
+                .unwrap();
+        });
+        let mut downloader = HttpPackageDownloader {
+            client: reqwest::Client::builder()
+                .no_proxy()
+                .timeout(Duration::from_secs(5))
+                .build()
+                .unwrap(),
+            status: None,
+            cancel_requested: None,
+        };
+
+        let result = downloader.download_to(&format!("http://{address}"), &target, Some(11));
+
+        assert!(matches!(result, Err(EnvironmentUpdateError::Download(_))));
+        server.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn http_resume_rejects_a_short_body_without_content_length() {
+        let root = temp_root("short-http-resume");
+        let target = root.join("component.package");
+        fs::write(&target, b"first").unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request).unwrap();
+            stream
+                .write_all(
+                    b"HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 5-9/10\r\nConnection: close\r\n\r\nnext",
+                )
+                .unwrap();
+        });
+        let mut downloader = HttpPackageDownloader {
+            client: reqwest::Client::builder()
+                .no_proxy()
+                .timeout(Duration::from_secs(5))
+                .build()
+                .unwrap(),
+            status: None,
+            cancel_requested: None,
+        };
+
+        let result = downloader.download_to(&format!("http://{address}"), &target, Some(10));
+
+        assert!(matches!(result, Err(EnvironmentUpdateError::Download(_))));
+        server.join().unwrap();
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

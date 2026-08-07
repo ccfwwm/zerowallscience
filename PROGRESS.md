@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 11:22 · Environment update cancellation now remains reachable through downloading, verifying, and installing; Range responses bind to manifest size and validate actual EOF bytes, with 367 Rust tests, full frontend tests, lint, typecheck, Clippy, i18n parity, build, and diff checks passing.
+
 2026-08-07 09:05 · P6 environment updates now provide resumable HTTP Range downloads, stable partial staging, live component/byte progress, download cancellation, continue-install recovery, shared Installing status, and late-poll protection; 19 Rust tests, 1,262 desktop tests, typecheck, ESLint, i18n parity, and diff checks pass.
 
 2026-08-07 08:04 · P5 live workbench now keeps Engine and Model visible before connection, hides the single-screen tab strip, and moves zoom/new-screen/split actions into one pane menu while preserving multi-screen and tiled layouts; 68 focused tests, typecheck, and live 1440×900 inspection pass.

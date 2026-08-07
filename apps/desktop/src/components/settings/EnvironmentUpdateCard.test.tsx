@@ -114,6 +114,7 @@ describe("EnvironmentUpdateCard", () => {
       currentComponent: "codex-acp",
     };
     store.envelopeJson = "signed-envelope";
+    store.cancel.mockImplementation(async () => store.snapshot);
     render(<EnvironmentUpdateCard />);
 
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
@@ -123,7 +124,27 @@ describe("EnvironmentUpdateCard", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(store.cancel).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
+
+  it.each(["verifying", "installing"] as const)(
+    "allows cancellation while the update is %s",
+    (phase) => {
+      store.snapshot = {
+        phase,
+        currentVersion: "2026.8.1",
+        previousVersion: null,
+        targetVersion: "2026.8.2",
+        message: null,
+        downloadedBytes: 100,
+        totalBytes: 100,
+        currentComponent: "codex-acp",
+      };
+      render(<EnvironmentUpdateCard />);
+
+      expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    },
+  );
 
   it("labels a cancelled update as continue install", () => {
     store.snapshot = {

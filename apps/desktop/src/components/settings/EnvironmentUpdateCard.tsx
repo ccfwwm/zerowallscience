@@ -17,6 +17,10 @@ function formatBytes(bytes: number): string {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
 }
 
+function isCancellablePhase(phase: string): boolean {
+  return ["downloading", "verifying", "installing"].includes(phase);
+}
+
 export function EnvironmentUpdateCard() {
   const { t } = useTranslation("settings");
   const snapshot = useEnvironmentUpdateStore((s) => s.snapshot);
@@ -61,17 +65,18 @@ export function EnvironmentUpdateCard() {
   const progress = totalBytes && totalBytes > 0
     ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 100))
     : null;
-  const canCancel = phase === "downloading";
+  const canCancel = isCancellablePhase(phase);
   const canContinue = phase === "available" && downloadedBytes > 0;
+
+  useEffect(() => {
+    if (!canCancel) setCancelling(false);
+  }, [canCancel]);
 
   const cancelDownload = async () => {
     if (cancelling || !canCancel) return;
     setCancelling(true);
-    try {
-      await cancel();
-    } finally {
-      setCancelling(false);
-    }
+    const next = await cancel();
+    if (!next || !isCancellablePhase(next.phase)) setCancelling(false);
   };
 
   return (

@@ -152,11 +152,11 @@ describe("environment update store", () => {
     vi.useRealTimers();
   });
 
-  it("cancels an active installation without discarding the checked manifest", async () => {
+  it("keeps the checked manifest while native cancellation is still pending", async () => {
     native.cancel.mockResolvedValue({
       ...available,
-      phase: "available",
-      message: "Environment update cancelled.",
+      phase: "downloading",
+      message: "Cancelling environment update...",
     });
     useEnvironmentUpdateStore.setState({ envelopeJson: "signed" });
 
@@ -164,7 +164,10 @@ describe("environment update store", () => {
 
     expect(native.cancel).toHaveBeenCalledTimes(1);
     expect(useEnvironmentUpdateStore.getState().envelopeJson).toBe("signed");
-    expect(useEnvironmentUpdateStore.getState().snapshot?.phase).toBe("available");
+    expect(useEnvironmentUpdateStore.getState().snapshot?.phase).toBe("downloading");
+    expect(useEnvironmentUpdateStore.getState().snapshot?.message).toBe(
+      "Cancelling environment update...",
+    );
   });
 
   it("ignores a late status response after install has completed", async () => {
