@@ -191,6 +191,10 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
       this.unsubscribe();
       this.unsubscribe = null;
     }
+    for (const requestId of this.permissionOptions.keys()) {
+      this.emit({ type: "permission.resolved", sessionId: this.sessionId, requestId });
+    }
+    this.permissionOptions.clear();
     this.messageText.clear();
     this.thoughtText.clear();
     this.pendingText.clear();

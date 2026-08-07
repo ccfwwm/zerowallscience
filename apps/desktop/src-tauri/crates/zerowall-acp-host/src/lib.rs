@@ -109,6 +109,8 @@ pub enum HostError {
     },
     #[error("session binding conflicts on {field}")]
     BindingConflict { field: String },
+    #[error("session {session_id} is terminated (resumable: {resumable})")]
+    SessionTerminated { session_id: String, resumable: bool },
     #[error("driver error: {0}")]
     Driver(String),
 }
@@ -210,6 +212,18 @@ pub struct PromptAttachment {
 pub struct PromptResponse {
     pub completed: bool,
 }
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionStatus {
+    New,
+    #[default]
+    Ready,
+    Busy,
+    Waiting,
+    Error,
+    Closed,
+}
 #[derive(Debug, Clone)]
 pub struct SetConfigRequest {
     pub session_id: String,
@@ -225,6 +239,7 @@ pub struct SetModeRequest {
 pub struct SessionState {
     pub id: String,
     pub binding: AgentBinding,
+    pub state: SessionStatus,
     pub resumable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
@@ -277,7 +292,8 @@ pub trait AcpHostDriver: Send {
 struct SessionEntry {
     kind: HostDriverKind,
     binding: AgentBinding,
-    driver: Box<dyn AcpHostDriver>,
+    driver: Option<Box<dyn AcpHostDriver>>,
+    state: SessionStatus,
     turn_started: bool,
     resumable: bool,
     title: Option<String>,
@@ -343,6 +359,7 @@ impl AcpHost {
         let state = SessionState {
             id: state.id.clone(),
             binding: binding.clone(),
+            state: SessionStatus::Ready,
             resumable: state.resumable,
             title: state.title.clone(),
             directory: state.directory.clone(),
@@ -355,7 +372,8 @@ impl AcpHost {
             SessionEntry {
                 kind,
                 binding,
-                driver,
+                driver: Some(driver),
+                state: SessionStatus::Ready,
                 turn_started: false,
                 resumable: state.resumable,
                 title: state.title.clone(),
@@ -391,6 +409,7 @@ impl AcpHost {
         let state = SessionState {
             id: state.id.clone(),
             binding: binding.clone(),
+            state: SessionStatus::Ready,
             resumable: state.resumable,
             title: state.title.clone(),
             directory: state.directory.clone(),
@@ -403,7 +422,8 @@ impl AcpHost {
             SessionEntry {
                 kind,
                 binding,
-                driver,
+                driver: Some(driver),
+                state: SessionStatus::Ready,
                 turn_started: false,
                 resumable: state.resumable,
                 title: state.title.clone(),
@@ -416,36 +436,129 @@ impl AcpHost {
         Ok(state)
     }
     pub async fn resume_session(&mut self, session_id: String) -> Result<SessionState, HostError> {
-        let entry =
-            self.sessions
-                .get_mut(&session_id)
-                .ok_or_else(|| HostError::SessionNotFound {
+        let (kind, binding, resumable, detached) = self
+            .sessions
+            .get(&session_id)
+            .map(|entry| {
+                (
+                    entry.kind,
+                    entry.binding.clone(),
+                    entry.resumable,
+                    entry.driver.is_none(),
+                )
+            })
+            .ok_or_else(|| HostError::SessionNotFound {
+                session_id: session_id.clone(),
+            })?;
+        if detached && !resumable {
+            return Err(HostError::SessionTerminated {
+                session_id,
+                resumable,
+            });
+        }
+        let state = if detached {
+            let mut driver = self
+                .pending_drivers
+                .remove(&kind)
+                .ok_or(HostError::DriverNotRegistered { kind })?;
+            Self::require(kind, "resume_session", driver.capabilities().resume_session)?;
+            let state = driver
+                .resume_session(ResumeSessionRequest {
                     session_id: session_id.clone(),
-                })?;
-        let binding = entry.binding.clone();
-        let caps = entry.driver.capabilities();
-        Self::require(entry.kind, "resume_session", caps.resume_session)?;
-        let state = entry
-            .driver
-            .resume_session(ResumeSessionRequest { session_id })
-            .await?;
-        Ok(SessionState { binding, ..state })
+                })
+                .await?;
+            self.sessions.get_mut(&session_id).unwrap().driver = Some(driver);
+            state
+        } else {
+            let entry = self.sessions.get_mut(&session_id).unwrap();
+            let driver = entry.driver.as_mut().unwrap();
+            Self::require(kind, "resume_session", driver.capabilities().resume_session)?;
+            driver
+                .resume_session(ResumeSessionRequest {
+                    session_id: session_id.clone(),
+                })
+                .await?
+        };
+        let entry = self.sessions.get_mut(&session_id).unwrap();
+        entry.state = SessionStatus::Ready;
+        entry.resumable = state.resumable;
+        Ok(SessionState {
+            binding,
+            state: SessionStatus::Ready,
+            ..state
+        })
     }
     pub async fn load_session(&mut self, session_id: String) -> Result<SessionState, HostError> {
-        let entry =
-            self.sessions
-                .get_mut(&session_id)
-                .ok_or_else(|| HostError::SessionNotFound {
+        let (kind, binding, resumable, detached) = self
+            .sessions
+            .get(&session_id)
+            .map(|entry| {
+                (
+                    entry.kind,
+                    entry.binding.clone(),
+                    entry.resumable,
+                    entry.driver.is_none(),
+                )
+            })
+            .ok_or_else(|| HostError::SessionNotFound {
+                session_id: session_id.clone(),
+            })?;
+        if detached && !resumable {
+            return Err(HostError::SessionTerminated {
+                session_id,
+                resumable,
+            });
+        }
+        let state = if detached {
+            let mut driver = self
+                .pending_drivers
+                .remove(&kind)
+                .ok_or(HostError::DriverNotRegistered { kind })?;
+            Self::require(kind, "load_session", driver.capabilities().load_session)?;
+            let state = driver
+                .load_session(LoadSessionRequest {
                     session_id: session_id.clone(),
-                })?;
-        let binding = entry.binding.clone();
-        let caps = entry.driver.capabilities();
-        Self::require(entry.kind, "load_session", caps.load_session)?;
-        let state = entry
-            .driver
-            .load_session(LoadSessionRequest { session_id })
-            .await?;
-        Ok(SessionState { binding, ..state })
+                })
+                .await?;
+            self.sessions.get_mut(&session_id).unwrap().driver = Some(driver);
+            state
+        } else {
+            let entry = self.sessions.get_mut(&session_id).unwrap();
+            let driver = entry.driver.as_mut().unwrap();
+            Self::require(kind, "load_session", driver.capabilities().load_session)?;
+            driver
+                .load_session(LoadSessionRequest {
+                    session_id: session_id.clone(),
+                })
+                .await?
+        };
+        let entry = self.sessions.get_mut(&session_id).unwrap();
+        entry.state = SessionStatus::Ready;
+        entry.resumable = state.resumable;
+        entry.title = state.title.clone().or(entry.title.clone());
+        entry.directory = state.directory.clone().or(entry.directory.clone());
+        entry.parent_id = state.parent_id.clone().or(entry.parent_id.clone());
+        entry.created = state.created.or(entry.created);
+        entry.updated = state.updated.or(entry.updated);
+        Ok(SessionState {
+            binding,
+            state: SessionStatus::Ready,
+            title: entry.title.clone(),
+            directory: entry.directory.clone(),
+            parent_id: entry.parent_id.clone(),
+            created: entry.created,
+            updated: entry.updated,
+            ..state
+        })
+    }
+
+    pub fn session_requires_reload(&self, session_id: &str) -> Result<bool, HostError> {
+        self.sessions
+            .get(session_id)
+            .map(|entry| entry.driver.is_none())
+            .ok_or_else(|| HostError::SessionNotFound {
+                session_id: session_id.into(),
+            })
     }
     pub fn list_sessions(&self) -> Vec<SessionState> {
         self.sessions
@@ -453,6 +566,7 @@ impl AcpHost {
             .map(|(id, entry)| SessionState {
                 id: id.clone(),
                 binding: entry.binding.clone(),
+                state: entry.state,
                 resumable: entry.resumable,
                 title: entry.title.clone(),
                 directory: entry.directory.clone(),
@@ -469,9 +583,16 @@ impl AcpHost {
                 .ok_or_else(|| HostError::SessionNotFound {
                     session_id: session_id.into(),
                 })?;
-        let caps = entry.driver.capabilities();
+        let driver = entry
+            .driver
+            .as_mut()
+            .ok_or_else(|| HostError::SessionTerminated {
+                session_id: session_id.into(),
+                resumable: entry.resumable,
+            })?;
+        let caps = driver.capabilities();
         Self::require(entry.kind, "history", caps.history)?;
-        entry.driver.history(session_id.into()).await
+        driver.history(session_id.into()).await
     }
     pub async fn prompt(
         &mut self,
@@ -485,10 +606,16 @@ impl AcpHost {
                 .ok_or_else(|| HostError::SessionNotFound {
                     session_id: session_id.clone(),
                 })?;
-        let caps = entry.driver.capabilities();
-        Self::require(entry.kind, "prompt", caps.prompt)?;
-        let response = entry
+        let driver = entry
             .driver
+            .as_mut()
+            .ok_or_else(|| HostError::SessionTerminated {
+                session_id: session_id.clone(),
+                resumable: entry.resumable,
+            })?;
+        let caps = driver.capabilities();
+        Self::require(entry.kind, "prompt", caps.prompt)?;
+        let response = driver
             .prompt(PromptRequest {
                 session_id,
                 prompt,
@@ -496,6 +623,7 @@ impl AcpHost {
             })
             .await?;
         entry.turn_started = true;
+        entry.state = SessionStatus::Busy;
         Ok(response)
     }
     pub async fn set_config(
@@ -509,6 +637,13 @@ impl AcpHost {
                 .ok_or_else(|| HostError::SessionNotFound {
                     session_id: session_id.into(),
                 })?;
+        let driver = entry
+            .driver
+            .as_mut()
+            .ok_or_else(|| HostError::SessionTerminated {
+                session_id: session_id.into(),
+                resumable: entry.resumable,
+            })?;
         if entry.turn_started {
             return Err(HostError::BindingConflict {
                 field: "model".into(),
@@ -523,10 +658,9 @@ impl AcpHost {
             entry.updated,
         );
         apply_config_to_binding(&mut binding, &config);
-        let caps = entry.driver.capabilities();
+        let caps = driver.capabilities();
         Self::require(entry.kind, "config", caps.config)?;
-        let state = entry
-            .driver
+        let state = driver
             .set_config(SetConfigRequest {
                 session_id: session_id.into(),
                 config,
@@ -538,8 +672,10 @@ impl AcpHost {
         entry.parent_id = state.parent_id.clone().or(old_metadata.2.clone());
         entry.created = state.created.or(old_metadata.3);
         entry.updated = state.updated.or(old_metadata.4);
+        entry.state = SessionStatus::Ready;
         Ok(SessionState {
             binding,
+            state: SessionStatus::Ready,
             title: entry.title.clone(),
             directory: entry.directory.clone(),
             parent_id: entry.parent_id.clone(),
@@ -555,10 +691,16 @@ impl AcpHost {
                 .ok_or_else(|| HostError::SessionNotFound {
                     session_id: session_id.into(),
                 })?;
-        let caps = entry.driver.capabilities();
-        Self::require(entry.kind, "mode", caps.mode)?;
-        entry
+        let driver = entry
             .driver
+            .as_mut()
+            .ok_or_else(|| HostError::SessionTerminated {
+                session_id: session_id.into(),
+                resumable: entry.resumable,
+            })?;
+        let caps = driver.capabilities();
+        Self::require(entry.kind, "mode", caps.mode)?;
+        driver
             .set_mode(SetModeRequest {
                 session_id: session_id.into(),
                 mode: mode.into(),
@@ -590,10 +732,16 @@ impl AcpHost {
                 .ok_or_else(|| HostError::SessionNotFound {
                     session_id: session_id.into(),
                 })?;
-        let caps = entry.driver.capabilities();
-        Self::require(entry.kind, "permission", caps.permission)?;
-        entry
+        let driver = entry
             .driver
+            .as_mut()
+            .ok_or_else(|| HostError::SessionTerminated {
+                session_id: session_id.into(),
+                resumable: entry.resumable,
+            })?;
+        let caps = driver.capabilities();
+        Self::require(entry.kind, "permission", caps.permission)?;
+        driver
             .respond_permission(request_id.into(), option_id)
             .await
     }
@@ -604,9 +752,16 @@ impl AcpHost {
                 .ok_or_else(|| HostError::SessionNotFound {
                     session_id: session_id.into(),
                 })?;
-        let caps = entry.driver.capabilities();
+        let driver = entry
+            .driver
+            .as_mut()
+            .ok_or_else(|| HostError::SessionTerminated {
+                session_id: session_id.into(),
+                resumable: entry.resumable,
+            })?;
+        let caps = driver.capabilities();
         Self::require(entry.kind, "cancel", caps.cancel)?;
-        entry.driver.cancel(session_id.into()).await
+        driver.cancel(session_id.into()).await
     }
     pub async fn close_session(&mut self, session_id: &str) -> Result<(), HostError> {
         let entry =
@@ -615,19 +770,51 @@ impl AcpHost {
                 .ok_or_else(|| HostError::SessionNotFound {
                     session_id: session_id.into(),
                 })?;
-        let caps = entry.driver.capabilities();
-        Self::require(entry.kind, "close_session", caps.close_session)?;
-        entry.driver.close_session(session_id.into()).await?;
+        if let Some(driver) = entry.driver.as_mut() {
+            let caps = driver.capabilities();
+            Self::require(entry.kind, "close_session", caps.close_session)?;
+            driver.close_session(session_id.into()).await?;
+        }
         self.sessions.remove(session_id);
         Ok(())
     }
     pub fn drain_events(&mut self, session_id: &str) -> Result<Vec<AgentEvent>, HostError> {
-        self.sessions
-            .get_mut(session_id)
-            .map(|entry| entry.driver.drain_events())
-            .ok_or_else(|| HostError::SessionNotFound {
-                session_id: session_id.into(),
-            })
+        let entry =
+            self.sessions
+                .get_mut(session_id)
+                .ok_or_else(|| HostError::SessionNotFound {
+                    session_id: session_id.into(),
+                })?;
+        let Some(driver) = entry.driver.as_mut() else {
+            return Ok(Vec::new());
+        };
+        let events = driver.drain_events();
+        let mut terminal = false;
+        for event in &events {
+            match event {
+                AgentEvent::SessionStarted { .. } | AgentEvent::SessionIdle { .. } => {
+                    entry.state = SessionStatus::Ready;
+                }
+                AgentEvent::PermissionRequested { .. } | AgentEvent::QuestionRequested { .. } => {
+                    entry.state = SessionStatus::Waiting;
+                }
+                AgentEvent::Error { .. } => entry.state = SessionStatus::Error,
+                AgentEvent::SessionClosed { .. } => {
+                    entry.state = SessionStatus::Closed;
+                    terminal = true;
+                }
+                AgentEvent::TextDelta { .. }
+                | AgentEvent::ThoughtDelta { .. }
+                | AgentEvent::ToolUpdated { .. }
+                | AgentEvent::PlanUpdated { .. }
+                | AgentEvent::UsageUpdated { .. }
+                | AgentEvent::ArtifactCreated { .. } => {}
+            }
+        }
+        if terminal {
+            entry.driver = None;
+        }
+        Ok(events)
     }
 }
 
@@ -742,6 +929,7 @@ impl FakeDriver {
                 profile_fingerprint: String::new(),
                 resolved_at: String::new(),
             },
+            state: SessionStatus::Ready,
             resumable: true,
             title: None,
             directory: None,
@@ -780,6 +968,7 @@ impl AcpHostDriver for FakeDriver {
                 profile_fingerprint: String::new(),
                 resolved_at: String::new(),
             },
+            state: SessionStatus::Ready,
             resumable: false,
             title: None,
             directory: None,
@@ -1248,5 +1437,122 @@ mod tests {
             matches!(drained.as_slice(), [AgentEvent::TextDelta { delta, .. }] if delta == "hello")
         );
         assert!(host.drain_events("s1").unwrap().is_empty());
+    }
+
+    #[test]
+    fn terminal_session_detaches_the_driver_and_rejects_runtime_calls() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let driver = FakeDriver::with_events(
+            DriverCapabilities {
+                new_session: true,
+                prompt: true,
+                cancel: true,
+                permission: true,
+                config: true,
+                mode: true,
+                close_session: true,
+                ..Default::default()
+            },
+            calls.clone(),
+            vec![
+                AgentEvent::Error {
+                    session_id: Some("s1".into()),
+                    message: "adapter crashed".into(),
+                },
+                AgentEvent::SessionClosed {
+                    session_id: "s1".into(),
+                },
+            ],
+        );
+        let mut host = AcpHost::new();
+        host.register_driver(HostDriverKind::Codex, Box::new(driver));
+        block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s1".into(),
+            },
+            binding(HostDriverKind::Codex, "gpt", "C:/project"),
+        ))
+        .unwrap();
+
+        let drained = host.drain_events("s1").unwrap();
+        assert!(matches!(
+            drained.as_slice(),
+            [AgentEvent::Error { .. }, AgentEvent::SessionClosed { .. }]
+        ));
+        assert!(host.drain_events("s1").unwrap().is_empty());
+        let call_count = calls.lock().unwrap().len();
+
+        assert!(block_on(host.prompt("s1".into(), "late".into(), Vec::new())).is_err());
+        assert!(block_on(host.cancel("s1")).is_err());
+        assert!(block_on(host.respond_permission("s1", "permission-1", None)).is_err());
+        assert!(block_on(host.set_config("s1", json!({"model":"other"}))).is_err());
+        assert!(block_on(host.set_mode("s1", "planning")).is_err());
+        assert_eq!(calls.lock().unwrap().len(), call_count);
+
+        let listed = host.list_sessions();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(serde_json::to_value(&listed[0]).unwrap()["state"], "closed");
+        assert!(!listed[0].resumable);
+
+        let mut changed = listed[0].binding.clone();
+        changed.project_root = "C:/other".into();
+        assert!(matches!(
+            block_on(host.bind_session("s1", changed)),
+            Err(HostError::BindingConflict { field }) if field == "project_root"
+        ));
+        let mut changed = listed[0].binding.clone();
+        changed.profile_fingerprint = "other-fingerprint".into();
+        assert!(matches!(
+            block_on(host.bind_session("s1", changed)),
+            Err(HostError::BindingConflict { field }) if field == "profile_fingerprint"
+        ));
+    }
+
+    #[test]
+    fn terminal_resumable_session_loads_through_a_new_driver() {
+        let first_calls = Arc::new(Mutex::new(Vec::new()));
+        let first = FakeDriver::with_events(
+            DriverCapabilities {
+                load_session: true,
+                ..Default::default()
+            },
+            first_calls.clone(),
+            vec![AgentEvent::SessionClosed {
+                session_id: "persisted".into(),
+            }],
+        );
+        let mut host = AcpHost::new();
+        let original = binding(HostDriverKind::OpenCode, "model-a", "C:/project");
+        host.register_driver(HostDriverKind::OpenCode, Box::new(first));
+        block_on(host.load_existing_session(
+            LoadSessionRequest {
+                session_id: "persisted".into(),
+            },
+            original.clone(),
+        ))
+        .unwrap();
+        assert!(matches!(
+            host.drain_events("persisted").unwrap().as_slice(),
+            [AgentEvent::SessionClosed { .. }]
+        ));
+        let first_call_count = first_calls.lock().unwrap().len();
+
+        let replacement_calls = Arc::new(Mutex::new(Vec::new()));
+        let replacement = FakeDriver::with_calls(
+            DriverCapabilities {
+                load_session: true,
+                ..Default::default()
+            },
+            replacement_calls.clone(),
+        );
+        host.register_driver(HostDriverKind::OpenCode, Box::new(replacement));
+        let loaded = block_on(host.load_session("persisted".into())).unwrap();
+
+        assert_eq!(loaded.binding, original);
+        assert_eq!(serde_json::to_value(&loaded).unwrap()["state"], "ready");
+        assert_eq!(first_calls.lock().unwrap().len(), first_call_count);
+        assert!(replacement_calls.lock().unwrap().iter().any(
+            |call| matches!(call, DriverCall::Load { session_id } if session_id == "persisted")
+        ));
     }
 }

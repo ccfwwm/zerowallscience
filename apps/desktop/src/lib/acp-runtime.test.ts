@@ -132,6 +132,25 @@ describe("AcpRuntime permissions", () => {
       requestId: "permission-abc",
     });
   });
+
+  it("resolves every pending permission when the agent exits", async () => {
+    const { runtime, fire, events } = harness();
+    await runtime.connect();
+    fire().onHostPermission?.({
+      request_id: "permission-abc",
+      action: "shell",
+      resources: ["git status"],
+      options: [{ option_id: "reject", name: "Reject" }],
+    });
+
+    fire().onExited?.("agent crashed");
+
+    expect(events).toContainEqual({
+      type: "permission.resolved",
+      sessionId: "codex",
+      requestId: "permission-abc",
+    });
+  });
 });
 
 describe("AcpRuntime event translation", () => {

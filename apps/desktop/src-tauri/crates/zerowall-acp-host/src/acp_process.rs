@@ -117,6 +117,26 @@ impl AcpProcessDriver {
             .as_ref()
             .ok_or_else(|| HostError::Driver("ACP process is not running".into()))
     }
+
+    fn detach_process(&mut self) {
+        self.client = None;
+        self.events = None;
+        if let Some(task) = self.driver_task.take() {
+            task.abort();
+        }
+    }
+}
+
+impl Drop for AcpProcessDriver {
+    fn drop(&mut self) {
+        if let Some(client) = self.client.take() {
+            let _ = client.shutdown();
+        }
+        self.events = None;
+        if let Some(task) = self.driver_task.take() {
+            task.abort();
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -139,7 +159,22 @@ impl AcpHostDriver for AcpProcessDriver {
                 self.mapper.push(event);
             }
         }
-        self.mapper.drain_events()
+        if !self.mapper.is_terminated()
+            && self
+                .driver_task
+                .as_ref()
+                .is_some_and(tokio::task::JoinHandle::is_finished)
+        {
+            self.mapper.push(AcpEvent::Exited {
+                error: Some("ACP driver task exited unexpectedly".into()),
+            });
+        }
+        let terminal = self.mapper.is_terminated();
+        let events = self.mapper.drain_events();
+        if terminal {
+            self.detach_process();
+        }
+        events
     }
 
     async fn initialize(&mut self, _: InitializeRequest) -> Result<InitializeResponse, HostError> {
@@ -159,11 +194,18 @@ impl AcpHostDriver for AcpProcessDriver {
         self.client = Some(client);
         self.events = Some(events);
         self.driver_task = Some(tokio::spawn(driver));
-        let actual_id = self.wait_for_ready().await?;
+        let actual_id = match self.wait_for_ready().await {
+            Ok(session_id) => session_id,
+            Err(error) => {
+                self.detach_process();
+                return Err(error);
+            }
+        };
         self.session_id = Some(actual_id.clone());
         Ok(SessionState {
             id: actual_id,
             binding: self.binding.clone(),
+            state: crate::SessionStatus::Ready,
             resumable: false,
             title: None,
             directory: None,
@@ -232,6 +274,7 @@ impl AcpHostDriver for AcpProcessDriver {
         Ok(SessionState {
             id: request.session_id,
             binding: self.binding.clone(),
+            state: crate::SessionStatus::Ready,
             resumable: false,
             title: None,
             directory: None,
@@ -275,6 +318,7 @@ pub struct AcpEventMapper {
     events: Vec<AgentEvent>,
     pending: HashMap<String, PendingPermission>,
     next_permission_id: u64,
+    terminated: bool,
 }
 
 impl AcpEventMapper {
@@ -284,10 +328,14 @@ impl AcpEventMapper {
             events: Vec::new(),
             pending: HashMap::new(),
             next_permission_id: 1,
+            terminated: false,
         }
     }
 
     pub fn push(&mut self, event: AcpEvent) {
+        if self.terminated {
+            return;
+        }
         match event {
             AcpEvent::HandshakeStarted { .. } => {}
             AcpEvent::Ready { session_id } => {
@@ -397,12 +445,12 @@ impl AcpEventMapper {
                 });
             }
             AcpEvent::Exited { error } => {
-                if let Some(message) = error {
-                    self.events.push(AgentEvent::Error {
-                        session_id: Some(self.session_id.clone()),
-                        message,
-                    });
-                }
+                self.terminated = true;
+                self.pending.clear();
+                self.events.push(AgentEvent::Error {
+                    session_id: Some(self.session_id.clone()),
+                    message: error.unwrap_or_else(|| "ACP process exited unexpectedly".into()),
+                });
                 self.events.push(AgentEvent::SessionClosed {
                     session_id: self.session_id.clone(),
                 });
@@ -414,21 +462,44 @@ impl AcpEventMapper {
         std::mem::take(&mut self.events)
     }
 
+    pub fn is_terminated(&self) -> bool {
+        self.terminated
+    }
+
     pub async fn respond_permission(
         &mut self,
         request_id: &str,
         option_id: Option<String>,
     ) -> Result<(), HostError> {
-        let pending = self.pending.remove(request_id).ok_or_else(|| {
+        let pending = self.pending.get(request_id).ok_or_else(|| {
             HostError::Driver(format!("unknown permission request: {request_id}"))
         })?;
         match pending {
-            PendingPermission::Acp { allowed, reply } => {
+            PendingPermission::Acp { allowed, .. } => {
                 if let Some(option_id) = option_id.as_ref() {
                     if !allowed.contains(option_id) {
                         return Err(HostError::Driver("invalid permission option".into()));
                     }
                 }
+            }
+            PendingPermission::Exec { .. } => {
+                if option_id
+                    .as_deref()
+                    .is_some_and(|option| !matches!(option, "allow_once" | "reject"))
+                {
+                    return Err(HostError::Driver("invalid permission option".into()));
+                }
+            }
+        }
+        let pending = self
+            .pending
+            .remove(request_id)
+            .expect("pending permission exists");
+        match pending {
+            PendingPermission::Acp { allowed, reply } => {
+                debug_assert!(option_id
+                    .as_ref()
+                    .is_none_or(|option_id| allowed.contains(option_id)));
                 reply
                     .send(option_id)
                     .map_err(|_| HostError::Driver("permission request closed".into()))
@@ -564,6 +635,82 @@ mod tests {
     }
 
     #[test]
+    fn invalid_permission_option_keeps_the_request_pending() {
+        let (reply, response) = oneshot::channel();
+        let mut mapper = AcpEventMapper::new("session-1");
+        mapper.push(AcpEvent::Permission {
+            request: json!({"requestId":"permission-1"}),
+            options: vec![AcpPermissionOption {
+                option_id: "allow_once".into(),
+                name: "Allow once".into(),
+            }],
+            reply,
+        });
+
+        assert!(
+            block_on(mapper.respond_permission("permission-1", Some("invalid".into()))).is_err()
+        );
+        block_on(mapper.respond_permission("permission-1", Some("allow_once".into()))).unwrap();
+        assert_eq!(block_on(response).unwrap().as_deref(), Some("allow_once"));
+    }
+
+    #[test]
+    fn process_exit_is_terminal_once_and_drops_pending_permissions() {
+        let (reply, response) = oneshot::channel();
+        let (exec_reply, exec_response) = oneshot::channel();
+        let mut mapper = AcpEventMapper::new("session-1");
+        mapper.push(AcpEvent::Permission {
+            request: json!({"requestId":"permission-1"}),
+            options: vec![AcpPermissionOption {
+                option_id: "allow_once".into(),
+                name: "Allow once".into(),
+            }],
+            reply,
+        });
+        mapper.push(AcpEvent::ExecApproval {
+            command: "python".into(),
+            args: vec!["analysis.py".into()],
+            cwd: Some(".".into()),
+            reply: exec_reply,
+        });
+        mapper.push(AcpEvent::Exited {
+            error: Some("adapter crashed".into()),
+        });
+        mapper.push(AcpEvent::Exited {
+            error: Some("duplicate exit".into()),
+        });
+        mapper.push(AcpEvent::AgentMessage {
+            message_id: None,
+            text: "late output".into(),
+        });
+
+        let events = mapper.drain_events();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, AgentEvent::Error { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, AgentEvent::SessionClosed { .. }))
+                .count(),
+            1
+        );
+        assert!(!events.iter().any(
+            |event| matches!(event, AgentEvent::TextDelta { delta, .. } if delta == "late output")
+        ));
+        assert!(mapper.drain_events().is_empty());
+        assert!(
+            block_on(mapper.respond_permission("permission-1", Some("allow_once".into()))).is_err()
+        );
+        assert!(block_on(response).is_err());
+        assert!(block_on(exec_response).is_err());
+    }
+
+    #[test]
     fn process_driver_declares_only_supported_lifecycle() {
         let driver = AcpProcessDriver::new(
             crate::HostDriverKind::Codex,
@@ -593,6 +740,39 @@ mod tests {
             binding(crate::HostDriverKind::ClaudeCode),
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn finished_driver_task_becomes_terminal_without_an_exit_event() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let mut driver = AcpProcessDriver::new(
+                crate::HostDriverKind::Codex,
+                missing_profile(),
+                std::path::PathBuf::from("."),
+                binding(crate::HostDriverKind::Codex),
+            )
+            .unwrap();
+            driver.session_id = Some("session-1".into());
+            driver.mapper = AcpEventMapper::new("session-1");
+            driver.driver_task = Some(tokio::spawn(async {}));
+            while !driver
+                .driver_task
+                .as_ref()
+                .expect("driver task")
+                .is_finished()
+            {
+                tokio::task::yield_now().await;
+            }
+
+            let events = crate::AcpHostDriver::drain_events(&mut driver);
+            assert!(matches!(
+                events.as_slice(),
+                [AgentEvent::Error { .. }, AgentEvent::SessionClosed { .. }]
+            ));
+            assert!(crate::AcpHostDriver::drain_events(&mut driver).is_empty());
+            assert!(driver.driver_task.is_none());
+        });
     }
 
     #[test]

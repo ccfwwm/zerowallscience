@@ -9,7 +9,7 @@ use zerowall_acp_host::acp_process::AcpProcessDriver;
 use zerowall_acp_host::opencode::{HttpOpenCodeTransport, OpenCodeDriver};
 use zerowall_acp_host::{
     AcpHost, AcpHostDriver, AgentBinding, AgentEvent, CredentialRef, HostDriverKind, HostError,
-    NewSessionRequest, PromptAttachment, PromptResponse, SessionState,
+    NewSessionRequest, PromptAttachment, PromptResponse, SessionState, SessionStatus,
 };
 
 #[derive(Default)]
@@ -23,6 +23,8 @@ struct PersistedSession {
     id: String,
     binding: AgentBinding,
     resumable: bool,
+    #[serde(default = "inactive_session_status")]
+    state: SessionStatus,
     #[serde(default)]
     title: Option<String>,
     #[serde(default)]
@@ -33,6 +35,10 @@ struct PersistedSession {
     created: Option<u64>,
     #[serde(default)]
     updated: Option<u64>,
+}
+
+fn inactive_session_status() -> SessionStatus {
+    SessionStatus::Closed
 }
 
 fn catalog_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -81,6 +87,7 @@ fn persist_session(app: &AppHandle, state: &SessionState) -> Result<(), String> 
             id: state.id.clone(),
             binding: state.binding.clone(),
             resumable: state.resumable,
+            state: state.state,
             title: state.title.clone(),
             directory: state.directory.clone(),
             parent_id: state.parent_id.clone(),
@@ -230,6 +237,7 @@ fn merge_discovered_sessions(
             }
             session.binding = existing.binding.clone();
             session.resumable = existing.resumable;
+            session.state = existing.state;
             existing.title = session.title.clone();
             existing.directory = session.directory.clone();
             existing.parent_id = session.parent_id.clone();
@@ -242,6 +250,7 @@ fn merge_discovered_sessions(
                     id: session.id.clone(),
                     binding: session.binding.clone(),
                     resumable: session.resumable,
+                    state: session.state,
                     title: session.title.clone(),
                     directory: session.directory.clone(),
                     parent_id: session.parent_id.clone(),
@@ -662,6 +671,7 @@ pub async fn acp_host_sessions(
             sessions.push(SessionState {
                 id: persisted.id,
                 binding: persisted.binding,
+                state: persisted.state,
                 resumable: persisted.resumable,
                 title: persisted.title,
                 directory: persisted.directory,
@@ -706,14 +716,39 @@ pub async fn acp_host_load(
         validate_project_root(&request.project_root, &workspace)?;
     }
     let mut host = state.host.lock().await;
-    if let Some(result) = load_active_session(&mut host, &session_id, &workspace).await? {
+    let active = host
+        .list_sessions()
+        .into_iter()
+        .find(|session| session.id == session_id);
+    if let Some(active) = active {
+        validate_project_root(&active.binding.project_root, &workspace)?;
         if let Some(request) = request.as_ref() {
             let expected = binding(request, &workspace);
-            result
+            active
                 .binding
                 .ensure_compatible(&expected)
                 .map_err(error_string)?;
         }
+        let requires_reload = host
+            .session_requires_reload(&session_id)
+            .map_err(error_string)?;
+        if requires_reload {
+            if !active.resumable {
+                return Err(error_string(HostError::SessionTerminated {
+                    session_id,
+                    resumable: false,
+                }));
+            }
+            let request = request.as_ref().ok_or_else(|| {
+                "terminated session requires its original launch profile to reload".to_owned()
+            })?;
+            let driver = build_driver(&app, request, &workspace, active.binding.clone())?;
+            host.register_driver(active.binding.engine, driver);
+        }
+        let result = host
+            .load_session(session_id.clone())
+            .await
+            .map_err(error_string)?;
         drop(host);
         persist_session(&app, &result)?;
         return Ok(result);
@@ -828,15 +863,23 @@ pub async fn acp_host_config(
 
 #[tauri::command]
 pub async fn acp_host_events(
+    app: AppHandle,
     state: State<'_, AcpHostState>,
     session_id: String,
 ) -> Result<Vec<AgentEvent>, String> {
-    state
-        .host
-        .lock()
-        .await
-        .drain_events(&session_id)
-        .map_err(error_string)
+    let mut host = state.host.lock().await;
+    let events = host.drain_events(&session_id).map_err(error_string)?;
+    let session = host
+        .list_sessions()
+        .into_iter()
+        .find(|session| session.id == session_id);
+    drop(host);
+    if !events.is_empty() {
+        if let Some(session) = session {
+            persist_session(&app, &session)?;
+        }
+    }
+    Ok(events)
 }
 
 #[tauri::command]
@@ -934,6 +977,7 @@ mod tests {
         SessionState {
             id: id.into(),
             binding,
+            state: SessionStatus::Ready,
             resumable: true,
             title: None,
             directory: directory.map(|path| path.to_string_lossy().into_owned()),
@@ -948,6 +992,7 @@ mod tests {
             id: id.into(),
             binding: test_binding(engine, root),
             resumable: true,
+            state: SessionStatus::Ready,
             title: None,
             directory: Some(root.to_string_lossy().into_owned()),
             parent_id: None,
@@ -1094,6 +1139,7 @@ mod tests {
                 resolved_at: "now".into(),
             },
             resumable: true,
+            state: SessionStatus::Closed,
             title: Some("Review".into()),
             directory: Some("C:/science".into()),
             parent_id: Some("parent".into()),
@@ -1108,9 +1154,31 @@ mod tests {
         assert!(encoded.contains("parent"));
         assert!(encoded.contains("created"));
         assert!(encoded.contains("updated"));
+        assert!(encoded.contains("\"state\":\"closed\""));
         for secret in ["api_key", "token", "secret_value", "api-key"] {
             assert!(!encoded.contains(secret));
         }
+    }
+
+    #[test]
+    fn legacy_persisted_session_defaults_to_closed_until_reloaded() {
+        let value = serde_json::json!({
+            "id": "legacy",
+            "binding": {
+                "engine": "opencode",
+                "profile": "opencode",
+                "model": "model",
+                "provider": "provider",
+                "variant": null,
+                "projectRoot": "C:/science",
+                "profileFingerprint": "fp",
+                "resolvedAt": "now"
+            },
+            "resumable": true
+        });
+        let persisted: PersistedSession = serde_json::from_value(value).unwrap();
+        assert_eq!(persisted.state, SessionStatus::Closed);
+        assert!(persisted.resumable);
     }
 
     #[test]

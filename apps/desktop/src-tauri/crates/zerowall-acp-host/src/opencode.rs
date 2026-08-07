@@ -1,7 +1,8 @@
 use crate::{
     AcpHostDriver, AgentBinding, DriverCapabilities, HostError, InitializeRequest,
     InitializeResponse, LoadSessionRequest, NewSessionRequest, PermissionOption, PromptRequest,
-    PromptResponse, ResumeSessionRequest, SessionState, SetConfigRequest, SetModeRequest,
+    PromptResponse, ResumeSessionRequest, SessionState, SessionStatus, SetConfigRequest,
+    SetModeRequest,
 };
 use async_trait::async_trait;
 use futures::{future::FutureExt, stream, Stream, StreamExt};
@@ -176,6 +177,7 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                 Some(SessionState {
                     id,
                     binding: self.binding.clone(),
+                    state: SessionStatus::Ready,
                     resumable: true,
                     title: value
                         .get("title")
@@ -242,6 +244,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         Ok(SessionState {
             id,
             binding: self.binding.clone(),
+            state: SessionStatus::Ready,
             resumable: false,
             title: Some(requested_id),
             directory: Some(self.binding.project_root.clone()),
@@ -269,6 +272,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         Ok(SessionState {
             id,
             binding: self.binding.clone(),
+            state: SessionStatus::Ready,
             resumable: false,
             title: None,
             directory: Some(self.binding.project_root.clone()),
@@ -437,6 +441,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         Ok(SessionState {
             id: request.session_id,
             binding: self.binding.clone(),
+            state: SessionStatus::Ready,
             resumable: false,
             title: None,
             directory: Some(self.binding.project_root.clone()),

@@ -510,4 +510,130 @@ describe("AcpHostClient", () => {
       config: { model: "gpt-5.5" },
     });
   });
+
+  it("preserves the host session state returned by session listings", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_sessions") {
+        return [{
+          id: "closed-session",
+          binding: {
+            engine: "codex",
+            profile: "codex",
+            model: "gpt-5.4",
+            provider: "cloud",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: "fp-1",
+            resolvedAt: "123",
+          },
+          state: "closed",
+          resumable: false,
+        }];
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    await expect(client.listSessions()).resolves.toEqual([
+      expect.objectContaining({ id: "closed-session", state: "closed", resumable: false }),
+    ]);
+  });
+
+  it("stops polling after delivering a terminal event sequence", async () => {
+    let eventPolls = 0;
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_launch") {
+        return {
+          id: "agent-session-1",
+          binding: {
+            engine: "codex",
+            profile: "codex",
+            model: "gpt-5.4",
+            provider: "cloud",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: "fp-1",
+            resolvedAt: "123",
+          },
+          state: "ready",
+          resumable: false,
+        };
+      }
+      if (command === "acp_host_events") {
+        eventPolls += 1;
+        return [
+          { type: "error", data: { session_id: "agent-session-1", message: "adapter crashed" } },
+          { type: "session.closed", data: { session_id: "agent-session-1" } },
+        ];
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke, pollIntervalMs: 1 });
+    await client.launch(launchRequest);
+    const events: string[] = [];
+    let stop = () => {};
+    try {
+      await new Promise<void>((resolve) => {
+        stop = client.subscribe("agent-session-1", (event) => {
+          events.push(event.type);
+          if (event.type === "session.closed") resolve();
+        });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      expect(events).toEqual(["error", "session.closed"]);
+      expect(eventPolls).toBe(1);
+      expect(client.getSession("agent-session-1")?.state).toBe("closed");
+      expect(client.hasLoadedSession("agent-session-1")).toBe(false);
+    } finally {
+      stop();
+    }
+  });
+
+  it("emits one error and stops when event polling fails", async () => {
+    let eventPolls = 0;
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_launch") {
+        return {
+          id: "agent-session-1",
+          binding: {
+            engine: "codex",
+            profile: "codex",
+            model: "gpt-5.4",
+            provider: "cloud",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: "fp-1",
+            resolvedAt: "123",
+          },
+          state: "ready",
+          resumable: false,
+        };
+      }
+      if (command === "acp_host_events") {
+        eventPolls += 1;
+        throw new Error("host unavailable");
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke, pollIntervalMs: 1 });
+    await client.launch(launchRequest);
+    const errors: string[] = [];
+    let stop = () => {};
+    try {
+      await new Promise<void>((resolve) => {
+        stop = client.subscribe("agent-session-1", (event) => {
+          if (event.type === "error") {
+            errors.push(event.message);
+            resolve();
+          }
+        });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      expect(errors).toEqual(["host unavailable"]);
+      expect(eventPolls).toBe(1);
+      expect(client.getSession("agent-session-1")?.state).toBe("error");
+    } finally {
+      stop();
+    }
+  });
 });

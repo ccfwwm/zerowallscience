@@ -118,6 +118,7 @@ interface RawBinding {
 interface RawSession {
   id: string;
   binding: RawBinding;
+  state?: AgentSession["state"];
   resumable: boolean;
   title?: string | null;
   directory?: string | null;
@@ -278,7 +279,11 @@ export class AcpHostClient {
         if (event.type === "permission.requested" || event.type === "question.requested") {
           session.state = "waiting";
         }
-        if (event.type === "session.closed") session.state = "closed";
+        if (event.type === "session.closed") {
+          session.state = "closed";
+          this.loadedSessions.delete(sessionId);
+          this.startedSessions.delete(sessionId);
+        }
         if (event.type === "error") session.state = "error";
       }
     }
@@ -286,18 +291,25 @@ export class AcpHostClient {
   }
 
   subscribe(sessionId: string, listener: (event: AgentEvent) => void): () => void {
-    this.requireSession(sessionId);
+    const session = this.requireSession(sessionId);
     let active = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const poll = async () => {
+      if (!active || isTerminalSessionState(session.state)) {
+        active = false;
+        return;
+      }
       try {
         for (const event of await this.drainEvents(sessionId)) listener(event);
+        if (isTerminalSessionState(session.state)) active = false;
       } catch (error) {
+        session.state = "error";
         listener({
           type: "error",
           sessionId,
           message: error instanceof Error ? error.message : String(error),
         });
+        active = false;
       } finally {
         if (active) timer = setTimeout(poll, this.pollIntervalMs);
       }
@@ -357,7 +369,7 @@ function normalizeSession(raw: RawSession): AgentSession {
     id: raw.id,
     acpSessionId: raw.id,
     binding: normalizeBinding(raw.binding),
-    state: "ready",
+    state: raw.state ?? "ready",
     resumable: raw.resumable,
     title: raw.title ?? null,
     directory: raw.directory ?? null,
@@ -424,6 +436,10 @@ function ensureCompatible(existing: AgentBinding, requested: AgentBinding): void
       throw new Error(`session binding conflicts on ${label}`);
     }
   }
+}
+
+function isTerminalSessionState(state: AgentSession["state"]): boolean {
+  return state === "closed" || state === "error";
 }
 
 function normalizeEvent(raw: RawEvent): AgentEvent {
