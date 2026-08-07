@@ -1,10 +1,12 @@
 use base64::Engine;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use flate2::read::GzDecoder;
+use reqwest::header::{CONTENT_RANGE, RANGE};
+use reqwest::StatusCode;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -12,10 +14,12 @@ use thiserror::Error;
 
 const ENVELOPE_SCHEMA: &str = "zerowall.science/environment-envelope/v1";
 const PAYLOAD_SCHEMA: &str = "zerowall.science/environment/v1";
+const EMBEDDED_MANIFEST_URL: Option<&str> = option_env!("ZEROWALL_ENV_MANIFEST_URL");
+const EMBEDDED_PUBLIC_KEY: Option<&str> = option_env!("ZEROWALL_ENV_UPDATE_PUBLIC_KEY");
 
 #[derive(Debug, Error)]
 enum BootstrapError {
-    #[error("usage: zerowall-environment-bootstrapper --manifest URL --app-data PATH")]
+    #[error("usage: zerowall-environment-bootstrapper [--manifest URL] [--public-key BASE64] [--app-data PATH]")]
     Usage,
     #[error("environment update public key is not configured")]
     MissingPublicKey,
@@ -81,6 +85,12 @@ struct CurrentEnvironment {
     installed_at: u64,
 }
 
+struct BootstrapConfig {
+    manifest_url: String,
+    public_key: String,
+    app_data: PathBuf,
+}
+
 fn verify_envelope(raw: &str, key_text: &str) -> Result<Manifest, BootstrapError> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(key_text.trim())
@@ -119,11 +129,7 @@ fn validate_manifest(manifest: Manifest) -> Result<Manifest, BootstrapError> {
         ));
     }
     for value in [&manifest.version, &manifest.components[0].id] {
-        if value.is_empty() || value.contains(['/', '\\', ':']) || value == "." || value == ".." {
-            return Err(BootstrapError::InvalidManifest(
-                "unsafe path segment".into(),
-            ));
-        }
+        validate_path_segment(value)?;
     }
     let component = &manifest.components[0];
     let url = reqwest::Url::parse(&component.url)
@@ -150,6 +156,15 @@ fn validate_manifest(manifest: Manifest) -> Result<Manifest, BootstrapError> {
         validate_relative_path(Path::new(&check.executable))?;
     }
     Ok(manifest)
+}
+
+fn validate_path_segment(value: &str) -> Result<(), BootstrapError> {
+    if value.is_empty() || value.contains(['/', '\\', ':']) || value == "." || value == ".." {
+        return Err(BootstrapError::InvalidManifest(
+            "unsafe path segment".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_relative_path(path: &Path) -> Result<(), BootstrapError> {
@@ -198,6 +213,119 @@ fn verify_checksum(path: &Path, expected: &str) -> Result<(), BootstrapError> {
     Ok(())
 }
 
+fn partial_download_path(
+    app_data: &Path,
+    version: &str,
+    component: &ComponentSpec,
+) -> Result<PathBuf, BootstrapError> {
+    validate_path_segment(version)?;
+    validate_path_segment(&component.id)?;
+    Ok(app_data
+        .join("environment")
+        .join("staging")
+        .join("downloads")
+        .join(format!("{version}-{}.download", component.id)))
+}
+
+fn content_range_start(response: &reqwest::blocking::Response) -> Result<u64, BootstrapError> {
+    let value = response
+        .headers()
+        .get(CONTENT_RANGE)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| {
+            BootstrapError::Download("partial response is missing Content-Range".into())
+        })?;
+    let range = value
+        .strip_prefix("bytes ")
+        .and_then(|value| value.split_once('/').map(|pair| pair.0))
+        .and_then(|value| value.split_once('-').map(|pair| pair.0))
+        .ok_or_else(|| BootstrapError::Download("invalid Content-Range".into()))?;
+    range
+        .parse()
+        .map_err(|_| BootstrapError::Download("invalid Content-Range".into()))
+}
+
+fn download_component(
+    client: &reqwest::blocking::Client,
+    app_data: &Path,
+    version: &str,
+    component: &ComponentSpec,
+) -> Result<PathBuf, BootstrapError> {
+    let partial = partial_download_path(app_data, version, component)?;
+    if let Some(parent) = partial.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let mut existing = fs::metadata(&partial)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    if component
+        .size_bytes
+        .is_some_and(|expected| existing > expected)
+    {
+        fs::remove_file(&partial)?;
+        existing = 0;
+    }
+
+    let mut request = client.get(&component.url);
+    if existing > 0 {
+        request = request.header(RANGE, format!("bytes={existing}-"));
+    }
+    let mut response = request
+        .send()
+        .map_err(|error| BootstrapError::Download(error.to_string()))?;
+    let status = response.status();
+
+    if status == StatusCode::RANGE_NOT_SATISFIABLE
+        && component.size_bytes == Some(existing)
+        && existing > 0
+    {
+        // The local file already has the signed manifest's expected size.
+    } else {
+        let append = if status == StatusCode::PARTIAL_CONTENT {
+            let start = content_range_start(&response)?;
+            if start != existing {
+                return Err(BootstrapError::Download(format!(
+                    "partial response starts at {start}, expected {existing}"
+                )));
+            }
+            existing > 0
+        } else if status.is_success() {
+            false
+        } else {
+            return Err(BootstrapError::Download(format!(
+                "component request failed with {status}"
+            )));
+        };
+
+        let mut output = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(append)
+            .truncate(!append)
+            .open(&partial)?;
+        std::io::copy(&mut response, &mut output)?;
+        output.flush()?;
+        output.sync_all()?;
+    }
+
+    if let Some(expected) = component.size_bytes {
+        let actual = fs::metadata(&partial)?.len();
+        if actual != expected {
+            return Err(BootstrapError::Download(format!(
+                "component size mismatch: expected {expected}, got {actual}"
+            )));
+        }
+    }
+    if let Err(error) = verify_checksum(&partial, &component.sha256) {
+        if matches!(error, BootstrapError::ChecksumMismatch { .. }) {
+            let _ = fs::remove_file(&partial);
+        }
+        return Err(error);
+    }
+    Ok(partial)
+}
+
 fn extract_archive(archive: &Path, destination: &Path) -> Result<(), BootstrapError> {
     let mut tar = tar::Archive::new(GzDecoder::new(File::open(archive)?));
     for item in tar.entries()? {
@@ -239,39 +367,46 @@ fn install(app_data: &Path, manifest: &Manifest, archive: &Path) -> Result<(), B
     let version_dir = versions.join(&manifest.version);
     fs::create_dir_all(&versions)?;
     fs::create_dir_all(&staging)?;
-    extract_archive(archive, &staging)?;
-    fs::write(
-        staging.join(".environment-manifest.json"),
-        serde_json::to_vec_pretty(manifest)?,
-    )?;
-    for check in &manifest.health_checks {
-        let executable = staging.join(&check.executable);
-        if !executable.is_file() {
-            return Err(BootstrapError::Health(format!(
-                "{} is missing",
-                check.executable
-            )));
+    let staged = (|| {
+        extract_archive(archive, &staging)?;
+        fs::write(
+            staging.join(".environment-manifest.json"),
+            serde_json::to_vec_pretty(manifest)?,
+        )?;
+        for check in &manifest.health_checks {
+            let executable = staging.join(&check.executable);
+            if !executable.is_file() {
+                return Err(BootstrapError::Health(format!(
+                    "{} is missing",
+                    check.executable
+                )));
+            }
+            let mut command = Command::new(&executable);
+            command.args(&check.args).current_dir(&staging);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                command.creation_flags(0x0800_0000);
+            }
+            if !command
+                .output()
+                .map_err(|error| BootstrapError::Health(error.to_string()))?
+                .status
+                .success()
+            {
+                return Err(BootstrapError::Health(check.executable.clone()));
+            }
         }
-        let mut command = Command::new(&executable);
-        command.args(&check.args).current_dir(&staging);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x0800_0000);
+        if version_dir.exists() {
+            fs::remove_dir_all(&version_dir)?;
         }
-        if !command
-            .output()
-            .map_err(|error| BootstrapError::Health(error.to_string()))?
-            .status
-            .success()
-        {
-            return Err(BootstrapError::Health(check.executable.clone()));
-        }
+        fs::rename(&staging, &version_dir)?;
+        Ok(())
+    })();
+    if let Err(error) = staged {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
     }
-    if version_dir.exists() {
-        fs::remove_dir_all(&version_dir)?;
-    }
-    fs::rename(&staging, &version_dir)?;
     let current = environment.join("current.json");
     let previous = fs::read(&current)
         .ok()
@@ -354,46 +489,68 @@ fn arg(args: &[String], name: &str) -> Option<String> {
         .map(|pair| pair[1].clone())
 }
 
+fn non_empty(value: Option<String>) -> Option<String> {
+    value.filter(|candidate| !candidate.trim().is_empty())
+}
+
+fn resolve_config(
+    args: &[String],
+    runtime_public_key: Option<String>,
+    embedded_manifest_url: Option<&str>,
+    embedded_public_key: Option<&str>,
+    default_app_data: PathBuf,
+) -> Result<BootstrapConfig, BootstrapError> {
+    let manifest_url = non_empty(arg(args, "--manifest"))
+        .or_else(|| {
+            embedded_manifest_url
+                .map(str::to_owned)
+                .and_then(|value| non_empty(Some(value)))
+        })
+        .ok_or(BootstrapError::Usage)?;
+    let public_key = non_empty(arg(args, "--public-key"))
+        .or_else(|| non_empty(runtime_public_key))
+        .or_else(|| {
+            embedded_public_key
+                .map(str::to_owned)
+                .and_then(|value| non_empty(Some(value)))
+        })
+        .ok_or(BootstrapError::MissingPublicKey)?;
+    let app_data = non_empty(arg(args, "--app-data"))
+        .map(PathBuf::from)
+        .unwrap_or(default_app_data);
+    Ok(BootstrapConfig {
+        manifest_url,
+        public_key,
+        app_data,
+    })
+}
+
 fn run() -> Result<(), BootstrapError> {
     let args = std::env::args().collect::<Vec<_>>();
-    let manifest_url = arg(&args, "--manifest").ok_or(BootstrapError::Usage)?;
-    let app_data = arg(&args, "--app-data")
-        .map(PathBuf::from)
-        .unwrap_or_else(default_app_data);
-    let key = arg(&args, "--public-key")
-        .or_else(|| std::env::var("ZEROWALL_ENV_UPDATE_PUBLIC_KEY").ok())
-        .ok_or(BootstrapError::MissingPublicKey)?;
+    let config = resolve_config(
+        &args,
+        std::env::var("ZEROWALL_ENV_UPDATE_PUBLIC_KEY").ok(),
+        EMBEDDED_MANIFEST_URL,
+        EMBEDDED_PUBLIC_KEY,
+        default_app_data(),
+    )?;
     let client = reqwest::blocking::Client::builder()
         .user_agent("ZeroWall Science environment bootstrapper")
         .build()
         .map_err(|error| BootstrapError::Download(error.to_string()))?;
     let envelope = client
-        .get(&manifest_url)
+        .get(&config.manifest_url)
         .send()
         .and_then(|response| response.error_for_status())
         .map_err(|error| BootstrapError::Download(error.to_string()))?
         .text()
         .map_err(|error| BootstrapError::Download(error.to_string()))?;
-    let manifest = verify_envelope(&envelope, &key)?;
+    let manifest = verify_envelope(&envelope, &config.public_key)?;
     let component = &manifest.components[0];
-    let temp = std::env::temp_dir().join(format!("zerowall-environment-{}.tar.gz", timestamp()));
-    let mut response = client
-        .get(&component.url)
-        .send()
-        .and_then(|response| response.error_for_status())
-        .map_err(|error| BootstrapError::Download(error.to_string()))?;
-    let mut output = File::create(&temp)?;
-    std::io::copy(&mut response, &mut output)?;
-    output.sync_all()?;
-    if let Some(size) = component.size_bytes {
-        if fs::metadata(&temp)?.len() != size {
-            return Err(BootstrapError::Download("component size mismatch".into()));
-        }
-    }
-    verify_checksum(&temp, &component.sha256)?;
-    let result = install(&app_data, &manifest, &temp);
-    let _ = fs::remove_file(&temp);
-    result
+    let archive = download_component(&client, &config.app_data, &manifest.version, component)?;
+    install(&config.app_data, &manifest, &archive)?;
+    let _ = fs::remove_file(archive);
+    Ok(())
 }
 
 fn main() {
@@ -547,6 +704,144 @@ mod tests {
         fs::write(&file, b"actual").unwrap();
         let error = verify_checksum(&file, &"00".repeat(32)).unwrap_err();
         assert!(matches!(error, BootstrapError::ChecksumMismatch { .. }));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_one_click_defaults_from_the_signed_release_build() {
+        let app_data = temp_root("one-click-defaults");
+        let config = resolve_config(
+            &["zerowall-environment-bootstrapper".into()],
+            None,
+            Some("https://github.com/ccfwwm/zerowallscience-releases/releases/latest/download/ZeroWall-Environment-x86_64-pc-windows-msvc.tar.gz.json"),
+            Some("embedded-public-key"),
+            app_data.clone(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.manifest_url,
+            "https://github.com/ccfwwm/zerowallscience-releases/releases/latest/download/ZeroWall-Environment-x86_64-pc-windows-msvc.tar.gz.json"
+        );
+        assert_eq!(config.public_key, "embedded-public-key");
+        assert_eq!(config.app_data, app_data);
+        let _ = fs::remove_dir_all(config.app_data);
+    }
+
+    #[test]
+    fn explicit_bootstrapper_arguments_override_embedded_defaults() {
+        let default_app_data = temp_root("default-app-data");
+        let explicit_app_data = temp_root("explicit-app-data");
+        let args = vec![
+            "zerowall-environment-bootstrapper".into(),
+            "--manifest".into(),
+            "https://updates.example.test/environment.json".into(),
+            "--public-key".into(),
+            "explicit-public-key".into(),
+            "--app-data".into(),
+            explicit_app_data.to_string_lossy().into_owned(),
+        ];
+
+        let config = resolve_config(
+            &args,
+            Some("runtime-public-key".into()),
+            Some("https://embedded.example.test/environment.json"),
+            Some("embedded-public-key"),
+            default_app_data.clone(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.manifest_url,
+            "https://updates.example.test/environment.json"
+        );
+        assert_eq!(config.public_key, "explicit-public-key");
+        assert_eq!(config.app_data, explicit_app_data);
+        let _ = fs::remove_dir_all(default_app_data);
+        let _ = fs::remove_dir_all(config.app_data);
+    }
+
+    #[test]
+    fn usage_explains_that_release_defaults_are_optional_overrides() {
+        assert_eq!(
+            BootstrapError::Usage.to_string(),
+            "usage: zerowall-environment-bootstrapper [--manifest URL] [--public-key BASE64] [--app-data PATH]"
+        );
+    }
+
+    #[test]
+    fn resumes_a_partial_environment_download_with_http_range() {
+        use std::io::{Read as _, Write as _};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 4096];
+            let read = stream.read(&mut request).unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(
+                request.to_ascii_lowercase().contains("range: bytes=3-"),
+                "{request}"
+            );
+            stream
+                .write_all(
+                    b"HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\nContent-Range: bytes 3-5/6\r\nConnection: close\r\n\r\ndef",
+                )
+                .unwrap();
+        });
+        let root = temp_root("resume-download");
+        let component = ComponentSpec {
+            id: "environment-bundle".into(),
+            url: format!("http://{address}/bundle.tar.gz"),
+            sha256: {
+                let file = root.join("expected");
+                fs::write(&file, b"abcdef").unwrap();
+                hash_file(&file).unwrap()
+            },
+            archive: "tarGz".into(),
+            size_bytes: Some(6),
+        };
+        let partial = partial_download_path(&root, "v1", &component).unwrap();
+        fs::create_dir_all(partial.parent().unwrap()).unwrap();
+        fs::write(&partial, b"abc").unwrap();
+
+        let downloaded =
+            download_component(&reqwest::blocking::Client::new(), &root, "v1", &component).unwrap();
+
+        server.join().unwrap();
+        assert_eq!(downloaded, partial);
+        assert_eq!(fs::read(&downloaded).unwrap(), b"abcdef");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn removes_install_staging_after_a_failed_health_check() {
+        let root = temp_root("health-cleanup");
+        let archive = root.join("bundle.tar.gz");
+        tar_gz_with_entry(&archive, "payload.txt", b"ready");
+        let manifest = Manifest {
+            schema: PAYLOAD_SCHEMA.into(),
+            version: "v1".into(),
+            components: vec![ComponentSpec {
+                id: "environment-bundle".into(),
+                url: "https://example.test/bundle.tar.gz".into(),
+                sha256: hash_file(&archive).unwrap(),
+                archive: "tarGz".into(),
+                size_bytes: Some(fs::metadata(&archive).unwrap().len()),
+            }],
+            health_checks: vec![HealthCheck {
+                executable: "missing-runtime".into(),
+                args: vec!["--version".into()],
+            }],
+        };
+
+        let error = install(&root, &manifest, &archive).unwrap_err();
+
+        assert!(matches!(error, BootstrapError::Health(_)));
+        let staging = root.join("environment/staging");
+        assert_eq!(fs::read_dir(staging).unwrap().count(), 0);
         let _ = fs::remove_dir_all(root);
     }
 }

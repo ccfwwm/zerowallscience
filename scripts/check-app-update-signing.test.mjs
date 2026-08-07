@@ -19,3 +19,19 @@ test("release builds require the independent environment signing channel", async
   assert.match(workflow, /ZeroWall-Environment-\$\{target\}\.tar\.gz/);
   assert.match(workflow, /gh release upload "\$TAG" "\$ENVIRONMENT_ASSET"/);
 });
+
+test("release bootstrapper embeds one-click environment defaults", async () => {
+  const workflow = await readFile(new URL("../.github/workflows/build.yml", import.meta.url), "utf8");
+  assert.match(workflow, /Require environment bootstrapper signing keys/);
+  assert.match(workflow, /ZEROWALL_ENV_UPDATE_PUBLIC_KEY is required for environment releases/);
+  assert.match(workflow, /ZEROWALL_ENV_UPDATE_PRIVATE_KEY is required for environment releases/);
+  assert.match(workflow, /ZEROWALL_ENV_MANIFEST_URL:/);
+  assert.match(
+    workflow,
+    /releases\/latest\/download\/ZeroWall-Environment-\$\{\{ matrix\.target \}\}\.tar\.gz\.json/,
+  );
+  assert.match(
+    workflow,
+    /Build environment bootstrapper[\s\S]*ZEROWALL_ENV_UPDATE_PUBLIC_KEY:[\s\S]*cargo build/,
+  );
+});
