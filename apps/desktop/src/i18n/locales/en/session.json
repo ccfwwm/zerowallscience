@@ -160,8 +160,8 @@
   },
   "live": {
     "runtime": {
-      "title": "OpenCode runtime",
-      "bodyPrefix": "The desktop app runs a bundled OpenCode automatically. In the browser, start one with",
+      "title": "Agent runtime",
+      "bodyPrefix": "The desktop app starts the local agent environment automatically. In the browser, connect through the configured gateway.",
       "bodySuffix": " and connect.",
       "connecting": "Connecting to the runtime…"
     },

@@ -380,17 +380,18 @@ export async function removeConnectorSecret(
  *  and web fetches prompt first. "full": everything in-workspace just runs. */
 export type ApprovalMode = "approve" | "full";
 
-/** The approval mode OpenCode's config currently holds ("approve" until changed). */
+/** The safe approval mode. Legacy "full" responses are normalized to approve. */
 export async function getApprovalMode(): Promise<ApprovalMode> {
   if (!isTauri) return "approve";
   const { invoke } = await import("@tauri-apps/api/core");
-  const mode = await invoke<string>("get_approval_mode");
-  return mode === "full" ? "full" : "approve";
+  await invoke<string>("get_approval_mode");
+  return "approve";
 }
 
 /** Switch the approval mode; the sidecar restarts — the caller must reconnect. */
 export async function setApprovalMode(mode: ApprovalMode): Promise<void> {
   if (!isTauri) return;
+  if (mode !== "approve") throw new Error("full approval mode is disabled for safety");
   const { invoke } = await import("@tauri-apps/api/core");
   await invoke("set_approval_mode", { mode });
 }

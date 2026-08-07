@@ -34,11 +34,11 @@
   },
   "page": {
     "title": "Paramètres",
-    "subtitle": "Tout ici configure le runtime OpenCode intégré — une seule configuration, aucune copie."
+    "subtitle": "Gérez les moteurs, les modèles et l'environnement local au même endroit."
   },
   "runtime": {
     "title": "Runtime de l'agent",
-    "hint": "opencode serve, piloté via son API HTTP + SSE",
+    "hint": "Plan de contrôle local unifié",
     "connect": "Connecter",
     "disconnect": "Déconnecter",
     "serverLabel": "Serveur",
@@ -58,7 +58,7 @@
     "mirrorPythonPlaceholder": "https://mirror.example.com/python-build-standalone",
     "mirrorHint": "Miroirs facultatifs, utilisés uniquement lors de l’installation d’outils Python (Jupyter, bases de données scientifiques) sur les réseaux où pypi.org / github.com sont lents. Laisser vide pour les valeurs par défaut.",
     "engineLabel": "Moteur",
-    "engineHint": "OpenCode, ou un agent ACP fourni (Codex, Claude Code) exécuté comme processus local"
+    "engineHint": "Choisissez le moteur des nouvelles conversations"
   },
   "updates": {
     "title": "Mises à jour de l'app",

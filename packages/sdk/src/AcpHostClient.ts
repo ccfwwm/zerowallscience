@@ -73,6 +73,7 @@ export interface AcpHostLaunchRequest {
   model: string;
   providerId: string;
   baseUrl: string;
+  projectRoot: string;
   variant?: string;
   profileFingerprint: string;
   credentialRef: string;
@@ -160,20 +161,10 @@ export class AcpHostClient {
     if (existing) ensureCompatible(existing, requested);
 
     const raw = await this.invoke<RawSession>("acp_host_launch", {
-      request: {
-        engine: request.engine,
-        profileId: request.profileId,
-        sessionId: request.sessionId,
-        model: request.model,
-        providerId: request.providerId,
-        baseUrl: request.baseUrl,
-        variant: request.variant,
-        profileFingerprint: request.profileFingerprint,
-        credential: { keychainId: request.credentialRef },
-        ...(request.mcpAllowList ? { mcpAllowList: [...request.mcpAllowList] } : {}),
-      },
+      request: serializeLaunchRequest(request),
     });
     const session = normalizeSession(raw);
+    ensureCompatible(requested, session.binding);
     this.requestedBindings.set(request.sessionId, requested);
     this.sessions.set(session.id, session);
     this.loadedSessions.add(session.id);
@@ -184,18 +175,7 @@ export class AcpHostClient {
   async newSession(request: AcpHostLaunchRequest): Promise<AgentSession> {
     const requested = requestBinding(request);
     const raw = await this.invoke<RawSession>("acp_host_new", {
-      request: {
-        engine: request.engine,
-        profileId: request.profileId,
-        sessionId: request.sessionId,
-        model: request.model,
-        providerId: request.providerId,
-        baseUrl: request.baseUrl,
-        variant: request.variant,
-        profileFingerprint: request.profileFingerprint,
-        credential: { keychainId: request.credentialRef },
-        ...(request.mcpAllowList ? { mcpAllowList: [...request.mcpAllowList] } : {}),
-      },
+      request: serializeLaunchRequest(request),
     });
     const session = normalizeSession(raw);
     ensureCompatible(requested, session.binding);
@@ -249,6 +229,7 @@ export class AcpHostClient {
       ...(request ? { request: serializeLaunchRequest(request) } : {}),
     });
     const session = normalizeSession(raw);
+    if (request) ensureCompatible(requestBinding(request), session.binding);
     const current = this.sessions.get(sessionId);
     if (current) ensureCompatible(current.binding, session.binding);
     this.sessions.set(session.id, session);
@@ -394,6 +375,7 @@ function serializeLaunchRequest(request: AcpHostLaunchRequest): Record<string, u
     model: request.model,
     providerId: request.providerId,
     baseUrl: request.baseUrl,
+    projectRoot: request.projectRoot,
     variant: request.variant,
     profileFingerprint: request.profileFingerprint,
     credential: { keychainId: request.credentialRef },
@@ -408,7 +390,7 @@ function requestBinding(request: AcpHostLaunchRequest): AgentBinding {
     modelId: request.model,
     providerId: request.providerId,
     variant: request.variant ?? null,
-    projectRoot: "",
+    projectRoot: request.projectRoot,
     profileFingerprint: request.profileFingerprint,
     resolvedAt: "",
   };
@@ -434,6 +416,7 @@ function ensureCompatible(existing: AgentBinding, requested: AgentBinding): void
     ["modelId", "modelId"],
     ["providerId", "providerId"],
     ["variant", "variant"],
+    ["projectRoot", "projectRoot"],
     ["profileFingerprint", "profileFingerprint"],
   ];
   for (const [field, label] of fields) {

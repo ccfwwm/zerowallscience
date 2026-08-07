@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -7,7 +8,7 @@ use zerowall_acp::AcpAgentProfile;
 use zerowall_acp_host::acp_process::AcpProcessDriver;
 use zerowall_acp_host::opencode::{HttpOpenCodeTransport, OpenCodeDriver};
 use zerowall_acp_host::{
-    AcpHost, AgentBinding, AgentEvent, CredentialRef, HostDriverKind, HostError,
+    AcpHost, AcpHostDriver, AgentBinding, AgentEvent, CredentialRef, HostDriverKind, HostError,
     NewSessionRequest, PromptAttachment, PromptResponse, SessionState,
 };
 
@@ -55,7 +56,10 @@ fn read_catalog(app: &AppHandle) -> Result<HashMap<String, PersistedSession>, St
     serde_json::from_str(&text).map_err(|error| format!("parse ACP session catalog: {error}"))
 }
 
-fn write_catalog(app: &AppHandle, catalog: &HashMap<String, PersistedSession>) -> Result<(), String> {
+fn write_catalog(
+    app: &AppHandle,
+    catalog: &HashMap<String, PersistedSession>,
+) -> Result<(), String> {
     let path = catalog_path(app)?;
     let staging = path.with_extension("json.staging");
     let body = serde_json::to_vec_pretty(catalog)
@@ -66,8 +70,7 @@ fn write_catalog(app: &AppHandle, catalog: &HashMap<String, PersistedSession>) -
         std::fs::remove_file(&path)
             .map_err(|error| format!("replace ACP session catalog: {error}"))?;
     }
-    std::fs::rename(staging, path)
-        .map_err(|error| format!("commit ACP session catalog: {error}"))
+    std::fs::rename(staging, path).map_err(|error| format!("commit ACP session catalog: {error}"))
 }
 
 fn persist_session(app: &AppHandle, state: &SessionState) -> Result<(), String> {
@@ -105,6 +108,7 @@ pub struct AcpHostLaunchRequest {
     pub model: String,
     pub provider_id: String,
     pub base_url: String,
+    pub project_root: String,
     #[serde(default)]
     pub variant: Option<String>,
     pub profile_fingerprint: String,
@@ -146,6 +150,7 @@ fn validate_request(request: &AcpHostLaunchRequest) -> Result<(), String> {
         ("model", request.model.as_str()),
         ("provider_id", request.provider_id.as_str()),
         ("base_url", request.base_url.as_str()),
+        ("project_root", request.project_root.as_str()),
         ("profile_fingerprint", request.profile_fingerprint.as_str()),
     ] {
         if value.trim().is_empty() {
@@ -158,6 +163,96 @@ fn validate_request(request: &AcpHostLaunchRequest) -> Result<(), String> {
         return Err("credential.keychain_id is required".into());
     }
     validate_base_url(&request.base_url)
+}
+
+pub(crate) fn validate_project_root(requested: &str, workspace: &Path) -> Result<(), String> {
+    let requested = Path::new(requested)
+        .canonicalize()
+        .map_err(|error| format!("could not resolve requested project root: {error}"))?;
+    if requested != workspace {
+        return Err("project_root does not match the active workspace".into());
+    }
+    Ok(())
+}
+
+async fn close_catalog_only_session<F, Fut>(
+    catalog: &mut HashMap<String, PersistedSession>,
+    session_id: &str,
+    workspace: &Path,
+    close_opencode: F,
+) -> Result<(), String>
+where
+    F: FnOnce(AgentBinding, String) -> Fut,
+    Fut: Future<Output = Result<(), String>>,
+{
+    let persisted = catalog.get(session_id).cloned().ok_or_else(|| {
+        error_string(HostError::SessionNotFound {
+            session_id: session_id.to_owned(),
+        })
+    })?;
+    validate_project_root(&persisted.binding.project_root, workspace)?;
+    match persisted.binding.engine {
+        HostDriverKind::OpenCode => {
+            close_opencode(persisted.binding, session_id.to_owned()).await?
+        }
+        HostDriverKind::Codex | HostDriverKind::ClaudeCode => {
+            // After restart there is no recoverable vendor process handle for
+            // these adapters. Explicit deletion can only remove the local
+            // catalog entry; remote/vendor cleanup is not available.
+        }
+    }
+    catalog.remove(session_id);
+    Ok(())
+}
+
+fn retain_workspace_sessions(sessions: &mut Vec<SessionState>, workspace: &Path) {
+    sessions
+        .retain(|session| validate_project_root(&session.binding.project_root, workspace).is_ok());
+}
+
+fn merge_discovered_sessions(
+    catalog: &mut HashMap<String, PersistedSession>,
+    discovered: Vec<SessionState>,
+    workspace: &Path,
+) -> Vec<SessionState> {
+    let mut sessions = Vec::with_capacity(discovered.len());
+    for mut session in discovered {
+        let belongs_to_workspace = session
+            .directory
+            .as_deref()
+            .is_some_and(|directory| validate_project_root(directory, workspace).is_ok());
+        if !belongs_to_workspace {
+            continue;
+        }
+        if let Some(existing) = catalog.get_mut(&session.id) {
+            if validate_project_root(&existing.binding.project_root, workspace).is_err() {
+                continue;
+            }
+            session.binding = existing.binding.clone();
+            session.resumable = existing.resumable;
+            existing.title = session.title.clone();
+            existing.directory = session.directory.clone();
+            existing.parent_id = session.parent_id.clone();
+            existing.created = session.created;
+            existing.updated = session.updated;
+        } else {
+            catalog.insert(
+                session.id.clone(),
+                PersistedSession {
+                    id: session.id.clone(),
+                    binding: session.binding.clone(),
+                    resumable: session.resumable,
+                    title: session.title.clone(),
+                    directory: session.directory.clone(),
+                    parent_id: session.parent_id.clone(),
+                    created: session.created,
+                    updated: session.updated,
+                },
+            );
+        }
+        sessions.push(session);
+    }
+    sessions
 }
 
 fn validate_base_url(value: &str) -> Result<(), String> {
@@ -347,7 +442,7 @@ fn build_driver(
                 workspace.to_path_buf(),
                 session_binding,
             )
-            .map_err(error_string)?
+            .map_err(error_string)?,
         ),
         HostDriverKind::OpenCode => Box::new(build_opencode_driver(app, session_binding)?),
     })
@@ -433,16 +528,28 @@ pub async fn acp_host_launch(
     state: State<'_, AcpHostState>,
     request: AcpHostLaunchRequest,
 ) -> Result<SessionState, String> {
-    validate_request(&request)?;
-    let workspace = workspace_root(&app)?;
-    let session_binding = binding(&request, &workspace);
-    let driver = build_driver(&app, &request, &workspace, session_binding.clone())?;
-    let mut host = state.host.lock().await;
-    host.register_driver(request.engine, driver);
-    let result = if request.engine == HostDriverKind::OpenCode && request.session_id != request.profile_id {
+    start_host_session(app, state, request, SessionLaunchRoute::Compatibility).await
+}
+
+#[derive(Clone, Copy)]
+enum SessionLaunchRoute {
+    Compatibility,
+    ExplicitNew,
+}
+
+async fn route_registered_session(
+    host: &mut AcpHost,
+    request: &AcpHostLaunchRequest,
+    session_binding: AgentBinding,
+    route: SessionLaunchRoute,
+) -> Result<SessionState, String> {
+    if matches!(route, SessionLaunchRoute::Compatibility)
+        && request.engine == HostDriverKind::OpenCode
+        && request.session_id != request.profile_id
+    {
         host.load_existing_session(
             zerowall_acp_host::LoadSessionRequest {
-                session_id: request.session_id,
+                session_id: request.session_id.clone(),
             },
             session_binding,
         )
@@ -451,13 +558,29 @@ pub async fn acp_host_launch(
     } else {
         host.new_session(
             NewSessionRequest {
-                session_id: request.session_id,
+                session_id: request.session_id.clone(),
             },
             session_binding,
         )
         .await
         .map_err(error_string)
-    };
+    }
+}
+
+async fn start_host_session(
+    app: AppHandle,
+    state: State<'_, AcpHostState>,
+    request: AcpHostLaunchRequest,
+    route: SessionLaunchRoute,
+) -> Result<SessionState, String> {
+    validate_request(&request)?;
+    let workspace = workspace_root(&app)?;
+    validate_project_root(&request.project_root, &workspace)?;
+    let session_binding = binding(&request, &workspace);
+    let driver = build_driver(&app, &request, &workspace, session_binding.clone())?;
+    let mut host = state.host.lock().await;
+    host.register_driver(request.engine, driver);
+    let result = route_registered_session(&mut host, &request, session_binding, route).await;
     drop(host);
     if let Ok(ref state) = result {
         persist_session(&app, state)?;
@@ -473,7 +596,7 @@ pub async fn acp_host_new(
     state: State<'_, AcpHostState>,
     request: AcpHostLaunchRequest,
 ) -> Result<SessionState, String> {
-    acp_host_launch(app, state, request).await
+    start_host_session(app, state, request, SessionLaunchRoute::ExplicitNew).await
 }
 
 #[tauri::command]
@@ -481,10 +604,17 @@ pub async fn acp_host_sessions(
     app: AppHandle,
     state: State<'_, AcpHostState>,
 ) -> Result<Vec<SessionState>, String> {
+    let workspace = workspace_root(&app)?;
     let mut sessions = state.host.lock().await.list_sessions();
-    let active = sessions.iter().map(|session| session.id.clone()).collect::<std::collections::HashSet<_>>();
+    retain_workspace_sessions(&mut sessions, &workspace);
+    let active = sessions
+        .iter()
+        .map(|session| session.id.clone())
+        .collect::<std::collections::HashSet<_>>();
     for persisted in read_catalog(&app)?.into_values() {
-        if !active.contains(&persisted.id) {
+        if !active.contains(&persisted.id)
+            && validate_project_root(&persisted.binding.project_root, &workspace).is_ok()
+        {
             sessions.push(SessionState {
                 id: persisted.id,
                 binding: persisted.binding,
@@ -510,36 +640,11 @@ pub async fn acp_host_discover(
         return Err("session discovery is currently supported only by OpenCode".into());
     }
     let workspace = workspace_root(&app)?;
+    validate_project_root(&request.project_root, &workspace)?;
     let mut driver = build_opencode_driver(&app, binding(&request, &workspace))?;
     let discovered = driver.list_sessions().await.map_err(error_string)?;
     let mut catalog = read_catalog(&app)?;
-    let mut sessions = Vec::with_capacity(discovered.len());
-    for mut session in discovered {
-        if let Some(existing) = catalog.get_mut(&session.id) {
-            session.binding = existing.binding.clone();
-            session.resumable = existing.resumable;
-            existing.title = session.title.clone();
-            existing.directory = session.directory.clone();
-            existing.parent_id = session.parent_id.clone();
-            existing.created = session.created;
-            existing.updated = session.updated;
-        } else {
-            catalog.insert(
-                session.id.clone(),
-                PersistedSession {
-                    id: session.id.clone(),
-                    binding: session.binding.clone(),
-                    resumable: session.resumable,
-                    title: session.title.clone(),
-                    directory: session.directory.clone(),
-                    parent_id: session.parent_id.clone(),
-                    created: session.created,
-                    updated: session.updated,
-                },
-            );
-        }
-        sessions.push(session);
-    }
+    let sessions = merge_discovered_sessions(&mut catalog, discovered, &workspace);
     write_catalog(&app, &catalog)?;
     Ok(sessions)
 }
@@ -551,48 +656,75 @@ pub async fn acp_host_load(
     session_id: String,
     request: Option<AcpHostLaunchRequest>,
 ) -> Result<SessionState, String> {
-    let mut host = state.host.lock().await;
-    match host.load_session(session_id.clone()).await {
-        Ok(result) => {
-            drop(host);
-            persist_session(&app, &result)?;
-            Ok(result)
-        }
-        Err(HostError::SessionNotFound { .. }) => {
-            drop(host);
-            let request = request.ok_or_else(|| "session is not active and no launch profile was supplied".to_owned())?;
-            validate_request(&request)?;
-            if request.session_id != session_id {
-                return Err("load request session_id does not match session_id".into());
-            }
-            let workspace = workspace_root(&app)?;
-            let expected = binding(&request, &workspace);
-            let effective_binding = if let Some(persisted) = read_catalog(&app)?.get(&session_id) {
-                if persisted.binding.engine != expected.engine
-                    || persisted.binding.profile != expected.profile
-                {
-                    return Err("session binding conflicts on engine or profile".into());
-                }
-                persisted.binding.clone()
-            } else {
-                expected
-            };
-            let driver = build_driver(&app, &request, &workspace, effective_binding.clone())?;
-            let mut host = state.host.lock().await;
-            host.register_driver(request.engine, driver);
-            let result = host
-                .load_existing_session(
-                    zerowall_acp_host::LoadSessionRequest { session_id },
-                    effective_binding,
-                )
-                .await
-                .map_err(error_string)?;
-            drop(host);
-            persist_session(&app, &result)?;
-            Ok(result)
-        }
-        Err(error) => Err(error_string(error)),
+    let workspace = workspace_root(&app)?;
+    if let Some(request) = request.as_ref() {
+        validate_request(request)?;
+        validate_project_root(&request.project_root, &workspace)?;
     }
+    let mut host = state.host.lock().await;
+    if let Some(result) = load_active_session(&mut host, &session_id, &workspace).await? {
+        if let Some(request) = request.as_ref() {
+            let expected = binding(request, &workspace);
+            result
+                .binding
+                .ensure_compatible(&expected)
+                .map_err(error_string)?;
+        }
+        drop(host);
+        persist_session(&app, &result)?;
+        return Ok(result);
+    }
+    drop(host);
+
+    let request = request
+        .ok_or_else(|| "session is not active and no launch profile was supplied".to_owned())?;
+    validate_request(&request)?;
+    if request.session_id != session_id {
+        return Err("load request session_id does not match session_id".into());
+    }
+    validate_project_root(&request.project_root, &workspace)?;
+    let expected = binding(&request, &workspace);
+    let effective_binding = if let Some(persisted) = read_catalog(&app)?.get(&session_id) {
+        persisted
+            .binding
+            .ensure_compatible(&expected)
+            .map_err(error_string)?;
+        persisted.binding.clone()
+    } else {
+        expected
+    };
+    let driver = build_driver(&app, &request, &workspace, effective_binding.clone())?;
+    let mut host = state.host.lock().await;
+    host.register_driver(request.engine, driver);
+    let result = host
+        .load_existing_session(
+            zerowall_acp_host::LoadSessionRequest { session_id },
+            effective_binding,
+        )
+        .await
+        .map_err(error_string)?;
+    drop(host);
+    persist_session(&app, &result)?;
+    Ok(result)
+}
+
+async fn load_active_session(
+    host: &mut AcpHost,
+    session_id: &str,
+    workspace: &Path,
+) -> Result<Option<SessionState>, String> {
+    let Some(active) = host
+        .list_sessions()
+        .into_iter()
+        .find(|session| session.id == session_id)
+    else {
+        return Ok(None);
+    };
+    validate_project_root(&active.binding.project_root, workspace)?;
+    host.load_session(session_id.to_owned())
+        .await
+        .map(Some)
+        .map_err(error_string)
 }
 
 #[tauri::command]
@@ -699,19 +831,181 @@ pub async fn acp_host_close(
     state: State<'_, AcpHostState>,
     session_id: String,
 ) -> Result<(), String> {
-    state
-        .host
-        .lock()
-        .await
-        .close_session(&session_id)
-        .await
-        .map_err(error_string)?;
-    remove_persisted_session(&app, &session_id)
+    let workspace = workspace_root(&app)?;
+    let mut host = state.host.lock().await;
+    let active_binding = host
+        .list_sessions()
+        .into_iter()
+        .find(|session| session.id == session_id)
+        .map(|session| session.binding);
+    if let Some(binding) = active_binding {
+        validate_project_root(&binding.project_root, &workspace)?;
+        host.close_session(&session_id)
+            .await
+            .map_err(error_string)?;
+        drop(host);
+        return remove_persisted_session(&app, &session_id);
+    }
+    drop(host);
+
+    let mut catalog = read_catalog(&app)?;
+    close_catalog_only_session(
+        &mut catalog,
+        &session_id,
+        &workspace,
+        |binding, session_id| async {
+            let mut driver = build_opencode_driver(&app, binding)?;
+            driver.close_session(session_id).await.map_err(error_string)
+        },
+    )
+    .await?;
+    write_catalog(&app, &catalog)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
+    use zerowall_acp_host::{DriverCall, DriverCapabilities, FakeDriver};
+
+    fn test_binding(engine: HostDriverKind, root: &Path) -> AgentBinding {
+        AgentBinding {
+            engine,
+            profile: match engine {
+                HostDriverKind::Codex => "codex",
+                HostDriverKind::ClaudeCode => "claude-code",
+                HostDriverKind::OpenCode => "opencode",
+            }
+            .into(),
+            model: Some("model".into()),
+            provider: Some("provider".into()),
+            variant: None,
+            project_root: root.to_string_lossy().into_owned(),
+            profile_fingerprint: "fp".into(),
+            resolved_at: "now".into(),
+        }
+    }
+
+    fn test_session(id: &str, binding: AgentBinding, directory: Option<&Path>) -> SessionState {
+        SessionState {
+            id: id.into(),
+            binding,
+            resumable: true,
+            title: None,
+            directory: directory.map(|path| path.to_string_lossy().into_owned()),
+            parent_id: None,
+            created: None,
+            updated: None,
+        }
+    }
+
+    fn test_persisted_session(id: &str, engine: HostDriverKind, root: &Path) -> PersistedSession {
+        PersistedSession {
+            id: id.into(),
+            binding: test_binding(engine, root),
+            resumable: true,
+            title: None,
+            directory: Some(root.to_string_lossy().into_owned()),
+            parent_id: None,
+            created: None,
+            updated: None,
+        }
+    }
+
+    fn test_launch_request(
+        engine: HostDriverKind,
+        root: &Path,
+        session_id: &str,
+    ) -> AcpHostLaunchRequest {
+        AcpHostLaunchRequest {
+            engine,
+            profile_id: match engine {
+                HostDriverKind::Codex => "codex",
+                HostDriverKind::ClaudeCode => "claude-code",
+                HostDriverKind::OpenCode => "opencode",
+            }
+            .into(),
+            session_id: session_id.into(),
+            model: "model".into(),
+            provider_id: "provider".into(),
+            base_url: "https://example.invalid/v1".into(),
+            project_root: root.to_string_lossy().into_owned(),
+            variant: None,
+            profile_fingerprint: "fp".into(),
+            credential: CredentialRef {
+                keychain_id: "provider".into(),
+            },
+            mcp_allow_list: None,
+        }
+    }
+
+    fn test_driver(
+        calls: Arc<Mutex<Vec<DriverCall>>>,
+    ) -> Box<dyn zerowall_acp_host::AcpHostDriver> {
+        Box::new(FakeDriver::with_calls(
+            DriverCapabilities {
+                new_session: true,
+                load_session: true,
+                ..Default::default()
+            },
+            calls,
+        ))
+    }
+
+    #[test]
+    fn explicit_new_command_routes_opencode_workflow_ids_to_driver_new() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mut host = AcpHost::default();
+        host.register_driver(HostDriverKind::OpenCode, test_driver(calls.clone()));
+        let request = test_launch_request(
+            HostDriverKind::OpenCode,
+            &workspace,
+            "workflow:review:session-1",
+        );
+
+        futures::executor::block_on(route_registered_session(
+            &mut host,
+            &request,
+            test_binding(HostDriverKind::OpenCode, &workspace),
+            SessionLaunchRoute::ExplicitNew,
+        ))
+        .unwrap();
+
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [DriverCall::New {
+                session_id: "workflow:review:session-1".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn active_cross_workspace_load_rejects_before_calling_the_driver() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let other = workspace.parent().unwrap().canonicalize().unwrap();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mut host = AcpHost::default();
+        host.register_driver(HostDriverKind::OpenCode, test_driver(calls.clone()));
+        futures::executor::block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "foreign-active".into(),
+            },
+            test_binding(HostDriverKind::OpenCode, &other),
+        ))
+        .unwrap();
+        calls.lock().unwrap().clear();
+
+        let error = futures::executor::block_on(load_active_session(
+            &mut host,
+            "foreign-active",
+            &workspace,
+        ))
+        .unwrap_err();
+
+        assert!(error.contains("active workspace"));
+        assert!(calls.lock().unwrap().is_empty());
+    }
 
     #[test]
     fn active_environment_adapter_candidate_precedes_bundled_resource() {
@@ -760,5 +1054,189 @@ mod tests {
         for secret in ["api_key", "token", "secret_value", "api-key"] {
             assert!(!encoded.contains(secret));
         }
+    }
+
+    #[test]
+    fn project_root_validation_rejects_cross_workspace_requests() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let requested = workspace.to_string_lossy().into_owned();
+        assert!(validate_project_root(&requested, &workspace).is_ok());
+
+        let other = workspace.parent().unwrap().canonicalize().unwrap();
+        let requested = other.to_string_lossy().into_owned();
+        let error = validate_project_root(&requested, &workspace).unwrap_err();
+        assert!(error.contains("active workspace"));
+    }
+
+    #[test]
+    fn session_listing_keeps_only_bindings_from_the_active_workspace() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let other = workspace.parent().unwrap().canonicalize().unwrap();
+        let mut sessions = vec![
+            test_session(
+                "active-current",
+                test_binding(HostDriverKind::OpenCode, &workspace),
+                Some(&workspace),
+            ),
+            test_session(
+                "catalog-current",
+                test_binding(HostDriverKind::Codex, &workspace),
+                Some(&workspace),
+            ),
+            test_session(
+                "active-other",
+                test_binding(HostDriverKind::OpenCode, &other),
+                Some(&other),
+            ),
+            test_session(
+                "catalog-other",
+                test_binding(HostDriverKind::ClaudeCode, &other),
+                Some(&other),
+            ),
+        ];
+
+        retain_workspace_sessions(&mut sessions, &workspace);
+
+        assert_eq!(
+            sessions
+                .iter()
+                .map(|session| session.id.as_str())
+                .collect::<Vec<_>>(),
+            ["active-current", "catalog-current"]
+        );
+    }
+
+    #[test]
+    fn discovery_drops_and_does_not_persist_sessions_from_other_workspaces() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let other = workspace.parent().unwrap().canonicalize().unwrap();
+        let current_binding = test_binding(HostDriverKind::OpenCode, &workspace);
+        let mut catalog = HashMap::new();
+        let discovered = vec![
+            test_session("current", current_binding.clone(), Some(&workspace)),
+            // OpenCode discovery reuses the driver's current binding, so the
+            // original directory is the authoritative workspace discriminator.
+            test_session("other", current_binding, Some(&other)),
+        ];
+
+        let sessions = merge_discovered_sessions(&mut catalog, discovered, &workspace);
+
+        assert_eq!(
+            sessions
+                .iter()
+                .map(|session| session.id.as_str())
+                .collect::<Vec<_>>(),
+            ["current"]
+        );
+        assert!(catalog.contains_key("current"));
+        assert!(!catalog.contains_key("other"));
+    }
+
+    #[test]
+    fn discovery_does_not_rebind_a_cross_workspace_catalog_collision() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let other = workspace.parent().unwrap().canonicalize().unwrap();
+        let mut catalog = HashMap::from([(
+            "collision".into(),
+            test_persisted_session("collision", HostDriverKind::OpenCode, &other),
+        )]);
+        let discovered = vec![test_session(
+            "collision",
+            test_binding(HostDriverKind::OpenCode, &workspace),
+            Some(&workspace),
+        )];
+
+        let sessions = merge_discovered_sessions(&mut catalog, discovered, &workspace);
+
+        assert!(sessions.is_empty());
+        assert_eq!(
+            catalog["collision"].binding.project_root,
+            other.to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn catalog_only_opencode_close_removes_after_remote_success() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let mut catalog = HashMap::from([(
+            "remote".into(),
+            test_persisted_session("remote", HostDriverKind::OpenCode, &workspace),
+        )]);
+
+        futures::executor::block_on(close_catalog_only_session(
+            &mut catalog,
+            "remote",
+            &workspace,
+            |binding, session_id| async move {
+                assert_eq!(binding.engine, HostDriverKind::OpenCode);
+                assert_eq!(session_id, "remote");
+                Ok(())
+            },
+        ))
+        .unwrap();
+
+        assert!(!catalog.contains_key("remote"));
+    }
+
+    #[test]
+    fn catalog_only_opencode_close_keeps_catalog_after_remote_failure() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let mut catalog = HashMap::from([(
+            "remote".into(),
+            test_persisted_session("remote", HostDriverKind::OpenCode, &workspace),
+        )]);
+
+        let error = futures::executor::block_on(close_catalog_only_session(
+            &mut catalog,
+            "remote",
+            &workspace,
+            |_, _| async { Err("remote close failed".into()) },
+        ))
+        .unwrap_err();
+
+        assert!(error.contains("remote close failed"));
+        assert!(catalog.contains_key("remote"));
+    }
+
+    #[test]
+    fn catalog_only_process_sessions_allow_explicit_local_catalog_deletion() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        for engine in [HostDriverKind::Codex, HostDriverKind::ClaudeCode] {
+            let mut catalog = HashMap::from([(
+                "local".into(),
+                test_persisted_session("local", engine, &workspace),
+            )]);
+
+            futures::executor::block_on(close_catalog_only_session(
+                &mut catalog,
+                "local",
+                &workspace,
+                |_, _| async { panic!("process catalog cleanup must not call OpenCode") },
+            ))
+            .unwrap();
+
+            assert!(!catalog.contains_key("local"));
+        }
+    }
+
+    #[test]
+    fn catalog_only_close_rejects_cross_workspace_sessions() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let other = workspace.parent().unwrap().canonicalize().unwrap();
+        let mut catalog = HashMap::from([(
+            "other".into(),
+            test_persisted_session("other", HostDriverKind::OpenCode, &other),
+        )]);
+
+        let error = futures::executor::block_on(close_catalog_only_session(
+            &mut catalog,
+            "other",
+            &workspace,
+            |_, _| async { panic!("cross-workspace close must stop before remote cleanup") },
+        ))
+        .unwrap_err();
+
+        assert!(error.contains("active workspace"));
+        assert!(catalog.contains_key("other"));
     }
 }

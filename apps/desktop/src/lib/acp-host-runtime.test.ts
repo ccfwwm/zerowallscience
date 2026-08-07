@@ -17,7 +17,7 @@ function fakeInvoke(): AcpHostInvoke {
           provider: "cloud",
           variant: null,
           projectRoot: "C:/science",
-          profileFingerprint: "codex:fp",
+          profileFingerprint: "codex|cloud|https://api.example.test/v1|gpt-5.4",
           resolvedAt: "now",
         },
         resumable: false,
@@ -33,7 +33,7 @@ function fakeInvoke(): AcpHostInvoke {
           provider: "cloud",
           variant: null,
           projectRoot: "C:/science",
-          profileFingerprint: "codex:fp",
+          profileFingerprint: "codex|cloud|https://api.example.test/v1|gpt-5.4",
           resolvedAt: "now",
         },
         resumable: false,
@@ -58,6 +58,7 @@ describe("ACP Host runtime adapter", () => {
     const status = await deps.launch({
       profileId: "codex",
       conversationId: "conversation-1",
+      projectRoot: "C:/science",
       gateway: { providerId: "cloud", baseUrl: "https://api.example.test/v1", model: "gpt-5.4" },
     });
     await deps.prompt("hello");
@@ -72,9 +73,72 @@ describe("ACP Host runtime adapter", () => {
       "acp_host_events",
       "acp_host_prompt",
       "acp_host_cancel",
-      "acp_host_sessions",
-      "acp_host_close",
     ]);
+  });
+
+  it("detaches on shutdown without deleting persisted Host sessions", async () => {
+    const calls: string[] = [];
+    const invoke = (async (command: string, args?: Record<string, unknown>) => {
+      calls.push(command);
+      return fakeInvoke()(command, args);
+    }) as AcpHostInvoke;
+    const deps = createAcpHostRuntimeDeps(invoke);
+    await deps.launch({
+      profileId: "codex",
+      conversationId: "conversation-2",
+      projectRoot: "C:/science",
+      gateway: { providerId: "cloud", baseUrl: "https://api.example.test/v1", model: "gpt-5.4" },
+    });
+    await deps.shutdown();
+
+    expect(calls).not.toContain("acp_host_close");
+    expect(calls).not.toContain("acp_host_sessions");
+  });
+
+  it("relaunches by detaching the current runtime without closing global Host sessions", async () => {
+    const calls: string[] = [];
+    let launchCount = 0;
+    const invoke = (async <T = unknown>(command: string): Promise<T> => {
+      calls.push(command);
+      if (command === "acp_host_initialize") {
+        return { capabilities: { prompt: true } } as T;
+      }
+      if (command === "acp_host_launch") {
+        launchCount += 1;
+        return {
+          id: `host-session-${launchCount}`,
+          binding: {
+            engine: "codex",
+            profile: "codex",
+            model: "gpt-5.4",
+            provider: "cloud",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: "codex|cloud|https://api.example.test/v1|gpt-5.4",
+            resolvedAt: "now",
+          },
+          resumable: false,
+        } as T;
+      }
+      if (command === "acp_host_events") return [] as T;
+      if (command === "acp_host_sessions") return [{ id: "unrelated-global-session" }] as T;
+      return undefined as T;
+    }) as AcpHostInvoke;
+    const deps = createAcpHostRuntimeDeps(invoke);
+    await deps.subscribe({});
+    const request = {
+      profileId: "codex",
+      projectRoot: "C:/science",
+      gateway: { providerId: "cloud", baseUrl: "https://api.example.test/v1", model: "gpt-5.4" },
+    } as const;
+
+    await deps.launch({ ...request, conversationId: "conversation-1" });
+    await deps.launch({ ...request, conversationId: "conversation-2" });
+
+    expect(deps.currentSessionId?.()).toBe("host-session-2");
+    expect(calls.filter((command) => command === "acp_host_launch")).toHaveLength(2);
+    expect(calls).not.toContain("acp_host_sessions");
+    expect(calls).not.toContain("acp_host_close");
   });
 
   it("launches OpenCode through the same Host commands", async () => {
@@ -94,7 +158,7 @@ describe("ACP Host runtime adapter", () => {
             provider: "cloud",
             variant: null,
             projectRoot: "C:/science",
-            profileFingerprint: "opencode:fp",
+            profileFingerprint: "opencode|cloud|http://127.0.0.1:4096|gpt-5.4",
             resolvedAt: "now",
           },
           resumable: false,
@@ -107,13 +171,19 @@ describe("ACP Host runtime adapter", () => {
     await deps.launch({
       profileId: "opencode",
       conversationId: "conversation-1",
+      projectRoot: "C:/science",
       gateway: { providerId: "cloud", baseUrl: "http://127.0.0.1:4096", model: "gpt-5.4" },
     });
 
     expect(calls[0]).toEqual(["acp_host_initialize", { engine: "opencode" }]);
     expect(calls[1]?.[0]).toBe("acp_host_launch");
     expect(calls[1]?.[1]).toMatchObject({
-      request: { engine: "opencode", profileId: "opencode", sessionId: "conversation-1" },
+      request: {
+        engine: "opencode",
+        profileId: "opencode",
+        sessionId: "conversation-1",
+        projectRoot: "C:/science",
+      },
     });
   });
 
@@ -134,7 +204,7 @@ describe("ACP Host runtime adapter", () => {
               provider: "cloud",
               variant: null,
               projectRoot: "C:/science",
-              profileFingerprint: "opencode:fp",
+              profileFingerprint: "opencode|cloud|http://127.0.0.1:4096|gpt-5.4",
               resolvedAt: "now",
             },
             resumable: false,
@@ -147,6 +217,7 @@ describe("ACP Host runtime adapter", () => {
       await deps.launch({
         profileId: "opencode",
         conversationId: legacyId,
+        projectRoot: "C:/science",
         gateway: { providerId: "cloud", baseUrl: "http://127.0.0.1:4096", model: "gpt-5.4" },
       });
 
@@ -163,7 +234,7 @@ describe("ACP Host runtime adapter", () => {
       if (command === "acp_host_initialize") return { capabilities: { prompt: true } } as T;
       if (command === "acp_host_launch") return {
         id: "active",
-        binding: { engine: "opencode", profile: "opencode", model: "new-model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "fp", resolvedAt: "now" },
+        binding: { engine: "opencode", profile: "opencode", model: "new-model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "opencode|cloud|http://127.0.0.1:4096|new-model", resolvedAt: "now" },
         resumable: false,
       } as T;
       if (command === "acp_host_sessions") return [{
@@ -171,13 +242,13 @@ describe("ACP Host runtime adapter", () => {
         binding: { engine: "opencode", profile: "opencode", model: "old-model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "old-fp", resolvedAt: "now" }, resumable: true,
       }] as T;
       if (command === "acp_host_discover") return [
-        { id: "shared", title: "Remote title", directory: "C:/remote", updated: 20, binding: { engine: "opencode", profile: "opencode", model: "new-model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "fp", resolvedAt: "now" }, resumable: true },
-        { id: "remote", title: "Remote only", directory: "C:/remote", created: 1, updated: 2, binding: { engine: "opencode", profile: "opencode", model: "new-model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "fp", resolvedAt: "now" }, resumable: true },
+        { id: "shared", title: "Remote title", directory: "C:/remote", updated: 20, binding: { engine: "opencode", profile: "opencode", model: "new-model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "opencode|cloud|http://127.0.0.1:4096|new-model", resolvedAt: "now" }, resumable: true },
+        { id: "remote", title: "Remote only", directory: "C:/remote", created: 1, updated: 2, binding: { engine: "opencode", profile: "opencode", model: "new-model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "opencode|cloud|http://127.0.0.1:4096|new-model", resolvedAt: "now" }, resumable: true },
       ] as T;
       return undefined as T;
     }) as AcpHostInvoke;
     const deps = createAcpHostRuntimeDeps(invoke);
-    await deps.launch({ profileId: "opencode", conversationId: "active", gateway: { providerId: "cloud", baseUrl: "http://127.0.0.1:4096", model: "new-model" } });
+    await deps.launch({ profileId: "opencode", conversationId: "active", projectRoot: "C:/science", gateway: { providerId: "cloud", baseUrl: "http://127.0.0.1:4096", model: "new-model" } });
     const sessions = await deps.listSessions?.();
     expect(sessions).toEqual([
       { id: "shared", title: "Persisted", directory: "C:/persisted", parentId: undefined, created: undefined, updated: 10 },
@@ -191,20 +262,20 @@ describe("ACP Host runtime adapter", () => {
       calls.push([command, args]);
       if (command === "acp_host_initialize") return { capabilities: { prompt: true } } as T;
       if (command === "acp_host_launch") return {
-        id: "active", binding: { engine: "opencode", profile: "opencode", model: "model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "fp", resolvedAt: "now" }, resumable: false,
+        id: "active", binding: { engine: "opencode", profile: "opencode", model: "model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "opencode|cloud|http://127.0.0.1:4096|model", resolvedAt: "now" }, resumable: false,
       } as T;
       if (command === "acp_host_sessions") return [] as T;
       if (command === "acp_host_discover") return [{
-        id: "remote", title: "Remote", binding: { engine: "opencode", profile: "opencode", model: "model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "fp", resolvedAt: "now" }, resumable: true,
+        id: "remote", title: "Remote", binding: { engine: "opencode", profile: "opencode", model: "model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "opencode|cloud|http://127.0.0.1:4096|model", resolvedAt: "now" }, resumable: true,
       }] as T;
       if (command === "acp_host_load") return {
-        id: "remote", binding: { engine: "opencode", profile: "opencode", model: "model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "fp", resolvedAt: "now" }, resumable: true,
+        id: "remote", binding: { engine: "opencode", profile: "opencode", model: "model", provider: "cloud", variant: null, projectRoot: "C:/science", profileFingerprint: "opencode|cloud|http://127.0.0.1:4096|model", resolvedAt: "now" }, resumable: true,
       } as T;
       if (command === "acp_host_events") return [] as T;
       return undefined as T;
     }) as AcpHostInvoke;
     const deps = createAcpHostRuntimeDeps(invoke);
-    await deps.launch({ profileId: "opencode", conversationId: "active", gateway: { providerId: "cloud", baseUrl: "http://127.0.0.1:4096", model: "model" } });
+    await deps.launch({ profileId: "opencode", conversationId: "active", projectRoot: "C:/science", gateway: { providerId: "cloud", baseUrl: "http://127.0.0.1:4096", model: "model" } });
     await deps.listSessions?.();
     await deps.activateSession?.("remote");
     const load = calls.find(([command]) => command === "acp_host_load");

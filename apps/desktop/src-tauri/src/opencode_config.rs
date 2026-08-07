@@ -41,14 +41,12 @@ fn approve_permission() -> Value {
     json!({ "bash": Value::Object(bash), "webfetch": "ask" })
 }
 
-/// Set the approval mode in OpenCode config JSON. "approve" installs the ask
-/// rules; "full" writes `"permission": {}` — zero rules (builtin defaults),
-/// with the key's presence marking that the user made a choice (so startup
-/// seeding never overrides it). Other keys are preserved.
+/// Set the approval mode in OpenCode config JSON. Dangerous operations always
+/// retain explicit ask rules; the legacy "full" mode is rejected.
 pub fn set_permission_mode(existing: &str, mode: &str) -> Result<String, String> {
     let permission = match mode {
         MODE_APPROVE => approve_permission(),
-        MODE_FULL => json!({}),
+        MODE_FULL => return Err("full approval mode is disabled for safety".into()),
         other => return Err(format!("unknown approval mode \"{other}\"")),
     };
     let mut root: Value = if existing.trim().is_empty() {
@@ -65,10 +63,10 @@ pub fn set_permission_mode(existing: &str, mode: &str) -> Result<String, String>
     serde_json::to_string_pretty(&root).map_err(|e| e.to_string())
 }
 
-/// Seed the "approve" default on first run (no `permission` key yet).
-/// Returns None when the user already chose a mode — never overrides it.
+/// Seed or repair the safe approval mode. Empty/legacy permission objects are
+/// rewritten so an older unsafe configuration cannot bypass manual approval.
 pub fn seed_default_permission(existing: &str) -> Option<String> {
-    if permission_mode_of(existing).is_some() {
+    if permission_mode_of(existing) == Some(MODE_APPROVE) {
         return None;
     }
     set_permission_mode(existing, MODE_APPROVE).ok()
@@ -220,13 +218,10 @@ mod tests {
     }
 
     #[test]
-    fn full_mode_writes_empty_permission_marker() {
+    fn full_mode_is_rejected() {
         let approved = set_permission_mode("", MODE_APPROVE).unwrap();
-        let out = set_permission_mode(&approved, MODE_FULL).unwrap();
-        let v: Value = serde_json::from_str(&out).unwrap();
-        // {} = zero rules = OpenCode builtin defaults; the key's presence
-        // marks "user chose this" so startup never re-seeds approve mode.
-        assert_eq!(v["permission"], json!({}));
+        let error = set_permission_mode(&approved, MODE_FULL).unwrap_err();
+        assert!(error.contains("disabled"));
     }
 
     #[test]
@@ -271,10 +266,13 @@ mod tests {
         let seeded = seed_default_permission("").unwrap();
         let v: Value = serde_json::from_str(&seeded).unwrap();
         assert_eq!(v["permission"]["bash"]["rm *"], "ask");
-        // Explicit user choice (either mode) is never overridden.
+        // The safe mode is stable across launches.
         assert!(seed_default_permission(&seeded).is_none());
-        let full = set_permission_mode(&seeded, MODE_FULL).unwrap();
-        assert!(seed_default_permission(&full).is_none());
+        // Legacy empty permission objects enabled unsafe builtin defaults and
+        // must be migrated back to explicit approval rules.
+        let migrated = seed_default_permission(r#"{"permission":{}}"#).unwrap();
+        let migrated: Value = serde_json::from_str(&migrated).unwrap();
+        assert_eq!(migrated["permission"]["bash"]["rm *"], "ask");
         // Other keys survive seeding.
         let seeded2 = seed_default_permission(r#"{"model":"m"}"#).unwrap();
         let v2: Value = serde_json::from_str(&seeded2).unwrap();
@@ -288,8 +286,7 @@ mod tests {
         assert_eq!(permission_mode_of(r#"{"model":"m"}"#), None);
         let approved = set_permission_mode("", MODE_APPROVE).unwrap();
         assert_eq!(permission_mode_of(&approved), Some(MODE_APPROVE));
-        let full = set_permission_mode(&approved, MODE_FULL).unwrap();
-        assert_eq!(permission_mode_of(&full), Some(MODE_FULL));
+        assert_eq!(permission_mode_of(r#"{"permission":{}}"#), Some(MODE_FULL));
     }
 
     #[test]

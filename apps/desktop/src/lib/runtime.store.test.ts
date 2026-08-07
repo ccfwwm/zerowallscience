@@ -1167,19 +1167,19 @@ describe("approval mode", () => {
     expect(useRuntimeStore.getState().approvalMode).toBe("approve");
     mocks.approvalMode = "full";
     await useRuntimeStore.getState().connect();
-    expect(useRuntimeStore.getState().approvalMode).toBe("full");
+    expect(useRuntimeStore.getState().approvalMode).toBe("approve");
   });
 
   it("setApprovalMode persists the choice and reconnects to the restarted sidecar", async () => {
-    await useRuntimeStore.getState().setApprovalMode("full");
-    expect(mocks.setApprovalMode).toHaveBeenCalledWith("full");
+    await useRuntimeStore.getState().setApprovalMode("approve");
+    expect(mocks.setApprovalMode).toHaveBeenCalledWith("approve");
     const s = useRuntimeStore.getState();
-    expect(s.approvalMode).toBe("full");
+    expect(s.approvalMode).toBe("approve");
     expect(s.status).toBe("ready"); // reconnected after the restart
   });
 
   it("setApprovalMode is a deliberate restart: `switching` masks the reconnect (no UI flash)", async () => {
-    const p = useRuntimeStore.getState().setApprovalMode("full");
+    const p = useRuntimeStore.getState().setApprovalMode("approve");
     // Synchronously flagged, like switchWorkspace — the page must not render
     // the restart as a disconnection.
     expect(useRuntimeStore.getState().switching).toBe(true);

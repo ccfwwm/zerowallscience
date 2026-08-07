@@ -34,11 +34,11 @@
   },
   "page": {
     "title": "設定",
-    "subtitle": "ここでの設定はすべて、バンドルされた OpenCode ランタイムに対するものです — 設定は一つだけで、コピーはありません。"
+    "subtitle": "エンジン、モデル、ローカル実行環境を一元管理します。"
   },
   "runtime": {
     "title": "エージェントランタイム",
-    "hint": "opencode serve を、その HTTP + SSE API 経由で操作します",
+    "hint": "統合されたローカル Agent コントロール",
     "connect": "接続",
     "disconnect": "切断",
     "serverLabel": "サーバー",
@@ -58,7 +58,7 @@
     "mirrorPythonPlaceholder": "https://mirror.example.com/python-build-standalone",
     "mirrorHint": "任意のミラー。Python ツール(Jupyter・科学データベース)のセットアップ時のダウンロードにのみ使用され、pypi.org / github.com が遅いネットワーク向けです。空欄でデフォルト。",
     "engineLabel": "エンジン",
-    "engineHint": "OpenCode、または同梱の ACP エージェント（Codex、Claude Code）をローカルプロセスとして実行"
+    "engineHint": "新しい会話で使用するエンジンを選択"
   },
   "updates": {
     "title": "アプリの更新",

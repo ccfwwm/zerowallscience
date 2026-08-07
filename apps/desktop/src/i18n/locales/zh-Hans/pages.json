@@ -57,15 +57,15 @@
   "skills": {
     "title": "技能与代理",
     "description": {
-      "prefix": "从 OpenCode 运行时实时加载——内置的 ai4s-skills 包，以及您工作区中位于 ",
+      "prefix": "当前项目与所选引擎可用的 Skills。",
       "suffix": " 下的所有内容。"
     },
     "install": {
       "sectionTitle": "安装技能",
-      "placeholder": "粘贴一个技能（Markdown）或 GitHub URL — 代理会将其安装到 .opencode/skills/",
+      "placeholder": "粘贴 Skill（Markdown）或 GitHub URL",
       "starting": "正在启动…",
       "cta": "使用代理安装",
-      "hintConnected": "将打开一个会话并让代理添加它（customize-opencode）。",
+      "hintConnected": "将打开一个会话并让代理添加它。",
       "hintDisconnected": "请先连接运行时。"
     },
     "environment": {
@@ -73,7 +73,7 @@
       "detectionUnavailable": "环境检测功能在桌面应用中运行。",
       "found": "已找到",
       "notFound": "未找到",
-      "note": "OpenCode 使用此处已安装的组件运行代码（例如通过其 shell 工具调用 Python）。Python/R/Jupyter 并未内置；请安装它们或安装 Science Pack 以启用分析功能。"
+      "note": "引擎使用此环境中已安装的工具；安装 Science Pack 可增加分析能力。"
     },
     "agentsSection": {
       "sectionTitle": "代理（{{count}}）",

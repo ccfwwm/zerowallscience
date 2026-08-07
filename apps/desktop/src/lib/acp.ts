@@ -70,6 +70,7 @@ export interface AcpSkillInfo {
 export interface AcpLaunchRequest {
   profileId: string;
   conversationId?: string;
+  projectRoot: string;
   gateway: {
     providerId: string;
     baseUrl: string;
@@ -106,6 +107,7 @@ export async function acpLaunch(request: AcpLaunchRequest): Promise<AcpStatus> {
     request: {
       profile_id: request.profileId,
       ...(request.conversationId ? { conversation_id: request.conversationId } : {}),
+      project_root: request.projectRoot,
       gateway: {
         provider_id: request.gateway.providerId,
         base_url: request.gateway.baseUrl,

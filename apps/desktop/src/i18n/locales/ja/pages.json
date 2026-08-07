@@ -57,15 +57,15 @@
   "skills": {
     "title": "スキル & エージェント",
     "description": {
-      "prefix": "OpenCode ランタイムからライブで読み込まれます — バンドルされた ai4s-skills パックと、ワークスペース内の ",
+      "prefix": "現在のプロジェクトと選択したエンジンで利用できる Skills。",
       "suffix": " にあるものすべて。"
     },
     "install": {
       "sectionTitle": "スキルをインストール",
-      "placeholder": "スキル（Markdown）または GitHub URL を貼り付けてください — エージェントが .opencode/skills/ にインストールします",
+      "placeholder": "Skill（Markdown）または GitHub URL を貼り付け",
       "starting": "開始中…",
       "cta": "エージェントでインストール",
-      "hintConnected": "セッションを開き、エージェントに追加を依頼します（customize-opencode）。",
+      "hintConnected": "セッションを開き、エージェントに追加を依頼します。",
       "hintDisconnected": "先にランタイムに接続してください。"
     },
     "environment": {
@@ -73,7 +73,7 @@
       "detectionUnavailable": "環境検出はデスクトップアプリで実行されます。",
       "found": "検出済み",
       "notFound": "未検出",
-      "note": "OpenCode はここにインストールされているものを使ってコードを実行します（例: シェルツール経由の Python）。Python/R/Jupyter はバンドルされていません。分析を有効にするには、それらまたは Science Pack をインストールしてください。"
+      "note": "エンジンはこの環境にインストールされたツールを使用します。Science Pack で分析機能を追加できます。"
     },
     "agentsSection": {
       "sectionTitle": "エージェント ({{count}})",

@@ -12,7 +12,6 @@ import {
   Square,
   Terminal,
   X,
-  Zap,
 } from "lucide-react";
 import {
   addFilesToWorkspace,
@@ -116,10 +115,7 @@ export interface ComposerCommand {
 
 /** The two approval modes the composer can switch between (Codex-style). Copy
  *  (label/description) is translated at render time — see `approvalCopy`. */
-const APPROVAL_OPTIONS: { mode: ApprovalMode; icon: typeof Hand }[] = [
-  { mode: "approve", icon: Hand },
-  { mode: "full", icon: Zap },
-];
+const APPROVAL_OPTIONS: { mode: "approve"; icon: typeof Hand }[] = [{ mode: "approve", icon: Hand }];
 
 /** Build (default) or Plan — OpenCode's read-only planning agent. Copy is
  *  translated at render time (`agentCopy`), mirroring the approval switch. */
@@ -193,16 +189,13 @@ export function Composer({
   const resolvedPlaceholder = placeholder ?? t("composer.placeholder.default");
   // Approval-mode copy keyed by mode — APPROVAL_OPTIONS itself stays static
   // (icons only) so it can live at module scope outside the component.
-  const approvalCopy: Record<ApprovalMode, { label: string; description: string }> = {
+  const approvalCopy = {
     approve: {
       label: t("composer.approval.approve.label"),
       description: t("composer.approval.approve.description"),
     },
-    full: {
-      label: t("composer.approval.full.label"),
-      description: t("composer.approval.full.description"),
-    },
-  };
+  } as const;
+  const activeApprovalMode = "approve" as const;
   // Agent-mode copy, same pattern as approvalCopy.
   const agentCopy: Record<AgentMode, { label: string; description: string }> = {
     build: {
@@ -880,7 +873,7 @@ export function Composer({
                   <button
                     key={opt.mode}
                     role="menuitemradio"
-                    aria-checked={opt.mode === approvalMode}
+                    aria-checked={opt.mode === activeApprovalMode}
                     className="flex w-full items-start gap-2 rounded-input px-2 py-1.5 text-left hover:bg-surface-2"
                     // mousedown, not click — a click would blur the textarea first.
                     onMouseDown={(e) => {
@@ -896,7 +889,7 @@ export function Composer({
                         {approvalCopy[opt.mode].description}
                       </span>
                     </span>
-                    {opt.mode === approvalMode && (
+                    {opt.mode === activeApprovalMode && (
                       <Check size={13} className="mt-0.5 shrink-0 text-accent" />
                     )}
                   </button>
@@ -909,8 +902,8 @@ export function Composer({
               className="flex h-7 items-center gap-1.5 rounded-full px-2.5 text-xs text-muted hover:bg-surface-2 hover:text-text"
               onClick={() => setApprovalOpen((o) => !o)}
             >
-              {approvalMode === "full" ? <Zap size={12} /> : <Hand size={12} />}
-              <span>{approvalCopy[approvalMode].label}</span>
+              <Hand size={12} />
+              <span>{approvalCopy[activeApprovalMode].label}</span>
               <ChevronDown size={11} />
             </button>
           </div>

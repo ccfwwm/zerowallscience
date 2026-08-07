@@ -33,12 +33,14 @@ describe("acpLaunch arg mapping", () => {
 
     await acpLaunch({
       profileId: "codex",
+      projectRoot: "C:/science",
       gateway: { providerId: "zerowall-1", baseUrl: "https://gw/v1", model: "gpt-5.6-terra" },
     });
 
     expect(invoke).toHaveBeenCalledWith("acp_launch", {
       request: {
         profile_id: "codex",
+        project_root: "C:/science",
         gateway: { provider_id: "zerowall-1", base_url: "https://gw/v1", model: "gpt-5.6-terra" },
       },
     });
@@ -49,6 +51,7 @@ describe("acpLaunch arg mapping", () => {
 
     await acpLaunch({
       profileId: "claude-code",
+      projectRoot: "C:/science",
       gateway: {
         providerId: "zerowall-2",
         baseUrl: "https://gw/v1",
@@ -60,6 +63,7 @@ describe("acpLaunch arg mapping", () => {
     expect(invoke).toHaveBeenCalledWith("acp_launch", {
       request: {
         profile_id: "claude-code",
+        project_root: "C:/science",
         gateway: {
           provider_id: "zerowall-2",
           base_url: "https://gw/v1",
@@ -73,7 +77,11 @@ describe("acpLaunch arg mapping", () => {
   it("throws off-desktop and never invokes", async () => {
     tauriFlag.value = false;
     await expect(
-      acpLaunch({ profileId: "x", gateway: { providerId: "p", baseUrl: "https://gw", model: "m" } }),
+      acpLaunch({
+        profileId: "x",
+        projectRoot: "C:/science",
+        gateway: { providerId: "p", baseUrl: "https://gw", model: "m" },
+      }),
     ).rejects.toThrow(/desktop/);
     expect(invoke).not.toHaveBeenCalled();
   });

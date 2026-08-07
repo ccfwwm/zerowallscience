@@ -32,7 +32,6 @@ import {
   setupBrowserChrome,
   type BrowserProfile,
   type ChromeInfo,
-  importOpenCodeLogin,
   isMacUA,
   isTauri,
   jupyterStatus,
@@ -91,10 +90,7 @@ import { cn } from "@/lib/cn";
 const displayModel = (key: string | null | undefined) =>
   key?.includes("/") ? key.split("/").slice(1).join("/") : (key ?? null);
 
-/**
- * Settings. ONE configuration surface: everything talks to the bundled
- * OpenCode's own config/auth API — no separate "model key" concept.
- */
+/** Unified settings for engines, models, capabilities, accounts, and updates. */
 export function SettingsPage() {
   // Which settings section is on screen — the sidebar is the navigation.
   const section = resolveSection(useParams().section);
@@ -829,18 +825,6 @@ export function SettingsPage() {
       }
     });
 
-  const importLogin = () =>
-    run(t("toast.importFailed"), async () => {
-      const found = await importOpenCodeLogin();
-      if (!found) {
-        toast.error(t("toast.noOpenCodeLoginFound"));
-        return;
-      }
-      // The sidecar restarted with the imported credentials — reconnect.
-      await useRuntimeStore.getState().connectRetry();
-      toast.success(t("toast.importedLogin"));
-    });
-
   // Resolve the search box to a catalog entry (by id or exact name).
   const q = connectQuery.trim().toLowerCase();
   const selected =
@@ -1408,16 +1392,6 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              {isTauri && (
-                <button
-                  className="flex items-center gap-1.5 border-t border-faint px-3 py-2.5 text-xs text-muted transition-colors hover:text-text"
-                  onClick={() => void importLogin()}
-                  disabled={busy}
-                >
-                  <Download size={12} />
-                  {t("providers.importLogin")}
-                </button>
-              )}
             </>
           )}
         </ProviderManagerCard>

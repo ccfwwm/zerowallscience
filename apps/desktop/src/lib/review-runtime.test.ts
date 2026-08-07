@@ -20,7 +20,7 @@ describe("runAcpReview", () => {
             model: "gpt-5",
             provider: "ai-cloud",
             variant: null,
-            project_root: "",
+            project_root: "C:/science",
             profile_fingerprint: "codex|ai-cloud|https://example.invalid|gpt-5",
             resolved_at: "now",
           },
@@ -44,6 +44,7 @@ describe("runAcpReview", () => {
 
     const result = await runAcpReview({
       profileId: "codex",
+      projectRoot: "C:/science",
       gateway: { providerId: "ai-cloud", baseUrl: "https://example.invalid", model: "gpt-5" },
     }, "inspectable result", invoke, 1);
 

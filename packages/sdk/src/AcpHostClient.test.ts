@@ -9,6 +9,7 @@ const launchRequest = {
   model: "gpt-5.4",
   providerId: "cloud",
   baseUrl: "https://api.example.test/v1",
+  projectRoot: "C:/science",
   profileFingerprint: "fp-1",
   credentialRef: "cloud",
 };
@@ -65,6 +66,45 @@ function invokeMock(): AcpHostInvoke {
 }
 
 describe("AcpHostClient", () => {
+  it("rejects a launched session bound to a different project root", async () => {
+    const client = new AcpHostClient({ invoke: invokeMock() });
+
+    await expect(
+      client.launch({ ...launchRequest, projectRoot: "C:/other-project" }),
+    ).rejects.toThrow("session binding conflicts on projectRoot");
+  });
+
+  it("rejects loading a session when its immutable request binding changed", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "acp_host_load") {
+        return {
+          id: "persisted-session",
+          binding: {
+            engine: "codex",
+            profile: "codex",
+            model: "gpt-5.4",
+            provider: "cloud",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: "fp-1",
+            resolvedAt: "123",
+          },
+          resumable: true,
+        };
+      }
+      return undefined;
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    await expect(
+      client.loadSession("persisted-session", {
+        ...launchRequest,
+        sessionId: "persisted-session",
+        projectRoot: "C:/other-project",
+      }),
+    ).rejects.toThrow("session binding conflicts on projectRoot");
+  });
+
   it("creates, lists, loads, and reads history for multiple isolated sessions", async () => {
     const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
       if (command === "acp_host_new") {
@@ -348,6 +388,7 @@ describe("AcpHostClient", () => {
         model: "gpt-5.4",
         providerId: "cloud",
         baseUrl: "https://api.example.test/v1",
+        projectRoot: "C:/science",
         variant: undefined,
         profileFingerprint: "fp-1",
         credential: { keychainId: "cloud" },

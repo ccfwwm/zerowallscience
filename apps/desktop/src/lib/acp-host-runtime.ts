@@ -76,6 +76,7 @@ export function resolveHostSessionId(request: AcpLaunchRequest): string {
 }
 
 export function toAcpHostLaunchRequest(request: AcpLaunchRequest, sessionId: string) {
+  if (!request.projectRoot?.trim()) throw new Error("project root is required for ACP Host sessions");
   return {
     engine: hostEngine(request.profileId),
     profileId: request.profileId,
@@ -83,6 +84,7 @@ export function toAcpHostLaunchRequest(request: AcpLaunchRequest, sessionId: str
     model: request.gateway.model,
     providerId: request.gateway.providerId,
     baseUrl: request.gateway.baseUrl,
+    projectRoot: request.projectRoot,
     profileFingerprint: profileFingerprint(request),
     credentialRef: request.gateway.providerId,
   };
@@ -194,11 +196,6 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
         const previous = hostState;
         hostState = null;
         previous.unsubscribe?.();
-        const sessions = await previous.client.listSessions().catch(() => []);
-        const sessionIds = sessions.length > 0
-          ? sessions.map((session) => session.id)
-          : [previous.sessionId];
-        await Promise.all(sessionIds.map((sessionId) => previous.client.close(sessionId).catch(() => {})));
       }
       const client = new AcpHostClient({ invoke });
       const engine = hostEngine(request.profileId);
@@ -301,13 +298,8 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
       hostState = null;
       currentRequest = null;
       active?.unsubscribe?.();
-      if (active) {
-        const sessions = await active.client.listSessions().catch(() => []);
-        const sessionIds = sessions.length > 0
-          ? sessions.map((session) => session.id)
-          : [active.sessionId];
-        await Promise.all(sessionIds.map((sessionId) => active.client.close(sessionId).catch(() => {})));
-      }
+      // Detach the UI/runtime from the Host without deleting persisted agent
+      // sessions. Explicit user deletion goes through deleteSession/close.
       return IDLE;
     },
     subscribe: async (handlers) => {

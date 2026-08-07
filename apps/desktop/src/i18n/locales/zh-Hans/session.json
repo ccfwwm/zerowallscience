@@ -160,8 +160,8 @@
   },
   "live": {
     "runtime": {
-      "title": "OpenCode 运行时",
-      "bodyPrefix": "桌面应用会自动运行一个内置的 OpenCode。在浏览器中，请使用以下命令启动一个",
+      "title": "Agent 运行环境",
+      "bodyPrefix": "桌面应用会自动启动本地 Agent 环境；浏览器端请通过已配置的网关连接。",
       "bodySuffix": "并连接。",
       "connecting": "正在连接运行环境…"
     },

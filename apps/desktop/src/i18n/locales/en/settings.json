@@ -34,11 +34,11 @@
   },
   "page": {
     "title": "Settings",
-    "subtitle": "Everything here configures the bundled OpenCode runtime — one config, no copies."
+    "subtitle": "Manage engines, models, and local runtime behavior in one place."
   },
   "runtime": {
     "title": "Agent runtime",
-    "hint": "opencode serve, driven over its HTTP + SSE API",
+    "hint": "Unified local agent control plane",
     "connect": "Connect",
     "disconnect": "Disconnect",
     "serverLabel": "Server",
@@ -58,7 +58,7 @@
     "mirrorPythonPlaceholder": "https://mirror.example.com/python-build-standalone",
     "mirrorHint": "Optional mirrors, used only when setting up Python tools (Jupyter, science databases) on networks where pypi.org / github.com are slow. Leave blank for defaults.",
     "engineLabel": "Engine",
-    "engineHint": "OpenCode, or a bundled ACP agent (Codex, Claude Code) run as a local process"
+    "engineHint": "Choose the engine used for new conversations"
   },
   "updates": {
     "title": "App updates",

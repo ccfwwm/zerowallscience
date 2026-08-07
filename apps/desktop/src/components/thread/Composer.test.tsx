@@ -288,30 +288,24 @@ describe("approval mode switch", () => {
     expect(screen.queryByLabelText("Approval mode")).toBeNull();
   });
 
-  it("shows the current mode and switches on pick", () => {
+  it("offers only the safe approval mode", () => {
     const onChange = vi.fn();
     render(<Composer onSend={vi.fn()} approvalMode="approve" onApprovalModeChange={onChange} />);
     const button = screen.getByLabelText("Approval mode");
     expect(button.textContent).toContain("Approve for me");
 
-    fireEvent.click(button); // open the menu
-    // mousedown, not click — in a real browser mousedown fires before the
-    // trigger button's blur closes the menu (same pattern as the palette).
-    fireEvent.mouseDown(screen.getByRole("menuitemradio", { name: /Full access/ }));
-    expect(onChange).toHaveBeenCalledWith("full");
-    // Menu closes after picking.
+    fireEvent.click(button);
     expect(screen.queryByRole("menuitemradio", { name: /Full access/ })).toBeNull();
+    expect(screen.getAllByRole("menuitemradio")).toHaveLength(1);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("marks the active mode in the menu", () => {
-    render(<Composer onSend={vi.fn()} approvalMode="full" onApprovalModeChange={vi.fn()} />);
+    render(<Composer onSend={vi.fn()} approvalMode="approve" onApprovalModeChange={vi.fn()} />);
     fireEvent.click(screen.getByLabelText("Approval mode"));
     expect(
-      screen.getByRole("menuitemradio", { name: /Full access/ }).getAttribute("aria-checked"),
-    ).toBe("true");
-    expect(
       screen.getByRole("menuitemradio", { name: /Approve for me/ }).getAttribute("aria-checked"),
-    ).toBe("false");
+    ).toBe("true");
   });
 });
 

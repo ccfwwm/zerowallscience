@@ -34,11 +34,11 @@
   },
   "page": {
     "title": "설정",
-    "subtitle": "여기서 내장된 OpenCode 런타임을 구성합니다 — 하나의 설정, 복사본 없음."
+    "subtitle": "엔진, 모델, 로컬 실행 환경을 한곳에서 관리합니다."
   },
   "runtime": {
     "title": "에이전트 런타임",
-    "hint": "opencode serve — HTTP + SSE API로 제어",
+    "hint": "통합 로컬 Agent 제어 영역",
     "connect": "연결",
     "disconnect": "연결 해제",
     "serverLabel": "서버",
@@ -58,7 +58,7 @@
     "mirrorPythonPlaceholder": "https://mirror.example.com/python-build-standalone",
     "mirrorHint": "선택적 미러로, Python 도구(Jupyter, 과학 데이터베이스)를 설정할 때 pypi.org / github.com이 느린 네트워크에서 다운로드에만 사용됩니다. 비워 두면 기본값을 사용합니다.",
     "engineLabel": "엔진",
-    "engineHint": "OpenCode 또는 번들 ACP 에이전트(Codex, Claude Code)를 로컬 프로세스로 실행"
+    "engineHint": "새 대화에 사용할 엔진 선택"
   },
   "updates": {
     "title": "앱 업데이트",

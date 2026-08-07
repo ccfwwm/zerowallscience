@@ -160,8 +160,8 @@
   },
   "live": {
     "runtime": {
-      "title": "Runtime OpenCode",
-      "bodyPrefix": "L'application de bureau exécute automatiquement un OpenCode intégré. Dans le navigateur, démarrez-en un avec",
+      "title": "Runtime de l'agent",
+      "bodyPrefix": "L'application de bureau démarre automatiquement l'environnement local de l'agent. Dans le navigateur, connectez-vous via la passerelle configurée.",
       "bodySuffix": " puis connectez-vous.",
       "connecting": "Connexion à l'environnement d'exécution…"
     },

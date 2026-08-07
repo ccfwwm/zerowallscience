@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { isTauri, sub2apiAccount } from "@/lib/tauri";
+import { isTauri, sub2apiAccount, sub2apiRestoreSession } from "@/lib/tauri";
 import { isGatewayWeb } from "@/lib/webMode";
 import { Sub2ApiCard } from "@/components/settings/Sub2ApiCard";
 
@@ -32,12 +32,19 @@ export function DesktopLoginGate({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Check if the user already has an active Sub2API session (e.g. signed in
-    // during this app launch before navigating to the gate, or a session token
-    // that survived a restart).
-    void sub2apiAccount()
-      .then((acct) => setReady(!!acct))
-      .catch(() => setReady(false));
+    let active = true;
+    void (async () => {
+      try {
+        const live = await sub2apiAccount();
+        const account = live ?? (await sub2apiRestoreSession());
+        if (active) setReady(Boolean(account));
+      } catch {
+        if (active) setReady(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Still checking — render nothing (flash-free: the check is ~1 IPC call).

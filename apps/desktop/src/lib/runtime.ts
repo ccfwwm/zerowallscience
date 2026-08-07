@@ -177,6 +177,7 @@ function buildOpenCodeHostLaunchRequest(
   serverUrl: string,
   selectedModel: string | null,
   providers: ProviderInfo[],
+  projectRoot: string,
   conversationId?: string,
 ): AcpLaunchRequest {
   const raw = selectedModel?.trim() ?? "";
@@ -187,6 +188,7 @@ function buildOpenCodeHostLaunchRequest(
   return {
     profileId: "opencode",
     conversationId,
+    projectRoot,
     gateway: {
       providerId,
       baseUrl: serverUrl,
@@ -241,15 +243,18 @@ function getWorkflowScheduler(): WorkflowScheduler {
       const selectedModel = typeof snapshot.modelId === "string" ? snapshot.modelId : null;
       const providerId = typeof snapshot.providerId === "string" ? snapshot.providerId : state.providers[0]?.id ?? "default";
       const baseUrl = typeof snapshot.baseUrl === "string" ? snapshot.baseUrl : state.serverUrl;
+      const projectRoot = typeof snapshot.projectRoot === "string" ? snapshot.projectRoot : state.workspace;
       if (!profileId) throw new Error("Select an engine before starting a workflow");
+      if (!baseUrl) throw new Error("Select a provider before starting a workflow");
+      if (!projectRoot) throw new Error("Select a project before starting a workflow");
       let launch: AcpLaunchRequest;
       if (profileId === "opencode") {
-        launch = buildOpenCodeHostLaunchRequest(baseUrl, selectedModel, state.providers);
+        launch = buildOpenCodeHostLaunchRequest(baseUrl, selectedModel, state.providers, projectRoot);
         launch = { ...launch, gateway: { ...launch.gateway, providerId } };
       } else {
         const preset = acpPresetById(profileId);
         if (!preset) throw new Error(`Unknown ACP engine: ${profileId}`);
-        launch = buildAcpLaunchRequest(preset, undefined);
+        launch = buildAcpLaunchRequest(preset, undefined, projectRoot);
         if (selectedModel) {
           const slash = selectedModel.indexOf("/");
           launch = {
@@ -2332,6 +2337,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // OpenCode-only machinery (providers, catalog, one-shot config migrations).
     const acpProfileId = get().acpProfileId;
     if (!isGatewayWeb && acpProfileId) {
+      const projectRoot = get().workspace ?? await workspacePath();
+      if (!projectRoot) throw new Error("No active project workspace is available.");
+      if (get().workspace !== projectRoot) set({ workspace: projectRoot });
       if (acpProfileId === "opencode" && !get().defaultModel) {
         const controlClient = await getOrCreateOpenCodeClient();
         if (controlClient) {
@@ -2344,12 +2352,13 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       }
       const preset = acpPresetById(acpProfileId);
       const request = preset
-        ? buildAcpLaunchRequest(preset, get().currentId ?? undefined)
+        ? buildAcpLaunchRequest(preset, get().currentId ?? undefined, projectRoot)
         : acpProfileId === "opencode"
           ? buildOpenCodeHostLaunchRequest(
               get().serverUrl,
               get().defaultModel,
               get().providers,
+              projectRoot,
               get().currentId ?? undefined,
             )
           : null;
@@ -2432,7 +2441,11 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     } else {
       // Scope skill discovery to the sidecar's workspace (null in browser dev).
       directory = await workspacePath();
-      set({ workspace: directory, approvalMode: await getApprovalMode() });
+      const configuredApprovalMode = await getApprovalMode();
+      set({
+        workspace: directory,
+        approvalMode: configuredApprovalMode === "full" ? "approve" : configuredApprovalMode,
+      });
       // The bundled sidecar requires per-run Basic auth; browser dev (no Tauri)
       // gets null and connects to a user-run passwordless server.
       password = await runtimePassword();
@@ -2979,13 +2992,14 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
 
     try {
       const selectedModel = reviewModelId || modelForSession(state, sid).model;
+      if (!state.workspace) throw new Error("The review session has no active project root.");
       let launch: AcpLaunchRequest;
       if (selectedEngine === "opencode") {
-        launch = buildOpenCodeHostLaunchRequest(state.serverUrl, selectedModel, state.providers, sid);
+        launch = buildOpenCodeHostLaunchRequest(state.serverUrl, selectedModel, state.providers, state.workspace, sid);
       } else {
         const preset = acpPresetById(selectedEngine);
         if (!preset) throw new Error(`Unknown ACP engine: ${selectedEngine}`);
-        launch = buildAcpLaunchRequest(preset, sid);
+        launch = buildAcpLaunchRequest(preset, sid, state.workspace);
         if (selectedModel) {
           const slash = selectedModel.indexOf("/");
           launch = {

@@ -5,6 +5,7 @@ import { AcpRuntime, AcpUnsupportedError, type AcpRuntimeDeps } from "./acp-runt
 
 const REQUEST: AcpLaunchRequest = {
   profileId: "codex",
+  projectRoot: "C:/science",
   gateway: { providerId: "zerowall-1", baseUrl: "https://gateway/v1", model: "gpt-5.4" },
 };
 const READY: AcpStatus = {

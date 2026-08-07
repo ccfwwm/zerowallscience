@@ -160,8 +160,8 @@
   },
   "live": {
     "runtime": {
-      "title": "OpenCode ランタイム",
-      "bodyPrefix": "デスクトップアプリはバンドルされた OpenCode を自動的に実行します。ブラウザでは、",
+      "title": "Agent ランタイム",
+      "bodyPrefix": "デスクトップアプリはローカル Agent 環境を自動起動します。ブラウザでは設定済みゲートウェイ経由で接続してください。",
       "bodySuffix": " で起動して接続してください。",
       "connecting": "実行環境に接続しています…"
     },

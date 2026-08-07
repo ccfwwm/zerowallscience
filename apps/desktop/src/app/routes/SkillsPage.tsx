@@ -6,10 +6,7 @@ import { useRuntimeStore } from "@/lib/runtime";
 import { cn } from "@/lib/cn";
 import { isGatewayWeb } from "@/lib/webMode";
 
-/**
- * Skills, agents, install-a-skill, and detected scientific environment — all real:
- * skills/agents from the OpenCode runtime, environment from the host system.
- */
+/** Skills, agents, installation, and the detected scientific environment. */
 export function SkillsPage() {
   const { t } = useTranslation(["pages", "common"]);
   const navigate = useNavigate();
@@ -47,12 +44,7 @@ export function SkillsPage() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl px-8 py-8">
         <h1 className="font-serif text-xl text-text">{t("skills.title")}</h1>
-        <p className="mt-1 text-sm text-muted">
-          {t("skills.description.prefix")}
-          {/* eslint-disable-next-line i18next/no-literal-string -- literal filesystem path, not prose */}
-          <span className="font-mono">.opencode/skills/</span>
-          {t("skills.description.suffix")}
-        </p>
+        <p className="mt-1 text-sm text-muted">{t("skills.description.prefix")}</p>
 
         {/* Install a skill (#1) */}
         <Section title={t("skills.install.sectionTitle")} icon={<Boxes size={15} />}>
@@ -141,10 +133,7 @@ function sourceOf(location?: string): SkillSource | undefined {
   return "user";
 }
 
-// AgentInfo.mode is typed `string` (external SDK), but OpenCode only ever
-// emits "primary" | "subagent" | "all" — see useRuntimeStore's a.mode ===
-// "primary" check. Narrow to the known set so we can translate it; unknown
-// values (future SDK additions) fall back to the raw string at the call site.
+// Narrow the external SDK string to the known modes for localized labels.
 type AgentMode = "primary" | "subagent" | "all";
 
 function modeOf(mode?: string): AgentMode | undefined {

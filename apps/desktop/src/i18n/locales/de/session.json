@@ -160,8 +160,8 @@
   },
   "live": {
     "runtime": {
-      "title": "OpenCode-Runtime",
-      "bodyPrefix": "Die Desktop-App führt automatisch eine gebündelte OpenCode-Instanz aus. Starten Sie im Browser eine mit",
+      "title": "Agent-Runtime",
+      "bodyPrefix": "Die Desktop-App startet die lokale Agent-Umgebung automatisch. Verbinden Sie sich im Browser über das konfigurierte Gateway.",
       "bodySuffix": " und verbinden Sie sich.",
       "connecting": "Verbindung mit der Laufzeitumgebung wird hergestellt…"
     },

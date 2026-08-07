@@ -57,15 +57,15 @@
   "skills": {
     "title": "Compétences et agents",
     "description": {
-      "prefix": "Chargé en direct depuis le runtime OpenCode — le pack ai4s-skills intégré, plus tout ce qui se trouve sous ",
+      "prefix": "Skills disponibles pour le projet actuel et le moteur sélectionné.",
       "suffix": " dans votre espace de travail."
     },
     "install": {
       "sectionTitle": "Installer une compétence",
-      "placeholder": "Collez une compétence (Markdown) ou une URL GitHub — l'agent l'installe dans .opencode/skills/",
+      "placeholder": "Collez un Skill (Markdown) ou une URL GitHub",
       "starting": "Démarrage…",
       "cta": "Installer avec l'agent",
-      "hintConnected": "Ouvre une session et demande à l'agent de l'ajouter (customize-opencode).",
+      "hintConnected": "Ouvre une session et demande à l'agent de l'ajouter.",
       "hintDisconnected": "Connectez d'abord le runtime."
     },
     "environment": {
@@ -73,7 +73,7 @@
       "detectionUnavailable": "La détection de l'environnement s'exécute dans l'application de bureau.",
       "found": "trouvé",
       "notFound": "introuvable",
-      "note": "OpenCode exécute le code avec ce qui est installé ici (p. ex. Python via son outil shell). Python/R/Jupyter ne sont pas intégrés ; installez-les, ou un Science Pack, pour activer l'analyse."
+      "note": "Les moteurs utilisent les outils installés dans cet environnement. Installez un Science Pack pour ajouter des analyses."
     },
     "agentsSection": {
       "sectionTitle": "Agents ({{count}})",

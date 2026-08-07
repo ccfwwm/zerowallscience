@@ -71,6 +71,7 @@ pub struct AcpLaunchRequest {
     pub profile_id: String,
     #[serde(default)]
     pub conversation_id: Option<String>,
+    pub project_root: String,
     pub gateway: AcpGatewayConfig,
 }
 
@@ -91,6 +92,9 @@ pub struct AcpGatewayConfig {
 impl AcpLaunchRequest {
     fn validate(&self) -> Result<(), String> {
         profile_spec(&self.profile_id)?;
+        if self.project_root.trim().is_empty() {
+            return Err("ACP project_root is required".into());
+        }
         for (name, value) in [
             ("provider_id", self.gateway.provider_id.as_str()),
             ("base_url", self.gateway.base_url.as_str()),
@@ -569,29 +573,33 @@ fn probe_runtime_with(
         }
     }
     if verified.is_none() {
-    for directory in backend.search_paths() {
-        if is_windows_apps_path(&directory) {
-            continue;
-        }
-        for name in cli_names(profile_id) {
-            let candidate = directory.join(name);
-            if !backend.is_file(&candidate) {
+        for directory in backend.search_paths() {
+            if is_windows_apps_path(&directory) {
                 continue;
             }
-            saw_candidate = true;
-            let candidates = if profile_id == CODEX_PROFILE_ID {
-                codex_executable_candidates(&candidate, backend)
-            } else {
-                vec![candidate]
-            };
-            for executable in candidates {
-                if is_windows_apps_path(&executable) || !backend.is_file(&executable) {
+            for name in cli_names(profile_id) {
+                let candidate = directory.join(name);
+                if !backend.is_file(&candidate) {
                     continue;
                 }
-                if let Ok(version) =
-                    probe_cli_version_with_retries(|| backend.cli_version(&executable))
-                {
-                    verified = Some((executable, sanitize_version(&version)));
+                saw_candidate = true;
+                let candidates = if profile_id == CODEX_PROFILE_ID {
+                    codex_executable_candidates(&candidate, backend)
+                } else {
+                    vec![candidate]
+                };
+                for executable in candidates {
+                    if is_windows_apps_path(&executable) || !backend.is_file(&executable) {
+                        continue;
+                    }
+                    if let Ok(version) =
+                        probe_cli_version_with_retries(|| backend.cli_version(&executable))
+                    {
+                        verified = Some((executable, sanitize_version(&version)));
+                        break;
+                    }
+                }
+                if verified.is_some() {
                     break;
                 }
             }
@@ -599,10 +607,6 @@ fn probe_runtime_with(
                 break;
             }
         }
-        if verified.is_some() {
-            break;
-        }
-    }
     }
 
     let (availability, cli_path, cli_version, error) = match verified {
@@ -1277,6 +1281,10 @@ pub async fn acp_launch(
     request: AcpLaunchRequest,
 ) -> Result<AcpStatus, String> {
     request.validate()?;
+    let workspace = crate::runtime::workspace_dir(&app)?
+        .canonicalize()
+        .map_err(|error| format!("could not resolve active workspace: {error}"))?;
+    crate::acp_host::validate_project_root(&request.project_root, &workspace)?;
     // The conversation id is owned by the frontend project/session store; the
     // native adapter session remains an implementation detail.
     let _conversation_id = request.conversation_id.as_deref();
@@ -1305,7 +1313,7 @@ pub async fn acp_launch(
     // Runtime configuration stays app-private, but the ACP session itself must
     // be rooted at the selected project so agent reads and terminal commands
     // operate on exactly the folder shown by the UI.
-    let cwd = acp_session_workspace(&crate::runtime::workspace_dir(&app)?)?;
+    let cwd = acp_session_workspace(&workspace)?;
     if request.profile_id == CODEX_PROFILE_ID {
         write_codex_gateway_config(&request, &runtime_home.join(".codex"))?;
     }
@@ -2090,6 +2098,10 @@ mod tests {
         AcpLaunchRequest {
             profile_id: profile_id.to_string(),
             conversation_id: None,
+            project_root: std::env::current_dir()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
             gateway: AcpGatewayConfig {
                 provider_id: "zerowall-provider".to_string(),
                 base_url: "https://gateway.example/v1/".to_string(),
@@ -2192,9 +2204,10 @@ mod tests {
     }
 
     #[test]
-    fn launch_request_accepts_only_profile_and_gateway_shape() {
+    fn launch_request_requires_project_root_and_accepts_only_the_safe_shape() {
         let parsed: AcpLaunchRequest = serde_json::from_value(serde_json::json!({
             "profile_id": "claude-code",
+            "project_root": "C:/science",
             "gateway": {
                 "provider_id": "provider",
                 "base_url": "https://gateway.example/v1",
@@ -2203,21 +2216,29 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(parsed.profile_id, "claude-code");
+        assert_eq!(parsed.project_root, "C:/science");
 
         for invalid in [
+            serde_json::json!({
+                "profile_id": "codex",
+                "gateway": {"provider_id": "p", "base_url": "https://x", "model": "m"}
+            }),
             serde_json::json!({
                 "id": "codex",
                 "label": "Codex",
                 "command": "attacker.exe",
+                "project_root": "C:/science",
                 "gateway": {"provider_id": "p", "base_url": "https://x", "model": "m"}
             }),
             serde_json::json!({
                 "profile_id": "codex",
                 "command": "attacker.exe",
+                "project_root": "C:/science",
                 "gateway": {"provider_id": "p", "base_url": "https://x", "model": "m"}
             }),
             serde_json::json!({
                 "profile_id": "codex",
+                "project_root": "C:/science",
                 "gateway": {
                     "provider_id": "p",
                     "base_url": "https://x",
@@ -2228,6 +2249,18 @@ mod tests {
         ] {
             assert!(serde_json::from_value::<AcpLaunchRequest>(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn launch_project_root_validation_rejects_cross_workspace_requests() {
+        let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let requested = workspace.to_string_lossy().into_owned();
+        assert!(crate::acp_host::validate_project_root(&requested, &workspace).is_ok());
+
+        let other = workspace.parent().unwrap().canonicalize().unwrap();
+        let requested = other.to_string_lossy().into_owned();
+        let error = crate::acp_host::validate_project_root(&requested, &workspace).unwrap_err();
+        assert!(error.contains("active workspace"));
     }
 
     #[test]

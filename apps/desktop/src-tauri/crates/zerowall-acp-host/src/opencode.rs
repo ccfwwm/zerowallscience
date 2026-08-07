@@ -154,9 +154,11 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
     /// Discover existing sessions inside the Host. OpenCode response DTOs are
     /// reduced to the same immutable SessionState used by every Driver.
     pub async fn list_sessions(&mut self) -> Result<Vec<SessionState>, HostError> {
-        let mut response = self.send("GET", "/experimental/session", None).await?;
+        let path = self.with_directory("/experimental/session");
+        let mut response = self.send("GET", &path, None).await?;
         if !(200..300).contains(&response.status) {
-            response = self.send("GET", "/session", None).await?;
+            let path = self.with_directory("/session");
+            response = self.send("GET", &path, None).await?;
         }
         ensure_success(response.status, "session/list")?;
         let sessions =
@@ -229,7 +231,8 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
 
     async fn new_session(&mut self, request: NewSessionRequest) -> Result<SessionState, HostError> {
         let body = json!({"title": request.session_id}).to_string();
-        let response = self.send("POST", "/session", Some(&body)).await?;
+        let path = self.with_directory("/session");
+        let response = self.send("POST", &path, Some(&body)).await?;
         ensure_success(response.status, "session/new")?;
         let requested_id = request.session_id;
         let id = session_id(&response.body).unwrap_or_else(|| requested_id.clone());
@@ -259,7 +262,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         &mut self,
         request: LoadSessionRequest,
     ) -> Result<SessionState, HostError> {
-        let path = format!("/session/{}", encode_path(&request.session_id));
+        let path = self.with_directory(&format!("/session/{}", encode_path(&request.session_id)));
         let response = self.send("GET", &path, None).await?;
         ensure_success(response.status, "session/load")?;
         let id = session_id(&response.body).unwrap_or(request.session_id);
@@ -276,7 +279,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
     }
 
     async fn history(&mut self, session_id: String) -> Result<serde_json::Value, HostError> {
-        let path = format!("/session/{}/message", encode_path(&session_id));
+        let path = self.with_directory(&format!("/session/{}/message", encode_path(&session_id)));
         let response = self.send("GET", &path, None).await?;
         ensure_success(response.status, "session/history")?;
         let messages = serde_json::from_str::<Vec<serde_json::Value>>(&response.body)
@@ -368,7 +371,10 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
 
     async fn prompt(&mut self, request: PromptRequest) -> Result<PromptResponse, HostError> {
         self.ensure_event_stream(&request.session_id).await?;
-        let path = format!("/session/{}/prompt_async", encode_path(&request.session_id));
+        let path = self.with_directory(&format!(
+            "/session/{}/prompt_async",
+            encode_path(&request.session_id)
+        ));
         let mut parts = Vec::new();
         if !request.prompt.is_empty() || request.attachments.is_empty() {
             parts.push(json!({"type":"text","text":request.prompt}));
@@ -406,7 +412,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
     }
 
     async fn cancel(&mut self, session_id: String) -> Result<(), HostError> {
-        let path = format!("/session/{}/abort", encode_path(&session_id));
+        let path = self.with_directory(&format!("/session/{}/abort", encode_path(&session_id)));
         let response = self.send("POST", &path, None).await?;
         ensure_success(response.status, "session/cancel")
     }
@@ -416,18 +422,14 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         request_id: String,
         option_id: Option<String>,
     ) -> Result<(), HostError> {
-        let path = format!(
-            "/permission/{}/reply?directory={}",
-            encode_path(&request_id),
-            encode_query(&self.binding.project_root)
-        );
+        let path = self.with_directory(&format!("/permission/{}/reply", encode_path(&request_id)));
         let body = json!({"reply": option_id.unwrap_or_else(|| "reject".into())}).to_string();
         let response = self.send("POST", &path, Some(&body)).await?;
         ensure_success(response.status, "permission")
     }
 
     async fn set_config(&mut self, request: SetConfigRequest) -> Result<SessionState, HostError> {
-        let path = format!("/session/{}", encode_path(&request.session_id));
+        let path = self.with_directory(&format!("/session/{}", encode_path(&request.session_id)));
         let body = request.config.to_string();
         let response = self.send("PATCH", &path, Some(&body)).await?;
         ensure_success(response.status, "session/config")?;
@@ -452,7 +454,7 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
     }
 
     async fn close_session(&mut self, session_id: String) -> Result<(), HostError> {
-        let path = format!("/session/{}", encode_path(&session_id));
+        let path = self.with_directory(&format!("/session/{}", encode_path(&session_id)));
         let response = self.send("DELETE", &path, None).await?;
         ensure_success(response.status, "session/close")?;
         self.event_stream = None;
@@ -467,7 +469,7 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
         if self.event_stream.is_some() {
             return Ok(());
         }
-        let path = format!("/event?sessionID={}", encode_query(session_id));
+        let path = self.with_directory(&format!("/event?sessionID={}", encode_query(session_id)));
         let url = format!("{}{}", self.base_url, path);
         let headers = self.headers();
         let (status, stream) = self
@@ -537,6 +539,14 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
         ]
     }
 
+    fn with_directory(&self, path: &str) -> String {
+        let separator = if path.contains('?') { '&' } else { '?' };
+        format!(
+            "{path}{separator}directory={}",
+            encode_query(&self.binding.project_root)
+        )
+    }
+
     async fn send(
         &mut self,
         method: &str,
@@ -551,16 +561,26 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
             .map_err(HostError::Driver)
     }
 
-    fn map_events(&mut self, session_id: &str, body: &str) {
+    fn map_events(&mut self, subscribed_session_id: &str, body: &str) {
         for data in sse_data(body) {
             let Ok(value) = serde_json::from_str::<serde_json::Value>(&data) else {
                 continue;
             };
+            let (value, directory) = event_payload(&value);
+            if directory.is_some_and(|directory| directory != self.binding.project_root) {
+                continue;
+            }
+            let Some(session_id) = event_session_id(value) else {
+                continue;
+            };
+            if session_id != subscribed_session_id {
+                continue;
+            }
             let kind = value
                 .get("type")
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
-            let props = value.get("properties").unwrap_or(&value);
+            let props = value.get("properties").unwrap_or(value);
             if kind == "message.part.updated" {
                 let part = props.get("part").unwrap_or(props);
                 let part_kind = part
@@ -785,6 +805,31 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
     }
 }
 
+fn event_payload(value: &serde_json::Value) -> (&serde_json::Value, Option<&str>) {
+    let payload = value.get("payload").unwrap_or(value);
+    let props = payload.get("properties").unwrap_or(payload);
+    let directory = value
+        .get("directory")
+        .or_else(|| payload.get("directory"))
+        .or_else(|| props.get("directory"))
+        .or_else(|| props.pointer("/info/directory"))
+        .or_else(|| props.pointer("/part/directory"))
+        .and_then(serde_json::Value::as_str);
+    (payload, directory)
+}
+
+fn event_session_id(value: &serde_json::Value) -> Option<&str> {
+    let props = value.get("properties").unwrap_or(value);
+    props
+        .get("sessionID")
+        .or_else(|| props.get("sessionId"))
+        .or_else(|| props.pointer("/info/sessionID"))
+        .or_else(|| props.pointer("/info/sessionId"))
+        .or_else(|| props.pointer("/part/sessionID"))
+        .or_else(|| props.pointer("/part/sessionId"))
+        .and_then(serde_json::Value::as_str)
+}
+
 fn ensure_success(status: u16, operation: &str) -> Result<(), HostError> {
     if (200..300).contains(&status) {
         Ok(())
@@ -956,7 +1001,7 @@ mod tests {
             _path: &str,
             _headers: &[(String, String)],
         ) -> Result<(u16, TransportEventStream), String> {
-            let body = b"data: {\"type\":\"text.updated\",\"properties\":{\"delta\":\"hello\"}}\n\ndata: {\"type\":\"session.idle\",\"properties\":{}}\n\n";
+            let body = b"data: {\"type\":\"text.updated\",\"properties\":{\"sessionID\":\"s1\",\"delta\":\"hello\"}}\n\ndata: {\"type\":\"session.idle\",\"properties\":{\"sessionID\":\"s1\"}}\n\n";
             let split = body.iter().position(|byte| *byte == b'"').unwrap_or(10);
             let chunks = vec![Ok(body[..split].to_vec()), Ok(body[split..].to_vec())];
             Ok((200, Box::pin(stream::iter(chunks))))
@@ -991,8 +1036,15 @@ mod tests {
                 },
             ],
         };
-        let mut driver =
-            OpenCodeDriver::new(fake, "http://localhost:4096/", "user", "pass", binding());
+        let mut request_binding = binding();
+        request_binding.project_root = "C:/science project".into();
+        let mut driver = OpenCodeDriver::new(
+            fake,
+            "http://localhost:4096/",
+            "user",
+            "pass",
+            request_binding,
+        );
         let created = block_on(driver.new_session(NewSessionRequest {
             session_id: "local".into(),
         }))
@@ -1004,8 +1056,14 @@ mod tests {
         .unwrap();
         assert_eq!(loaded.id, "s-load");
         let calls = calls.lock().unwrap();
-        assert_eq!(calls[0].url, "http://localhost:4096/session");
-        assert_eq!(calls[1].url, "http://localhost:4096/session/s-load");
+        assert_eq!(
+            calls[0].url,
+            "http://localhost:4096/session?directory=C:%2Fscience%20project"
+        );
+        assert_eq!(
+            calls[1].url,
+            "http://localhost:4096/session/s-load?directory=C:%2Fscience%20project"
+        );
         assert_eq!(calls[0].headers[0].1, "Basic dXNlcjpwYXNz");
         assert!(calls[0].body.as_deref().unwrap().contains("local"));
     }
@@ -1020,7 +1078,9 @@ mod tests {
                 body: r#"[{"info":{"id":"m1","role":"assistant","time":{"completed":123},"agent":"build","tokens":{"input":2,"output":3,"reasoning":1,"cache":{"read":4,"write":5}},"cost":0.25},"parts":[{"type":"text","text":"answer"}]}]"#.into(),
             }],
         };
-        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
+        let mut request_binding = binding();
+        request_binding.project_root = "C:/science project".into();
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", request_binding);
 
         let history = block_on(driver.history("s1".into())).unwrap();
 
@@ -1028,7 +1088,10 @@ mod tests {
         assert_eq!(history[0]["id"], "m1");
         assert_eq!(history[0]["usage"]["cacheRead"], 4);
         assert_eq!(history[0]["parts"][0]["text"], "answer");
-        assert_eq!(calls.lock().unwrap()[0].url, "http://x/session/s1/message");
+        assert_eq!(
+            calls.lock().unwrap()[0].url,
+            "http://x/session/s1/message?directory=C:%2Fscience%20project"
+        );
     }
 
     #[test]
@@ -1063,14 +1126,14 @@ mod tests {
         assert_eq!(sessions[1].title.as_deref(), Some("Experiment"));
         assert_eq!(
             calls.lock().unwrap()[0].url,
-            "http://x/experimental/session"
+            "http://x/experimental/session?directory=."
         );
     }
 
     #[test]
     fn prompt_maps_sse_events_and_cancel_aborts() {
         let calls = Arc::new(Mutex::new(Vec::new()));
-        let sse = "data: {\"type\":\"text.updated\",\"properties\":{\"delta\":\"hi\"}}\ndata: {\"type\":\"reasoning.updated\",\"properties\":{\"text\":\"why\"}}\ndata: {\"type\":\"tool.updated\",\"properties\":{\"callID\":\"t1\",\"status\":\"running\",\"title\":\"Search\"}}\ndata: {\"type\":\"permission.asked\",\"properties\":{\"id\":\"r1\",\"options\":[{\"id\":\"allow\",\"title\":\"Allow\"}]}}\ndata: {\"type\":\"question.asked\",\"properties\":{\"question\":\"Continue?\"}}\ndata: {\"type\":\"usage.updated\",\"properties\":{\"inputTokens\":2,\"outputTokens\":3}}\n";
+        let sse = "data: {\"type\":\"text.updated\",\"properties\":{\"sessionID\":\"s1\",\"delta\":\"hi\"}}\ndata: {\"type\":\"reasoning.updated\",\"properties\":{\"sessionID\":\"s1\",\"text\":\"why\"}}\ndata: {\"type\":\"tool.updated\",\"properties\":{\"sessionID\":\"s1\",\"callID\":\"t1\",\"status\":\"running\",\"title\":\"Search\"}}\ndata: {\"type\":\"permission.asked\",\"properties\":{\"sessionID\":\"s1\",\"id\":\"r1\",\"options\":[{\"id\":\"allow\",\"title\":\"Allow\"}]}}\ndata: {\"type\":\"question.asked\",\"properties\":{\"sessionID\":\"s1\",\"question\":\"Continue?\"}}\ndata: {\"type\":\"usage.updated\",\"properties\":{\"sessionID\":\"s1\",\"inputTokens\":2,\"outputTokens\":3}}\n";
         let fake = Fake {
             calls: calls.clone(),
             responses: vec![
@@ -1113,11 +1176,21 @@ mod tests {
                 ..
             }
         )));
+        let calls_after_prompt = calls.lock().unwrap();
+        assert_eq!(
+            calls_after_prompt[0].url,
+            "http://x/event?sessionID=s1&directory=."
+        );
+        assert_eq!(
+            calls_after_prompt[1].url,
+            "http://x/session/s1/prompt_async?directory=."
+        );
+        drop(calls_after_prompt);
         block_on(driver.cancel("s1".into())).unwrap();
         let calls = calls.lock().unwrap();
-        assert!(calls
-            .iter()
-            .any(|call| call.url == "http://x/session/s1/abort" && call.method == "POST"));
+        assert!(calls.iter().any(
+            |call| call.url == "http://x/session/s1/abort?directory=." && call.method == "POST"
+        ));
     }
 
     #[test]
@@ -1135,7 +1208,7 @@ mod tests {
         let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", permission_binding);
         driver.map_events(
             "s1",
-            "data: {\"type\":\"permission.asked\",\"properties\":{\"id\":\"p1\",\"permission\":\"bash\",\"patterns\":[\"git status\"]}}\n\n",
+            "data: {\"type\":\"permission.asked\",\"properties\":{\"sessionID\":\"s1\",\"id\":\"p1\",\"permission\":\"bash\",\"patterns\":[\"git status\"]}}\n\n",
         );
 
         assert!(driver.take_events().iter().any(|event| matches!(
@@ -1224,6 +1297,33 @@ mod tests {
         }))
         .unwrap();
         assert!(driver.take_events().iter().any(|event| matches!(event, crate::AgentEvent::TextDelta { delta, .. } if delta == "nested text")));
+    }
+
+    #[test]
+    fn filters_sse_events_by_original_session_and_directory() {
+        let fake = Fake {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            responses: vec![],
+        };
+        let mut event_binding = binding();
+        event_binding.project_root = "C:/science".into();
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", event_binding);
+        driver.map_events(
+            "s1",
+            concat!(
+                "data: {\"directory\":\"C:/science\",\"payload\":{\"type\":\"message.part.updated\",\"properties\":{\"part\":{\"sessionID\":\"other\",\"type\":\"text\",\"text\":\"wrong session\"}}}}\n\n",
+                "data: {\"directory\":\"C:/other\",\"payload\":{\"type\":\"message.part.updated\",\"properties\":{\"part\":{\"sessionID\":\"s1\",\"type\":\"text\",\"text\":\"wrong directory\"}}}}\n\n",
+                "data: {\"directory\":\"C:/science\",\"payload\":{\"type\":\"message.part.updated\",\"properties\":{\"part\":{\"sessionID\":\"s1\",\"type\":\"text\",\"text\":\"accepted\"}}}}\n\n",
+            ),
+        );
+
+        let events = driver.take_events();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            crate::AgentEvent::TextDelta { session_id, delta }
+                if session_id == "s1" && delta == "accepted"
+        ));
     }
 
     #[test]
