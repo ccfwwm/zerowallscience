@@ -11,8 +11,9 @@ use zerowall_acp_host::opencode::{
     OpenCodeDriver, OpenCodeMcpControl, OpenCodeProviderControl, ProviderCatalog, ProviderInfo,
 };
 use zerowall_acp_host::{
-    AcpHost, AcpHostDriver, AgentBinding, AgentEvent, CredentialRef, HostDriverKind, HostError,
-    NewSessionRequest, PromptAttachment, PromptResponse, SessionState, SessionStatus,
+    normalize_mcp_allow_list, normalize_skill_snapshots, AcpHost, AcpHostDriver, AgentBinding,
+    AgentEvent, CredentialRef, HostDriverKind, HostError, NewSessionRequest, PromptAttachment,
+    PromptResponse, SessionState, SessionStatus, SkillSnapshot,
 };
 
 #[derive(Default)]
@@ -109,7 +110,7 @@ fn remove_persisted_session(app: &AppHandle, session_id: &str) -> Result<(), Str
     Ok(())
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AcpHostLaunchRequest {
     pub engine: HostDriverKind,
@@ -125,6 +126,8 @@ pub struct AcpHostLaunchRequest {
     pub credential: CredentialRef,
     #[serde(default)]
     pub mcp_allow_list: Option<Vec<String>>,
+    #[serde(default)]
+    pub skills_snapshot: Option<Vec<SkillSnapshot>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,7 +152,7 @@ fn error_string(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
 
-fn validate_request(request: &AcpHostLaunchRequest) -> Result<(), String> {
+fn validate_request(request: &AcpHostLaunchRequest) -> Result<AcpHostLaunchRequest, String> {
     if request.session_id.trim().is_empty() {
         return Err("session_id is required".into());
     }
@@ -172,7 +175,18 @@ fn validate_request(request: &AcpHostLaunchRequest) -> Result<(), String> {
     {
         return Err("credential.keychain_id is required".into());
     }
-    validate_base_url(&request.base_url)
+    validate_base_url(&request.base_url)?;
+    let mut normalized = request.clone();
+    normalized.mcp_allow_list = request
+        .mcp_allow_list
+        .as_ref()
+        .map(|values| normalize_mcp_allow_list(values.clone()));
+    normalized.skills_snapshot = request
+        .skills_snapshot
+        .as_ref()
+        .map(|values| normalize_skill_snapshots(values.clone()).map_err(error_string))
+        .transpose()?;
+    Ok(normalized)
 }
 
 pub(crate) fn validate_project_root(requested: &str, workspace: &Path) -> Result<(), String> {
@@ -479,6 +493,8 @@ fn binding(request: &AcpHostLaunchRequest, workspace: &Path) -> AgentBinding {
         project_root: workspace.to_string_lossy().into_owned(),
         profile_fingerprint: request.profile_fingerprint.clone(),
         resolved_at: chrono_like_timestamp(),
+        mcp_allow_list: request.mcp_allow_list.clone().unwrap_or_default(),
+        skills_snapshot: request.skills_snapshot.clone().unwrap_or_default(),
     }
 }
 
@@ -981,10 +997,23 @@ async fn start_host_session(
     request: AcpHostLaunchRequest,
     route: SessionLaunchRoute,
 ) -> Result<SessionState, String> {
-    validate_request(&request)?;
+    let request = validate_request(&request)?;
     let workspace = workspace_root(&app)?;
     validate_project_root(&request.project_root, &workspace)?;
-    let session_binding = binding(&request, &workspace);
+    let requested_binding = binding(&request, &workspace);
+    let session_binding = if let Some(persisted) = read_catalog(&app)?.get(&request.session_id) {
+        persisted
+            .binding
+            .ensure_compatible(&requested_binding)
+            .map_err(error_string)?;
+        persisted
+            .binding
+            .clone()
+            .normalized()
+            .map_err(error_string)?
+    } else {
+        requested_binding
+    };
     let driver = build_driver(&app, &request, &workspace, session_binding.clone())?;
     let mut host = state.host.lock().await;
     host.register_driver(request.engine, driver);
@@ -1044,7 +1073,7 @@ pub async fn acp_host_discover(
     app: AppHandle,
     request: AcpHostLaunchRequest,
 ) -> Result<Vec<SessionState>, String> {
-    validate_request(&request)?;
+    let request = validate_request(&request)?;
     if request.engine != HostDriverKind::OpenCode {
         return Err("session discovery is currently supported only by OpenCode".into());
     }
@@ -1066,8 +1095,8 @@ pub async fn acp_host_load(
     request: Option<AcpHostLaunchRequest>,
 ) -> Result<SessionState, String> {
     let workspace = workspace_root(&app)?;
+    let request = request.as_ref().map(validate_request).transpose()?;
     if let Some(request) = request.as_ref() {
-        validate_request(request)?;
         validate_project_root(&request.project_root, &workspace)?;
     }
     let mut host = state.host.lock().await;
@@ -1112,7 +1141,6 @@ pub async fn acp_host_load(
 
     let request = request
         .ok_or_else(|| "session is not active and no launch profile was supplied".to_owned())?;
-    validate_request(&request)?;
     if request.session_id != session_id {
         return Err("load request session_id does not match session_id".into());
     }
@@ -1324,7 +1352,7 @@ pub async fn acp_host_close(
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
-    use zerowall_acp_host::{DriverCall, DriverCapabilities, FakeDriver};
+    use zerowall_acp_host::{DriverCall, DriverCapabilities, FakeDriver, SkillScope};
 
     fn test_binding(engine: HostDriverKind, root: &Path) -> AgentBinding {
         AgentBinding {
@@ -1341,6 +1369,8 @@ mod tests {
             project_root: root.to_string_lossy().into_owned(),
             profile_fingerprint: "fp".into(),
             resolved_at: "now".into(),
+            mcp_allow_list: Vec::new(),
+            skills_snapshot: Vec::new(),
         }
     }
 
@@ -1396,7 +1426,86 @@ mod tests {
                 keychain_id: "provider".into(),
             },
             mcp_allow_list: None,
+            skills_snapshot: None,
         }
+    }
+
+    #[test]
+    fn launch_request_normalizes_capability_snapshots() {
+        let root = std::env::current_dir().unwrap();
+        let mut request = test_launch_request(HostDriverKind::Codex, &root, "session-1");
+        request.mcp_allow_list = Some(vec![
+            " papers ".into(),
+            String::new(),
+            "datasets".into(),
+            "papers".into(),
+        ]);
+        request.skills_snapshot = Some(vec![
+            SkillSnapshot {
+                id: " review ".into(),
+                version: " 1 ".into(),
+                scope: SkillScope::Conversation,
+                sha256: " abc ".into(),
+            },
+            SkillSnapshot {
+                id: "review".into(),
+                version: "1".into(),
+                scope: SkillScope::Conversation,
+                sha256: "abc".into(),
+            },
+        ]);
+
+        let normalized = validate_request(&request).unwrap();
+        assert_eq!(
+            normalized.mcp_allow_list,
+            Some(vec!["datasets".into(), "papers".into()])
+        );
+        assert_eq!(
+            normalized.skills_snapshot,
+            Some(vec![SkillSnapshot {
+                id: "review".into(),
+                version: "1".into(),
+                scope: SkillScope::Conversation,
+                sha256: "abc".into(),
+            }])
+        );
+        let session_binding = binding(&normalized, &root);
+        assert_eq!(session_binding.mcp_allow_list, vec!["datasets", "papers"]);
+        assert_eq!(session_binding.skills_snapshot.len(), 1);
+    }
+
+    #[test]
+    fn launch_request_rejects_invalid_skill_snapshot_and_legacy_catalog_defaults_empty() {
+        let root = std::env::current_dir().unwrap();
+        let mut request = test_launch_request(HostDriverKind::Codex, &root, "session-1");
+        request.skills_snapshot = Some(vec![SkillSnapshot {
+            id: "review".into(),
+            version: "1".into(),
+            scope: SkillScope::Conversation,
+            sha256: " ".into(),
+        }]);
+        assert_eq!(
+            validate_request(&request).unwrap_err(),
+            "skill snapshot sha256 is required"
+        );
+
+        let legacy: PersistedSession = serde_json::from_value(serde_json::json!({
+            "id": "legacy",
+            "binding": {
+                "engine": "codex",
+                "profile": "codex",
+                "model": "model",
+                "provider": "provider",
+                "variant": null,
+                "projectRoot": root.to_string_lossy(),
+                "profileFingerprint": "fp",
+                "resolvedAt": "now"
+            },
+            "resumable": true
+        }))
+        .unwrap();
+        assert!(legacy.binding.mcp_allow_list.is_empty());
+        assert!(legacy.binding.skills_snapshot.is_empty());
     }
 
     fn test_driver(
@@ -1579,6 +1688,8 @@ mod tests {
                 project_root: "C:/science".into(),
                 profile_fingerprint: "fp".into(),
                 resolved_at: "now".into(),
+                mcp_allow_list: Vec::new(),
+                skills_snapshot: Vec::new(),
             },
             resumable: true,
             state: SessionStatus::Closed,

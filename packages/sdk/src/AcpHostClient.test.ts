@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { AcpHostClient, type AcpHostInvoke } from "./AcpHostClient";
+import {
+  AcpHostClient,
+  type AcpHostInvoke,
+  type SkillSnapshot,
+} from "./AcpHostClient";
 import type { PromptAttachment } from "./runtime";
 
 const launchRequest = {
@@ -66,6 +70,162 @@ function invokeMock(): AcpHostInvoke {
 }
 
 describe("AcpHostClient", () => {
+  it("serializes normalized capability snapshots without non-canonical skill fields", async () => {
+    const skills: SkillSnapshot[] = [
+      {
+        id: " citation-review ",
+        version: " 1.0.0 ",
+        scope: "conversation",
+        sha256: " abc123 ",
+        description: "must not cross the Host boundary",
+        location: "C:/secret/path",
+      } as SkillSnapshot,
+      { id: "citation-review", version: "1.0.0", scope: "conversation", sha256: "abc123" },
+      { id: "analysis", version: "2", scope: "project", sha256: "def456" },
+    ];
+    const invoke = vi.fn(async (_command: string, args?: Record<string, unknown>) => {
+      const request = args?.request as Record<string, unknown>;
+      return {
+        id: "conversation-1",
+        binding: {
+          engine: request.engine,
+          profile: request.profileId,
+          model: request.model,
+          provider: request.providerId,
+          variant: request.variant ?? null,
+          projectRoot: request.projectRoot,
+          profileFingerprint: request.profileFingerprint,
+          resolvedAt: "now",
+          mcpAllowList: request.mcpAllowList,
+          skillsSnapshot: request.skillsSnapshot,
+        },
+        resumable: true,
+      };
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    const session = await client.launch({
+      ...launchRequest,
+      mcpAllowList: [" papers ", "", "datasets", "papers"],
+      skillsSnapshot: skills,
+    });
+
+    expect(invoke).toHaveBeenCalledWith("acp_host_launch", {
+      request: expect.objectContaining({
+        mcpAllowList: ["datasets", "papers"],
+        skillsSnapshot: [
+          { id: "analysis", version: "2", scope: "project", sha256: "def456" },
+          { id: "citation-review", version: "1.0.0", scope: "conversation", sha256: "abc123" },
+        ],
+      }),
+    });
+    const serialized = JSON.stringify(vi.mocked(invoke).mock.calls);
+    expect(serialized).not.toContain("description");
+    expect(serialized).not.toContain("location");
+    expect(session.binding.mcpAllowList).toEqual(["datasets", "papers"]);
+    expect(session.binding.skillsSnapshot).toEqual([
+      { id: "analysis", version: "2", scope: "project", sha256: "def456" },
+      { id: "citation-review", version: "1.0.0", scope: "conversation", sha256: "abc123" },
+    ]);
+  });
+
+  it("normalizes snake_case capability bindings and ignores order-only changes", async () => {
+    const invoke = vi.fn(async (_command: string, args?: Record<string, unknown>) => {
+      const request = args?.request as Record<string, unknown>;
+      return {
+        id: "conversation-1",
+        binding: {
+          engine: request.engine,
+          profile: request.profileId,
+          model: request.model,
+          provider: request.providerId,
+          variant: null,
+          project_root: request.projectRoot,
+          profile_fingerprint: request.profileFingerprint,
+          resolved_at: "now",
+          mcp_allow_list: ["papers", "datasets", "papers"],
+          skills_snapshot: [
+            { id: "review", version: "1", scope: "conversation", sha256: "bbb" },
+            { id: "search", version: "1", scope: "project", sha256: "aaa" },
+          ],
+        },
+        resumable: true,
+      };
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+    const skills: SkillSnapshot[] = [
+      { id: "search", version: "1", scope: "project", sha256: "aaa" },
+      { id: "review", version: "1", scope: "conversation", sha256: "bbb" },
+    ];
+
+    await client.launch({
+      ...launchRequest,
+      mcpAllowList: ["datasets", "papers"],
+      skillsSnapshot: skills,
+    });
+    await expect(client.launch({
+      ...launchRequest,
+      mcpAllowList: ["papers", "datasets", "papers"],
+      skillsSnapshot: [...skills].reverse(),
+    })).resolves.toMatchObject({ id: "conversation-1" });
+  });
+
+  it("rejects changed capability contents for the same session binding", async () => {
+    const invoke = vi.fn(async (_command: string, args?: Record<string, unknown>) => {
+      const request = args?.request as Record<string, unknown>;
+      return {
+        id: "conversation-1",
+        binding: {
+          engine: request.engine,
+          profile: request.profileId,
+          model: request.model,
+          provider: request.providerId,
+          variant: null,
+          projectRoot: request.projectRoot,
+          profileFingerprint: request.profileFingerprint,
+          resolvedAt: "now",
+          mcpAllowList: request.mcpAllowList,
+          skillsSnapshot: request.skillsSnapshot,
+        },
+        resumable: true,
+      };
+    }) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+    await client.launch({
+      ...launchRequest,
+      mcpAllowList: ["papers"],
+      skillsSnapshot: [{ id: "review", version: "1", scope: "conversation", sha256: "aaa" }],
+    });
+
+    await expect(client.launch({
+      ...launchRequest,
+      mcpAllowList: ["datasets"],
+      skillsSnapshot: [{ id: "review", version: "1", scope: "conversation", sha256: "aaa" }],
+    })).rejects.toThrow("session binding conflicts on mcpAllowList");
+    await expect(client.launch({
+      ...launchRequest,
+      mcpAllowList: ["papers"],
+      skillsSnapshot: [{ id: "review", version: "1", scope: "conversation", sha256: "changed" }],
+    })).rejects.toThrow("session binding conflicts on skillsSnapshot");
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { id: "", version: "1", scope: "conversation", sha256: "abc" },
+    { id: "review", version: " ", scope: "conversation", sha256: "abc" },
+    { id: "review", version: "1", scope: "session", sha256: "abc" },
+    { id: "review", version: "1", scope: "conversation", sha256: " " },
+  ])("rejects invalid skill snapshots before invoking the Host: %o", async (skill) => {
+    const invoke = vi.fn() as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    await expect(client.launch({
+      ...launchRequest,
+      skillsSnapshot: [skill as SkillSnapshot],
+    })).rejects.toThrow(/skill snapshot/);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("uses typed Host commands for provider control without serializing secrets", async () => {
     const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
       if (command === "acp_host_list_providers") {

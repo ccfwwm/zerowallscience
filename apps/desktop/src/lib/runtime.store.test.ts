@@ -127,7 +127,12 @@ vi.mock("./acp", () => ({
   acpSetModel: mocks.acpSetModel,
   acpCancel: vi.fn(async () => {}),
   acpShutdown: mocks.acpShutdown,
+  acpListMcpServers: vi.fn(async () => []),
   acpListSkills: vi.fn(async () => []),
+  createSkillSnapshots: (skills: { name: string; sha256?: string }[], scope: string) =>
+    skills
+      .filter((skill) => skill.name.trim() && skill.sha256?.trim())
+      .map((skill) => ({ id: skill.name.trim(), version: "installed", scope, sha256: skill.sha256!.trim() })),
   subscribeAcp: vi.fn(async (h: unknown) => {
     mocks.acpHandlers = h as Record<string, (p: unknown) => void>;
     return mocks.acpUnlisten;

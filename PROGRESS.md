@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-07 18:55 · ACP sessions now freeze normalized MCP allow-lists and four-field Skills snapshots across SDK, Rust Host/Tauri, Workflow recovery, and ordinary desktop conversation discovery; focused SDK/Desktop/Rust tests and desktop typecheck pass.
+
 2026-08-07 18:11 · Amazon Bedrock provider-region reads and writes now use typed ACP Host commands on desktop while Gateway Web retains the compatible OpenCode client path; SDK 121/121, Host 47/47, Settings 12/12, and desktop typecheck pass.
 
 2026-08-07 17:45 · Jupyter setup now keeps the token only in the OS Keychain, registers MCP through Rust with an `{env:JUPYTER_TOKEN}` placeholder, and opens JupyterLab without exposing the token to the renderer; Jupyter 3/3, ACP Host 16/16, setup 10/10, and desktop typecheck pass.

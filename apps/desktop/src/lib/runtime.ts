@@ -18,6 +18,7 @@ import {
   type QuestionAskedEvent,
   type SessionMeta,
   type SkillInfo,
+  type SkillSnapshot,
   type ToolCallStatus,
   BUILTIN_WORKFLOWS,
   WorkflowScheduler,
@@ -76,7 +77,12 @@ import {
 } from "./tauri";
 import { isGatewayWeb, gatewayToken, gatewayOrigin } from "./webMode";
 import { AcpRuntime } from "./acp-runtime";
-import { acpListMcpServers, acpListSkills, type AcpLaunchRequest } from "./acp";
+import {
+  acpListMcpServers,
+  acpListSkills,
+  createSkillSnapshots,
+  type AcpLaunchRequest,
+} from "./acp";
 import { acpPresetById } from "./acp-presets";
 import { buildAcpLaunchRequest, clearAcpConfig, loadAcpConfig, saveAcpConfig } from "./acp-config";
 import {
@@ -207,7 +213,7 @@ let workflowScheduler: WorkflowScheduler | null = null;
 
 function resolveWorkflowSnapshot(
   nodeId: string,
-  overrides?: { mcpAllowList?: string[]; skillsSnapshot?: unknown },
+  overrides?: { mcpAllowList?: string[]; skillsSnapshot?: SkillSnapshot[] },
 ) {
   const state = useRuntimeStore.getState();
   const key = state.currentId ?? DRAFT_KEY;
@@ -228,7 +234,7 @@ function resolveWorkflowSnapshot(
       nodeId,
     },
     mcpAllowList: overrides?.mcpAllowList ?? [],
-    skillsSnapshot: overrides?.skillsSnapshot ?? state.skills.map((skill) => ({ id: skill.name, description: skill.description, location: skill.location ?? null })),
+    skillsSnapshot: overrides?.skillsSnapshot ?? [],
   };
 }
 
@@ -1758,10 +1764,10 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         acpListMcpServers().catch(() => []),
         acpListSkills(state.acpProfileId).catch(() => []),
       ]);
-      const mcpAllowList = mcpServers.map((server) => server.name);
-      const skillsSnapshot = acpSkills.length > 0
-        ? acpSkills.map((skill) => ({ id: skill.name, version: "installed", sha256: skill.sha256, location: skill.location }))
-        : undefined;
+      const mcpAllowList = [...new Set(
+        mcpServers.map((server) => server.name.trim()).filter(Boolean),
+      )].sort();
+      const skillsSnapshot = createSkillSnapshots(acpSkills, "workflow-node");
       const run = await scheduler.createRun(definition, undefined, {
         resolveNodeSnapshot: (node) => resolveWorkflowSnapshot(node.id, { mcpAllowList, skillsSnapshot }),
       });

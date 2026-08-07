@@ -40,6 +40,8 @@ function makeDeps() {
     shutdown: vi.fn(async () => IDLE),
     setModel: vi.fn(async () => {}),
     listSkills: vi.fn(async () => []),
+    listMcpServers: vi.fn(async () => []),
+    discoverSkills: vi.fn(async () => []),
     subscribe: vi.fn(async (h: AcpEventHandlers) => {
       handlers = h;
       return unlisten;
@@ -59,6 +61,43 @@ function harness() {
 }
 
 describe("AcpRuntime lifecycle", () => {
+  it("discovers and freezes ordinary conversation capabilities before launch", async () => {
+    const { runtime, deps } = harness();
+    (deps.listMcpServers as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { name: " papers ", status: "connected", command: "python", args: [] },
+      { name: "datasets", status: "connected", command: "node", args: [] },
+    ]);
+    (deps.discoverSkills as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { name: "review", description: "Review", location: "C:/skills/review", sha256: "abc" },
+    ]);
+
+    await runtime.connect();
+
+    expect(deps.launch).toHaveBeenCalledWith(expect.objectContaining({
+      mcpAllowList: ["datasets", "papers"],
+      skillsSnapshot: [{
+        id: "review",
+        version: "installed",
+        scope: "conversation",
+        sha256: "abc",
+      }],
+    }));
+    expect((deps.discoverSkills as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
+      .toBeLessThan((deps.launch as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]);
+  });
+
+  it("falls back to empty capability snapshots when discovery fails", async () => {
+    const { runtime, deps } = harness();
+    (deps.listMcpServers as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("MCP unavailable"));
+    (deps.discoverSkills as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("skills unavailable"));
+
+    await expect(runtime.connect()).resolves.toBeUndefined();
+    expect(deps.launch).toHaveBeenCalledWith(expect.objectContaining({
+      mcpAllowList: [],
+      skillsSnapshot: [],
+    }));
+  });
+
   it("subscribes before launching, then goes ready", async () => {
     const { runtime, deps, statuses } = harness();
     await runtime.connect();

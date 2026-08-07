@@ -126,6 +126,8 @@ describe("AcpWorkflowExecutor", () => {
             projectRoot: request.projectRoot,
             profileFingerprint: "fingerprint",
             resolvedAt: "now",
+            mcpAllowList: request.mcpAllowList,
+            skillsSnapshot: request.skillsSnapshot,
           },
           resumable: true,
           bindingEcho: binding,
@@ -166,7 +168,21 @@ describe("AcpWorkflowExecutor", () => {
     });
     const context = {
       run: { id: "run-1", workflowId: "wf", name: "Workflow", state: "running", nodes: {}, createdAt: "", updatedAt: "" },
-      node: { id: "agent", kind: "agent", dependsOn: [], state: "running", attempts: 1, input: { task: "test" }, mcpAllowList: ["paper-search"] },
+      node: {
+        id: "agent",
+        kind: "agent",
+        dependsOn: [],
+        state: "running",
+        attempts: 1,
+        input: { task: "test" },
+        mcpAllowList: ["paper-search"],
+        skillsSnapshot: [{
+          id: "citation-review",
+          version: "installed",
+          scope: "workflow-node",
+          sha256: "abc123",
+        }],
+      },
       dependencyOutputs: {},
     } as WorkflowExecutionContext;
 
@@ -175,5 +191,11 @@ describe("AcpWorkflowExecutor", () => {
     expect((promptArgs?.sessionId as string)).toBe("workflow-session");
     expect(((promptArgs?.prompt as string) ?? "")).toContain('"task": "test"');
     expect((newArgs?.request as Record<string, unknown>).mcpAllowList).toEqual(["paper-search"]);
+    expect((newArgs?.request as Record<string, unknown>).skillsSnapshot).toEqual([{
+      id: "citation-review",
+      version: "installed",
+      scope: "workflow-node",
+      sha256: "abc123",
+    }]);
   });
 });

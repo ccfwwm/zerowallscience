@@ -73,6 +73,19 @@ pub struct AcpLaunchRequest {
     pub conversation_id: Option<String>,
     pub project_root: String,
     pub gateway: AcpGatewayConfig,
+    #[serde(default)]
+    pub mcp_allow_list: Option<Vec<String>>,
+    #[serde(default)]
+    pub skills_snapshot: Option<Vec<AcpSkillSnapshot>>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AcpSkillSnapshot {
+    pub id: String,
+    pub version: String,
+    pub scope: String,
+    pub sha256: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -94,6 +107,29 @@ impl AcpLaunchRequest {
         profile_spec(&self.profile_id)?;
         if self.project_root.trim().is_empty() {
             return Err("ACP project_root is required".into());
+        }
+        if self
+            .mcp_allow_list
+            .as_ref()
+            .is_some_and(|values| values.iter().any(|value| value.trim().is_empty()))
+        {
+            return Err("ACP MCP allow-list contains an empty name".into());
+        }
+        if let Some(skills) = &self.skills_snapshot {
+            for skill in skills {
+                if skill.id.trim().is_empty()
+                    || skill.version.trim().is_empty()
+                    || skill.sha256.trim().is_empty()
+                {
+                    return Err("ACP skill snapshot fields are required".into());
+                }
+                if !matches!(
+                    skill.scope.as_str(),
+                    "global" | "project" | "conversation" | "workflow-node"
+                ) {
+                    return Err("ACP skill snapshot scope is invalid".into());
+                }
+            }
         }
         for (name, value) in [
             ("provider_id", self.gateway.provider_id.as_str()),
@@ -2108,6 +2144,8 @@ mod tests {
                 model: "research-model".to_string(),
                 platform: None,
             },
+            mcp_allow_list: None,
+            skills_snapshot: None,
         }
     }
 

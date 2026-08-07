@@ -34,6 +34,24 @@ pub struct LaunchProfile {
     pub credential: CredentialRef,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SkillScope {
+    Global,
+    Project,
+    Conversation,
+    WorkflowNode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillSnapshot {
+    pub id: String,
+    pub version: String,
+    pub scope: SkillScope,
+    pub sha256: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentBinding {
@@ -45,6 +63,10 @@ pub struct AgentBinding {
     pub project_root: String,
     pub profile_fingerprint: String,
     pub resolved_at: String,
+    #[serde(default)]
+    pub mcp_allow_list: Vec<String>,
+    #[serde(default)]
+    pub skills_snapshot: Vec<SkillSnapshot>,
 }
 
 impl AgentBinding {
@@ -59,16 +81,29 @@ impl AgentBinding {
     }
 
     pub fn ensure_compatible(&self, requested: &Self) -> Result<(), HostError> {
+        let existing = self.clone().normalized()?;
+        let requested = requested.clone().normalized()?;
         let checks = [
-            ("engine", self.engine == requested.engine),
-            ("profile", self.profile == requested.profile),
-            ("model", self.model == requested.model),
-            ("provider", self.provider == requested.provider),
-            ("variant", self.variant == requested.variant),
-            ("project_root", self.project_root == requested.project_root),
+            ("engine", existing.engine == requested.engine),
+            ("profile", existing.profile == requested.profile),
+            ("model", existing.model == requested.model),
+            ("provider", existing.provider == requested.provider),
+            ("variant", existing.variant == requested.variant),
+            (
+                "project_root",
+                existing.project_root == requested.project_root,
+            ),
             (
                 "profile_fingerprint",
-                self.profile_fingerprint == requested.profile_fingerprint,
+                existing.profile_fingerprint == requested.profile_fingerprint,
+            ),
+            (
+                "mcp_allow_list",
+                existing.mcp_allow_list == requested.mcp_allow_list,
+            ),
+            (
+                "skills_snapshot",
+                existing.skills_snapshot == requested.skills_snapshot,
             ),
         ];
         checks
@@ -79,6 +114,47 @@ impl AgentBinding {
                     field: (*field).into(),
                 })
             })
+    }
+
+    pub fn normalized(mut self) -> Result<Self, HostError> {
+        self.mcp_allow_list = normalize_mcp_allow_list(self.mcp_allow_list);
+        self.skills_snapshot = normalize_skill_snapshots(self.skills_snapshot)?;
+        Ok(self)
+    }
+}
+
+pub fn normalize_mcp_allow_list(values: Vec<String>) -> Vec<String> {
+    let mut normalized = values
+        .into_iter()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
+
+pub fn normalize_skill_snapshots(
+    mut snapshots: Vec<SkillSnapshot>,
+) -> Result<Vec<SkillSnapshot>, HostError> {
+    for skill in &mut snapshots {
+        skill.id = required_skill_field(&skill.id, "id")?;
+        skill.version = required_skill_field(&skill.version, "version")?;
+        skill.sha256 = required_skill_field(&skill.sha256, "sha256")?;
+    }
+    snapshots.sort();
+    snapshots.dedup();
+    Ok(snapshots)
+}
+
+fn required_skill_field(value: &str, field: &'static str) -> Result<String, HostError> {
+    let value = value.trim();
+    if value.is_empty() {
+        Err(HostError::InvalidSkillSnapshot {
+            field: field.into(),
+        })
+    } else {
+        Ok(value.into())
     }
 }
 
@@ -109,6 +185,8 @@ pub enum HostError {
     },
     #[error("session binding conflicts on {field}")]
     BindingConflict { field: String },
+    #[error("skill snapshot {field} is required")]
+    InvalidSkillSnapshot { field: String },
     #[error("session {session_id} is terminated (resumable: {resumable})")]
     SessionTerminated { session_id: String, resumable: bool },
     #[error("driver error: {0}")]
@@ -384,6 +462,9 @@ impl AcpHost {
         request: NewSessionRequest,
         binding: AgentBinding,
     ) -> Result<SessionState, HostError> {
+        if let Some(existing) = self.sessions.get(&request.session_id) {
+            existing.binding.ensure_compatible(&binding)?;
+        }
         let kind = binding.engine;
         let supported = self
             .pending_drivers
@@ -434,6 +515,9 @@ impl AcpHost {
         request: LoadSessionRequest,
         binding: AgentBinding,
     ) -> Result<SessionState, HostError> {
+        if let Some(existing) = self.sessions.get(&request.session_id) {
+            existing.binding.ensure_compatible(&binding)?;
+        }
         let kind = binding.engine;
         let supported = self
             .pending_drivers
@@ -996,6 +1080,8 @@ impl FakeDriver {
                 project_root: String::new(),
                 profile_fingerprint: String::new(),
                 resolved_at: String::new(),
+                mcp_allow_list: Vec::new(),
+                skills_snapshot: Vec::new(),
             },
             state: SessionStatus::Ready,
             resumable: true,
@@ -1035,6 +1121,8 @@ impl AcpHostDriver for FakeDriver {
                 project_root: String::new(),
                 profile_fingerprint: String::new(),
                 resolved_at: String::new(),
+                mcp_allow_list: Vec::new(),
+                skills_snapshot: Vec::new(),
             },
             state: SessionStatus::Ready,
             resumable: false,
@@ -1152,7 +1240,113 @@ mod tests {
             project_root: root.into(),
             profile_fingerprint: "fp".into(),
             resolved_at: "2026-08-06T00:00:00Z".into(),
+            mcp_allow_list: Vec::new(),
+            skills_snapshot: Vec::new(),
         }
+    }
+
+    #[test]
+    fn legacy_binding_defaults_capability_snapshots_to_empty() {
+        let binding: AgentBinding = serde_json::from_value(json!({
+            "engine": "codex",
+            "profile": "codex",
+            "model": "gpt",
+            "provider": "cloud",
+            "variant": null,
+            "projectRoot": "C:/project",
+            "profileFingerprint": "fp",
+            "resolvedAt": "now"
+        }))
+        .unwrap();
+        assert!(binding.mcp_allow_list.is_empty());
+        assert!(binding.skills_snapshot.is_empty());
+    }
+
+    #[test]
+    fn binding_normalizes_and_validates_capability_snapshots() {
+        let mut value = binding(HostDriverKind::Codex, "gpt", "C:/project");
+        value.mcp_allow_list = vec![
+            " papers ".into(),
+            String::new(),
+            "datasets".into(),
+            "papers".into(),
+        ];
+        value.skills_snapshot = vec![
+            SkillSnapshot {
+                id: " review ".into(),
+                version: " 1 ".into(),
+                scope: SkillScope::Conversation,
+                sha256: " abc ".into(),
+            },
+            SkillSnapshot {
+                id: "review".into(),
+                version: "1".into(),
+                scope: SkillScope::Conversation,
+                sha256: "abc".into(),
+            },
+            SkillSnapshot {
+                id: "search".into(),
+                version: "2".into(),
+                scope: SkillScope::Project,
+                sha256: "def".into(),
+            },
+        ];
+
+        let normalized = value.normalized().unwrap();
+        assert_eq!(normalized.mcp_allow_list, vec!["datasets", "papers"]);
+        assert_eq!(
+            normalized.skills_snapshot,
+            vec![
+                SkillSnapshot {
+                    id: "review".into(),
+                    version: "1".into(),
+                    scope: SkillScope::Conversation,
+                    sha256: "abc".into(),
+                },
+                SkillSnapshot {
+                    id: "search".into(),
+                    version: "2".into(),
+                    scope: SkillScope::Project,
+                    sha256: "def".into(),
+                },
+            ]
+        );
+
+        let mut invalid = normalized.clone();
+        invalid.skills_snapshot[0].sha256 = " ".into();
+        assert!(matches!(
+            invalid.normalized(),
+            Err(HostError::InvalidSkillSnapshot { field }) if field == "sha256"
+        ));
+        assert!(serde_json::from_value::<SkillSnapshot>(json!({
+            "id": "review",
+            "version": "1",
+            "scope": "session",
+            "sha256": "abc"
+        }))
+        .is_err());
+    }
+
+    #[test]
+    fn binding_capability_compatibility_is_order_insensitive_but_content_immutable() {
+        let mut first = binding(HostDriverKind::Codex, "gpt", "C:/project");
+        first.mcp_allow_list = vec!["papers".into(), "datasets".into()];
+        first.skills_snapshot = vec![SkillSnapshot {
+            id: "review".into(),
+            version: "1".into(),
+            scope: SkillScope::Conversation,
+            sha256: "abc".into(),
+        }];
+        let mut reordered = first.clone();
+        reordered.mcp_allow_list.reverse();
+        assert!(first.ensure_compatible(&reordered).is_ok());
+
+        let mut changed = first.clone();
+        changed.skills_snapshot[0].sha256 = "changed".into();
+        assert!(matches!(
+            first.ensure_compatible(&changed),
+            Err(HostError::BindingConflict { field }) if field == "skills_snapshot"
+        ));
     }
 
     #[test]
@@ -1284,11 +1478,18 @@ mod tests {
         });
         let mut host = AcpHost::new();
         host.register_driver(HostDriverKind::Codex, Box::new(driver));
+        let mut original = binding(HostDriverKind::Codex, "gpt", "C:/project");
+        original.skills_snapshot = vec![SkillSnapshot {
+            id: "review".into(),
+            version: "1".into(),
+            scope: SkillScope::Conversation,
+            sha256: "abc".into(),
+        }];
         block_on(host.new_session(
             NewSessionRequest {
                 session_id: "s1".into(),
             },
-            binding(HostDriverKind::Codex, "gpt", "C:/project"),
+            original.clone(),
         ))
         .unwrap();
         let before = calls.lock().unwrap().len();
@@ -1297,6 +1498,12 @@ mod tests {
         assert!(matches!(
             block_on(host.bind_session("s1", changed)),
             Err(HostError::BindingConflict { .. })
+        ));
+        let mut changed_skills = original;
+        changed_skills.skills_snapshot[0].sha256 = "changed".into();
+        assert!(matches!(
+            block_on(host.bind_session("s1", changed_skills)),
+            Err(HostError::BindingConflict { field }) if field == "skills_snapshot"
         ));
         assert_eq!(calls.lock().unwrap().len(), before);
     }

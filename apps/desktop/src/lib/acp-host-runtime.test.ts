@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AcpHostInvoke } from "@zerowall/sdk";
-import { createAcpHostRuntimeDeps } from "./acp-host-runtime";
+import { createAcpHostRuntimeDeps, toAcpHostLaunchRequest } from "./acp-host-runtime";
 
 function fakeInvoke(): AcpHostInvoke {
   return async <T = unknown>(command: string): Promise<T> => {
@@ -47,6 +47,29 @@ function fakeInvoke(): AcpHostInvoke {
 }
 
 describe("ACP Host runtime adapter", () => {
+  it("forwards ordinary conversation capability snapshots to the Host DTO", () => {
+    expect(toAcpHostLaunchRequest({
+      profileId: "codex",
+      projectRoot: "C:/science",
+      mcpAllowList: ["papers"],
+      skillsSnapshot: [{
+        id: "review",
+        version: "installed",
+        scope: "conversation",
+        sha256: "abc",
+      }],
+      gateway: { providerId: "cloud", baseUrl: "https://api.example.test/v1", model: "gpt-5.4" },
+    }, "conversation-1")).toMatchObject({
+      mcpAllowList: ["papers"],
+      skillsSnapshot: [{
+        id: "review",
+        version: "installed",
+        scope: "conversation",
+        sha256: "abc",
+      }],
+    });
+  });
+
   it("uses one Host lifecycle for launch, prompt, cancel, and shutdown", async () => {
     const calls: string[] = [];
     const invoke = (async (command: string, args?: Record<string, unknown>) => {

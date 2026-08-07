@@ -55,12 +55,12 @@ describe("WorkflowScheduler", () => {
       resolveNodeSnapshot: (node) => ({
         bindingSnapshot: { engineId: "codex", modelId: "gpt-5", nodeId: node.id },
         mcpAllowList: ["literature.search"],
-        skillsSnapshot: [{ id: "citation-reviewer", version: "1.0.0", sha256: "abc" }],
+        skillsSnapshot: [{ id: "citation-reviewer", version: "1.0.0", scope: "workflow-node", sha256: "abc" }],
       }),
     });
     expect(run.nodes.agent.bindingSnapshot).toEqual({ engineId: "codex", modelId: "gpt-5", nodeId: "agent" });
     expect(run.nodes.agent.mcpAllowList).toEqual(["literature.search"]);
-    expect(run.nodes.agent.skillsSnapshot).toEqual([{ id: "citation-reviewer", version: "1.0.0", sha256: "abc" }]);
+    expect(run.nodes.agent.skillsSnapshot).toEqual([{ id: "citation-reviewer", version: "1.0.0", scope: "workflow-node", sha256: "abc" }]);
   });
 
   it("runs independent read-only nodes in parallel and mutation nodes serially", async () => {

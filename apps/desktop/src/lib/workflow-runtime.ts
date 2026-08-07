@@ -3,6 +3,7 @@ import {
   type AcpHostInvoke,
   type AcpHostLaunchRequest,
   type AgentEvent,
+  type SkillSnapshot,
   type WorkflowExecutionContext,
   type WorkflowExecutor,
   type WorkflowPersistence,
@@ -21,7 +22,7 @@ export interface WorkflowRuntimeOptions {
   resolveSnapshot: (context: { nodeId: string }) => {
     bindingSnapshot: unknown;
     mcpAllowList: string[];
-    skillsSnapshot: unknown;
+    skillsSnapshot: SkillSnapshot[];
   };
   /** Control-plane implementation for tool/run/artifact nodes. */
   executeControl?: (context: WorkflowExecutionContext) => Promise<unknown>;
@@ -180,6 +181,7 @@ export class AcpWorkflowExecutor implements WorkflowExecutor {
       ...launch,
       sessionId: `workflow:${context.run.id}:${context.node.id}`,
       mcpAllowList: [...(context.node.mcpAllowList ?? [])],
+      skillsSnapshot: [...(context.node.skillsSnapshot ?? [])],
     });
     const sessionKey = `${context.run.id}:${context.node.id}`;
     this.clients.set(sessionKey, client);

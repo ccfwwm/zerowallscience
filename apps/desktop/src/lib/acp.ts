@@ -17,6 +17,7 @@
 // Secrets NEVER cross this seam. `launch` sends a provider id, gateway URL, and
 // model; Rust resolves the key and every executable/environment detail.
 import { isTauri, logDebug } from "./tauri";
+import type { SkillScope, SkillSnapshot } from "@zerowall/sdk";
 
 /** Media attached to an ACP turn. The Rust host turns images into protocol
  * content blocks and documents into explicit text context without logging data. */
@@ -67,10 +68,34 @@ export interface AcpSkillInfo {
   sha256: string;
 }
 
+export function createSkillSnapshots(
+  skills: readonly AcpSkillInfo[],
+  scope: SkillScope,
+): SkillSnapshot[] {
+  const unique = new Map<string, SkillSnapshot>();
+  for (const skill of skills) {
+    const snapshot: SkillSnapshot = {
+      id: skill.name.trim(),
+      version: "installed",
+      scope,
+      sha256: skill.sha256.trim(),
+    };
+    if (!snapshot.id || !snapshot.sha256) continue;
+    const key = [snapshot.id, snapshot.version, snapshot.scope, snapshot.sha256].join("\u0000");
+    unique.set(key, snapshot);
+  }
+  return [...unique.values()].sort((left, right) =>
+    [left.id, left.version, left.scope, left.sha256].join("\u0000")
+      .localeCompare([right.id, right.version, right.scope, right.sha256].join("\u0000")),
+  );
+}
+
 export interface AcpLaunchRequest {
   profileId: string;
   conversationId?: string;
   projectRoot: string;
+  mcpAllowList?: string[];
+  skillsSnapshot?: SkillSnapshot[];
   gateway: {
     providerId: string;
     baseUrl: string;
@@ -114,6 +139,8 @@ export async function acpLaunch(request: AcpLaunchRequest): Promise<AcpStatus> {
         model: request.gateway.model,
         ...(request.gateway.platform ? { platform: request.gateway.platform } : {}),
       },
+      ...(request.mcpAllowList !== undefined ? { mcp_allow_list: [...request.mcpAllowList] } : {}),
+      ...(request.skillsSnapshot !== undefined ? { skills_snapshot: [...request.skillsSnapshot] } : {}),
     },
   });
 }

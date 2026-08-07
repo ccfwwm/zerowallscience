@@ -1718,6 +1718,8 @@ mod tests {
             project_root: ".".into(),
             profile_fingerprint: "fp".into(),
             resolved_at: "now".into(),
+            mcp_allow_list: Vec::new(),
+            skills_snapshot: Vec::new(),
         }
     }
 

@@ -16,6 +16,7 @@ vi.mock("./tauri", () => ({
 
 import {
   acpLaunch,
+  createSkillSnapshots,
   acpReplyExec,
   acpReplyPermission,
   acpShutdown,
@@ -28,6 +29,17 @@ afterEach(() => {
 });
 
 describe("acpLaunch arg mapping", () => {
+  it("creates canonical skill snapshots without descriptions or locations", () => {
+    expect(createSkillSnapshots([
+      { name: " review ", description: "Review papers", location: "C:/skills/review", sha256: " abc " },
+      { name: "analysis", description: "Analyze", location: "C:/skills/analysis", sha256: "def" },
+      { name: "review", description: "Duplicate", location: "D:/other", sha256: "abc" },
+    ], "conversation")).toEqual([
+      { id: "analysis", version: "installed", scope: "conversation", sha256: "def" },
+      { id: "review", version: "installed", scope: "conversation", sha256: "abc" },
+    ]);
+  });
+
   it("maps a stable profile and gateway metadata to snake_case", async () => {
     invoke.mockResolvedValue({ phase: "ready", profile_id: "codex" });
 
@@ -72,6 +84,25 @@ describe("acpLaunch arg mapping", () => {
         },
       },
     });
+  });
+
+  it("passes capability snapshots through the legacy ACP bridge when supplied", async () => {
+    invoke.mockResolvedValue({ phase: "ready", profile_id: "codex" });
+
+    await acpLaunch({
+      profileId: "codex",
+      projectRoot: "C:/science",
+      mcpAllowList: ["papers"],
+      skillsSnapshot: [{ id: "review", version: "installed", scope: "conversation", sha256: "abc" }],
+      gateway: { providerId: "cloud", baseUrl: "https://gateway/v1", model: "gpt-5.4" },
+    });
+
+    expect(invoke).toHaveBeenCalledWith("acp_launch", expect.objectContaining({
+      request: expect.objectContaining({
+        mcp_allow_list: ["papers"],
+        skills_snapshot: [{ id: "review", version: "installed", scope: "conversation", sha256: "abc" }],
+      }),
+    }));
   });
 
   it("throws off-desktop and never invokes", async () => {

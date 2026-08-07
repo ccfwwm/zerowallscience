@@ -39,13 +39,17 @@ import type {
 } from "@zerowall/sdk";
 
 import {
+  acpListMcpServers,
   acpListSkills,
+  createSkillSnapshots,
   type AcpEventHandlers,
   type AcpHostPermissionPayload,
   type AcpLaunchRequest,
+  type AcpMcpServerInfo,
   type AcpMessagePayload,
   type AcpPromptAttachment,
   type AcpStatus,
+  type AcpSkillInfo,
   type AcpTokenUsagePayload,
   type AcpUsagePayload,
 } from "./acp";
@@ -64,6 +68,8 @@ export interface AcpRuntimeDeps {
   shutdown: () => Promise<AcpStatus>;
   subscribe: (handlers: AcpEventHandlers) => Promise<() => void>;
   listSkills?: (profileId: string) => Promise<SkillInfo[]>;
+  listMcpServers?: () => Promise<AcpMcpServerInfo[]>;
+  discoverSkills?: (profileId: string) => Promise<AcpSkillInfo[]>;
   currentSessionId?: () => string | null;
   createSession?: (request: AcpLaunchRequest) => Promise<string>;
   listSessions?: () => Promise<SessionMeta[]>;
@@ -91,6 +97,8 @@ export interface AcpRuntimeDeps {
 const REAL_DEPS: AcpRuntimeDeps = {
   ...createAcpHostRuntimeDeps(),
   listSkills: acpListSkills,
+  listMcpServers: acpListMcpServers,
+  discoverSkills: acpListSkills,
 };
 
 /** One UI update every 40 ms keeps streamed prose visually continuous without
@@ -110,6 +118,7 @@ export class AcpUnsupportedError extends Error {
 export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
   private readonly request: AcpLaunchRequest;
   private readonly deps: AcpRuntimeDeps;
+  private launchRequest: AcpLaunchRequest | null = null;
   private sessionId: string;
   private initialSessionClaimed = false;
   private sessionSequence = 0;
@@ -173,7 +182,8 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     try {
       // Subscribe BEFORE launch so no early event is missed.
       this.unsubscribe = await this.deps.subscribe(this.handlers());
-      const status = await this.deps.launch(this.request);
+      this.launchRequest = await this.resolveCapabilitySnapshot();
+      const status = await this.deps.launch(this.launchRequest);
       if (status.phase !== "ready") {
         throw new Error(status.last_error?.message ?? "ACP runtime did not become ready");
       }
@@ -453,6 +463,26 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     return this.sessionId;
   }
 
+  private async resolveCapabilitySnapshot(): Promise<AcpLaunchRequest> {
+    const [mcpAllowList, skillsSnapshot] = await Promise.all([
+      this.request.mcpAllowList !== undefined
+        ? Promise.resolve(normalizeMcpNames(this.request.mcpAllowList))
+        : this.deps.listMcpServers
+          ? this.deps.listMcpServers()
+            .then((servers) => normalizeMcpNames(servers.map((server) => server.name)))
+            .catch(() => [])
+          : Promise.resolve([]),
+      this.request.skillsSnapshot !== undefined
+        ? Promise.resolve([...this.request.skillsSnapshot])
+        : this.deps.discoverSkills
+          ? this.deps.discoverSkills(this.request.profileId)
+            .then((skills) => createSkillSnapshots(skills, "conversation"))
+            .catch(() => [])
+          : Promise.resolve([]),
+    ]);
+    return { ...this.request, mcpAllowList, skillsSnapshot };
+  }
+
   async createSession(): Promise<string> {
     if (!this.initialSessionClaimed) {
       this.initialSessionClaimed = true;
@@ -463,7 +493,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     this.sessionSequence += 1;
     const requestedId = `acp-${Date.now()}-${this.sessionSequence}`;
     const sessionId = await this.deps.createSession({
-      ...this.request,
+      ...(this.launchRequest ?? this.request),
       conversationId: requestedId,
     });
     this.sessionId = sessionId;
@@ -620,4 +650,8 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     this.permissionOptions.delete(requestId);
     this.emit({ type: "permission.resolved", sessionId: this.sessionId, requestId });
   }
+}
+
+function normalizeMcpNames(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort();
 }

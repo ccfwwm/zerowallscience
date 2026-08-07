@@ -8,6 +8,14 @@ import type {
 } from "./types";
 
 export type AgentEngine = "codex" | "claude-code" | "opencode";
+export type SkillScope = "global" | "project" | "conversation" | "workflow-node";
+
+export interface SkillSnapshot {
+  id: string;
+  version: string;
+  scope: SkillScope;
+  sha256: string;
+}
 
 export interface AgentBinding {
   engineId: AgentEngine;
@@ -18,6 +26,8 @@ export interface AgentBinding {
   projectRoot: string;
   profileFingerprint: string;
   resolvedAt: string;
+  mcpAllowList: string[];
+  skillsSnapshot: SkillSnapshot[];
 }
 
 export interface AgentSession {
@@ -111,6 +121,8 @@ export interface AcpHostLaunchRequest {
   credentialRef: string;
   /** Optional session-scoped MCP server allow-list. */
   mcpAllowList?: string[];
+  /** Immutable canonical skill descriptors available to this session. */
+  skillsSnapshot?: SkillSnapshot[];
 }
 
 export interface AcpHostEngineInfo {
@@ -153,6 +165,10 @@ interface RawBinding {
   profile_fingerprint?: string;
   resolvedAt?: string;
   resolved_at?: string;
+  mcpAllowList?: unknown;
+  mcp_allow_list?: unknown;
+  skillsSnapshot?: unknown;
+  skills_snapshot?: unknown;
 }
 
 interface RawSession {
@@ -280,6 +296,8 @@ export class AcpHostClient {
   /** Create a new ACP session without replacing any other engine session. */
   async newSession(request: AcpHostLaunchRequest): Promise<AgentSession> {
     const requested = requestBinding(request);
+    const existing = this.requestedBindings.get(request.sessionId);
+    if (existing) ensureCompatible(existing, requested);
     const raw = await this.invoke<RawSession>("acp_host_new", {
       request: serializeLaunchRequest(request),
     });
@@ -505,7 +523,12 @@ function serializeLaunchRequest(request: AcpHostLaunchRequest): Record<string, u
     variant: request.variant,
     profileFingerprint: request.profileFingerprint,
     credential: { keychainId: request.credentialRef },
-    ...(request.mcpAllowList ? { mcpAllowList: [...request.mcpAllowList] } : {}),
+    ...(request.mcpAllowList !== undefined
+      ? { mcpAllowList: normalizeMcpAllowList(request.mcpAllowList) }
+      : {}),
+    ...(request.skillsSnapshot !== undefined
+      ? { skillsSnapshot: normalizeSkillSnapshots(request.skillsSnapshot) }
+      : {}),
   };
 }
 
@@ -519,6 +542,8 @@ function requestBinding(request: AcpHostLaunchRequest): AgentBinding {
     projectRoot: request.projectRoot,
     profileFingerprint: request.profileFingerprint,
     resolvedAt: "",
+    mcpAllowList: normalizeMcpAllowList(request.mcpAllowList),
+    skillsSnapshot: normalizeSkillSnapshots(request.skillsSnapshot),
   };
 }
 
@@ -532,6 +557,8 @@ function normalizeBinding(raw: RawBinding): AgentBinding {
     projectRoot: raw.projectRoot ?? raw.project_root ?? "",
     profileFingerprint: raw.profileFingerprint ?? raw.profile_fingerprint ?? "",
     resolvedAt: raw.resolvedAt ?? raw.resolved_at ?? "",
+    mcpAllowList: normalizeMcpAllowList(raw.mcpAllowList ?? raw.mcp_allow_list),
+    skillsSnapshot: normalizeSkillSnapshots(raw.skillsSnapshot ?? raw.skills_snapshot),
   };
 }
 
@@ -550,6 +577,76 @@ function ensureCompatible(existing: AgentBinding, requested: AgentBinding): void
       throw new Error(`session binding conflicts on ${label}`);
     }
   }
+  if (!sameArray(existing.mcpAllowList, requested.mcpAllowList)) {
+    throw new Error("session binding conflicts on mcpAllowList");
+  }
+  if (!sameSkillSnapshots(existing.skillsSnapshot, requested.skillsSnapshot)) {
+    throw new Error("session binding conflicts on skillsSnapshot");
+  }
+}
+
+function normalizeMcpAllowList(raw: unknown): string[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) throw new Error("MCP allow-list must be an array");
+  return [...new Set(
+    raw
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  )].sort();
+}
+
+function normalizeSkillSnapshots(raw: unknown): SkillSnapshot[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) throw new Error("skill snapshots must be an array");
+  const unique = new Map<string, SkillSnapshot>();
+  for (const value of raw) {
+    if (!value || typeof value !== "object") {
+      throw new Error("skill snapshot must be an object");
+    }
+    const record = value as Record<string, unknown>;
+    const id = normalizedSkillField(record.id, "id");
+    const version = normalizedSkillField(record.version, "version");
+    const sha256 = normalizedSkillField(record.sha256, "sha256");
+    const scope = typeof record.scope === "string" ? record.scope.trim() : "";
+    if (!isSkillScope(scope)) {
+      throw new Error(`skill snapshot scope is invalid: ${scope || "empty"}`);
+    }
+    const snapshot = { id, version, scope, sha256 };
+    unique.set(skillSnapshotKey(snapshot), snapshot);
+  }
+  return [...unique.values()].sort((left, right) =>
+    skillSnapshotKey(left).localeCompare(skillSnapshotKey(right)),
+  );
+}
+
+function normalizedSkillField(value: unknown, field: keyof SkillSnapshot): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) throw new Error(`skill snapshot ${field} is required`);
+  return normalized;
+}
+
+function isSkillScope(value: string): value is SkillScope {
+  return value === "global"
+    || value === "project"
+    || value === "conversation"
+    || value === "workflow-node";
+}
+
+function skillSnapshotKey(snapshot: SkillSnapshot): string {
+  return [snapshot.id, snapshot.version, snapshot.scope, snapshot.sha256].join("\u0000");
+}
+
+function sameArray(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameSkillSnapshots(
+  left: readonly SkillSnapshot[],
+  right: readonly SkillSnapshot[],
+): boolean {
+  return left.length === right.length
+    && left.every((value, index) => skillSnapshotKey(value) === skillSnapshotKey(right[index]));
 }
 
 function isTerminalSessionState(state: AgentSession["state"]): boolean {

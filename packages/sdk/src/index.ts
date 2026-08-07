@@ -12,6 +12,8 @@ export {
   type AgentEngine,
   type AgentEvent,
   type AgentSession,
+  type SkillScope,
+  type SkillSnapshot,
   type PermissionOption as AcpPermissionOption,
 } from "./AcpHostClient";
 export type { AgentRuntime, PromptAttachment } from "./runtime";
