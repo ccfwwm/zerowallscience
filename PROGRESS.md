@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-08 20:45 · Fixed Qiniu uploads with the official SDK, published the Windows environment to Qiniu, promoted a verified latest index, and made local environment publishing promote latest by default.
+
 2026-08-08 19:02 · Unified Qiniu environment publishing, compact desktop navigation, and ACP engine selection; release-contract, frontend, Bootstrapper, and 405 desktop Rust tests pass, while live Qiniu publication awaits rotated Actions credentials.
 
 2026-08-08 17:40 · Switched application and environment update channels to Qiniu-only for 1.0.2; NSIS upgrades preserve existing user data.

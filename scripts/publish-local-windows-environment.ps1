@@ -1,7 +1,11 @@
+param(
+  [string]$Version,
+  [switch]$SkipLatest
+)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $target = "x86_64-pc-windows-msvc"
-$version = if ($args.Count -gt 0) { $args[0] } else { "env-$(Get-Date -Format yyyy.MM.dd).1" }
+$version = if (-not [string]::IsNullOrWhiteSpace($Version)) { $Version } else { "env-$(Get-Date -Format yyyy.MM.dd).1" }
 $tempRoot = Join-Path $env:TEMP "zerowall-environment-$target"
 $archive = Join-Path $env:TEMP "ZeroWall-Environment-$target.tar.gz"
 $manifest = "$archive.json"
@@ -33,4 +37,7 @@ node (Join-Path $root "scripts\upload-qiniu-object.mjs") $archive "environment/$
 node (Join-Path $root "scripts\upload-qiniu-object.mjs") $manifest "environment/$version/$target/ZeroWall-Environment-$target.tar.gz.json"
 node (Join-Path $root "scripts\upload-qiniu-object.mjs") $bootstrapper "environment/$version/$target/ZeroWall-Environment-Bootstrapper-$target.exe"
 node (Join-Path $root "scripts\qiniu-release.mjs") verify "$env:QINIU_DOMAIN/environment/$version/$target/ZeroWall-Environment-$target.tar.gz" $size $digest
+if (-not $SkipLatest) {
+  node (Join-Path $root "scripts\qiniu-release.mjs") promote $version "$target=$manifest"
+}
 Write-Host "Published Windows environment $version"
