@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-09 00:35 · Uploaded the fixed Windows 1.0.3 installer to Qiniu, updated releases/latest.json, and verified the public installer URL and SHA-256.
+
 2026-08-09 00:20 · Injected the environment verification key into local desktop builds, rebuilt the Windows NSIS installer, and verified the compiled desktop binary contains the key.
 
 2026-08-08 23:45 · Embedded the derived environment update public key in the local Bootstrapper, published env-2026.08.08.233806, and fixed Qiniu latest promotion to overwrite promoted pointers safely.

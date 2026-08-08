@@ -58,7 +58,7 @@ async function publishApp() {
     const manifest = JSON.stringify({ version, url, name: `ZeroWall Science ${version}`, publishedAt: new Date().toISOString(), assetUrl: url, assetName: basename(installer), assetSha256: digest, sizeBytes: info.size }, null, 2) + "\n";
     const temp = join(process.env.TEMP ?? ".", `zerowall-release-${version}-latest.json`);
     await writeFile(temp, manifest);
-    await uploadObject(temp, "releases/latest.json", "application/json", qiniuEnv);
+    await uploadObject(temp, "releases/latest.json", "application/json", qiniuEnv, { insertOnly: false });
     await verifyObject(url, info.size, digest);
     log(`verified ${url}`);
   }
