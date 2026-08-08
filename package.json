@@ -1,6 +1,6 @@
 {
   "name": "zerowall-science",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "ZeroWall Science — local-first, model-agnostic AI research workbench for macOS, Windows and Linux.",
   "license": "MIT",

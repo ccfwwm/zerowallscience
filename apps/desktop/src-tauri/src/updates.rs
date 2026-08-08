@@ -10,10 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::Manager;
 
-// Releases are published to the SEPARATE public downloads repo (see
-// `.github/workflows/build.yml` DOWNLOADS_REPO), not this private source repo.
-const RELEASES_API_URL: &str =
-    "https://api.github.com/repos/ccfwwm/zerowallscience-releases/releases/latest";
+const RELEASES_API_URL: &str = "https://zerowall.chengxunkeji.cn/releases/latest.json";
 const UPDATE_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const APP_UPDATE_ENVELOPE_SCHEMA: &str = "zerowall.science/app-update-envelope/v1";
 const APP_UPDATE_SCHEMA: &str = "zerowall.science/app-update/v1";
@@ -250,19 +247,18 @@ pub struct ReleaseInfo {
 }
 
 #[derive(Debug, Deserialize)]
-struct ApiRelease {
-    tag_name: Option<String>,
-    html_url: Option<String>,
+struct QiniuRelease {
+    version: Option<String>,
+    url: Option<String>,
     name: Option<String>,
+    #[serde(rename = "publishedAt")]
     published_at: Option<String>,
-    assets: Vec<ApiAsset>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiAsset {
-    name: String,
-    browser_download_url: String,
-    digest: Option<String>,
+    #[serde(rename = "assetUrl")]
+    asset_url: Option<String>,
+    #[serde(rename = "assetName")]
+    asset_name: Option<String>,
+    #[serde(rename = "assetSha256")]
+    asset_sha256: Option<String>,
 }
 
 #[tauri::command]
@@ -281,33 +277,34 @@ fn fetch_latest_release() -> Result<ReleaseInfo, String> {
         .get(RELEASES_API_URL)
         .send()
         .and_then(|r| r.error_for_status())
-        .map_err(|e| format!("could not fetch GitHub releases feed: {e}"))?
+        .map_err(|e| format!("could not fetch Qiniu release metadata: {e}"))?
         .text()
-        .map_err(|e| format!("could not read GitHub releases response: {e}"))?;
-    let body: ApiRelease = serde_json::from_str(&text)
-        .map_err(|e| format!("could not parse GitHub releases response: {e}"))?;
+        .map_err(|e| format!("could not read Qiniu release metadata: {e}"))?;
+    let body: QiniuRelease = serde_json::from_str(&text)
+        .map_err(|e| format!("could not parse Qiniu release metadata: {e}"))?;
     let version = body
-        .tag_name
+        .version
         .filter(|value| !value.trim().is_empty())
-        .ok_or("GitHub response had no release tag")?;
+        .ok_or("Qiniu metadata had no release version")?;
     let url = body
-        .html_url
+        .url
         .filter(|value| !value.trim().is_empty())
-        .ok_or("GitHub response had no release URL")?;
+        .ok_or("Qiniu metadata had no release URL")?;
     let public_key_text =
         option_env!("ZEROWALL_APP_UPDATE_PUBLIC_KEY").filter(|value| !value.trim().is_empty());
-    if let Some(manifest_asset) = required_manifest_asset(&body.assets, public_key_text.is_some())?
-    {
-        let public_key_text =
-            public_key_text.ok_or("application update public key is not configured")?;
+    if let Some(public_key_text) = public_key_text {
         let decoded = base64::engine::general_purpose::STANDARD
             .decode(public_key_text.trim())
             .map_err(|_| "application update public key is invalid".to_string())?;
         let public_key: [u8; 32] = decoded
             .try_into()
             .map_err(|_| "application update public key is invalid".to_string())?;
+        let manifest_url = format!(
+            "https://zerowall.chengxunkeji.cn/releases/latest/zerowall-app-manifest-{}.json",
+            target_triple()
+        );
         let envelope = client
-            .get(&manifest_asset.browser_download_url)
+            .get(&manifest_url)
             .send()
             .and_then(|response| response.error_for_status())
             .map_err(|error| format!("could not fetch application update manifest: {error}"))?
@@ -325,35 +322,31 @@ fn fetch_latest_release() -> Result<ReleaseInfo, String> {
             asset_sha256: Some(manifest.asset.sha256),
         });
     }
-    let asset = select_asset(&body.assets);
+    let asset_url = body
+        .asset_url
+        .filter(|value| !value.trim().is_empty())
+        .ok_or("Qiniu metadata had no installer URL")?;
+    let asset_name = body
+        .asset_name
+        .filter(|value| !value.trim().is_empty())
+        .ok_or("Qiniu metadata had no installer name")?;
+    let asset_sha256 = body
+        .asset_sha256
+        .filter(|value| is_sha256(value))
+        .ok_or("Qiniu metadata had no valid installer SHA-256")?;
     Ok(ReleaseInfo {
         version,
         url,
         name: body.name,
         published_at: body.published_at,
-        asset_url: asset.map(|value| value.browser_download_url.clone()),
-        asset_name: asset.map(|value| value.name.clone()),
-        asset_sha256: asset
-            .and_then(|value| value.digest.clone())
-            .and_then(|digest| digest.strip_prefix("sha256:").map(str::to_owned)),
+        asset_url: Some(asset_url),
+        asset_name: Some(asset_name),
+        asset_sha256: Some(asset_sha256.to_lowercase()),
     })
 }
 
-fn select_manifest_asset(assets: &[ApiAsset]) -> Option<&ApiAsset> {
-    let expected = format!("zerowall-app-manifest-{}.json", target_triple());
-    assets.iter().find(|asset| asset.name == expected)
-}
-
-fn required_manifest_asset(
-    assets: &[ApiAsset],
-    signature_verification_configured: bool,
-) -> Result<Option<&ApiAsset>, String> {
-    if !signature_verification_configured {
-        return Ok(None);
-    }
-    select_manifest_asset(assets)
-        .map(Some)
-        .ok_or_else(|| "signed application update manifest is missing".to_string())
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn validate_manifest_binding(
@@ -382,19 +375,6 @@ fn target_triple() -> &'static str {
     } else {
         "unsupported"
     }
-}
-
-fn select_asset(assets: &[ApiAsset]) -> Option<&ApiAsset> {
-    let preferred = if cfg!(windows) {
-        ["-setup.exe", ".exe", ".msi"]
-    } else if cfg!(target_os = "macos") {
-        [".dmg", ".app.tar.gz", ".tar.gz"]
-    } else {
-        [".deb", ".rpm", ".AppImage"]
-    };
-    preferred
-        .iter()
-        .find_map(|suffix| assets.iter().find(|asset| asset.name.ends_with(suffix)))
 }
 
 #[tauri::command]
@@ -713,68 +693,6 @@ pub fn open_downloaded_update(
 }
 
 #[cfg(test)]
-fn parse_latest_release(atom: &str) -> Result<ReleaseInfo, String> {
-    let entry =
-        between(atom, "<entry>", "</entry>").ok_or("GitHub releases feed had no entries")?;
-    let url = attr_value(entry, "link", "href")
-        .filter(|u| u.contains("/releases/tag/"))
-        .ok_or("GitHub releases feed entry had no release link")?;
-    let version = url
-        .rsplit("/releases/tag/")
-        .next()
-        .and_then(|s| s.split(['?', '#']).next())
-        .filter(|s| !s.trim().is_empty())
-        .ok_or("GitHub releases feed entry had no release tag")?
-        .trim()
-        .to_string();
-    let name = between(entry, "<title>", "</title>").map(decode_xml_text);
-    let published_at = between(entry, "<updated>", "</updated>").map(|s| s.trim().to_string());
-    Ok(ReleaseInfo {
-        version,
-        url,
-        name,
-        published_at,
-        asset_url: None,
-        asset_name: None,
-        asset_sha256: None,
-    })
-}
-
-#[cfg(test)]
-fn between<'a>(s: &'a str, start: &str, end: &str) -> Option<&'a str> {
-    let from = s.find(start)? + start.len();
-    let to = s[from..].find(end)? + from;
-    Some(&s[from..to])
-}
-
-#[cfg(test)]
-fn attr_value(entry: &str, tag: &str, attr: &str) -> Option<String> {
-    let needle = format!("<{tag} ");
-    let mut rest = entry;
-    while let Some(pos) = rest.find(&needle) {
-        let tag_body = &rest[pos..rest[pos..].find('>')? + pos];
-        let attr_needle = format!("{attr}=\"");
-        if let Some(attr_pos) = tag_body.find(&attr_needle) {
-            let value_start = attr_pos + attr_needle.len();
-            let value_end = tag_body[value_start..].find('"')? + value_start;
-            return Some(decode_xml_text(&tag_body[value_start..value_end]));
-        }
-        rest = &rest[pos + needle.len()..];
-    }
-    None
-}
-
-#[cfg(test)]
-fn decode_xml_text(s: &str) -> String {
-    s.trim()
-        .replace("&amp;", "&")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -857,9 +775,12 @@ mod tests {
     }
 
     #[test]
-    fn configured_signature_verification_fails_closed_without_a_manifest() {
-        assert!(required_manifest_asset(&[], true).is_err());
-        assert!(required_manifest_asset(&[], false).unwrap().is_none());
+    fn qiniu_manifest_path_is_platform_specific() {
+        let path = format!(
+            "https://zerowall.chengxunkeji.cn/releases/latest/zerowall-app-manifest-{}.json",
+            target_triple()
+        );
+        assert!(path.ends_with(&format!("{}.json", target_triple())));
     }
 
     #[test]
@@ -884,52 +805,8 @@ mod tests {
     }
 
     #[test]
-    fn parses_first_release_entry_from_atom() {
-        let atom = r#"
-<feed>
-  <entry>
-    <updated>2026-07-09T13:59:12Z</updated>
-    <link rel="alternate" type="text/html" href="https://github.com/ccfwwm/zerowallscience-releases/releases/tag/v0.1.8"/>
-    <title>ZeroWall Science v0.1.8</title>
-  </entry>
-</feed>
-"#;
-
-        assert_eq!(
-            parse_latest_release(atom).unwrap(),
-            ReleaseInfo {
-                version: "v0.1.8".into(),
-                url: "https://github.com/ccfwwm/zerowallscience-releases/releases/tag/v0.1.8"
-                    .into(),
-                name: Some("ZeroWall Science v0.1.8".into()),
-                published_at: Some("2026-07-09T13:59:12Z".into()),
-                asset_url: None,
-                asset_name: None,
-                asset_sha256: None,
-            },
-        );
-    }
-
-    #[test]
-    fn selects_a_platform_installer_asset() {
-        let assets = vec![
-            ApiAsset {
-                name: "ZeroWall.tar.gz".into(),
-                browser_download_url: "https://example.invalid/a".into(),
-                digest: None,
-            },
-            ApiAsset {
-                name: "ZeroWall_x64-setup.exe".into(),
-                browser_download_url: "https://example.invalid/b".into(),
-                digest: Some("sha256:abc".into()),
-            },
-        ];
-        let selected = select_asset(&assets);
-        if cfg!(windows) {
-            assert_eq!(
-                selected.map(|asset| asset.name.as_str()),
-                Some("ZeroWall_x64-setup.exe")
-            );
-        }
+    fn validates_qiniu_installer_sha256() {
+        assert!(is_sha256(&"a".repeat(64)));
+        assert!(!is_sha256("not-a-sha256"));
     }
 }

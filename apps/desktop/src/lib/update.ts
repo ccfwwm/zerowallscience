@@ -1,8 +1,7 @@
 import { create } from "zustand";
 import { appUpdateCancel, appUpdateStatus, downloadUpdate, latestRelease, type AppUpdatePhase } from "./tauri";
 
-// The public downloads repo that actually holds the releases (see build.yml).
-const RELEASE_URL = "https://api.github.com/repos/ccfwwm/zerowallscience-releases/releases/latest";
+const RELEASE_URL = "https://zerowall.chengxunkeji.cn/releases/latest.json";
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const ENABLED_KEY = "zerowall.update.enabled";
 const BADGE_KEY = "zerowall.update.badge";
@@ -20,14 +19,14 @@ export interface UpdateInfo {
   assetSha256?: string | null;
 }
 
-interface GitHubRelease {
-  tag_name?: string;
-  html_url?: string;
+interface QiniuRelease {
+  version?: string;
+  url?: string;
   name?: string | null;
-  published_at?: string | null;
-  draft?: boolean;
-  prerelease?: boolean;
-  assets?: Array<{ browser_download_url?: string; name?: string; digest?: string | null }>;
+  publishedAt?: string | null;
+  assetUrl?: string | null;
+  assetName?: string | null;
+  assetSha256?: string | null;
 }
 
 type CheckStatus = "idle" | "checking" | "ready" | "error";
@@ -162,24 +161,28 @@ async function fetchLatestRelease(): Promise<UpdateInfo> {
   const native = await latestRelease();
   if (native) return native;
 
-  const res = await fetch(RELEASE_URL, {
-    headers: {
-      Accept: "application/vnd.github+json",
-    },
-  });
-  if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
-  const json = (await res.json()) as GitHubRelease;
-  const version = json.tag_name?.trim();
-  const url = json.html_url?.trim();
-  if (!version || !url) throw new Error("GitHub release response was incomplete");
+  const res = await fetch(RELEASE_URL);
+  if (!res.ok) throw new Error(`Qiniu release metadata returned ${res.status}`);
+  const json = (await res.json()) as QiniuRelease;
+  const version = json.version?.trim();
+  const url = json.url?.trim();
+  const assetUrl = json.assetUrl?.trim();
+  const assetName = json.assetName?.trim();
+  const assetSha256 = json.assetSha256?.trim().toLowerCase();
+  if (!version || !url || !assetUrl || !assetName || !assetSha256) {
+    throw new Error("Qiniu release metadata was incomplete");
+  }
+  if (!/^[a-f0-9]{64}$/.test(assetSha256)) {
+    throw new Error("Qiniu release metadata had an invalid SHA-256");
+  }
   return {
     version,
     url,
     name: json.name ?? null,
-    publishedAt: json.published_at ?? null,
-    assetUrl: json.assets?.[0]?.browser_download_url ?? null,
-    assetName: json.assets?.[0]?.name ?? null,
-    assetSha256: json.assets?.[0]?.digest?.replace(/^sha256:/, "") ?? null,
+    publishedAt: json.publishedAt ?? null,
+    assetUrl,
+    assetName,
+    assetSha256,
   };
 }
 

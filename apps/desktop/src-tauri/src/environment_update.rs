@@ -24,8 +24,7 @@ const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 const HTTP_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const HEALTH_CHECK_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(60);
-const ENVIRONMENT_RELEASE_LATEST_BASE: &str =
-    "https://github.com/ccfwwm/zerowallscience-releases/releases/latest/download";
+const ENVIRONMENT_RELEASE_LATEST_BASE: &str = "https://zerowall.chengxunkeji.cn/releases/latest";
 static NONCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Error)]
@@ -638,7 +637,10 @@ impl HttpPackageDownloader {
             );
         }
         output.sync_all()?;
-        if response_end.or(expected_size).is_some_and(|expected| expected != downloaded_bytes) {
+        if response_end
+            .or(expected_size)
+            .is_some_and(|expected| expected != downloaded_bytes)
+        {
             return Err(EnvironmentUpdateError::Download(
                 "server returned an incomplete response body".into(),
             ));
@@ -682,7 +684,9 @@ fn download_write_plan(
                 "server returned an invalid resume range".into(),
             ));
         };
-        let range_length = end.checked_sub(start).and_then(|value| value.checked_add(1));
+        let range_length = end
+            .checked_sub(start)
+            .and_then(|value| value.checked_add(1));
         if start != existing_bytes
             || end >= total
             || range_length.is_none()
@@ -973,12 +977,7 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
             }
             self.report_phase(EnvironmentUpdatePhase::Installing, Some(&component.id));
             self.ensure_not_cancelled()?;
-            extract_component(
-                component,
-                &package,
-                &payload,
-                cancel_requested.as_deref(),
-            )?;
+            extract_component(component, &package, &payload, cancel_requested.as_deref())?;
             self.ensure_not_cancelled()?;
         }
         self.ensure_not_cancelled()?;
@@ -1406,8 +1405,7 @@ fn package_matches_component(
     }) {
         return Ok(false);
     }
-    Ok(hash_file_cancellable(package, cancel_requested)?
-        .eq_ignore_ascii_case(&component.sha256))
+    Ok(hash_file_cancellable(package, cancel_requested)?.eq_ignore_ascii_case(&component.sha256))
 }
 
 fn extract_component(
@@ -2170,15 +2168,10 @@ mod tests {
         let root = temp_root("cancel-health");
         #[cfg(windows)]
         let executable = PathBuf::from(
-            std::env::var_os("ComSpec")
-                .unwrap_or_else(|| "C:\\Windows\\System32\\cmd.exe".into()),
+            std::env::var_os("ComSpec").unwrap_or_else(|| "C:\\Windows\\System32\\cmd.exe".into()),
         );
         #[cfg(windows)]
-        let args = vec![
-            "/D".into(),
-            "/C".into(),
-            "ping 127.0.0.1 -n 3 >NUL".into(),
-        ];
+        let args = vec!["/D".into(), "/C".into(), "ping 127.0.0.1 -n 3 >NUL".into()];
         #[cfg(not(windows))]
         let executable = PathBuf::from("/bin/sh");
         #[cfg(not(windows))]
@@ -2403,14 +2396,10 @@ mod tests {
             None,
         )
         .is_err());
-        assert!(download_write_plan(
-            5,
-            reqwest::StatusCode::PARTIAL_CONTENT,
-            None,
-            Some(5),
-            None,
-        )
-        .is_err());
+        assert!(
+            download_write_plan(5, reqwest::StatusCode::PARTIAL_CONTENT, None, Some(5), None,)
+                .is_err()
+        );
         assert!(download_write_plan(
             5,
             reqwest::StatusCode::PARTIAL_CONTENT,
