@@ -1,5 +1,6 @@
-import { createHash, createHmac } from "node:crypto";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import qiniu from "qiniu";
 
 export function qiniuConfig(env = process.env) {
   return {
@@ -20,19 +21,33 @@ export function sha256(bytes) { return createHash("sha256").update(bytes).digest
 export async function uploadObject(filePath, objectKey, contentType, env = process.env) {
   const config = qiniuConfig(env);
   const contents = await readFile(filePath);
-  const policy = base64Url(JSON.stringify({ scope: `${config.bucket}:${objectKey}`, deadline: Math.floor(Date.now() / 1000) + 600 }));
-  const signature = createHmac("sha1", config.secretKey).update(policy).digest("base64").replace(/\+/g, "-").replace(/\//g, "_");
-  const form = new FormData();
-  form.set("token", `${config.accessKey}:${signature}:${policy}`);
-  form.set("key", objectKey);
-  form.set("file", new Blob([contents], { type: contentType }), objectKey.split("/").at(-1));
-  const response = await fetch(config.uploadUrl, { method: "POST", body: form });
-  if (!response.ok) throw new Error(`Qiniu upload failed for ${objectKey}: HTTP ${response.status}`);
-  return { key: objectKey, url: publicUrl(config.domain, objectKey), size: contents.length, sha256: sha256(contents) };
+  const mac = new qiniu.auth.digest.Mac(config.accessKey, config.secretKey);
+  const sdkConfig = new qiniu.conf.Config();
+  if (qiniu.zone?.Zone_z2 && config.uploadUrl === "https://up-z2.qiniup.com") sdkConfig.zone = qiniu.zone.Zone_z2;
+  const putPolicy = new qiniu.rs.PutPolicy({ scope: `${config.bucket}:${objectKey}`, expires: 600, insertOnly: 1 });
+  const token = putPolicy.uploadToken(mac);
+  const result = await new Promise((resolve, reject) => {
+    if (contents.length >= 100 * 1024 * 1024) {
+      const uploader = new qiniu.resume_up.ResumeUploader(sdkConfig);
+      const extra = new qiniu.resume_up.PutExtra();
+      uploader.putFileV2(token, objectKey, filePath, extra, (error, body, info) => {
+        if (error || !info || info.statusCode >= 400) reject(new Error(`Qiniu upload failed for ${objectKey}: ${error?.message ?? info?.statusCode ?? "unknown"}`));
+        else resolve(body);
+      });
+      return;
+    }
+    const uploader = new qiniu.form_up.FormUploader(sdkConfig);
+    const extra = new qiniu.form_up.PutExtra();
+    extra.mimeType = contentType;
+    uploader.putFile(token, objectKey, filePath, extra, (error, body, info) => {
+      if (error || !info || info.statusCode >= 400) reject(new Error(`Qiniu upload failed for ${objectKey}: ${error?.message ?? info?.statusCode ?? "unknown"}`));
+      else resolve(body);
+    });
+  });
+  return { key: objectKey, url: publicUrl(config.domain, objectKey), size: contents.length, sha256: sha256(contents), result };
 }
 
 function required(value, name) { if (!value?.trim()) throw new Error(`${name} is required`); return value.trim(); }
-function base64Url(value) { return Buffer.from(value).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
 
 if (process.argv[1]?.endsWith("upload-qiniu-object.mjs")) {
   const [filePath, objectKey] = process.argv.slice(2);
