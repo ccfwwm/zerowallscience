@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { uploadObject, publicUrl } from "./upload-qiniu-object.mjs";
 import { promoteLatest, verifyObject } from "./qiniu-release.mjs";
+import { derivePublicKey } from "./environment/derive-public-key.mjs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const args = parseArgs(process.argv.slice(2));
@@ -23,6 +24,13 @@ const qiniuEnv = {
   QINIU_UPLOAD_URL: process.env.QINIU_UPLOAD_URL ?? "https://up-z2.qiniup.com",
   QINIU_DOMAIN: process.env.QINIU_DOMAIN ?? "https://zerowall.chengxunkeji.cn",
 };
+if (!qiniuEnv.ZEROWALL_ENV_UPDATE_PUBLIC_KEY && qiniuEnv.ZEROWALL_ENV_UPDATE_PRIVATE_KEY) {
+  qiniuEnv.ZEROWALL_ENV_UPDATE_PUBLIC_KEY = derivePublicKey(qiniuEnv.ZEROWALL_ENV_UPDATE_PRIVATE_KEY);
+}
+qiniuEnv.ZEROWALL_ENV_MANIFEST_URL ??= `${qiniuEnv.QINIU_DOMAIN}/environment/latest/index.json`;
+if ((mode === "app" || mode === "all") && !qiniuEnv.ZEROWALL_ENV_UPDATE_PUBLIC_KEY) {
+  fail("ZEROWALL_ENV_UPDATE_PUBLIC_KEY or ZEROWALL_ENV_UPDATE_PRIVATE_KEY is required for desktop builds");
+}
 if (!dryRun) for (const name of ["QINIU_ACCESS_KEY", "QINIU_SECRET_KEY"]) if (!qiniuEnv[name]) fail(`${name} is required in the environment`);
 
 if (mode === "app" || mode === "all") await publishApp();
@@ -32,7 +40,7 @@ async function publishApp() {
   let installer = args.installer;
   if (!installer) {
     if (process.platform !== "win32") fail("automatic app build currently supports Windows only; pass --installer on other platforms");
-    await run("pnpm", ["--filter", "@zerowall/desktop", "tauri", "build", "--bundles", "nsis"]);
+    await run("pnpm", ["--filter", "@zerowall/desktop", "tauri", "build", "--bundles", "nsis"], qiniuEnv);
     const bundleDir = join(root, "apps", "desktop", "src-tauri", "target", "x86_64-pc-windows-msvc", "release", "bundle", "nsis");
     const files = (await readdir(bundleDir)).filter((file) => file.endsWith("-setup.exe") && file.includes(version));
     if (files.length !== 1) fail(`expected one ${version} NSIS installer in ${bundleDir}`);
@@ -99,6 +107,6 @@ function readVersion() {
 function sha256(path) {
   return new Promise((resolveHash, reject) => { const hash = createHash("sha256"); createReadStream(path).on("error", reject).on("data", (chunk) => hash.update(chunk)).on("end", () => resolveHash(hash.digest("hex"))); });
 }
-function run(command, commandArgs) { return new Promise((resolveRun, reject) => { const child = spawn(command, commandArgs, { cwd: root, stdio: "inherit", shell: process.platform === "win32" }); child.on("error", reject); child.on("exit", (code) => code === 0 ? resolveRun() : reject(new Error(`${command} exited with ${code}`))); }); }
+function run(command, commandArgs, env = process.env) { return new Promise((resolveRun, reject) => { const child = spawn(command, commandArgs, { cwd: root, stdio: "inherit", env, shell: process.platform === "win32" }); child.on("error", reject); child.on("exit", (code) => code === 0 ? resolveRun() : reject(new Error(`${command} exited with ${code}`))); }); }
 function log(message) { console.log(`[release-local] ${message}`); }
 function fail(message) { throw new Error(message); }
