@@ -41,7 +41,7 @@
     "lucide-react": "^0.454.0",
     "mammoth": "^1.12.0",
     "openchemlib": "^9.24.0",
-    "pdfjs-dist": "^6.1.200",
+    "pdfjs-dist": "^6.2.108",
     "pptx-preview": "^1.0.7",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
