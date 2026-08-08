@@ -30,12 +30,12 @@ export async function promoteLatest({ version, manifests, env = process.env }) {
   const indexBytes = Buffer.from(`${JSON.stringify(signedIndex, null, 2)}\n`);
   const temp = `${process.env.TEMP || "."}/zerowall-environment-index-${Date.now()}.json`;
   await writeFile(temp, indexBytes);
-  await uploadObject(temp, "environment/latest/index.json", "application/json", env);
+  await uploadObject(temp, "environment/latest/index.json", "application/json", env, { insertOnly: false });
   for (const manifest of manifests) {
     const manifestBytes = Buffer.from(`${JSON.stringify(manifest.envelope, null, 2)}\n`);
     const path = `${process.env.TEMP || "."}/zerowall-environment-${manifest.target}.json`;
     await writeFile(path, manifestBytes);
-    await uploadObject(path, `environment/latest/${manifest.target}.json`, "application/json", env);
+    await uploadObject(path, `environment/latest/${manifest.target}.json`, "application/json", env, { insertOnly: false });
     await verifyObject(publicUrl(config.domain, `environment/latest/${manifest.target}.json`), manifestBytes.length, sha256(manifestBytes));
   }
   await verifyObject(publicUrl(config.domain, "environment/latest/index.json"), indexBytes.length, sha256(indexBytes));

@@ -26,6 +26,9 @@ foreach ($entry in $defaults.GetEnumerator()) {
   $value = [Environment]::GetEnvironmentVariable($entry.Key, "User")
   Set-Item -Path "Env:$($entry.Key)" -Value $(if ([string]::IsNullOrWhiteSpace($value)) { $entry.Value } else { $value })
 }
+$env:ZEROWALL_ENV_UPDATE_PUBLIC_KEY = node (Join-Path $root "scripts\environment\derive-public-key.mjs")
+$env:ZEROWALL_ENV_MANIFEST_URL = "$env:QINIU_DOMAIN/environment/latest/index.json"
+if ([string]::IsNullOrWhiteSpace($env:ZEROWALL_ENV_UPDATE_PUBLIC_KEY)) { throw "failed to derive environment update public key" }
 
 if (Test-Path $tempRoot) { Remove-Item $tempRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $tempRoot | Out-Null

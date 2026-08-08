@@ -18,13 +18,15 @@ export function publicUrl(domain, key) {
 
 export function sha256(bytes) { return createHash("sha256").update(bytes).digest("hex"); }
 
-export async function uploadObject(filePath, objectKey, contentType, env = process.env) {
+export async function uploadObject(filePath, objectKey, contentType, env = process.env, options = {}) {
   const config = qiniuConfig(env);
   const contents = await readFile(filePath);
   const mac = new qiniu.auth.digest.Mac(config.accessKey, config.secretKey);
   const sdkConfig = new qiniu.conf.Config();
   if (qiniu.zone?.Zone_z2 && config.uploadUrl === "https://up-z2.qiniup.com") sdkConfig.zone = qiniu.zone.Zone_z2;
-  const putPolicy = new qiniu.rs.PutPolicy({ scope: `${config.bucket}:${objectKey}`, expires: 600, insertOnly: 1 });
+  const putPolicyOptions = { scope: `${config.bucket}:${objectKey}`, expires: 600 };
+  if (options.insertOnly !== false) putPolicyOptions.insertOnly = 1;
+  const putPolicy = new qiniu.rs.PutPolicy(putPolicyOptions);
   const token = putPolicy.uploadToken(mac);
   const result = await new Promise((resolve, reject) => {
     if (contents.length >= 100 * 1024 * 1024) {
