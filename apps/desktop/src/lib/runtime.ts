@@ -18,6 +18,7 @@ import {
   type QuestionAskedEvent,
   type SessionMeta,
   type SkillInfo,
+  type McpToolGrantSnapshot,
   type SkillSnapshot,
   type ToolCallStatus,
   BUILTIN_WORKFLOWS,
@@ -266,7 +267,7 @@ function requestWorkflowRunApproval(
 
 function resolveWorkflowSnapshot(
   nodeId: string,
-  overrides?: { mcpAllowList?: string[]; skillsSnapshot?: SkillSnapshot[] },
+  overrides?: { mcpAllowList?: string[]; mcpToolGrants?: McpToolGrantSnapshot[]; skillsSnapshot?: SkillSnapshot[] },
 ) {
   const state = useRuntimeStore.getState();
   const key = state.currentId ?? DRAFT_KEY;
@@ -287,6 +288,7 @@ function resolveWorkflowSnapshot(
       nodeId,
     },
     mcpAllowList: overrides?.mcpAllowList ?? [],
+    mcpToolGrants: overrides?.mcpToolGrants ?? [],
     skillsSnapshot: overrides?.skillsSnapshot ?? [],
   };
 }

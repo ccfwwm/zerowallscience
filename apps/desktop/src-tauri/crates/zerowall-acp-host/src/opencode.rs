@@ -1,3 +1,4 @@
+use crate::mcp::{McpCapabilityBroker, McpPermissionAction, McpSessionPolicy};
 use crate::{
     AcpHostDriver, AgentBinding, DriverCapabilities, HostError, InitializeRequest,
     InitializeResponse, LoadSessionRequest, NewSessionRequest, PermissionOption, PromptRequest,
@@ -183,6 +184,17 @@ pub struct McpServerRequest {
 struct OpenCodeMcpConfig {
     #[serde(default)]
     mcp: BTreeMap<String, McpConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenCodeEffectiveConfig {
+    #[serde(default)]
+    mcp: BTreeMap<String, OpenCodeEffectiveMcp>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenCodeEffectiveMcp {
+    enabled: Option<bool>,
 }
 
 #[derive(Default, Deserialize)]
@@ -821,9 +833,27 @@ pub struct OpenCodeDriver<T> {
     event_stream: Option<TransportEventStream>,
     event_buffer: Vec<u8>,
     event_session_id: Option<String>,
+    event_output_session_id: Option<String>,
+    session_backings: BTreeMap<String, String>,
+    applied_mcp_policy: Option<(String, McpSessionPolicy)>,
+    mcp_policy_verified: bool,
+    mcp_policy_dirty: bool,
+    pending_permissions: BTreeMap<String, PendingOpenCodePermission>,
+}
+
+#[derive(Clone)]
+struct PendingOpenCodePermission {
+    mcp_action: Option<McpPermissionAction>,
 }
 
 impl<T: OpenCodeTransport> OpenCodeDriver<T> {
+    fn backing_session_id<'a>(&'a self, session_id: &'a str) -> &'a str {
+        self.session_backings
+            .get(session_id)
+            .map(String::as_str)
+            .unwrap_or(session_id)
+    }
+
     pub fn new(
         transport: T,
         base_url: impl Into<String>,
@@ -840,11 +870,24 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
             event_stream: None,
             event_buffer: Vec::new(),
             event_session_id: None,
+            event_output_session_id: None,
+            session_backings: BTreeMap::new(),
+            applied_mcp_policy: None,
+            mcp_policy_verified: true,
+            mcp_policy_dirty: false,
+            pending_permissions: BTreeMap::new(),
         }
     }
 
     pub fn take_events(&mut self) -> Vec<crate::AgentEvent> {
         std::mem::take(&mut self.events)
+    }
+
+    pub fn set_backing_session(&mut self, logical_session_id: &str, backing_session_id: &str) {
+        if !logical_session_id.trim().is_empty() && !backing_session_id.trim().is_empty() {
+            self.session_backings
+                .insert(logical_session_id.to_owned(), backing_session_id.to_owned());
+        }
     }
 
     /// Discover existing sessions inside the Host. OpenCode response DTOs are
@@ -870,10 +913,11 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                     .to_owned();
                 let time = value.get("time");
                 Some(SessionState {
-                    id,
+                    id: id.clone(),
                     binding: self.binding.clone(),
                     state: SessionStatus::Ready,
                     resumable: true,
+                    backing_session_id: Some(self.backing_session_id(&id).to_owned()),
                     title: value
                         .get("title")
                         .and_then(serde_json::Value::as_str)
@@ -921,6 +965,14 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         self.take_events()
     }
 
+    fn invalidate_mcp_policy(&mut self) {
+        self.mcp_policy_dirty = true;
+    }
+
+    fn backing_session_id(&self, session_id: &str) -> Option<String> {
+        self.session_backings.get(session_id).cloned()
+    }
+
     async fn initialize(&mut self, _: InitializeRequest) -> Result<InitializeResponse, HostError> {
         Ok(InitializeResponse {
             capabilities: self.capabilities(),
@@ -928,20 +980,32 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
     }
 
     async fn new_session(&mut self, request: NewSessionRequest) -> Result<SessionState, HostError> {
-        let body = json!({"title": request.session_id}).to_string();
+        let policy = self.resolve_mcp_policy().await;
+        let body = json!({
+            "title": request.session_id,
+            "permission": policy.permissions,
+        })
+        .to_string();
         let path = self.with_directory("/session");
         let response = self.send("POST", &path, Some(&body)).await?;
         ensure_success(response.status, "session/new")?;
         let requested_id = request.session_id;
         let id = session_id(&response.body).unwrap_or_else(|| requested_id.clone());
+        if policy.state != crate::mcp::McpCapabilityState::Error {
+            self.mcp_policy_dirty = false;
+        }
+        self.applied_mcp_policy = Some((id.clone(), policy));
+        self.mcp_policy_verified = true;
+        self.session_backings.insert(id.clone(), id.clone());
         self.events.push(crate::AgentEvent::SessionStarted {
             session_id: id.clone(),
         });
         Ok(SessionState {
-            id,
+            id: id.clone(),
             binding: self.binding.clone(),
             state: SessionStatus::Ready,
             resumable: false,
+            backing_session_id: Some(self.backing_session_id(&id).to_owned()),
             title: Some(requested_id),
             directory: Some(self.binding.project_root.clone()),
             parent_id: None,
@@ -961,15 +1025,23 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         &mut self,
         request: LoadSessionRequest,
     ) -> Result<SessionState, HostError> {
-        let path = self.with_directory(&format!("/session/{}", encode_path(&request.session_id)));
+        let logical_session_id = request.session_id;
+        let backing_session_id = self.backing_session_id(&logical_session_id).to_owned();
+        let path = self.with_directory(&format!("/session/{}", encode_path(&backing_session_id)));
         let response = self.send("GET", &path, None).await?;
         ensure_success(response.status, "session/load")?;
-        let id = session_id(&response.body).unwrap_or(request.session_id);
+        let backing_session_id = session_id(&response.body).unwrap_or(backing_session_id);
+        self.applied_mcp_policy =
+            loaded_mcp_policy(&response.body).map(|policy| (logical_session_id.clone(), policy));
+        self.mcp_policy_verified = false;
+        self.session_backings
+            .insert(logical_session_id.clone(), backing_session_id.clone());
         Ok(SessionState {
-            id,
+            id: logical_session_id,
             binding: self.binding.clone(),
             state: SessionStatus::Ready,
             resumable: false,
+            backing_session_id: Some(backing_session_id),
             title: None,
             directory: Some(self.binding.project_root.clone()),
             parent_id: None,
@@ -979,7 +1051,11 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
     }
 
     async fn history(&mut self, session_id: String) -> Result<serde_json::Value, HostError> {
-        let path = self.with_directory(&format!("/session/{}/message", encode_path(&session_id)));
+        let backing_session_id = self.backing_session_id(&session_id).to_owned();
+        let path = self.with_directory(&format!(
+            "/session/{}/message",
+            encode_path(&backing_session_id)
+        ));
         let response = self.send("GET", &path, None).await?;
         ensure_success(response.status, "session/history")?;
         let messages = serde_json::from_str::<Vec<serde_json::Value>>(&response.body)
@@ -1071,9 +1147,12 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
 
     async fn prompt(&mut self, request: PromptRequest) -> Result<PromptResponse, HostError> {
         self.ensure_event_stream(&request.session_id).await?;
+        self.refresh_mcp_policy(&request.session_id).await?;
+        self.ensure_event_stream(&request.session_id).await?;
+        let backing_session_id = self.backing_session_id(&request.session_id).to_owned();
         let path = self.with_directory(&format!(
             "/session/{}/prompt_async",
-            encode_path(&request.session_id)
+            encode_path(&backing_session_id)
         ));
         let mut parts = Vec::new();
         if !request.prompt.is_empty() || request.attachments.is_empty() {
@@ -1107,12 +1186,16 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         let body = body.to_string();
         let response = self.send("POST", &path, Some(&body)).await?;
         ensure_success(response.status, "session/prompt")?;
-        self.map_events(&request.session_id, &response.body);
+        self.map_events_as(&backing_session_id, &request.session_id, &response.body);
         Ok(PromptResponse { completed: false })
     }
 
     async fn cancel(&mut self, session_id: String) -> Result<(), HostError> {
-        let path = self.with_directory(&format!("/session/{}/abort", encode_path(&session_id)));
+        let backing_session_id = self.backing_session_id(&session_id).to_owned();
+        let path = self.with_directory(&format!(
+            "/session/{}/abort",
+            encode_path(&backing_session_id)
+        ));
         let response = self.send("POST", &path, None).await?;
         ensure_success(response.status, "session/cancel")
     }
@@ -1122,10 +1205,20 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
         request_id: String,
         option_id: Option<String>,
     ) -> Result<(), HostError> {
+        let pending = self.pending_permissions.get(&request_id).cloned();
+        let reply = match pending.and_then(|pending| pending.mcp_action) {
+            Some(McpPermissionAction::Deny) => "reject".to_owned(),
+            Some(McpPermissionAction::Ask) if option_id.as_deref() == Some("always") => {
+                "once".to_owned()
+            }
+            _ => option_id.unwrap_or_else(|| "reject".into()),
+        };
         let path = self.with_directory(&format!("/permission/{}/reply", encode_path(&request_id)));
-        let body = json!({"reply": option_id.unwrap_or_else(|| "reject".into())}).to_string();
+        let body = json!({"reply": reply}).to_string();
         let response = self.send("POST", &path, Some(&body)).await?;
-        ensure_success(response.status, "permission")
+        ensure_success(response.status, "permission")?;
+        self.pending_permissions.remove(&request_id);
+        Ok(())
     }
 
     async fn respond_question(
@@ -1146,16 +1239,18 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
     }
 
     async fn set_config(&mut self, request: SetConfigRequest) -> Result<SessionState, HostError> {
-        let path = self.with_directory(&format!("/session/{}", encode_path(&request.session_id)));
+        let backing_session_id = self.backing_session_id(&request.session_id).to_owned();
+        let path = self.with_directory(&format!("/session/{}", encode_path(&backing_session_id)));
         let body = request.config.to_string();
         let response = self.send("PATCH", &path, Some(&body)).await?;
         ensure_success(response.status, "session/config")?;
         crate::apply_config_to_binding(&mut self.binding, &request.config);
         Ok(SessionState {
-            id: request.session_id,
+            id: request.session_id.clone(),
             binding: self.binding.clone(),
             state: SessionStatus::Ready,
             resumable: false,
+            backing_session_id: Some(self.backing_session_id(&request.session_id).to_owned()),
             title: None,
             directory: Some(self.binding.project_root.clone()),
             parent_id: None,
@@ -1172,22 +1267,176 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
     }
 
     async fn close_session(&mut self, session_id: String) -> Result<(), HostError> {
-        let path = self.with_directory(&format!("/session/{}", encode_path(&session_id)));
+        let backing_session_id = self.backing_session_id(&session_id).to_owned();
+        let path = self.with_directory(&format!("/session/{}", encode_path(&backing_session_id)));
         let response = self.send("DELETE", &path, None).await?;
         ensure_success(response.status, "session/close")?;
         self.event_stream = None;
         self.event_buffer.clear();
         self.event_session_id = None;
+        self.event_output_session_id = None;
+        if self
+            .applied_mcp_policy
+            .as_ref()
+            .is_some_and(|(applied_session_id, _)| applied_session_id == &session_id)
+        {
+            self.applied_mcp_policy = None;
+        }
+        self.pending_permissions.clear();
+        self.mcp_policy_dirty = false;
+        self.mcp_policy_verified = true;
+        self.session_backings.remove(&session_id);
         Ok(())
     }
 }
 
 impl<T: OpenCodeTransport> OpenCodeDriver<T> {
+    async fn resolve_mcp_policy(&mut self) -> McpSessionPolicy {
+        let path = self.with_directory("/config");
+        let response = match self.send("GET", &path, None).await {
+            Ok(response) if (200..300).contains(&response.status) => response,
+            _ => return McpCapabilityBroker::discovery_failed(),
+        };
+        let config = match serde_json::from_str::<OpenCodeEffectiveConfig>(&response.body) {
+            Ok(config) => config,
+            Err(_) => return McpCapabilityBroker::discovery_failed(),
+        };
+        let available = config
+            .mcp
+            .iter()
+            .filter(|(_, config)| config.enabled != Some(false))
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>();
+        McpCapabilityBroker::resolve(&available, &self.binding.mcp_allow_list)
+    }
+
+    async fn refresh_mcp_policy(&mut self, session_id: &str) -> Result<(), HostError> {
+        let policy = self.resolve_mcp_policy().await;
+        let previous = self
+            .applied_mcp_policy
+            .as_ref()
+            .filter(|(applied_session_id, _)| applied_session_id == session_id)
+            .map(|(_, applied)| applied.clone());
+        if policy.state == crate::mcp::McpCapabilityState::Error {
+            if previous
+                .as_ref()
+                .is_some_and(|applied| applied.state == crate::mcp::McpCapabilityState::Error)
+            {
+                self.mcp_policy_dirty = false;
+                self.mcp_policy_verified = true;
+                return Ok(());
+            }
+            if self.mcp_policy_dirty || !self.mcp_policy_verified || previous.is_none() {
+                if let Err(error) = self
+                    .fork_session_with_policy(session_id, McpCapabilityBroker::discovery_failed())
+                    .await
+                {
+                    // MCP is optional. A failed policy fork must disable the
+                    // optional capability and allow the primary ACP turn to
+                    // continue; never turn connector unavailability into a
+                    // chat outage.
+                    self.applied_mcp_policy = Some((
+                        session_id.to_owned(),
+                        McpCapabilityBroker::discovery_failed(),
+                    ));
+                    self.mcp_policy_dirty = false;
+                    self.mcp_policy_verified = true;
+                    let _ = error;
+                }
+                return Ok(());
+            }
+            return Ok(());
+        }
+        if previous
+            .as_ref()
+            .is_some_and(|applied| applied.state == crate::mcp::McpCapabilityState::Error)
+        {
+            if let Err(error) = self.fork_session_with_policy(session_id, policy).await {
+                self.applied_mcp_policy = Some((
+                    session_id.to_owned(),
+                    McpCapabilityBroker::discovery_failed(),
+                ));
+                self.mcp_policy_dirty = false;
+                self.mcp_policy_verified = true;
+                let _ = error;
+            }
+            return Ok(());
+        }
+        let delta = previous.as_ref().map_or_else(
+            || policy.permissions.clone(),
+            |applied| policy.delta_from(applied),
+        );
+        if delta.is_empty() {
+            if let Some(mut applied) = previous {
+                applied.state = policy.state;
+                self.applied_mcp_policy = Some((session_id.to_owned(), applied));
+            }
+            self.mcp_policy_dirty = false;
+            self.mcp_policy_verified = true;
+            return Ok(());
+        }
+        let body = json!({"permission": delta}).to_string();
+        let backing_session_id = self.backing_session_id(session_id).to_owned();
+        let path = self.with_directory(&format!("/session/{}", encode_path(&backing_session_id)));
+        let response = self.send("PATCH", &path, Some(&body)).await?;
+        ensure_success(response.status, "mcp/policy")?;
+        let mut applied = previous.unwrap_or_else(|| McpSessionPolicy {
+            state: policy.state,
+            permissions: Vec::new(),
+        });
+        applied.state = policy.state;
+        applied.permissions.extend(delta);
+        self.applied_mcp_policy = Some((session_id.to_owned(), applied));
+        self.mcp_policy_dirty = false;
+        self.mcp_policy_verified = true;
+        Ok(())
+    }
+
+    async fn fork_session_with_policy(
+        &mut self,
+        logical_session_id: &str,
+        policy: McpSessionPolicy,
+    ) -> Result<(), HostError> {
+        let backing_session_id = self.backing_session_id(logical_session_id).to_owned();
+        let path = self.with_directory(&format!(
+            "/session/{}/fork",
+            encode_path(&backing_session_id)
+        ));
+        let response = self.send("POST", &path, Some("{}")).await?;
+        ensure_success(response.status, "mcp/policy-fork")?;
+        let new_backing_session_id = session_id(&response.body).ok_or_else(|| {
+            HostError::Driver("OpenCode MCP policy fork returned no session id".into())
+        })?;
+        if !policy.permissions.is_empty() {
+            let body = json!({"permission": policy.permissions}).to_string();
+            let path = self.with_directory(&format!(
+                "/session/{}",
+                encode_path(&new_backing_session_id)
+            ));
+            let response = self.send("PATCH", &path, Some(&body)).await?;
+            ensure_success(response.status, "mcp/policy")?;
+        }
+        self.session_backings
+            .insert(logical_session_id.to_owned(), new_backing_session_id);
+        self.applied_mcp_policy = Some((logical_session_id.to_owned(), policy));
+        self.mcp_policy_dirty = false;
+        self.mcp_policy_verified = true;
+        self.event_stream = None;
+        self.event_buffer.clear();
+        self.event_session_id = None;
+        self.event_output_session_id = None;
+        Ok(())
+    }
+
     async fn ensure_event_stream(&mut self, session_id: &str) -> Result<(), HostError> {
         if self.event_stream.is_some() {
             return Ok(());
         }
-        let path = self.with_directory(&format!("/event?sessionID={}", encode_query(session_id)));
+        let backing_session_id = self.backing_session_id(session_id).to_owned();
+        let path = self.with_directory(&format!(
+            "/event?sessionID={}",
+            encode_query(&backing_session_id)
+        ));
         let url = format!("{}{}", self.base_url, path);
         let headers = self.headers();
         let (status, stream) = self
@@ -1197,7 +1446,8 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
             .map_err(HostError::Driver)?;
         ensure_success(status, "event")?;
         self.event_stream = Some(stream);
-        self.event_session_id = Some(session_id.to_owned());
+        self.event_session_id = Some(backing_session_id);
+        self.event_output_session_id = Some(session_id.to_owned());
         Ok(())
     }
 
@@ -1220,7 +1470,7 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                     if self.event_buffer.len().saturating_add(chunk.len()) > MAX_SSE_BUFFER_BYTES {
                         self.event_buffer.clear();
                         self.events.push(crate::AgentEvent::Error {
-                            session_id: self.event_session_id.clone(),
+                            session_id: self.event_output_session_id.clone(),
                             message: "OpenCode SSE buffer limit exceeded".into(),
                         });
                         self.event_stream = None;
@@ -1234,7 +1484,7 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                 }
                 Some(Some(Err(error))) => {
                     self.events.push(crate::AgentEvent::Error {
-                        session_id: self.event_session_id.clone(),
+                        session_id: self.event_output_session_id.clone(),
                         message: error,
                     });
                     self.event_stream = None;
@@ -1256,8 +1506,16 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                 break;
             };
             let frame = self.event_buffer.drain(..end).collect::<Vec<_>>();
-            let session_id = self.event_session_id.clone().unwrap_or_default();
-            self.map_events(&session_id, &String::from_utf8_lossy(&frame));
+            let subscribed_session_id = self.event_session_id.clone().unwrap_or_default();
+            let output_session_id = self
+                .event_output_session_id
+                .clone()
+                .unwrap_or_else(|| subscribed_session_id.clone());
+            self.map_events_as(
+                &subscribed_session_id,
+                &output_session_id,
+                &String::from_utf8_lossy(&frame),
+            );
         }
     }
 
@@ -1266,8 +1524,16 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
             return;
         }
         let frame = std::mem::take(&mut self.event_buffer);
-        let session_id = self.event_session_id.clone().unwrap_or_default();
-        self.map_events(&session_id, &String::from_utf8_lossy(&frame));
+        let subscribed_session_id = self.event_session_id.clone().unwrap_or_default();
+        let output_session_id = self
+            .event_output_session_id
+            .clone()
+            .unwrap_or_else(|| subscribed_session_id.clone());
+        self.map_events_as(
+            &subscribed_session_id,
+            &output_session_id,
+            &String::from_utf8_lossy(&frame),
+        );
     }
 
     fn headers(&self) -> Vec<(String, String)> {
@@ -1302,7 +1568,12 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
             .map_err(HostError::Driver)
     }
 
+    #[cfg(test)]
     fn map_events(&mut self, subscribed_session_id: &str, body: &str) {
+        self.map_events_as(subscribed_session_id, subscribed_session_id, body);
+    }
+
+    fn map_events_as(&mut self, subscribed_session_id: &str, output_session_id: &str, body: &str) {
         for data in sse_data(body) {
             let Ok(value) = serde_json::from_str::<serde_json::Value>(&data) else {
                 continue;
@@ -1311,12 +1582,13 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
             if directory.is_some_and(|directory| directory != self.binding.project_root) {
                 continue;
             }
-            let Some(session_id) = event_session_id(value) else {
+            let Some(vendor_session_id) = event_session_id(value) else {
                 continue;
             };
-            if session_id != subscribed_session_id {
+            if vendor_session_id != subscribed_session_id {
                 continue;
             }
+            let session_id = output_session_id;
             let kind = value
                 .get("type")
                 .and_then(|v| v.as_str())
@@ -1560,7 +1832,7 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                         .or_else(|| props.get("action"))
                         .and_then(|value| value.as_str())
                         .map(str::to_owned);
-                    let resources = props
+                    let resources: Vec<String> = props
                         .get("patterns")
                         .or_else(|| props.get("resources"))
                         .and_then(|value| value.as_array())
@@ -1571,6 +1843,22 @@ impl<T: OpenCodeTransport> OpenCodeDriver<T> {
                                 .collect()
                         })
                         .unwrap_or_default();
+                    let mcp_action = self
+                        .applied_mcp_policy
+                        .as_ref()
+                        .filter(|(applied_session_id, _)| applied_session_id == session_id)
+                        .and_then(|(_, policy)| {
+                            policy.action_for(action.as_deref().unwrap_or_default(), &resources)
+                        });
+                    if mcp_action.is_some() {
+                        options.retain(|option| option.id != "always");
+                    }
+                    if !request_id.is_empty() {
+                        self.pending_permissions.insert(
+                            request_id.to_owned(),
+                            PendingOpenCodePermission { mcp_action },
+                        );
+                    }
                     self.events.push(crate::AgentEvent::PermissionRequested {
                         session_id: session_id.into(),
                         request_id: request_id.into(),
@@ -1738,6 +2026,16 @@ fn session_id(body: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
+fn loaded_mcp_policy(body: &str) -> Option<McpSessionPolicy> {
+    let value = serde_json::from_str::<serde_json::Value>(body).ok()?;
+    let permissions = value.get("permission")?.as_array()?;
+    let permissions = permissions
+        .iter()
+        .filter_map(|rule| serde_json::from_value(rule.clone()).ok())
+        .collect::<Vec<_>>();
+    Some(McpSessionPolicy::from_session_permissions(permissions))
+}
+
 fn sse_data(body: &str) -> Vec<String> {
     body.lines()
         .filter_map(|line| {
@@ -1873,14 +2171,18 @@ mod tests {
     impl OpenCodeTransport for ChunkedEventFake {
         async fn send(
             &mut self,
-            _method: &str,
-            _path: &str,
+            method: &str,
+            path: &str,
             _headers: &[(String, String)],
             _body: Option<&str>,
         ) -> Result<TransportResponse, String> {
             Ok(TransportResponse {
                 status: 200,
-                body: String::new(),
+                body: if method == "GET" && path.contains("/config?") {
+                    r#"{"mcp":{}}"#.into()
+                } else {
+                    String::new()
+                },
             })
         }
 
@@ -1903,14 +2205,18 @@ mod tests {
     impl OpenCodeTransport for OversizedEventFake {
         async fn send(
             &mut self,
-            _method: &str,
-            _path: &str,
+            method: &str,
+            path: &str,
             _headers: &[(String, String)],
             _body: Option<&str>,
         ) -> Result<TransportResponse, String> {
             Ok(TransportResponse {
                 status: 200,
-                body: String::new(),
+                body: if method == "GET" && path.contains("/config?") {
+                    r#"{"mcp":{}}"#.into()
+                } else {
+                    String::new()
+                },
             })
         }
 
@@ -1937,6 +2243,7 @@ mod tests {
             profile_fingerprint: "fp".into(),
             resolved_at: "now".into(),
             mcp_allow_list: Vec::new(),
+            mcp_tool_grants: Vec::new(),
             skills_snapshot: Vec::new(),
         }
     }
@@ -2354,6 +2661,10 @@ mod tests {
                     status: 200,
                     body: r#"{"id":"s-new"}"#.into(),
                 },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{}}"#.into(),
+                },
             ],
         };
         let mut request_binding = binding();
@@ -2378,14 +2689,94 @@ mod tests {
         let calls = calls.lock().unwrap();
         assert_eq!(
             calls[0].url,
-            "http://localhost:4096/session?directory=C:%2Fscience%20project"
+            "http://localhost:4096/config?directory=C:%2Fscience%20project"
         );
         assert_eq!(
             calls[1].url,
+            "http://localhost:4096/session?directory=C:%2Fscience%20project"
+        );
+        assert_eq!(
+            calls[2].url,
             "http://localhost:4096/session/s-load?directory=C:%2Fscience%20project"
         );
-        assert_eq!(calls[0].headers[0].1, "Basic dXNlcjpwYXNz");
-        assert!(calls[0].body.as_deref().unwrap().contains("local"));
+        assert_eq!(calls[1].headers[0].1, "Basic dXNlcjpwYXNz");
+        assert!(calls[1].body.as_deref().unwrap().contains("local"));
+    }
+
+    #[test]
+    fn new_session_applies_the_immutable_mcp_allow_list_as_session_permissions() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s-new"}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"datasets":{"type":"local"},"papers":{"type":"local"}}}"#
+                        .into(),
+                },
+            ],
+        };
+        let mut request_binding = binding();
+        request_binding.project_root = "C:/science project".into();
+        request_binding.mcp_allow_list = vec!["papers".into()];
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", request_binding);
+
+        block_on(driver.new_session(NewSessionRequest {
+            session_id: "local".into(),
+        }))
+        .unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls[0].method, "GET");
+        assert_eq!(
+            calls[0].url,
+            "http://x/config?directory=C:%2Fscience%20project"
+        );
+        let body: serde_json::Value =
+            serde_json::from_str(calls[1].body.as_deref().unwrap()).unwrap();
+        let permissions = body["permission"].as_array().unwrap();
+        assert!(permissions.iter().any(|rule| {
+            rule["permission"] == "papers_*" && rule["pattern"] == "*" && rule["action"] == "ask"
+        }));
+        assert!(permissions.iter().any(|rule| {
+            rule["permission"] == "datasets_*" && rule["pattern"] == "*" && rule["action"] == "deny"
+        }));
+    }
+
+    #[test]
+    fn mcp_discovery_failure_does_not_block_session_creation_and_denies_tools() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s-new"}"#.into(),
+                },
+                TransportResponse {
+                    status: 503,
+                    body: "not ready".into(),
+                },
+            ],
+        };
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
+
+        let created = block_on(driver.new_session(NewSessionRequest {
+            session_id: "local".into(),
+        }))
+        .unwrap();
+
+        assert_eq!(created.id, "s-new");
+        let calls = calls.lock().unwrap();
+        let body: serde_json::Value =
+            serde_json::from_str(calls[1].body.as_deref().unwrap()).unwrap();
+        assert!(body["permission"].as_array().unwrap().iter().any(|rule| {
+            rule["permission"] == "*" && rule["pattern"] == "*" && rule["action"] == "deny"
+        }));
     }
 
     #[test]
@@ -2469,9 +2860,19 @@ mod tests {
                     status: 200,
                     body: String::new(),
                 },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local"}}}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
             ],
         };
-        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
+        let mut prompt_binding = binding();
+        prompt_binding.mcp_allow_list = vec!["papers".into()];
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", prompt_binding);
         assert!(driver.capabilities().question);
         block_on(driver.prompt(PromptRequest {
             session_id: "s1".into(),
@@ -2504,8 +2905,17 @@ mod tests {
             calls_after_prompt[0].url,
             "http://x/event?sessionID=s1&directory=."
         );
+        assert_eq!(calls_after_prompt[1].url, "http://x/config?directory=.");
+        assert_eq!(calls_after_prompt[2].url, "http://x/session/s1?directory=.");
+        let permission_body: serde_json::Value =
+            serde_json::from_str(calls_after_prompt[2].body.as_deref().unwrap()).unwrap();
+        assert!(permission_body["permission"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|rule| rule["permission"] == "papers_*" && rule["action"] == "ask"));
         assert_eq!(
-            calls_after_prompt[1].url,
+            calls_after_prompt[3].url,
             "http://x/session/s1/prompt_async?directory=."
         );
         drop(calls_after_prompt);
@@ -2514,6 +2924,612 @@ mod tests {
         assert!(calls.iter().any(
             |call| call.url == "http://x/session/s1/abort?directory=." && call.method == "POST"
         ));
+    }
+
+    #[test]
+    fn prompt_does_not_append_an_unchanged_mcp_policy_more_than_once() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local"}}}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local"}}}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+            ],
+        };
+        let mut stable_binding = binding();
+        stable_binding.mcp_allow_list = vec!["papers".into()];
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", stable_binding);
+
+        for prompt in ["first", "second"] {
+            block_on(driver.prompt(PromptRequest {
+                session_id: "s1".into(),
+                prompt: prompt.into(),
+                attachments: Vec::new(),
+            }))
+            .unwrap();
+        }
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|call| call.method == "PATCH" && call.url.contains("/session/s1?"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn loaded_session_seeds_matching_mcp_policy_without_another_patch() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local"}}}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s1","permission":[{"permission":"papers_*","pattern":"*","action":"ask"},{"permission":"read","pattern":"mcp:papers:*","action":"ask"}]}"#.into(),
+                },
+            ],
+        };
+        let mut loaded_binding = binding();
+        loaded_binding.mcp_allow_list = vec!["papers".into()];
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", loaded_binding);
+
+        block_on(driver.load_session(LoadSessionRequest {
+            session_id: "s1".into(),
+        }))
+        .unwrap();
+        block_on(driver.prompt(PromptRequest {
+            session_id: "s1".into(),
+            prompt: "continue".into(),
+            attachments: Vec::new(),
+        }))
+        .unwrap();
+
+        assert_eq!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|call| call.method == "PATCH" && call.url.contains("/session/s1?"))
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn changed_mcp_catalog_appends_only_new_policy_rules() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"datasets":{"type":"local"},"papers":{"type":"local"}}}"#
+                        .into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s1"}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local"}}}"#.into(),
+                },
+            ],
+        };
+        let mut changed_binding = binding();
+        changed_binding.mcp_allow_list = vec!["papers".into()];
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", changed_binding);
+
+        block_on(driver.new_session(NewSessionRequest {
+            session_id: "local".into(),
+        }))
+        .unwrap();
+        block_on(driver.prompt(PromptRequest {
+            session_id: "s1".into(),
+            prompt: "continue".into(),
+            attachments: Vec::new(),
+        }))
+        .unwrap();
+
+        let calls = calls.lock().unwrap();
+        let patch = calls
+            .iter()
+            .find(|call| call.method == "PATCH" && call.url.contains("/session/s1?"))
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_str(patch.body.as_deref().unwrap()).unwrap();
+        let permissions = body["permission"].as_array().unwrap();
+        assert_eq!(permissions.len(), 2);
+        assert!(permissions.iter().all(|rule| {
+            rule["permission"] == "datasets_*" || rule["pattern"] == "mcp:datasets:*"
+        }));
+    }
+
+    #[test]
+    fn failed_initial_discovery_recovers_on_a_clean_backing_session() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: "data: {\"type\":\"text.updated\",\"properties\":{\"sessionID\":\"s2\",\"delta\":\"continued\"}}\n\n".into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s2"}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local"}}}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s1"}"#.into(),
+                },
+                TransportResponse {
+                    status: 503,
+                    body: "not ready".into(),
+                },
+            ],
+        };
+        let mut recovery_binding = binding();
+        recovery_binding.mcp_allow_list = vec!["papers".into()];
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", recovery_binding);
+
+        block_on(driver.new_session(NewSessionRequest {
+            session_id: "local".into(),
+        }))
+        .unwrap();
+        block_on(driver.prompt(PromptRequest {
+            session_id: "s1".into(),
+            prompt: "continue".into(),
+            attachments: Vec::new(),
+        }))
+        .unwrap();
+
+        let calls = calls.lock().unwrap();
+        let patch = calls
+            .iter()
+            .find(|call| call.method == "PATCH" && call.url.contains("/session/s2?"))
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_str(patch.body.as_deref().unwrap()).unwrap();
+        let permissions = body["permission"].as_array().unwrap();
+        assert!(!permissions.iter().any(|rule| {
+            rule["permission"] == "*" && rule["pattern"] == "*" && rule["action"] == "ask"
+        }));
+        assert!(!permissions.iter().any(|rule| rule["action"] == "allow"));
+        assert!(permissions
+            .iter()
+            .any(|rule| rule["permission"] == "papers_*" && rule["action"] == "ask"));
+        assert!(calls
+            .iter()
+            .any(|call| { call.method == "POST" && call.url.contains("/session/s1/fork?") }));
+        assert!(calls.iter().any(|call| {
+            call.method == "POST" && call.url.contains("/session/s2/prompt_async?")
+        }));
+        assert!(calls
+            .iter()
+            .any(|call| call.url.contains("/event?sessionID=s2&")));
+        drop(calls);
+        assert!(driver.drain_events().iter().any(|event| matches!(
+            event,
+            crate::AgentEvent::TextDelta { session_id, delta }
+                if session_id == "s1" && delta == "continued"
+        )));
+    }
+
+    #[test]
+    fn lifecycle_calls_follow_the_latest_backing_session_after_policy_fork() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: "[]".into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s2"}"#.into(),
+                },
+                TransportResponse {
+                    status: 503,
+                    body: "temporarily unavailable".into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s1"}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local"}}}"#.into(),
+                },
+            ],
+        };
+        let mut lifecycle_binding = binding();
+        lifecycle_binding.mcp_allow_list = vec!["papers".into()];
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", lifecycle_binding);
+        block_on(driver.new_session(NewSessionRequest {
+            session_id: "local".into(),
+        }))
+        .unwrap();
+        driver.invalidate_mcp_policy();
+
+        block_on(driver.prompt(PromptRequest {
+            session_id: "s1".into(),
+            prompt: "continue".into(),
+            attachments: Vec::new(),
+        }))
+        .unwrap();
+        assert_eq!(block_on(driver.history("s1".into())).unwrap(), json!([]));
+        block_on(driver.cancel("s1".into())).unwrap();
+        block_on(driver.close_session("s1".into())).unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert!(calls
+            .iter()
+            .any(|call| call.method == "GET" && call.url.contains("/session/s2/message?")));
+        assert!(calls
+            .iter()
+            .any(|call| call.method == "POST" && call.url.contains("/session/s2/abort?")));
+        assert!(calls
+            .iter()
+            .any(|call| call.method == "DELETE" && call.url.contains("/session/s2?")));
+    }
+
+    #[test]
+    fn disabled_effective_mcp_server_is_not_exposed_by_the_session_policy() {
+        let fake = Fake {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s1"}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local","enabled":false}}}"#.into(),
+                },
+            ],
+        };
+        let mut disabled_binding = binding();
+        disabled_binding.mcp_allow_list = vec!["papers".into()];
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", disabled_binding);
+
+        block_on(driver.new_session(NewSessionRequest {
+            session_id: "local".into(),
+        }))
+        .unwrap();
+
+        let (_, policy) = driver.applied_mcp_policy.as_ref().unwrap();
+        assert_eq!(policy.state, crate::mcp::McpCapabilityState::Deferred);
+        assert!(!policy.has_rule("papers_*", "*", McpPermissionAction::Ask));
+    }
+
+    #[test]
+    fn dirty_mcp_policy_forks_fail_closed_and_continues_chat() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s2"}"#.into(),
+                },
+                TransportResponse {
+                    status: 503,
+                    body: "temporarily unavailable".into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s1"}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local"}}}"#.into(),
+                },
+            ],
+        };
+        let mut dirty_binding = binding();
+        dirty_binding.mcp_allow_list = vec!["papers".into()];
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", dirty_binding);
+        block_on(driver.new_session(NewSessionRequest {
+            session_id: "local".into(),
+        }))
+        .unwrap();
+        driver.invalidate_mcp_policy();
+
+        block_on(driver.prompt(PromptRequest {
+            session_id: "s1".into(),
+            prompt: "continue".into(),
+            attachments: Vec::new(),
+        }))
+        .unwrap();
+
+        let calls = calls.lock().unwrap();
+        let patch = calls
+            .iter()
+            .find(|call| call.method == "PATCH" && call.url.contains("/session/s2?"))
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_str(patch.body.as_deref().unwrap()).unwrap();
+        assert!(body["permission"].as_array().unwrap().iter().any(|rule| {
+            rule["permission"] == "*" && rule["pattern"] == "*" && rule["action"] == "deny"
+        }));
+        assert!(calls
+            .iter()
+            .any(|call| call.url.contains("/session/s2/prompt_async")));
+    }
+
+    #[test]
+    fn unverified_loaded_policy_forks_fail_closed_when_discovery_fails() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s2"}"#.into(),
+                },
+                TransportResponse {
+                    status: 503,
+                    body: "temporarily unavailable".into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s1","permission":[{"permission":"papers_*","pattern":"*","action":"ask"},{"permission":"read","pattern":"mcp:papers:*","action":"ask"}]}"#.into(),
+                },
+            ],
+        };
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
+        block_on(driver.load_session(LoadSessionRequest {
+            session_id: "s1".into(),
+        }))
+        .unwrap();
+
+        block_on(driver.prompt(PromptRequest {
+            session_id: "s1".into(),
+            prompt: "continue".into(),
+            attachments: Vec::new(),
+        }))
+        .unwrap();
+
+        let calls = calls.lock().unwrap();
+        let patch = calls
+            .iter()
+            .find(|call| call.method == "PATCH" && call.url.contains("/session/s2?"))
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_str(patch.body.as_deref().unwrap()).unwrap();
+        assert!(body["permission"].as_array().unwrap().iter().any(|rule| {
+            rule["permission"] == "*" && rule["pattern"] == "*" && rule["action"] == "deny"
+        }));
+        assert!(calls
+            .iter()
+            .any(|call| call.url.contains("/session/s2/prompt_async")));
+    }
+
+    #[test]
+    fn successful_new_session_discovery_clears_a_pending_dirty_policy() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 503,
+                    body: "temporarily unavailable".into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s1"}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local"}}}"#.into(),
+                },
+            ],
+        };
+        let mut current_binding = binding();
+        current_binding.mcp_allow_list = vec!["papers".into()];
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", current_binding);
+        driver.invalidate_mcp_policy();
+
+        block_on(driver.new_session(NewSessionRequest {
+            session_id: "local".into(),
+        }))
+        .unwrap();
+        block_on(driver.prompt(PromptRequest {
+            session_id: "s1".into(),
+            prompt: "continue".into(),
+            attachments: Vec::new(),
+        }))
+        .unwrap();
+
+        assert!(calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|call| call.url.contains("/prompt_async")));
+    }
+
+    #[test]
+    fn transient_discovery_failure_retains_the_last_valid_policy() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 503,
+                    body: "temporarily unavailable".into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"id":"s1"}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local"}}}"#.into(),
+                },
+            ],
+        };
+        let mut stable_binding = binding();
+        stable_binding.mcp_allow_list = vec!["papers".into()];
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", stable_binding);
+
+        block_on(driver.new_session(NewSessionRequest {
+            session_id: "local".into(),
+        }))
+        .unwrap();
+        block_on(driver.prompt(PromptRequest {
+            session_id: "s1".into(),
+            prompt: "continue".into(),
+            attachments: Vec::new(),
+        }))
+        .unwrap();
+
+        assert_eq!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|call| call.method == "PATCH" && call.url.contains("/session/s1?"))
+                .count(),
+            0
+        );
     }
 
     #[test]
@@ -2550,6 +3566,86 @@ mod tests {
             "http://x/permission/p1/reply?directory=C:%2Fscience%20project"
         );
         assert_eq!(calls[0].body.as_deref(), Some("{\"reply\":\"once\"}"));
+    }
+
+    #[test]
+    fn mcp_permissions_remove_always_and_downgrade_forged_always_replies() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"papers":{"type":"local"}}}"#.into(),
+                },
+            ],
+        };
+        let mut permission_binding = binding();
+        permission_binding.mcp_allow_list = vec!["papers".into()];
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", permission_binding);
+        driver.applied_mcp_policy = Some((
+            "s1".into(),
+            McpCapabilityBroker::resolve(&["papers"], &["papers".into()]),
+        ));
+        driver.map_events(
+            "s1",
+            "data: {\"type\":\"permission.asked\",\"properties\":{\"sessionID\":\"s1\",\"id\":\"p1\",\"permission\":\"papers_search\",\"patterns\":[\"*\"]}}\n\n",
+        );
+
+        assert!(driver.take_events().iter().any(|event| matches!(
+            event,
+            crate::AgentEvent::PermissionRequested { options, .. }
+                if options.iter().map(|option| option.id.as_str()).eq(["once", "reject"])
+        )));
+        block_on(driver.respond_permission("p1".into(), Some("always".into()))).unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(
+            calls.last().unwrap().body.as_deref(),
+            Some("{\"reply\":\"once\"}")
+        );
+    }
+
+    #[test]
+    fn host_rejects_forged_approval_for_an_unlisted_mcp_server() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"datasets":{"type":"local"},"papers":{"type":"local"}}}"#
+                        .into(),
+                },
+            ],
+        };
+        let mut permission_binding = binding();
+        permission_binding.mcp_allow_list = vec!["papers".into()];
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", permission_binding);
+        driver.applied_mcp_policy = Some((
+            "s1".into(),
+            McpCapabilityBroker::resolve(&["datasets", "papers"], &["papers".into()]),
+        ));
+        driver.map_events(
+            "s1",
+            "data: {\"type\":\"permission.asked\",\"properties\":{\"sessionID\":\"s1\",\"id\":\"p2\",\"permission\":\"datasets_query\",\"patterns\":[\"*\"]}}\n\n",
+        );
+
+        block_on(driver.respond_permission("p2".into(), Some("once".into()))).unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(
+            calls.last().unwrap().body.as_deref(),
+            Some("{\"reply\":\"reject\"}")
+        );
     }
 
     #[test]
@@ -2697,11 +3793,11 @@ mod tests {
             responses: vec![
                 TransportResponse {
                     status: 200,
-                    body: String::new(),
+                    body: sse.into(),
                 },
                 TransportResponse {
                     status: 200,
-                    body: sse.into(),
+                    body: r#"{"mcp":{}}"#.into(),
                 },
                 TransportResponse {
                     status: 200,
@@ -2789,6 +3885,14 @@ mod tests {
                     status: 200,
                     body: String::new(),
                 },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{}}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
             ],
         };
         let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
@@ -2828,6 +3932,14 @@ mod tests {
                 TransportResponse {
                     status: 200,
                     body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: String::new(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{}}"#.into(),
                 },
                 TransportResponse {
                     status: 200,

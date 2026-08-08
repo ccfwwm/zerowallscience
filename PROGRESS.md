@@ -1,5 +1,9 @@
 # Progress
 
+2026-08-08 04:42 · The MCP bridge now strips provider credentials from third-party children, requires immutable exact tool grants (rejecting wildcard and unknown calls), resolves the active environment proxy, avoids stdin/mutation-lane shutdown deadlocks, and persists OpenCode fork backing sessions; Host 77/77 plus broker 17/17, proxy 7/7, Tauri 406/406, desktop Vitest, TypeScript, Clippy, rustfmt, proxy release build, and diff/secret-value checks pass.
+
+2026-08-08 04:05 · The unified MCP Capability Broker now applies the immutable server allow-list to all engines, compiles OpenCode's effective MCP catalog into session-native ask/deny rules, fails tools closed without blocking chat when discovery fails, and avoids duplicate permission appends; bundled OpenCode 1.17.13 live probing, Host 68/68, Tauri 403/403, and focused Clippy pass.
+
 2026-08-08 03:21 · OpenCode now maps native todo/file events to unified plan/artifact events and advertises its real question-response capability, while Process ACP keeps question handling explicitly unavailable until protocol elicitation is enabled; Host 61/61, Tauri 403/403, and focused Clippy pass.
 
 2026-08-08 02:43 · The unified ACP Host now exposes resume and mode lifecycle commands, rebuilds detached Codex/Claude drivers from immutable bindings plus their original safe gateway/Keychain references, rejects unsupported OpenCode resume, and enables standard ACP session/set_mode only when the active Agent advertises modes; SDK 35/35, Host 61/61, ACP 23/23 plus reliability 23/23, Tauri 403/403, and focused Clippy pass.

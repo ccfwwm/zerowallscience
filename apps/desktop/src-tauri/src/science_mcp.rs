@@ -4,9 +4,10 @@
 // app data (the user's Python is untouched), then register them in OpenCode's
 // config. The frontend holds the curated catalog; here we just install a pip
 // package and report the managed interpreter path.
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use zerowall_acp::AcpMcpServer;
+use zerowall_acp_host::{mcp::McpToolEffect, McpToolGrantSnapshot};
 
 fn env_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app
@@ -31,6 +32,17 @@ fn python_bin(app: &AppHandle) -> Result<PathBuf, String> {
 /// proxy, which starts the real child without creating a console window.
 fn mcp_proxy_path(app: &AppHandle) -> Result<PathBuf, String> {
     let extension = if cfg!(windows) { ".exe" } else { "" };
+    if let Some(root) = crate::environment_update::active_environment_root(app)? {
+        for candidate in [
+            root.join(format!("zerowall-mcp-proxy{extension}")),
+            root.join("binaries")
+                .join(format!("zerowall-mcp-proxy{extension}")),
+        ] {
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
     let installed = app
         .path()
         .resource_dir()
@@ -65,11 +77,7 @@ fn mcp_proxy_path(app: &AppHandle) -> Result<PathBuf, String> {
     }
 }
 
-fn mcp_proxy_args(
-    python: &std::path::Path,
-    module: &str,
-    extra_args: &[&str],
-) -> Vec<String> {
+fn mcp_proxy_args(python: &std::path::Path, module: &str, extra_args: &[&str]) -> Vec<String> {
     let mut args = vec![
         python.to_string_lossy().to_string(),
         "-m".to_string(),
@@ -107,13 +115,63 @@ pub(crate) fn acp_mcp_servers(app: &AppHandle) -> Result<Vec<AcpMcpServer>, Stri
             command: proxy.to_string_lossy().to_string(),
             args: mcp_proxy_args(&python, module, if biomcp_cli { &["run"] } else { &[] }),
             env: if name == "spaceweather" {
-                vec![("FASTMCP_SHOW_SERVER_BANNER".to_string(), "false".to_string())]
+                vec![(
+                    "FASTMCP_SHOW_SERVER_BANNER".to_string(),
+                    "false".to_string(),
+                )]
             } else {
                 Vec::new()
             },
         });
     }
     Ok(result)
+}
+
+pub(crate) fn restrict_acp_mcp_server(
+    mut server: AcpMcpServer,
+    project_root: &Path,
+    session_id: &str,
+    frame_id: &str,
+    grants: &[McpToolGrantSnapshot],
+) -> AcpMcpServer {
+    let child_args = std::mem::take(&mut server.args);
+    let project_root = project_root.to_string_lossy().replace('\\', "/");
+    let mutation_lock =
+        project_root.trim_end_matches('/').to_owned() + "/.zerowall/mcp-mutation.lock";
+    server.args = vec![
+        "--server-id".into(),
+        server.name.clone(),
+        "--project-root".into(),
+        project_root,
+        "--session-id".into(),
+        session_id.into(),
+        "--frame-id".into(),
+        frame_id.into(),
+        "--mutation-lock".into(),
+        mutation_lock,
+        "--".into(),
+    ];
+    let server_grants = grants.iter().filter(|grant| grant.server_id == server.name);
+    let mut grant_args = Vec::new();
+    for grant in server_grants {
+        grant_args.push("--tool".to_owned());
+        grant_args.push(format!(
+            "{}={}",
+            grant.tool_id,
+            match grant.effect {
+                McpToolEffect::ReadOnly => "read-only",
+                McpToolEffect::Mutation => "mutation",
+            }
+        ));
+    }
+    // Keep the bridge's `--` separator before the child command, but put the
+    // exact tool grants before it so unknown tools are rejected by default.
+    let separator = server.args.iter().position(|arg| arg == "--").unwrap_or(0);
+    let child = server.args.split_off(separator);
+    server.args.extend(grant_args);
+    server.args.extend(child);
+    server.args.extend(child_args);
+    server
 }
 
 /// Prepare is intentionally idempotent. The existing settings action owns
@@ -184,14 +242,19 @@ fn is_safe_package(pkg: &str) -> bool {
     let core = pkg.split_once("==").map(|(n, _)| n).unwrap_or(pkg);
     !core.is_empty()
         && !core.starts_with('-')
-        && core.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
-        && pkg.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '='))
+        && core
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        && pkg
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '='))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{is_safe_package, mcp_proxy_args};
+    use super::{is_safe_package, mcp_proxy_args, restrict_acp_mcp_server};
     use std::path::Path;
+    use zerowall_acp::AcpMcpServer;
 
     #[test]
     fn accepts_real_package_names_and_pins() {
@@ -212,7 +275,11 @@ mod tests {
 
     #[test]
     fn mcp_proxy_keeps_python_as_the_child_command() {
-        let args = mcp_proxy_args(Path::new("C:/managed/python.exe"), "spaceweather_mcp.server", &[]);
+        let args = mcp_proxy_args(
+            Path::new("C:/managed/python.exe"),
+            "spaceweather_mcp.server",
+            &[],
+        );
         assert_eq!(
             args,
             vec![
@@ -227,5 +294,47 @@ mod tests {
     fn biomcp_descriptor_includes_run_subcommand() {
         let args = mcp_proxy_args(Path::new("C:/managed/python.exe"), "biomcp", &["run"]);
         assert_eq!(args.last().map(String::as_str), Some("run"));
+    }
+
+    #[test]
+    fn restricted_proxy_descriptor_carries_session_identity_and_tool_policy() {
+        let server = restrict_acp_mcp_server(
+            AcpMcpServer {
+                name: "papers".into(),
+                command: "zerowall-mcp-proxy.exe".into(),
+                args: vec!["python.exe".into(), "-m".into(), "papers".into()],
+                env: Vec::new(),
+            },
+            Path::new("C:/science"),
+            "session-1",
+            "frame-1",
+            &[zerowall_acp_host::McpToolGrantSnapshot {
+                server_id: "papers".into(),
+                tool_id: "search".into(),
+                effect: zerowall_acp_host::mcp::McpToolEffect::ReadOnly,
+            }],
+        );
+
+        assert_eq!(
+            server.args,
+            vec![
+                "--server-id",
+                "papers",
+                "--project-root",
+                "C:/science",
+                "--session-id",
+                "session-1",
+                "--frame-id",
+                "frame-1",
+                "--mutation-lock",
+                "C:/science/.zerowall/mcp-mutation.lock",
+                "--tool",
+                "search=read-only",
+                "--",
+                "python.exe",
+                "-m",
+                "papers",
+            ]
+        );
     }
 }

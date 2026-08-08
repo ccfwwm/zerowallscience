@@ -1,0 +1,13 @@
+[package]
+name = "zerowall-mcp-proxy"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[[bin]]
+name = "zerowall-mcp-proxy"
+path = "../../src/mcp_proxy_main.rs"
+
+[dependencies]
+fs2 = "0.4"
+serde_json = "1"

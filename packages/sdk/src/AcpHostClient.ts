@@ -17,6 +17,12 @@ export interface SkillSnapshot {
   sha256: string;
 }
 
+export interface McpToolGrantSnapshot {
+  serverId: string;
+  toolId: string;
+  effect: "read-only" | "mutation";
+}
+
 export interface AgentBinding {
   engineId: AgentEngine;
   profileId: string;
@@ -27,6 +33,7 @@ export interface AgentBinding {
   profileFingerprint: string;
   resolvedAt: string;
   mcpAllowList: string[];
+  mcpToolGrants: McpToolGrantSnapshot[];
   skillsSnapshot: SkillSnapshot[];
 }
 
@@ -116,11 +123,15 @@ export interface AcpHostLaunchRequest {
   providerId: string;
   baseUrl: string;
   projectRoot: string;
+  /** Independent frame identity used by the restricted MCP bridge. */
+  frameId?: string;
   variant?: string;
   profileFingerprint: string;
   credentialRef: string;
   /** Optional session-scoped MCP server allow-list. */
   mcpAllowList?: string[];
+  /** Immutable exact MCP tool grants. Unknown tools are rejected. */
+  mcpToolGrants?: McpToolGrantSnapshot[];
   /** Immutable canonical skill descriptors available to this session. */
   skillsSnapshot?: SkillSnapshot[];
 }
@@ -167,6 +178,8 @@ interface RawBinding {
   resolved_at?: string;
   mcpAllowList?: unknown;
   mcp_allow_list?: unknown;
+  mcpToolGrants?: unknown;
+  mcp_tool_grants?: unknown;
   skillsSnapshot?: unknown;
   skills_snapshot?: unknown;
 }
@@ -548,11 +561,15 @@ function serializeLaunchRequest(request: AcpHostLaunchRequest): Record<string, u
     providerId: request.providerId,
     baseUrl: request.baseUrl,
     projectRoot: request.projectRoot,
+    ...(request.frameId !== undefined ? { frameId: request.frameId.trim() } : {}),
     variant: request.variant,
     profileFingerprint: request.profileFingerprint,
     credential: { keychainId: request.credentialRef },
     ...(request.mcpAllowList !== undefined
       ? { mcpAllowList: normalizeMcpAllowList(request.mcpAllowList) }
+      : {}),
+    ...(request.mcpToolGrants !== undefined
+      ? { mcpToolGrants: normalizeMcpToolGrants(request.mcpToolGrants) }
       : {}),
     ...(request.skillsSnapshot !== undefined
       ? { skillsSnapshot: normalizeSkillSnapshots(request.skillsSnapshot) }
@@ -571,6 +588,7 @@ function requestBinding(request: AcpHostLaunchRequest): AgentBinding {
     profileFingerprint: request.profileFingerprint,
     resolvedAt: "",
     mcpAllowList: normalizeMcpAllowList(request.mcpAllowList),
+    mcpToolGrants: normalizeMcpToolGrants(request.mcpToolGrants),
     skillsSnapshot: normalizeSkillSnapshots(request.skillsSnapshot),
   };
 }
@@ -586,6 +604,7 @@ function normalizeBinding(raw: RawBinding): AgentBinding {
     profileFingerprint: raw.profileFingerprint ?? raw.profile_fingerprint ?? "",
     resolvedAt: raw.resolvedAt ?? raw.resolved_at ?? "",
     mcpAllowList: normalizeMcpAllowList(raw.mcpAllowList ?? raw.mcp_allow_list),
+    mcpToolGrants: normalizeMcpToolGrants(raw.mcpToolGrants ?? raw.mcp_tool_grants),
     skillsSnapshot: normalizeSkillSnapshots(raw.skillsSnapshot ?? raw.skills_snapshot),
   };
 }
@@ -608,6 +627,9 @@ function ensureCompatible(existing: AgentBinding, requested: AgentBinding): void
   if (!sameArray(existing.mcpAllowList, requested.mcpAllowList)) {
     throw new Error("session binding conflicts on mcpAllowList");
   }
+  if (!sameMcpToolGrants(existing.mcpToolGrants, requested.mcpToolGrants)) {
+    throw new Error("session binding conflicts on mcpToolGrants");
+  }
   if (!sameSkillSnapshots(existing.skillsSnapshot, requested.skillsSnapshot)) {
     throw new Error("session binding conflicts on skillsSnapshot");
   }
@@ -622,6 +644,45 @@ function normalizeMcpAllowList(raw: unknown): string[] {
       .map((value) => value.trim())
       .filter(Boolean),
   )].sort();
+}
+
+function normalizeMcpToolGrants(raw: unknown): McpToolGrantSnapshot[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) throw new Error("MCP tool grants must be an array");
+  const grants = new Map<string, McpToolGrantSnapshot>();
+  for (const value of raw) {
+    if (!value || typeof value !== "object") throw new Error("MCP tool grant must be an object");
+    const record = value as Record<string, unknown>;
+    const serverId = typeof record.serverId === "string" ? record.serverId.trim() : "";
+    const toolId = typeof record.toolId === "string" ? record.toolId.trim() : "";
+    const effect = record.effect;
+    if (!serverId) throw new Error("MCP tool grant serverId is required");
+    if (!toolId) throw new Error("MCP tool grant toolId is required");
+    if (effect !== "read-only" && effect !== "mutation") {
+      throw new Error(`MCP tool grant effect is invalid: ${String(effect)}`);
+    }
+    const key = `${serverId}\u0000${toolId}`;
+    const previous = grants.get(key);
+    if (previous && previous.effect !== effect) {
+      throw new Error(`duplicate MCP tool grant: ${serverId}/${toolId}`);
+    }
+    grants.set(key, { serverId, toolId, effect });
+  }
+  return [...grants.values()].sort((left, right) =>
+    `${left.serverId}\u0000${left.toolId}`.localeCompare(`${right.serverId}\u0000${right.toolId}`),
+  );
+}
+
+function sameMcpToolGrants(
+  left: readonly McpToolGrantSnapshot[],
+  right: readonly McpToolGrantSnapshot[],
+): boolean {
+  return left.length === right.length && left.every((grant, index) => {
+    const candidate = right[index];
+    return grant.serverId === candidate.serverId
+      && grant.toolId === candidate.toolId
+      && grant.effect === candidate.effect;
+  });
 }
 
 function normalizeSkillSnapshots(raw: unknown): SkillSnapshot[] {

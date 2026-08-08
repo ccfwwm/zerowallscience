@@ -14,6 +14,7 @@ export {
   type AgentSession,
   type SkillScope,
   type SkillSnapshot,
+  type McpToolGrantSnapshot,
   type PermissionOption as AcpPermissionOption,
 } from "./AcpHostClient";
 export type { AgentRuntime, PromptAttachment } from "./runtime";

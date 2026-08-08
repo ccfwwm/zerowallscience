@@ -85,9 +85,11 @@ export function toAcpHostLaunchRequest(request: AcpLaunchRequest, sessionId: str
     providerId: request.gateway.providerId,
     baseUrl: request.gateway.baseUrl,
     projectRoot: request.projectRoot,
+    frameId: `${sessionId}:frame`,
     profileFingerprint: profileFingerprint(request),
     credentialRef: request.gateway.providerId,
     ...(request.mcpAllowList !== undefined ? { mcpAllowList: [...request.mcpAllowList] } : {}),
+    ...(request.mcpToolGrants !== undefined ? { mcpToolGrants: [...request.mcpToolGrants] } : {}),
     ...(request.skillsSnapshot !== undefined ? { skillsSnapshot: [...request.skillsSnapshot] } : {}),
   };
 }

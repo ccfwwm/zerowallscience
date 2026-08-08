@@ -3,6 +3,7 @@ import {
   type AcpHostInvoke,
   type AcpHostLaunchRequest,
   type AgentEvent,
+  type McpToolGrantSnapshot,
   type SkillSnapshot,
   type WorkflowExecutionContext,
   type WorkflowExecutor,
@@ -22,6 +23,7 @@ export interface WorkflowRuntimeOptions {
   resolveSnapshot: (context: { nodeId: string }) => {
     bindingSnapshot: unknown;
     mcpAllowList: string[];
+    mcpToolGrants?: McpToolGrantSnapshot[];
     skillsSnapshot: SkillSnapshot[];
   };
   /** Control-plane implementation for tool/run/artifact nodes. */
@@ -413,7 +415,9 @@ export class AcpWorkflowExecutor implements WorkflowExecutor {
     const session = await client.newSession({
       ...launch,
       sessionId: `workflow:${context.run.id}:${context.node.id}`,
+      frameId: `${context.run.id}:${context.node.id}:${context.node.attempts}`,
       mcpAllowList: [...(context.node.mcpAllowList ?? [])],
+      mcpToolGrants: [...(context.node.mcpToolGrants ?? [])],
       skillsSnapshot: [...(context.node.skillsSnapshot ?? [])],
     });
     const sessionKey = `${context.run.id}:${context.node.id}`;

@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use thiserror::Error;
 
 pub mod acp_process;
+pub mod mcp;
 pub mod opencode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -66,7 +67,17 @@ pub struct AgentBinding {
     #[serde(default)]
     pub mcp_allow_list: Vec<String>,
     #[serde(default)]
+    pub mcp_tool_grants: Vec<McpToolGrantSnapshot>,
+    #[serde(default)]
     pub skills_snapshot: Vec<SkillSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpToolGrantSnapshot {
+    pub server_id: String,
+    pub tool_id: String,
+    pub effect: mcp::McpToolEffect,
 }
 
 impl AgentBinding {
@@ -102,6 +113,10 @@ impl AgentBinding {
                 existing.mcp_allow_list == requested.mcp_allow_list,
             ),
             (
+                "mcp_tool_grants",
+                existing.mcp_tool_grants == requested.mcp_tool_grants,
+            ),
+            (
                 "skills_snapshot",
                 existing.skills_snapshot == requested.skills_snapshot,
             ),
@@ -118,9 +133,46 @@ impl AgentBinding {
 
     pub fn normalized(mut self) -> Result<Self, HostError> {
         self.mcp_allow_list = normalize_mcp_allow_list(self.mcp_allow_list);
+        self.mcp_tool_grants = normalize_mcp_tool_grants(self.mcp_tool_grants)?;
         self.skills_snapshot = normalize_skill_snapshots(self.skills_snapshot)?;
         Ok(self)
     }
+}
+
+pub fn normalize_mcp_tool_grants(
+    values: Vec<McpToolGrantSnapshot>,
+) -> Result<Vec<McpToolGrantSnapshot>, HostError> {
+    let mut normalized = values;
+    for grant in &mut normalized {
+        grant.server_id = grant.server_id.trim().to_owned();
+        grant.tool_id = grant.tool_id.trim().to_owned();
+        if grant.server_id.is_empty() {
+            return Err(HostError::Driver(
+                "MCP tool grant server_id is required".into(),
+            ));
+        }
+        if grant.tool_id.is_empty() {
+            return Err(HostError::Driver(
+                "MCP tool grant tool_id is required".into(),
+            ));
+        }
+        if grant.tool_id == "*" {
+            return Err(HostError::Driver(
+                "MCP tool grants require exact tool ids".into(),
+            ));
+        }
+    }
+    normalized.sort();
+    normalized.dedup();
+    for pair in normalized.windows(2) {
+        if pair[0].server_id == pair[1].server_id && pair[0].tool_id == pair[1].tool_id {
+            return Err(HostError::Driver(format!(
+                "duplicate MCP tool grant: {}/{}",
+                pair[0].server_id, pair[0].tool_id
+            )));
+        }
+    }
+    Ok(normalized)
 }
 
 pub fn normalize_mcp_allow_list(values: Vec<String>) -> Vec<String> {
@@ -190,6 +242,8 @@ pub enum HostError {
     InvalidSkillSnapshot { field: String },
     #[error("session {session_id} is terminated (resumable: {resumable})")]
     SessionTerminated { session_id: String, resumable: bool },
+    #[error("session {session_id} is waiting for the MCP mutation lane")]
+    McpMutationLaneBusy { session_id: String },
     #[error("driver error: {0}")]
     Driver(String),
 }
@@ -353,6 +407,8 @@ pub struct SessionState {
     pub state: SessionStatus,
     pub resumable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub backing_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub directory: Option<String>,
@@ -368,6 +424,10 @@ pub struct SessionState {
 pub trait AcpHostDriver: Send {
     fn capabilities(&self) -> DriverCapabilities;
     fn drain_events(&mut self) -> Vec<AgentEvent>;
+    fn invalidate_mcp_policy(&mut self) {}
+    fn backing_session_id(&self, _session_id: &str) -> Option<String> {
+        None
+    }
     async fn initialize(
         &mut self,
         request: InitializeRequest,
@@ -421,12 +481,30 @@ struct SessionEntry {
     parent_id: Option<String>,
     created: Option<u64>,
     updated: Option<u64>,
+    pending_mcp_permissions: HashMap<String, PendingMcpPermission>,
+    mutation_guard: Option<tokio::sync::OwnedMutexGuard<()>>,
 }
 
-#[derive(Default)]
+struct PendingMcpPermission {
+    effect: mcp::McpToolEffect,
+    option_ids: Vec<String>,
+    reject_option_id: Option<String>,
+}
+
 pub struct AcpHost {
     pending_drivers: HashMap<HostDriverKind, Box<dyn AcpHostDriver>>,
     sessions: HashMap<String, SessionEntry>,
+    mutation_lane: Arc<tokio::sync::Mutex<()>>,
+}
+
+impl Default for AcpHost {
+    fn default() -> Self {
+        Self {
+            pending_drivers: HashMap::new(),
+            sessions: HashMap::new(),
+            mutation_lane: Arc::new(tokio::sync::Mutex::new(())),
+        }
+    }
 }
 
 impl AcpHost {
@@ -435,6 +513,17 @@ impl AcpHost {
     }
     pub fn register_driver(&mut self, kind: HostDriverKind, driver: Box<dyn AcpHostDriver>) {
         self.pending_drivers.insert(kind, driver);
+    }
+
+    pub fn invalidate_mcp_policies(&mut self) {
+        for driver in self.pending_drivers.values_mut() {
+            driver.invalidate_mcp_policy();
+        }
+        for entry in self.sessions.values_mut() {
+            if let Some(driver) = entry.driver.as_mut() {
+                driver.invalidate_mcp_policy();
+            }
+        }
     }
     fn require(
         kind: HostDriverKind,
@@ -484,6 +573,7 @@ impl AcpHost {
             binding: binding.clone(),
             state: SessionStatus::Ready,
             resumable: state.resumable,
+            backing_session_id: state.backing_session_id,
             title: state.title.clone(),
             directory: state.directory.clone(),
             parent_id: state.parent_id.clone(),
@@ -504,6 +594,8 @@ impl AcpHost {
                 parent_id: state.parent_id.clone(),
                 created: state.created,
                 updated: state.updated,
+                pending_mcp_permissions: HashMap::new(),
+                mutation_guard: None,
             },
         );
         Ok(state)
@@ -537,6 +629,7 @@ impl AcpHost {
             binding: binding.clone(),
             state: SessionStatus::Ready,
             resumable: state.resumable,
+            backing_session_id: state.backing_session_id,
             title: state.title.clone(),
             directory: state.directory.clone(),
             parent_id: state.parent_id.clone(),
@@ -557,6 +650,8 @@ impl AcpHost {
                 parent_id: state.parent_id.clone(),
                 created: state.created,
                 updated: state.updated,
+                pending_mcp_permissions: HashMap::new(),
+                mutation_guard: None,
             },
         );
         Ok(state)
@@ -589,6 +684,7 @@ impl AcpHost {
             binding: binding.clone(),
             state: SessionStatus::Ready,
             resumable: state.resumable,
+            backing_session_id: state.backing_session_id,
             title: state.title.clone(),
             directory: state.directory.clone(),
             parent_id: state.parent_id.clone(),
@@ -609,6 +705,8 @@ impl AcpHost {
                 parent_id: state.parent_id.clone(),
                 created: state.created,
                 updated: state.updated,
+                pending_mcp_permissions: HashMap::new(),
+                mutation_guard: None,
             },
         );
         Ok(state)
@@ -746,6 +844,10 @@ impl AcpHost {
                 binding: entry.binding.clone(),
                 state: entry.state,
                 resumable: entry.resumable,
+                backing_session_id: entry
+                    .driver
+                    .as_ref()
+                    .and_then(|driver| driver.backing_session_id(id)),
                 title: entry.title.clone(),
                 directory: entry.directory.clone(),
                 parent_id: entry.parent_id.clone(),
@@ -904,6 +1006,7 @@ impl AcpHost {
         request_id: &str,
         option_id: Option<String>,
     ) -> Result<(), HostError> {
+        let mutation_lane = self.mutation_lane.clone();
         let entry =
             self.sessions
                 .get_mut(session_id)
@@ -919,9 +1022,40 @@ impl AcpHost {
             })?;
         let caps = driver.capabilities();
         Self::require(entry.kind, "permission", caps.permission)?;
+        let mut option_id = option_id;
+        let pending = entry.pending_mcp_permissions.get(request_id);
+        if let Some(pending) = pending {
+            let valid = option_id
+                .as_ref()
+                .is_some_and(|selected| pending.option_ids.contains(selected));
+            if !valid {
+                option_id = pending.reject_option_id.clone();
+            }
+        }
+        let approval = option_id
+            .as_deref()
+            .is_some_and(|option| !is_rejection_option(option));
+        let guard =
+            if pending
+                .is_some_and(|pending| pending.effect == mcp::McpToolEffect::Mutation && approval)
+                && entry.mutation_guard.is_none()
+            {
+                Some(mutation_lane.try_lock_owned().map_err(|_| {
+                    HostError::McpMutationLaneBusy {
+                        session_id: session_id.into(),
+                    }
+                })?)
+            } else {
+                None
+            };
         driver
             .respond_permission(request_id.into(), option_id)
-            .await
+            .await?;
+        entry.pending_mcp_permissions.remove(request_id);
+        if guard.is_some() {
+            entry.mutation_guard = guard;
+        }
+        Ok(())
     }
     pub async fn respond_question(
         &mut self,
@@ -968,7 +1102,10 @@ impl AcpHost {
             })?;
         let caps = driver.capabilities();
         Self::require(entry.kind, "cancel", caps.cancel)?;
-        driver.cancel(session_id.into()).await
+        driver.cancel(session_id.into()).await?;
+        entry.pending_mcp_permissions.clear();
+        entry.mutation_guard = None;
+        Ok(())
     }
     pub async fn close_session(&mut self, session_id: &str) -> Result<(), HostError> {
         let entry =
@@ -995,19 +1132,58 @@ impl AcpHost {
         let Some(driver) = entry.driver.as_mut() else {
             return Ok(Vec::new());
         };
-        let events = driver.drain_events();
+        let mut events = driver.drain_events();
         let mut terminal = false;
-        for event in &events {
+        for event in &mut events {
             match event {
-                AgentEvent::SessionStarted { .. } | AgentEvent::SessionIdle { .. } => {
+                AgentEvent::SessionStarted { .. } => {
                     entry.state = SessionStatus::Ready;
                 }
-                AgentEvent::PermissionRequested { .. } | AgentEvent::QuestionRequested { .. } => {
+                AgentEvent::SessionIdle { .. } => {
+                    entry.state = SessionStatus::Ready;
+                    entry.mutation_guard = None;
+                }
+                AgentEvent::PermissionRequested {
+                    request_id,
+                    action,
+                    resources,
+                    options,
+                    ..
+                } => {
+                    entry.state = SessionStatus::Waiting;
+                    if let Some(effect) = mcp::McpCapabilityBroker::permission_effect(
+                        action.as_deref().unwrap_or_default(),
+                        resources,
+                        &entry.binding.mcp_allow_list,
+                    ) {
+                        options.retain(|option| !is_persistent_permission_option(&option.id));
+                        let reject_option_id = options
+                            .iter()
+                            .find(|option| is_rejection_option(&option.id))
+                            .map(|option| option.id.clone());
+                        entry.pending_mcp_permissions.insert(
+                            request_id.clone(),
+                            PendingMcpPermission {
+                                effect,
+                                option_ids: options
+                                    .iter()
+                                    .map(|option| option.id.clone())
+                                    .collect(),
+                                reject_option_id,
+                            },
+                        );
+                    }
+                }
+                AgentEvent::QuestionRequested { .. } => {
                     entry.state = SessionStatus::Waiting;
                 }
-                AgentEvent::Error { .. } => entry.state = SessionStatus::Error,
+                AgentEvent::Error { .. } => {
+                    entry.state = SessionStatus::Error;
+                    entry.mutation_guard = None;
+                }
                 AgentEvent::SessionClosed { .. } => {
                     entry.state = SessionStatus::Closed;
+                    entry.mutation_guard = None;
                     terminal = true;
                 }
                 AgentEvent::TextDelta { .. }
@@ -1023,6 +1199,15 @@ impl AcpHost {
         }
         Ok(events)
     }
+}
+
+fn is_persistent_permission_option(option_id: &str) -> bool {
+    option_id.to_ascii_lowercase().contains("always")
+}
+
+fn is_rejection_option(option_id: &str) -> bool {
+    let option_id = option_id.to_ascii_lowercase();
+    option_id.contains("reject") || option_id.contains("deny") || option_id.contains("cancel")
 }
 
 fn declared_capabilities(kind: HostDriverKind) -> DriverCapabilities {
@@ -1097,6 +1282,7 @@ pub enum DriverCall {
         session_id: String,
         mode: String,
     },
+    McpPolicyInvalidated,
 }
 
 pub struct FakeDriver {
@@ -1139,10 +1325,12 @@ impl FakeDriver {
                 profile_fingerprint: String::new(),
                 resolved_at: String::new(),
                 mcp_allow_list: Vec::new(),
+                mcp_tool_grants: Vec::new(),
                 skills_snapshot: Vec::new(),
             },
             state: SessionStatus::Ready,
             resumable: true,
+            backing_session_id: None,
             title: None,
             directory: None,
             parent_id: None,
@@ -1158,6 +1346,9 @@ impl AcpHostDriver for FakeDriver {
     }
     fn drain_events(&mut self) -> Vec<AgentEvent> {
         std::mem::take(&mut self.events)
+    }
+    fn invalidate_mcp_policy(&mut self) {
+        self.record(DriverCall::McpPolicyInvalidated);
     }
     async fn initialize(&mut self, _: InitializeRequest) -> Result<InitializeResponse, HostError> {
         Ok(InitializeResponse {
@@ -1180,10 +1371,12 @@ impl AcpHostDriver for FakeDriver {
                 profile_fingerprint: String::new(),
                 resolved_at: String::new(),
                 mcp_allow_list: Vec::new(),
+                mcp_tool_grants: Vec::new(),
                 skills_snapshot: Vec::new(),
             },
             state: SessionStatus::Ready,
             resumable: false,
+            backing_session_id: None,
             title: None,
             directory: None,
             parent_id: None,
@@ -1299,6 +1492,7 @@ mod tests {
             profile_fingerprint: "fp".into(),
             resolved_at: "2026-08-06T00:00:00Z".into(),
             mcp_allow_list: Vec::new(),
+            mcp_tool_grants: Vec::new(),
             skills_snapshot: Vec::new(),
         }
     }
@@ -1577,6 +1771,38 @@ mod tests {
             Err(HostError::BindingConflict { field }) if field == "skills_snapshot"
         ));
         assert_eq!(calls.lock().unwrap().len(), before);
+    }
+
+    #[test]
+    fn host_invalidates_mcp_policy_for_pending_and_bound_drivers() {
+        let (bound_driver, bound_calls) = fake(DriverCapabilities {
+            new_session: true,
+            ..Default::default()
+        });
+        let (pending_driver, pending_calls) = fake(DriverCapabilities::default());
+        let mut host = AcpHost::new();
+        host.register_driver(HostDriverKind::OpenCode, Box::new(bound_driver));
+        block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s1".into(),
+            },
+            binding(HostDriverKind::OpenCode, "model", "C:/project"),
+        ))
+        .unwrap();
+        host.register_driver(HostDriverKind::Codex, Box::new(pending_driver));
+
+        host.invalidate_mcp_policies();
+
+        assert!(bound_calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|call| matches!(call, DriverCall::McpPolicyInvalidated)));
+        assert!(pending_calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|call| matches!(call, DriverCall::McpPolicyInvalidated)));
     }
 
     #[test]
@@ -1962,5 +2188,116 @@ mod tests {
         assert!(replacement_calls.lock().unwrap().iter().any(
             |call| matches!(call, DriverCall::Load { session_id } if session_id == "persisted")
         ));
+    }
+
+    #[test]
+    fn mutation_mcp_permissions_are_one_shot_and_share_a_serial_lane() {
+        let capabilities = DriverCapabilities {
+            new_session: true,
+            cancel: true,
+            permission: true,
+            ..Default::default()
+        };
+        let options = vec![
+            PermissionOption {
+                id: "once".into(),
+                label: Some("Allow once".into()),
+            },
+            PermissionOption {
+                id: "always".into(),
+                label: Some("Always allow".into()),
+            },
+            PermissionOption {
+                id: "reject".into(),
+                label: Some("Reject".into()),
+            },
+        ];
+        let first_calls = Arc::new(Mutex::new(Vec::new()));
+        let second_calls = Arc::new(Mutex::new(Vec::new()));
+        let first = FakeDriver::with_events(
+            capabilities,
+            first_calls.clone(),
+            vec![
+                AgentEvent::PermissionRequested {
+                    session_id: "s1".into(),
+                    request_id: "permission-1".into(),
+                    action: Some("papers_save_note".into()),
+                    resources: Vec::new(),
+                    options: options.clone(),
+                },
+                AgentEvent::PermissionRequested {
+                    session_id: "s1".into(),
+                    request_id: "permission-1b".into(),
+                    action: Some("papers_update_note".into()),
+                    resources: Vec::new(),
+                    options: options.clone(),
+                },
+            ],
+        );
+        let second = FakeDriver::with_events(
+            capabilities,
+            second_calls.clone(),
+            vec![AgentEvent::PermissionRequested {
+                session_id: "s2".into(),
+                request_id: "permission-2".into(),
+                action: Some("papers_save_note".into()),
+                resources: Vec::new(),
+                options,
+            }],
+        );
+        let mut host = AcpHost::new();
+        let mut first_binding = binding(HostDriverKind::Codex, "gpt", "C:/project");
+        first_binding.mcp_allow_list = vec!["papers".into()];
+        let mut second_binding = binding(HostDriverKind::ClaudeCode, "claude", "C:/project");
+        second_binding.mcp_allow_list = vec!["papers".into()];
+        host.register_driver(HostDriverKind::Codex, Box::new(first));
+        block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s1".into(),
+            },
+            first_binding,
+        ))
+        .unwrap();
+        host.register_driver(HostDriverKind::ClaudeCode, Box::new(second));
+        block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s2".into(),
+            },
+            second_binding,
+        ))
+        .unwrap();
+
+        for session_id in ["s1", "s2"] {
+            let events = host.drain_events(session_id).unwrap();
+            let AgentEvent::PermissionRequested { options, .. } = &events[0] else {
+                panic!("expected permission request");
+            };
+            assert!(options.iter().all(|option| option.id != "always"));
+        }
+
+        block_on(host.respond_permission("s1", "permission-1", Some("once".into()))).unwrap();
+        block_on(host.respond_permission("s1", "permission-1b", Some("once".into()))).unwrap();
+        assert!(matches!(
+            block_on(host.respond_permission("s2", "permission-2", Some("once".into()))),
+            Err(HostError::McpMutationLaneBusy { session_id }) if session_id == "s2"
+        ));
+        block_on(host.cancel("s1")).unwrap();
+        block_on(host.respond_permission("s2", "permission-2", Some("once".into()))).unwrap();
+
+        assert!(first_calls.lock().unwrap().iter().any(|call| matches!(
+            call,
+            DriverCall::Permission { request_id, option_id }
+                if request_id == "permission-1" && option_id.as_deref() == Some("once")
+        )));
+        assert!(first_calls.lock().unwrap().iter().any(|call| matches!(
+            call,
+            DriverCall::Permission { request_id, option_id }
+                if request_id == "permission-1b" && option_id.as_deref() == Some("once")
+        )));
+        assert!(second_calls.lock().unwrap().iter().any(|call| matches!(
+            call,
+            DriverCall::Permission { request_id, option_id }
+                if request_id == "permission-2" && option_id.as_deref() == Some("once")
+        )));
     }
 }

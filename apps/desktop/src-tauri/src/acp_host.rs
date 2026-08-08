@@ -12,9 +12,10 @@ use zerowall_acp_host::opencode::{
     OpenCodeDriver, OpenCodeMcpControl, OpenCodeProviderControl, ProviderCatalog, ProviderInfo,
 };
 use zerowall_acp_host::{
-    normalize_mcp_allow_list, normalize_skill_snapshots, AcpHost, AcpHostDriver, AgentBinding,
-    AgentEvent, CredentialRef, HostDriverKind, HostError, NewSessionRequest, PromptAttachment,
-    PromptResponse, SessionState, SessionStatus, SkillSnapshot,
+    mcp::McpCapabilityBroker, normalize_mcp_allow_list, normalize_mcp_tool_grants,
+    normalize_skill_snapshots, AcpHost, AcpHostDriver, AgentBinding, AgentEvent, CredentialRef,
+    HostDriverKind, HostError, NewSessionRequest, PromptAttachment, PromptResponse, SessionState,
+    SessionStatus, SkillSnapshot,
 };
 
 #[derive(Default)]
@@ -34,6 +35,8 @@ struct PersistedSession {
     resumable: bool,
     #[serde(default = "inactive_session_status")]
     state: SessionStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    backing_session_id: Option<String>,
     #[serde(default)]
     title: Option<String>,
     #[serde(default)]
@@ -109,6 +112,7 @@ fn persist_session(
             base_url,
             credential,
             resumable: state.resumable,
+            backing_session_id: state.backing_session_id.clone(),
             state: state.state,
             title: state.title.clone(),
             directory: state.directory.clone(),
@@ -139,11 +143,17 @@ pub struct AcpHostLaunchRequest {
     pub base_url: String,
     pub project_root: String,
     #[serde(default)]
+    pub frame_id: Option<String>,
+    #[serde(default, skip_deserializing)]
+    pub backing_session_id: Option<String>,
+    #[serde(default)]
     pub variant: Option<String>,
     pub profile_fingerprint: String,
     pub credential: CredentialRef,
     #[serde(default)]
     pub mcp_allow_list: Option<Vec<String>>,
+    #[serde(default)]
+    pub mcp_tool_grants: Option<Vec<zerowall_acp_host::McpToolGrantSnapshot>>,
     #[serde(default)]
     pub skills_snapshot: Option<Vec<SkillSnapshot>>,
 }
@@ -199,6 +209,11 @@ fn validate_request(request: &AcpHostLaunchRequest) -> Result<AcpHostLaunchReque
         .mcp_allow_list
         .as_ref()
         .map(|values| normalize_mcp_allow_list(values.clone()));
+    normalized.mcp_tool_grants = request
+        .mcp_tool_grants
+        .as_ref()
+        .map(|values| normalize_mcp_tool_grants(values.clone()).map_err(error_string))
+        .transpose()?;
     normalized.skills_snapshot = request
         .skills_snapshot
         .as_ref()
@@ -273,6 +288,7 @@ fn merge_discovered_sessions(
             session.binding = existing.binding.clone();
             session.resumable = existing.resumable;
             session.state = existing.state;
+            existing.backing_session_id = session.backing_session_id.clone();
             existing.title = session.title.clone();
             existing.directory = session.directory.clone();
             existing.parent_id = session.parent_id.clone();
@@ -288,6 +304,7 @@ fn merge_discovered_sessions(
                     credential: None,
                     resumable: session.resumable,
                     state: session.state,
+                    backing_session_id: session.backing_session_id.clone(),
                     title: session.title.clone(),
                     directory: session.directory.clone(),
                     parent_id: session.parent_id.clone(),
@@ -447,11 +464,24 @@ fn process_profile(
     // MCP discovery is best-effort: an unavailable optional connector must not
     // prevent the unified ACP Host from starting the primary session.
     let mut mcp_servers = crate::science_mcp::acp_mcp_servers(app).unwrap_or_default();
-    if let Some(allow_list) = &request.mcp_allow_list {
-        if !allow_list.iter().any(|entry| entry == "*") {
-            mcp_servers.retain(|server| allow_list.iter().any(|entry| entry == &server.name));
-        }
-    }
+    let allow_list = request.mcp_allow_list.as_deref().unwrap_or_default();
+    let grants = request.mcp_tool_grants.as_deref().unwrap_or_default();
+    mcp_servers.retain(|server| {
+        McpCapabilityBroker::allows_server(&server.name, allow_list)
+            && grants.iter().any(|grant| grant.server_id == server.name)
+    });
+    mcp_servers = mcp_servers
+        .into_iter()
+        .map(|server| {
+            crate::science_mcp::restrict_acp_mcp_server(
+                server,
+                workspace,
+                &request.session_id,
+                request.frame_id.as_deref().unwrap_or(&request.session_id),
+                grants,
+            )
+        })
+        .collect();
     let runtime_selector = adapter_runtime_env_name(request.engine)
         .expect("process profiles are created only for process-backed engines");
     let mut env = vec![
@@ -535,6 +565,7 @@ fn binding(request: &AcpHostLaunchRequest, workspace: &Path) -> AgentBinding {
         profile_fingerprint: request.profile_fingerprint.clone(),
         resolved_at: chrono_like_timestamp(),
         mcp_allow_list: request.mcp_allow_list.clone().unwrap_or_default(),
+        mcp_tool_grants: request.mcp_tool_grants.clone().unwrap_or_default(),
         skills_snapshot: request.skills_snapshot.clone().unwrap_or_default(),
     }
 }
@@ -555,7 +586,13 @@ fn build_driver(
             )
             .map_err(error_string)?,
         ),
-        HostDriverKind::OpenCode => Box::new(build_opencode_driver(app, session_binding)?),
+        HostDriverKind::OpenCode => {
+            let mut driver = build_opencode_driver(app, session_binding)?;
+            if let Some(backing) = request.backing_session_id.as_deref() {
+                driver.set_backing_session(&request.session_id, backing);
+            }
+            Box::new(driver)
+        }
     })
 }
 
@@ -854,45 +891,94 @@ pub async fn acp_host_list_mcp_servers(app: AppHandle) -> Result<Vec<McpServer>,
 #[tauri::command]
 pub async fn acp_host_add_mcp_server(
     app: AppHandle,
+    state: State<'_, AcpHostState>,
     request: McpServerRequest,
 ) -> Result<(), String> {
     validate_mcp_request(&request)?;
-    build_mcp_control(&app)?
+    let mut host = state.host.lock().await;
+    ensure_mcp_mutation_allowed(&host.list_sessions())?;
+    let result = build_mcp_control(&app)?
         .add_mcp_server(request)
         .await
-        .map_err(error_string)
+        .map_err(error_string);
+    if result.is_ok() {
+        host.invalidate_mcp_policies();
+    }
+    drop(host);
+    result
 }
 
 #[tauri::command]
-pub async fn acp_host_remove_mcp_server(app: AppHandle, name: String) -> Result<(), String> {
+pub async fn acp_host_remove_mcp_server(
+    app: AppHandle,
+    state: State<'_, AcpHostState>,
+    name: String,
+) -> Result<(), String> {
     validate_mcp_name(&name)?;
-    build_mcp_control(&app)?
+    let mut host = state.host.lock().await;
+    ensure_mcp_mutation_allowed(&host.list_sessions())?;
+    let result = build_mcp_control(&app)?
         .remove_mcp_server(&name)
         .await
-        .map_err(error_string)
+        .map_err(error_string);
+    if result.is_ok() {
+        host.invalidate_mcp_policies();
+    }
+    drop(host);
+    result
 }
 
 #[tauri::command]
-pub async fn acp_host_reconnect_mcp_server(app: AppHandle, name: String) -> Result<(), String> {
+pub async fn acp_host_reconnect_mcp_server(
+    app: AppHandle,
+    state: State<'_, AcpHostState>,
+    name: String,
+) -> Result<(), String> {
     validate_mcp_name(&name)?;
-    build_mcp_control(&app)?
+    let mut host = state.host.lock().await;
+    ensure_mcp_mutation_allowed(&host.list_sessions())?;
+    let result = build_mcp_control(&app)?
         .reconnect_mcp_server(&name)
         .await
-        .map_err(error_string)
+        .map_err(error_string);
+    if result.is_ok() {
+        host.invalidate_mcp_policies();
+    }
+    drop(host);
+    result
 }
 
 #[tauri::command]
 pub async fn acp_host_ensure_mcp_environment(
     app: AppHandle,
+    state: State<'_, AcpHostState>,
     name: String,
     environment: std::collections::BTreeMap<String, String>,
 ) -> Result<(), String> {
     validate_mcp_name(&name)?;
     validate_mcp_environment(&environment)?;
-    build_mcp_control(&app)?
+    let mut host = state.host.lock().await;
+    ensure_mcp_mutation_allowed(&host.list_sessions())?;
+    let result = build_mcp_control(&app)?
         .ensure_mcp_environment(&name, environment)
         .await
-        .map_err(error_string)
+        .map_err(error_string);
+    if result.is_ok() {
+        host.invalidate_mcp_policies();
+    }
+    drop(host);
+    result
+}
+
+fn ensure_mcp_mutation_allowed(sessions: &[SessionState]) -> Result<(), String> {
+    if sessions
+        .iter()
+        .any(|session| matches!(session.state, SessionStatus::Busy | SessionStatus::Waiting))
+    {
+        Err("MCP configuration cannot change while an Agent turn is active".into())
+    } else {
+        Ok(())
+    }
 }
 
 fn jupyter_mcp_request(
@@ -933,8 +1019,11 @@ fn jupyter_mcp_request(
 #[tauri::command]
 pub async fn acp_host_register_jupyter_mcp(
     app: AppHandle,
-    state: State<'_, crate::runtime::RuntimeState>,
+    runtime_state: State<'_, crate::runtime::RuntimeState>,
+    host_state: State<'_, AcpHostState>,
 ) -> Result<(), String> {
+    let mut host = host_state.host.lock().await;
+    ensure_mcp_mutation_allowed(&host.list_sessions())?;
     let server = crate::jupyter::acp_mcp_server(&app)
         .ok_or_else(|| "Jupyter is not installed and running".to_owned())?;
     let (request, token) = jupyter_mcp_request(server)?;
@@ -948,9 +1037,12 @@ pub async fn acp_host_register_jupyter_mcp(
         .add_mcp_server(request)
         .await
         .map_err(error_string)?;
-    crate::runtime::restart_sidecar_if_running(&app, &state)
+    host.invalidate_mcp_policies();
+    let result = crate::runtime::restart_sidecar_if_running(&app, &runtime_state)
         .map(|_| ())
-        .map_err(|error| format!("restart OpenCode after Jupyter registration: {error}"))
+        .map_err(|error| format!("restart OpenCode after Jupyter registration: {error}"));
+    drop(host);
+    result
 }
 
 fn chrono_like_timestamp() -> String {
@@ -1138,6 +1230,7 @@ pub async fn acp_host_sessions(
                 binding: persisted.binding,
                 state: persisted.state,
                 resumable: persisted.resumable,
+                backing_session_id: persisted.backing_session_id,
                 title: persisted.title,
                 directory: persisted.directory,
                 parent_id: persisted.parent_id,
@@ -1207,7 +1300,9 @@ pub async fn acp_host_load(
             let request = request.as_ref().ok_or_else(|| {
                 "terminated session requires its original launch profile to reload".to_owned()
             })?;
-            let driver = build_driver(&app, request, &workspace, active.binding.clone())?;
+            let mut request = request.clone();
+            request.backing_session_id = active.backing_session_id.clone();
+            let driver = build_driver(&app, &request, &workspace, active.binding.clone())?;
             host.register_driver(active.binding.engine, driver);
         }
         let result = host
@@ -1220,7 +1315,7 @@ pub async fn acp_host_load(
     }
     drop(host);
 
-    let request = request
+    let mut request = request
         .ok_or_else(|| "session is not active and no launch profile was supplied".to_owned())?;
     if request.session_id != session_id {
         return Err("load request session_id does not match session_id".into());
@@ -1232,6 +1327,7 @@ pub async fn acp_host_load(
             .binding
             .ensure_compatible(&expected)
             .map_err(error_string)?;
+        request.backing_session_id = persisted.backing_session_id.clone();
         persisted.binding.clone()
     } else {
         expected
@@ -1308,10 +1404,13 @@ fn process_resume_request(persisted: &PersistedSession) -> Result<AcpHostLaunchR
         provider_id: provider.clone(),
         base_url: base_url.to_owned(),
         project_root: binding.project_root,
+        frame_id: Some(session_id.to_owned()),
+        backing_session_id: persisted.backing_session_id.clone(),
         variant: binding.variant,
         profile_fingerprint: binding.profile_fingerprint,
         credential,
         mcp_allow_list: Some(binding.mcp_allow_list),
+        mcp_tool_grants: Some(binding.mcp_tool_grants),
         skills_snapshot: Some(binding.skills_snapshot),
     })
 }
@@ -1504,13 +1603,48 @@ pub async fn acp_host_permission(
     request_id: String,
     option_id: Option<String>,
 ) -> Result<(), String> {
-    state
-        .host
-        .lock()
-        .await
-        .respond_permission(&session_id, &request_id, option_id)
-        .await
-        .map_err(error_string)
+    retry_mcp_mutation_lane(
+        || {
+            let option_id = option_id.clone();
+            async {
+                state
+                    .host
+                    .lock()
+                    .await
+                    .respond_permission(&session_id, &request_id, option_id)
+                    .await
+            }
+        },
+        std::time::Duration::from_secs(90),
+        std::time::Duration::from_millis(25),
+    )
+    .await
+    .map_err(error_string)
+}
+
+async fn retry_mcp_mutation_lane<F, Fut>(
+    mut operation: F,
+    timeout: std::time::Duration,
+    interval: std::time::Duration,
+) -> Result<(), HostError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<(), HostError>>,
+{
+    let started = std::time::Instant::now();
+    loop {
+        match operation().await {
+            Err(HostError::McpMutationLaneBusy { session_id }) if started.elapsed() < timeout => {
+                tokio::time::sleep(interval).await;
+                if started.elapsed() >= timeout {
+                    return Err(HostError::Driver(format!(
+                        "MCP mutation lane timed out for session {session_id}"
+                    )));
+                }
+            }
+            result => return result,
+        }
+    }
 }
 
 #[tauri::command]
@@ -1588,6 +1722,7 @@ mod tests {
             profile_fingerprint: "fp".into(),
             resolved_at: "now".into(),
             mcp_allow_list: Vec::new(),
+            mcp_tool_grants: Vec::new(),
             skills_snapshot: Vec::new(),
         }
     }
@@ -1598,6 +1733,7 @@ mod tests {
             binding,
             state: SessionStatus::Ready,
             resumable: true,
+            backing_session_id: None,
             title: None,
             directory: directory.map(|path| path.to_string_lossy().into_owned()),
             parent_id: None,
@@ -1614,6 +1750,7 @@ mod tests {
             credential: None,
             resumable: true,
             state: SessionStatus::Ready,
+            backing_session_id: None,
             title: None,
             directory: Some(root.to_string_lossy().into_owned()),
             parent_id: None,
@@ -1646,6 +1783,9 @@ mod tests {
                 keychain_id: "provider".into(),
             },
             mcp_allow_list: None,
+            backing_session_id: None,
+            frame_id: None,
+            mcp_tool_grants: None,
             skills_snapshot: None,
         }
     }
@@ -1811,6 +1951,27 @@ mod tests {
     }
 
     #[test]
+    fn mcp_mutation_guard_rejects_active_turns_but_allows_idle_sessions() {
+        let root = std::env::current_dir().unwrap();
+        let session = |state| SessionState {
+            id: "session-1".into(),
+            binding: test_binding(HostDriverKind::OpenCode, &root),
+            state,
+            resumable: false,
+            backing_session_id: None,
+            title: None,
+            directory: None,
+            parent_id: None,
+            created: None,
+            updated: None,
+        };
+
+        assert!(ensure_mcp_mutation_allowed(&[session(SessionStatus::Ready)]).is_ok());
+        assert!(ensure_mcp_mutation_allowed(&[session(SessionStatus::Busy)]).is_err());
+        assert!(ensure_mcp_mutation_allowed(&[session(SessionStatus::Waiting)]).is_err());
+    }
+
+    #[test]
     fn jupyter_registration_separates_keychain_secret_from_public_mcp_config() {
         let (request, token) = jupyter_mcp_request(zerowall_acp::AcpMcpServer {
             name: "jupyter".into(),
@@ -1917,11 +2078,8 @@ mod tests {
     #[test]
     fn persisted_process_resume_request_uses_only_the_immutable_binding() {
         let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
-        let mut persisted = test_persisted_session(
-            "persisted-session",
-            HostDriverKind::Codex,
-            &workspace,
-        );
+        let mut persisted =
+            test_persisted_session("persisted-session", HostDriverKind::Codex, &workspace);
         persisted.binding.model = Some("persisted-model".into());
         persisted.binding.provider = Some("persisted-provider".into());
         persisted.binding.profile_fingerprint = "opaque-fingerprint".into();
@@ -1957,6 +2115,7 @@ mod tests {
             credential: None,
             resumable: true,
             state: SessionStatus::Closed,
+            backing_session_id: None,
             title: None,
             directory: None,
             parent_id: None,
@@ -2046,6 +2205,7 @@ mod tests {
                 profile_fingerprint: "fp".into(),
                 resolved_at: "now".into(),
                 mcp_allow_list: Vec::new(),
+                mcp_tool_grants: Vec::new(),
                 skills_snapshot: Vec::new(),
             },
             base_url: Some("https://api.example.invalid/v1".into()),
@@ -2054,6 +2214,7 @@ mod tests {
             }),
             resumable: true,
             state: SessionStatus::Closed,
+            backing_session_id: None,
             title: Some("Review".into()),
             directory: Some("C:/science".into()),
             parent_id: Some("parent".into()),
@@ -2278,5 +2439,37 @@ mod tests {
 
         assert!(error.contains("active workspace"));
         assert!(catalog.contains_key("other"));
+    }
+
+    #[test]
+    fn mutation_lane_retry_releases_control_between_attempts() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::time::Duration;
+
+        let attempts = AtomicUsize::new(0);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime
+            .block_on(retry_mcp_mutation_lane(
+                || {
+                    let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        if attempt < 2 {
+                            Err(HostError::McpMutationLaneBusy {
+                                session_id: "s2".into(),
+                            })
+                        } else {
+                            Ok(())
+                        }
+                    }
+                },
+                Duration::from_secs(1),
+                Duration::from_millis(1),
+            ))
+            .unwrap();
+
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
     }
 }

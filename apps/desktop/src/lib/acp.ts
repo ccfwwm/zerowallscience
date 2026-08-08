@@ -17,7 +17,7 @@
 // Secrets NEVER cross this seam. `launch` sends a provider id, gateway URL, and
 // model; Rust resolves the key and every executable/environment detail.
 import { isTauri, logDebug } from "./tauri";
-import type { SkillScope, SkillSnapshot } from "@zerowall/sdk";
+import type { McpToolGrantSnapshot, SkillScope, SkillSnapshot } from "@zerowall/sdk";
 
 /** Media attached to an ACP turn. The Rust host turns images into protocol
  * content blocks and documents into explicit text context without logging data. */
@@ -95,6 +95,7 @@ export interface AcpLaunchRequest {
   conversationId?: string;
   projectRoot: string;
   mcpAllowList?: string[];
+  mcpToolGrants?: McpToolGrantSnapshot[];
   skillsSnapshot?: SkillSnapshot[];
   gateway: {
     providerId: string;
@@ -140,6 +141,7 @@ export async function acpLaunch(request: AcpLaunchRequest): Promise<AcpStatus> {
         ...(request.gateway.platform ? { platform: request.gateway.platform } : {}),
       },
       ...(request.mcpAllowList !== undefined ? { mcp_allow_list: [...request.mcpAllowList] } : {}),
+      ...(request.mcpToolGrants !== undefined ? { mcp_tool_grants: [...request.mcpToolGrants] } : {}),
       ...(request.skillsSnapshot !== undefined ? { skills_snapshot: [...request.skillsSnapshot] } : {}),
     },
   });

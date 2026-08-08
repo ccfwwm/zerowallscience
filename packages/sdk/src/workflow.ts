@@ -6,7 +6,7 @@
  * executor interfaces keep restart recovery testable and let Tauri provide a
  * workspace/SQLite-backed implementation later without changing scheduling.
  */
-import type { SkillSnapshot } from "./AcpHostClient";
+import type { McpToolGrantSnapshot, SkillSnapshot } from "./AcpHostClient";
 
 export type WorkflowNodeKind = "agent" | "tool" | "run" | "review" | "artifact";
 export type WorkflowNodeState =
@@ -30,12 +30,14 @@ export interface WorkflowNodeSpec {
   input?: unknown;
   bindingSnapshot?: unknown;
   mcpAllowList?: string[];
+  mcpToolGrants?: McpToolGrantSnapshot[];
   skillsSnapshot?: SkillSnapshot[];
 }
 
 export interface WorkflowNodeSnapshot {
   bindingSnapshot: unknown;
   mcpAllowList: string[];
+  mcpToolGrants?: McpToolGrantSnapshot[];
   skillsSnapshot: SkillSnapshot[];
 }
 
@@ -67,6 +69,7 @@ const builtinNode = (
   ...options,
   bindingSnapshot: null,
   mcpAllowList: [],
+  mcpToolGrants: [],
   skillsSnapshot: [],
 });
 
@@ -229,6 +232,7 @@ export class WorkflowScheduler {
             ...((options.resolveNodeSnapshot?.(node)) ?? {
               bindingSnapshot: clone(node.bindingSnapshot ?? null),
               mcpAllowList: [...(node.mcpAllowList ?? [])],
+              mcpToolGrants: clone(node.mcpToolGrants ?? []),
               skillsSnapshot: clone(node.skillsSnapshot ?? []),
             }),
             dependsOn: [...node.dependsOn],
