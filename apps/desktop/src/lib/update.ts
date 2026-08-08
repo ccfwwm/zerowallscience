@@ -13,6 +13,7 @@ export interface UpdateInfo {
   version: string;
   url: string;
   name: string | null;
+  notes?: string | null;
   publishedAt: string | null;
   assetUrl?: string | null;
   assetName?: string | null;
@@ -23,6 +24,7 @@ interface QiniuRelease {
   version?: string;
   url?: string;
   name?: string | null;
+  notes?: string | null;
   publishedAt?: string | null;
   assetUrl?: string | null;
   assetName?: string | null;
@@ -179,6 +181,7 @@ async function fetchLatestRelease(): Promise<UpdateInfo> {
     version,
     url,
     name: json.name ?? null,
+    notes: json.notes ?? null,
     publishedAt: json.publishedAt ?? null,
     assetUrl,
     assetName,
@@ -254,7 +257,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       });
     }
   },
-  maybeAutoCheck: () => get().check({ manual: false }),
+  maybeAutoCheck: () => get().check({ manual: true }),
   download: async (activity = EMPTY_ACTIVITY) => {
     const blocked = appUpdateBlockedReason(activity);
     if (blocked) {

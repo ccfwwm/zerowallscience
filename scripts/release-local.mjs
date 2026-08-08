@@ -55,7 +55,7 @@ async function publishApp() {
   log(`app ${version}: ${installer}`);
   if (!dryRun) {
     await uploadObject(installer, key, "application/vnd.microsoft.portable-executable", qiniuEnv);
-    const manifest = JSON.stringify({ version, url, name: `ZeroWall Science ${version}`, publishedAt: new Date().toISOString(), assetUrl: url, assetName: basename(installer), assetSha256: digest, sizeBytes: info.size }, null, 2) + "\n";
+    const manifest = JSON.stringify({ version, url, name: `ZeroWall Science ${version}`, notes: process.env.ZEROWALL_RELEASE_NOTES ?? "修复基础环境安装限制，补充下载进度和更新提示。", publishedAt: new Date().toISOString(), assetUrl: url, assetName: basename(installer), assetSha256: digest, sizeBytes: info.size }, null, 2) + "\n";
     const temp = join(process.env.TEMP ?? ".", `zerowall-release-${version}-latest.json`);
     await writeFile(temp, manifest);
     await uploadObject(temp, "releases/latest.json", "application/json", qiniuEnv, { insertOnly: false });

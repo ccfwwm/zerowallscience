@@ -19,7 +19,10 @@ pub const ENVIRONMENT_ENVELOPE_SCHEMA: &str = "zerowall.science/environment-enve
 pub const ENVIRONMENT_SCHEMA: &str = "zerowall.science/environment/v1";
 const VERSION_METADATA: &str = ".environment-manifest.json";
 const MAX_ARCHIVE_FILES: usize = 10_000;
-const MAX_EXTRACTED_BYTES: u64 = 512 * 1024 * 1024;
+// The managed environment contains bundled runtimes and language packages.
+// Its current archive expands to about 1.4 GiB; keep a 2 GiB ceiling while
+// still preventing unbounded decompression bombs.
+const MAX_EXTRACTED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 const HTTP_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const HEALTH_CHECK_POLL_INTERVAL: Duration = Duration::from_millis(50);

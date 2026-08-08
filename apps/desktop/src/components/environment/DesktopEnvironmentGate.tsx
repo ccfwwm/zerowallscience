@@ -7,6 +7,13 @@ import { runtimeActivitySnapshot } from "@/lib/runtime-activity";
 import { isTauri } from "@/lib/tauri";
 import { isGatewayWeb } from "@/lib/webMode";
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
 export function DesktopEnvironmentGate({ children }: { children: ReactNode }) {
   const { t } = useTranslation("settings");
   const snapshot = useEnvironmentUpdateStore((state) => state.snapshot);
@@ -74,6 +81,18 @@ export function DesktopEnvironmentGate({ children }: { children: ReactNode }) {
         </h1>
         <p className="mt-3 text-sm leading-6 text-muted">{t("environmentUpdates.setupHint")}</p>
         {error && <p className="mt-4 text-sm leading-6 text-error">{error}</p>}
+        {busy && snapshot && ["downloading", "verifying", "installing"].includes(snapshot.phase) && (
+          <div className="mt-5" aria-label={t("environmentUpdates.downloadProgress")}>
+            <div className="mb-2 flex items-center justify-between text-xs text-muted">
+              <span>{t(`environmentUpdates.phase.${snapshot.phase}`)}</span>
+              <span>{snapshot.totalBytes ? `${Math.round((snapshot.downloadedBytes / snapshot.totalBytes) * 100)}%` : formatBytes(snapshot.downloadedBytes)}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={snapshot.totalBytes ? Math.min(100, Math.round((snapshot.downloadedBytes / snapshot.totalBytes) * 100)) : undefined}>
+              <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: snapshot.totalBytes ? `${Math.min(100, (snapshot.downloadedBytes / snapshot.totalBytes) * 100)}%` : "35%" }} />
+            </div>
+            <div className="mt-1 text-right text-xs text-muted">{formatBytes(snapshot.downloadedBytes)}{snapshot.totalBytes ? ` / ${formatBytes(snapshot.totalBytes)}` : ""}</div>
+          </div>
+        )}
         <button
           type="button"
           onClick={() => void installEnvironment()}

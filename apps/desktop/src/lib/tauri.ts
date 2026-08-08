@@ -714,6 +714,7 @@ export interface LatestRelease {
   version: string;
   url: string;
   name: string | null;
+  notes?: string | null;
   publishedAt: string | null;
   assetUrl?: string | null;
   assetName?: string | null;

@@ -290,7 +290,7 @@ export function AppShell() {
 }
 
 function UpdateDialog({ latest, status, downloadedPath, downloadedBytes, totalBytes, onDownload, onCancel, onOpen, onClose }: {
-  latest: { version: string; assetName?: string | null };
+  latest: { version: string; assetName?: string | null; notes?: string | null };
   status: "idle" | "downloading" | "ready" | "error";
   downloadedPath: string | null;
   downloadedBytes: number;
@@ -310,6 +310,7 @@ function UpdateDialog({ latest, status, downloadedPath, downloadedBytes, totalBy
             <h2 className="text-base font-semibold text-text">{t("updates.available")}</h2>
             <p className="mt-1 text-sm text-muted">{t("updates.latestVersion", { version: latest.version })}</p>
             {latest.assetName && <p className="mt-1 truncate font-mono text-xs text-muted">{latest.assetName}</p>}
+            {latest.notes && <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-text">{latest.notes}</p>}
           </div>
           <button aria-label={t("updates.close")} onClick={onClose} className="text-muted hover:text-text"><X size={15} /></button>
         </div>

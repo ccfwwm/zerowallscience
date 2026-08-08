@@ -240,6 +240,7 @@ pub struct ReleaseInfo {
     pub version: String,
     pub url: String,
     pub name: Option<String>,
+    pub notes: Option<String>,
     pub published_at: Option<String>,
     pub asset_url: Option<String>,
     pub asset_name: Option<String>,
@@ -251,6 +252,7 @@ struct QiniuRelease {
     version: Option<String>,
     url: Option<String>,
     name: Option<String>,
+    notes: Option<String>,
     #[serde(rename = "publishedAt")]
     published_at: Option<String>,
     #[serde(rename = "assetUrl")]
@@ -316,6 +318,7 @@ fn fetch_latest_release() -> Result<ReleaseInfo, String> {
             version: manifest.version,
             url,
             name: body.name,
+            notes: body.notes,
             published_at: body.published_at,
             asset_url: Some(manifest.asset.url),
             asset_name: Some(manifest.asset.name),
@@ -338,6 +341,7 @@ fn fetch_latest_release() -> Result<ReleaseInfo, String> {
         version,
         url,
         name: body.name,
+        notes: body.notes,
         published_at: body.published_at,
         asset_url: Some(asset_url),
         asset_name: Some(asset_name),

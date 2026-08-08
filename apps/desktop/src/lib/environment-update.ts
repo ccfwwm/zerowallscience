@@ -78,7 +78,11 @@ const EMPTY_ACTIVITY: EnvironmentActivitySnapshot = {
 };
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("archive exceeds extraction limits")) {
+    return "基础环境展开后体积较大，当前应用版本无法安装。请更新 ZeroWall Science 后重试。";
+  }
+  return message;
 }
 
 function assertUpdateAllowed(activity: EnvironmentActivitySnapshot = EMPTY_ACTIVITY): void {
