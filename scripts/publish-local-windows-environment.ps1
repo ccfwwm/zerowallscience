@@ -1,22 +1,31 @@
 param(
-  [string]$Version,
+  [string]$Version = "",
   [switch]$SkipLatest
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $target = "x86_64-pc-windows-msvc"
-$version = if (-not [string]::IsNullOrWhiteSpace($Version)) { $Version } else { "env-$(Get-Date -Format yyyy.MM.dd).1" }
+$version = if (-not [string]::IsNullOrWhiteSpace($Version)) { $Version } else { "env-$(Get-Date -Format yyyy.MM.dd.HHmmss)" }
 $tempRoot = Join-Path $env:TEMP "zerowall-environment-$target"
 $archive = Join-Path $env:TEMP "ZeroWall-Environment-$target.tar.gz"
 $manifest = "$archive.json"
 $bootstrapper = Join-Path $env:TEMP "ZeroWall-Environment-Bootstrapper-$target.exe"
 
-foreach ($name in @("QINIU_ACCESS_KEY", "QINIU_SECRET_KEY", "QINIU_BUCKET", "QINIU_UPLOAD_URL", "QINIU_DOMAIN", "ZEROWALL_ENV_UPDATE_PRIVATE_KEY")) {
+foreach ($name in @("QINIU_ACCESS_KEY", "QINIU_SECRET_KEY", "ZEROWALL_ENV_UPDATE_PRIVATE_KEY")) {
   $value = [Environment]::GetEnvironmentVariable($name, "User")
   if ([string]::IsNullOrWhiteSpace($value)) { throw "$name is missing from the current user's environment" }
   Set-Item -Path "Env:$name" -Value $value
 }
-$env:QINIU_REGION = [Environment]::GetEnvironmentVariable("QINIU_REGION", "User")
+$defaults = @{
+  QINIU_BUCKET = "zerowallscience"
+  QINIU_REGION = "z2"
+  QINIU_UPLOAD_URL = "https://up-z2.qiniup.com"
+  QINIU_DOMAIN = "https://zerowall.chengxunkeji.cn"
+}
+foreach ($entry in $defaults.GetEnumerator()) {
+  $value = [Environment]::GetEnvironmentVariable($entry.Key, "User")
+  Set-Item -Path "Env:$($entry.Key)" -Value $(if ([string]::IsNullOrWhiteSpace($value)) { $entry.Value } else { $value })
+}
 
 if (Test-Path $tempRoot) { Remove-Item $tempRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $tempRoot | Out-Null
