@@ -342,6 +342,7 @@ fn adapter_runtime_env_name(engine: HostDriverKind) -> Option<&'static str> {
     }
 }
 
+#[cfg(debug_assertions)]
 fn target_triple() -> &'static str {
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
         "x86_64-pc-windows-msvc"
@@ -387,21 +388,25 @@ fn resolve_adapter_path(app: &AppHandle, engine: HostDriverKind) -> Result<PathB
     };
     let environment_root = crate::environment_update::active_environment_root(app)?;
     let resource_dir = app.path().resource_dir().ok();
-    let mut candidates = adapter_candidates(
+    let candidates = adapter_candidates(
         environment_root.as_deref(),
         resource_dir.as_deref(),
         Path::new(&executable),
     );
     #[cfg(debug_assertions)]
-    candidates.push(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("binaries")
-            .join(format!(
-                "{name}-{}{}",
-                target_triple(),
-                if cfg!(windows) { ".exe" } else { "" }
-            )),
-    );
+    let candidates = {
+        let mut candidates = candidates;
+        candidates.push(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("binaries")
+                .join(format!(
+                    "{name}-{}{}",
+                    target_triple(),
+                    if cfg!(windows) { ".exe" } else { "" }
+                )),
+        );
+        candidates
+    };
     candidates
         .into_iter()
         .find(|path| path.is_file())
