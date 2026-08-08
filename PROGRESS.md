@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-08 12:45 · Workflow ACP permission requests now pause for an explicit desktop decision, preserve real adapter option IDs, fail closed on backdrop/Escape/rejection, and wait for permission replies before session idle; focused 22/22, full desktop Vitest, and TypeScript pass.
+
 2026-08-08 04:42 · The MCP bridge now strips provider credentials from third-party children, requires immutable exact tool grants (rejecting wildcard and unknown calls), resolves the active environment proxy, avoids stdin/mutation-lane shutdown deadlocks, and persists OpenCode fork backing sessions; Host 77/77 plus broker 17/17, proxy 7/7, Tauri 406/406, desktop Vitest, TypeScript, Clippy, rustfmt, proxy release build, and diff/secret-value checks pass.
 
 2026-08-08 04:05 · The unified MCP Capability Broker now applies the immutable server allow-list to all engines, compiles OpenCode's effective MCP catalog into session-native ask/deny rules, fails tools closed without blocking chat when discovery fails, and avoids duplicate permission appends; bundled OpenCode 1.17.13 live probing, Host 68/68, Tauri 403/403, and focused Clippy pass.

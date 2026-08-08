@@ -14,6 +14,83 @@ import {
 } from "./workflow-runtime";
 
 describe("AcpWorkflowExecutor", () => {
+  it("waits for an explicit workflow permission decision instead of auto-rejecting", async () => {
+    const replies: Array<{ requestId: string; optionId: string | null }> = [];
+    let prompted = false;
+    let emittedPermission = false;
+    let replied = false;
+    const invoke: AcpHostInvoke = async <T>(command: string, args?: Record<string, unknown>) => {
+      if (command === "acp_host_initialize") return { capabilities: { prompt: true, permission: true } } as T;
+      if (command === "acp_host_new") {
+        const request = args?.request as Record<string, unknown>;
+        return {
+          id: request.sessionId,
+          binding: {
+            engine: request.engine,
+            profile: request.profileId,
+            model: request.model,
+            provider: request.providerId,
+            variant: null,
+            projectRoot: request.projectRoot,
+            profileFingerprint: request.profileFingerprint,
+            resolvedAt: "now",
+          },
+          resumable: false,
+        } as T;
+      }
+      if (command === "acp_host_prompt") {
+        prompted = true;
+        return { completed: false } as T;
+      }
+      if (command === "acp_host_permission") {
+        replies.push({ requestId: String(args?.requestId), optionId: args?.optionId as string | null });
+        replied = true;
+        return undefined as T;
+      }
+      if (command === "acp_host_events") {
+        if (prompted && !emittedPermission) {
+          emittedPermission = true;
+          return [{
+            type: "permission.requested",
+            data: {
+              session_id: "workflow:run-1:agent",
+              request_id: "permission-1",
+              action: "papers_save_note",
+              resources: ["mcp:papers:save_note"],
+              options: [{ id: "allow_once", label: "Allow once" }, { id: "deny", label: "Deny" }],
+            },
+          }] as T;
+        }
+        return replied
+          ? [{ type: "session.idle", data: { session_id: "workflow:run-1:agent" } }] as T
+          : [] as T;
+      }
+      if (command === "acp_host_close") return undefined as T;
+      throw new Error(`unexpected command ${command}`);
+    };
+    const executor = new AcpWorkflowExecutor({
+      invoke,
+      requestPermission: async (_context, event) => {
+        expect(event.action).toBe("papers_save_note");
+        return "allow_once";
+      },
+      resolveLaunch: () => ({
+        engine: "codex", profileId: "codex", sessionId: "workflow-permission", model: "gpt-5",
+        providerId: "ai-cloud", baseUrl: "https://example.invalid", projectRoot: "C:/science",
+        profileFingerprint: "fp", credentialRef: "keychain-ref",
+      }),
+      resolveSnapshot: () => ({ bindingSnapshot: {}, mcpAllowList: [], skillsSnapshot: [] }),
+    });
+    const context = {
+      run: { id: "run-1", workflowId: "wf", name: "Workflow", state: "running", nodes: {}, createdAt: "", updatedAt: "" },
+      node: { id: "agent", kind: "agent", dependsOn: [], state: "running", attempts: 1 },
+      dependencyOutputs: {},
+    } as WorkflowExecutionContext;
+
+    await expect(executor.execute(context)).resolves.toMatchObject({ sessionId: "workflow:run-1:agent" });
+    expect(replies).toEqual([{ requestId: "permission-1", optionId: "allow_once" }]);
+  });
+
   it("fails closed when a control node has no real control-plane executor", async () => {
     const executor = new AcpWorkflowExecutor({
       invoke: async <T>() => undefined as T,

@@ -26,6 +26,11 @@ export interface WorkflowRuntimeOptions {
     mcpToolGrants?: McpToolGrantSnapshot[];
     skillsSnapshot: SkillSnapshot[];
   };
+  /** Every ACP permission inside a workflow requires an explicit UI decision. */
+  requestPermission?: (
+    context: WorkflowExecutionContext,
+    event: Extract<AgentEvent, { type: "permission.requested" }>,
+  ) => Promise<string | null>;
   /** Control-plane implementation for tool/run/artifact nodes. */
   executeControl?: (context: WorkflowExecutionContext) => Promise<unknown>;
   /** Cancels a control-plane node such as a local kernel run. */
@@ -427,21 +432,39 @@ export class AcpWorkflowExecutor implements WorkflowExecutor {
     const text: string[] = [];
     const thought: string[] = [];
     const tools: AgentEvent[] = [];
+    const permissionRequests = new Set<string>();
+    const pendingPermissionTasks = new Set<Promise<void>>();
+    let idleObserved = false;
+    let settled = false;
     const result = new Promise<void>((resolve, reject) => {
+      const settleIdle = () => {
+        if (!idleObserved || settled || pendingPermissionTasks.size > 0) return;
+        settled = true;
+        unsubscribe();
+        resolve();
+      };
       const unsubscribe = client.subscribe(session.id, (event) => {
         if (event.type === "text.delta") text.push(event.delta);
         if (event.type === "thought.delta") thought.push(event.delta);
         if (event.type === "tool.updated" || event.type === "artifact.created") tools.push(event);
         if (event.type === "permission.requested") {
-          // Workflow mutation permissions are represented by the scheduler's
-          // lane; an unexpected direct request is denied instead of hanging.
-          void client.respondPermission(session.id, event.requestId, null).catch(() => undefined);
+          if (permissionRequests.has(event.requestId)) return;
+          permissionRequests.add(event.requestId);
+          const task = (async () => {
+            const optionId = await this.options.requestPermission?.(context, event) ?? null;
+            await client.respondPermission(session.id, event.requestId, optionId).catch(() => undefined);
+          })().finally(() => {
+            pendingPermissionTasks.delete(task);
+            settleIdle();
+          });
+          pendingPermissionTasks.add(task);
         }
         if (event.type === "session.idle") {
-          unsubscribe();
-          resolve();
+          idleObserved = true;
+          settleIdle();
         }
         if (event.type === "error") {
+          settled = true;
           unsubscribe();
           reject(new Error(event.message));
         }

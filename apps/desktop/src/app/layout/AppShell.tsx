@@ -19,6 +19,7 @@ import { WebTokenGate } from "@/components/web/WebTokenGate";
 import { DesktopLoginGate } from "@/components/auth/DesktopLoginGate";
 import { DesktopEnvironmentGate } from "@/components/environment/DesktopEnvironmentGate";
 import { WorkflowRunApprovalDialog } from "@/components/workflow/WorkflowRunApprovalDialog";
+import { WorkflowAgentPermissionDialog } from "@/components/workflow/WorkflowAgentPermissionDialog";
 import { useIsMobile } from "@/lib/useIsMobile";
 import { leaves, useLayoutStore, type SplitDir } from "@/lib/layout";
 
@@ -268,6 +269,7 @@ export function AppShell() {
       <Toaster />
       <PaneDragGhost />
       <WorkflowRunApprovalDialog />
+      <WorkflowAgentPermissionDialog />
       {updateOpen && latestUpdate && (
         <UpdateDialog
           latest={latestUpdate}

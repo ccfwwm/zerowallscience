@@ -244,7 +244,17 @@ export interface WorkflowRunApprovalRequest {
   notebook?: string;
 }
 
+export interface WorkflowAgentPermissionRequest {
+  runId: string;
+  runName: string;
+  nodeId: string;
+  action: string;
+  resources: string[];
+  options: Array<{ id: string; label: string | null }>;
+}
+
 let workflowRunApprovalResolver: ((allow: boolean) => void) | null = null;
+let workflowAgentPermissionResolver: ((optionId: string | null) => void) | null = null;
 
 function requestWorkflowRunApproval(
   context: WorkflowExecutionContext,
@@ -260,6 +270,26 @@ function requestWorkflowRunApproval(
         language: recipe.language,
         code: recipe.code,
         notebook: recipe.notebook,
+      },
+    });
+  });
+}
+
+function requestWorkflowAgentPermission(
+  context: WorkflowExecutionContext,
+  event: { action: string; resources: string[]; options: Array<{ id: string; label: string | null }> },
+): Promise<string | null> {
+  workflowAgentPermissionResolver?.(null);
+  return new Promise<string | null>((resolve) => {
+    workflowAgentPermissionResolver = resolve;
+    useRuntimeStore.setState({
+      workflowAgentPermission: {
+        runId: context.run.id,
+        runName: context.run.name,
+        nodeId: context.node.id,
+        action: event.action,
+        resources: [...event.resources],
+        options: event.options.map((option) => ({ ...option })),
       },
     });
   });
@@ -307,6 +337,7 @@ function getWorkflowScheduler(): WorkflowScheduler {
   });
   const executor = new AcpWorkflowExecutor({
     invoke,
+    requestPermission: requestWorkflowAgentPermission,
     resolveLaunch: (context: WorkflowExecutionContext) => {
       const state = useRuntimeStore.getState();
       const snapshot = (context.node.bindingSnapshot ?? {}) as Record<string, unknown>;
@@ -428,6 +459,8 @@ interface RuntimeState {
   workflowRuns: Record<string, WorkflowRun>;
   workflowRunApproval: WorkflowRunApprovalRequest | null;
   replyWorkflowRunApproval: (allow: boolean) => void;
+  workflowAgentPermission: WorkflowAgentPermissionRequest | null;
+  replyWorkflowAgentPermission: (optionId: string | null) => void;
   startWorkflow: (workflowId: string, sessionId?: string, draftKey?: string) => Promise<string | null>;
   pauseWorkflow: (runId: string) => Promise<void>;
   resumeWorkflow: (runId: string) => Promise<void>;
@@ -1805,6 +1838,13 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     set({ workflowRunApproval: null });
     resolve?.(allow);
   },
+  workflowAgentPermission: null,
+  replyWorkflowAgentPermission: (optionId) => {
+    const resolve = workflowAgentPermissionResolver;
+    workflowAgentPermissionResolver = null;
+    set({ workflowAgentPermission: null });
+    resolve?.(optionId);
+  },
   startWorkflow: async (workflowId, _sessionId, _draftKey) => {
     const state = get();
     if (state.webReadOnly || !isTauri) {
@@ -1871,6 +1911,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     try {
       if (get().workflowRunApproval?.runId === runId) {
         get().replyWorkflowRunApproval(false);
+      }
+      if (get().workflowAgentPermission?.runId === runId) {
+        get().replyWorkflowAgentPermission(null);
       }
       const run = await applyWorkflowControl("cancel", runId);
       set((current) => ({ workflowRuns: { ...current.workflowRuns, [run.id]: run }, error: null }));
