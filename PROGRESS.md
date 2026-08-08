@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-08 17:22 · Published codex/single-acp-host-unified-workbench to GitHub and retained only it and main as local branches.
+
 2026-08-08 14:21 · 1.0.1 NSIS clean-install installer generated; preinstall cleans previous ZeroWall app/data directories; release contracts passed.
 
 2026-08-08 12:45 · Workflow ACP permission requests now pause for an explicit desktop decision, preserve real adapter option IDs, fail closed on backdrop/Escape/rejection, and wait for permission replies before session idle; focused 22/22, full desktop Vitest, and TypeScript pass.
