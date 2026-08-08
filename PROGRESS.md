@@ -1,5 +1,7 @@
 # Progress
 
+2026-08-09 01:35 · Diagnosed Windows error 5 at staging-to-version activation, added bounded rename retries and path-aware errors to both installers, reproduced a successful clean install, and published app 1.0.5 plus environment env-2026.08.09.010554.
+
 2026-08-09 01:10 · Released 1.0.4 to Qiniu with a 2 GiB environment extraction ceiling, first-run progress UI, startup update checks, and release notes in the upgrade dialog; public installer verification passed.
 
 2026-08-09 00:35 · Uploaded the fixed Windows 1.0.3 installer to Qiniu, updated releases/latest.json, and verified the public installer URL and SHA-256.

@@ -375,16 +375,20 @@ fn extract_archive(archive: &Path, destination: &Path) -> Result<(), BootstrapEr
         }
         let target = destination.join(&relative);
         if entry.header().entry_type().is_dir() {
-            fs::create_dir_all(target)?;
+            fs::create_dir_all(&target)
+                .map_err(|error| BootstrapError::Download(format!("extract directory {}: {error}", relative.display())))?;
         } else if entry.header().entry_type().is_file() {
             if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent)?;
+                fs::create_dir_all(parent)
+                    .map_err(|error| BootstrapError::Download(format!("extract parent {}: {error}", parent.display())))?;
             }
             let mut output = OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .open(target)?;
-            std::io::copy(&mut entry, &mut output)?;
+                .open(&target)
+                .map_err(|error| BootstrapError::Download(format!("extract {}: {error}", relative.display())))?;
+            std::io::copy(&mut entry, &mut output)
+                .map_err(|error| BootstrapError::Download(format!("extract file {}: {error}", relative.display())))?;
         } else {
             return Err(BootstrapError::UnsafeArchivePath(
                 relative.display().to_string(),
@@ -401,14 +405,15 @@ fn install(app_data: &Path, manifest: &Manifest, archive: &Path) -> Result<(), B
         .join("staging")
         .join(format!("{}-{}", manifest.version, timestamp()));
     let version_dir = versions.join(&manifest.version);
-    fs::create_dir_all(&versions)?;
-    fs::create_dir_all(&staging)?;
+    fs::create_dir_all(&versions).map_err(|error| BootstrapError::Download(format!("create versions: {error}")))?;
+    fs::create_dir_all(&staging).map_err(|error| BootstrapError::Download(format!("create staging: {error}")))?;
     let staged = (|| {
-        extract_archive(archive, &staging)?;
+        extract_archive(archive, &staging)
+            .map_err(|error| BootstrapError::Download(format!("extract archive: {error}")))?;
         fs::write(
             staging.join(".environment-manifest.json"),
             serde_json::to_vec_pretty(manifest)?,
-        )?;
+        ).map_err(|error| BootstrapError::Download(format!("write environment manifest: {error}")))?;
         for check in &manifest.health_checks {
             let executable = staging.join(&check.executable);
             if !executable.is_file() {
@@ -426,7 +431,7 @@ fn install(app_data: &Path, manifest: &Manifest, archive: &Path) -> Result<(), B
             }
             if !command
                 .output()
-                .map_err(|error| BootstrapError::Health(error.to_string()))?
+                .map_err(|error| BootstrapError::Health(format!("{}: {error}", executable.display())))?
                 .status
                 .success()
             {
@@ -436,7 +441,8 @@ fn install(app_data: &Path, manifest: &Manifest, archive: &Path) -> Result<(), B
         if version_dir.exists() {
             fs::remove_dir_all(&version_dir)?;
         }
-        fs::rename(&staging, &version_dir)?;
+        rename_with_retry(&staging, &version_dir)
+            .map_err(|error| BootstrapError::Download(format!("activate environment: {error}")))?;
         Ok(())
     })();
     if let Err(error) = staged {
@@ -499,6 +505,19 @@ fn timestamp() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|value| value.as_millis() as u64)
         .unwrap_or(0)
+}
+
+fn rename_with_retry(source: &Path, target: &Path) -> std::io::Result<()> {
+    for attempt in 0..60 {
+        match fs::rename(source, target) {
+            Ok(()) => return Ok(()),
+            Err(error) if cfg!(windows) && error.kind() == std::io::ErrorKind::PermissionDenied && attempt < 59 => {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    unreachable!()
 }
 
 fn default_app_data() -> PathBuf {

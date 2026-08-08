@@ -785,7 +785,7 @@ impl HealthRunner for ProcessHealthRunner {
         }
         let mut child = command
             .spawn()
-            .map_err(|error| EnvironmentUpdateError::HealthCheck(error.to_string()))?;
+            .map_err(|error| EnvironmentUpdateError::HealthCheck(format!("{}: {error}", executable.display())))?;
         let started = Instant::now();
         loop {
             if cancellation_requested(cancel_requested) {
@@ -1029,7 +1029,7 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
         self.report_phase(EnvironmentUpdatePhase::Installing, None);
         self.run_health_checks(&payload, &manifest.health_checks)?;
         self.ensure_not_cancelled()?;
-        fs::rename(&payload, &version_dir)?;
+        rename_with_retry(&payload, &version_dir)?;
         self.ensure_not_cancelled()?;
         self.switch_current(&manifest.version)
     }
@@ -1544,16 +1544,23 @@ fn extract_zip(
         }
         let target = payload.join(&relative);
         if entry.is_dir() {
-            fs::create_dir_all(target)?;
+            fs::create_dir_all(&target)
+                .map_err(|error| EnvironmentUpdateError::Download(format!("extract directory {}: {error}", relative.display())))?;
         } else if entry.is_file() {
             if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent)?;
+                fs::create_dir_all(parent)
+                    .map_err(|error| EnvironmentUpdateError::Download(format!("extract parent {}: {error}", parent.display())))?;
             }
             let mut output = OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .open(target)?;
-            copy_stream(&mut entry, &mut output, cancel_requested)?;
+                .open(&target)
+                .map_err(|error| EnvironmentUpdateError::Download(format!("extract {}: {error}", relative.display())))?;
+            copy_stream(&mut entry, &mut output, cancel_requested)
+                .map_err(|error| match error {
+                    EnvironmentUpdateError::Io(io) => EnvironmentUpdateError::Download(format!("extract file {}: {io}", relative.display())),
+                    other => other,
+                })?;
         } else {
             return Err(EnvironmentUpdateError::UnsupportedArchiveEntry(raw_name));
         }
@@ -1594,16 +1601,23 @@ fn extract_tar_gz(
         }
         let target = payload.join(&relative);
         if entry_type.is_dir() {
-            fs::create_dir_all(target)?;
+            fs::create_dir_all(&target)
+                .map_err(|error| EnvironmentUpdateError::Download(format!("extract directory {}: {error}", relative.display())))?;
         } else if entry_type.is_file() {
             if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent)?;
+                fs::create_dir_all(parent)
+                    .map_err(|error| EnvironmentUpdateError::Download(format!("extract parent {}: {error}", parent.display())))?;
             }
             let mut output = OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .open(target)?;
-            copy_stream(&mut entry, &mut output, cancel_requested)?;
+                .open(&target)
+                .map_err(|error| EnvironmentUpdateError::Download(format!("extract {}: {error}", relative.display())))?;
+            copy_stream(&mut entry, &mut output, cancel_requested)
+                .map_err(|error| match error {
+                    EnvironmentUpdateError::Io(io) => EnvironmentUpdateError::Download(format!("extract file {}: {io}", relative.display())),
+                    other => other,
+                })?;
         } else {
             return Err(EnvironmentUpdateError::UnsupportedArchiveEntry(
                 relative.display().to_string(),
@@ -1635,6 +1649,19 @@ fn write_current_atomic(
         return Err(error.into());
     }
     Ok(())
+}
+
+fn rename_with_retry(source: &Path, target: &Path) -> std::io::Result<()> {
+    for attempt in 0..60 {
+        match fs::rename(source, target) {
+            Ok(()) => return Ok(()),
+            Err(error) if cfg!(windows) && error.kind() == std::io::ErrorKind::PermissionDenied && attempt < 59 => {
+                thread::sleep(Duration::from_millis(500));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    unreachable!()
 }
 
 #[cfg(not(windows))]
