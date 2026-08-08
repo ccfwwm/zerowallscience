@@ -10,6 +10,7 @@
     "test": "pnpm --filter @zerowall/desktop test",
     "test:brand": "node --test scripts/check-brand-contract.test.mjs && node scripts/check-brand-contract.mjs",
     "test:version": "node --test scripts/check-version-contract.test.mjs && node scripts/check-version-contract.mjs",
+    "release:local": "node scripts/release-local.mjs",
     "test:release-contracts": "node --test scripts/check-clean-install-contract.test.mjs scripts/check-app-update-signing.test.mjs scripts/app/build-manifest.test.mjs scripts/environment/build-manifest.test.mjs scripts/check-package-split.test.mjs",
     "test:agents": "node scripts/validate-agents.mjs",
     "typecheck": "pnpm --filter @zerowall/desktop typecheck",
