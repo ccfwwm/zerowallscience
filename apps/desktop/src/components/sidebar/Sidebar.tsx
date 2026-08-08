@@ -4,22 +4,16 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
-  ChevronDown,
   ChevronRight,
-  Files,
-  FlaskConical,
   Folder,
   FolderInput,
   FolderOpen,
   FolderTree,
   Loader2,
-  NotebookPen,
   PanelLeft,
   Plus,
   Settings,
   Search,
-  Share2,
-  ShieldCheck,
   Trash2,
   UserRound,
   Wallet,
@@ -210,7 +204,6 @@ export function Sidebar({ project }: { project: Project }) {
     Object.keys(runningSessions).map((sid) => rootSessionOf(sessionParents, sid)),
   );
   const showUpdateBadge = useUpdateStore((s) => s.showBadge);
-  const [researchOpen, setResearchOpen] = useState(false);
   const {
     sidebarCollapsed,
     sidebarWidth,
@@ -592,61 +585,6 @@ export function Sidebar({ project }: { project: Project }) {
               label={t("items.workflows")}
               onClick={() => navigate("/workflows")}
             />
-          )}
-          <button
-            type="button"
-            aria-expanded={researchOpen}
-            className="flex items-center gap-2 rounded-input px-2 py-1 text-[13px] text-text hover:bg-surface-2"
-            onClick={() => setResearchOpen((open) => !open)}
-          >
-            <span className="text-muted"><FlaskConical size={16} /></span>
-            <span className="flex-1 text-left">{t("items.researchTools")}</span>
-            {researchOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-          </button>
-          {researchOpen && (
-            <div className="ml-3 flex flex-col border-l border-border-faint pl-1.5">
-              {/* Notebook execution needs a local kernel — hidden in the web client. */}
-              {!isGatewayWeb && (
-                <NavRow
-                  icon={<NotebookPen size={16} />}
-                  label={t("items.notebooks")}
-                  onClick={() => navigate("/notebooks")}
-                />
-              )}
-              <NavRow
-                icon={<FolderTree size={16} />}
-                label={t("items.files")}
-                onClick={() => navigate("/files")}
-              />
-              <NavRow
-                icon={<FlaskConical size={16} />}
-                label={t("items.runs")}
-                onClick={() => navigate("/runs")}
-              />
-              {/* The graph is derived from the workspace's local science database,
-                  which the web client has no route to — hidden there. */}
-              {!isGatewayWeb && (
-                <NavRow
-                  icon={<Share2 size={16} />}
-                  label={t("items.graph")}
-                  onClick={() => navigate("/graph")}
-                />
-              )}
-              {/* Review runs live in the same local science database as the graph —
-                  unreachable over HTTP, so hidden in the web client. */}
-              {!isGatewayWeb && (
-                <NavRow
-                  icon={<ShieldCheck size={16} />}
-                  label={t("items.review")}
-                  onClick={() => navigate("/review")}
-                />
-              )}
-              <NavRow
-                icon={<Files size={16} />}
-                label={t("items.skills")}
-                onClick={() => navigate("/skills")}
-              />
-            </div>
           )}
         </nav>
 

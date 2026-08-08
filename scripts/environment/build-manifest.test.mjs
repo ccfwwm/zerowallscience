@@ -11,16 +11,30 @@ const seed = Buffer.alloc(32, 7);
 
 test("builds a target-specific environment payload", () => {
   const payload = buildEnvironmentPayload({
-    version: "v0.4.57-env.1",
+    version: "env-2026.08.08.1",
     target: "x86_64-pc-windows-msvc",
     assetName: "zerowall-environment-x86_64-pc-windows-msvc.tar.gz",
-    assetUrl: "https://github.com/example/releases/download/v1/environment.tar.gz",
+    assetUrl: "https://zerowall.chengxunkeji.cn/environment/env-2026.08.08.1/x86_64-pc-windows-msvc/environment.tar.gz",
     sha256: "a".repeat(64),
     sizeBytes: 123,
   });
   assert.equal(payload.schema, "zerowall.science/environment/v1");
   assert.equal(payload.components[0].archive, "tarGz");
   assert.equal(payload.healthChecks[0].executable, "opencode.exe");
+});
+
+test("rejects latest and non-versioned bundle URLs", () => {
+  assert.throws(
+    () => buildEnvironmentPayload({
+      version: "env-2026.08.08.1",
+      target: "x86_64-pc-windows-msvc",
+      assetName: "environment.tar.gz",
+      assetUrl: "https://zerowall.chengxunkeji.cn/environment/latest/environment.tar.gz",
+      sha256: "a".repeat(64),
+      sizeBytes: 123,
+    }),
+    /versioned environment path/,
+  );
 });
 
 test("signs the exact serialized payload with an Ed25519 seed", () => {

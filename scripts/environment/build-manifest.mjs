@@ -30,6 +30,10 @@ export function buildEnvironmentPayload({
   if (!/^[A-Za-z0-9._-]+\.tar\.gz$/.test(assetName)) throw new Error("invalid asset name");
   const url = new URL(assetUrl);
   if (url.protocol !== "https:") throw new Error("environment asset URL must use HTTPS");
+  const expectedPrefix = `/environment/${version}/${target}/`;
+  if (!url.pathname.startsWith(expectedPrefix) || url.pathname.includes("/latest/")) {
+    throw new Error("environment asset URL must use a versioned environment path");
+  }
   if (!/^[a-fA-F0-9]{64}$/.test(sha256)) throw new Error("invalid environment SHA-256");
   if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0) throw new Error("invalid environment size");
 

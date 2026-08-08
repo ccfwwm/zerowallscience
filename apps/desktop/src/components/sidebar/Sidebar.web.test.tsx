@@ -1,5 +1,4 @@
 import { screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderAt } from "@/test/render";
 import { clearGatewayToken, setGatewayToken } from "@/lib/webMode";
@@ -27,34 +26,21 @@ afterEach(() => {
 });
 
 describe("Sidebar in the gateway web client", () => {
-  it("offers Notebooks in the desktop app", async () => {
+  it("keeps research capabilities out of the desktop primary navigation", async () => {
     renderAt("/files");
-    await userEvent.click(await screen.findByRole("button", { name: "Research tools" }));
-    expect(await screen.findByRole("button", { name: "Notebooks" })).toBeInTheDocument();
+    const nav = await screen.findByRole("navigation");
+    for (const label of ["Research tools", "Notebooks", "Files", "Runs", "Research Graph", "Review", "Skills"]) {
+      expect(within(nav).queryByRole("button", { name: label })).toBeNull();
+    }
   });
 
-  it("drops Notebooks in the browser, where there is no local kernel to run them", async () => {
+  it("keeps research capabilities out of the web primary navigation", async () => {
     signedInWebClient();
     renderAt("/files");
-    await userEvent.click(await screen.findByRole("button", { name: "Research tools" }));
-    // The rest of the nav is intact — only the kernel-backed entry is gone.
-    expect(await screen.findByRole("button", { name: "Files" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Runs" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Notebooks" })).toBeNull();
-  });
-
-  it("offers the Research Graph in the desktop app", async () => {
-    renderAt("/files");
-    await userEvent.click(await screen.findByRole("button", { name: "Research tools" }));
-    expect(await screen.findByRole("button", { name: "Research Graph" })).toBeInTheDocument();
-  });
-
-  it("drops the Research Graph in the browser, which has no route to the local science database", async () => {
-    signedInWebClient();
-    renderAt("/files");
-    await userEvent.click(await screen.findByRole("button", { name: "Research tools" }));
-    expect(await screen.findByRole("button", { name: "Files" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Research Graph" })).toBeNull();
+    const nav = await screen.findByRole("navigation");
+    for (const label of ["Research tools", "Notebooks", "Files", "Runs", "Research Graph", "Review", "Skills"]) {
+      expect(within(nav).queryByRole("button", { name: label })).toBeNull();
+    }
   });
 
   it("offers the add-project control in the desktop app", async () => {

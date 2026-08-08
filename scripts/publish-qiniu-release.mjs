@@ -19,7 +19,7 @@ if (!installerInfo.isFile() || !installerPath.toLowerCase().endsWith(".exe")) {
   throw new Error("The release installer must be an existing .exe file");
 }
 
-const version = process.env.ZEROWALL_RELEASE_VERSION ?? "1.0.2";
+const version = process.env.ZEROWALL_RELEASE_VERSION ?? "1.0.3";
 if (!/^\d+\.\d+\.\d+$/.test(version)) {
   throw new Error("ZEROWALL_RELEASE_VERSION must be MAJOR.MINOR.PATCH");
 }

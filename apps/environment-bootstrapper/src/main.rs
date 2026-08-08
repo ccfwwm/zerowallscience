@@ -91,6 +91,22 @@ struct BootstrapConfig {
     app_data: PathBuf,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EnvironmentIndex {
+    schema: String,
+    version: String,
+    targets: std::collections::HashMap<String, EnvironmentIndexTarget>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EnvironmentIndexTarget {
+    manifest_url: String,
+    #[serde(default)]
+    manifest_sha256: Option<String>,
+}
+
 fn verify_envelope(raw: &str, key_text: &str) -> Result<Manifest, BootstrapError> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(key_text.trim())
@@ -115,6 +131,26 @@ fn verify_envelope(raw: &str, key_text: &str) -> Result<Manifest, BootstrapError
     .map_err(|_| BootstrapError::InvalidSignature)?;
     let manifest: Manifest = serde_json::from_str(&envelope.payload)?;
     validate_manifest(manifest)
+}
+
+fn verify_index(raw: &str, key_text: &str) -> Result<EnvironmentIndex, BootstrapError> {
+    let bytes = base64::engine::general_purpose::STANDARD.decode(key_text.trim()).map_err(|_| BootstrapError::InvalidPublicKey)?;
+    let key_bytes: [u8; 32] = bytes.try_into().map_err(|_| BootstrapError::InvalidPublicKey)?;
+    let key = VerifyingKey::from_bytes(&key_bytes).map_err(|_| BootstrapError::InvalidPublicKey)?;
+    let envelope: Envelope = serde_json::from_str(raw)?;
+    if envelope.schema != ENVELOPE_SCHEMA { return Err(BootstrapError::InvalidManifest("unsupported index envelope schema".into())); }
+    let signature = base64::engine::general_purpose::STANDARD.decode(envelope.signature).map_err(|_| BootstrapError::InvalidSignature)?;
+    key.verify(envelope.payload.as_bytes(), &Signature::from_slice(&signature).map_err(|_| BootstrapError::InvalidSignature)?).map_err(|_| BootstrapError::InvalidSignature)?;
+    let index: EnvironmentIndex = serde_json::from_str(&envelope.payload)?;
+    if index.schema != "zerowall.science/environment-index/v1" || index.version.is_empty() { return Err(BootstrapError::InvalidManifest("unsupported environment index".into())); }
+    for target in index.targets.values() {
+        let url = reqwest::Url::parse(&target.manifest_url).map_err(|_| BootstrapError::InvalidManifest("invalid target manifest URL".into()))?;
+        if url.scheme() != "https" { return Err(BootstrapError::InvalidManifest("target manifest URL must use HTTPS".into())); }
+        if let Some(hash) = target.manifest_sha256.as_deref() {
+            if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) { return Err(BootstrapError::InvalidManifest("invalid target manifest SHA-256".into())); }
+        }
+    }
+    Ok(index)
 }
 
 fn validate_manifest(manifest: Manifest) -> Result<Manifest, BootstrapError> {
@@ -538,13 +574,28 @@ fn run() -> Result<(), BootstrapError> {
         .user_agent("ZeroWall Science environment bootstrapper")
         .build()
         .map_err(|error| BootstrapError::Download(error.to_string()))?;
-    let envelope = client
+    let index_raw = client
         .get(&config.manifest_url)
         .send()
         .and_then(|response| response.error_for_status())
         .map_err(|error| BootstrapError::Download(error.to_string()))?
         .text()
         .map_err(|error| BootstrapError::Download(error.to_string()))?;
+    let index = verify_index(&index_raw, &config.public_key)?;
+    let target = match (std::env::consts::ARCH, std::env::consts::OS) {
+        ("x86_64", "windows") => "x86_64-pc-windows-msvc",
+        ("aarch64", "macos") => "aarch64-apple-darwin",
+        ("x86_64", "macos") => "x86_64-apple-darwin",
+        ("x86_64", "linux") => "x86_64-unknown-linux-gnu",
+        _ => return Err(BootstrapError::InvalidManifest("unsupported platform target".into())),
+    };
+    let target_manifest = index.targets.get(target).ok_or_else(|| BootstrapError::InvalidManifest(format!("target {target} is not published")))?;
+    let manifest_bytes = client.get(&target_manifest.manifest_url).send().and_then(|response| response.error_for_status()).map_err(|error| BootstrapError::Download(error.to_string()))?.bytes().map_err(|error| BootstrapError::Download(error.to_string()))?;
+    if let Some(expected) = target_manifest.manifest_sha256.as_deref() {
+        let actual = Sha256::digest(&manifest_bytes).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+        if !actual.eq_ignore_ascii_case(expected) { return Err(BootstrapError::ChecksumMismatch { expected: expected.into(), actual }); }
+    }
+    let envelope = String::from_utf8(manifest_bytes.to_vec()).map_err(|error| BootstrapError::Download(error.to_string()))?;
     let manifest = verify_envelope(&envelope, &config.public_key)?;
     let component = &manifest.components[0];
     let archive = download_component(&client, &config.app_data, &manifest.version, component)?;
@@ -713,7 +764,7 @@ mod tests {
         let config = resolve_config(
             &["zerowall-environment-bootstrapper".into()],
             None,
-            Some("https://github.com/ccfwwm/zerowallscience-releases/releases/latest/download/ZeroWall-Environment-x86_64-pc-windows-msvc.tar.gz.json"),
+            Some("https://zerowall.chengxunkeji.cn/environment/latest/index.json"),
             Some("embedded-public-key"),
             app_data.clone(),
         )
@@ -721,7 +772,7 @@ mod tests {
 
         assert_eq!(
             config.manifest_url,
-            "https://github.com/ccfwwm/zerowallscience-releases/releases/latest/download/ZeroWall-Environment-x86_64-pc-windows-msvc.tar.gz.json"
+            "https://zerowall.chengxunkeji.cn/environment/latest/index.json"
         );
         assert_eq!(config.public_key, "embedded-public-key");
         assert_eq!(config.app_data, app_data);

@@ -1,5 +1,4 @@
 import { screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { useUiStore } from "@/lib/store";
 import { renderAt } from "@/test/render";
@@ -9,15 +8,15 @@ import { renderAt } from "@/test/render";
 afterEach(() => useUiStore.getState().setLocale("en"));
 
 describe("Sidebar i18n", () => {
-  it("renders migrated nav labels and section heading in English", async () => {
+  it("renders the compact primary navigation in English", async () => {
     renderAt("/files");
 
     const nav = await screen.findByRole("navigation");
     expect(within(nav).getByRole("button", { name: "Search" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Workflows" })).toBeInTheDocument();
-    expect(within(nav).queryByRole("button", { name: "Files" })).toBeNull();
-    await userEvent.click(within(nav).getByRole("button", { name: "Research tools" }));
-    expect(within(nav).getByRole("button", { name: "Files" })).toBeInTheDocument();
+    for (const label of ["Research tools", "Notebooks", "Files", "Runs", "Research Graph", "Review", "Skills"]) {
+      expect(within(nav).queryByRole("button", { name: label })).toBeNull();
+    }
     expect(screen.getByText("Sessions")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
   });

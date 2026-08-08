@@ -18,8 +18,8 @@ permissions:
 jobs:
   # The environment is a separate release asset. The app installer can remain
   # small and the environment can be updated without reinstalling the UI.
-  build-environment:
-    if: github.ref_type == 'tag'
+  legacy-environment-disabled:
+    if: ${{ false }}
     strategy:
       fail-fast: false
       matrix:
@@ -89,7 +89,7 @@ jobs:
         shell: bash
         env:
           ZEROWALL_ENV_UPDATE_PUBLIC_KEY: ${{ secrets.ZEROWALL_ENV_UPDATE_PUBLIC_KEY || vars.ZEROWALL_ENV_UPDATE_PUBLIC_KEY }}
-          ZEROWALL_ENV_MANIFEST_URL: https://zerowall.chengxunkeji.cn/releases/latest/ZeroWall-Environment-${{ matrix.target }}.tar.gz.json
+          ZEROWALL_ENV_MANIFEST_URL: https://zerowall.chengxunkeji.cn/environment/latest/index.json
         run: |
           set -euo pipefail
           target="${{ matrix.target }}"
@@ -148,7 +148,7 @@ jobs:
             --version "${{ github.ref_name }}-env.1" \
             --target "$target" \
             --asset-name "$asset" \
-            --asset-url "https://zerowall.chengxunkeji.cn/releases/${{ github.ref_name }}/$asset" \
+            --asset-url "https://zerowall.chengxunkeji.cn/environment/${{ github.ref_name }}-env.1/$target/$asset" \
             --sha256 "$digest" \
             --size "$size" \
             --output "$RUNNER_TEMP/$asset.json"
@@ -162,9 +162,9 @@ jobs:
           QINIU_BUCKET: zerowallscience
         run: |
           set -euo pipefail
-          node scripts/upload-qiniu-object.mjs "$ENVIRONMENT_ASSET" "releases/${{ github.ref_name }}/$(basename "$ENVIRONMENT_ASSET")"
-          node scripts/upload-qiniu-object.mjs "$ENVIRONMENT_MANIFEST" "releases/latest/$(basename "$ENVIRONMENT_MANIFEST")"
-          node scripts/upload-qiniu-object.mjs "$ENVIRONMENT_BOOTSTRAPPER" "releases/${{ github.ref_name }}/$(basename "$ENVIRONMENT_BOOTSTRAPPER")"
+          node scripts/upload-qiniu-object.mjs "$ENVIRONMENT_ASSET" "environment/${{ github.ref_name }}-env.1/${{ matrix.target }}/$(basename "$ENVIRONMENT_ASSET")"
+          node scripts/upload-qiniu-object.mjs "$ENVIRONMENT_MANIFEST" "environment/${{ github.ref_name }}-env.1/${{ matrix.target }}/$(basename "$ENVIRONMENT_MANIFEST")"
+          node scripts/upload-qiniu-object.mjs "$ENVIRONMENT_BOOTSTRAPPER" "environment/${{ github.ref_name }}-env.1/${{ matrix.target }}/$(basename "$ENVIRONMENT_BOOTSTRAPPER")"
 
   build:
     if: ${{ !cancelled() }}

@@ -24,7 +24,6 @@ import type { RuntimeStatus, UsageBlock } from "@zerowall/shared";
 import type { PromptAttachment, WorkflowRun } from "@zerowall/sdk";
 import { formatCount, contextPercent } from "@/lib/usageFormat";
 import { draftKeyFor, rootSessionOf, useRuntimeStore } from "@/lib/runtime";
-import { acpPresetById } from "@/lib/acp-presets";
 import { useLayoutStore } from "@/lib/layout";
 import { startPaneDrag } from "@/lib/dragPane";
 import { isGatewayWeb } from "@/lib/webMode";
@@ -1082,11 +1081,8 @@ function ThreadSkeleton() {
 
 function ConnBadge({ status }: { status: RuntimeStatus }) {
   const { t } = useTranslation(["session", "common"]);
-  // Name the active runtime honestly: OpenCode by default, or the ACP agent's
-  // own label (Claude Code / Codex) when a preset is selected. A hardcoded
-  // "OpenCode" would misreport the runtime after a switch.
   const acpProfileId = useRuntimeStore((s) => s.acpProfileId);
-  const runtime = (acpProfileId && acpPresetById(acpProfileId)?.label) || "OpenCode";
+  const runtime = acpProfileId === "claude-code" ? "Claude Code" : acpProfileId === "codex" ? "Codex" : acpProfileId === "opencode" ? "OpenCode" : t("live.connBadge.engine", { defaultValue: "Engine" });
   const tone = status === "ready" ? "text-ok" : status === "error" ? "text-error" : "text-muted";
   const label = t("live.connBadge.title", { runtime, status: t(`live.connBadge.status.${status}`) });
   return (

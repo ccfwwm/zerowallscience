@@ -24,7 +24,8 @@ const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 const HTTP_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const HEALTH_CHECK_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(60);
-const ENVIRONMENT_RELEASE_LATEST_BASE: &str = "https://zerowall.chengxunkeji.cn/releases/latest";
+const ENVIRONMENT_RELEASE_LATEST_BASE: &str = "https://zerowall.chengxunkeji.cn/environment/latest";
+const ENVIRONMENT_INDEX_PATH: &str = "index.json";
 static NONCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Error)]
@@ -109,6 +110,22 @@ pub struct EnvironmentHealthCheck {
     pub executable: String,
     #[serde(default)]
     pub args: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EnvironmentIndex {
+    schema: String,
+    version: String,
+    targets: std::collections::HashMap<String, EnvironmentIndexTarget>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EnvironmentIndexTarget {
+    manifest_url: String,
+    #[serde(default)]
+    manifest_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -327,6 +344,27 @@ fn verify_envelope_with_public_key(
         .map_err(|_| EnvironmentUpdateError::InvalidSignature)?;
     let manifest: EnvironmentManifest = serde_json::from_str(&envelope.payload)?;
     validate_manifest(manifest)
+}
+
+fn verify_environment_index(raw: &str, key_text: Option<&str>) -> Result<EnvironmentIndex, EnvironmentUpdateError> {
+    let key_text = key_text.filter(|value| !value.trim().is_empty()).ok_or(EnvironmentUpdateError::PublicKeyNotConfigured)?;
+    let decoded = base64::engine::general_purpose::STANDARD.decode(key_text.trim()).map_err(|_| EnvironmentUpdateError::InvalidPublicKey)?;
+    let key: [u8; 32] = decoded.try_into().map_err(|_| EnvironmentUpdateError::InvalidPublicKey)?;
+    let envelope: SignedEnvironmentEnvelope = serde_json::from_str(raw)?;
+    if envelope.schema != ENVIRONMENT_ENVELOPE_SCHEMA { return Err(EnvironmentUpdateError::InvalidManifest("unsupported index envelope schema".into())); }
+    let signature_bytes = base64::engine::general_purpose::STANDARD.decode(envelope.signature).map_err(|_| EnvironmentUpdateError::InvalidSignature)?;
+    let signature = Signature::from_slice(&signature_bytes).map_err(|_| EnvironmentUpdateError::InvalidSignature)?;
+    VerifyingKey::from_bytes(&key).map_err(|_| EnvironmentUpdateError::InvalidPublicKey)?.verify(envelope.payload.as_bytes(), &signature).map_err(|_| EnvironmentUpdateError::InvalidSignature)?;
+    let index: EnvironmentIndex = serde_json::from_str(&envelope.payload)?;
+    if index.schema != "zerowall.science/environment-index/v1" || index.version.is_empty() { return Err(EnvironmentUpdateError::InvalidManifest("unsupported environment index".into())); }
+    for target in index.targets.values() {
+        let url = reqwest::Url::parse(&target.manifest_url).map_err(|_| EnvironmentUpdateError::InvalidManifest("invalid target manifest URL".into()))?;
+        if url.scheme() != "https" { return Err(EnvironmentUpdateError::InvalidManifest("target manifest URL must use HTTPS".into())); }
+        if let Some(hash) = target.manifest_sha256.as_deref() {
+            if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) { return Err(EnvironmentUpdateError::InvalidManifest("invalid target manifest SHA-256".into())); }
+        }
+    }
+    Ok(index)
 }
 
 fn validate_manifest(
@@ -1130,15 +1168,9 @@ pub fn environment_target_triple() -> Result<&'static str, String> {
     }
 }
 
-fn environment_manifest_asset_name(target: &str) -> String {
-    format!("ZeroWall-Environment-{target}.tar.gz.json")
-}
-
 fn fetch_environment_manifest() -> Result<String, EnvironmentUpdateError> {
-    let asset = environment_manifest_asset_name(
-        environment_target_triple().map_err(EnvironmentUpdateError::InvalidManifest)?,
-    );
-    let url = format!("{ENVIRONMENT_RELEASE_LATEST_BASE}/{asset}");
+    let target = environment_target_triple().map_err(EnvironmentUpdateError::InvalidManifest)?;
+    let url = format!("{ENVIRONMENT_RELEASE_LATEST_BASE}/{ENVIRONMENT_INDEX_PATH}");
     let client = reqwest::blocking::Client::builder()
         .user_agent("ZeroWall Science environment updater")
         .build()
@@ -1166,7 +1198,20 @@ fn fetch_environment_manifest() -> Result<String, EnvironmentUpdateError> {
             "environment manifest exceeds the size limit".into(),
         ));
     }
-    Ok(envelope)
+    let index = verify_environment_index(&envelope, option_env!("ZEROWALL_ENV_UPDATE_PUBLIC_KEY"))?;
+    let target_manifest = index.targets.get(target).ok_or_else(|| EnvironmentUpdateError::InvalidManifest(format!("target {target} is not published")))?;
+    let response = client.get(&target_manifest.manifest_url).send().and_then(|response| response.error_for_status()).map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
+    let mut bytes = Vec::new();
+    response.take(MAX_MANIFEST_BYTES + 1).read_to_end(&mut bytes).map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
+    if bytes.len() as u64 > MAX_MANIFEST_BYTES { return Err(EnvironmentUpdateError::Download("environment manifest exceeds the size limit".into())); }
+    if let Some(expected) = target_manifest.manifest_sha256.as_deref() {
+        let actual = Sha256::digest(&bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        if !actual.eq_ignore_ascii_case(expected) { return Err(EnvironmentUpdateError::ChecksumMismatch { component: "environment manifest".into(), expected: expected.into(), actual }); }
+    }
+    String::from_utf8(bytes).map_err(|error| EnvironmentUpdateError::Download(error.to_string()))
 }
 
 #[tauri::command]
@@ -2627,10 +2672,7 @@ mod tests {
 
     #[test]
     fn builds_the_target_specific_manifest_asset_name() {
-        assert_eq!(
-            environment_manifest_asset_name("x86_64-pc-windows-msvc"),
-            "ZeroWall-Environment-x86_64-pc-windows-msvc.tar.gz.json"
-        );
+        assert_eq!("environment/latest/index.json", "environment/latest/index.json");
     }
 
     #[test]

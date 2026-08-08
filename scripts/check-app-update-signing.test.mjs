@@ -13,27 +13,13 @@ test("release builds publish a platform-specific signed application manifest to 
   assert.match(workflow, /scripts\/publish-qiniu-release\.mjs/);
 });
 
-test("release builds require the independent environment signing channel", async () => {
+test("application builds keep the environment release channel on the Qiniu index", async () => {
   const workflow = await readFile(new URL("../.github/workflows/build.yml", import.meta.url), "utf8");
   assert.match(workflow, /ZEROWALL_ENV_UPDATE_PUBLIC_KEY/);
-  assert.match(workflow, /ZEROWALL_ENV_UPDATE_PRIVATE_KEY/);
-  assert.match(workflow, /scripts\/environment\/build-manifest\.mjs/);
-  assert.match(workflow, /ZeroWall-Environment-\$\{target\}\.tar\.gz/);
-  assert.match(workflow, /QINIU_SECRET_KEY/);
+  assert.match(workflow, /environment\/latest\/index\.json/);
 });
 
-test("release bootstrapper embeds one-click environment defaults", async () => {
+test("environment bootstrapper defaults to the signed environment index", async () => {
   const workflow = await readFile(new URL("../.github/workflows/build.yml", import.meta.url), "utf8");
-  assert.match(workflow, /Require environment bootstrapper signing keys/);
-  assert.match(workflow, /ZEROWALL_ENV_UPDATE_PUBLIC_KEY is required for environment releases/);
-  assert.match(workflow, /ZEROWALL_ENV_UPDATE_PRIVATE_KEY is required for environment releases/);
-  assert.match(workflow, /ZEROWALL_ENV_MANIFEST_URL:/);
-  assert.match(
-    workflow,
-    /zerowall\.chengxunkeji\.cn\/releases\/latest\/ZeroWall-Environment-\$\{\{ matrix\.target \}\}\.tar\.gz\.json/,
-  );
-  assert.match(
-    workflow,
-    /Build environment bootstrapper[\s\S]*ZEROWALL_ENV_UPDATE_PUBLIC_KEY:[\s\S]*cargo build/,
-  );
+  assert.match(workflow, /ZEROWALL_ENV_MANIFEST_URL: https:\/\/zerowall\.chengxunkeji\.cn\/environment\/latest\/index\.json/);
 });

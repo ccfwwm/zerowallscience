@@ -39,6 +39,7 @@ import { useUiStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
 import { isGatewayWeb } from "@/lib/webMode";
+import { SelectionSnapshot } from "@/components/thread/SelectionSnapshot";
 
 /** A paste longer than this becomes a workspace file chip instead of raw text. */
 const PASTE_AS_FILE_CHARS = 2000;
@@ -117,7 +118,7 @@ export interface ComposerCommand {
  *  (label/description) is translated at render time — see `approvalCopy`. */
 const APPROVAL_OPTIONS: { mode: "approve"; icon: typeof Hand }[] = [{ mode: "approve", icon: Hand }];
 
-/** Build (default) or Plan — OpenCode's read-only planning agent. Copy is
+/** Build (default) or Plan — read-only planning mode. Copy is
  *  translated at render time (`agentCopy`), mirroring the approval switch. */
 const AGENT_OPTIONS: { mode: AgentMode; icon: typeof Hammer }[] = [
   { mode: "build", icon: Hammer },
@@ -126,7 +127,7 @@ const AGENT_OPTIONS: { mode: AgentMode; icon: typeof Hammer }[] = [
 
 /**
  * The "Ask anything" composer. Static mock sessions pass no `onSend`; the live
- * OpenCode session passes one to submit prompts to the runtime. Attached
+ * Live sessions pass one to submit prompts to the runtime. Attached
  * workspace files show as removable chips above the input, not as prompt text.
  *
  * Two prefix modes (only when their handler is provided):
@@ -910,9 +911,17 @@ export function Composer({
         )}
         {/* Model picker + send kept together, pushed right (and wrapping as a
             unit) so the send button is always reachable on a narrow pane. */}
+        {showModelPicker && (
+          <div className="flex min-w-0 items-center gap-1">
+            <button type="button" className="flex h-7 items-center rounded-full px-2 text-xs text-muted hover:bg-surface-2 hover:text-text" onClick={() => { setValue("/"); taRef.current?.focus(); }} aria-label={t("composer.capabilities.mcp", { defaultValue: "MCP" })}>MCP</button>
+            <button type="button" className="flex h-7 items-center rounded-full px-2 text-xs text-muted hover:bg-surface-2 hover:text-text" onClick={() => { setValue("/"); taRef.current?.focus(); }} aria-label={t("composer.capabilities.skills", { defaultValue: "Skills" })}>{t("composer.capabilities.skills", { defaultValue: "Skills" })}</button>
+            <button type="button" className="flex h-7 items-center rounded-full px-2 text-xs text-muted hover:bg-surface-2 hover:text-text" onClick={() => { setValue("/"); taRef.current?.focus(); }} aria-label={t("composer.capabilities.workflow", { defaultValue: "Workflow" })}>{t("composer.capabilities.workflow", { defaultValue: "Workflow" })}</button>
+          </div>
+        )}
         <div className="ml-auto flex min-w-0 items-center gap-1.5">
           {showModelPicker && <EnginePicker sessionId={modelSessionId} />}
           {showModelPicker && <ModelPicker sessionId={modelSessionId} />}
+          {showModelPicker && <SelectionSnapshot sessionId={modelSessionId} />}
           {working && onStop ? (
             // Same spot, same shape, one action: the send button becomes Stop
             // while the agent works — always live, even though the input is not.

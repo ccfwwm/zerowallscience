@@ -717,9 +717,7 @@ export function SettingsPage() {
         {section === "runtime" && (
         <Section title={t("runtime.title")} hint={t("runtime.hint")} flush>
           <div className="divide-y divide-faint">
-            {/* Runtime picker: OpenCode (default) or a bundled ACP agent. Desktop
-                only — the gateway web client always speaks OpenCode, so the
-                switcher (which spawns a local child process) is hidden on web. */}
+            {/* Desktop engines share the same ACP Host control plane. */}
             {isTauri && (
               <Row
                 title={t("runtime.engineLabel")}
@@ -741,10 +739,9 @@ export function SettingsPage() {
                 }
               />
             )}
-            {/* Server URL + connection status. Meaningless for an ACP agent (a
-                local child process, not an HTTP server) — hidden when one is
-                active; the runtime picker above governs the connection then. */}
-            {!acpProfileId && (
+            {/* The gateway web transport remains configurable because it does
+                not have access to the local ACP Host. */}
+            {!isTauri && !acpProfileId && (
             <Row
               title={t("runtime.serverLabel")}
               hint={
@@ -961,19 +958,15 @@ export function SettingsPage() {
                       {t("providers.modelCount", { count: p.models.length })}
                     </span>
                     <div className="flex-1" />
-                    {p.id === "opencode" ? (
-                      <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
-                        {t("providers.builtInFree")}
-                      </span>
-                    ) : (
-                      <button
-                        className="text-xs text-muted transition-colors hover:text-error"
-                        onClick={() => void disconnectProvider(p.id)}
-                        disabled={busy}
-                        title={t("providers.removeTitle")}
-                      >
-                        {t("common:actions.remove")}
-                      </button>
+                    {p.id !== "opencode" && (
+                    <button
+                      className="text-xs text-muted transition-colors hover:text-error"
+                      onClick={() => void disconnectProvider(p.id)}
+                      disabled={busy}
+                      title={t("providers.removeTitle")}
+                    >
+                      {t("common:actions.remove")}
+                    </button>
                     )}
                   </div>
                 ))}

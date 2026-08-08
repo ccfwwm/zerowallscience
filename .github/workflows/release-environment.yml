@@ -1,0 +1,149 @@
+name: release-environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_version:
+        description: Environment release version
+        required: true
+        type: string
+      publish_latest:
+        description: Promote verified artifacts to latest
+        required: false
+        default: true
+        type: boolean
+  workflow_call:
+    inputs:
+      environment_version:
+        required: true
+        type: string
+      publish_latest:
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      QINIU_ACCESS_KEY:
+        required: true
+      QINIU_SECRET_KEY:
+        required: true
+      ZEROWALL_ENV_UPDATE_PRIVATE_KEY:
+        required: true
+      ZEROWALL_ENV_UPDATE_PUBLIC_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  QINIU_BUCKET: zerowallscience
+  QINIU_REGION: z2
+  QINIU_UPLOAD_URL: https://up-z2.qiniup.com
+  QINIU_DOMAIN: https://zerowall.chengxunkeji.cn
+  ENVIRONMENT_INDEX_URL: https://zerowall.chengxunkeji.cn/environment/latest/index.json
+
+jobs:
+  build-environment:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+      - name: Build and publish versioned environment
+        shell: bash
+        env:
+          QINIU_ACCESS_KEY: ${{ secrets.QINIU_ACCESS_KEY }}
+          QINIU_SECRET_KEY: ${{ secrets.QINIU_SECRET_KEY }}
+          ZEROWALL_ENV_UPDATE_PRIVATE_KEY: ${{ secrets.ZEROWALL_ENV_UPDATE_PRIVATE_KEY }}
+          ZEROWALL_ENV_UPDATE_PUBLIC_KEY: ${{ secrets.ZEROWALL_ENV_UPDATE_PUBLIC_KEY || vars.ZEROWALL_ENV_UPDATE_PUBLIC_KEY }}
+          ENVIRONMENT_VERSION: ${{ inputs.environment_version || format('env-{0}', github.run_number) }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          test -n "$QINIU_ACCESS_KEY" -a -n "$QINIU_SECRET_KEY" -a -n "$ZEROWALL_ENV_UPDATE_PRIVATE_KEY" -a -n "$ZEROWALL_ENV_UPDATE_PUBLIC_KEY"
+          pnpm install --frozen-lockfile
+          bash scripts/dev/fetch-opencode.sh "$TARGET"
+          bash scripts/dev/fetch-acp-runtimes.sh "$TARGET"
+          bash scripts/dev/build-acp-adapters.sh "$TARGET"
+          bash scripts/dev/fetch-skills.sh
+          bash scripts/dev/fetch-uv.sh "$TARGET"
+          bash scripts/dev/fetch-agent-browser.sh "$TARGET"
+          bash scripts/dev/fetch-goal-plugin.sh
+          node scripts/build-mcp-proxy.mjs "$TARGET"
+          suffix=""; [[ "$TARGET" == *windows* ]] && suffix=".exe"
+          cargo build --manifest-path apps/environment-bootstrapper/Cargo.toml --release --target "$TARGET"
+          stage="$RUNNER_TEMP/zerowall-environment-$TARGET"; rm -rf "$stage"; mkdir -p "$stage"
+          for name in opencode uv agent-browser claude-code-acp codex-acp zerowall-mcp-proxy; do cp "apps/desktop/src-tauri/binaries/${name}-${TARGET}${suffix}" "$stage/${name}${suffix}"; done
+          cp -R runtime/acp "$stage/acp-runtime"
+          cp -R runtime/skills/core "$stage/skills-core"
+          asset="ZeroWall-Environment-${TARGET}.tar.gz"; tar -czf "$RUNNER_TEMP/$asset" -C "$stage" .
+          digest="$(node -e 'const fs=require("fs"),c=require("crypto"); const p=process.argv[1]; const b=fs.readFileSync(p); console.log(c.createHash("sha256").update(b).digest("hex"));' "$RUNNER_TEMP/$asset")"
+          size="$(node -e 'const fs=require("fs"); console.log(fs.statSync(process.argv[1]).size);' "$RUNNER_TEMP/$asset")"
+          versioned_key="environment/${ENVIRONMENT_VERSION}/${TARGET}/${asset}"
+          node scripts/environment/build-manifest.mjs --version "$ENVIRONMENT_VERSION" --target "$TARGET" --asset-name "$asset" --asset-url "https://zerowall.chengxunkeji.cn/$versioned_key" --sha256 "$digest" --size "$size" --output "$RUNNER_TEMP/$asset.json"
+          node scripts/upload-qiniu-object.mjs "$RUNNER_TEMP/$asset" "$versioned_key"
+          node scripts/upload-qiniu-object.mjs "$RUNNER_TEMP/$asset.json" "environment/${ENVIRONMENT_VERSION}/${TARGET}/${asset}.json"
+          bootstrapper="ZeroWall-Environment-Bootstrapper-${TARGET}${suffix}"
+          cp "apps/environment-bootstrapper/target/$TARGET/release/zerowall-environment-bootstrapper${suffix}" "$RUNNER_TEMP/$bootstrapper"
+          node scripts/upload-qiniu-object.mjs "$RUNNER_TEMP/$bootstrapper" "environment/${ENVIRONMENT_VERSION}/${TARGET}/$bootstrapper"
+          node scripts/qiniu-release.mjs verify "https://zerowall.chengxunkeji.cn/$versioned_key" "$size" "$digest"
+          manifest_size="$(node -e 'const fs=require("fs"); console.log(fs.statSync(process.argv[1]).size);' "$RUNNER_TEMP/$asset.json")"
+          manifest_digest="$(node -e 'const fs=require("fs"),c=require("crypto"); const b=fs.readFileSync(process.argv[1]); console.log(c.createHash("sha256").update(b).digest("hex"));' "$RUNNER_TEMP/$asset.json")"
+          node scripts/qiniu-release.mjs verify "https://zerowall.chengxunkeji.cn/environment/${ENVIRONMENT_VERSION}/${TARGET}/${asset}.json" "$manifest_size" "$manifest_digest"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: environment-manifest-${{ matrix.target }}
+          path: ${{ runner.temp }}/ZeroWall-Environment-${{ matrix.target }}.tar.gz.json
+          if-no-files-found: error
+
+  promote-latest:
+    needs: build-environment
+    if: ${{ inputs.publish_latest != false }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: environment-manifest-*
+          path: ${{ runner.temp }}/environment-manifests
+          merge-multiple: true
+      - name: Promote verified environment manifests
+        shell: bash
+        env:
+          QINIU_ACCESS_KEY: ${{ secrets.QINIU_ACCESS_KEY }}
+          QINIU_SECRET_KEY: ${{ secrets.QINIU_SECRET_KEY }}
+          QINIU_BUCKET: zerowallscience
+          QINIU_UPLOAD_URL: https://up-z2.qiniup.com
+          QINIU_DOMAIN: https://zerowall.chengxunkeji.cn
+          ZEROWALL_ENV_UPDATE_PRIVATE_KEY: ${{ secrets.ZEROWALL_ENV_UPDATE_PRIVATE_KEY }}
+          ENVIRONMENT_VERSION: ${{ inputs.environment_version || format('env-{0}', github.run_number) }}
+        run: |
+          set -euo pipefail
+          targets=(aarch64-apple-darwin x86_64-apple-darwin x86_64-pc-windows-msvc x86_64-unknown-linux-gnu)
+          args=()
+          for target in "${targets[@]}"; do
+            manifest="$RUNNER_TEMP/environment-manifests/ZeroWall-Environment-$target.tar.gz.json"
+            test -s "$manifest"
+            args+=("$target=$manifest")
+          done
+          node scripts/qiniu-release.mjs promote "$ENVIRONMENT_VERSION" "${args[@]}"
