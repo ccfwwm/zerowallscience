@@ -2401,59 +2401,83 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         toast.error(i18n.t("settings:toast.noModelSelected"));
         return;
       }
-      const activeSessionId = get().currentId;
-      const activeThread = activeSessionId ? get().threads[activeSessionId] : undefined;
-      if (activeSessionId && activeThread?.blocks.some((block) => block.kind === "user" || block.kind === "agent")) {
-        await get().forkAcpSessionWithModel(model);
-        return;
-      }
-      const runSwitches = async () => {
-        let target: string | null = model;
-        while (target && get().acpProfileId === acpId) {
-          queuedAcpModel = null;
-          const targetSlash = target.indexOf("/");
-          const targetProviderId = target.slice(0, targetSlash);
-          const targetModelId = target.slice(targetSlash + 1);
-          const base = loadAcpConfig(acpId);
-          if (!base) {
-            toast.error(i18n.t("settings:toast.noModelSelected"));
-            return;
-          }
-          void logDebug(`[acp] setDefaultModel → ${target} (in-session ${acpId})`);
-          try {
-            await activeClient.setDefaultModel(target);
-            if (acpId === "opencode") {
-              // Persist the OpenCode default through the typed Host control
-              // plane; the active ACP session still receives its own model
-              // update above so the current turn remains responsive.
-              await getProviderControlClient()?.setDefaultModel(target);
-            }
-            if (get().acpProfileId !== acpId) return;
-            // Persist only after the adapter accepted the change. The next
-            // runtime launch therefore starts with the last working model.
-            saveAcpConfig(acpId, {
-              providerId: targetProviderId,
-              baseUrl: base.baseUrl,
-              model: targetModelId,
-              ...(base.platform ? { platform: base.platform } : {}),
-            });
-            lastSwitchModel = target;
-            lastSwitchAt = Date.now();
-            set({ defaultModel: target });
-            set({ modelSwitchError: null });
-          } catch (err) {
-            set({ modelSwitchError: err instanceof Error ? err.message : String(err) });
-            if (!queuedAcpModel) throw err;
-          }
-          target = queuedAcpModel;
-        }
-      };
-      activeAcpModelSwitch = runSwitches();
+      set({ switching: true });
       try {
-        await activeAcpModelSwitch;
+        const activeSessionId = get().currentId;
+        const activeThread = activeSessionId ? get().threads[activeSessionId] : undefined;
+        if (activeSessionId && activeThread?.blocks.some((block) => block.kind === "user" || block.kind === "agent")) {
+          const runForkSwitches = async () => {
+            let target: string | null = model;
+            while (target && get().acpProfileId === acpId) {
+              queuedAcpModel = null;
+              try {
+                await get().forkAcpSessionWithModel(target);
+              } catch (err) {
+                set({ modelSwitchError: err instanceof Error ? err.message : String(err) });
+                if (!queuedAcpModel) throw err;
+              }
+              target = queuedAcpModel;
+            }
+          };
+          activeAcpModelSwitch = runForkSwitches();
+          try {
+            await activeAcpModelSwitch;
+          } finally {
+            activeAcpModelSwitch = null;
+            queuedAcpModel = null;
+          }
+          return;
+        }
+        const runSwitches = async () => {
+          let target: string | null = model;
+          while (target && get().acpProfileId === acpId) {
+            queuedAcpModel = null;
+            const targetSlash = target.indexOf("/");
+            const targetProviderId = target.slice(0, targetSlash);
+            const targetModelId = target.slice(targetSlash + 1);
+            const base = loadAcpConfig(acpId);
+            if (!base) {
+              toast.error(i18n.t("settings:toast.noModelSelected"));
+              return;
+            }
+            void logDebug(`[acp] setDefaultModel → ${target} (in-session ${acpId})`);
+            try {
+              await activeClient.setDefaultModel(target);
+              if (acpId === "opencode") {
+                // Persist the OpenCode default through the typed Host control
+                // plane; the active ACP session still receives its own model
+                // update above so the current turn remains responsive.
+                await getProviderControlClient()?.setDefaultModel(target);
+              }
+              if (get().acpProfileId !== acpId) return;
+              // Persist only after the adapter accepted the change. The next
+              // runtime launch therefore starts with the last working model.
+              saveAcpConfig(acpId, {
+                providerId: targetProviderId,
+                baseUrl: base.baseUrl,
+                model: targetModelId,
+                ...(base.platform ? { platform: base.platform } : {}),
+              });
+              lastSwitchModel = target;
+              lastSwitchAt = Date.now();
+              set({ defaultModel: target });
+              set({ modelSwitchError: null });
+            } catch (err) {
+              set({ modelSwitchError: err instanceof Error ? err.message : String(err) });
+              if (!queuedAcpModel) throw err;
+            }
+            target = queuedAcpModel;
+          }
+        };
+        activeAcpModelSwitch = runSwitches();
+        try {
+          await activeAcpModelSwitch;
+        } finally {
+          activeAcpModelSwitch = null;
+          queuedAcpModel = null;
+        }
       } finally {
-        activeAcpModelSwitch = null;
-        queuedAcpModel = null;
+        set({ switching: false });
       }
       return;
     }
@@ -2647,15 +2671,22 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       if (get().workspace !== projectRoot) set({ workspace: projectRoot });
       const currentId = get().currentId;
       let executionConversationId = currentId ?? undefined;
+      let newExecution = false;
       let hiddenExecutionIds: string[] = [];
       if (currentId) {
+        const chain = executionChainFor(currentId);
+        const requestedFresh = forceFreshAcpConversationId === currentId;
+        if (requestedFresh) {
+          executionConversationId = `execution-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          newExecution = true;
+          hiddenExecutionIds = [...new Set(chain?.all ?? [])];
+        }
         try {
           const catalog = await getOrCreateAcpHostControlClient().listSessions();
-          const chain = executionChainFor(currentId);
           const activeExecutionId = chain?.active ?? currentId;
           const persisted = catalog.find((session) => session.id === activeExecutionId)
             ?? catalog.find((session) => session.id === currentId);
-          const fresh = forceFreshAcpConversationId === currentId
+          const fresh = requestedFresh
             || Boolean(
               persisted?.binding.engineId
               && persisted.binding.engineId !== acpProfileId,
@@ -2663,6 +2694,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           executionConversationId = fresh
             ? `execution-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
             : persisted?.id ?? chain?.active ?? currentId;
+          newExecution = fresh;
           hiddenExecutionIds = [...new Set([
             ...(chain?.all ?? []),
             ...(persisted ? [persisted.id] : []),
@@ -2704,7 +2736,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         set({ acpProfileId: null });
       } else {
         const acp = new AcpRuntime(currentId
-          ? { ...request, logicalConversationId: currentId, hiddenExecutionIds }
+          ? { ...request, logicalConversationId: currentId, hiddenExecutionIds, newExecution }
           : request);
         client = acp; // NOT opencodeClient — ACP is not an OpenCode server.
         const ownsConnection = () =>

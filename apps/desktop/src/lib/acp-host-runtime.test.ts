@@ -7,7 +7,7 @@ function fakeInvoke(): AcpHostInvoke {
     if (command === "acp_host_initialize") {
       return { capabilities: { prompt: true, permission: true } } as T;
     }
-    if (command === "acp_host_launch") {
+    if (command === "acp_host_launch" || command === "acp_host_new") {
       return {
         id: "host-session-1",
         binding: {
@@ -325,6 +325,46 @@ describe("ACP Host runtime adapter", () => {
         sessionId: "conversation-1",
         projectRoot: "C:/science",
       },
+    });
+  });
+
+  it("creates a new Host execution when an engine switch must preserve the visible conversation", async () => {
+    const calls: Array<[string, Record<string, unknown> | undefined]> = [];
+    const invoke = (async <T = unknown>(command: string, args?: Record<string, unknown>) => {
+      calls.push([command, args]);
+      if (command === "acp_host_new") {
+        return {
+          id: "ses-new-opencode",
+          binding: {
+            engine: "opencode",
+            profile: "opencode",
+            model: "gpt-5.4",
+            provider: "cloud",
+            variant: null,
+            projectRoot: "C:/science",
+            profileFingerprint: "opencode|cloud|http://127.0.0.1:4096|gpt-5.4",
+            resolvedAt: "now",
+          },
+          resumable: false,
+        } as T;
+      }
+      return fakeInvoke()(command, args);
+    }) as AcpHostInvoke;
+    const deps = createAcpHostRuntimeDeps(invoke);
+
+    await deps.launch({
+      profileId: "opencode",
+      logicalConversationId: "visible-conversation",
+      conversationId: "execution-123",
+      newExecution: true,
+      projectRoot: "C:/science",
+      gateway: { providerId: "cloud", baseUrl: "http://127.0.0.1:4096", model: "gpt-5.4" },
+    });
+
+    expect(calls.map(([command]) => command)).toContain("acp_host_new");
+    expect(calls.map(([command]) => command)).not.toContain("acp_host_launch");
+    expect(calls.find(([command]) => command === "acp_host_new")?.[1]).toMatchObject({
+      request: { engine: "opencode", sessionId: "execution-123" },
     });
   });
 

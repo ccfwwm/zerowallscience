@@ -93,6 +93,7 @@ const mocks = vi.hoisted(() => ({
     directory?: string | null;
     binding: { projectRoot: string; engineId?: string };
   }[],
+  failHostSessionList: false,
   acpShutdown: vi.fn(async () => ({
     phase: "idle",
     profile_id: null,
@@ -318,7 +319,10 @@ vi.mock("@zerowall/sdk", async () => {
     }
   }
   class AcpHostClient {
-    async listSessions() { return mocks.hostSessions; }
+    async listSessions() {
+      if (mocks.failHostSessionList) throw new Error("session catalog unavailable");
+      return mocks.hostSessions;
+    }
     async listProviders() { return mocks.providers; }
     async getDefaultModel() { return mocks.currentModel; }
     async setDefaultModel(model: string) { mocks.setDefaultModelSpy(model); mocks.currentModel = model; }
@@ -385,6 +389,7 @@ beforeEach(async () => {
   mocks.failSetModel = false;
   mocks.acpSessionId = null;
   mocks.hostSessions = [];
+  mocks.failHostSessionList = false;
   for (const method of Object.values(mocks.workflowControls)) method.mockReset();
   mocks.notifyPermissionRequest.mockResolvedValue(true);
   useRuntimeStore.setState({
@@ -1905,12 +1910,32 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     expect(useRuntimeStore.getState().status).toBe("ready");
     expect(mocks.acpShutdown).toHaveBeenCalled();
     expect(mocks.acpLaunch).toHaveBeenLastCalledWith(
-      expect.objectContaining({ profileId: "opencode" }),
+      expect.objectContaining({
+        profileId: "opencode",
+        logicalConversationId: "codex",
+        newExecution: true,
+      }),
     );
     // Catalog/config discovery may still create a control client, but desktop
     // prompts remain bound to the Host-owned OpenCode session.
     expect(mocks.sendPromptSpy).not.toHaveBeenCalled();
     expect(useRuntimeStore.getState().acpProfileId).toBe("opencode");
+  });
+
+  it("creates a fresh OpenCode execution even when the Host session catalog is unavailable", async () => {
+    await useRuntimeStore.getState().switchRuntime("codex");
+    mocks.failHostSessionList = true;
+    mocks.acpLaunch.mockClear();
+
+    await useRuntimeStore.getState().switchRuntime(null);
+
+    expect(mocks.acpLaunch).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        profileId: "opencode",
+        logicalConversationId: "codex",
+        newExecution: true,
+      }),
+    );
   });
 
   it("switchRuntime to the current runtime is a no-op (no reconnect)", async () => {
@@ -2051,6 +2076,27 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     window.localStorage.removeItem("zerowall.acp.config.codex");
   });
 
+  it("shows a switching state while an ACP model change is pending", async () => {
+    window.localStorage.setItem(
+      "zerowall.acp.config.codex",
+      JSON.stringify({ providerId: "zerowall-2", baseUrl: "https://gw/v1", model: "gpt-5" }),
+    );
+    await useRuntimeStore.getState().switchRuntime("codex");
+    let finishSwitch!: () => void;
+    mocks.acpSetModel.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { finishSwitch = resolve; }),
+    );
+
+    const pending = useRuntimeStore.getState().setDefaultModel("zerowall-2/gpt-5-mini");
+    await vi.waitFor(() => expect(mocks.acpSetModel).toHaveBeenCalledTimes(1));
+    expect(useRuntimeStore.getState().switching).toBe(true);
+
+    finishSwitch();
+    await pending;
+    expect(useRuntimeStore.getState().switching).toBe(false);
+    window.localStorage.removeItem("zerowall.acp.config.codex");
+  });
+
   it("serializes rapid ACP model picks and applies only the final queued model", async () => {
     window.localStorage.setItem(
       "zerowall.acp.config.codex",
@@ -2169,6 +2215,48 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     expect(useRuntimeStore.getState().panes["acp-session-1"]?.showFiles).toBe(true);
     expect(JSON.parse(window.localStorage.getItem("zerowall.acp.conversation-executions.v1")!))
       .toMatchObject({ "acp-session-1": { active: "acp-session-2" } });
+    window.localStorage.removeItem("zerowall.acp.config.codex");
+  });
+
+  it("serializes rapid model picks with conversation history so the last choice wins", async () => {
+    window.localStorage.setItem(
+      "zerowall.acp.config.codex",
+      JSON.stringify({ providerId: "zerowall-2", baseUrl: "https://gw/v1", model: "gpt-5" }),
+    );
+    mocks.acpSessionId = "conversation-1";
+    useRuntimeStore.setState({ currentId: "conversation-1" });
+    await useRuntimeStore.getState().switchRuntime("codex");
+    useRuntimeStore.setState({
+      currentId: "conversation-1",
+      defaultModel: "zerowall-2/gpt-5",
+      threads: {
+        "conversation-1": {
+          blocks: [{ kind: "user", text: "keep this context" }],
+          index: {},
+          loaded: true,
+        },
+      },
+    });
+    let finishFirst!: () => void;
+    mocks.acpCreateSession
+      .mockImplementationOnce(
+        () => new Promise<string>((resolve) => { finishFirst = () => resolve("acp-session-2"); }),
+      )
+      .mockResolvedValueOnce("acp-session-3");
+
+    const first = useRuntimeStore.getState().setDefaultModel("zerowall-2/gpt-5-mini");
+    await vi.waitFor(() => expect(mocks.acpCreateSession).toHaveBeenCalledTimes(1));
+    const second = useRuntimeStore.getState().setDefaultModel("zerowall-2/gpt-5.6-terra");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mocks.acpCreateSession).toHaveBeenCalledTimes(1);
+    expect(useRuntimeStore.getState().switching).toBe(true);
+    finishFirst();
+    await Promise.all([first, second]);
+
+    expect(mocks.acpCreateSession).toHaveBeenCalledTimes(2);
+    expect(useRuntimeStore.getState().defaultModel).toBe("zerowall-2/gpt-5.6-terra");
+    expect(useRuntimeStore.getState().switching).toBe(false);
     window.localStorage.removeItem("zerowall.acp.config.codex");
   });
 });

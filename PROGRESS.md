@@ -1,5 +1,9 @@
 # Progress
 
+2026-08-09 15:15 · Released ZeroWall Science 1.0.11 to Qiniu, verified public metadata and the installer at 12,247,819 bytes with SHA-256 A1C6353D5B682EFE5809BFF83C2D5316F666532C1C4B874BD082EA9A82E42717.
+
+2026-08-09 15:04 · Fixed OpenCode engine switching to create native sessions instead of loading internal execution IDs, preserved fresh-session routing when catalog lookup fails, serialized rapid model changes, added animated preparation/switching and explicit retry states, and removed the lower-left model status for 1.0.11.
+
 2026-08-09 14:00 · Released ZeroWall Science 1.0.10 to Qiniu, verified the public latest manifest and installer at 12,240,211 bytes with SHA-256 ADB9855ECDB6D28549E1679660997FC568C8A8FEF85F8EB400926ECA49315250.
 
 2026-08-09 12:03 · Removed model-group allow-listing so every account-visible group is provisioned through neutral per-group routes, updated ACP in-place model-switch regression coverage, and restored locale key parity; frontend and Rust test suites pass.

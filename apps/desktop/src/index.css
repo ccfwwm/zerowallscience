@@ -323,6 +323,18 @@ body {
   animation: fade-in 150ms ease-out 150ms backwards;
 }
 
+@keyframes runtime-progress {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+.runtime-progress-bar {
+  animation: runtime-progress 1.15s ease-in-out infinite;
+}
+
 /* While a pane is being dragged (see lib/dragPane), forcefully suppress text
    selection everywhere — the conversation's message text sets its own
    `user-select`, which a body-level `user-select:none` can't override. */

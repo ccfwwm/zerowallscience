@@ -46,6 +46,11 @@ import { toast } from "@/lib/toast";
 import type { TurnUndoEntry } from "@/lib/tauri";
 import { cn } from "@/lib/cn";
 import { workflowActionsForState, type WorkflowAction } from "@/lib/workflow-controls";
+import {
+  RuntimeTransitionStatus,
+  RuntimeUnavailableStatus,
+  shouldShowEnvironmentTransition,
+} from "./RuntimeTransitionStatus";
 
 /**
  * One agent session — header + conversation + composer + optional right pane.
@@ -101,6 +106,7 @@ export function SessionView({
   // own below (#34).
   const status = useRuntimeStore((s) => s.status);
   const switching = useRuntimeStore((s) => s.switching);
+  const runtimeError = useRuntimeStore((s) => s.error);
   const webReadOnly = useRuntimeStore((s) => s.webReadOnly);
   const sendingSessions = useRuntimeStore((s) => s.sendingSessions);
   const runningSessions = useRuntimeStore((s) => s.runningSessions);
@@ -444,6 +450,11 @@ export function SessionView({
     <div className="flex h-full min-w-0">
       {/* `relative` anchors the floating composer (absolute, below). */}
       <div className="relative flex h-full min-w-0 flex-1 flex-col">
+        {switching && (
+          <div className="pointer-events-none absolute left-1/2 top-14 z-30 -translate-x-1/2">
+            <RuntimeTransitionStatus kind="selection" compact />
+          </div>
+        )}
         <div
           data-tauri-drag-region={asTitlebar || undefined}
           style={sidebarCollapsed && asTitlebar ? overlayTitlebarStyle(true) : undefined}
@@ -632,10 +643,14 @@ export function SessionView({
             style={zoom !== 1 ? { zoom } : undefined}
             className="mx-auto flex max-w-[760px] flex-col gap-4 px-8 pt-6"
           >
-            {!connected && (connecting || !isGatewayWeb) && (
-              <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-sm text-muted" role="status">
-                <Loader2 size={22} className="animate-spin text-accent" />
-                <span>{t("live.runtime.connecting")}</span>
+            {!connected && shouldShowEnvironmentTransition(status, switching) && (
+              <div className="flex min-h-[220px] items-center justify-center">
+                <RuntimeTransitionStatus kind="environment" />
+              </div>
+            )}
+            {!connected && !connecting && !isGatewayWeb && (
+              <div className="flex min-h-[220px] items-center justify-center">
+                <RuntimeUnavailableStatus detail={runtimeError} onRetry={() => void connect()} />
               </div>
             )}
             {!connected && !connecting && isGatewayWeb && (

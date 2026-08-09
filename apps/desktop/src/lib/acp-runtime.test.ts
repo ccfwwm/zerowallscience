@@ -169,6 +169,27 @@ describe("AcpRuntime lifecycle", () => {
     expect(unlisten).not.toHaveBeenCalled();
   });
 
+  it("replaces a missing OpenCode backing session instead of leaving initialization failed", async () => {
+    const { deps } = makeDeps();
+    const launch = deps.launch as ReturnType<typeof vi.fn>;
+    launch
+      .mockRejectedValueOnce(new Error("driver error: OpenCode session/load returned HTTP 404"))
+      .mockResolvedValueOnce(READY);
+    deps.currentSessionId = () => "ses-replacement";
+    const runtime = new AcpRuntime({
+      ...REQUEST,
+      profileId: "opencode",
+      conversationId: "ses-missing",
+    }, deps);
+
+    await expect(runtime.connect()).resolves.toBeUndefined();
+
+    expect(launch).toHaveBeenNthCalledWith(2, expect.not.objectContaining({
+      conversationId: expect.anything(),
+    }));
+    expect(runtime.currentExecutionSessionId()).toBe("ses-replacement");
+  });
+
   it("close() unlistens, shuts down, and goes offline", async () => {
     const { runtime, deps, unlisten, statuses } = harness();
     await runtime.connect();

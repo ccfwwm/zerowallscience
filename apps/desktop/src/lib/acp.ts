@@ -98,6 +98,10 @@ export interface AcpLaunchRequest {
   /** Superseded immutable Host executions belonging to the same logical
    *  conversation. They remain persisted but never render as extra chats. */
   hiddenExecutionIds?: string[];
+  /** Create a fresh immutable Host execution while keeping the logical
+   * conversation visible. Engine switches set this explicitly so a synthetic
+   * execution id is never sent to a vendor's session/load endpoint. */
+  newExecution?: boolean;
   conversationId?: string;
   projectRoot: string;
   mcpAllowList?: string[];

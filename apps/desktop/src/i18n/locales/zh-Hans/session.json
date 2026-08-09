@@ -173,7 +173,11 @@
       "title": "Agent 运行环境",
       "bodyPrefix": "桌面应用会自动启动本地 Agent 环境；浏览器端请通过已配置的网关连接。",
       "bodySuffix": "并连接。",
-      "connecting": "正在连接运行环境…"
+      "connecting": "正在连接运行环境…",
+      "preparing": "正在准备智能体环境",
+      "switchingSelection": "正在应用引擎与模型",
+      "unavailable": "引擎暂时不可用",
+      "retry": "重试"
     },
     "connect": "连接",
     "latest": "最新消息",

@@ -176,7 +176,11 @@
       "title": "Agent-Runtime",
       "bodyPrefix": "Die Desktop-App startet die lokale Agent-Umgebung automatisch. Verbinden Sie sich im Browser über das konfigurierte Gateway.",
       "bodySuffix": " und verbinden Sie sich.",
-      "connecting": "Verbindung mit der Laufzeitumgebung wird hergestellt…"
+      "connecting": "Verbindung mit der Laufzeitumgebung wird hergestellt…",
+      "preparing": "Agent-Umgebung wird vorbereitet",
+      "switchingSelection": "Engine und Modell werden angewendet",
+      "unavailable": "Engine nicht verfügbar",
+      "retry": "Erneut versuchen"
     },
     "connect": "Verbinden",
     "latest": "Neueste",

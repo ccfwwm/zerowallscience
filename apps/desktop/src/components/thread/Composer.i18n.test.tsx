@@ -28,9 +28,11 @@ describe("WorkflowStarters strings (i18n)", () => {
 });
 
 describe("LiveSessionPage strings (i18n)", () => {
-  it("renders the neutral runtime loading state in English (no Tauri sidecar in tests)", async () => {
+  it("renders a neutral retry state when no Tauri runtime is available in tests", async () => {
     renderAt("/live");
-    expect(await screen.findByText("Connecting to the runtime…")).toBeInTheDocument();
+    expect(await screen.findByText("Engine unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.queryByText("Preparing the agent environment")).not.toBeInTheDocument();
     expect(screen.queryByText("OpenCode runtime")).not.toBeInTheDocument();
     expect(screen.queryByText(/OpenCode ·/)).not.toBeInTheDocument();
   });

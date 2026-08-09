@@ -176,7 +176,11 @@
       "title": "Agent ランタイム",
       "bodyPrefix": "デスクトップアプリはローカル Agent 環境を自動起動します。ブラウザでは設定済みゲートウェイ経由で接続してください。",
       "bodySuffix": " で起動して接続してください。",
-      "connecting": "実行環境に接続しています…"
+      "connecting": "実行環境に接続しています…",
+      "preparing": "エージェント環境を準備しています",
+      "switchingSelection": "エンジンとモデルを適用しています",
+      "unavailable": "エンジンを利用できません",
+      "retry": "再試行"
     },
     "connect": "接続",
     "latest": "最新",

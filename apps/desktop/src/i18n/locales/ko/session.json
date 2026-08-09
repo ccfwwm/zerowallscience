@@ -176,7 +176,11 @@
       "title": "Agent 런타임",
       "bodyPrefix": "데스크톱 앱은 로컬 Agent 환경을 자동으로 시작합니다. 브라우저에서는 구성된 게이트웨이를 통해 연결하세요.",
       "bodySuffix": " 그리고 연결하세요.",
-      "connecting": "실행 환경에 연결하는 중…"
+      "connecting": "실행 환경에 연결하는 중…",
+      "preparing": "에이전트 환경 준비 중",
+      "switchingSelection": "엔진 및 모델 적용 중",
+      "unavailable": "엔진을 사용할 수 없습니다",
+      "retry": "다시 시도"
     },
     "connect": "연결",
     "latest": "최신",

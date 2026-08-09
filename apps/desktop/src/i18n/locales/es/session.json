@@ -176,7 +176,11 @@
       "title": "Entorno del agente",
       "bodyPrefix": "La aplicación de escritorio inicia automáticamente el entorno local del agente. En el navegador, conéctate mediante la puerta de enlace configurada.",
       "bodySuffix": " y conéctate.",
-      "connecting": "Conectando al entorno de ejecución…"
+      "connecting": "Conectando al entorno de ejecución…",
+      "preparing": "Preparando el entorno del agente",
+      "switchingSelection": "Aplicando motor y modelo",
+      "unavailable": "Motor no disponible",
+      "retry": "Reintentar"
     },
     "connect": "Conectar",
     "latest": "Más reciente",

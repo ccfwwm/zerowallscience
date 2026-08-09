@@ -216,7 +216,10 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
       const client = new AcpHostClient({ invoke });
       const engine = hostEngine(request.profileId);
       await client.initialize(engine);
-      const session = await client.launch(toAcpHostLaunchRequest(request, resolveHostSessionId(request)));
+      const hostRequest = toAcpHostLaunchRequest(request, resolveHostSessionId(request));
+      const session = request.newExecution
+        ? await client.newSession(hostRequest)
+        : await client.launch(hostRequest);
       hostState = { client, sessionId: session.id, unsubscribe: null };
       if (pendingHandlers) attach(pendingHandlers);
       return {

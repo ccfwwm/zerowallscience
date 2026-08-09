@@ -173,7 +173,11 @@
       "title": "Agent runtime",
       "bodyPrefix": "The desktop app starts the local agent environment automatically. In the browser, connect through the configured gateway.",
       "bodySuffix": " and connect.",
-      "connecting": "Connecting to the runtime…"
+      "connecting": "Connecting to the runtime…",
+      "preparing": "Preparing the agent environment",
+      "switchingSelection": "Applying engine and model",
+      "unavailable": "Engine unavailable",
+      "retry": "Retry"
     },
     "connect": "Connect",
     "latest": "Latest",

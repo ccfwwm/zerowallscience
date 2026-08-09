@@ -116,7 +116,7 @@ const CAPABILITY_DISCOVERY_TIMEOUT_MS = 1_500;
  * fresh session and keep every other launch failure visible to the user. */
 function isPersistedSessionLoadFailure(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /(?:stage:\s*SessionLoad|ACP_SESSION_LOAD_FAILED)/i.test(message);
+  return /(?:stage:\s*SessionLoad|ACP_SESSION_LOAD_FAILED|OpenCode session\/load returned HTTP 404)/i.test(message);
 }
 
 /** Thrown by methods an ACP agent cannot honor (revert, ad-hoc shell). Callers
