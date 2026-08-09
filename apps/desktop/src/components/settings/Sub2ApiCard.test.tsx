@@ -100,12 +100,13 @@ beforeEach(() => {
   mocks.web = false;
   mocks.account = null;
   mocks.fetchGroups.mockResolvedValue({
-    // The gateway exposes many channels; only zero-prefixed groups are open.
-    // codex-pro分组 stands in for the locked-down rest — it must never render.
+    // Every service-visible group must participate; an explicitly hidden group
+    // is excluded before provisioning.
     groups: [
       { id: 1, name: "codex-pro分组" },
       { id: 2, name: "zero-国产模型" },
       { id: 3, name: "zero-GPT模型分组" },
+      { id: 4, name: "hidden-admin", visible: false },
     ],
     existingKeyGroupIds: [2],
   });
@@ -122,6 +123,12 @@ beforeEach(() => {
   // its own neutral-namespace provider id (no bare special case) so keys stay
   // per-group and the fully-qualified model ref never leaks the gateway name.
   mocks.provisionGroups.mockResolvedValue([
+    {
+      providerId: "zerowall-1",
+      groupId: 1,
+      baseUrl: "https://code.aicodeme.cn/v1",
+      models: ["gpt-4o", "claude-sonnet-4"],
+    },
     {
       providerId: "zerowall-2",
       groupId: 2,
@@ -169,27 +176,33 @@ describe("model ordering", () => {
   });
 });
 
-describe("group allowlist", () => {
-  it("keeps only zero-prefixed groups, case-insensitively", () => {
+describe("model group visibility", () => {
+  it("shows every service-visible group", () => {
     const all = [
       { id: 1, name: "zero-国产模型" },
       { id: 2, name: " Zero-GPT模型分组 " },
       { id: 3, name: "claude-science-稳定专属分组" },
       { id: 4, name: "GPT模型分组" },
-      { id: 5, name: "测试分组-不要使用" },
+      { id: 5, name: "测试分组" },
+      { id: 6, name: "隐藏分组", visible: false },
+      { id: 7, name: "不可用分组", available: false },
+      { id: 8, name: "禁用分组", enabled: false },
     ];
     expect(openGroups(all).map((g) => g.name)).toEqual([
       "zero-国产模型",
       " Zero-GPT模型分组 ",
+      "claude-science-稳定专属分组",
+      "GPT模型分组",
+      "测试分组",
     ]);
   });
 
-  it("returns an empty list when no zero-prefixed group is available", () => {
+  it("keeps legacy groups visible when the service omits visibility", () => {
     const renamed = [
       { id: 1, name: "channel-a" },
       { id: 2, name: "channel-b" },
     ];
-    expect(openGroups(renamed)).toEqual([]);
+    expect(openGroups(renamed)).toEqual(renamed);
   });
 
   it("gives every group its own neutral-namespace provider id, no bare special case", () => {
@@ -267,19 +280,25 @@ describe("Sub2API panel", () => {
     expect(screen.getByRole("button", { name: "Create account" })).toBeDisabled();
   });
 
-  it("fetches groups then auto-provisions domestic group with pre-selected models", async () => {
+  it("fetches and provisions every visible group without asking the user to choose one", async () => {
     mocks.account = { email: "a@b.co", baseUrl: "https://code.aicodeme.cn" };
     render(<Sub2ApiCard />);
     await userEvent.click(await screen.findByRole("button", { name: /Fetch my models/ }));
 
-    // The two-step flow: fetchGroups auto-selects the domestic group and provisions it.
-    // Wait for the final state — model chips appear after provisionGroup resolves.
+    // Wait for the final state — model chips appear after the batch provision resolves.
     await waitFor(() => expect(screen.getByRole("button", { name: /gpt-4o/ })).toBeInTheDocument());
 
     expect(mocks.fetchGroups).toHaveBeenCalledTimes(1);
-    expect(mocks.provisionGroup).toHaveBeenCalledWith(2); // zero domestic group
+    expect(mocks.provisionGroup).not.toHaveBeenCalled();
+    expect(mocks.provisionGroups).toHaveBeenCalledWith([
+      { groupId: 1, providerId: "zerowall-1" },
+      { groupId: 2, providerId: "zerowall-2" },
+      { groupId: 3, providerId: "zerowall-3" },
+    ]);
+    expect(screen.queryByText("Select a group")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "codex-pro分组" })).not.toBeInTheDocument();
 
-    // Group buttons also have aria-pressed; model chips have font-mono class.
+    // The aggregated picker de-duplicates model ids that exist in several groups.
     const chips = screen
       .getAllByRole("button")
       .filter((b) => b.getAttribute("aria-pressed") !== null && b.className.includes("font-mono"));
@@ -288,33 +307,47 @@ describe("Sub2API panel", () => {
       "glm-4.6",
       "kimi-k2-thinking",
       "qwen3-max",
+      "claude-sonnet-4",
       "gpt-4o",
+      "gpt-5.4",
+      "o3",
     ]);
+    expect(chips.filter((c) => c.textContent?.includes("gpt-4o"))).toHaveLength(1);
     expect(chips.map((c) => c.getAttribute("aria-pressed"))).toEqual([
       "true",
       "true",
       "true",
       "true",
       "false",
+      "false",
+      "false",
+      "false",
     ]);
     expect(screen.getByRole("button", { name: "Save 4 model(s)" })).toBeEnabled();
   });
 
-  it("renders only the open groups, never the locked-down channels", async () => {
+  it("registers every group that contains at least one selected model", async () => {
     mocks.account = { email: "a@b.co", baseUrl: "https://code.aicodeme.cn" };
     render(<Sub2ApiCard />);
     await userEvent.click(await screen.findByRole("button", { name: /Fetch my models/ }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /gpt-4o/ })).toBeInTheDocument());
+    await userEvent.click(await screen.findByRole("button", { name: "gpt-4o" }));
+    await userEvent.click(screen.getByRole("button", { name: "gpt-5.4" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save 6 model(s)" }));
 
-    // Group chips carry aria-pressed but are not font-mono (that marks model chips).
-    const groupChips = screen
-      .getAllByRole("button")
-      .filter((b) => b.getAttribute("aria-pressed") !== null && !b.className.includes("font-mono"));
-    expect(groupChips.map((c) => c.textContent?.replace("✓", ""))).toEqual([
-      "zero-国产模型",
-      "zero-GPT模型分组",
+    expect(mocks.addCustomProvider.mock.calls.map(([id]) => id)).toEqual([
+      "zerowall-1",
+      "zerowall-2",
+      "zerowall-3",
     ]);
-    expect(screen.queryByRole("button", { name: /codex-pro分组/ })).not.toBeInTheDocument();
+    expect(mocks.addCustomProvider.mock.calls[0][1].models).toEqual(["gpt-4o"]);
+    expect(mocks.addCustomProvider.mock.calls[1][1].models).toEqual([
+      "deepseek-v3",
+      "glm-4.6",
+      "kimi-k2-thinking",
+      "qwen3-max",
+      "gpt-4o",
+    ]);
+    expect(mocks.addCustomProvider.mock.calls[2][1].models).toEqual(["gpt-4o", "gpt-5.4"]);
   });
 
   it("registers the provider with no apiKey and auto-sets a domestic default model", async () => {
@@ -327,9 +360,9 @@ describe("Sub2API panel", () => {
     const [id, opts] = mocks.addCustomProvider.mock.calls[0];
     expect(id).toBe("zerowall-2");
     expect(opts).toEqual({
-      // The provider display name is the group itself. Gateway implementation
-      // details must not enter model filters or model-row subtitles.
-      name: "zero-国产模型",
+      // Gateway groups are internal credential routes, not user-facing
+      // provider categories.
+      name: "AI Platform",
       // Default is the Chat Completions protocol (@ai-sdk/openai-compatible);
       // the gateway only carries image parts on Chat Completions.
       npm: "@ai-sdk/openai-compatible",
@@ -383,18 +416,25 @@ describe("Sub2API panel", () => {
     // (`zerowall-<n>/<model>`) never leaks the internal gateway name.
     await waitFor(() =>
       expect(mocks.provisionGroups).toHaveBeenCalledWith([
+        { groupId: 1, providerId: "zerowall-1" },
         { groupId: 2, providerId: "zerowall-2" },
         { groupId: 3, providerId: "zerowall-3" },
       ]),
     );
-    await waitFor(() => expect(mocks.addCustomProvider).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.addCustomProvider).toHaveBeenCalledTimes(3));
     expect(mocks.addCustomProvider.mock.calls.map((c) => c[0])).toEqual([
+      "zerowall-1",
       "zerowall-2",
       "zerowall-3",
     ]);
+    expect(mocks.addCustomProvider.mock.calls.map((c) => c[1].name)).toEqual([
+      "AI Platform",
+      "AI Platform",
+      "AI Platform",
+    ]);
     // GPT-family models from the second group are now registered, so a model
     // like gpt-5.4 resolves to a configured account instead of erroring.
-    expect(mocks.addCustomProvider.mock.calls[1][1].models).toContain("gpt-5.4");
+    expect(mocks.addCustomProvider.mock.calls[2][1].models).toContain("gpt-5.4");
     // The default model stays a domestic one, under the primary group's
     // per-group provider id — no bare `sub2api/` prefix leaks out.
     expect(mocks.setDefaultModel).toHaveBeenCalledWith("zerowall-2/kimi-k2-thinking");

@@ -77,13 +77,17 @@
       "title": "에이전트 작업이 승인되는 방식",
       "menuAria": "승인 모드",
       "menuTitle": "에이전트 작업을 어떻게 승인하시겠습니까?",
-      "approve": {
-        "label": "직접 승인",
-        "description": "삭제, 설치, 원격 연결 전에 확인을 요청합니다"
+      "request": {
+        "label": "승인 요청",
+        "description": "에이전트의 각 작업 전에 확인합니다"
+      },
+      "help": {
+        "label": "도움 승인",
+        "description": "편집, 도구 또는 네트워크 작업 전에 확인합니다"
       },
       "full": {
         "label": "전체 권한",
-        "description": "확인 없이 모든 명령을 실행합니다"
+        "description": "일반 프로젝트 도구를 허용하지만 위험한 작업은 계속 확인합니다"
       }
     },
     "error": {
@@ -198,7 +202,6 @@
       "openTitle": "{{path}} 열기 — 에이전트가 이 세션에서 이 노트북을 작업합니다"
     },
     "connBadge": {
-      "title": "{{runtime}} · {{status}}",
       "status": {
         "ready": "준비됨",
         "connecting": "연결 중",

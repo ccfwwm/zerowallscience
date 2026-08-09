@@ -82,6 +82,13 @@ function errorText(error: unknown): string {
   if (message.includes("archive exceeds extraction limits")) {
     return "基础环境展开后体积较大，当前应用版本无法安装。请更新 ZeroWall Science 后重试。";
   }
+  // Windows may briefly deny a directory move while Defender, Search, or a
+  // just-finished health-check process still has an executable open. The Rust
+  // installer retries this transient condition; if all retries are exhausted,
+  // keep the UI actionable instead of exposing the opaque `os error 5`.
+  if (/os error 5|access is denied|拒绝访问/i.test(message)) {
+    return "基础环境文件暂时被 Windows 占用。请关闭正在运行的 ZeroWall Science 窗口后重试；已下载内容会自动续传。";
+  }
   return message;
 }
 

@@ -12,16 +12,16 @@ import { runtimeActivitySnapshot } from "@/lib/runtime-activity";
 import { ensureDefaultConnectors, ensureSetupProgressListener, healJupyterMcpEnv } from "@/lib/setup";
 import { useOverlayTitlebar, useUiStore } from "@/lib/store";
 import { overlayTitlebarStyle } from "@/lib/titlebar";
-import { ensureJupyter, openDownloadedUpdate, openExternal, watchFullscreen } from "@/lib/tauri";
+import { ensureJupyter, isTauri, openDownloadedUpdate, openExternal, watchFullscreen } from "@/lib/tauri";
 import { useUpdateStore } from "@/lib/update";
 import { isGatewayWeb, gatewayToken, setUnauthorizedHandler } from "@/lib/webMode";
 import { WebTokenGate } from "@/components/web/WebTokenGate";
 import { DesktopLoginGate } from "@/components/auth/DesktopLoginGate";
 import { DesktopEnvironmentGate } from "@/components/environment/DesktopEnvironmentGate";
+import { useEnvironmentUpdateStore } from "@/lib/environment-update";
 import { WorkflowRunApprovalDialog } from "@/components/workflow/WorkflowRunApprovalDialog";
 import { WorkflowAgentPermissionDialog } from "@/components/workflow/WorkflowAgentPermissionDialog";
 import { useIsMobile } from "@/lib/useIsMobile";
-import { leaves, useLayoutStore, type SplitDir } from "@/lib/layout";
 
 export function AppShell() {
   const { t } = useTranslation("nav");
@@ -42,6 +42,7 @@ export function AppShell() {
   const workflowRuns = useRuntimeStore((s) => Object.values(s.workflowRuns).filter((run) => ["pending", "running", "paused", "failed"].includes(run.state)).length);
   const mcpMutations = useRuntimeStore((s) => runtimeActivitySnapshot(s).mcpMutations);
   const runActivities = useRuntimeStore((s) => runtimeActivitySnapshot(s).runActivities);
+  const environmentVersion = useEnvironmentUpdateStore((s) => s.snapshot?.currentVersion ?? null);
 
   useEffect(() => {
     if (updateAvailable && !import.meta.env.TEST) setUpdateOpen(true);
@@ -63,63 +64,14 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Ghostty-style split-pane shortcuts, live only on the /live surface. Disabled
-  // where tiling can't work (phone width, web gateway) and in Settings. New
-  // panes start as a DRAFT — no session/folder until the pane's first send (#2).
-  const splitDisabled = isMobile || isGatewayWeb;
-  useEffect(() => {
-    if (splitDisabled) return;
-    const doSplit = (dir: SplitDir) => {
-      const layout = useLayoutStore.getState();
-      // Empty group → the new draft fills it; otherwise split the focused pane.
-      if (!layout.tree) layout.dockSession("", dir === "row" ? "right" : "bottom", null);
-      else layout.split(dir, null);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
-      if (!window.location.pathname.startsWith("/live")) return;
-      const layout = useLayoutStore.getState();
-      const key = e.key.toLowerCase();
-      if (key === "d") {
-        // Cmd+D splits side-by-side; Cmd+Shift+D stacks.
-        e.preventDefault();
-        void doSplit(e.shiftKey ? "col" : "row");
-      } else if (key === "t") {
-        // Cmd+T opens a new (empty) group.
-        e.preventDefault();
-        layout.addGroup();
-      } else if (e.shiftKey && (key === "]" || key === "[")) {
-        // Cmd+Shift+] / [ cycles groups.
-        e.preventDefault();
-        const i = layout.groups.findIndex((g) => g.id === layout.activeGroupId);
-        const n = layout.groups.length;
-        const j = key === "]" ? (i + 1) % n : (i - 1 + n) % n;
-        layout.setActiveGroup(layout.groups[j].id);
-      } else if (e.shiftKey && key === "enter") {
-        e.preventDefault();
-        layout.toggleZoom();
-      } else if (key === "w") {
-        // Close the focused pane — but only while tiled; a lone pane lets
-        // Cmd+W fall through to its usual window-close.
-        if (layout.tree && leaves(layout.tree).length > 1) {
-          e.preventDefault();
-          layout.closeFocused();
-        }
-      } else if (e.altKey && (key === "arrowleft" || key === "arrowup")) {
-        e.preventDefault();
-        layout.focusAdjacent("prev");
-      } else if (e.altKey && (key === "arrowright" || key === "arrowdown")) {
-        e.preventDefault();
-        layout.focusAdjacent("next");
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [splitDisabled]);
   // In the packaged desktop app, auto-start the bundled OpenCode and connect,
   // and bring the Jupyter server back up if the user enabled it before.
   useEffect(() => {
     if (isGatewayWeb && !webReady) return; // wait for the token gate
+    // The runtime is supplied by the separately installed environment bundle.
+    // Do not ask Tauri to spawn it while the first-run environment gate is
+    // still checking or when the user explicitly chose to continue without it.
+    if (isTauri && !isGatewayWeb && !environmentVersion) return;
     void useRuntimeStore.getState().bootstrap();
     void ensureJupyter();
     // One app-lifetime listener for uv provisioning progress, so a running
@@ -128,7 +80,7 @@ export function AppShell() {
     if (!import.meta.env.TEST) {
       void useUpdateStore.getState().maybeAutoCheck();
     }
-  }, [webReady]);
+  }, [webReady, environmentVersion]);
 
   // First run: bring the default connectors up once the sidecar is actually
   // answering. Doing this at mount would race the runtime — the setup store

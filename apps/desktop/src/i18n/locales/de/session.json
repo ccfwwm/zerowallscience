@@ -77,13 +77,17 @@
       "title": "Wie Agentenaktionen genehmigt werden",
       "menuAria": "Genehmigungsmodi",
       "menuTitle": "Wie sollen Agentenaktionen genehmigt werden?",
-      "approve": {
-        "label": "Für mich genehmigen",
-        "description": "Fragt vor dem Löschen, Installieren oder Herstellen von Remote-Verbindungen nach"
+      "request": {
+        "label": "Genehmigung anfordern",
+        "description": "Vor jeder Agentenaktion nachfragen"
+      },
+      "help": {
+        "label": "Mithelfen",
+        "description": "Vor Bearbeitungen, Tools oder Netzwerkaktionen nachfragen"
       },
       "full": {
         "label": "Vollzugriff",
-        "description": "Führt jeden Befehl ohne Rückfrage aus"
+        "description": "Normale Projektwerkzeuge erlauben; riskante Aktionen fragen weiterhin nach"
       }
     },
     "error": {
@@ -198,7 +202,6 @@
       "openTitle": "{{path}} öffnen — der Agent arbeitet in dieser Sitzung an diesem Notebook"
     },
     "connBadge": {
-      "title": "{{runtime}} · {{status}}",
       "status": {
         "ready": "bereit",
         "connecting": "verbindet …",

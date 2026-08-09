@@ -878,6 +878,24 @@ fn active_opencode_path(app: &AppHandle) -> Result<Option<PathBuf>, String> {
     crate::environment_update::active_environment_executable(app, executable)
 }
 
+/// Windows accepts the extended `\\?\` prefix for filesystem APIs, but
+/// CreateProcess rejects it when used as the child process current directory.
+/// Workspace paths are canonicalized by Windows with that prefix, so normalize
+/// only the process-facing copy while keeping the on-disk path unchanged.
+fn process_current_dir(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let text = path.to_string_lossy();
+        if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{unc}"));
+        }
+        if let Some(normal) = text.strip_prefix(r"\\?\") {
+            return PathBuf::from(normal);
+        }
+    }
+    path.to_path_buf()
+}
+
 fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
     let root = runtime_root(app)?;
     let cfg = root.join("xdg-config");
@@ -947,14 +965,11 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
     // inherit connector secrets from this process environment.
     let secrets = crate::secret_store::sidecar_secrets(app)?;
 
+    let executable = active_opencode_path(app)?.ok_or_else(|| {
+        "基础环境尚未安装，请先配置基础环境后再启动运行环境".to_owned()
+    })?;
     let shell = app.shell();
-    let cmd = if let Some(path) = active_opencode_path(app)? {
-        shell.command(path.to_string_lossy().into_owned())
-    } else {
-        shell
-            .sidecar("opencode")
-            .map_err(|e| format!("sidecar not found: {e}"))?
-    }
+    let cmd = shell.command(executable.to_string_lossy().into_owned())
         .args(["serve", "--hostname", "127.0.0.1", "--port", port_str.as_str()])
         // Require auth on every request (P0-7): without a password the server
         // trusts ANY localhost-origin page (verified in the 1.17.13 source —
@@ -972,7 +987,7 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
         // the recording app version into provenance — they run outside the app
         // and can't otherwise know it.
         .env("ZEROWALL_APP_VERSION", app.package_info().version.to_string())
-        .current_dir(workspace);
+        .current_dir(process_current_dir(&workspace));
     // GUI-launched apps get a minimal PATH; give the agent the user's real tools.
     let mut cmd = cmd.env("PATH", enriched_path());
     // Apply the network-proxy setting so provider logins and API calls work
@@ -987,7 +1002,14 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
         cmd = cmd.env(name, value);
     }
 
-    let (mut rx, child) = cmd.spawn().map_err(|e| format!("failed to spawn opencode: {e}"))?;
+    let process_cwd = process_current_dir(&workspace);
+    let (mut rx, child) = cmd.spawn().map_err(|e| {
+        format!(
+            "failed to spawn opencode at {} (cwd {}): {e}",
+            executable.display(),
+            process_cwd.display()
+        )
+    })?;
     // Drain events so the child's stdout/stderr buffer never blocks it, AND record
     // the failure signals we used to discard. When the ad-hoc-signed sidecar dies
     // during bootstrap (TCC denial, config-merge abort, panic) the only symptom was
@@ -1241,8 +1263,8 @@ pub fn kill_child(state: &RuntimeState) {
 mod tests {
     use super::{
         auth_has_provider, initialize_project_runtime_dirs, materialize_skill_snapshots,
-        prepare_workspace_dir, prune_stale_skills, random_hex, remove_key_from_config,
-        resolve_proxy_env, sync_skill_pack, validate_proxy_url,
+        prepare_workspace_dir, process_current_dir, prune_stale_skills, random_hex,
+        remove_key_from_config, resolve_proxy_env, sync_skill_pack, validate_proxy_url,
         SKILL_RESOURCES,
     };
     use sha2::{Digest, Sha256};
@@ -1257,6 +1279,19 @@ mod tests {
         assert_eq!(
             root.join("opencode.exe"),
             root.join("opencode.exe")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn strips_extended_prefix_before_using_workspace_as_process_cwd() {
+        assert_eq!(
+            process_current_dir(std::path::Path::new(r"\\?\C:\workspaces\science")),
+            std::path::PathBuf::from(r"C:\workspaces\science")
+        );
+        assert_eq!(
+            process_current_dir(std::path::Path::new(r"\\?\UNC\server\share\science")),
+            std::path::PathBuf::from(r"\\server\share\science")
         );
     }
 
@@ -1730,7 +1765,7 @@ fn remove_key_from_config(text: &str, section: &str, key: &str) -> Result<String
     serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())
 }
 
-/// The current approval mode ("approve" | "full"). Spawn seeding guarantees a
+/// The current approval mode ("approve" | "help" | "full"). Spawn seeding guarantees a
 /// mode exists once the runtime has started; before that, report the default.
 #[tauri::command]
 pub fn get_approval_mode(app: AppHandle) -> Result<String, String> {

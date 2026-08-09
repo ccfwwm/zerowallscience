@@ -1,5 +1,6 @@
 {
   "nav": {
+    "account": "계정 및 AI 플랫폼",
     "back": "앱으로 돌아가기",
     "general": "일반",
     "appearance": "화면 모드",
@@ -12,6 +13,10 @@
     "privacy": "개인정보",
     "browser": "브라우저",
     "remote": "원격 접속"
+  },
+  "account": {
+    "title": "계정 및 AI 플랫폼",
+    "hint": "로그인하면 계정, 모델 및 제공자가 자동으로 동기화됩니다. 사용자 지정 제공자는 로그인하지 않아도 사용할 수 있습니다."
   },
   "appearance": {
     "title": "화면 모드",
@@ -205,8 +210,6 @@
     "connected": "모델 {{count}}개를 연결했습니다. 모델에서 하나를 선택하세요.",
     "pickOne": "모델을 하나 이상 선택하세요.",
     "noModels": "게이트웨이가 이 계정에 대해 모델을 반환하지 않았습니다.",
-    "selectGroup": "그룹 선택",
-    "groupHint": "그룹마다 사용 가능한 모델이 다를 수 있습니다",
     "creatingKey": "키 생성 중…",
     "keyExists": "키 있음",
     "manualPlaceholder": "모델 ID 직접 추가 — 쉼표로 구분",
@@ -361,6 +364,7 @@
     "couldNotFetchModels": "엔드포인트에서 모델을 가져올 수 없습니다",
     "endpointFieldsRequired": "이름, 기본 URL, 그리고 최소 하나의 모델 ID가 필요합니다.",
     "endpointAdded": "{{name}}이(가) 추가되었습니다 — 이제 위에서 해당 모델을 선택할 수 있습니다.",
+    "endpointSaved": "{{name}}이(가) 저장되었으며 런타임이 준비되면 활성화됩니다.",
     "couldNotAddMcp": "MCP 서버를 추가할 수 없습니다",
     "mcpFieldsRequired": "이름과 명령/URL이 필요합니다.",
     "mcpAdded": "MCP 서버 {{name}}이(가) 추가되었습니다",

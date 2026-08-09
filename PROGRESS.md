@@ -1,5 +1,39 @@
 # Progress
 
+2026-08-09 14:00 · Released ZeroWall Science 1.0.10 to Qiniu, verified the public latest manifest and installer at 12,240,211 bytes with SHA-256 ADB9855ECDB6D28549E1679660997FC568C8A8FEF85F8EB400926ECA49315250.
+
+2026-08-09 12:03 · Removed model-group allow-listing so every account-visible group is provisioned through neutral per-group routes, updated ACP in-place model-switch regression coverage, and restored locale key parity; frontend and Rust test suites pass.
+
+2026-08-09 09:02 · Fixed transient Windows environment-install access denials with a shared retry policy and path-specific diagnostics, verified a clean Qiniu install plus 417 desktop Rust and 14 bootstrapper tests, and rebuilt ZeroWall Science 1.0.6 NSIS (SHA-256 8E39AA510A1CA01C84AEB3F1F1F053FB3048194BD1F1F50BB4F35141021F2ABB).
+
+2026-08-09 08:10 · Verified a clean Qiniu environment download/install in a fresh Windows directory, confirmed the access-denied hardening and active-environment recovery tests, and rebuilt ZeroWall Science 1.0.6 NSIS (SHA-256 E7293B18AF99788E946514995E224C283EB90B4B56A917508DB38C6ADF2468D1).
+
+2026-08-09 07:35 · Hardened desktop and bootstrapper environment extraction/download writes with Windows permission retries and path-specific diagnostics; Rust tests, desktop typecheck, and the 1.0.6 NSIS build pass (SHA-256 478812D04A0F97911F07E5464B6803159F6D619F8DB4C3BD963573D5CF737B9C).
+
+2026-08-09 07:01 · Rebuilt the 1.0.6 NSIS after the environment access-denied hardening; Rust and bootstrapper tests pass, and the UI now maps exhausted Windows file-lock retries to an actionable Chinese message. Installer SHA-256 is A5A823C129443F5CF077962772B694FDF3D360F5FAB6702839D59CCC3D84C754.
+
+2026-08-09 05:29 · Rebuilt the final ZeroWall Science 1.0.6 NSIS after verifying Windows locked-environment reuse and 29 environment UI tests; installer SHA-256 is 9D021CDB5531CBFF35652073F516E7473390397CEC00A8DD9B6F1A6B95F08024.
+
+2026-08-09 05:20 · Fixed restored ACP sessions launching against the wrong active workspace by exposing cross-workspace catalog metadata, persisting binding-root directory fallbacks, and switching to the immutable session root before Host launch.
+
+2026-08-09 05:05 · Built ZeroWall Science 1.0.6 NSIS with the Windows active-environment reuse fix; the installer is 12,200,132 bytes with SHA-256 41D32DA932491EACB353259ED34A43ECB9A214A51E482504511EC5FA91E929EF.
+
+2026-08-09 05:00 · Confirmed the reported access denial came from the installed pre-fix 1.0.5 build replacing an active same-version environment, added desktop same-version reuse coverage, and prepared the 1.0.6 release version.
+
+2026-08-09 04:10 · Verified the Windows base-environment access-denied fix against the installed same-version runtime, rebuilt the 1.0.5 NSIS installer, and smoke-tested runtime startup plus three-group ACP provisioning.
+
+2026-08-09 03:45 · Rebuilt Windows 1.0.5 NSIS and the standalone environment bootstrapper with the access-denied fixes; focused frontend/Rust tests, bootstrapper Clippy, and release builds passed.
+
+2026-08-09 03:40 · Fixed Windows base-environment reinstall access denial by reusing a complete same-version directory after health checks instead of deleting an active runtime; added a red-green bootstrapper regression test.
+
+2026-08-09 03:15 · Rebuilt Windows NSIS installer after the extended-path runtime fix, queued-provider persistence, and capability palette changes; typecheck, runtime tests, focused Vitest suite, and NSIS build all passed.
+
+2026-08-09 03:10 · Fixed Windows ACP/OpenCode startup `os error 2`: canonical workspaces use `\\?\\` paths that CreateProcess rejects as current directories; runtime now normalizes process CWDs and reports executable/CWD on spawn failures. Added queued-provider persistence tests and capability-specific Composer palette triggers.
+
+2026-08-09 02:45 · Hardened environment downloads against Windows access-denied locks by retrying package open/delete, staging directory preparation, and current-state staging writes with path-aware errors; targeted Rust tests pass.
+
+2026-08-09 02:15 · Hardened Windows environment activation against transient access-denied locks by retrying stale payload cleanup and current.json replacement in both installers; targeted desktop and bootstrapper tests pass.
+
 2026-08-09 01:35 · Diagnosed Windows error 5 at staging-to-version activation, added bounded rename retries and path-aware errors to both installers, reproduced a successful clean install, and published app 1.0.5 plus environment env-2026.08.09.010554.
 
 2026-08-09 01:10 · Released 1.0.4 to Qiniu with a 2 GiB environment extraction ceiling, first-run progress UI, startup update checks, and release notes in the upgrade dialog; public installer verification passed.
@@ -970,3 +1004,7 @@
 2026-07-02 08:05 · Slice #1 (UI shell + static workspace) built browser-first: pnpm workspace + Vite/React/TS/Tailwind/Radix. Three-column Claude-Science-style UI (sessions sidebar / thread / contextual inspector) with warm paper theme, reproducing all three reference screenshots (figure+artifact, table+notebook, literature+PDF) from mock data. Settings has fillable, empty API-key fields with Hermes as runtime. Verified on Mac: typecheck ✓, eslint ✓, 19 vitest tests ✓, vite build ✓; screenshots confirmed against references.
 
 2026-07-02 07:04 · Initialized project skeleton: monorepo directory tree (apps / packages / runtime / docs / examples / scripts), AGENTS.md + CLAUDE.md symlink, README, MIT LICENSE, .gitignore, and English PRD + TECHNICAL_DESIGN docs. No build tooling yet.
+2026-08-09 09:22 Engine/model switching now uses immutable ACP session bindings: engine changes transparently clone the current thread into a new Host session, model choices are filtered by engine, and raw ACP errors are mapped to concise user-facing messages; desktop typecheck, EnginePicker tests, and ACP runtime tests pass.
+2026-08-09 09:50 Fixed cross-engine ACP session reuse by generating a new session when the persisted binding belongs to another engine; removed the large connection error panel and composer selection snapshot for a compact Wisp-style surface; typecheck passed.
+2026-08-09 10:12 Restored Codex custom gateway configuration in the unified ACP Host and loaded the provider catalog before adapter handshake; ACP Host tests and desktop typecheck passed.
+2026-08-09 10:18 Published ZeroWall Science 1.0.9 to Qiniu; public installer size and SHA-256 match releases/latest.json.

@@ -18,7 +18,7 @@ import type {
   ProviderInfo,
 } from "@zerowall/sdk";
 import { useTranslation } from "react-i18next";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useUiStore, ZOOM_MAX, ZOOM_MIN } from "@/lib/store";
 import { shippedLocales } from "@/i18n/config";
 import {
@@ -56,6 +56,7 @@ import {
   setMirrorSetting,
   type MirrorSetting,
   probeEndpointModels,
+  ensureControlRuntime,
   type ProbedModel,
 } from "@/lib/tauri";
 import { useSetupStore } from "@/lib/setup";
@@ -85,6 +86,7 @@ import {
 } from "@/lib/browser";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
+import { queuePendingProvider, removePendingProvider } from "@/lib/pending-providers";
 
 /** Strip the "provider/" prefix from a model key for display. */
 const displayModel = (key: string | null | undefined) =>
@@ -94,6 +96,7 @@ const displayModel = (key: string | null | undefined) =>
 export function SettingsPage() {
   // Which settings section is on screen — the sidebar is the navigation.
   const section = resolveSection(useParams().section);
+  const [searchParams] = useSearchParams();
   const theme = useUiStore((s) => s.theme);
   const setTheme = useUiStore((s) => s.setTheme);
   const locale = useUiStore((s) => s.locale);
@@ -216,7 +219,12 @@ export function SettingsPage() {
   const modelControlsBusy = busy || switching;
 
   // Custom endpoint form (self-hosted / Ollama / OpenAI- or Anthropic-compatible).
-  const [showCustom, setShowCustom] = useState(false);
+  const [showCustom, setShowCustom] = useState(
+    () => searchParams.get("add") === "provider",
+  );
+  useEffect(() => {
+    if (searchParams.get("add") === "provider") setShowCustom(true);
+  }, [searchParams]);
   const [cName, setCName] = useState("");
   // Default to the current OpenAI Responses protocol; the legacy Chat
   // Completions adapter stays available for gateways that only speak it.
@@ -232,7 +240,9 @@ export function SettingsPage() {
   const [cContexts, setCContexts] = useState<Record<string, number>>({});
 
   // Connect-a-provider flow state.
-  const [providerManagerOpen, setProviderManagerOpen] = useState(false);
+  const [providerManagerOpen, setProviderManagerOpen] = useState(
+    () => searchParams.get("add") === "provider",
+  );
   const [connectQuery, setConnectQuery] = useState("");
   const [keyInput, setKeyInput] = useState("");
   const [bedrockRegion, setBedrockRegion] = useState("");
@@ -556,19 +566,57 @@ export function SettingsPage() {
         const ctx = cContexts[m] ?? (Number.isFinite(typedCtx) && typedCtx > 0 ? typedCtx : 0);
         if (ctx > 0) contexts[m] = ctx;
       }
-      const control = getProviderControlClient();
-      if (!control) throw new Error(t("providers.connectPrompt"));
       // Store the secret first; the Rust command restarts the sidecar and the
       // typed Host write then sees only a keychain-backed credential reference.
       if (cKey.trim()) await setProviderSecret(id, cKey.trim());
-      await control.addCustomProvider(id, {
+      const request = {
         name: cName.trim(),
         npm: cNpm,
         baseURL: cUrl.trim(),
         models,
         contexts,
-      });
-      toast.success(t("toast.endpointAdded", { name: cName.trim() }));
+      };
+      const control = getProviderControlClient();
+      if (!control) throw new Error(t("providers.connectPrompt"));
+      // ACP mode intentionally keeps Claude Code/Codex as the active chat
+      // engine, but provider/catalog management is still served by the local
+      // OpenCode control sidecar. Start it explicitly so a signed-out user can
+      // add a custom endpoint without first logging in or switching engines.
+      if (isTauri && !isGatewayWeb) await ensureControlRuntime();
+      let applied = false;
+      const runtimeUnavailable = (error: unknown) =>
+        /runtime is not running|运行时未运行|未连接运行环境|基础环境尚未安装|failed to spawn|engine unavailable|引擎不可用/i.test(
+          error instanceof Error ? error.message : String(error),
+        );
+      try {
+        await control.addCustomProvider(id, request);
+        removePendingProvider(id);
+        applied = true;
+      } catch (error) {
+        // A custom provider is local configuration and must not depend on an
+        // AI Platform account. If the runtime is merely stopped, start it and
+        // apply the same validated request once; the API key remains in the
+        // OS keychain and never enters the provider snapshot.
+        if (!runtimeUnavailable(error)) throw error;
+        queuePendingProvider({ id, options: request });
+        await useRuntimeStore.getState().bootstrap();
+        const retryControl = getProviderControlClient();
+        if (retryControl) {
+          try {
+            await retryControl.addCustomProvider(id, request);
+            removePendingProvider(id);
+            applied = true;
+          } catch (retryError) {
+            // Keep the metadata queued for the next successful runtime connect;
+            // never discard a provider merely because the environment is still
+            // being installed or the process is temporarily unavailable.
+            if (!runtimeUnavailable(retryError)) throw retryError;
+          }
+        }
+      }
+      toast.success(
+        t(applied ? "toast.endpointAdded" : "toast.endpointSaved", { name: cName.trim() }),
+      );
       setShowCustom(false);
       setCName("");
       setCUrl("");
@@ -869,6 +917,15 @@ export function SettingsPage() {
         </Section>
         )}
 
+        {/* ---- Account ---- */}
+        {section === "account" && (
+          <Section title={t("account.title")} hint={t("account.hint")}>
+            <div className="px-4 py-4">
+              <Sub2ApiCard bare />
+            </div>
+          </Section>
+        )}
+
         {/* ---- Models ---- */}
         {section === "models" && (
         <>
@@ -939,7 +996,7 @@ export function SettingsPage() {
           expanded={providerManagerOpen}
           onExpandedChange={setProviderManagerOpen}
         >
-          {!connected ? (
+          {!connected && !showCustom ? (
             <p className="px-4 py-3 text-[13px] text-muted">{t("providers.connectPrompt")}</p>
           ) : (
             <>

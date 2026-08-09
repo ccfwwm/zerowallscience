@@ -1,5 +1,4 @@
-import { act, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderAt } from "@/test/render";
 import { setGatewayToken, clearGatewayToken } from "@/lib/webMode";
@@ -35,28 +34,28 @@ describe("Live session surface where tiling cannot work", () => {
     expect(screen.getByRole("button", { name: "Switch model" })).toBeInTheDocument();
   });
 
-  it("keeps desktop tiling controls inside the pane actions menu", async () => {
-    const initialGroupId = useLayoutStore.getState().activeGroupId;
+  it("uses one desktop conversation workspace without screen or split controls", async () => {
+    useLayoutStore.getState().addGroup();
     renderAt("/live");
-    const actions = await screen.findByRole("button", { name: "Pane actions" });
+
+    expect(await screen.findByLabelText("Ask anything")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pane actions" })).toBeNull();
     expect(screen.queryByLabelText(SPLIT_RIGHT)).toBeNull();
     expect(screen.queryByLabelText(SPLIT_DOWN)).toBeNull();
     expect(screen.queryByLabelText("Zoom this pane")).toBeNull();
     expect(screen.queryByLabelText("New screen")).toBeNull();
+  });
 
-    await userEvent.click(actions);
-    expect(screen.getByRole("menuitem", { name: "New screen" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: SPLIT_RIGHT })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: SPLIT_DOWN })).toBeInTheDocument();
-    expect(screen.getByText("100%")).toBeInTheDocument();
+  it("ignores the legacy new-screen and split-pane shortcuts", async () => {
+    window.history.pushState({}, "", "/live");
+    renderAt("/live");
+    await screen.findByLabelText("Ask anything");
+    const before = useLayoutStore.getState().groups.length;
 
-    await userEvent.click(screen.getByRole("menuitem", { name: "New screen" }));
-    expect(screen.getByLabelText("New screen")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "t", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "d", ctrlKey: true });
 
-    act(() => {
-      useLayoutStore.getState().closeGroup(useLayoutStore.getState().activeGroupId);
-    });
-    expect(useLayoutStore.getState().activeGroupId).toBe(initialGroupId);
+    expect(useLayoutStore.getState().groups).toHaveLength(before);
   });
 
   it("shows a phone one session at a time, with no way to tile it", async () => {

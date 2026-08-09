@@ -7,6 +7,7 @@
     "settings": "설정",
     "home": "홈으로",
     "signIn": "로그인",
+    "platform": "AI 플랫폼",
     "account": "계정",
     "recharge": "충전",
     "lowBalance": "잔액 부족 — 충전하세요"
@@ -47,6 +48,7 @@
   "history": {
     "heading": "세션",
     "empty": "아직 대화가 없습니다.",
+    "newConversation": "새 대화",
     "exampleTag": "예제",
     "deleteAria": "{{title}} 삭제",
     "running": "작업 중"

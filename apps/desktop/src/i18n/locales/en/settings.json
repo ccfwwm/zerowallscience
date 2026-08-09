@@ -1,5 +1,6 @@
 {
   "nav": {
+    "account": "Account & AI Platform",
     "back": "Back to app",
     "general": "General",
     "appearance": "Appearance",
@@ -35,6 +36,10 @@
   "page": {
     "title": "Settings",
     "subtitle": "Manage engines, models, and local runtime behavior in one place."
+  },
+  "account": {
+    "title": "Account & AI Platform",
+    "hint": "Sign in to sync your account, models, and providers automatically. Custom providers also work without signing in."
   },
   "runtime": {
     "title": "Agent runtime",
@@ -206,8 +211,6 @@
     "connected": "{{count}} model(s) connected. Pick one in Models.",
     "pickOne": "Select at least one model.",
     "noModels": "The gateway listed no models for this account.",
-    "selectGroup": "Select a group",
-    "groupHint": "Different groups may have different models",
     "creatingKey": "Creating key…",
     "keyExists": "Key exists",
     "manualPlaceholder": "Add model ids by hand — comma-separated",
@@ -362,6 +365,7 @@
     "couldNotFetchModels": "Could not fetch models from the endpoint",
     "endpointFieldsRequired": "Name, base URL and at least one model id are required.",
     "endpointAdded": "{{name}} added — its models are now selectable above.",
+    "endpointSaved": "{{name}} saved and will be enabled when the runtime is ready.",
     "couldNotAddMcp": "Could not add the MCP server",
     "mcpFieldsRequired": "Name and command/URL are required.",
     "mcpAdded": "MCP server {{name}} added",

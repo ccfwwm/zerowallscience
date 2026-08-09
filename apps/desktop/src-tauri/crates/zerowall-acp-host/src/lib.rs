@@ -491,6 +491,40 @@ struct PendingMcpPermission {
     reject_option_id: Option<String>,
 }
 
+const CONVERSATION_TITLE_LIMIT: usize = 42;
+
+fn generated_conversation_title(prompt: &str) -> Option<String> {
+    let normalized = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        return None;
+    }
+    let mut chars = normalized.chars();
+    let head = chars
+        .by_ref()
+        .take(CONVERSATION_TITLE_LIMIT)
+        .collect::<String>();
+    Some(if chars.next().is_some() {
+        format!("{head}…")
+    } else {
+        head
+    })
+}
+
+fn session_directory(state: &SessionState, binding: &AgentBinding) -> Option<String> {
+    state
+        .directory
+        .clone()
+        .filter(|directory| !directory.trim().is_empty())
+        .or_else(|| Some(binding.project_root.clone()))
+}
+
+fn unix_timestamp() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 pub struct AcpHost {
     pending_drivers: HashMap<HostDriverKind, Box<dyn AcpHostDriver>>,
     sessions: HashMap<String, SessionEntry>,
@@ -568,6 +602,8 @@ impl AcpHost {
             .remove(&kind)
             .ok_or(HostError::DriverNotRegistered { kind })?;
         let state = driver.new_session(request.clone()).await?;
+        let directory = session_directory(&state, &binding);
+        let created = state.created.or_else(|| Some(unix_timestamp()));
         let state = SessionState {
             id: state.id.clone(),
             binding: binding.clone(),
@@ -575,10 +611,10 @@ impl AcpHost {
             resumable: state.resumable,
             backing_session_id: state.backing_session_id,
             title: state.title.clone(),
-            directory: state.directory.clone(),
+            directory: directory.clone(),
             parent_id: state.parent_id.clone(),
-            created: state.created,
-            updated: state.updated,
+            created,
+            updated: state.updated.or(created),
         };
         self.sessions.insert(
             state.id.clone(),
@@ -590,7 +626,7 @@ impl AcpHost {
                 turn_started: false,
                 resumable: state.resumable,
                 title: state.title.clone(),
-                directory: state.directory.clone(),
+                directory,
                 parent_id: state.parent_id.clone(),
                 created: state.created,
                 updated: state.updated,
@@ -624,6 +660,7 @@ impl AcpHost {
             .remove(&kind)
             .ok_or(HostError::DriverNotRegistered { kind })?;
         let state = driver.load_session(request.clone()).await?;
+        let directory = session_directory(&state, &binding);
         let state = SessionState {
             id: state.id.clone(),
             binding: binding.clone(),
@@ -631,7 +668,7 @@ impl AcpHost {
             resumable: state.resumable,
             backing_session_id: state.backing_session_id,
             title: state.title.clone(),
-            directory: state.directory.clone(),
+            directory: directory.clone(),
             parent_id: state.parent_id.clone(),
             created: state.created,
             updated: state.updated,
@@ -646,7 +683,7 @@ impl AcpHost {
                 turn_started: false,
                 resumable: state.resumable,
                 title: state.title.clone(),
-                directory: state.directory.clone(),
+                directory,
                 parent_id: state.parent_id.clone(),
                 created: state.created,
                 updated: state.updated,
@@ -679,6 +716,7 @@ impl AcpHost {
             .remove(&kind)
             .ok_or(HostError::DriverNotRegistered { kind })?;
         let state = driver.resume_session(request).await?;
+        let directory = session_directory(&state, &binding);
         let state = SessionState {
             id: state.id.clone(),
             binding: binding.clone(),
@@ -686,7 +724,7 @@ impl AcpHost {
             resumable: state.resumable,
             backing_session_id: state.backing_session_id,
             title: state.title.clone(),
-            directory: state.directory.clone(),
+            directory: directory.clone(),
             parent_id: state.parent_id.clone(),
             created: state.created,
             updated: state.updated,
@@ -701,7 +739,7 @@ impl AcpHost {
                 turn_started: false,
                 resumable: state.resumable,
                 title: state.title.clone(),
-                directory: state.directory.clone(),
+                directory,
                 parent_id: state.parent_id.clone(),
                 created: state.created,
                 updated: state.updated,
@@ -895,6 +933,7 @@ impl AcpHost {
             })?;
         let caps = driver.capabilities();
         Self::require(entry.kind, "prompt", caps.prompt)?;
+        let title = generated_conversation_title(&prompt);
         let response = driver
             .prompt(PromptRequest {
                 session_id,
@@ -902,6 +941,10 @@ impl AcpHost {
                 attachments,
             })
             .await?;
+        if entry.title.as_deref().is_none_or(str::is_empty) {
+            entry.title = title;
+        }
+        entry.updated = Some(unix_timestamp());
         entry.turn_started = true;
         entry.state = SessionStatus::Busy;
         Ok(response)
@@ -1884,6 +1927,57 @@ mod tests {
             block_on(host.set_config("s1", json!({"model":"gpt-5.4"}))),
             Err(HostError::BindingConflict { field }) if field == "model"
         ));
+    }
+
+    #[test]
+    fn host_uses_the_project_root_as_session_directory() {
+        let (driver, _) = fake(DriverCapabilities {
+            new_session: true,
+            ..Default::default()
+        });
+        let mut host = AcpHost::new();
+        host.register_driver(HostDriverKind::Codex, Box::new(driver));
+
+        let session = block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s1".into(),
+            },
+            binding(HostDriverKind::Codex, "gpt", "C:/project"),
+        ))
+        .unwrap();
+
+        assert_eq!(session.directory.as_deref(), Some("C:/project"));
+        assert_eq!(host.list_sessions()[0].directory.as_deref(), Some("C:/project"));
+    }
+
+    #[test]
+    fn first_prompt_generates_a_short_stable_conversation_title() {
+        let (driver, _) = fake(DriverCapabilities {
+            new_session: true,
+            prompt: true,
+            ..Default::default()
+        });
+        let mut host = AcpHost::new();
+        host.register_driver(HostDriverKind::Codex, Box::new(driver));
+        block_on(host.new_session(
+            NewSessionRequest {
+                session_id: "s1".into(),
+            },
+            binding(HostDriverKind::Codex, "gpt", "C:/project"),
+        ))
+        .unwrap();
+
+        block_on(host.prompt(
+            "s1".into(),
+            "  Analyze   the project\nworkflow and produce a release-ready implementation plan with evidence  ".into(),
+            Vec::new(),
+        ))
+        .unwrap();
+        let first_title = host.list_sessions()[0].title.clone().unwrap();
+        assert_eq!(first_title, "Analyze the project workflow and produce a…");
+
+        block_on(host.prompt("s1".into(), "replace the title".into(), Vec::new())).unwrap();
+        assert_eq!(host.list_sessions()[0].title.as_deref(), Some(first_title.as_str()));
     }
 
     #[test]

@@ -477,8 +477,18 @@ impl EnvironmentLayout {
     }
 
     fn prepare(&self) -> Result<(), EnvironmentUpdateError> {
-        fs::create_dir_all(self.versions())?;
-        fs::create_dir_all(self.staging())?;
+        create_dir_all_with_retry(&self.versions()).map_err(|error| {
+            EnvironmentUpdateError::Download(format!(
+                "prepare versions directory {}: {error}",
+                self.versions().display()
+            ))
+        })?;
+        create_dir_all_with_retry(&self.staging()).map_err(|error| {
+            EnvironmentUpdateError::Download(format!(
+                "prepare staging directory {}: {error}",
+                self.staging().display()
+            ))
+        })?;
         Ok(())
     }
 
@@ -648,7 +658,12 @@ impl HttpPackageDownloader {
         } else {
             options.truncate(true);
         }
-        let mut output = options.open(target)?;
+        let mut output = open_with_retry(&options, target).map_err(|error| {
+            EnvironmentUpdateError::Download(format!(
+                "open download file {}: {error}",
+                target.display()
+            ))
+        })?;
         loop {
             let next = response.chunk();
             tokio::pin!(next);
@@ -911,7 +926,12 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
         let manifest = validate_manifest(manifest.clone())?;
         self.layout.prepare()?;
         let staging = self.layout.staging().join(&manifest.version);
-        fs::create_dir_all(&staging)?;
+        create_dir_all_with_retry(&staging).map_err(|error| {
+            EnvironmentUpdateError::Download(format!(
+                "prepare version staging directory {}: {error}",
+                staging.display()
+            ))
+        })?;
         self.status = EnvironmentUpdateStatus {
             phase: EnvironmentUpdatePhase::Downloading,
             version: Some(manifest.version.clone()),
@@ -978,10 +998,25 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
             .as_ref()
             .map(|control| Arc::clone(&control.cancel_requested));
         if payload.exists() {
-            fs::remove_dir_all(&payload)?;
+            remove_dir_all_with_retry(&payload).map_err(|error| {
+                EnvironmentUpdateError::Download(format!(
+                    "clear stale payload {}: {error}",
+                    payload.display()
+                ))
+            })?;
         }
-        fs::create_dir(&payload)?;
-        fs::create_dir_all(&downloads)?;
+        create_dir_all_with_retry(&payload).map_err(|error| {
+            EnvironmentUpdateError::Download(format!(
+                "create extraction directory {}: {error}",
+                payload.display()
+            ))
+        })?;
+        create_dir_all_with_retry(&downloads).map_err(|error| {
+            EnvironmentUpdateError::Download(format!(
+                "create download directory {}: {error}",
+                downloads.display()
+            ))
+        })?;
         for component in &manifest.components {
             self.ensure_not_cancelled()?;
             let package = downloads.join(format!("{}.package", component.id));
@@ -991,7 +1026,12 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
                         .map(|metadata| metadata.len() >= expected)
                         .unwrap_or(false)
                 }) {
-                    fs::remove_file(&package)?;
+                    remove_file_with_retry(&package).map_err(|error| {
+                        EnvironmentUpdateError::Download(format!(
+                            "remove incomplete download {}: {error}",
+                            package.display()
+                        ))
+                    })?;
                 }
                 self.downloader
                     .download_to(&component.url, &package, component.size_bytes)?;
@@ -1022,10 +1062,14 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
             self.ensure_not_cancelled()?;
         }
         self.ensure_not_cancelled()?;
-        fs::write(
-            payload.join(VERSION_METADATA),
-            serde_json::to_vec_pretty(manifest)?,
-        )?;
+        let metadata_path = payload.join(VERSION_METADATA);
+        write_file_with_retry(&metadata_path, &serde_json::to_vec_pretty(manifest)?)
+            .map_err(|error| {
+                EnvironmentUpdateError::Download(format!(
+                    "write environment manifest {}: {error}",
+                    metadata_path.display()
+                ))
+            })?;
         self.report_phase(EnvironmentUpdatePhase::Installing, None);
         self.run_health_checks(&payload, &manifest.health_checks)?;
         self.ensure_not_cancelled()?;
@@ -1147,16 +1191,68 @@ pub fn environment_executable_candidates(root: &Path, executable: &str) -> [Path
     ]
 }
 
+fn resolve_active_environment_executable(
+    layout: &EnvironmentLayout,
+    executable: &str,
+) -> Result<Option<PathBuf>, EnvironmentUpdateError> {
+    let current = layout.read_current().ok().flatten();
+    if let Some(active) = current.as_ref() {
+        let active_root = layout.versions().join(&active.current_version);
+        if let Some(path) = environment_executable_candidates(&active_root, executable)
+            .into_iter()
+            .find(|path| path.is_file())
+        {
+            return Ok(Some(path));
+        }
+    }
+
+    if !layout.versions().is_dir() {
+        return Ok(None);
+    }
+    let mut versions = fs::read_dir(layout.versions())?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_dir())
+        .collect::<Vec<_>>();
+    versions.sort_by_key(|entry| std::cmp::Reverse(entry.file_name()));
+
+    for entry in versions {
+        let version_dir = entry.path();
+        let Ok(manifest) = read_version_manifest(&version_dir) else {
+            continue;
+        };
+        if entry.file_name().to_string_lossy() != manifest.version {
+            continue;
+        }
+        let Some(path) = environment_executable_candidates(&version_dir, executable)
+            .into_iter()
+            .find(|path| path.is_file())
+        else {
+            continue;
+        };
+        let previous_version = current
+            .as_ref()
+            .filter(|state| state.current_version != manifest.version)
+            .map(|state| state.current_version.clone())
+            .or_else(|| current.as_ref().and_then(|state| state.previous_version.clone()));
+        write_current_atomic(
+            &layout.current(),
+            &CurrentEnvironment {
+                current_version: manifest.version,
+                previous_version,
+                installed_at: now_epoch_millis(),
+            },
+        )?;
+        return Ok(Some(path));
+    }
+    Ok(None)
+}
+
 pub fn active_environment_executable(
     app: &tauri::AppHandle,
     executable: &str,
 ) -> Result<Option<PathBuf>, String> {
-    let Some(root) = active_environment_root(app)? else {
-        return Ok(None);
-    };
-    Ok(environment_executable_candidates(&root, executable)
-        .into_iter()
-        .find(|path| path.is_file()))
+    let layout = app_environment_layout(app)?;
+    resolve_active_environment_executable(&layout, executable).map_err(|error| error.to_string())
 }
 
 pub fn environment_target_triple() -> Result<&'static str, String> {
@@ -1479,13 +1575,21 @@ fn copy_new(
     cancel_requested: Option<&AtomicBool>,
 ) -> Result<(), EnvironmentUpdateError> {
     if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)?;
+        create_dir_all_with_retry(parent).map_err(|error| {
+            EnvironmentUpdateError::Download(format!(
+                "create extraction parent {}: {error}",
+                parent.display()
+            ))
+        })?;
     }
-    let mut input = File::open(source)?;
-    let mut output = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(target)?;
+    let mut input = File::open(source).map_err(|error| {
+        EnvironmentUpdateError::Download(format!("open package {}: {error}", source.display()))
+    })?;
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    let mut output = open_with_retry(&options, target).map_err(|error| {
+        EnvironmentUpdateError::Download(format!("create extracted file {}: {error}", target.display()))
+    })?;
     copy_stream(&mut input, &mut output, cancel_requested)?;
     output.sync_all()?;
     Ok(())
@@ -1544,17 +1648,16 @@ fn extract_zip(
         }
         let target = payload.join(&relative);
         if entry.is_dir() {
-            fs::create_dir_all(&target)
+            create_dir_all_with_retry(&target)
                 .map_err(|error| EnvironmentUpdateError::Download(format!("extract directory {}: {error}", relative.display())))?;
         } else if entry.is_file() {
             if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent)
+                create_dir_all_with_retry(parent)
                     .map_err(|error| EnvironmentUpdateError::Download(format!("extract parent {}: {error}", parent.display())))?;
             }
-            let mut output = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&target)
+            let mut options = OpenOptions::new();
+            options.write(true).create_new(true);
+            let mut output = open_with_retry(&options, &target)
                 .map_err(|error| EnvironmentUpdateError::Download(format!("extract {}: {error}", relative.display())))?;
             copy_stream(&mut entry, &mut output, cancel_requested)
                 .map_err(|error| match error {
@@ -1601,17 +1704,16 @@ fn extract_tar_gz(
         }
         let target = payload.join(&relative);
         if entry_type.is_dir() {
-            fs::create_dir_all(&target)
+            create_dir_all_with_retry(&target)
                 .map_err(|error| EnvironmentUpdateError::Download(format!("extract directory {}: {error}", relative.display())))?;
         } else if entry_type.is_file() {
             if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent)
+                create_dir_all_with_retry(parent)
                     .map_err(|error| EnvironmentUpdateError::Download(format!("extract parent {}: {error}", parent.display())))?;
             }
-            let mut output = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&target)
+            let mut options = OpenOptions::new();
+            options.write(true).create_new(true);
+            let mut output = open_with_retry(&options, &target)
                 .map_err(|error| EnvironmentUpdateError::Download(format!("extract {}: {error}", relative.display())))?;
             copy_stream(&mut entry, &mut output, cancel_requested)
                 .map_err(|error| match error {
@@ -1634,17 +1736,29 @@ fn write_current_atomic(
     let parent = path.parent().ok_or_else(|| {
         EnvironmentUpdateError::InvalidManifest("current path has no parent".into())
     })?;
-    fs::create_dir_all(parent)?;
+    create_dir_all_with_retry(parent).map_err(|error| {
+        EnvironmentUpdateError::Download(format!(
+            "prepare current state directory {}: {error}",
+            parent.display()
+        ))
+    })?;
     let staging = parent.join(format!("current-{}.json.tmp", unique_nonce()));
     {
-        let mut file = OpenOptions::new()
+        let mut options = OpenOptions::new();
+        options
             .write(true)
             .create_new(true)
-            .open(&staging)?;
+            ;
+        let mut file = open_with_retry(&options, &staging).map_err(|error| {
+            EnvironmentUpdateError::Download(format!(
+                "open current state staging file {}: {error}",
+                staging.display()
+            ))
+        })?;
         file.write_all(&serde_json::to_vec_pretty(state)?)?;
         file.sync_all()?;
     }
-    if let Err(error) = replace_file_atomic(&staging, path) {
+    if let Err(error) = replace_file_atomic_with_retry(&staging, path) {
         let _ = fs::remove_file(&staging);
         return Err(error.into());
     }
@@ -1652,16 +1766,64 @@ fn write_current_atomic(
 }
 
 fn rename_with_retry(source: &Path, target: &Path) -> std::io::Result<()> {
-    for attempt in 0..60 {
-        match fs::rename(source, target) {
-            Ok(()) => return Ok(()),
-            Err(error) if cfg!(windows) && error.kind() == std::io::ErrorKind::PermissionDenied && attempt < 59 => {
-                thread::sleep(Duration::from_millis(500));
+    retry_windows_permission(|| fs::rename(source, target))
+}
+
+fn retry_windows_permission_with_policy<F, T, S>(
+    mut operation: F,
+    max_attempts: usize,
+    mut sleep: S,
+) -> std::io::Result<T>
+where
+    F: FnMut() -> std::io::Result<T>,
+    S: FnMut(Duration),
+{
+    assert!(max_attempts > 0, "max_attempts must be positive");
+    for attempt in 0..max_attempts {
+        match operation() {
+            Ok(value) => return Ok(value),
+            Err(error)
+                if cfg!(windows)
+                    && error.kind() == std::io::ErrorKind::PermissionDenied
+                    && attempt + 1 < max_attempts =>
+            {
+                sleep(Duration::from_millis(500));
             }
             Err(error) => return Err(error),
         }
     }
     unreachable!()
+}
+
+fn retry_windows_permission<F, T>(operation: F) -> std::io::Result<T>
+where
+    F: FnMut() -> std::io::Result<T>,
+{
+    retry_windows_permission_with_policy(operation, 60, thread::sleep)
+}
+
+fn create_dir_all_with_retry(path: &Path) -> std::io::Result<()> {
+    retry_windows_permission(|| fs::create_dir_all(path))
+}
+
+fn remove_file_with_retry(path: &Path) -> std::io::Result<()> {
+    retry_windows_permission(|| fs::remove_file(path))
+}
+
+fn open_with_retry(options: &OpenOptions, path: &Path) -> std::io::Result<File> {
+    retry_windows_permission(|| options.open(path))
+}
+
+fn write_file_with_retry(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    retry_windows_permission(|| fs::write(path, bytes))
+}
+
+fn remove_dir_all_with_retry(path: &Path) -> std::io::Result<()> {
+    retry_windows_permission(|| fs::remove_dir_all(path))
+}
+
+fn replace_file_atomic_with_retry(source: &Path, target: &Path) -> std::io::Result<()> {
+    retry_windows_permission(|| replace_file_atomic(source, target))
 }
 
 #[cfg(not(windows))]
@@ -2103,6 +2265,45 @@ mod tests {
             serde_json::from_slice(&fs::read(root.join("environment/current.json")).unwrap())
                 .unwrap();
         assert_eq!(persisted.current_version, "v1");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reuses_a_healthy_same_version_without_replacing_running_files() {
+        let root = temp_root("reuse-active-version");
+        let bytes = b"tool-v1";
+        let manifest = verified_manifest("v1", bytes);
+        let mut installer = installer(&root, bytes, FakeHealth::default());
+        installer.install(&manifest).unwrap();
+
+        let active_tool = root.join("environment/versions/v1/tool.exe");
+        fs::write(&active_tool, b"running-version").unwrap();
+
+        #[cfg(windows)]
+        let mut locked_child = {
+            let locked_executable = active_tool.parent().unwrap().join("running.exe");
+            fs::copy(
+                PathBuf::from(std::env::var_os("ComSpec").unwrap()),
+                &locked_executable,
+            )
+            .unwrap();
+            let child = Command::new(&locked_executable)
+                .args(["/D", "/C", "ping 127.0.0.1 -n 10 >NUL"])
+                .spawn()
+                .unwrap();
+            thread::sleep(Duration::from_millis(100));
+            child
+        };
+
+        let state = installer.install(&manifest).unwrap();
+
+        #[cfg(windows)]
+        {
+            locked_child.kill().unwrap();
+            locked_child.wait().unwrap();
+        }
+        assert_eq!(state.current_version, "v1");
+        assert_eq!(fs::read(active_tool).unwrap(), b"running-version");
         let _ = fs::remove_dir_all(root);
     }
 
@@ -2594,6 +2795,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn recovers_the_latest_installed_executable_when_current_points_to_a_missing_version() {
+        let root = temp_root("recover-active-executable");
+        let layout = EnvironmentLayout::new(&root);
+        layout.prepare().unwrap();
+        let current = CurrentEnvironment {
+            current_version: "missing-v1".into(),
+            previous_version: None,
+            installed_at: 1,
+        };
+        write_current_atomic(&layout.current(), &current).unwrap();
+
+        let version = "env-2026.08.09.2";
+        let version_dir = layout.versions().join(version);
+        fs::create_dir_all(&version_dir).unwrap();
+        fs::write(version_dir.join("opencode.exe"), b"binary").unwrap();
+        fs::write(
+            version_dir.join(VERSION_METADATA),
+            serde_json::to_vec_pretty(&verified_manifest(version, b"binary")).unwrap(),
+        )
+        .unwrap();
+
+        let executable = resolve_active_environment_executable(&layout, "opencode.exe")
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(executable, version_dir.join("opencode.exe"));
+        assert_eq!(
+            layout.read_current().unwrap().unwrap().current_version,
+            version,
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
     fn traversal_zip() -> Vec<u8> {
         let mut cursor = std::io::Cursor::new(Vec::new());
         {
@@ -2715,5 +2950,81 @@ mod tests {
                 | "x86_64-apple-darwin"
                 | "x86_64-unknown-linux-gnu"
         ));
+    }
+
+    #[test]
+    fn replaces_current_state_and_clears_stale_payload() {
+        let root = temp_root("activation-file-operations");
+        let stale = root.join("staging/payload");
+        fs::create_dir_all(&stale).unwrap();
+        fs::write(stale.join("old.txt"), b"old").unwrap();
+        remove_dir_all_with_retry(&stale).unwrap();
+        assert!(!stale.exists());
+
+        let source = root.join("current.tmp");
+        let target = root.join("current.json");
+        fs::write(&source, b"{}\n").unwrap();
+        replace_file_atomic_with_retry(&source, &target).unwrap();
+        assert_eq!(fs::read_to_string(target).unwrap(), "{}\n");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn retries_file_operations_used_by_windows_installs() {
+        let root = temp_root("file-operation-retries");
+        let nested = root.join("staging").join("payload");
+        create_dir_all_with_retry(&nested).unwrap();
+        assert!(nested.is_dir());
+
+        let package = root.join("bundle.package");
+        let options = OpenOptions::new();
+        let mut options = options;
+        options.create(true).write(true);
+        let mut file = open_with_retry(&options, &package).unwrap();
+        file.write_all(b"test").unwrap();
+        drop(file);
+        remove_file_with_retry(&package).unwrap();
+        assert!(!package.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn retries_transient_windows_permission_denied_without_sleeping_in_tests() {
+        let mut attempts = 0;
+        let result = retry_windows_permission_with_policy(
+            || {
+                attempts += 1;
+                if attempts < 3 {
+                    Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+                } else {
+                    Ok("installed")
+                }
+            },
+            3,
+            |_| {},
+        )
+        .unwrap();
+
+        assert_eq!(result, "installed");
+        assert_eq!(attempts, 3);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn does_not_retry_non_permission_install_errors() {
+        let mut attempts = 0;
+        let error = retry_windows_permission_with_policy(
+            || {
+                attempts += 1;
+                Err::<(), _>(std::io::Error::from(std::io::ErrorKind::NotFound))
+            },
+            3,
+            |_| {},
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+        assert_eq!(attempts, 1);
     }
 }

@@ -22,7 +22,7 @@ const props = { onSend: () => {}, approvalMode: "approve" as const, onApprovalMo
 describe("Composer in the gateway web client", () => {
   it("lets the desktop user change how agent actions get approved", () => {
     render(<Composer {...props} />);
-    expect(screen.getByLabelText("Approval mode")).toHaveTextContent("Approve for me");
+    expect(screen.getByLabelText("Approval mode")).toHaveTextContent("Request approval");
   });
 
   it("does not let a browser client loosen approvals — that stays on the host machine", () => {

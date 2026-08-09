@@ -19,7 +19,7 @@ import {
   Wallet,
   Workflow,
 } from "lucide-react";
-import type { Project } from "@zerowall/shared";
+import type { Project, RuntimeStatus } from "@zerowall/shared";
 import { cn } from "@/lib/cn";
 import { rootSessionOf, useRuntimeStore } from "@/lib/runtime";
 import { pickFolder, renameProject, isTauri, sub2apiAccount, sub2apiBalance, type ProjectInfo } from "@/lib/tauri";
@@ -35,7 +35,6 @@ import { visibleSections, resolveSection } from "@/components/settings/sections"
 import { useIsMobile } from "@/lib/useIsMobile";
 import { useDragDivider } from "@/lib/useDragDivider";
 import { useLayoutStore } from "@/lib/layout";
-import { startPaneDrag } from "@/lib/dragPane";
 import { isGatewayWeb } from "@/lib/webMode";
 import { StatusPills } from "./StatusPills";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -47,6 +46,24 @@ interface Row {
   title: string;
   to: string;
   kind: "session" | "example";
+}
+
+interface SidebarProject extends ProjectInfo {
+  virtual?: boolean;
+}
+
+const OPAQUE_SESSION_TITLE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|ses[_-][a-z0-9_-]+)$/i;
+
+function directoryName(path: string): string {
+  return path.replace(/[\\/]+$/, "").split(/[\\/]/).filter(Boolean).pop() ?? path;
+}
+
+function conversationTitle(id: string, title: string | null | undefined, fallback: string): string {
+  const value = title?.trim() ?? "";
+  if (!value || value === id || value.toLowerCase() === "opencode" || OPAQUE_SESSION_TITLE.test(value)) {
+    return fallback;
+  }
+  return value;
 }
 
 /** Dragging the divider below this pointer x collapses the sidebar; dragging
@@ -69,7 +86,13 @@ function initialCollapsedProjects(): string[] {
  *  Not logged in → "Sign in" link.  Logged in → truncated email + balance.
  *  When the balance runs out we tint it red and pop the recharge dialog once.
  *  Desktop only (the web gateway has its own auth). */
-function AccountPill({ navigate }: { navigate: (to: string) => void }) {
+function AccountPill({
+  navigate,
+  runtimeStatus,
+}: {
+  navigate: (to: string) => void;
+  runtimeStatus: RuntimeStatus;
+}) {
   const { t } = useTranslation("nav");
   const [email, setEmail] = useState<string | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
@@ -106,19 +129,27 @@ function AccountPill({ navigate }: { navigate: (to: string) => void }) {
 
   useEffect(() => {
     refresh();
-  }, [location.pathname, refresh]); // re-check after navigating (e.g. from Settings)
+  }, [location.pathname, refresh, runtimeStatus]); // runtime startup can make the account API available
 
   if (!isTauri || isGatewayWeb) return null;
 
   if (!email) {
     return (
       <button
-        className="flex items-center gap-2 rounded-input px-2 py-1 text-[13px] text-muted hover:bg-surface-2 hover:text-text"
-        onClick={() => navigate("/settings/models")}
+        className="flex w-full items-center gap-2 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2.5 text-left text-[13px] font-medium text-text shadow-sm transition-colors hover:border-accent/60 hover:bg-accent/15"
+        onClick={() => navigate("/auth")}
         aria-label={t("sidebar.signIn")}
       >
-        <UserRound size={15} />
-        <span>{t("sidebar.signIn")}</span>
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-accent-fg">
+          <UserRound size={15} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block">{t("sidebar.signIn")}</span>
+          <span className="mt-0.5 block text-[11px] font-normal text-muted">
+            {t("sidebar.platform", { defaultValue: "AI Platform" })}
+          </span>
+        </span>
+        <ChevronRight size={14} className="text-muted" />
       </button>
     );
   }
@@ -130,7 +161,7 @@ function AccountPill({ navigate }: { navigate: (to: string) => void }) {
       <div className="flex items-center gap-2 rounded-input px-2 py-1 text-[13px] text-muted">
         <button
           className="flex min-w-0 flex-1 items-center gap-2 hover:text-text"
-          onClick={() => navigate("/settings/models")}
+          onClick={() => navigate("/settings/account")}
           aria-label={t("sidebar.account")}
         >
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
@@ -186,6 +217,7 @@ export function Sidebar({ project }: { project: Project }) {
   const sessions = useRuntimeStore((s) => s.sessions);
   const projects = useRuntimeStore((s) => s.projects);
   const workspace = useRuntimeStore((s) => s.workspace);
+  const runtimeStatus = useRuntimeStore((s) => s.status);
   const hiddenExamples = useRuntimeStore((s) => s.hiddenExamples);
   const startDraft = useRuntimeStore((s) => s.startDraft);
   const startDraftInWorkspace = useRuntimeStore((s) => s.startDraftInWorkspace);
@@ -231,8 +263,7 @@ export function Sidebar({ project }: { project: Project }) {
   });
 
   const startNew = () => {
-    // Desktop: "New" acts on the active group — the focused pane becomes a fresh
-    // draft, and an EMPTY group gets a draft pane (so New always shows one).
+    // Keep one compatibility leaf, but never create or switch screens.
     if (!isMobile && !isGatewayWeb) {
       const layout = useLayoutStore.getState();
       if (layout.tree && layout.focusedLeafId) layout.bindSession(layout.focusedLeafId, null);
@@ -324,26 +355,41 @@ export function Sidebar({ project }: { project: Project }) {
   // their asks and progress surface there, so they get no row of their own.
   const topSessions = sessions.filter((s) => !s.parentId);
   const projectByPath = new Map(projects.map((p) => [p.path, p]));
+  const derivedProjects = new Map<string, SidebarProject>();
+  for (const session of topSessions) {
+    const path = session.directory?.trim() || workspace?.trim();
+    if (!path || projectByPath.has(path) || derivedProjects.has(path)) continue;
+    derivedProjects.set(path, {
+      id: `directory:${path}`,
+      name: directoryName(path),
+      createdAt: session.updated ?? 0,
+      path,
+      imported: false,
+      pinned: false,
+      virtual: true,
+    });
+  }
+  const sidebarProjects: SidebarProject[] = [...projects, ...derivedProjects.values()];
+  const ownerByPath = new Map(sidebarProjects.map((project) => [project.path, project]));
   const sessionsByProject = new Map<string, Row[]>(
-    projects.map((p) => [p.id, []]),
+    sidebarProjects.map((p) => [p.id, []]),
   );
-  const looseRows: Row[] = [];
   for (const s of topSessions) {
     const row: Row = {
       id: s.id,
-      title: s.title,
+      title: conversationTitle(s.id, s.title, t("history.newConversation")),
       to: `/live/${s.id}`,
       kind: "session",
     };
-    const owner = s.directory ? projectByPath.get(s.directory) : undefined;
+    const path = s.directory?.trim() || workspace?.trim();
+    const owner = path ? ownerByPath.get(path) : undefined;
     if (owner) sessionsByProject.get(owner.id)!.push(row);
-    else looseRows.push(row);
   }
   // Recency per project = its newest session's update time (else its creation).
   const updatedByProject = new Map<string, number>();
   for (const s of topSessions) {
     if (!s.directory || s.updated == null) continue;
-    const owner = projectByPath.get(s.directory);
+    const owner = ownerByPath.get(s.directory);
     if (owner)
       updatedByProject.set(owner.id, Math.max(updatedByProject.get(owner.id) ?? 0, s.updated));
   }
@@ -351,12 +397,12 @@ export function Sidebar({ project }: { project: Project }) {
   // The sidebar shows every pinned project plus the few most-recent others; the
   // full list (search, delete, …) lives on the Projects page.
   const RECENT_LIMIT = 5;
-  const byRecency = [...projects].sort((a, b) => recencyOf(b) - recencyOf(a));
+  const byRecency = [...sidebarProjects].sort((a, b) => recencyOf(b) - recencyOf(a));
   const visibleProjects = [
     ...byRecency.filter((p) => p.pinned),
     ...byRecency.filter((p) => !p.pinned).slice(0, RECENT_LIMIT),
   ];
-  const hiddenProjectCount = projects.length - visibleProjects.length;
+  const hiddenProjectCount = sidebarProjects.length - visibleProjects.length;
   const exampleRows: Row[] = project.sessions
     .filter((e) => !hiddenExamples.includes(e.id))
     .map((e) => ({
@@ -402,31 +448,6 @@ export function Sidebar({ project }: { project: Project }) {
         // drag. Disable it so startPaneDrag's window listeners see the moves.
         draggable={false}
         onDragStart={(e) => e.preventDefault()}
-        onPointerDown={(e) => {
-          // Drag a session row into the pane area to dock it (desktop only).
-          if (row.kind === "session" && !isMobile && !isGatewayWeb) {
-            // eslint-disable-next-line i18next/no-literal-string -- DragSource kind, not UI copy
-            startPaneDrag(e, { kind: "session", sessionId: row.id }, row.title);
-          }
-        }}
-        onClick={(e) => {
-          // A trailing click right after a drag is swallowed by the drag
-          // controller's one-shot capture listener, so it never reaches here.
-          // Desktop tiling: a session click never clobbers the focused pane —
-          // a modifier-click opens the session in a NEW split pane; a plain
-          // click opens it full-screen in the tentative "preview" screen (#3).
-          // Web/phone (single-pane) fall through to the NavLink as before.
-          if (row.kind === "session" && !isMobile && !isGatewayWeb) {
-            e.preventDefault();
-            const layout = useLayoutStore.getState();
-            if (e.metaKey || e.ctrlKey || e.altKey) {
-              // eslint-disable-next-line i18next/no-literal-string -- SplitDir enum, not UI copy
-              layout.split("row", row.id);
-            } else {
-              layout.openSessionEphemeral(row.id);
-            }
-          }
-        }}
         className={cn(
           "flex items-center gap-2 rounded-input py-1 pl-2 pr-8 text-[13px] hover:bg-surface-2",
           location.pathname === row.to
@@ -653,7 +674,7 @@ export function Sidebar({ project }: { project: Project }) {
               }}
             />
           )}
-          {projects.length === 0 && !namingProject && (
+          {sidebarProjects.length === 0 && !namingProject && (
             <button
               onClick={() => setNamingProject(true)}
               className="flex w-full items-center gap-2 rounded-input px-2 py-1 text-[13px] text-muted hover:bg-surface-2 hover:text-text"
@@ -711,10 +732,11 @@ export function Sidebar({ project }: { project: Project }) {
                       <span
                         className="min-w-0 flex-1 truncate text-left font-medium"
                         onDoubleClick={(e) => {
+                          if (p.virtual) return;
                           e.stopPropagation();
                           setRenamingId(p.id);
                         }}
-                        title={p.imported ? (p.importedFrom ?? p.path) : t("projects.renameHint")}
+                        title={p.virtual ? p.path : p.imported ? (p.importedFrom ?? p.path) : t("projects.renameHint")}
                       >
                         {p.name}
                       </span>
@@ -777,21 +799,19 @@ export function Sidebar({ project }: { project: Project }) {
               <span className="text-[10px] tabular-nums text-muted">+{hiddenProjectCount}</span>
             </button>
           )}
-          <div className="mt-3 px-2 py-1 text-xs font-medium uppercase tracking-wider text-muted">
-            {t("history.heading")}
-          </div>
-          {looseRows.length === 0 && exampleRows.length === 0 && (
-            <div className="px-2 py-2 text-xs text-muted">
-              {t("history.empty")}
-            </div>
+          {exampleRows.length > 0 && (
+            <>
+              <div className="mt-3 px-2 py-1 text-xs font-medium uppercase tracking-wider text-muted">
+                {t("history.heading")}
+              </div>
+              {exampleRows.map(sessionRow)}
+            </>
           )}
-          {looseRows.map(sessionRow)}
-          {exampleRows.map(sessionRow)}
         </div>
 
         <div className="border-t border-border px-3 py-3">
           <StatusPills />
-          <AccountPill navigate={navigate} />
+          <AccountPill navigate={navigate} runtimeStatus={runtimeStatus} />
           <button
             className="relative mt-2 flex items-center gap-2 rounded-input px-2 py-1 text-[13px] text-muted hover:bg-surface-2 hover:text-text"
             onClick={() => navigate("/settings")}

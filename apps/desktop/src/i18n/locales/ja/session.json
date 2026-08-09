@@ -77,13 +77,17 @@
       "title": "エージェントの操作をどのように承認するか",
       "menuAria": "承認モード",
       "menuTitle": "エージェントの操作をどのように承認しますか？",
-      "approve": {
-        "label": "都度確認する",
-        "description": "削除・インストール・リモート接続の前に確認します"
+      "request": {
+        "label": "承認を求める",
+        "description": "エージェントの各操作の前に確認します"
+      },
+      "help": {
+        "label": "確認を補助",
+        "description": "編集、ツール、ネットワーク操作の前に確認します"
       },
       "full": {
         "label": "フルアクセス",
-        "description": "確認せずにすべてのコマンドを実行します"
+        "description": "通常のプロジェクトツールを許可します。危険な操作は確認します"
       }
     },
     "error": {
@@ -198,7 +202,6 @@
       "openTitle": "{{path}} を開く — エージェントはこのセッションでこのノートブックを操作します"
     },
     "connBadge": {
-      "title": "{{runtime}} · {{status}}",
       "status": {
         "ready": "準備完了",
         "connecting": "接続中",

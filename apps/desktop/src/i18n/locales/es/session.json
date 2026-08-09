@@ -77,13 +77,17 @@
       "title": "Cómo se aprueban las acciones del agente",
       "menuAria": "Modos de aprobación",
       "menuTitle": "¿Cómo deben aprobarse las acciones del agente?",
-      "approve": {
-        "label": "Aprobar por mí",
-        "description": "Pregunta antes de eliminar, instalar o conectarse de forma remota"
+      "request": {
+        "label": "Solicitar aprobación",
+        "description": "Preguntar antes de cada acción del agente"
+      },
+      "help": {
+        "label": "Aprobación asistida",
+        "description": "Preguntar antes de editar, usar herramientas o acceder a la red"
       },
       "full": {
         "label": "Acceso completo",
-        "description": "Ejecuta todos los comandos sin preguntar"
+        "description": "Permitir herramientas normales del proyecto; las acciones de riesgo aún preguntan"
       }
     },
     "error": {
@@ -198,7 +202,6 @@
       "openTitle": "Abrir {{path}} — el agente trabaja en este cuaderno dentro de esta sesión"
     },
     "connBadge": {
-      "title": "{{runtime}} · {{status}}",
       "status": {
         "ready": "listo",
         "connecting": "conectando",

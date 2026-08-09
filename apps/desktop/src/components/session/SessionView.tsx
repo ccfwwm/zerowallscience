@@ -7,25 +7,20 @@ import {
   FlaskConical,
   FolderOpen,
   Loader2,
-  MoreHorizontal,
   NotebookPen,
   Pause,
-  PanelBottom,
   PanelLeft,
-  PanelRight,
   PlugZap,
-  Plus,
   Play,
   RotateCcw,
   ShieldCheck,
   X,
 } from "lucide-react";
-import type { RuntimeStatus, UsageBlock } from "@zerowall/shared";
+import type { UsageBlock } from "@zerowall/shared";
 import type { PromptAttachment, WorkflowRun } from "@zerowall/sdk";
 import { formatCount, contextPercent } from "@/lib/usageFormat";
 import { draftKeyFor, rootSessionOf, useRuntimeStore } from "@/lib/runtime";
 import { useLayoutStore } from "@/lib/layout";
-import { startPaneDrag } from "@/lib/dragPane";
 import { isGatewayWeb } from "@/lib/webMode";
 import { useIsMobile } from "@/lib/useIsMobile";
 import { queryRuns } from "@/lib/runs";
@@ -75,7 +70,7 @@ export function SessionView({
   solo = true,
   /** Close this pane (shown as an ✕ in the header). Omitted for the sole pane
    *  and on web/mobile. */
-  onClose,
+  onSessionCreated,
 }: {
   sessionId: string | null;
   leafId: string;
@@ -84,6 +79,7 @@ export function SessionView({
   zoom?: number;
   solo?: boolean;
   onClose?: () => void;
+  onSessionCreated?: (sessionId: string) => void;
 }) {
   const { t } = useTranslation(["session", "common"]);
   // `sid` is what this pane WRITES to (null = draft → create on first send).
@@ -113,7 +109,6 @@ export function SessionView({
   const workflowRuns = useRuntimeStore((s) => s.workflowRuns);
   const serverUrl = useRuntimeStore((s) => s.serverUrl);
   const sessions = useRuntimeStore((s) => s.sessions);
-  const error = useRuntimeStore((s) => s.error);
   const questions = useRuntimeStore((s) => s.questions);
   const permissions = useRuntimeStore((s) => s.permissions);
   const sessionParents = useRuntimeStore((s) => s.sessionParents);
@@ -156,30 +151,21 @@ export function SessionView({
   const providers = useRuntimeStore((s) => s.providers);
   const setAgentMode = useRuntimeStore((s) => s.setAgentMode);
   const bindSession = useLayoutStore((s) => s.bindSession);
-  const dockSession = useLayoutStore((s) => s.dockSession);
-  const addGroup = useLayoutStore((s) => s.addGroup);
-  const setLeafZoom = useLayoutStore((s) => s.setLeafZoom);
   // Any real interaction with a tentative (preview) screen pins it (#3).
   const pinEphemeral = useLayoutStore((s) => s.pinEphemeral);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  // Split buttons/drag only make sense where tiling works (desktop, not web).
-  const canSplit = !isGatewayWeb && !isMobile;
 
   const connected = status === "ready" || switching;
   const connecting = status === "connecting" && !switching;
-  const displayStatus = switching ? "ready" : status;
 
   // A newly-created session (draft's first send) binds onto this leaf; the
   // wrapper then follows it into the URL and opens its folder.
   const bindIfCreated = (created: string | null) => {
-    if (created && sid === null) bindSession(leafId, created);
-  };
-  // Split THIS pane: dock a fresh DRAFT pane on the given edge. No session or
-  // folder is created until that pane's first send (#2), and it carries its own
-  // independent draft (thread/composer/model).
-  const onSplit = (edge: "right" | "bottom") => {
-    dockSession(leafId, edge, null);
+    if (created && sid === null) {
+      bindSession(leafId, created);
+      onSessionCreated?.(created);
+    }
   };
   const onSend = async (text: string, attachments?: PromptAttachment[]) => {
     pinEphemeral();
@@ -481,18 +467,7 @@ export function SessionView({
             </button>
           )}
           {eid && (
-            // The title doubles as a drag handle to re-dock this pane. Opt it
-            // out of the macOS window-drag region so grabbing it moves the pane,
-            // not the window.
-            <h1
-              draggable={false}
-              onDragStart={(e) => e.preventDefault()}
-              // eslint-disable-next-line i18next/no-literal-string -- DragSource kind, not UI copy
-              onPointerDown={(e) => startPaneDrag(e, { kind: "pane", leafId, sessionId: eid }, title ?? "")}
-              // `select-none` stops the title text from being selected while
-              // dragging (the reason a header drag looked like a text selection).
-              className="min-w-0 shrink cursor-grab select-none truncate text-[13px] font-medium text-text active:cursor-grabbing"
-            >
+            <h1 className="min-w-0 shrink truncate text-[13px] font-medium text-text">
               {title ?? ""}
             </h1>
           )}
@@ -556,19 +531,7 @@ export function SessionView({
               {solo && <span>{t("live.reviewToggle.label")}</span>}
             </button>
           )}
-          {/* Keep tiling available without turning the default research surface
-              into a terminal-style toolbar. */}
-          {canSplit && (
-            <PaneActionsMenu
-              zoom={zoom}
-              onZoom={(value) => setLeafZoom(leafId, value)}
-              onSplit={onSplit}
-              onNewScreen={addGroup}
-              onClose={onClose}
-            />
-          )}
           {/* The green "ready" dot is noise per pane — only surface trouble. */}
-          {displayStatus !== "ready" && <ConnBadge status={displayStatus} />}
           {!compactNotebooks && uniqueNotebooks.map((nb) => (
             <button
               key={nb.path}
@@ -682,11 +645,6 @@ export function SessionView({
                 <div className="mt-3 rounded-input bg-surface-2 px-3 py-2 font-mono text-xs text-text">
                   {serverUrl}
                 </div>
-              </div>
-            )}
-            {error && focused && (
-              <div className="rounded-input border border-error/30 bg-error/10 px-3 py-2 text-sm text-error">
-                {error}
               </div>
             )}
             {connected && isEmpty && !eid && !webReadOnly && (
@@ -961,104 +919,6 @@ function WorkflowProgressCard({
   );
 }
 
-/** Advanced pane controls stay one click away without crowding the default
- *  ChatGPT-style conversation header. */
-const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5];
-function PaneActionsMenu({
-  zoom,
-  onZoom,
-  onSplit,
-  onNewScreen,
-  onClose,
-}: {
-  zoom: number;
-  onZoom: (value: number) => void;
-  onSplit: (edge: "right" | "bottom") => void;
-  onNewScreen: () => void;
-  onClose?: () => void;
-}) {
-  const { t } = useTranslation("session");
-  const splitRight = () => onSplit("right");
-  const splitDown = () => onSplit("bottom");
-  return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button
-          className="rounded-md p-1 text-muted outline-none transition-colors hover:bg-surface-2 hover:text-text"
-          title={t("group.actions")}
-          aria-label={t("group.actions")}
-        >
-          <MoreHorizontal size={14} />
-        </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          align="end"
-          sideOffset={4}
-          className="z-50 min-w-[210px] rounded-card border border-border bg-surface p-1 text-xs text-text shadow-pop"
-        >
-          <DropdownMenu.Label className="px-2 py-1 text-[11px] text-muted">
-            {t("group.zoom")}
-          </DropdownMenu.Label>
-          <DropdownMenu.RadioGroup
-            value={String(zoom)}
-            onValueChange={(value) => onZoom(Number(value))}
-          >
-            <div className="grid grid-cols-5 gap-0.5 px-1 pb-1">
-              {ZOOM_LEVELS.map((value) => (
-                <DropdownMenu.RadioItem
-                  key={value}
-                  value={String(value)}
-                  className={cn(
-                    "cursor-pointer rounded-input px-1.5 py-1 text-center tabular-nums outline-none data-[highlighted]:bg-surface-2",
-                    value === zoom ? "bg-surface-2 text-text" : "text-muted",
-                  )}
-                >
-                  {Math.round(value * 100)}%
-                </DropdownMenu.RadioItem>
-              ))}
-            </div>
-          </DropdownMenu.RadioGroup>
-          <DropdownMenu.Separator className="my-1 h-px bg-border-faint" />
-          <DropdownMenu.Item
-            onSelect={onNewScreen}
-            className="flex cursor-pointer items-center gap-2 rounded-input px-2 py-1.5 outline-none data-[highlighted]:bg-surface-2"
-          >
-            <Plus size={13} className="text-muted" />
-            {t("group.newTab")}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            onSelect={splitRight}
-            className="flex cursor-pointer items-center gap-2 rounded-input px-2 py-1.5 outline-none data-[highlighted]:bg-surface-2"
-          >
-            <PanelRight size={13} className="text-muted" />
-            {t("group.splitRight")}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            onSelect={splitDown}
-            className="flex cursor-pointer items-center gap-2 rounded-input px-2 py-1.5 outline-none data-[highlighted]:bg-surface-2"
-          >
-            <PanelBottom size={13} className="text-muted" />
-            {t("group.splitDown")}
-          </DropdownMenu.Item>
-          {onClose && (
-            <>
-              <DropdownMenu.Separator className="my-1 h-px bg-border-faint" />
-              <DropdownMenu.Item
-                onSelect={onClose}
-                className="flex cursor-pointer items-center gap-2 rounded-input px-2 py-1.5 text-error outline-none data-[highlighted]:bg-surface-2"
-              >
-                <X size={13} />
-                {t("group.closePane")}
-              </DropdownMenu.Item>
-            </>
-          )}
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
-  );
-}
-
 /** Loading placeholder mirroring the thread's real shapes. */
 function ThreadSkeleton() {
   return (
@@ -1076,26 +936,6 @@ function ThreadSkeleton() {
         <div className="h-3.5 w-3/5 rounded bg-surface-2" />
       </div>
     </div>
-  );
-}
-
-function ConnBadge({ status }: { status: RuntimeStatus }) {
-  const { t } = useTranslation(["session", "common"]);
-  const acpProfileId = useRuntimeStore((s) => s.acpProfileId);
-  const runtime = acpProfileId === "claude-code" ? "Claude Code" : acpProfileId === "codex" ? "Codex" : acpProfileId === "opencode" ? "OpenCode" : t("live.connBadge.engine", { defaultValue: "Engine" });
-  const tone = status === "ready" ? "text-ok" : status === "error" ? "text-error" : "text-muted";
-  const label = t("live.connBadge.title", { runtime, status: t(`live.connBadge.status.${status}`) });
-  return (
-    <span className={cn("flex items-center gap-1.5 text-xs", tone)} title={label}>
-      <span
-        className={cn(
-          "h-1.5 w-1.5 rounded-full",
-          status === "ready" ? "bg-ok" : status === "error" ? "bg-error" : "bg-muted",
-          status === "connecting" && "animate-pulse",
-        )}
-      />
-      {status !== "ready" && label}
-    </span>
   );
 }
 

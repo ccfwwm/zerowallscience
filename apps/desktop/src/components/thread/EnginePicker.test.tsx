@@ -9,16 +9,13 @@ describe("EnginePicker", () => {
   const runtimeInitial = useRuntimeStore.getState();
   const uiInitial = useUiStore.getState();
   let switchRuntime: ReturnType<typeof vi.fn>;
-  let startDraft: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     switchRuntime = vi.fn(async () => {});
-    startDraft = vi.fn();
     act(() => {
       useRuntimeStore.setState({
         acpProfileId: null,
         switchRuntime,
-        startDraft,
         currentId: null,
         threads: {},
         switching: false,
@@ -44,7 +41,7 @@ describe("EnginePicker", () => {
     await user.click(screen.getByRole("menuitemradio", { name: "Codex" }));
 
     expect(switchRuntime).toHaveBeenCalledWith("codex");
-    expect(startDraft).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menuitem", { name: "New conversation" })).not.toBeInTheDocument();
   });
 
   it("switches back to OpenCode through the unified Host profile", async () => {
@@ -58,7 +55,7 @@ describe("EnginePicker", () => {
     expect(switchRuntime).toHaveBeenCalledWith("opencode");
   });
 
-  it("requires a new immutable session when the current conversation has content", async () => {
+  it("switches directly while preserving the current conversation context", async () => {
     const user = userEvent.setup();
     useRuntimeStore.setState({
       currentId: "session-1",
@@ -78,14 +75,6 @@ describe("EnginePicker", () => {
     await user.click(screen.getByRole("button", { name: "Switch engine" }));
     await user.click(screen.getByRole("menuitemradio", { name: "Claude Code" }));
 
-    expect(screen.getByRole("menuitem", { name: "New conversation" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Copy context" })).toBeInTheDocument();
-    expect(switchRuntime).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole("menuitem", { name: "Copy context" }));
-    expect(startDraft).toHaveBeenCalledTimes(1);
-    expect(useUiStore.getState().composerDraft).toContain("User: Question");
-    expect(useUiStore.getState().composerDraft).toContain("Assistant: Answer");
     expect(switchRuntime).toHaveBeenCalledWith("claude-code");
   });
 
@@ -100,7 +89,7 @@ describe("EnginePicker", () => {
     ).toBe("User: Question\n\nTool: Search\n\nAssistant: Answer");
   });
 
-  it("disables confirmation actions if the conversation starts running", async () => {
+  it("disables engine switching while the conversation is running", async () => {
     const user = userEvent.setup();
     useRuntimeStore.setState({
       currentId: "session-1",
@@ -114,16 +103,10 @@ describe("EnginePicker", () => {
     });
     render(<EnginePicker sessionId="session-1" />);
 
-    await user.click(screen.getByRole("button", { name: "Switch engine" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "Codex" }));
     act(() => {
       useRuntimeStore.setState({ runningSessions: { "session-1": true } });
     });
-
-    expect(screen.getByRole("menuitem", { name: "New conversation" })).toBeDisabled();
-    expect(screen.getByRole("menuitem", { name: "Copy context" })).toBeDisabled();
-    await user.click(screen.getByRole("menuitem", { name: "Copy context" }));
+    await user.click(screen.getByRole("button", { name: "Switch engine" }));
     expect(switchRuntime).not.toHaveBeenCalled();
-    expect(startDraft).not.toHaveBeenCalled();
   });
 });

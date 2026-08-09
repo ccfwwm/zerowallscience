@@ -12,8 +12,13 @@ import { ProjectsPage } from "./routes/ProjectsPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { WorkflowsPage } from "./routes/WorkflowsPage";
 import { NotFound } from "./routes/NotFound";
+import { AuthPage } from "./routes/AuthPage";
 
 export const routes: RouteObject[] = [
+  {
+    path: "/auth",
+    element: <AuthPage />,
+  },
   {
     path: "/",
     element: <AppShell />,

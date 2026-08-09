@@ -13,6 +13,13 @@ export async function startRuntime(): Promise<string | null> {
   return invoke<string>("start_runtime");
 }
 
+/** Ensure the app-owned OpenCode control sidecar is running. ACP conversations
+ * (Claude Code/Codex) still use this sidecar for provider/model catalog writes;
+ * the command is idempotent and does not switch the active conversation engine. */
+export async function ensureControlRuntime(): Promise<string | null> {
+  return startRuntime();
+}
+
 /**
  * Per-run password the sidecar requires on every request (desktop only —
  * browser dev talks to a user-run, passwordless `opencode serve`). Held in
@@ -156,7 +163,13 @@ export interface Sub2ApiAccount {
 
 /** Result of fetching groups and existing key info. No API key — only metadata. */
 export interface Sub2ApiGroupsAndKeys {
-  groups: Array<{ id: number; name: string }>;
+  groups: Array<{
+    id: number;
+    name: string;
+    visible?: boolean;
+    available?: boolean;
+    enabled?: boolean;
+  }>;
   existingKeyGroupIds: number[];
 }
 
@@ -378,20 +391,19 @@ export async function removeConnectorSecret(
 /** How agent actions get approved — the composer's Codex-style switch.
  *  "approve": dangerous shell commands (delete / install / remote / privilege)
  *  and web fetches prompt first. "full": everything in-workspace just runs. */
-export type ApprovalMode = "approve" | "full";
+export type ApprovalMode = "approve" | "help" | "full";
 
 /** The safe approval mode. Legacy "full" responses are normalized to approve. */
 export async function getApprovalMode(): Promise<ApprovalMode> {
   if (!isTauri) return "approve";
   const { invoke } = await import("@tauri-apps/api/core");
-  await invoke<string>("get_approval_mode");
-  return "approve";
+  const mode = await invoke<string>("get_approval_mode");
+  return mode === "help" || mode === "full" ? mode : "approve";
 }
 
 /** Switch the approval mode; the sidecar restarts — the caller must reconnect. */
 export async function setApprovalMode(mode: ApprovalMode): Promise<void> {
   if (!isTauri) return;
-  if (mode !== "approve") throw new Error("full approval mode is disabled for safety");
   const { invoke } = await import("@tauri-apps/api/core");
   await invoke("set_approval_mode", { mode });
 }

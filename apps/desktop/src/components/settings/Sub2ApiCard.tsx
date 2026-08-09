@@ -8,7 +8,6 @@ import {
   sub2apiFetchGroups,
   sub2apiLogin,
   sub2apiLogout,
-  sub2apiProvisionGroup,
   sub2apiProvisionGroups,
   sub2apiRegister,
   sub2apiRestoreSession,
@@ -86,11 +85,10 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
   const [account, setAccount] = useState<Sub2ApiAccount | null>(null);
   const [busy, setBusy] = useState<null | "auth" | "code" | "fetch" | "connect">(null);
   const [groups, setGroups] = useState<Array<{ id: number; name: string }>>([]);
-  const [existingKeyGroupIds, setExistingKeyGroupIds] = useState<number[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [provisionedGroups, setProvisionedGroups] = useState<ProvisionedGroupNamed[]>([]);
   const [models, setModels] = useState<string[] | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [baseUrl, setBaseUrl] = useState("");
+  const [manualModels, setManualModels] = useState<Set<string>>(new Set());
   const [manual, setManual] = useState("");
   const [balance, setBalance] = useState<string | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
@@ -160,54 +158,51 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
   const fail = (err: unknown) =>
     toast.error(err instanceof Error ? err.message : String(err));
 
-  // After a fresh sign-in, stand up the AI 平台 provider without making the
-  // user click through Fetch → Save → pick a model: fetch the account's
-  // groups, provision the domestic-leaning one, register the provider, and
-  // default to Kimi. Best-effort — a failure leaves the account signed in and
-  // the manual Fetch/Save controls available.
+  const provisionAllGroups = async () => {
+    const res = await sub2apiFetchGroups();
+    const visible = openGroups(res.groups);
+    setGroups(visible);
+    const primary =
+      visible.find((group) => /国产|domestic/i.test(group.name)) ??
+      visible.find((group) => /default/i.test(group.name)) ??
+      visible[0];
+    if (!primary) {
+      setProvisionedGroups([]);
+      setModels([]);
+      setPicked(new Set());
+      return { primary: null, provisioned: [] as ProvisionedGroupNamed[] };
+    }
+
+    const provisioned = await sub2apiProvisionGroups(
+      visible.map((group) => ({
+        groupId: group.id,
+        providerId: providerIdForGroup(group.id, primary.id),
+      })),
+    );
+    const named = provisioned.map((group) => ({
+      ...group,
+      name: visible.find((candidate) => candidate.id === group.groupId)?.name ?? String(group.groupId),
+    }));
+    setProvisionedGroups(named);
+    writeAcpConfigs(named);
+
+    const aggregated = orderModels(named.flatMap((group) => group.models));
+    const domestic = aggregated.filter(isDomesticModel);
+    setModels(aggregated);
+    setPicked(new Set(domestic.length > 0 ? domestic : aggregated));
+    setManualModels(new Set());
+    return { primary, provisioned: named };
+  };
+
+  // After a fresh sign-in, stand up every service-visible AI cloud platform
+  // route without exposing gateway groups in the UI. Best-effort — a failure
+  // leaves the account signed in and the manual fetch controls available.
   const autoSetup = async () => {
     setBusy("fetch");
     try {
-      const res = await sub2apiFetchGroups();
-      const visible = openGroups(res.groups);
-      setGroups(visible);
-      setExistingKeyGroupIds(res.existingKeyGroupIds);
-      const primary =
-        visible.find((g) => /国产|domestic/i.test(g.name)) ??
-        visible.find((g) => /default/i.test(g.name)) ??
-        visible[0];
+      const { primary, provisioned } = await provisionAllGroups();
       if (!primary) return;
-      setSelectedGroupId(primary.id);
-      // Provision every open group in one pass — one key + one provider each — so
-      // a model from any open group (e.g. a GPT-family id) resolves to a
-      // configured key instead of "not supported by any configured account".
-      // Missing keys are created gateway-side; the domestic group keeps the bare
-      // provider id so kimi-k3 stays the default.
-      const requests = visible.map((g) => ({
-        groupId: g.id,
-        providerId: providerIdForGroup(g.id, primary.id),
-      }));
-      const provisioned = await sub2apiProvisionGroups(requests);
       if (provisioned.length === 0) return;
-      // Route the ACP runtimes (Claude Code / Codex) through the gateway too:
-      // attach each provisioned group's name, classify claude vs gpt, and store
-      // the launch config (keychain provider id + base URL + model) so the next
-      // ACP connect injects them. Non-secret; the key stays in the keychain.
-      writeAcpConfigs(
-        provisioned.map((p) => ({
-          ...p,
-          name: visible.find((g) => g.id === p.groupId)?.name ?? String(p.groupId),
-        })),
-      );
-      // Reflect the primary group's models in the picker so the manual controls
-      // stay populated; the auto-registration below covers every group.
-      const primaryProv =
-        provisioned.find((p) => p.groupId === primary.id) ?? provisioned[0];
-      setBaseUrl(primaryProv.baseUrl);
-      setModels(primaryProv.models);
-      const domestic = primaryProv.models.filter(isDomesticModel);
-      const chosen = orderModels(domestic.length > 0 ? domestic : primaryProv.models);
-      setPicked(new Set(chosen));
       // Provisioning restarts the sidecar in Rust, so the store's "ready" may be
       // stale. Always re-establish the connection before registering — otherwise
       // the config PATCH races a restarting sidecar and the catalog comes back
@@ -215,23 +210,25 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       const control = getProviderControlClient();
       if (!control) return; // leave the models staged; the 保存 button still works
       // One provider per provisioned group. Non-primary providers are labelled
-      // with their group name so they are distinguishable in the model picker.
-      for (const p of provisioned) {
-        const name = visible.find((g) => g.id === p.groupId)?.name ?? String(p.groupId);
-        await control.addCustomProvider(p.providerId, {
-          name,
+      // identically; the group remains an internal credential-routing detail.
+      for (const group of provisioned) {
+        await control.addCustomProvider(group.providerId, {
+          name: t("sub2api.providerName"),
           npm: npmForProtocol(protocol),
-          baseURL: p.baseUrl,
-          models: orderModels(p.models),
+          baseURL: group.baseUrl,
+          models: orderModels(group.models),
         });
       }
       // Default model belongs to the primary provider, so it stays alive when
       // the user switches groups: the primary provider id is derived from the
       // primary group id, matching the addCustomProvider call above.
+      const chosen = orderModels(provisioned.flatMap((group) => group.models));
       const def = pickDefaultModel(chosen);
       if (def) {
-        const primaryProviderId = providerIdForGroup(primary.id, primary.id);
-        await control.setDefaultModel(`${primaryProviderId}/${def}`);
+        const route =
+          provisioned.find((group) => group.groupId === primary.id && group.models.includes(def)) ??
+          provisioned.find((group) => group.models.includes(def));
+        if (route) await control.setDefaultModel(`${route.providerId}/${def}`);
       }
       await loadCatalog();
       const total = provisioned.reduce((n, p) => n + p.models.length, 0);
@@ -305,43 +302,22 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
     clearAcpConfig("claude-code");
     clearAcpConfig("codex");
     setAccount(null);
+    setGroups([]);
+    setProvisionedGroups([]);
     setModels(null);
     setPicked(new Set());
+    setManualModels(new Set());
     setBalance(null);
   };
 
-  // Step 1: fetch groups + existing key info, then auto-select the best group.
+  // Fetch and provision every visible group in one batch. Group ids stay an
+  // internal credential route; the user sees one de-duplicated model catalog.
   const fetchGroups = async () => {
     setBusy("fetch");
     try {
-      const res = await sub2apiFetchGroups();
-      const visible = openGroups(res.groups);
-      setGroups(visible);
-      setExistingKeyGroupIds(res.existingKeyGroupIds);
-      // Auto-select: prefer domestic-sounding group, else "default", else first.
-      const domestic = visible.find((g) =>
-        /国产|domestic/i.test(g.name),
-      );
-      const fallback = domestic ?? visible.find((g) => /default/i.test(g.name));
-      const pick = fallback ?? visible[0] ?? null;
-      setSelectedGroupId(pick?.id ?? null);
-      if (pick) void provisionGroup(pick.id);
-      else setBusy(null);
-    } catch (err) {
-      fail(err);
-      setBusy(null);
-    }
-  };
-
-  // Step 2: provision a specific group — find or create a key, list models.
-  const provisionGroup = async (groupId: number) => {
-    setBusy("fetch");
-    try {
-      const res = await sub2apiProvisionGroup(groupId);
-      setBaseUrl(res.baseUrl);
-      setModels(res.models);
-      setPicked(new Set(res.models.filter(isDomesticModel)));
-      toast.success(t("sub2api.fetched", { count: res.models.length }));
+      const { provisioned } = await provisionAllGroups();
+      const count = orderModels(provisioned.flatMap((group) => group.models)).length;
+      toast.success(t("sub2api.fetched", { count }));
     } catch (err) {
       fail(err);
     } finally {
@@ -357,6 +333,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
     if (ids.length === 0) return;
     setModels((prev) => [...new Set([...(prev ?? []), ...ids])]);
     setPicked((prev) => new Set([...prev, ...ids]));
+    setManualModels((prev) => new Set([...prev, ...ids]));
     setManual("");
   };
 
@@ -373,16 +350,10 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       toast.error(t("sub2api.pickOne"));
       return;
     }
-    // A group must be selected before Save: the provider id is scoped to that
-    // group so the key stays namespaced and the fully-qualified model ref never
-    // leaks the internal gateway name into the assistant's reply.
-    if (selectedGroupId == null) {
+    if (provisionedGroups.length === 0) {
       toast.error(t("sub2api.pickOne"));
       return;
     }
-    const providerId = providerIdForGroup(selectedGroupId, selectedGroupId);
-    const groupName =
-      groups.find((g) => g.id === selectedGroupId)?.name ?? String(selectedGroupId);
     setBusy("connect");
     try {
       const control = getProviderControlClient();
@@ -390,18 +361,32 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
         toast.error(t("sub2api.runtimeOffline"));
         return;
       }
-      await control.addCustomProvider(providerId, {
-        name: groupName,
-        npm: npmForProtocol(proto),
-        baseURL: baseUrl,
-        models: chosen,
-      });
+      const primary =
+        groups.find((group) => /国产|domestic/i.test(group.name)) ??
+        groups.find((group) => /default/i.test(group.name)) ??
+        groups[0];
+      const routes: Array<{ providerId: string; models: string[] }> = [];
+      for (const group of provisionedGroups) {
+        const routed = orderModels([
+          ...group.models.filter((model) => picked.has(model)),
+          ...(group.groupId === primary?.id ? [...manualModels] : []),
+        ]);
+        if (routed.length === 0) continue;
+        await control.addCustomProvider(group.providerId, {
+          name: t("sub2api.providerName"),
+          npm: npmForProtocol(proto),
+          baseURL: group.baseUrl,
+          models: routed,
+        });
+        routes.push({ providerId: group.providerId, models: routed });
+      }
       // Auto-set the default model to a domestic one (preferring Kimi),
       // preventing the "Anthropic API key is missing" error for users who
       // only have an AI 平台 key.
       const first = pickDefaultModel(chosen);
       if (first) {
-        await control.setDefaultModel(`${providerId}/${first}`);
+        const route = routes.find((candidate) => candidate.models.includes(first));
+        if (route) await control.setDefaultModel(`${route.providerId}/${first}`);
       }
       await loadCatalog();
       toast.success(t("sub2api.connected", { count: chosen.length }));
@@ -423,7 +408,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
     } catch {
       /* storage may be unavailable; the in-memory choice still applies */
     }
-    if (models !== null && baseUrl && picked.size > 0) void connect(p);
+    if (provisionedGroups.length > 0 && picked.size > 0) void connect(p);
   };
 
   const canAuth =
@@ -519,48 +504,6 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
               </button>
             )}
           </div>
-
-          {/* Group selector — always shown once groups are loaded */}
-          {groups.length > 0 && (
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted">
-                {t("sub2api.selectGroup")}
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {groups.map((g) => {
-                  const on = selectedGroupId === g.id;
-                  const hasKey = existingKeyGroupIds.includes(g.id);
-                  return (
-                    <button
-                      key={g.id}
-                      aria-pressed={on}
-                      onClick={() => {
-                        setSelectedGroupId(g.id);
-                        setModels(null);
-                        setPicked(new Set());
-                        void provisionGroup(g.id);
-                      }}
-                      disabled={busy !== null}
-                      className={cn(
-                        "rounded-full border px-2.5 py-1 text-xs transition-colors",
-                        on
-                          ? "border-accent bg-accent/10 font-medium text-text"
-                          : "border-faint text-muted hover:text-text",
-                      )}
-                    >
-                      {g.name}
-                      {hasKey && (
-                        <span className="ml-1 text-[10px] text-ok" title={t("sub2api.keyExists")}>
-                          <Check size={11} aria-hidden={true} />
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] text-muted">{t("sub2api.groupHint")}</p>
-            </div>
-          )}
 
           {models !== null && (
             <>

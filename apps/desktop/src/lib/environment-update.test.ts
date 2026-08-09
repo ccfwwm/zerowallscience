@@ -121,6 +121,16 @@ describe("environment update store", () => {
     expect(useEnvironmentUpdateStore.getState().error).toBeNull();
   });
 
+  it("turns a Windows access-denied activation error into an actionable message", async () => {
+    useEnvironmentUpdateStore.setState({ envelopeJson: "signed" });
+    native.install.mockRejectedValue(new Error("environment update task failed: Os { code: 5, kind: PermissionDenied, message: \"Access is denied. (os error 5)\" }"));
+
+    await useEnvironmentUpdateStore.getState().install();
+
+    expect(useEnvironmentUpdateStore.getState().error).toContain("基础环境文件暂时被 Windows 占用");
+    expect(useEnvironmentUpdateStore.getState().error).not.toContain("os error 5");
+  });
+
   it("requires a checked manifest before install", async () => {
     const result = await useEnvironmentUpdateStore.getState().install();
     expect(result).toBeNull();

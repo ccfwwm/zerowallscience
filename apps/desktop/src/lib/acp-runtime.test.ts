@@ -135,6 +135,40 @@ describe("AcpRuntime lifecycle", () => {
     expect(statuses).toEqual(["connecting", "error"]);
   });
 
+  it("replaces an unloadable persisted conversation with a fresh claimable session", async () => {
+    const { deps, unlisten } = makeDeps();
+    const request: AcpLaunchRequest = {
+      ...REQUEST,
+      conversationId: "persisted-empty-session",
+    };
+    const launch = deps.launch as ReturnType<typeof vi.fn>;
+    launch
+      .mockRejectedValueOnce(
+        new Error(
+          'driver error: ACP startup error: HandshakeFailed { stage: SessionLoad, message: "ACP protocol request failed" }',
+        ),
+      )
+      .mockResolvedValueOnce(READY);
+    deps.currentSessionId = () => "replacement-session";
+    deps.createSession = vi.fn(async () => "unexpected-extra-session");
+    const runtime = new AcpRuntime(request, deps);
+
+    await expect(runtime.connect()).resolves.toBeUndefined();
+
+    expect(launch).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ conversationId: "persisted-empty-session" }),
+    );
+    expect(launch).toHaveBeenNthCalledWith(
+      2,
+      expect.not.objectContaining({ conversationId: expect.anything() }),
+    );
+    expect(runtime.currentSessionId()).toBe("replacement-session");
+    await expect(runtime.createSession()).resolves.toBe("replacement-session");
+    expect(deps.createSession).not.toHaveBeenCalled();
+    expect(unlisten).not.toHaveBeenCalled();
+  });
+
   it("close() unlistens, shuts down, and goes offline", async () => {
     const { runtime, deps, unlisten, statuses } = harness();
     await runtime.connect();
@@ -641,6 +675,38 @@ describe("AcpRuntime event translation", () => {
 });
 
 describe("AcpRuntime prompt + unsupported ops", () => {
+  it("keeps the visible conversation id stable while routing through a new Host execution", async () => {
+    const { deps } = makeDeps();
+    deps.currentSessionId = vi.fn(() => "codex-execution-2");
+    deps.listSessions = vi.fn(async () => [
+      { id: "project-conversation", title: "Existing conversation", directory: "C:/science" },
+      { id: "claude-execution-1", title: "Existing conversation", directory: "C:/science" },
+      { id: "codex-execution-2", title: "Existing conversation", directory: "C:/science" },
+    ]);
+    deps.getMessages = vi.fn(async () => []);
+    deps.promptSession = vi.fn(async () => {});
+    deps.activateSession = vi.fn(async () => {});
+    const runtime = new AcpRuntime({
+      ...REQUEST,
+      conversationId: "codex-execution-request",
+      logicalConversationId: "project-conversation",
+      hiddenExecutionIds: ["project-conversation", "claude-execution-1"],
+    }, deps);
+    await runtime.connect();
+
+    expect(runtime.currentSessionId()).toBe("project-conversation");
+    expect(runtime.currentExecutionSessionId()).toBe("codex-execution-2");
+    expect(await runtime.listSessions()).toEqual([
+      { id: "project-conversation", title: "Existing conversation", directory: "C:/science" },
+    ]);
+
+    await runtime.getMessages("project-conversation");
+    await runtime.sendPrompt("project-conversation", "continue");
+    expect(deps.getMessages).toHaveBeenCalledWith("codex-execution-2");
+    expect(deps.activateSession).toHaveBeenCalledWith("codex-execution-2");
+    expect(deps.promptSession).toHaveBeenCalledWith("codex-execution-2", "continue", []);
+  });
+
   it("creates and switches multiple Host sessions without reusing the profile id", async () => {
     const { deps } = makeDeps();
     deps.currentSessionId = vi.fn(() => "host-session-1");

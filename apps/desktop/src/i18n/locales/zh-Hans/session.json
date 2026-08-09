@@ -77,13 +77,17 @@
       "title": "代理操作如何获得批准",
       "menuAria": "审批模式",
       "menuTitle": "代理操作应如何获得批准？",
-      "approve": {
-        "label": "由我批准",
-        "description": "在删除、安装或访问远程资源前询问"
+      "request": {
+        "label": "请求批准",
+        "description": "每次代理操作前询问"
+      },
+      "help": {
+        "label": "帮助批准",
+        "description": "编辑、工具或网络操作前询问"
       },
       "full": {
         "label": "完全访问",
-        "description": "不询问即运行所有命令"
+        "description": "允许项目内常规工具，风险操作仍需询问"
       }
     },
     "error": {
@@ -195,7 +199,6 @@
       "openTitle": "打开 {{path}} — 代理在此会话中处理此笔记本"
     },
     "connBadge": {
-      "title": "{{runtime}} · {{status}}",
       "status": {
         "ready": "就绪",
         "connecting": "连接中",

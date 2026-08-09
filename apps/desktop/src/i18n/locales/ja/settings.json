@@ -1,5 +1,6 @@
 {
   "nav": {
+    "account": "アカウントと AI プラットフォーム",
     "back": "アプリに戻る",
     "general": "一般",
     "appearance": "外観",
@@ -12,6 +13,10 @@
     "privacy": "プライバシー",
     "browser": "ブラウザ",
     "remote": "リモートアクセス"
+  },
+  "account": {
+    "title": "アカウントと AI プラットフォーム",
+    "hint": "ログインすると、アカウント、モデル、プロバイダーが自動的に同期されます。カスタムプロバイダーはログインなしでも利用できます。"
   },
   "appearance": {
     "title": "外観",
@@ -205,8 +210,6 @@
     "connected": "{{count}} 件のモデルを接続しました。「モデル」で選んでください。",
     "pickOne": "モデルを 1 つ以上選んでください。",
     "noModels": "このアカウントに対してゲートウェイはモデルを返しませんでした。",
-    "selectGroup": "グループを選択",
-    "groupHint": "グループによって利用可能なモデルが異なる場合があります",
     "creatingKey": "キーを作成中…",
     "keyExists": "キーあり",
     "manualPlaceholder": "モデル ID を手動で追加 — コンマ区切り",
@@ -361,6 +364,7 @@
     "couldNotFetchModels": "エンドポイントからモデルを取得できませんでした",
     "endpointFieldsRequired": "名前、ベース URL、少なくとも 1 つのモデル ID が必要です。",
     "endpointAdded": "{{name}} を追加しました — 上部でそのモデルを選択できるようになりました。",
+    "endpointSaved": "{{name}} を保存しました。ランタイムの準備ができると有効になります。",
     "couldNotAddMcp": "MCP サーバーを追加できませんでした",
     "mcpFieldsRequired": "名前とコマンド/URL が必要です。",
     "mcpAdded": "MCP サーバー {{name}} を追加しました",

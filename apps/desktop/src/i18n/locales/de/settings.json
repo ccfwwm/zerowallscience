@@ -1,5 +1,6 @@
 {
   "nav": {
+    "account": "Konto & KI-Plattform",
     "back": "Zurück zur App",
     "general": "Allgemein",
     "appearance": "Erscheinungsbild",
@@ -12,6 +13,10 @@
     "privacy": "Datenschutz",
     "browser": "Browser",
     "remote": "Fernzugriff"
+  },
+  "account": {
+    "title": "Konto & KI-Plattform",
+    "hint": "Melden Sie sich an, um Konto, Modelle und Anbieter automatisch zu synchronisieren. Eigene Anbieter funktionieren auch ohne Anmeldung."
   },
   "appearance": {
     "title": "Erscheinungsbild",
@@ -206,8 +211,6 @@
     "connected": "{{count}} Modell(e) verbunden. Wähle eines unter Modelle.",
     "pickOne": "Wähle mindestens ein Modell.",
     "noModels": "Das Gateway hat für dieses Konto keine Modelle gemeldet.",
-    "selectGroup": "Gruppe auswählen",
-    "groupHint": "Verschiedene Gruppen können unterschiedliche Modelle haben",
     "creatingKey": "Schlüssel wird erstellt…",
     "keyExists": "Schlüssel vorhanden",
     "manualPlaceholder": "Modell-IDs manuell hinzufügen — kommagetrennt",
@@ -362,6 +365,7 @@
     "couldNotFetchModels": "Modelle konnten nicht vom Endpunkt abgerufen werden",
     "endpointFieldsRequired": "Name, Basis-URL und mindestens eine Modell-ID sind erforderlich.",
     "endpointAdded": "{{name}} hinzugefügt — dessen Modelle sind oben jetzt auswählbar.",
+    "endpointSaved": "{{name}} gespeichert und wird aktiviert, sobald die Laufzeit bereit ist.",
     "couldNotAddMcp": "Der MCP-Server konnte nicht hinzugefügt werden",
     "mcpFieldsRequired": "Name und Befehl/URL sind erforderlich.",
     "mcpAdded": "MCP-Server {{name}} hinzugefügt",

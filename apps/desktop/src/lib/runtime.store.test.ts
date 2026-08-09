@@ -88,6 +88,11 @@ const mocks = vi.hoisted(() => ({
   acpActivateSession: vi.fn(async (_sessionId: string) => {}),
   /** Actual session id returned by the unified Host after launch. */
   acpSessionId: null as string | null,
+  hostSessions: [] as {
+    id: string;
+    directory?: string | null;
+    binding: { projectRoot: string; engineId?: string };
+  }[],
   acpShutdown: vi.fn(async () => ({
     phase: "idle",
     profile_id: null,
@@ -313,6 +318,7 @@ vi.mock("@zerowall/sdk", async () => {
     }
   }
   class AcpHostClient {
+    async listSessions() { return mocks.hostSessions; }
     async listProviders() { return mocks.providers; }
     async getDefaultModel() { return mocks.currentModel; }
     async setDefaultModel(model: string) { mocks.setDefaultModelSpy(model); mocks.currentModel = model; }
@@ -354,6 +360,7 @@ const FIXTURE_MODEL = "moonshot/kimi-k2-thinking";
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  useRuntimeStore.getState().disconnect();
   mocks.failConnects = 0;
   mocks.failCreates = 0;
   mocks.failShell = false;
@@ -377,6 +384,7 @@ beforeEach(async () => {
   mocks.skillsGate = null;
   mocks.failSetModel = false;
   mocks.acpSessionId = null;
+  mocks.hostSessions = [];
   for (const method of Object.values(mocks.workflowControls)) method.mockReset();
   mocks.notifyPermissionRequest.mockResolvedValue(true);
   useRuntimeStore.setState({
@@ -417,6 +425,14 @@ describe("runtime authentication", () => {
     expect(second).toBe(first);
     await Promise.all([first, second]);
     expect(mocks.startRuntime).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not restart a healthy runtime when the app shell remounts", async () => {
+    await useRuntimeStore.getState().bootstrap();
+    await useRuntimeStore.getState().bootstrap();
+
+    expect(mocks.startRuntime).toHaveBeenCalledTimes(1);
+    expect(useRuntimeStore.getState().status).toBe("ready");
   });
 
   it("connect() passes the per-run runtime password to the SDK client", async () => {
@@ -1666,6 +1682,70 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     );
   });
 
+  it("restores an existing ACP session in its immutable project workspace", async () => {
+    mocks.hostSessions = [{
+      id: "old-session",
+      directory: "/ws/old",
+      binding: { projectRoot: "/ws/old" },
+    }];
+    useRuntimeStore.setState({
+      currentId: "old-session",
+      workspace: "/ws/new",
+      acpProfileId: "codex",
+    });
+    mocks.acpLaunch.mockClear();
+    mocks.setWorkspace.mockClear();
+
+    await useRuntimeStore.getState().connect();
+
+    expect(mocks.setWorkspace).toHaveBeenCalledWith("/ws/old");
+    expect(mocks.acpLaunch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "old-session",
+        projectRoot: "/ws/old",
+      }),
+    );
+    expect(useRuntimeStore.getState().workspace).toBe("/ws/old");
+  });
+
+  it("keeps the visible conversation stable when a failed execution is replaced", async () => {
+    mocks.hostSessions = [{
+      id: "persisted-empty-session",
+      directory: "/ws/old",
+      binding: { projectRoot: "/ws/old" },
+    }];
+    mocks.acpSessionId = "replacement-session";
+    mocks.acpLaunch
+      .mockRejectedValueOnce(
+        new Error(
+          'driver error: ACP startup error: HandshakeFailed { stage: SessionLoad, message: "ACP protocol request failed" }',
+        ),
+      )
+      .mockResolvedValueOnce({
+        phase: "ready",
+        profile_id: "codex",
+        runtime_info: null,
+        last_error: null,
+      });
+    useRuntimeStore.setState({
+      currentId: "persisted-empty-session",
+      workspace: "/ws/new",
+      acpProfileId: "codex",
+      threads: {
+        "persisted-empty-session": { blocks: [], index: {}, loaded: true },
+      },
+    });
+
+    await useRuntimeStore.getState().connect();
+
+    expect(useRuntimeStore.getState().currentId).toBe("persisted-empty-session");
+    expect(useRuntimeStore.getState().threads["persisted-empty-session"]).toBeDefined();
+    expect(JSON.parse(window.localStorage.getItem("zerowall.acp.conversation-executions.v1")!))
+      .toMatchObject({
+        "persisted-empty-session": { active: "replacement-session" },
+      });
+  });
+
   it("ignores an OpenCode catalog response that arrives after switching to ACP", async () => {
     let resolveOldSkills!: (skills: { name: string }[]) => void;
     mocks.skillsGate = new Promise((resolve) => {
@@ -1734,7 +1814,7 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     expect(useRuntimeStore.getState().sessions).toEqual([{ id: "opencode", title: "OpenCode" }]);
   });
 
-  it("rebinds legacy ACP conversation state to the OpenCode Host session", async () => {
+  it("keeps legacy conversation state stable when OpenCode gets a new Host execution", async () => {
     const legacyId = "acp:codex";
     const hostId = "ses_migrated";
     mocks.acpSessionId = hostId;
@@ -1756,25 +1836,15 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     await useRuntimeStore.getState().switchRuntime("opencode");
 
     const state = useRuntimeStore.getState();
-    expect(state.currentId).toBe(hostId);
-    expect(state.threads[hostId]?.blocks).toEqual([{ kind: "user", text: "preserve me" }]);
-    expect(state.panes[hostId]?.showFiles).toBe(true);
-    expect(state.sessionAgents[hostId]).toBe("plan");
-    expect(state.sessionModels[hostId]).toBe("cloud/gpt-5.4");
-    expect(state.sessionVariants[hostId]).toBe("high");
-    expect(state.sendingSessions[hostId]).toBe(true);
-    expect(state.threads[legacyId]).toBeUndefined();
-    expect(state.panes[legacyId]).toBeUndefined();
-    expect(state.sessionAgents[legacyId]).toBeUndefined();
-    expect(state.sessionModels[legacyId]).toBeUndefined();
-    expect(state.sessionVariants[legacyId]).toBeUndefined();
-    expect(state.sendingSessions[legacyId]).toBeUndefined();
-    expect(JSON.parse(window.localStorage.getItem("zerowall.session.models.v1")!)).toEqual({
-      [hostId]: "cloud/gpt-5.4",
-    });
-    expect(JSON.parse(window.localStorage.getItem("zerowall.session.variants.v1")!)).toEqual({
-      [hostId]: "high",
-    });
+    expect(state.currentId).toBe(legacyId);
+    expect(state.threads[legacyId]?.blocks).toEqual([{ kind: "user", text: "preserve me" }]);
+    expect(state.panes[legacyId]?.showFiles).toBe(true);
+    expect(state.sessionAgents[legacyId]).toBe("plan");
+    expect(state.sessionModels[legacyId]).toBe("cloud/gpt-5.4");
+    expect(state.sessionVariants[legacyId]).toBe("high");
+    expect(state.sendingSessions[legacyId]).toBe(true);
+    expect(JSON.parse(window.localStorage.getItem("zerowall.acp.conversation-executions.v1")!))
+      .toMatchObject({ [legacyId]: { active: hostId } });
   });
 
   it("routes ACP agent text through the shared fold pipeline into a thread", async () => {
@@ -1798,17 +1868,34 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     expect(mocks.sendPromptSpy).not.toHaveBeenCalled();
   });
 
-  it("refuses a stale OpenCode pane while an ACP runtime owns the conversation", async () => {
+  it("reconnects an unpinned ACP draft with the dated workspace returned by Tauri", async () => {
     await useRuntimeStore.getState().switchRuntime("codex");
-    // A persisted layout can still contain an OpenCode pane after the runtime
-    // has moved to ACP. The ACP bridge has one fixed session, so accepting this
-    // target would echo the question under `ses-opencode` but stream the reply
-    // into `codex`.
+    useRuntimeStore.setState({ currentId: null, workspacePinned: false, workspace: "/ws/base" });
+    mocks.acpLaunch.mockClear();
+
+    await useRuntimeStore.getState().sendPrompt("do it", undefined, "draft:new-pane");
+
+    const datedWorkspace = mocks.newDatedWorkspace.mock.results[
+      mocks.newDatedWorkspace.mock.results.length - 1
+    ]?.value;
+    await expect(datedWorkspace).resolves.toMatch(/^\/ws\/\d{4}-\d{2}-\d{2}-\d{4}$/);
+    const resolvedWorkspace = await datedWorkspace;
+    expect(useRuntimeStore.getState().workspace).toBe(resolvedWorkspace);
+    expect(mocks.acpLaunch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ projectRoot: resolvedWorkspace }),
+    );
+  });
+
+  it("routes a stale pane send through the active logical ACP conversation", async () => {
+    await useRuntimeStore.getState().switchRuntime("codex");
     await useRuntimeStore.getState().sendPrompt("do not split the turn", "ses-opencode");
 
-    expect(mocks.acpPrompt).not.toHaveBeenCalled();
+    expect(mocks.acpPrompt).toHaveBeenCalledWith("do not split the turn");
     expect(useRuntimeStore.getState().threads["ses-opencode"]?.blocks).toBeUndefined();
-    expect(useRuntimeStore.getState().error).toMatch(/active ACP conversation/i);
+    expect(useRuntimeStore.getState().threads.codex?.blocks).toContainEqual(
+      expect.objectContaining({ kind: "user", text: "do not split the turn" }),
+    );
+    expect(useRuntimeStore.getState().error).toBeNull();
   });
 
   it("switching back to OpenCode keeps desktop execution on the unified Host", async () => {
@@ -1844,6 +1931,51 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     expect(state.currentId).toBe("project-conversation");
     expect(state.threads["project-conversation"]).toBeDefined();
     expect(state.sessions.some((session) => session.id === "project-conversation")).toBe(true);
+  });
+
+  it("opens a project conversation through the engine bound to its active execution", async () => {
+    window.localStorage.setItem(
+      "zerowall.acp.config.claude-code",
+      JSON.stringify({ providerId: "zerowall-1", baseUrl: "https://gw/v1", model: "claude-5" }),
+    );
+    window.localStorage.setItem(
+      "zerowall.acp.conversation-executions.v1",
+      JSON.stringify({
+        "conversation-a": { active: "execution-a", all: ["execution-a"], activeEngine: "codex" },
+        "conversation-b": { active: "execution-b", all: ["execution-b"], activeEngine: "claude-code" },
+      }),
+    );
+    mocks.hostSessions = [{
+      id: "execution-a",
+      directory: "/ws/project",
+      binding: { projectRoot: "/ws/project", engineId: "codex" },
+    }];
+    mocks.acpSessionId = "execution-a";
+    useRuntimeStore.setState({
+      currentId: "conversation-a",
+      workspace: "/ws/project",
+      sessions: [
+        { id: "conversation-a", title: "First", directory: "/ws/project" },
+        { id: "conversation-b", title: "Second", directory: "/ws/project" },
+      ],
+      threads: {
+        "conversation-a": { blocks: [], index: {}, loaded: true },
+        "conversation-b": { blocks: [], index: {}, loaded: true },
+      },
+    });
+    await useRuntimeStore.getState().switchRuntime("codex");
+    mocks.acpLaunch.mockClear();
+    mocks.acpSessionId = "execution-b";
+
+    await useRuntimeStore.getState().openSession("conversation-b");
+
+    expect(useRuntimeStore.getState().currentId).toBe("conversation-b");
+    expect(useRuntimeStore.getState().acpProfileId).toBe("claude-code");
+    expect(mocks.acpLaunch).toHaveBeenCalledWith(expect.objectContaining({
+      profileId: "claude-code",
+      logicalConversationId: "conversation-b",
+      conversationId: "execution-b",
+    }));
   });
 
   it("keeps the new ACP runtime ready when a superseded launch fails", async () => {
@@ -1996,7 +2128,7 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     window.localStorage.removeItem("zerowall.acp.config.codex");
   });
 
-  it("forks an ACP session with a new immutable model binding", async () => {
+  it("switches the model by replacing only the hidden ACP execution", async () => {
     window.localStorage.setItem(
       "zerowall.acp.config.codex",
       JSON.stringify({ providerId: "zerowall-2", baseUrl: "https://gw/v1", model: "gpt-5" }),
@@ -2015,11 +2147,14 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
       },
       sessionModels: { "acp-session-1": "zerowall-2/gpt-5" },
       defaultModel: "zerowall-2/gpt-5",
+      panes: {
+        "acp-session-1": { artifact: null, showFiles: true, showRuns: false, showReview: false },
+      },
     });
 
     const nextId = await useRuntimeStore.getState().forkAcpSessionWithModel("zerowall-2/gpt-5-mini");
 
-    expect(nextId).toBe("acp-session-2");
+    expect(nextId).toBe("acp-session-1");
     expect(mocks.acpCreateSession).toHaveBeenCalledWith(
       expect.objectContaining({
         conversationId: expect.stringMatching(/^acp-/),
@@ -2027,11 +2162,13 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
       }),
     );
     expect(mocks.acpActivateSession).toHaveBeenCalledWith("acp-session-2");
-    expect(useRuntimeStore.getState().currentId).toBe("acp-session-2");
-    expect(useRuntimeStore.getState().sessionModels["acp-session-1"]).toBe("zerowall-2/gpt-5");
-    expect(useRuntimeStore.getState().sessionModels["acp-session-2"]).toBe("zerowall-2/gpt-5-mini");
+    expect(useRuntimeStore.getState().currentId).toBe("acp-session-1");
+    expect(useRuntimeStore.getState().sessionModels["acp-session-1"]).toBe("zerowall-2/gpt-5-mini");
     expect(useRuntimeStore.getState().threads["acp-session-1"]?.blocks).toHaveLength(1);
-    expect(useRuntimeStore.getState().threads["acp-session-2"]?.blocks).toEqual([]);
+    expect(useRuntimeStore.getState().threads["acp-session-2"]).toBeUndefined();
+    expect(useRuntimeStore.getState().panes["acp-session-1"]?.showFiles).toBe(true);
+    expect(JSON.parse(window.localStorage.getItem("zerowall.acp.conversation-executions.v1")!))
+      .toMatchObject({ "acp-session-1": { active: "acp-session-2" } });
     window.localStorage.removeItem("zerowall.acp.config.codex");
   });
 });

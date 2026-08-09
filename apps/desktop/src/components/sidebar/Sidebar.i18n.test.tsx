@@ -17,7 +17,8 @@ describe("Sidebar i18n", () => {
     for (const label of ["Research tools", "Notebooks", "Files", "Runs", "Research Graph", "Review", "Skills"]) {
       expect(within(nav).queryByRole("button", { name: label })).toBeNull();
     }
-    expect(screen.getByText("Sessions")).toBeInTheDocument();
+    expect(screen.getByText("Projects")).toBeInTheDocument();
+    expect(screen.queryByText("Sessions")).toBeNull();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
   });
 });

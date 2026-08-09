@@ -110,6 +110,15 @@ const STREAM_REFRESH_MS = 40;
  * hostage when a configured MCP server or Skills catalog is unavailable. */
 const CAPABILITY_DISCOVERY_TIMEOUT_MS = 1_500;
 
+/** A process-backed adapter can persist an ACP session id before the first
+ * prompt creates durable history. On the next app launch `session/load` then
+ * rejects that empty id. Treat only this protocol stage as recoverable: spawn a
+ * fresh session and keep every other launch failure visible to the user. */
+function isPersistedSessionLoadFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /(?:stage:\s*SessionLoad|ACP_SESSION_LOAD_FAILED)/i.test(message);
+}
+
 /** Thrown by methods an ACP agent cannot honor (revert, ad-hoc shell). Callers
  *  gate these in the UI; a thrown error is the honest answer if one slips
  *  through, never a silent no-op that looks like success. */
@@ -124,7 +133,10 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
   private readonly request: AcpLaunchRequest;
   private readonly deps: AcpRuntimeDeps;
   private launchRequest: AcpLaunchRequest | null = null;
+  /** Stable user-visible conversation identity. */
   private sessionId: string;
+  /** Current immutable ACP Host execution backing the visible conversation. */
+  private executionSessionId: string;
   private initialSessionClaimed = false;
   private sessionSequence = 0;
   private sessionStartedEmitted = false;
@@ -176,8 +188,10 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     super();
     this.request = request;
     this.deps = deps;
-    // One agent, one conversation: the session id IS the profile id.
-    this.sessionId = request.conversationId?.trim() || request.profileId;
+    this.sessionId = request.logicalConversationId?.trim()
+      || request.conversationId?.trim()
+      || request.profileId;
+    this.executionSessionId = request.conversationId?.trim() || request.profileId;
     // A runtime connected to an existing conversation must create a fresh Host
     // session for the next draft; a profile-only launch starts as that draft's
     // first session and can be claimed by the first send.
@@ -207,11 +221,23 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
       // Subscribe BEFORE launch so no early event is missed.
       this.unsubscribe = await this.deps.subscribe(this.handlers());
       this.launchRequest = await this.resolveCapabilitySnapshot();
-      const status = await this.deps.launch(this.launchRequest);
+      let status: AcpStatus;
+      try {
+        status = await this.deps.launch(this.launchRequest);
+      } catch (error) {
+        if (!this.launchRequest.conversationId || !isPersistedSessionLoadFailure(error)) {
+          throw error;
+        }
+        const { conversationId: _discarded, ...freshRequest } = this.launchRequest;
+        this.launchRequest = freshRequest;
+        this.initialSessionClaimed = false;
+        status = await this.deps.launch(freshRequest);
+      }
       if (status.phase !== "ready") {
         throw new Error(status.last_error?.message ?? "ACP runtime did not become ready");
       }
-      this.sessionId = this.deps.currentSessionId?.() ?? this.sessionId;
+      this.executionSessionId = this.deps.currentSessionId?.() ?? this.executionSessionId;
+      if (!this.request.logicalConversationId) this.sessionId = this.executionSessionId;
       this.setStatus("ready");
       this.emitSessionStarted();
     } catch (err) {
@@ -551,6 +577,10 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     return this.sessionId;
   }
 
+  currentExecutionSessionId(): string {
+    return this.executionSessionId;
+  }
+
   private async resolveCapabilitySnapshot(): Promise<AcpLaunchRequest> {
     const [mcpAllowList, skillsSnapshot] = await Promise.all([
       this.request.mcpAllowList !== undefined
@@ -587,7 +617,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     if (!this.initialSessionClaimed) {
       if (requestedBinding) await this.deps.setModel(requestedBinding.model);
       this.initialSessionClaimed = true;
-      this.sessionId = this.deps.currentSessionId?.() ?? this.sessionId;
+      this.executionSessionId = this.deps.currentSessionId?.() ?? this.executionSessionId;
       return this.sessionId;
     }
     if (!this.deps.createSession) {
@@ -612,13 +642,29 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
           }
         : {}),
     });
-    this.sessionId = sessionId;
+    this.executionSessionId = sessionId;
+    if (!this.request.logicalConversationId) this.sessionId = sessionId;
     await this.deps.activateSession?.(sessionId);
-    return sessionId;
+    return this.sessionId;
   }
 
   async listSessions(): Promise<SessionMeta[]> {
-    if (this.deps.listSessions) return this.deps.listSessions();
+    if (this.deps.listSessions) {
+      const sessions = await this.deps.listSessions();
+      if (!this.request.logicalConversationId || this.executionSessionId === this.sessionId) {
+        return sessions;
+      }
+      const current = sessions.find((session) => session.id === this.executionSessionId);
+      const hidden = new Set(this.request.hiddenExecutionIds ?? []);
+      return [
+        ...sessions.filter((session) =>
+          session.id !== this.executionSessionId
+          && session.id !== this.sessionId
+          && !hidden.has(session.id)
+        ),
+        ...(current ? [{ ...current, id: this.sessionId }] : []),
+      ];
+    }
     const title =
       this.request.profileId === "claude-code"
         ? "Claude Code"
@@ -633,7 +679,8 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
   }
 
   async getMessages(sessionId = this.sessionId): Promise<HistoryMessage[]> {
-    return this.deps.getMessages?.(sessionId) ?? [];
+    const executionId = sessionId === this.sessionId ? this.executionSessionId : sessionId;
+    return this.deps.getMessages?.(executionId) ?? [];
   }
 
   async sendPrompt(
@@ -654,9 +701,12 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     this.exactUsageEmittedForTurn = false;
     this.turnStartedAt = Date.now();
     this.sessionId = sessionId;
-    await this.deps.activateSession?.(sessionId);
+    const executionId = this.request.logicalConversationId
+      ? this.executionSessionId
+      : sessionId;
+    await this.deps.activateSession?.(executionId);
     if (this.deps.promptSession) {
-      await this.deps.promptSession(sessionId, text, attachments ?? []);
+      await this.deps.promptSession(executionId, text, attachments ?? []);
     } else if (attachments && attachments.length > 0) {
       await this.deps.prompt(text, attachments);
     } else {
@@ -665,7 +715,8 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
   }
 
   async abortSession(sessionId: string): Promise<void> {
-    if (this.deps.cancelSession) await this.deps.cancelSession(sessionId);
+    const executionId = sessionId === this.sessionId ? this.executionSessionId : sessionId;
+    if (this.deps.cancelSession) await this.deps.cancelSession(executionId);
     else await this.deps.cancel();
   }
 
@@ -739,7 +790,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
     const question = this.pendingQuestions.get(requestId);
     const sessionId = question?.sessionId ?? this.sessionId;
     if (this.deps.respondQuestionSession) {
-      await this.deps.respondQuestionSession(sessionId, requestId, answers);
+      await this.deps.respondQuestionSession(this.executionSessionId, requestId, answers);
     } else {
       await this.deps.respondQuestion(requestId, answers);
     }
@@ -760,7 +811,7 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
       (option) => matcher.test(option.option_id) || matcher.test(option.name ?? ""),
     )?.option_id ?? null;
     if (this.deps.respondPermissionSession) {
-      await this.deps.respondPermissionSession(this.sessionId, requestId, optionId);
+      await this.deps.respondPermissionSession(this.executionSessionId, requestId, optionId);
     } else {
       await this.deps.respondPermission(requestId, optionId);
     }

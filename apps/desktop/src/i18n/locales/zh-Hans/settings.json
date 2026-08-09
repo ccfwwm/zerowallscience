@@ -1,5 +1,6 @@
 {
   "nav": {
+    "account": "账号与 AI 云平台",
     "back": "返回应用",
     "general": "通用",
     "appearance": "外观",
@@ -35,6 +36,10 @@
   "page": {
     "title": "设置",
     "subtitle": "集中管理引擎、模型与本地运行环境。"
+  },
+  "account": {
+    "title": "账号与 AI 云平台",
+    "hint": "登录后自动同步账号、模型和供应商配置。也可以跳过登录使用自定义供应商。"
   },
   "runtime": {
     "title": "代理运行时",
@@ -205,8 +210,6 @@
     "connected": "已连接 {{count}} 个模型，请在模型中选择。",
     "pickOne": "请至少选择一个模型。",
     "noModels": "网关未为此账号返回任何模型。",
-    "selectGroup": "选择分组",
-    "groupHint": "不同分组可能包含不同的模型",
     "creatingKey": "正在创建密钥…",
     "keyExists": "已有密钥",
     "manualPlaceholder": "手动添加模型 ID — 逗号分隔",
@@ -361,6 +364,7 @@
     "couldNotFetchModels": "无法从端点获取模型",
     "endpointFieldsRequired": "名称、基础 URL 和至少一个模型 ID 为必填项。",
     "endpointAdded": "{{name}} 已添加——其模型现在可在上方选择。",
+    "endpointSaved": "{{name}} 已保存；运行环境就绪后会自动启用。",
     "couldNotAddMcp": "无法添加 MCP 服务器",
     "mcpFieldsRequired": "名称和命令/URL 为必填项。",
     "mcpAdded": "MCP 服务器 {{name}} 已添加",

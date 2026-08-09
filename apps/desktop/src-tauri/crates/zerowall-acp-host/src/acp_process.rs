@@ -150,6 +150,41 @@ impl AcpProcessDriver {
     }
 }
 
+fn process_session_state(
+    id: String,
+    binding: AgentBinding,
+    backing_session_id: Option<String>,
+) -> SessionState {
+    SessionState {
+        id,
+        binding,
+        state: crate::SessionStatus::Ready,
+        resumable: true,
+        backing_session_id,
+        title: None,
+        directory: None,
+        parent_id: None,
+        created: None,
+        updated: None,
+    }
+}
+
+/// `codex-acp` exposes model ids as `model[reasoning-effort]`, while the
+/// ZeroWall catalog deliberately keeps the provider's plain model id. Keep
+/// that adapter detail inside the process Driver so React, persisted bindings,
+/// and the public Host API continue to use `gpt-5.6-sol`.
+fn adapter_model_id(profile_id: &str, model: &str, variant: Option<&str>) -> String {
+    let model = model.trim();
+    if profile_id != "codex" || model.ends_with(']') && model.rsplit_once('[').is_some() {
+        return model.to_owned();
+    }
+    let effort = match variant.map(str::trim) {
+        Some(effort @ ("none" | "minimal" | "low" | "medium" | "high" | "xhigh")) => effort,
+        _ => "medium",
+    };
+    format!("{model}[{effort}]")
+}
+
 impl Drop for AcpProcessDriver {
     fn drop(&mut self) {
         if let Some(client) = self.client.take() {
@@ -214,21 +249,34 @@ impl AcpHostDriver for AcpProcessDriver {
 
     async fn new_session(
         &mut self,
-        _request: NewSessionRequest,
+        request: NewSessionRequest,
     ) -> Result<SessionState, HostError> {
         let actual_id = self.launch_session(AcpSessionStart::New).await?;
-        Ok(SessionState {
-            id: actual_id,
-            binding: self.binding.clone(),
-            state: crate::SessionStatus::Ready,
-            resumable: true,
-            backing_session_id: None,
-            title: None,
-            directory: None,
-            parent_id: None,
-            created: None,
-            updated: None,
-        })
+        // ACP session/new does not apply ZeroWall's immutable binding by
+        // itself. Configure the adapter before the first prompt so a freshly
+        // launched Codex session never falls back to its own model and never
+        // receives the catalog's plain id where codex-acp expects
+        // `model[reasoning-effort]`.
+        if let Some(model) = self.binding.model.as_deref() {
+            let adapter_model = adapter_model_id(
+                &self.profile.id,
+                model,
+                self.binding.variant.as_deref(),
+            );
+            if let Err(error) = self
+                .require_session(&actual_id)?
+                .set_model(adapter_model)
+                .await
+            {
+                self.detach_process();
+                return Err(Self::process_error(error));
+            }
+        }
+        Ok(process_session_state(
+            actual_id,
+            self.binding.clone(),
+            Some(request.session_id),
+        ))
     }
 
     async fn resume_session(
@@ -241,18 +289,11 @@ impl AcpHostDriver for AcpProcessDriver {
                 session_id: request.session_id.clone(),
             })
             .await?;
-        Ok(SessionState {
-            id: session_id,
-            binding: self.binding.clone(),
-            state: crate::SessionStatus::Ready,
-            resumable: true,
-            backing_session_id: None,
-            title: None,
-            directory: None,
-            parent_id: None,
-            created: None,
-            updated: None,
-        })
+        Ok(process_session_state(
+            session_id,
+            self.binding.clone(),
+            None,
+        ))
     }
 
     async fn load_session(
@@ -265,18 +306,11 @@ impl AcpHostDriver for AcpProcessDriver {
                 session_id: request.session_id.clone(),
             })
             .await?;
-        Ok(SessionState {
-            id: session_id,
-            binding: self.binding.clone(),
-            state: crate::SessionStatus::Ready,
-            resumable: true,
-            backing_session_id: None,
-            title: None,
-            directory: None,
-            parent_id: None,
-            created: None,
-            updated: None,
-        })
+        Ok(process_session_state(
+            session_id,
+            self.binding.clone(),
+            None,
+        ))
     }
 
     async fn prompt(&mut self, request: PromptRequest) -> Result<PromptResponse, HostError> {
@@ -316,8 +350,13 @@ impl AcpHostDriver for AcpProcessDriver {
             .get("model")
             .and_then(|value| value.as_str())
             .ok_or_else(|| HostError::Driver("ACP config requires a string model".into()))?;
+        let adapter_model = adapter_model_id(
+            &self.profile.id,
+            model,
+            self.binding.variant.as_deref(),
+        );
         self.require_session(&request.session_id)?
-            .set_model(model.to_owned())
+            .set_model(adapter_model)
             .await
             .map_err(Self::process_error)?;
         self.binding.model = Some(model.to_owned());
@@ -797,6 +836,38 @@ mod tests {
         assert!(capabilities.resume_session);
         assert!(capabilities.load_session);
         assert!(!capabilities.mode);
+    }
+
+    #[test]
+    fn codex_adapter_model_ids_are_internal_and_include_reasoning_effort() {
+        assert_eq!(
+            adapter_model_id("codex", "gpt-5.6-sol", None),
+            "gpt-5.6-sol[medium]"
+        );
+        assert_eq!(
+            adapter_model_id("codex", "gpt-5.6-sol", Some("high")),
+            "gpt-5.6-sol[high]"
+        );
+        assert_eq!(
+            adapter_model_id("codex", "gpt-5.6-sol[low]", Some("high")),
+            "gpt-5.6-sol[low]"
+        );
+        assert_eq!(
+            adapter_model_id("claude-code", "claude-sonnet-5", Some("high")),
+            "claude-sonnet-5"
+        );
+    }
+
+    #[test]
+    fn process_session_state_keeps_the_requested_id_as_its_runtime_home_seed() {
+        let state = process_session_state(
+            "vendor-session".into(),
+            binding(crate::HostDriverKind::ClaudeCode),
+            Some("requested-session".into()),
+        );
+
+        assert_eq!(state.id, "vendor-session");
+        assert_eq!(state.backing_session_id.as_deref(), Some("requested-session"));
     }
 
     #[test]

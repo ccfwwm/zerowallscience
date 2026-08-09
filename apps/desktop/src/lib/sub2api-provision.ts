@@ -22,13 +22,17 @@ export function isDomesticModel(id: string): boolean {
   return DOMESTIC.some((needle) => lower.includes(needle));
 }
 
-/** Only explicitly published Zero groups belong in this client. This is a
- * boundary, not a best-effort display filter: exposing a different gateway
- * group could provision its key into the local runtime. */
-const ZERO_GROUP = /^zero/i;
-
-export function openGroups<T extends { name: string }>(groups: T[]): T[] {
-  return groups.filter((g) => ZERO_GROUP.test(g.name.trim()));
+/** Return every group the service exposes. The service owns visibility and the
+ * desktop client must not silently hide model channels from the user. A group
+ * can opt out explicitly with `visible`, `available`, or `enabled: false`;
+ * older responses without those fields remain visible for backwards
+ * compatibility. */
+export function openGroups<
+  T extends { name: string; visible?: boolean; available?: boolean; enabled?: boolean },
+>(groups: T[]): T[] {
+  return groups.filter(
+    (group) => group.visible !== false && group.available !== false && group.enabled !== false,
+  );
 }
 
 /** Domestic models first, then everything else, alphabetical within each group. */

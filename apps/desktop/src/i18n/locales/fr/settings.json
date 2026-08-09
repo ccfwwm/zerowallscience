@@ -1,5 +1,6 @@
 {
   "nav": {
+    "account": "Compte et plateforme IA",
     "back": "Retour à l'app",
     "general": "Général",
     "appearance": "Apparence",
@@ -12,6 +13,10 @@
     "privacy": "Confidentialité",
     "browser": "Navigateur",
     "remote": "Accès distant"
+  },
+  "account": {
+    "title": "Compte et plateforme IA",
+    "hint": "Connectez-vous pour synchroniser automatiquement votre compte, vos modèles et vos fournisseurs. Les fournisseurs personnalisés fonctionnent aussi sans connexion."
   },
   "appearance": {
     "title": "Apparence",
@@ -206,8 +211,6 @@
     "connected": "{{count}} modèle(s) connecté(s). Choisissez-en un dans Modèles.",
     "pickOne": "Sélectionnez au moins un modèle.",
     "noModels": "La passerelle n'a renvoyé aucun modèle pour ce compte.",
-    "selectGroup": "Sélectionner un groupe",
-    "groupHint": "Différents groupes peuvent proposer différents modèles",
     "creatingKey": "Création de la clé…",
     "keyExists": "Clé existante",
     "manualPlaceholder": "Ajouter des ids de modèle à la main — séparés par des virgules",
@@ -362,6 +365,7 @@
     "couldNotFetchModels": "Impossible de récupérer les modèles depuis le point de terminaison",
     "endpointFieldsRequired": "Le nom, l'URL de base et au moins un identifiant de modèle sont requis.",
     "endpointAdded": "{{name}} ajouté — ses modèles sont désormais sélectionnables ci-dessus.",
+    "endpointSaved": "{{name}} enregistré et sera activé lorsque l'environnement sera prêt.",
     "couldNotAddMcp": "Impossible d'ajouter le serveur MCP",
     "mcpFieldsRequired": "Le nom et la commande/URL sont requis.",
     "mcpAdded": "Serveur MCP {{name}} ajouté",

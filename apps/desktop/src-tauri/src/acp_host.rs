@@ -106,22 +106,33 @@ fn persist_session(
         .or_else(|| previous.and_then(|entry| entry.credential.clone()));
     catalog.insert(
         state.id.clone(),
-        PersistedSession {
-            id: state.id.clone(),
-            binding: state.binding.clone(),
-            base_url,
-            credential,
-            resumable: state.resumable,
-            backing_session_id: state.backing_session_id.clone(),
-            state: state.state,
-            title: state.title.clone(),
-            directory: state.directory.clone(),
-            parent_id: state.parent_id.clone(),
-            created: state.created,
-            updated: state.updated,
-        },
+        persisted_session_from_state(state, base_url, credential),
     );
     write_catalog(app, &catalog)
+}
+
+fn persisted_session_from_state(
+    state: &SessionState,
+    base_url: Option<String>,
+    credential: Option<CredentialRef>,
+) -> PersistedSession {
+    PersistedSession {
+        id: state.id.clone(),
+        binding: state.binding.clone(),
+        base_url,
+        credential,
+        resumable: state.resumable,
+        backing_session_id: state.backing_session_id.clone(),
+        state: state.state,
+        title: state.title.clone(),
+        directory: state
+            .directory
+            .clone()
+            .or_else(|| Some(state.binding.project_root.clone())),
+        parent_id: state.parent_id.clone(),
+        created: state.created,
+        updated: state.updated,
+    }
 }
 
 fn remove_persisted_session(app: &AppHandle, session_id: &str) -> Result<(), String> {
@@ -267,6 +278,43 @@ fn retain_workspace_sessions(sessions: &mut Vec<SessionState>, workspace: &Path)
         .retain(|session| validate_project_root(&session.binding.project_root, workspace).is_ok());
 }
 
+fn session_state_from_persisted(persisted: PersistedSession) -> SessionState {
+    let directory = persisted
+        .directory
+        .or_else(|| Some(persisted.binding.project_root.clone()));
+    SessionState {
+        id: persisted.id,
+        binding: persisted.binding,
+        state: persisted.state,
+        resumable: persisted.resumable,
+        backing_session_id: persisted.backing_session_id,
+        title: persisted.title,
+        directory,
+        parent_id: persisted.parent_id,
+        created: persisted.created,
+        updated: persisted.updated,
+    }
+}
+
+fn merge_catalog_metadata(
+    mut sessions: Vec<SessionState>,
+    catalog: HashMap<String, PersistedSession>,
+    workspace: &Path,
+) -> Vec<SessionState> {
+    retain_workspace_sessions(&mut sessions, workspace);
+    let active = sessions
+        .iter()
+        .map(|session| session.id.clone())
+        .collect::<std::collections::HashSet<_>>();
+    sessions.extend(
+        catalog
+            .into_values()
+            .filter(|persisted| !active.contains(&persisted.id))
+            .map(session_state_from_persisted),
+    );
+    sessions
+}
+
 fn merge_discovered_sessions(
     catalog: &mut HashMap<String, PersistedSession>,
     discovered: Vec<SessionState>,
@@ -324,6 +372,11 @@ fn validate_base_url(value: &str) -> Result<(), String> {
         return Err("base_url must use http or https".into());
     }
     Ok(())
+}
+
+fn claude_base_url(value: &str) -> String {
+    let trimmed = value.trim_end_matches('/');
+    trimmed.strip_suffix("/v1").unwrap_or(trimmed).to_owned()
 }
 
 fn adapter_name(engine: HostDriverKind) -> Option<&'static str> {
@@ -498,9 +551,27 @@ fn process_profile(
     ];
     match request.engine {
         HostDriverKind::Codex => {
+            write_host_codex_gateway_config(request, &runtime_home)?;
+            let codex_config = serde_json::json!({
+                "model": request.model,
+                "model_provider": "zerowall-ai-cloud",
+                "model_providers": {
+                    "zerowall-ai-cloud": {
+                        "name": "ZeroWall AI Cloud",
+                        "base_url": request.base_url,
+                        "wire_api": "responses",
+                        "env_key": "CODEX_API_KEY",
+                        "requires_openai_auth": false
+                    }
+                }
+            })
+            .to_string();
             env.extend([
-                ("OPENAI_API_KEY".into(), key),
+                ("OPENAI_API_KEY".into(), key.clone()),
                 ("OPENAI_BASE_URL".into(), request.base_url.clone()),
+                ("CODEX_API_KEY".into(), key),
+                ("CODEX_CONFIG".into(), codex_config),
+                ("MODEL_PROVIDER".into(), "zerowall-ai-cloud".into()),
                 (
                     "CODEX_HOME".into(),
                     runtime_home.to_string_lossy().into_owned(),
@@ -511,7 +582,10 @@ fn process_profile(
             env.extend([
                 ("ANTHROPIC_API_KEY".into(), key.clone()),
                 ("ANTHROPIC_AUTH_TOKEN".into(), key),
-                ("ANTHROPIC_BASE_URL".into(), request.base_url.clone()),
+                (
+                    "ANTHROPIC_BASE_URL".into(),
+                    claude_base_url(&request.base_url),
+                ),
                 ("ANTHROPIC_MODEL".into(), request.model.clone()),
                 (
                     "CLAUDE_CONFIG_DIR".into(),
@@ -551,12 +625,52 @@ fn process_runtime_home(workspace: &Path, request: &AcpHostLaunchRequest) -> Pat
         HostDriverKind::ClaudeCode => "claude-code",
         HostDriverKind::OpenCode => "opencode",
     };
-    let session = format!("{:x}", Sha256::digest(request.session_id.as_bytes()));
+    let runtime_home_seed = request
+        .backing_session_id
+        .as_deref()
+        .unwrap_or(&request.session_id);
+    let session = format!("{:x}", Sha256::digest(runtime_home_seed.as_bytes()));
     workspace
         .join(".zerowall")
         .join("acp")
         .join(engine)
         .join(session)
+}
+
+fn write_host_codex_gateway_config(
+    request: &AcpHostLaunchRequest,
+    codex_home: &Path,
+) -> Result<(), String> {
+    let quote = |value: &str| serde_json::to_string(value).expect("string serialization");
+    let config = format!(
+        "model = {model}\nmodel_provider = \"zerowall-ai-cloud\"\n\n[model_providers.zerowall-ai-cloud]\nname = \"ZeroWall AI Cloud\"\nbase_url = {base_url}\nwire_api = \"responses\"\nenv_key = \"CODEX_API_KEY\"\nrequires_openai_auth = false\n",
+        model = quote(request.model.trim()),
+        base_url = quote(request.base_url.trim()),
+    );
+    std::fs::write(codex_home.join("config.toml"), config)
+        .map_err(|error| format!("write isolated Codex gateway config: {error}"))
+}
+
+fn restored_backing_session_id(
+    engine: HostDriverKind,
+    persisted: Option<&str>,
+    profile_id: &str,
+) -> Option<String> {
+    persisted.map(str::to_owned).or_else(|| {
+        matches!(engine, HostDriverKind::Codex | HostDriverKind::ClaudeCode)
+            .then(|| profile_id.to_owned())
+    })
+}
+
+fn restore_process_launch_metadata(
+    request: &mut AcpHostLaunchRequest,
+    persisted: &PersistedSession,
+) {
+    request.backing_session_id = restored_backing_session_id(
+        persisted.binding.engine,
+        persisted.backing_session_id.as_deref(),
+        &persisted.binding.profile,
+    );
 }
 
 fn binding(request: &AcpHostLaunchRequest, workspace: &Path) -> AgentBinding {
@@ -1166,13 +1280,14 @@ async fn start_host_session(
     request: AcpHostLaunchRequest,
     route: SessionLaunchRoute,
 ) -> Result<SessionState, String> {
-    let request = validate_request(&request)?;
+    let mut request = validate_request(&request)?;
     let workspace = workspace_root(&app)?;
     validate_project_root(&request.project_root, &workspace)?;
     let requested_binding = binding(&request, &workspace);
     let catalog = read_catalog(&app)?;
     let has_persisted_catalog_entry = catalog.contains_key(&request.session_id);
     let session_binding = if let Some(persisted) = catalog.get(&request.session_id) {
+        restore_process_launch_metadata(&mut request, persisted);
         persisted
             .binding
             .ensure_compatible(&requested_binding)
@@ -1188,7 +1303,7 @@ async fn start_host_session(
     let driver = build_driver(&app, &request, &workspace, session_binding.clone())?;
     let mut host = state.host.lock().await;
     host.register_driver(request.engine, driver);
-    let result = route_registered_session(
+    let mut result = route_registered_session(
         &mut host,
         &request,
         session_binding,
@@ -1197,7 +1312,10 @@ async fn start_host_session(
     )
     .await;
     drop(host);
-    if let Ok(ref state) = result {
+    if let Ok(ref mut state) = result {
+        if state.backing_session_id.is_none() {
+            state.backing_session_id = request.backing_session_id.clone();
+        }
         persist_session(&app, state, Some(&request))?;
     }
     result
@@ -1220,31 +1338,12 @@ pub async fn acp_host_sessions(
     state: State<'_, AcpHostState>,
 ) -> Result<Vec<SessionState>, String> {
     let workspace = workspace_root(&app)?;
-    let mut sessions = state.host.lock().await.list_sessions();
-    retain_workspace_sessions(&mut sessions, &workspace);
-    let active = sessions
-        .iter()
-        .map(|session| session.id.clone())
-        .collect::<std::collections::HashSet<_>>();
-    for persisted in read_catalog(&app)?.into_values() {
-        if !active.contains(&persisted.id)
-            && validate_project_root(&persisted.binding.project_root, &workspace).is_ok()
-        {
-            sessions.push(SessionState {
-                id: persisted.id,
-                binding: persisted.binding,
-                state: persisted.state,
-                resumable: persisted.resumable,
-                backing_session_id: persisted.backing_session_id,
-                title: persisted.title,
-                directory: persisted.directory,
-                parent_id: persisted.parent_id,
-                created: persisted.created,
-                updated: persisted.updated,
-            });
-        }
-    }
-    Ok(sessions)
+    let sessions = state.host.lock().await.list_sessions();
+    Ok(merge_catalog_metadata(
+        sessions,
+        read_catalog(&app)?,
+        &workspace,
+    ))
 }
 
 #[tauri::command]
@@ -1306,7 +1405,11 @@ pub async fn acp_host_load(
                 "terminated session requires its original launch profile to reload".to_owned()
             })?;
             let mut request = request.clone();
-            request.backing_session_id = active.backing_session_id.clone();
+            request.backing_session_id = restored_backing_session_id(
+                active.binding.engine,
+                active.backing_session_id.as_deref(),
+                &active.binding.profile,
+            );
             let driver = build_driver(&app, &request, &workspace, active.binding.clone())?;
             host.register_driver(active.binding.engine, driver);
         }
@@ -1332,7 +1435,7 @@ pub async fn acp_host_load(
             .binding
             .ensure_compatible(&expected)
             .map_err(error_string)?;
-        request.backing_session_id = persisted.backing_session_id.clone();
+        restore_process_launch_metadata(&mut request, persisted);
         persisted.binding.clone()
     } else {
         expected
@@ -1401,6 +1504,11 @@ fn process_resume_request(persisted: &PersistedSession) -> Result<AcpHostLaunchR
     let credential = persisted.credential.clone().unwrap_or(CredentialRef {
         keychain_id: provider.clone(),
     });
+    let backing_session_id = restored_backing_session_id(
+        binding.engine,
+        persisted.backing_session_id.as_deref(),
+        &binding.profile,
+    );
     Ok(AcpHostLaunchRequest {
         engine: binding.engine,
         profile_id: binding.profile,
@@ -1410,7 +1518,7 @@ fn process_resume_request(persisted: &PersistedSession) -> Result<AcpHostLaunchR
         base_url: base_url.to_owned(),
         project_root: binding.project_root,
         frame_id: Some(session_id.to_owned()),
-        backing_session_id: persisted.backing_session_id.clone(),
+        backing_session_id,
         variant: binding.variant,
         profile_fingerprint: binding.profile_fingerprint,
         credential,
@@ -1764,6 +1872,45 @@ mod tests {
         }
     }
 
+    #[test]
+    fn catalog_metadata_keeps_sessions_from_other_workspaces_and_restores_their_root() {
+        let current_root = Path::new("C:/work/current");
+        let previous_root = Path::new("C:/work/previous");
+        let mut persisted = test_persisted_session(
+            "previous-session",
+            HostDriverKind::ClaudeCode,
+            previous_root,
+        );
+        persisted.directory = None;
+        let catalog = HashMap::from([(persisted.id.clone(), persisted)]);
+
+        let sessions = merge_catalog_metadata(Vec::new(), catalog, current_root);
+
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, "previous-session");
+        assert_eq!(
+            sessions[0].directory.as_deref(),
+            Some(previous_root.to_string_lossy().as_ref())
+        );
+    }
+
+    #[test]
+    fn persisted_session_falls_back_to_the_immutable_binding_root() {
+        let root = Path::new("C:/work/project");
+        let state = test_session(
+            "session",
+            test_binding(HostDriverKind::Codex, root),
+            None,
+        );
+
+        let persisted = persisted_session_from_state(&state, None, None);
+
+        assert_eq!(
+            persisted.directory.as_deref(),
+            Some(root.to_string_lossy().as_ref())
+        );
+    }
+
     fn test_launch_request(
         engine: HostDriverKind,
         root: &Path,
@@ -1852,6 +1999,42 @@ mod tests {
         assert_ne!(first_home, second_home);
         assert!(!first_home.to_string_lossy().contains("unsafe"));
         assert!(!first_home.to_string_lossy().contains(".."));
+    }
+
+    #[test]
+    fn process_runtime_home_uses_the_original_launch_seed_after_agent_id_rebinding() {
+        let root = PathBuf::from("C:/science");
+        let original = test_launch_request(HostDriverKind::ClaudeCode, &root, "claude-code");
+        let mut restored = test_launch_request(
+            HostDriverKind::ClaudeCode,
+            &root,
+            "32713ca5-1438-43a8-a573-4eb725c3d325",
+        );
+        restored.backing_session_id = Some("claude-code".into());
+
+        assert_eq!(
+            process_runtime_home(&root, &original),
+            process_runtime_home(&root, &restored)
+        );
+    }
+
+    #[test]
+    fn legacy_process_catalog_uses_the_profile_id_as_its_runtime_home_seed() {
+        let root = PathBuf::from("C:/science");
+        let mut request = test_launch_request(
+            HostDriverKind::ClaudeCode,
+            &root,
+            "32713ca5-1438-43a8-a573-4eb725c3d325",
+        );
+        let persisted = test_persisted_session(
+            &request.session_id,
+            HostDriverKind::ClaudeCode,
+            &root,
+        );
+
+        restore_process_launch_metadata(&mut request, &persisted);
+
+        assert_eq!(request.backing_session_id.as_deref(), Some("claude-code"));
     }
 
     #[test]
@@ -2194,6 +2377,22 @@ mod tests {
             Some("CLAUDE_CODE_EXECUTABLE")
         );
         assert_eq!(adapter_runtime_env_name(HostDriverKind::OpenCode), None);
+    }
+
+    #[test]
+    fn claude_base_url_removes_the_anthropic_api_version_suffix() {
+        assert_eq!(
+            claude_base_url("https://code.example.test/v1"),
+            "https://code.example.test"
+        );
+        assert_eq!(
+            claude_base_url("https://proxy.example.test/anthropic/v1/"),
+            "https://proxy.example.test/anthropic"
+        );
+        assert_eq!(
+            claude_base_url("https://proxy.example.test/anthropic"),
+            "https://proxy.example.test/anthropic"
+        );
     }
 
     #[test]

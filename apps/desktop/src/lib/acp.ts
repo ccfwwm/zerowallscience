@@ -92,6 +92,12 @@ export function createSkillSnapshots(
 
 export interface AcpLaunchRequest {
   profileId: string;
+  /** Stable product conversation id. The Host execution id may change when
+   *  the user switches engine/model, but this id stays visible in React. */
+  logicalConversationId?: string;
+  /** Superseded immutable Host executions belonging to the same logical
+   *  conversation. They remain persisted but never render as extra chats. */
+  hiddenExecutionIds?: string[];
   conversationId?: string;
   projectRoot: string;
   mcpAllowList?: string[];

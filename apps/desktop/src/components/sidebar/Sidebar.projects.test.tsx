@@ -1,6 +1,7 @@
-import { screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRuntimeStore } from "@/lib/runtime";
+import { useLayoutStore } from "@/lib/layout";
 import { renderAt } from "@/test/render";
 
 const PROJECT = {
@@ -17,7 +18,7 @@ afterEach(() =>
 );
 
 describe("Sidebar projects", () => {
-  it("groups sessions into their project and keeps the rest loose", async () => {
+  it("groups every conversation under its registered or directory-derived project", async () => {
     useRuntimeStore.setState({
       projects: [PROJECT],
       sessions: [
@@ -30,14 +31,46 @@ describe("Sidebar projects", () => {
     renderAt("/files");
 
     expect(await screen.findByText("BCI Trends")).toBeInTheDocument();
-    // Both groups render their sessions; the child session does not appear.
+    // Both project groups render their sessions; the child session does not appear.
     expect(screen.getByText("paper search")).toBeInTheDocument();
-    expect(screen.getByText("quick question")).toBeInTheDocument();
+    const derivedProject = screen.getAllByRole("button", { name: /2026-07-01-0900/ })[0];
+    expect(within(derivedProject.parentElement?.parentElement ?? derivedProject).getByText("quick question")).toBeInTheDocument();
     expect(screen.queryByText("subtask")).not.toBeInTheDocument();
     // The project offers its own "new session" entry point.
     expect(
       screen.getByRole("button", { name: "New session in BCI Trends" }),
     ).toBeInTheDocument();
+  });
+
+  it("uses a friendly title when legacy metadata is an engine name or opaque id", async () => {
+    useRuntimeStore.setState({
+      projects: [PROJECT],
+      sessions: [
+        { id: "550e8400-e29b-41d4-a716-446655440000", title: "550e8400-e29b-41d4-a716-446655440000", directory: PROJECT.path },
+        { id: "ses_old", title: "opencode", directory: PROJECT.path },
+      ],
+    });
+    renderAt("/files");
+
+    expect(await screen.findAllByText("New conversation")).toHaveLength(2);
+    expect(screen.queryByText("opencode")).toBeNull();
+    expect(screen.queryByText("550e8400-e29b-41d4-a716-446655440000")).toBeNull();
+  });
+
+  it("opens a conversation directly without invoking legacy split or preview behavior", async () => {
+    const split = vi.fn();
+    const openSessionEphemeral = vi.fn();
+    useLayoutStore.setState({ split, openSessionEphemeral });
+    useRuntimeStore.setState({
+      projects: [PROJECT],
+      sessions: [{ id: "conversation-1", title: "Paper review", directory: PROJECT.path }],
+    });
+    renderAt("/files");
+
+    const link = await screen.findByRole("link", { name: /Paper review/ });
+    expect(link).toHaveAttribute("href", "/live/conversation-1");
+    expect(split).not.toHaveBeenCalled();
+    expect(openSessionEphemeral).not.toHaveBeenCalled();
   });
 
   it("offers a new-project entry when no projects exist yet", async () => {

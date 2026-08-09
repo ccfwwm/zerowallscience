@@ -288,23 +288,26 @@ describe("approval mode switch", () => {
     expect(screen.queryByLabelText("Approval mode")).toBeNull();
   });
 
-  it("offers only the safe approval mode", () => {
+  it("offers three safe approval presets and selects full project access", () => {
     const onChange = vi.fn();
     render(<Composer onSend={vi.fn()} approvalMode="approve" onApprovalModeChange={onChange} />);
     const button = screen.getByLabelText("Approval mode");
-    expect(button.textContent).toContain("Approve for me");
+    expect(button.textContent).toContain("Request approval");
 
     fireEvent.click(button);
-    expect(screen.queryByRole("menuitemradio", { name: /Full access/ })).toBeNull();
-    expect(screen.getAllByRole("menuitemradio")).toHaveLength(1);
-    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("menuitemradio", { name: /Request approval/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemradio", { name: /Help approve/ })).toBeInTheDocument();
+    const full = screen.getByRole("menuitemradio", { name: /Full access/ });
+    expect(screen.getAllByRole("menuitemradio")).toHaveLength(3);
+    fireEvent.mouseDown(full);
+    expect(onChange).toHaveBeenCalledWith("full");
   });
 
   it("marks the active mode in the menu", () => {
     render(<Composer onSend={vi.fn()} approvalMode="approve" onApprovalModeChange={vi.fn()} />);
     fireEvent.click(screen.getByLabelText("Approval mode"));
     expect(
-      screen.getByRole("menuitemradio", { name: /Approve for me/ }).getAttribute("aria-checked"),
+      screen.getByRole("menuitemradio", { name: /Request approval/ }).getAttribute("aria-checked"),
     ).toBe("true");
   });
 });

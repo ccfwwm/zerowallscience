@@ -5,11 +5,14 @@ import {
   Check,
   ChevronDown,
   ClipboardList,
+  CircleHelp,
   FileText,
   Hammer,
   Hand,
   Paperclip,
+  Plus,
   Square,
+  ShieldCheck,
   Terminal,
   X,
 } from "lucide-react";
@@ -39,7 +42,6 @@ import { useUiStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
 import { isGatewayWeb } from "@/lib/webMode";
-import { SelectionSnapshot } from "@/components/thread/SelectionSnapshot";
 
 /** A paste longer than this becomes a workspace file chip instead of raw text. */
 const PASTE_AS_FILE_CHARS = 2000;
@@ -74,7 +76,7 @@ function basename(p: string): string {
 }
 
 /** Max composer height before it scrolls internally. */
-const MAX_HEIGHT_PX = 160;
+const MAX_HEIGHT_PX = 240;
 
 /** Extension for a clipboard image's MIME type (`image/png` → `png`,
  *  `image/svg+xml` → `svg`, `image/jpeg` → `jpg`); falls back to `png`. */
@@ -114,9 +116,12 @@ export interface ComposerCommand {
   source?: string;
 }
 
-/** The two approval modes the composer can switch between (Codex-style). Copy
- *  (label/description) is translated at render time — see `approvalCopy`. */
-const APPROVAL_OPTIONS: { mode: "approve"; icon: typeof Hand }[] = [{ mode: "approve", icon: Hand }];
+/** Three safe approval presets; the ACP host still enforces hard boundaries. */
+const APPROVAL_OPTIONS: { mode: ApprovalMode; icon: typeof Hand }[] = [
+  { mode: "approve", icon: Hand },
+  { mode: "help", icon: CircleHelp },
+  { mode: "full", icon: ShieldCheck },
+];
 
 /** Build (default) or Plan — read-only planning mode. Copy is
  *  translated at render time (`agentCopy`), mirroring the approval switch. */
@@ -192,11 +197,19 @@ export function Composer({
   // (icons only) so it can live at module scope outside the component.
   const approvalCopy = {
     approve: {
-      label: t("composer.approval.approve.label"),
-      description: t("composer.approval.approve.description"),
+      label: t("composer.approval.request.label"),
+      description: t("composer.approval.request.description"),
+    },
+    help: {
+      label: t("composer.approval.help.label"),
+      description: t("composer.approval.help.description"),
+    },
+    full: {
+      label: t("composer.approval.full.label"),
+      description: t("composer.approval.full.description"),
     },
   } as const;
-  const activeApprovalMode = "approve" as const;
+  const activeApprovalMode = approvalMode ?? "approve";
   // Agent-mode copy, same pattern as approvalCopy.
   const agentCopy: Record<AgentMode, { label: string; description: string }> = {
     build: {
@@ -230,6 +243,8 @@ export function Composer({
   /** The agent-mode menu is open. */
   const [agentOpen, setAgentOpen] = useState(false);
   const agentRef = useRef<HTMLDivElement>(null);
+  const [capabilityOpen, setCapabilityOpen] = useState(false);
+  const capabilityRef = useRef<HTMLDivElement>(null);
 
   // Dismiss the approval menu on any outside press. (Button blur can't do
   // this: WKWebView never focuses a clicked button, so blur never fires.)
@@ -250,6 +265,14 @@ export function Composer({
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [agentOpen]);
+  useEffect(() => {
+    if (!capabilityOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!capabilityRef.current?.contains(e.target as Node)) setCapabilityOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [capabilityOpen]);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const composerDraft = useUiStore((s) => s.composerDraft);
   const setComposerDraft = useUiStore((s) => s.setComposerDraft);
@@ -642,10 +665,18 @@ export function Composer({
         ? value.slice(1).trim().length > 0
         : !!value.trim() || files.length > 0);
 
+  const openCapabilityPalette = (prefix: string) => {
+    if (!onRunCommand) return;
+    setCommand(null);
+    setPaletteClosed(false);
+    setValue(prefix);
+    taRef.current?.focus();
+  };
+
   return (
     <div
       className={cn(
-        "relative rounded-card border bg-surface px-2 py-2 shadow-card",
+        "relative rounded-card border bg-surface px-3 pb-2.5 pt-3 shadow-card",
         // Plan mode gets the blue link tone — distinct from shell (warn) and
         // a chipped command (accent) — so a read-only turn is unmistakable.
         shellMode
@@ -757,7 +788,7 @@ export function Composer({
               : resolvedPlaceholder
         }
         className={cn(
-          "max-h-[160px] w-full resize-none bg-transparent px-1.5 py-0.5 text-sm leading-6 text-text outline-none placeholder:text-muted",
+          "min-h-[96px] max-h-[240px] w-full resize-none bg-transparent px-1.5 py-1 text-[15px] leading-6 text-text outline-none placeholder:text-muted",
           (shellMode || command) && "font-mono",
         )}
         aria-label={t("composer.placeholder.default")}
@@ -789,16 +820,48 @@ export function Composer({
             {t("composer.shellMode.badge")}
           </span>
         ) : (
-          canAttach && (
-            <button
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-input text-muted hover:bg-surface-2 hover:text-text disabled:opacity-40"
-              aria-label={t("composer.attach.addAria")}
-              title={t("composer.attach.title")}
-              onClick={() => void addFiles()}
-              disabled={adding}
-            >
-              <Paperclip size={15} />
-            </button>
+          (canAttach || (showModelPicker && onRunCommand)) && (
+            <div className="relative shrink-0" ref={capabilityRef}>
+              {capabilityOpen && (
+                <div
+                  role="menu"
+                  className="absolute bottom-full left-0 z-30 mb-2 w-52 rounded-card border border-border bg-surface p-1.5 shadow-card"
+                >
+                  {canAttach && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex h-9 w-full items-center gap-2 rounded-input px-2.5 text-left text-xs text-text hover:bg-surface-2"
+                      onClick={() => {
+                        setCapabilityOpen(false);
+                        void addFiles();
+                      }}
+                      disabled={adding}
+                    >
+                      <Paperclip size={14} className="text-muted" />
+                      {t("composer.attach.title")}
+                    </button>
+                  )}
+                  {showModelPicker && onRunCommand && (
+                    <>
+                      <button type="button" role="menuitem" className="flex h-9 w-full items-center rounded-input px-2.5 text-left text-xs text-text hover:bg-surface-2" onClick={() => { setCapabilityOpen(false); openCapabilityPalette("/mcp"); }}>MCP</button>
+                      <button type="button" role="menuitem" className="flex h-9 w-full items-center rounded-input px-2.5 text-left text-xs text-text hover:bg-surface-2" onClick={() => { setCapabilityOpen(false); openCapabilityPalette("/skill"); }}>{t("composer.capabilities.skills", { defaultValue: "Skills" })}</button>
+                      <button type="button" role="menuitem" className="flex h-9 w-full items-center rounded-input px-2.5 text-left text-xs text-text hover:bg-surface-2" onClick={() => { setCapabilityOpen(false); openCapabilityPalette("/workflow"); }}>{t("composer.capabilities.workflow", { defaultValue: "Workflow" })}</button>
+                    </>
+                  )}
+                </div>
+              )}
+              <button
+                type="button"
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted transition-colors hover:bg-surface-2 hover:text-text"
+                aria-label={t("composer.attach.addAria")}
+                title={t("composer.attach.title")}
+                aria-expanded={capabilityOpen}
+                onClick={() => setCapabilityOpen((open) => !open)}
+              >
+                <Plus size={16} />
+              </button>
+            </div>
           )
         )}
         {/* Folder picker for a fresh draft — renders nothing once the session
@@ -911,17 +974,9 @@ export function Composer({
         )}
         {/* Model picker + send kept together, pushed right (and wrapping as a
             unit) so the send button is always reachable on a narrow pane. */}
-        {showModelPicker && (
-          <div className="flex min-w-0 items-center gap-1">
-            <button type="button" className="flex h-7 items-center rounded-full px-2 text-xs text-muted hover:bg-surface-2 hover:text-text" onClick={() => { setValue("/"); taRef.current?.focus(); }} aria-label={t("composer.capabilities.mcp", { defaultValue: "MCP" })}>MCP</button>
-            <button type="button" className="flex h-7 items-center rounded-full px-2 text-xs text-muted hover:bg-surface-2 hover:text-text" onClick={() => { setValue("/"); taRef.current?.focus(); }} aria-label={t("composer.capabilities.skills", { defaultValue: "Skills" })}>{t("composer.capabilities.skills", { defaultValue: "Skills" })}</button>
-            <button type="button" className="flex h-7 items-center rounded-full px-2 text-xs text-muted hover:bg-surface-2 hover:text-text" onClick={() => { setValue("/"); taRef.current?.focus(); }} aria-label={t("composer.capabilities.workflow", { defaultValue: "Workflow" })}>{t("composer.capabilities.workflow", { defaultValue: "Workflow" })}</button>
-          </div>
-        )}
         <div className="ml-auto flex min-w-0 items-center gap-1.5">
           {showModelPicker && <EnginePicker sessionId={modelSessionId} />}
           {showModelPicker && <ModelPicker sessionId={modelSessionId} />}
-          {showModelPicker && <SelectionSnapshot sessionId={modelSessionId} />}
           {working && onStop ? (
             // Same spot, same shape, one action: the send button becomes Stop
             // while the agent works — always live, even though the input is not.

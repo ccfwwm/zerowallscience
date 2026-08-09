@@ -7,6 +7,7 @@
     "settings": "Paramètres",
     "home": "Accueil",
     "signIn": "Se connecter",
+    "platform": "Plateforme IA",
     "account": "Compte",
     "recharge": "Recharger",
     "lowBalance": "Solde épuisé — rechargez"
@@ -47,6 +48,7 @@
   "history": {
     "heading": "Sessions",
     "empty": "Aucune conversation pour le moment.",
+    "newConversation": "Nouvelle conversation",
     "exampleTag": "exemple",
     "deleteAria": "Supprimer {{title}}",
     "running": "En cours"

@@ -7,6 +7,7 @@
     "settings": "Configuración",
     "home": "Inicio",
     "signIn": "Iniciar sesión",
+    "platform": "Plataforma de IA",
     "account": "Cuenta",
     "recharge": "Recargar",
     "lowBalance": "Saldo agotado: recarga"
@@ -47,6 +48,7 @@
   "history": {
     "heading": "Sesiones",
     "empty": "Aún no hay conversaciones.",
+    "newConversation": "Nueva conversación",
     "exampleTag": "ejemplo",
     "deleteAria": "Eliminar {{title}}",
     "running": "Trabajando"

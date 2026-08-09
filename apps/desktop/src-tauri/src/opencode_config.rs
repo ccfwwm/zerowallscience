@@ -4,12 +4,13 @@ use serde_json::{json, Value};
 
 /// Approval modes for agent tool use (the composer's Codex-style switch).
 /// OpenCode evaluates permission rules last-match-wins with user config rules
-/// appended after its builtin `"*": "allow"` — so "approve" only needs `ask`
-/// rules and everything unmatched still runs without a prompt.
+/// appended after its builtin `"*": "allow"`; every preset below writes an
+/// explicit rule set, while the ACP host retains hard safety boundaries.
 pub const MODE_APPROVE: &str = "approve";
+pub const MODE_HELP: &str = "help";
 pub const MODE_FULL: &str = "full";
 
-/// Command tokens the "approve" mode gates behind a prompt, per the AGENTS.md
+/// Command tokens the "full" mode still gates behind a prompt, per the AGENTS.md
 /// safety defaults: deletion, privilege/system changes, dependency installs,
 /// and remote/outward connections. Each token yields two glob rules:
 /// `"T *"` (command starts with it; also matches bare `T` — OpenCode turns a
@@ -32,7 +33,7 @@ const DANGEROUS_BASH: &[&str] = &[
     "sbatch",
 ];
 
-fn approve_permission() -> Value {
+fn full_permission() -> Value {
     let mut bash = serde_json::Map::new();
     for t in DANGEROUS_BASH {
         bash.insert(format!("{t} *"), json!("ask"));
@@ -41,12 +42,21 @@ fn approve_permission() -> Value {
     json!({ "bash": Value::Object(bash), "webfetch": "ask" })
 }
 
-/// Set the approval mode in OpenCode config JSON. Dangerous operations always
-/// retain explicit ask rules; the legacy "full" mode is rejected.
+fn request_permission() -> Value {
+    json!({ "*": "ask" })
+}
+
+fn help_permission() -> Value {
+    json!({ "edit": "ask", "write": "ask", "bash": "ask", "webfetch": "ask" })
+}
+
+/// Set one of the three approval presets. Deletion, dependency installation,
+/// remote access and paths outside the project remain hard-gated by the host.
 pub fn set_permission_mode(existing: &str, mode: &str) -> Result<String, String> {
     let permission = match mode {
-        MODE_APPROVE => approve_permission(),
-        MODE_FULL => return Err("full approval mode is disabled for safety".into()),
+        MODE_APPROVE => request_permission(),
+        MODE_HELP => help_permission(),
+        MODE_FULL => full_permission(),
         other => return Err(format!("unknown approval mode \"{other}\"")),
     };
     let mut root: Value = if existing.trim().is_empty() {
@@ -66,7 +76,16 @@ pub fn set_permission_mode(existing: &str, mode: &str) -> Result<String, String>
 /// Seed or repair the safe approval mode. Empty/legacy permission objects are
 /// rewritten so an older unsafe configuration cannot bypass manual approval.
 pub fn seed_default_permission(existing: &str) -> Option<String> {
-    if permission_mode_of(existing) == Some(MODE_APPROVE) {
+    let already_seeded = match permission_mode_of(existing) {
+        Some(MODE_APPROVE) | Some(MODE_HELP) => true,
+        Some(MODE_FULL) => serde_json::from_str::<Value>(existing)
+            .ok()
+            .and_then(|root| root.get("permission").cloned())
+            .is_some_and(|permission| permission.get("bash").is_some_and(|bash| bash.is_object())),
+        None => false,
+        _ => false,
+    };
+    if already_seeded {
         return None;
     }
     set_permission_mode(existing, MODE_APPROVE).ok()
@@ -77,9 +96,14 @@ pub fn seed_default_permission(existing: &str) -> Option<String> {
 pub fn permission_mode_of(existing: &str) -> Option<&'static str> {
     let root: Value = serde_json::from_str(existing).ok()?;
     let permission = root.get("permission")?;
-    if permission.get("bash").is_some_and(|b| b.is_object()) {
+    if permission.get("*").and_then(Value::as_str) == Some("ask") {
         Some(MODE_APPROVE)
+    } else if permission.get("edit").and_then(Value::as_str) == Some("ask") {
+        Some(MODE_HELP)
     } else {
+        // Legacy and unrecognized permission objects are treated as the
+        // most permissive named mode for migration; the caller still keeps
+        // destructive operations behind their explicit hard guards.
         Some(MODE_FULL)
     }
 }
@@ -198,8 +222,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn approve_mode_writes_ask_rules_for_dangerous_bash() {
+    fn request_mode_asks_before_every_tool() {
         let out = set_permission_mode("", MODE_APPROVE).unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["permission"]["*"], "ask");
+    }
+
+    #[test]
+    fn help_mode_asks_before_mutating_or_network_tools() {
+        let out = set_permission_mode("", "help").unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["permission"]["edit"], "ask");
+        assert_eq!(v["permission"]["write"], "ask");
+        assert_eq!(v["permission"]["bash"], "ask");
+        assert_eq!(v["permission"]["webfetch"], "ask");
+        assert!(v["permission"].get("read").is_none());
+    }
+
+    #[test]
+    fn full_mode_keeps_hard_approval_rules_for_dangerous_operations() {
+        let out = set_permission_mode("", MODE_FULL).unwrap();
         let v: Value = serde_json::from_str(&out).unwrap();
         let bash = v["permission"]["bash"].as_object().unwrap();
         // Prefix form gates a command that starts with the token (also bare,
@@ -215,13 +257,6 @@ mod tests {
         // builtin "*": "allow" (rules are last-match-wins, ours come last).
         assert!(!bash.contains_key("*"));
         assert_eq!(v["permission"]["webfetch"], "ask");
-    }
-
-    #[test]
-    fn full_mode_is_rejected() {
-        let approved = set_permission_mode("", MODE_APPROVE).unwrap();
-        let error = set_permission_mode(&approved, MODE_FULL).unwrap_err();
-        assert!(error.contains("disabled"));
     }
 
     #[test]
@@ -265,14 +300,14 @@ mod tests {
         // First run: no permission key → seed the safe default.
         let seeded = seed_default_permission("").unwrap();
         let v: Value = serde_json::from_str(&seeded).unwrap();
-        assert_eq!(v["permission"]["bash"]["rm *"], "ask");
+        assert_eq!(v["permission"]["*"], "ask");
         // The safe mode is stable across launches.
         assert!(seed_default_permission(&seeded).is_none());
         // Legacy empty permission objects enabled unsafe builtin defaults and
         // must be migrated back to explicit approval rules.
         let migrated = seed_default_permission(r#"{"permission":{}}"#).unwrap();
         let migrated: Value = serde_json::from_str(&migrated).unwrap();
-        assert_eq!(migrated["permission"]["bash"]["rm *"], "ask");
+        assert_eq!(migrated["permission"]["*"], "ask");
         // Other keys survive seeding.
         let seeded2 = seed_default_permission(r#"{"model":"m"}"#).unwrap();
         let v2: Value = serde_json::from_str(&seeded2).unwrap();
@@ -284,8 +319,12 @@ mod tests {
         // Never configured (first run) — the caller must seed the default.
         assert_eq!(permission_mode_of(""), None);
         assert_eq!(permission_mode_of(r#"{"model":"m"}"#), None);
-        let approved = set_permission_mode("", MODE_APPROVE).unwrap();
-        assert_eq!(permission_mode_of(&approved), Some(MODE_APPROVE));
+        let request = set_permission_mode("", MODE_APPROVE).unwrap();
+        assert_eq!(permission_mode_of(&request), Some(MODE_APPROVE));
+        let help = set_permission_mode("", "help").unwrap();
+        assert_eq!(permission_mode_of(&help), Some("help"));
+        let full = set_permission_mode("", MODE_FULL).unwrap();
+        assert_eq!(permission_mode_of(&full), Some(MODE_FULL));
         assert_eq!(permission_mode_of(r#"{"permission":{}}"#), Some(MODE_FULL));
     }
 

@@ -1,185 +1,65 @@
-import { useEffect, useMemo } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useRuntimeStore } from "@/lib/runtime";
-import { findLeaf, leaves, useLayoutStore } from "@/lib/layout";
-import { useIsMobile } from "@/lib/useIsMobile";
-import { isGatewayWeb } from "@/lib/webMode";
+import { findLeaf, useLayoutStore } from "@/lib/layout";
 import { SessionView } from "@/components/session/SessionView";
-import { PaneTree } from "@/components/session/PaneTree";
-import { GroupTabs } from "@/components/session/GroupTabs";
-import { EmptyGroup } from "@/components/session/EmptyGroup";
 
 /**
- * Live agent surface. Owns the split-layout ↔ runtime plumbing: it keeps the
- * URL and the single directory-scoped stream (`openSession`) in step with the
- * FOCUSED pane, and renders either a single session (one pane, or the web /
- * phone fallback where tiling can't work) or the ghostty-style pane tree.
- *
- * Per-session concerns (thread, composer, right pane) live in SessionView; this
- * wrapper never reads them, so a background pane's SSE folds don't repaint it.
+ * The live surface intentionally presents one current conversation. The
+ * persisted layout store is still read and updated for migration compatibility,
+ * but legacy groups and panes are never exposed as desktop UI.
  */
 export function LiveSessionPage() {
-  const params = useParams();
+  const { sessionId = null } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
-
-  const tree = useLayoutStore((s) => s.tree);
-  const groups = useLayoutStore((s) => s.groups);
-  const focusedLeafId = useLayoutStore((s) => s.focusedLeafId);
-  const pruneSessions = useLayoutStore((s) => s.pruneSessions);
+  const tree = useLayoutStore((state) => state.tree);
+  const focusedLeafId = useLayoutStore((state) => state.focusedLeafId);
   const focusedLeaf = tree && focusedLeafId ? findLeaf(tree, focusedLeafId) : null;
-  const focusedSid = focusedLeaf?.sessionId ?? null;
+  const leafId = focusedLeaf?.id ?? "primary";
 
-  const status = useRuntimeStore((s) => s.status);
-  const switching = useRuntimeStore((s) => s.switching);
-  const sessions = useRuntimeStore((s) => s.sessions);
-  const workspace = useRuntimeStore((s) => s.workspace);
-  const runningCount = useRuntimeStore((s) => Object.keys(s.runningSessions).length);
-  const openSession = useRuntimeStore((s) => s.openSession);
-  const loadHistory = useRuntimeStore((s) => s.loadHistory);
-  const startDraft = useRuntimeStore((s) => s.startDraft);
-  const reconcileRunning = useRuntimeStore((s) => s.reconcileRunning);
-  const syncPaneStreams = useRuntimeStore((s) => s.syncPaneStreams);
-
+  const status = useRuntimeStore((state) => state.status);
+  const switching = useRuntimeStore((state) => state.switching);
+  const sessions = useRuntimeStore((state) => state.sessions);
+  const currentId = useRuntimeStore((state) => state.currentId);
+  const runningCount = useRuntimeStore((state) => Object.keys(state.runningSessions).length);
+  const openSession = useRuntimeStore((state) => state.openSession);
+  const startDraft = useRuntimeStore((state) => state.startDraft);
+  const reconcileRunning = useRuntimeStore((state) => state.reconcileRunning);
+  const syncPaneStreams = useRuntimeStore((state) => state.syncPaneStreams);
   const connected = status === "ready" || switching;
-  const sessionDir = sessions.find((s) => s.id === focusedSid)?.directory;
+  const sessionDir = sessions.find((session) => session.id === sessionId)?.directory;
 
-  const isMobile = useIsMobile();
-  // Tiling can't work on a phone or the narrow web client — show the focused
-  // pane alone (the tree is kept, so it returns when there's room again). On
-  // desktop we ALWAYS render the tree, even for a lone pane, so it stays a
-  // drop target for docking the first dragged-in session.
-  const webOrMobile = isMobile || isGatewayWeb;
-
-  // Every DISTINCT folder shown across the panes — background streams keep the
-  // non-foreground ones live so different projects stream concurrently. In the
-  // single-pane fallback only the focused pane renders, so no background streams
-  // are wanted (the foreground stream covers it).
-  const paneDirs = useMemo(() => {
-    if (webOrMobile || !tree) return [];
-    const dirs = new Set<string>();
-    for (const l of leaves(tree)) {
-      if (!l.sessionId) continue;
-      const d = sessions.find((s) => s.id === l.sessionId)?.directory;
-      if (d) dirs.add(d);
-    }
-    return [...dirs];
-  }, [webOrMobile, tree, sessions]);
-  const paneDirsKey = paneDirs.join("|");
+  // Keep the one compatibility leaf aligned with the route. No screen/group
+  // switching is performed, and old additional groups remain hidden.
   useEffect(() => {
-    syncPaneStreams(paneDirs);
-    // Re-runs on pane-set, folder-resolution, and foreground-folder changes
-    // (syncPaneStreams excludes whatever folder the foreground stream covers).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paneDirsKey, workspace, connected, syncPaneStreams]);
+    const layout = useLayoutStore.getState();
+    if (!layout.tree || !layout.focusedLeafId) layout.reset(sessionId);
+    else layout.bindSession(layout.focusedLeafId, sessionId);
+  }, [sessionId]);
 
-  // URL → focus: sidebar navigation / deep-links / reload land the target
-  // session in a pane. If another pane already shows it, focus THAT pane rather
-  // than duplicating it into the focused one; otherwise bind it onto the focused
-  // pane. Read fresh layout state so this reacts only to real URL changes.
-  const urlId = params.sessionId ?? null;
+  // The single visible conversation owns the only stream.
   useEffect(() => {
-    const st = useLayoutStore.getState();
-    const leaf = st.tree && st.focusedLeafId ? findLeaf(st.tree, st.focusedLeafId) : null;
-    if ((leaf?.sessionId ?? null) === urlId) return;
-    // Already shown in the ACTIVE group → just focus that pane.
-    if (urlId && st.tree) {
-      const inActive = leaves(st.tree).find((l) => l.sessionId === urlId);
-      if (inActive) {
-        st.focusLeaf(inActive.id);
-        return;
-      }
-    }
-    // Shown in ANOTHER group (e.g. Back after a group switch) → switch to that
-    // group and focus it, rather than clobbering the active group's pane.
-    if (urlId) {
-      for (const g of st.groups) {
-        if (g.id === st.activeGroupId || !g.tree) continue;
-        const hit = leaves(g.tree).find((l) => l.sessionId === urlId);
-        if (hit) {
-          st.setActiveGroup(g.id);
-          st.focusLeaf(hit.id);
-          return;
-        }
-      }
-    }
-    // Brand-new target: fill an empty group, else bind onto the active focus.
-    if (!st.tree || !st.focusedLeafId) {
-      if (urlId) st.reset(urlId);
-      return;
-    }
-    st.bindSession(st.focusedLeafId, urlId);
-  }, [urlId]);
+    syncPaneStreams([]);
+  }, [syncPaneStreams]);
 
-  // focus → URL: reflect the focused session in the address bar (switching
-  // panes, or a draft's first send binding a new id). Only ever navigates TO a
-  // real session, never back to bare "/live" — so it can never clobber a
-  // deep-linked/reloaded URL before URL→focus binds it (the loop the old
-  // single-pane page avoided by reading the param directly). Draft transitions
-  // (/new, /clear) navigate to "/live" explicitly where they happen. Push (not
-  // replace) so a new conversation adds a history entry (Back works).
   useEffect(() => {
-    if (!focusedSid) return;
-    const want = `/live/${focusedSid}`;
-    if (location.pathname !== want) navigate(want);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedSid]);
+    if (sessionId) void openSession(sessionId);
+    else if (currentId) startDraft();
+  }, [sessionId, connected, sessionDir, currentId, openSession, startDraft]);
 
-  // Load history for every OTHER visible pane (the focused one loads via
-  // openSession). Without this a restored/tiled background pane shows a skeleton
-  // until clicked. loadHistory no-ops when already loaded, so this is cheap.
-  useEffect(() => {
-    if (!connected || webOrMobile || !tree) return;
-    for (const l of leaves(tree)) {
-      if (l.sessionId && l.sessionId !== focusedSid) void loadHistory(l.sessionId);
-    }
-  }, [tree, connected, webOrMobile, focusedSid, loadHistory]);
-
-  // focus → runtime: bind the single directory-scoped stream to the focused
-  // session (cross-folder opens restart the sidecar). A draft focus resets to a
-  // blank draft only if a real session was current — never wiping a just-written
-  // /clear thread (currentId is already null then).
-  useEffect(() => {
-    if (focusedSid) {
-      void openSession(focusedSid);
-    } else if (useRuntimeStore.getState().currentId) {
-      startDraft();
-    }
-  }, [focusedSid, connected, sessionDir, openSession, startDraft]);
-
-  // One backstop poll for the whole layout: if any pane's session.idle was lost
-  // (SSE reconnect windows), re-check the server so no spinner outlives its turn.
   useEffect(() => {
     if (runningCount === 0) return;
     const timer = window.setInterval(() => void reconcileRunning(), 15_000);
     return () => window.clearInterval(timer);
   }, [runningCount, reconcileRunning]);
 
-  // Drop tiled panes whose session was deleted, collapsing toward one pane.
-  useEffect(() => {
-    if (sessions.length === 0) return;
-    pruneSessions(new Set(sessions.map((s) => s.id)));
-  }, [sessions, pruneSessions]);
-
-  // Web / phone: no tiling — show the focused pane alone (its own titlebar), or
-  // the onboarding if the group is somehow empty.
-  if (webOrMobile) {
-    return focusedLeaf ? (
-      <SessionView sessionId={focusedLeaf.sessionId} leafId={focusedLeaf.id} focused chromeAsTitlebar />
-    ) : (
-      <EmptyGroup />
-    );
-  }
-  // A lone conversation should look like a workbench, not a terminal mux. The
-  // screen strip appears only once it has something meaningful to manage; the
-  // solo pane owns the native titlebar clearance while the strip is hidden.
-  const showGroupTabs = !tree || groups.length > 1 || leaves(tree).length > 1;
   return (
-    <div className="flex h-full min-w-0 flex-col">
-      {showGroupTabs && <GroupTabs />}
-      <div className="min-h-0 flex-1">
-        {tree ? <PaneTree chromeAsTitlebar={!showGroupTabs} /> : <EmptyGroup />}
-      </div>
-    </div>
+    <SessionView
+      sessionId={sessionId}
+      leafId={leafId}
+      focused
+      chromeAsTitlebar
+      onSessionCreated={(created) => navigate(`/live/${created}`)}
+    />
   );
 }

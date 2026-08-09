@@ -77,13 +77,17 @@
       "title": "How agent actions get approved",
       "menuAria": "Approval modes",
       "menuTitle": "How should agent actions be approved?",
-      "approve": {
-        "label": "Approve for me",
-        "description": "Asks before deleting, installing, or going remote"
+      "request": {
+        "label": "Request approval",
+        "description": "Ask before each agent action"
+      },
+      "help": {
+        "label": "Help approve",
+        "description": "Ask before edits, tools, or network actions"
       },
       "full": {
         "label": "Full access",
-        "description": "Runs every command without asking"
+        "description": "Allow normal project tools; risky actions still ask"
       }
     },
     "error": {
@@ -195,7 +199,6 @@
       "openTitle": "Open {{path}} — the agent works on this notebook in this session"
     },
     "connBadge": {
-      "title": "{{runtime}} · {{status}}",
       "status": {
         "ready": "ready",
         "connecting": "connecting",

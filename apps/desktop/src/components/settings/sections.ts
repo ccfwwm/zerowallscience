@@ -10,6 +10,7 @@ import {
   Shapes,
   ShieldCheck,
   Package,
+  UserRound,
   type LucideIcon,
 } from "lucide-react";
 
@@ -18,6 +19,7 @@ import {
  *  `desktopOnly` sections depend on Tauri IPC the gateway can't expose, so they
  *  are hidden in the browser (gateway) web client. */
 export const SETTINGS_SECTIONS = [
+  { key: "account", icon: UserRound },
   { key: "general", icon: Settings },
   { key: "appearance", icon: Palette },
   { key: "models", icon: Shapes },

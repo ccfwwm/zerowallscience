@@ -37,6 +37,7 @@ describe("Composer attachments (desktop)", () => {
     render(<Composer onSend={onSend} />);
 
     fireEvent.click(screen.getByLabelText("Add files"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add local files to the workspace" }));
     await waitFor(() => expect(screen.getByText("data.csv")).toBeTruthy());
     // Wait for the async readWorkspaceFileBase64 + on-device text extraction
     // to settle — the chip renders an <img> once the mock's image/png mime is
@@ -60,6 +61,7 @@ describe("Composer attachments (desktop)", () => {
   it("removes a chip via its X button without touching the text", async () => {
     render(<Composer onSend={vi.fn()} />);
     fireEvent.click(screen.getByLabelText("Add files"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add local files to the workspace" }));
     await waitFor(() => expect(screen.getByText("data.csv")).toBeTruthy());
 
     fireEvent.click(screen.getByLabelText("Remove data.csv"));

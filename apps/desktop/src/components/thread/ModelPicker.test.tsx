@@ -123,11 +123,13 @@ describe("ModelPicker", () => {
     expect(within(dialog).getByRole("slider")).toBeInTheDocument();
   });
 
-  it("offers a new conversation when changing the model of an ACP session with context", async () => {
+  it("switches the model in-place for an ACP conversation with context", async () => {
     const user = userEvent.setup();
-    const fork = vi.fn(async (model: string) => {
-      useRuntimeStore.setState({ currentId: "acp-session-2", defaultModel: model });
-      return "acp-session-2";
+    const setSessionModel = vi.fn(async (sessionId: string, model: string) => {
+      useRuntimeStore.setState({
+        sessionModels: { [sessionId]: model },
+        defaultModel: model,
+      });
     });
     useRuntimeStore.setState({
       acpProfileId: "codex",
@@ -135,42 +137,44 @@ describe("ModelPicker", () => {
       threads: {
         "acp-session-1": { blocks: [{ kind: "user", text: "Existing question" }], index: {}, loaded: true },
       },
-      forkAcpSessionWithModel: fork,
+      setSessionModel,
     });
     render(<MemoryRouter><ModelPicker sessionId="acp-session-1" /></MemoryRouter>);
     await user.click(chip());
     const dialog = screen.getByRole("dialog");
     await user.click(within(dialog).getByText("GPT-mini"));
 
-    expect(within(dialog).getByRole("button", { name: /new conversation/i })).toBeInTheDocument();
-    expect(fork).not.toHaveBeenCalled();
-    expect(setDefaultModel).not.toHaveBeenCalled();
-  });
-
-  it("cancels an ACP model change without changing the session", async () => {
-    const user = userEvent.setup();
-    const fork = vi.fn(async () => "acp-session-2");
-    useRuntimeStore.setState({
-      acpProfileId: "codex",
-      currentId: "acp-session-1",
-      threads: {
-        "acp-session-1": { blocks: [{ kind: "user", text: "Existing question" }], index: {}, loaded: true },
-      },
-      forkAcpSessionWithModel: fork,
-    });
-    render(<MemoryRouter><ModelPicker sessionId="acp-session-1" /></MemoryRouter>);
-    await user.click(chip());
-    const dialog = screen.getByRole("dialog");
-    await user.click(within(dialog).getByText("GPT-mini"));
-    await user.click(within(dialog).getByRole("button", { name: /cancel/i }));
-
-    expect(fork).not.toHaveBeenCalled();
+    expect(setSessionModel).toHaveBeenCalledWith("acp-session-1", "openai/gpt-mini");
     expect(useRuntimeStore.getState().currentId).toBe("acp-session-1");
   });
 
-  it("copies ACP conversation context into the new composer", async () => {
+  it("does not create a second conversation when changing an ACP model", async () => {
     const user = userEvent.setup();
-    const fork = vi.fn(async () => "acp-session-2");
+    const setSessionModel = vi.fn(async (sessionId: string, model: string) => {
+      useRuntimeStore.setState({ sessionModels: { [sessionId]: model } });
+    });
+    useRuntimeStore.setState({
+      acpProfileId: "codex",
+      currentId: "acp-session-1",
+      threads: {
+        "acp-session-1": { blocks: [{ kind: "user", text: "Existing question" }], index: {}, loaded: true },
+      },
+      setSessionModel,
+    });
+    render(<MemoryRouter><ModelPicker sessionId="acp-session-1" /></MemoryRouter>);
+    await user.click(chip());
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByText("GPT-mini"));
+
+    expect(setSessionModel).toHaveBeenCalledWith("acp-session-1", "openai/gpt-mini");
+    expect(useRuntimeStore.getState().currentId).toBe("acp-session-1");
+  });
+
+  it("keeps ACP conversation context in the same conversation when switching", async () => {
+    const user = userEvent.setup();
+    const setSessionModel = vi.fn(async (sessionId: string, model: string) => {
+      useRuntimeStore.setState({ sessionModels: { [sessionId]: model } });
+    });
     useRuntimeStore.setState({
       acpProfileId: "codex",
       currentId: "acp-session-1",
@@ -184,16 +188,15 @@ describe("ModelPicker", () => {
           loaded: true,
         },
       },
-      forkAcpSessionWithModel: fork,
+      setSessionModel,
     });
     render(<MemoryRouter><ModelPicker sessionId="acp-session-1" /></MemoryRouter>);
     await user.click(chip());
     const dialog = screen.getByRole("dialog");
     await user.click(within(dialog).getByText("GPT-mini"));
-    await user.click(within(dialog).getByRole("button", { name: /copy context/i }));
 
-    expect(fork).toHaveBeenCalledWith("openai/gpt-mini");
-    expect(useUiStore.getState().composerDraft).toContain("User: Existing question");
-    expect(useUiStore.getState().composerDraft).toContain("Assistant: Existing answer");
+    expect(setSessionModel).toHaveBeenCalledWith("acp-session-1", "openai/gpt-mini");
+    expect(useRuntimeStore.getState().currentId).toBe("acp-session-1");
+    expect(useUiStore.getState().composerDraft).toBeNull();
   });
 });

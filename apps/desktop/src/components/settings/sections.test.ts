@@ -9,6 +9,7 @@ const DESKTOP_ONLY = ["runtime", "connectors", "packs", "browser", "compute", "r
 describe("Settings navigation", () => {
   it("offers every section in the desktop app", () => {
     expect(keys(false)).toEqual([
+      "account",
       "general",
       "appearance",
       "models",
@@ -25,7 +26,7 @@ describe("Settings navigation", () => {
 
   it("drops the sections a browser cannot act on, and keeps the rest usable", () => {
     // Usage is pure display (no local IPC), so it stays in the web client.
-    expect(keys(true)).toEqual(["general", "appearance", "models", "usage", "privacy"]);
+    expect(keys(true)).toEqual(["account", "general", "appearance", "models", "usage", "privacy"]);
     for (const key of DESKTOP_ONLY) expect(keys(true)).not.toContain(key);
     // Every desktop-only key really exists on desktop — so this test fails if a
     // section is renamed on one side only.

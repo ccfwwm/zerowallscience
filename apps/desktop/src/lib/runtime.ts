@@ -77,6 +77,7 @@ import {
   type TurnUndoEntry,
 } from "./tauri";
 import { isGatewayWeb, gatewayToken, gatewayOrigin } from "./webMode";
+import { pendingProviders, removePendingProvider } from "./pending-providers";
 import { AcpRuntime } from "./acp-runtime";
 import {
   canonicalEventToLegacy,
@@ -97,7 +98,7 @@ import {
   createWorkflowControlExecutor,
   createWorkflowRunAdapter,
 } from "./workflow-runtime";
-import { isLegacyAcpConversationId, toAcpHostLaunchRequest } from "./acp-host-runtime";
+import { toAcpHostLaunchRequest } from "./acp-host-runtime";
 import {
   deriveAcpConfigs,
   loadProtocol,
@@ -157,6 +158,8 @@ const SESSION_MODELS_KEY = "zerowall.session.models.v1";
 const SESSION_VARIANTS_KEY = "zerowall.session.variants.v1";
 const SELECTED_AGENT_KEY = "zerowall.agent.selected.v1";
 const AGENT_BINDINGS_KEY = "zerowall.agent.bindings.v1";
+const ACP_EXECUTIONS_KEY = "zerowall.acp.conversation-executions.v1";
+type AcpExecutionChain = { active: string; all: string[]; activeEngine?: string };
 function loadRecord<V>(key: string): Record<string, V> {
   if (typeof window === "undefined") return {};
   try {
@@ -173,6 +176,63 @@ function saveRecord(key: string, rec: Record<string, unknown>): void {
   } catch {
     /* storage full/unavailable never blocks a model switch */
   }
+}
+
+function acpExecutionChains(): Record<string, AcpExecutionChain> {
+  return loadRecord<AcpExecutionChain>(ACP_EXECUTIONS_KEY);
+}
+
+function executionChainFor(conversationId: string): AcpExecutionChain | null {
+  const chain = acpExecutionChains()[conversationId];
+  if (!chain || typeof chain.active !== "string" || !Array.isArray(chain.all)) return null;
+  return {
+    active: chain.active,
+    all: [...new Set(chain.all.filter((id): id is string => typeof id === "string" && Boolean(id.trim())))],
+    ...(typeof chain.activeEngine === "string" && chain.activeEngine.trim()
+      ? { activeEngine: chain.activeEngine }
+      : {}),
+  };
+}
+
+function rememberAcpExecution(
+  conversationId: string,
+  executionId: string,
+  engineId?: string | null,
+): void {
+  if (!conversationId.trim() || !executionId.trim()) return;
+  const chains = acpExecutionChains();
+  const previous = chains[conversationId];
+  chains[conversationId] = {
+    active: executionId,
+    all: [...new Set([...(previous?.all ?? []), previous?.active ?? "", executionId].filter(Boolean))],
+    ...(engineId?.trim()
+      ? { activeEngine: engineId }
+      : previous?.activeEngine
+        ? { activeEngine: previous.activeEngine }
+        : {}),
+  };
+  saveRecord(ACP_EXECUTIONS_KEY, chains);
+}
+
+function collapseAcpExecutionSessions(sessions: SessionMeta[]): SessionMeta[] {
+  const chains = acpExecutionChains();
+  if (Object.keys(chains).length === 0) return sessions;
+  const byId = new Map(sessions.map((session) => [session.id, session]));
+  const hidden = new Set<string>();
+  const logical: SessionMeta[] = [];
+  for (const [conversationId, chain] of Object.entries(chains)) {
+    for (const id of chain.all) hidden.add(id);
+    hidden.add(chain.active);
+    const active = byId.get(chain.active) ?? byId.get(conversationId);
+    if (active) logical.push({ ...active, id: conversationId });
+  }
+  const result = sessions.filter((session) => !hidden.has(session.id));
+  for (const session of logical) {
+    const index = result.findIndex((candidate) => candidate.id === session.id);
+    if (index >= 0) result[index] = session;
+    else result.push(session);
+  }
+  return result;
 }
 
 function initialUrl(): string {
@@ -710,6 +770,7 @@ let providerControlClient: AcpHostClient | null = null;
  * an error over the agent that replaced it. */
 let runtimeConnectEpoch = 0;
 let openSessionSeq = 0;
+let forceFreshAcpConversationId: string | null = null;
 /** The model the user last DELIBERATELY switched to, and when. A switch does a
  *  masked reconnect, and connect() fires loadCatalog() un-awaited — so the
  *  self-heal there can run just after `switching` clears, read the reconnecting
@@ -727,6 +788,11 @@ let queuedAcpModel: string | null = null;
 /** React StrictMode mounts effects twice in development. Share the same boot
  *  promise so duplicate AppShell effects cannot start dueling connect loops. */
 let bootstrapInFlight: Promise<void> | null = null;
+/** A completed desktop bootstrap is app-lifetime state, not route state. The
+ * standalone account page unmounts AppShell; returning must not restart the
+ * sidecar and clear/re-provision ACP gateway descriptors while the composer is
+ * already usable. A lost/error connection still falls through and can heal. */
+let bootstrapCompleted = false;
 /** While a connectRetry loop owns the connection, connect() must not paint the
  *  raw error: the loop keeps retrying (first boot can take minutes on macOS TCC)
  *  and a flash of "fetch failed" mid-boot reads as breakage. connect() stashes
@@ -931,45 +997,6 @@ export function rootSessionOf(parents: Record<string, string>, sessionId: string
   return cur;
 }
 
-function moveSessionRecordKey<T>(record: Record<string, T>, previous: string, next: string): Record<string, T> {
-  if (!(previous in record) || previous === next) return record;
-  const moved = { ...record, [next]: record[previous] };
-  delete moved[previous];
-  return moved;
-}
-
-function rebindLegacyAcpConversation(
-  set: StoreSet,
-  get: StoreGet,
-  previous: string | null | undefined,
-  next: string,
-): void {
-  if (!isLegacyAcpConversationId(previous) || !previous || previous === next) return;
-  set((state) => {
-    const sessions = state.sessions
-      .filter((session) => session.id !== next)
-      .map((session) => session.id === previous ? { ...session, id: next } : session);
-    return {
-      currentId: state.currentId === previous ? next : state.currentId,
-      sessions,
-      threads: moveSessionRecordKey(state.threads, previous, next),
-      panes: moveSessionRecordKey(state.panes, previous, next),
-      sessionAgents: moveSessionRecordKey(state.sessionAgents, previous, next),
-      sessionModels: moveSessionRecordKey(state.sessionModels, previous, next),
-      sessionVariants: moveSessionRecordKey(state.sessionVariants, previous, next),
-      sendingSessions: moveSessionRecordKey(state.sendingSessions, previous, next),
-      runningSessions: moveSessionRecordKey(state.runningSessions, previous, next),
-      shellTurns: moveSessionRecordKey(state.shellTurns, previous, next),
-      stepCounts: moveSessionRecordKey(state.stepCounts, previous, next),
-      retryNotices: moveSessionRecordKey(state.retryNotices, previous, next),
-      turnUndoBaseline: moveSessionRecordKey(state.turnUndoBaseline, previous, next),
-    };
-  });
-  saveRecord(SESSION_MODELS_KEY, get().sessionModels);
-  saveRecord(SESSION_VARIANTS_KEY, get().sessionVariants);
-  moveScrollMemory(`chat:${previous}`, `chat:${next}`);
-}
-
 type StoreSet = {
   (partial: Partial<RuntimeState>): void;
   (fn: (s: RuntimeState) => Partial<RuntimeState>): void;
@@ -1015,7 +1042,7 @@ async function performTurn(
   attachments?: PromptAttachment[],
 ): Promise<string | null> {
   if (!client) {
-    set({ error: "Not connected to the OpenCode runtime." });
+    set({ error: "Agent runtime is not connected." });
     return null;
   }
   // Where the draft's state is grafted from on lazy-create (this pane's own slot,
@@ -1061,7 +1088,8 @@ async function performTurn(
       if (isTauri && !get().workspacePinned) {
         set({ switching: true });
         try {
-          await newDatedWorkspace(datedWorkspaceName());
+          const workspace = await newDatedWorkspace(datedWorkspaceName());
+          set({ workspace });
           await kernelReset().catch(() => {});
           await get().connectRetry();
         } finally {
@@ -1977,7 +2005,14 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     if (!activeClient || !acpId) throw new Error("An ACP engine must be connected before creating a model-bound session.");
     const slash = model.indexOf("/");
     if (slash <= 0 || slash === model.length - 1) throw new Error(`Malformed model id: ${model}`);
-    const sessionId = await activeClient.createSession({ model });
+    const previousId = get().currentId;
+    const visibleConversationId = previousId
+      ?? (activeClient instanceof AcpRuntime ? activeClient.currentSessionId() : null);
+    if (!visibleConversationId) throw new Error("Select a conversation before switching its model.");
+    await activeClient.createSession({ model });
+    const executionSessionId = activeClient instanceof AcpRuntime
+      ? activeClient.currentExecutionSessionId()
+      : visibleConversationId;
     // The Host has activated the new session before returning. Persist the
     // selection only after creation so the previous session's binding remains
     // immutable and recoverable.
@@ -1994,29 +2029,25 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         ...(currentConfig.platform ? { platform: currentConfig.platform } : {}),
       });
     }
-    const sessionModels = { ...get().sessionModels, [sessionId]: model };
-    set((s) => ({
-      currentId: sessionId,
+    rememberAcpExecution(visibleConversationId, executionSessionId, acpId);
+    const sessionModels = { ...get().sessionModels, [visibleConversationId]: model };
+    set(() => ({
+      currentId: visibleConversationId,
       defaultModel: model,
       modelSwitchError: null,
       sessionModels,
-      threads: { ...s.threads, [sessionId]: { ...emptyThread(), loaded: true } },
-      panes: {
-        ...s.panes,
-        [sessionId]: { artifact: null, showFiles: false, showRuns: false, showReview: false },
-      },
     }));
     saveRecord(SESSION_MODELS_KEY, sessionModels);
     try {
       const { createModelSnapshot, saveSessionSnapshot } = await import("./model-probe");
       saveSessionSnapshot(
-        createModelSnapshot(sessionId, get().selectedAgent, model, undefined, undefined, undefined),
+        createModelSnapshot(visibleConversationId, get().selectedAgent, model, undefined, undefined, undefined),
       );
     } catch (err) {
       void logDebug(`Failed to save forked session snapshot: ${err}`);
     }
     await get().refreshSessions();
-    return sessionId;
+    return visibleConversationId;
   },
   setSessionVariant: (sessionId, variant) =>
     set((s) => {
@@ -2193,6 +2224,20 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       const catalogOpenCodeClient = opencodeClient;
       const providerControl = getProviderControlClient();
       if (!ownsCatalog()) return;
+      // Provider metadata may have been saved while the user was signed out or
+      // while the separately installed environment was still starting. Apply
+      // those non-secret snapshots as soon as the Host is reachable; API keys
+      // remain keychain references and never enter this queue.
+      if (isTauri && providerControl) {
+        for (const pending of pendingProviders()) {
+          try {
+            await providerControl.addCustomProvider(pending.id, pending.options);
+            removePendingProvider(pending.id);
+          } catch (error) {
+            void logDebug(`pending provider ${pending.id} not applied: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
       // In ACP mode the active runtime advertises no portable model catalog;
       // the live session model is the
       // real default is the one its Sub2Api config pins. Read that instead so the
@@ -2328,7 +2373,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   },
 
   setDefaultModel: async (model) => {
-    if (!client) throw new Error("Not connected to the OpenCode runtime.");
+    if (!client) throw new Error("Agent runtime is not connected.");
     // ACP adapters support `session/set_model`; keep their current process,
     // session, MCP servers, skills, and workspace alive while changing model.
     const acpId = get().acpProfileId;
@@ -2354,6 +2399,12 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       }
       if (!current) {
         toast.error(i18n.t("settings:toast.noModelSelected"));
+        return;
+      }
+      const activeSessionId = get().currentId;
+      const activeThread = activeSessionId ? get().threads[activeSessionId] : undefined;
+      if (activeSessionId && activeThread?.blocks.some((block) => block.kind === "user" || block.kind === "agent")) {
+        await get().forkAcpSessionWithModel(model);
         return;
       }
       const runSwitches = async () => {
@@ -2463,9 +2514,16 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       if (resolvedProfileId) window.localStorage.setItem(ACP_PROFILE_KEY, resolvedProfileId);
       else window.localStorage.removeItem(ACP_PROFILE_KEY);
     }
-    // Runtime switching replaces only the execution client. Project sessions,
-    // currentId, threads and panes stay intact so the same conversation can
-    // continue under another runtime.
+    // Keep the product conversation stable. The immutable Host execution is
+    // replaced below, while the outgoing execution remains catalogued as
+    // hidden provenance instead of becoming another sidebar conversation.
+    const previousId = get().currentId;
+    if (previousId && client instanceof AcpRuntime) {
+      rememberAcpExecution(previousId, client.currentExecutionSessionId(), get().acpProfileId);
+    }
+    if (previousId && resolvedProfileId && get().acpProfileId !== resolvedProfileId) {
+      forceFreshAcpConversationId = previousId;
+    }
     set({
       acpProfileId: resolvedProfileId,
       skills: [],
@@ -2550,7 +2608,10 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     const npm = npmForProtocol(loadProtocol());
     for (const p of named) {
       await providerControl.addCustomProvider(p.providerId, {
-        name: p.name,
+        // Group names are routing metadata only; the desktop model picker
+        // presents one AI cloud platform regardless of which credential route
+        // serves a model.
+        name: "AI 云平台",
         npm,
         baseURL: p.baseUrl,
         models: orderModels(p.models),
@@ -2581,9 +2642,41 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // OpenCode-only machinery (providers, catalog, one-shot config migrations).
     const acpProfileId = get().acpProfileId;
     if (!isGatewayWeb && acpProfileId) {
-      const projectRoot = get().workspace ?? await workspacePath();
+      let projectRoot = get().workspace ?? await workspacePath();
       if (!projectRoot) throw new Error("No active project workspace is available.");
       if (get().workspace !== projectRoot) set({ workspace: projectRoot });
+      const currentId = get().currentId;
+      let executionConversationId = currentId ?? undefined;
+      let hiddenExecutionIds: string[] = [];
+      if (currentId) {
+        try {
+          const catalog = await getOrCreateAcpHostControlClient().listSessions();
+          const chain = executionChainFor(currentId);
+          const activeExecutionId = chain?.active ?? currentId;
+          const persisted = catalog.find((session) => session.id === activeExecutionId)
+            ?? catalog.find((session) => session.id === currentId);
+          const fresh = forceFreshAcpConversationId === currentId
+            || Boolean(
+              persisted?.binding.engineId
+              && persisted.binding.engineId !== acpProfileId,
+            );
+          executionConversationId = fresh
+            ? `execution-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+            : persisted?.id ?? chain?.active ?? currentId;
+          hiddenExecutionIds = [...new Set([
+            ...(chain?.all ?? []),
+            ...(persisted ? [persisted.id] : []),
+          ])].filter((id) => id !== executionConversationId);
+          const boundRoot = persisted?.directory?.trim()
+            || persisted?.binding.projectRoot.trim();
+          if (boundRoot && boundRoot !== projectRoot) {
+            projectRoot = await setWorkspace(boundRoot);
+            set({ workspace: projectRoot });
+          }
+        } catch (error) {
+          void logDebug(`ACP session workspace lookup failed: ${error}`);
+        }
+      }
       if (acpProfileId === "opencode" && !get().defaultModel) {
         const controlClient = getProviderControlClient();
         if (controlClient) {
@@ -2596,21 +2689,23 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       }
       const preset = acpPresetById(acpProfileId);
       const request = preset
-        ? buildAcpLaunchRequest(preset, get().currentId ?? undefined, projectRoot)
+        ? buildAcpLaunchRequest(preset, executionConversationId, projectRoot)
         : acpProfileId === "opencode"
           ? buildOpenCodeHostLaunchRequest(
               get().serverUrl,
               get().defaultModel,
               get().providers,
               projectRoot,
-              get().currentId ?? undefined,
+              executionConversationId,
             )
           : null;
       if (!request) {
         // A stale id whose preset was removed — fall back to OpenCode cleanly.
         set({ acpProfileId: null });
       } else {
-        const acp = new AcpRuntime(request);
+        const acp = new AcpRuntime(currentId
+          ? { ...request, logicalConversationId: currentId, hiddenExecutionIds }
+          : request);
         client = acp; // NOT opencodeClient — ACP is not an OpenCode server.
         const ownsConnection = () =>
           runtimeConnectEpoch === connectionEpoch &&
@@ -2630,12 +2725,19 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           sharedEventHandler?.(event);
         });
         try {
+          // The model catalog belongs to the Host control plane, not to the
+          // process adapter. Load it before the adapter handshake so a failed
+          // Codex launch still leaves engine-compatible models selectable.
+          void get().loadCatalog();
           void logDebug(`ACP Host connect → ${acpProfileId}`);
           await acp.connect();
           if (!ownsConnection()) return;
           void logDebug("ACP connect OK");
           set({ error: null });
-          rebindLegacyAcpConversation(set, get, request.conversationId, acp.currentSessionId());
+          if (currentId) {
+            rememberAcpExecution(currentId, acp.currentExecutionSessionId(), acpProfileId);
+            if (forceFreshAcpConversationId === currentId) forceFreshAcpConversationId = null;
+          }
           await get().refreshSessions();
           if (!ownsConnection()) return;
           if (!get().currentId) {
@@ -2852,6 +2954,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
 
   bootstrap: () => {
     if (bootstrapInFlight) return bootstrapInFlight;
+    if (bootstrapCompleted && client && get().status === "ready") {
+      return Promise.resolve();
+    }
     const run = (async () => {
       void get().detectTools();
 
@@ -2931,11 +3036,18 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     const clear = () => {
       if (bootstrapInFlight === run) bootstrapInFlight = null;
     };
-    void run.then(clear, clear);
+    void run.then(() => {
+      if (client && get().status === "ready") bootstrapCompleted = true;
+      clear();
+    }, clear);
     return run;
   },
 
   disconnect: () => {
+    bootstrapCompleted = false;
+    forceFreshAcpConversationId = null;
+    activeAcpModelSwitch = null;
+    queuedAcpModel = null;
     teardownClient();
     teardownStreamClients();
     set({ status: "offline", modelSwitchError: null });
@@ -2945,7 +3057,10 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     const activeClient = client;
     if (!activeClient) return;
     try {
-      const sessions = await activeClient.listSessions();
+      const listed = await activeClient.listSessions();
+      const sessions = activeClient instanceof AcpRuntime
+        ? collapseAcpExecutionSessions(listed)
+        : listed;
       // A session list belongs to the client that requested it. Do not let an
       // old ACP/OpenCode completion replace the new runtime's conversation.
       if (client !== activeClient) return;
@@ -3115,25 +3230,58 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
 
   openSession: async (id) => {
     const seq = ++openSessionSeq;
+    const activeRuntime = client;
+    const needsAcpReconnect = activeRuntime instanceof AcpRuntime
+      && activeRuntime.currentSessionId() !== id;
+    const dir = get().sessions.find((s) => s.id === id)?.directory;
+    const workspaceChanged = Boolean(dir && dir !== get().workspace);
     set({ currentId: id });
     if (!client) return;
     // Follow the session into its own workspace folder: record it as active and
     // reconnect the event stream scoped to it, so the agent, kernel and Files
     // all operate where the session's files live. Sessions with no recorded
     // folder, or that already match the active folder, skip this.
-    const dir = get().sessions.find((s) => s.id === id)?.directory;
-    if (dir && dir !== get().workspace) {
+    if (needsAcpReconnect || workspaceChanged) {
       set({ switching: true });
       try {
-        await setWorkspace(dir).catch(() => {});
+        if (workspaceChanged && dir) {
+          const workspace = await setWorkspace(dir).catch(() => dir);
+          set({ workspace });
+        }
         // A newer openSession has superseded this one — stop before starting a
         // second, dueling connectRetry. Two reconnect loops tear down each
         // other's in-flight EventSource, leaking half-open sockets until the
         // webview's per-host connection pool is exhausted and every later
         // session hangs on load. The winner (latest seq) does the reconnect.
         if (seq !== openSessionSeq) return;
-        await kernelReset().catch(() => {});
+        if (workspaceChanged) await kernelReset().catch(() => {});
         if (seq !== openSessionSeq) return;
+        if (needsAcpReconnect) {
+          const chain = executionChainFor(id);
+          let targetEngine = chain?.activeEngine ?? null;
+          if (!targetEngine) {
+            try {
+              const catalog = await getOrCreateAcpHostControlClient().listSessions();
+              const activeExecutionId = chain?.active ?? id;
+              targetEngine = catalog.find((session) => session.id === activeExecutionId)
+                ?.binding.engineId ?? null;
+            } catch {
+              /* the current engine remains the best available fallback */
+            }
+          }
+          if (targetEngine && targetEngine !== get().acpProfileId) {
+            window.localStorage.setItem(ACP_PROFILE_KEY, targetEngine);
+            set({
+              acpProfileId: targetEngine,
+              skills: [],
+              agents: [],
+              commands: [],
+              zeroWallClient: null,
+              error: null,
+            });
+          }
+          forceFreshAcpConversationId = null;
+        }
         await get().connectRetry();
       } finally {
         // Only the still-current open clears `switching`; a superseded one must
@@ -3202,6 +3350,10 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   loadHistory: async (id) => {
     const c = client;
     if (!c || get().threads[id]?.loaded) return;
+    // Desktop ACP keeps one active logical conversation. Background split-pane
+    // history must never ask the current engine to load a different engine's
+    // immutable execution; opening the conversation reconnects it explicitly.
+    if (c instanceof AcpRuntime && c.currentSessionId() !== id) return;
     try {
       // getMessages is session-scoped (server routes by the session's folder),
       // so any connected client works — no folder switch, unlike openSession.
@@ -3312,15 +3464,8 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // against an older/custom sidecar must not fail every send with "Agent not
     // found".
     const s = get();
-    const key = sessionId ?? draftKey ?? s.currentId ?? DRAFT_KEY;
-    // An ACP runtime owns exactly one live project conversation. Persisted
-    // panes from another project/runtime are rejected, while the current
-    // project conversation remains valid across runtime switches.
-    const acpConversation = s.currentId ?? s.acpProfileId;
-    if (s.acpProfileId && key !== acpConversation && !key.startsWith("draft:")) {
-      set({ error: "This pane belongs to a different runtime. Select the active ACP conversation before sending." });
-      return Promise.resolve(null);
-    }
+    const requestedSessionId = s.acpProfileId ? s.currentId ?? undefined : sessionId;
+    const key = requestedSessionId ?? draftKey ?? s.currentId ?? DRAFT_KEY;
     const mode = s.sessionAgents[key];
     const agent =
       mode === "plan" && s.agents.some((a) => a.name === "plan") ? "plan" : undefined;
@@ -3364,7 +3509,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       },
       false,
       false,
-      sessionId,
+      requestedSessionId,
       draftKey,
       attachments,
     );

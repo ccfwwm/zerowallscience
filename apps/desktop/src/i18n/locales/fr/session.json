@@ -77,13 +77,17 @@
       "title": "Comment les actions de l'agent sont approuvées",
       "menuAria": "Modes d'approbation",
       "menuTitle": "Comment les actions de l'agent doivent-elles être approuvées ?",
-      "approve": {
-        "label": "Approuver pour moi",
-        "description": "Demande avant de supprimer, d'installer ou de se connecter à distance"
+      "request": {
+        "label": "Demander l'approbation",
+        "description": "Demander avant chaque action de l'agent"
+      },
+      "help": {
+        "label": "Approbation assistée",
+        "description": "Demander avant les modifications, outils ou actions réseau"
       },
       "full": {
         "label": "Accès complet",
-        "description": "Exécute toutes les commandes sans demander"
+        "description": "Autoriser les outils normaux du projet ; les actions à risque demandent toujours"
       }
     },
     "error": {
@@ -198,7 +202,6 @@
       "openTitle": "Ouvrir {{path}} — l'agent travaille sur ce notebook dans cette session"
     },
     "connBadge": {
-      "title": "{{runtime}} · {{status}}",
       "status": {
         "ready": "prêt",
         "connecting": "connexion…",

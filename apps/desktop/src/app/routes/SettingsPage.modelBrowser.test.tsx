@@ -10,6 +10,7 @@ import { useRuntimeStore } from "@/lib/runtime";
 import { useSetupStore } from "@/lib/setup";
 import { useToastStore } from "@/lib/toast";
 import { loadModelPreferences, saveModelPreferences } from "@/components/settings/modelPreferences";
+import { pendingProviders } from "@/lib/pending-providers";
 import { Toaster } from "@/components/ui/Toaster";
 import { SettingsPage } from "./SettingsPage";
 
@@ -63,12 +64,12 @@ function mockCatalogClients(
   return client;
 }
 
-async function renderSettings() {
+async function renderSettings(initialEntry = "/settings/models") {
   let view!: ReturnType<typeof render>;
   await act(async () => {
     view = render(
       // Models and Providers live in the "models" settings section.
-      <MemoryRouter initialEntries={["/settings/models"]}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/settings/:section" element={<SettingsPage />} />
         </Routes>
@@ -258,6 +259,59 @@ describe("Settings model browser integration", () => {
     }));
     expect(setProviderSecret).toHaveBeenCalledWith("research-gateway", "secret-value");
     expect(addCustomProvider.mock.calls[0][1]).not.toHaveProperty("apiKey");
+  });
+
+  it("opens the custom provider form when entered from the signed-out auth page", async () => {
+    mockCatalogClients();
+    await renderSettings("/settings/models?add=provider");
+
+    expect(
+      await screen.findByPlaceholderText("Name — e.g. Ollama, My DeepSeek gateway"),
+    ).toBeInTheDocument();
+  });
+
+  it("lets a signed-out user save a custom provider while the runtime is offline", async () => {
+    useRuntimeStore.setState({
+      status: "offline",
+      defaultModel: null,
+      bootstrap: vi.fn().mockResolvedValue(undefined),
+    });
+    const setProviderSecret = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(
+      tauri as unknown as { setProviderSecret: typeof setProviderSecret },
+      "setProviderSecret",
+    ).mockImplementation(setProviderSecret);
+    const client = catalogClient(vi.fn().mockRejectedValue(new Error("runtime is not running")));
+    const addCustomProvider = vi.fn().mockRejectedValue(new Error("runtime is not running"));
+    mockCatalogClients(client);
+    vi.spyOn(runtime, "getProviderControlClient").mockReturnValue({
+      listProviders: client.listProviders,
+      listProviderCatalog: client.listProviderCatalog,
+      listCustomProviderIds: client.listCustomProviderIds,
+      addCustomProvider,
+    } as unknown as ReturnType<typeof runtime.getProviderControlClient>);
+    await renderSettings();
+
+    await userEvent.click(screen.getAllByRole("button", { name: "Custom endpoint" })[0]);
+    fireEvent.change(screen.getByPlaceholderText("Name — e.g. Ollama, My DeepSeek gateway"), {
+      target: { value: "Offline lab" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Base URL — Ollama: http://127.0.0.1:11434/v1"), {
+      target: { value: "https://offline.example.test/v1" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("API key — optional, Ollama needs none"), {
+      target: { value: "keychain-only" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Model ids, comma-separated"), {
+      target: { value: "offline-model" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
+
+    await waitFor(() => expect(pendingProviders()).toEqual([
+      expect.objectContaining({ id: "offline-lab" }),
+    ]));
+    expect(setProviderSecret).toHaveBeenCalledWith("offline-lab", "keychain-only");
+    expect(JSON.stringify(pendingProviders())).not.toContain("keychain-only");
   });
 
   it("drops the cached catalog when the server URL changes (no stale models from the old runtime)", async () => {

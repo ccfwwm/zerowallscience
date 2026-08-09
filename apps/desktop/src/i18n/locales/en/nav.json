@@ -7,6 +7,7 @@
     "settings": "Settings",
     "home": "Home",
     "signIn": "Sign in",
+    "platform": "AI Platform",
     "account": "Account",
     "recharge": "Recharge",
     "lowBalance": "Balance empty — recharge"
@@ -47,6 +48,7 @@
   "history": {
     "heading": "Sessions",
     "empty": "No conversations yet.",
+    "newConversation": "New conversation",
     "exampleTag": "example",
     "deleteAria": "Delete {{title}}",
     "running": "Working"

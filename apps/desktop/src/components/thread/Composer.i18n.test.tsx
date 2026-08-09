@@ -1,5 +1,7 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { renderAt } from "@/test/render";
 import { useUiStore } from "@/lib/store";
 import { Composer } from "./Composer";
@@ -13,7 +15,7 @@ describe("Composer strings (i18n)", () => {
   it("renders the default placeholder and the approval-mode switch in English", () => {
     render(<Composer onSend={() => {}} approvalMode="approve" onApprovalModeChange={() => {}} />);
     expect(screen.getByPlaceholderText("Ask anything")).toBeInTheDocument();
-    expect(screen.getByLabelText("Approval mode")).toHaveTextContent("Approve for me");
+    expect(screen.getByLabelText("Approval mode")).toHaveTextContent("Request approval");
   });
 });
 
@@ -30,5 +32,20 @@ describe("LiveSessionPage strings (i18n)", () => {
     renderAt("/live");
     expect(await screen.findByText("Connecting to the runtime…")).toBeInTheDocument();
     expect(screen.queryByText("OpenCode runtime")).not.toBeInTheDocument();
+    expect(screen.queryByText(/OpenCode ·/)).not.toBeInTheDocument();
+  });
+
+  it("uses a spacious desktop input and groups message capabilities behind the add menu", async () => {
+    render(
+      <MemoryRouter>
+        <Composer onSend={() => {}} onRunCommand={() => {}} showModelPicker />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByPlaceholderText("Ask anything")).toHaveClass("min-h-[96px]");
+    await userEvent.click(screen.getByRole("button", { name: "Add files" }));
+    expect(screen.getByRole("menuitem", { name: "MCP" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Skills" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Workflow" })).toBeInTheDocument();
   });
 });

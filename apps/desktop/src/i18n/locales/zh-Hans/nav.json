@@ -7,6 +7,7 @@
     "settings": "设置",
     "home": "回到首页",
     "signIn": "登录",
+    "platform": "AI 云平台",
     "account": "账号",
     "recharge": "充值",
     "lowBalance": "余额不足，请充值"
@@ -47,6 +48,7 @@
   "history": {
     "heading": "会话",
     "empty": "暂无对话。",
+    "newConversation": "新对话",
     "exampleTag": "示例",
     "deleteAria": "删除 {{title}}",
     "running": "运行中"

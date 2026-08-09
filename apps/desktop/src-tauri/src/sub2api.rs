@@ -89,9 +89,9 @@ pub struct Group {
     pub rate_multiplier: f64,
 }
 
-/// Result of the first provisioning step: the groups the account has access to,
-/// and which ones already have an API key. The frontend shows a group selector
-/// and then calls `sub2api_provision_group` for the chosen group.
+/// Result of the read-only discovery step: every service-visible group the
+/// account can use, plus the ids that already have a key. The frontend submits
+/// all returned groups to the batch provisioning command.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupsAndKeys {
@@ -290,6 +290,22 @@ pub(crate) fn parse_models(body: &str) -> Result<Vec<String>, String> {
 
 /// Available groups from `GET /groups/available`. The gateway returns
 /// `{data: [{id, name, platform, ...}]}` — extract name and id.
+fn group_is_available(group: &serde_json::Value) -> bool {
+    for field in ["visible", "available", "enabled", "is_visible", "is_available"] {
+        if group.get(field).and_then(|value| value.as_bool()) == Some(false) {
+            return false;
+        }
+    }
+    !matches!(
+        group
+            .get("status")
+            .and_then(|value| value.as_str())
+            .map(|value| value.trim().to_ascii_lowercase())
+            .as_deref(),
+        Some("disabled" | "inactive" | "unavailable" | "closed")
+    )
+}
+
 pub(crate) fn parse_groups(body: &str) -> Vec<Group> {
     let Ok(root) = serde_json::from_str::<serde_json::Value>(body) else {
         return Vec::new();
@@ -297,6 +313,7 @@ pub(crate) fn parse_groups(body: &str) -> Vec<Group> {
     let data = root.get("data").unwrap_or(&root);
     let list = data.as_array().cloned().unwrap_or_default();
     list.iter()
+        .filter(|group| group_is_available(group))
         .filter_map(|g| {
             let id = g.get("id")?.as_i64()?;
             let name = g.get("name")?.as_str().filter(|s| !s.is_empty())?;
@@ -319,15 +336,11 @@ pub(crate) fn parse_groups(body: &str) -> Vec<Group> {
         .collect()
 }
 
-/// ZeroWall only exposes explicitly published gateway groups. Keep this at the
-/// native boundary as well as the renderer: Tauri commands can be invoked
-/// directly, and a non-published group must never result in a locally stored
-/// provider key.
+/// `/groups/available` is the service boundary: every group returned by that
+/// endpoint is available to this account and must remain reachable. Do not
+/// impose a product-name prefix allow-list here.
 pub(crate) fn published_groups(groups: Vec<Group>) -> Vec<Group> {
     groups
-        .into_iter()
-        .filter(|group| group.name.trim_start().to_ascii_lowercase().starts_with("zero"))
-        .collect()
 }
 
 /// Create an API key on the gateway for a specific group. Mirrors transit-hub's
@@ -572,9 +585,8 @@ pub fn sub2api_logout(state: State<'_, Sub2ApiState>) -> Result<(), String> {
     Ok(())
 }
 
-/// Step 1 of two-step provisioning: fetch the account's available groups and
-/// which ones already have an API key. The frontend shows a group selector,
-/// then calls `sub2api_provision_group` for the chosen group.
+/// Read-only discovery: fetch every account-visible group and existing key info.
+/// The frontend subsequently provisions all groups in one batch.
 ///
 /// No key is stored and no sidecar is restarted — that happens in step 2.
 #[tauri::command]
@@ -698,7 +710,7 @@ pub async fn sub2api_provision_group(
                 &get_json(base, "/groups/available", &token)?,
             ));
             if !groups.iter().any(|group| group.id == group_id) {
-                return Err("the selected group is not published for ZeroWall Science".into());
+                return Err("the selected group is not available for this account".into());
             }
             // Fetch existing keys and look for one tied to the requested group.
             let keys = parse_api_keys(&get_json(
@@ -783,7 +795,7 @@ pub async fn sub2api_provision_groups(
             let allowed: std::collections::HashSet<i64> =
                 available.into_iter().map(|group| group.id).collect();
             if requests.iter().any(|request| !allowed.contains(&request.group_id)) {
-                return Err("one or more requested groups are not published for ZeroWall Science".into());
+                return Err("one or more requested groups are not available for this account".into());
             }
             let keys = parse_api_keys(&get_json(
                 base,
@@ -1353,7 +1365,26 @@ mod tests {
     }
 
     #[test]
-    fn published_groups_keep_only_zero_prefixed_names() {
+    fn groups_with_explicitly_unavailable_service_flags_are_excluded() {
+        let body = r#"{"data":[
+            {"id":1,"name":"Ready"},
+            {"id":2,"name":"Hidden","visible":false},
+            {"id":3,"name":"Unavailable","available":false},
+            {"id":4,"name":"Disabled","enabled":false},
+            {"id":5,"name":"Closed","status":"disabled"}
+        ]}"#;
+
+        assert_eq!(
+            parse_groups(body)
+                .into_iter()
+                .map(|group| group.id)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+    }
+
+    #[test]
+    fn published_groups_keep_every_service_available_group() {
         let groups = vec![
             Group {
                 id: 1,
@@ -1375,7 +1406,13 @@ mod tests {
             },
         ];
 
-        assert_eq!(published_groups(groups).into_iter().map(|group| group.id).collect::<Vec<_>>(), vec![1, 2]);
+        assert_eq!(
+            published_groups(groups)
+                .into_iter()
+                .map(|group| group.id)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
     }
 
     #[test]

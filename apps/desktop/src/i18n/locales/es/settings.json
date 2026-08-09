@@ -1,5 +1,6 @@
 {
   "nav": {
+    "account": "Cuenta y plataforma de IA",
     "back": "Volver a la app",
     "general": "General",
     "appearance": "Apariencia",
@@ -12,6 +13,10 @@
     "privacy": "Privacidad",
     "browser": "Navegador",
     "remote": "Acceso remoto"
+  },
+  "account": {
+    "title": "Cuenta y plataforma de IA",
+    "hint": "Inicia sesión para sincronizar automáticamente tu cuenta, modelos y proveedores. Los proveedores personalizados también funcionan sin iniciar sesión."
   },
   "appearance": {
     "title": "Apariencia",
@@ -206,8 +211,6 @@
     "connected": "{{count}} modelo(s) conectados. Elige uno en Modelos.",
     "pickOne": "Selecciona al menos un modelo.",
     "noModels": "El gateway no devolvió modelos para esta cuenta.",
-    "selectGroup": "Seleccionar un grupo",
-    "groupHint": "Diferentes grupos pueden tener diferentes modelos",
     "creatingKey": "Creando clave…",
     "keyExists": "Clave existente",
     "manualPlaceholder": "Añadir ids de modelo a mano — separados por comas",
@@ -362,6 +365,7 @@
     "couldNotFetchModels": "No se pudieron obtener los modelos del endpoint",
     "endpointFieldsRequired": "Se requieren el nombre, la URL base y al menos un ID de modelo.",
     "endpointAdded": "{{name}} añadido — sus modelos ya se pueden seleccionar arriba.",
+    "endpointSaved": "{{name}} guardado y se activará cuando el entorno esté listo.",
     "couldNotAddMcp": "No se pudo añadir el servidor MCP",
     "mcpFieldsRequired": "Se requieren el nombre y el comando/URL.",
     "mcpAdded": "Servidor MCP {{name}} añadido",

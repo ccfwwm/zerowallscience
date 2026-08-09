@@ -7,6 +7,7 @@
     "settings": "Einstellungen",
     "home": "Startseite",
     "signIn": "Sign in",
+    "platform": "KI-Plattform",
     "account": "Account",
     "recharge": "Aufladen",
     "lowBalance": "Guthaben leer – aufladen"
@@ -47,6 +48,7 @@
   "history": {
     "heading": "Sitzungen",
     "empty": "Noch keine Unterhaltungen.",
+    "newConversation": "Neue Unterhaltung",
     "exampleTag": "Beispiel",
     "deleteAria": "{{title}} löschen",
     "running": "Arbeitet"
