@@ -18,6 +18,9 @@ export interface ScienceConnector {
   bin?: string;
   /** Fallback: Python `-m` module the server runs as, plus any args. */
   module?: string;
+  /** Python code that calls the package's console entrypoint without relying
+   *  on a generated launcher containing the build machine's absolute path. */
+  entrypoint?: string;
   args?: string[];
   /** Env var the server reads its API key from (free keys; never logged). */
   apiKeyEnv?: string;
@@ -63,7 +66,7 @@ export const SCIENCE_CONNECTORS: ScienceConnector[] = [
     description:
       "Query material properties, crystal structures, and phase diagrams from the Materials Project database",
     pkg: "mcp-materials-project",
-    bin: "mcp-materials-project",
+    entrypoint: "from mcp_materials import main; main()",
     apiKeyEnv: "MP_API_KEY",
     apiKeyUrl: "https://next-gen.materialsproject.org/api",
     installNote: "large — installs pymatgen + mp-api on first enable",
@@ -76,7 +79,7 @@ export const SCIENCE_CONNECTORS: ScienceConnector[] = [
     description:
       "Federal Reserve (FRED) economic time series — GDP, inflation, unemployment, rates, and more",
     pkg: "fred-mcp",
-    bin: "fred-mcp",
+    entrypoint: "from fred_mcp.main import main; main()",
     apiKeyEnv: "FRED_API_KEY",
     apiKeyUrl: "https://fred.stlouisfed.org/docs/api/api_key.html",
     source: "github.com/tosin2013/fred-mcp",
@@ -88,7 +91,7 @@ export const SCIENCE_CONNECTORS: ScienceConnector[] = [
     description:
       "Solar wind, solar flares, Kp/Dst geomagnetic indices, radiation storms, and aurora forecasts (NOAA SWPC · NASA DONKI · USGS)",
     pkg: "spaceweather-mcp",
-    bin: "spaceweather-mcp",
+    module: "spaceweather_mcp.server",
     source: "github.com/hoon1983/spaceweather-mcp",
     recommended: true,
   },
@@ -110,7 +113,7 @@ export const SCIENCE_CONNECTORS: ScienceConnector[] = [
     description:
       "USGS Water Services — streamflow, flood stages, peak events, and monitoring sites across the US",
     pkg: "usgs-mcp",
-    bin: "usgs-mcp",
+    entrypoint: "from usgs_mcp.server import main; main()",
     source: "github.com/mansurjisan/ocean-mcp",
     recommended: true,
   },
@@ -121,7 +124,7 @@ export const SCIENCE_CONNECTORS: ScienceConnector[] = [
     description:
       "UniProt protein knowledgebase — search entries, sequences, functions, and cross-references — no key",
     pkg: "uniprot-mcp-server",
-    bin: "uniprot-mcp",
+    module: "uniprot_mcp.server",
     source: "github.com/smaniches/uniprot-mcp",
   },
   {
@@ -131,7 +134,7 @@ export const SCIENCE_CONNECTORS: ScienceConnector[] = [
     description:
       "Search Wikipedia and fetch article summaries, sections, and links for background & definitions — no key",
     pkg: "wikipedia-mcp",
-    bin: "wikipedia-mcp",
+    module: "wikipedia_mcp",
     source: "github.com/rudra-ravi/wikipedia-mcp",
   },
 ];
@@ -142,15 +145,6 @@ export const RECOMMENDED_CONNECTOR_IDS: string[] = SCIENCE_CONNECTORS.filter(
   (c) => c.recommended,
 ).map((c) => c.id);
 
-/** Resolve a console script that sits next to the managed python interpreter
- *  (unix: `<env>/bin/<script>`; Windows: `<env>/Scripts/<script>.exe`). */
-function scriptBeside(python: string, bin: string): string {
-  const sep = python.includes("\\") ? "\\" : "/";
-  const dir = python.slice(0, python.lastIndexOf(sep));
-  const exe = python.toLowerCase().endsWith(".exe") ? ".exe" : "";
-  return `${dir}${sep}${bin}${exe}`;
-}
-
 /** Local-MCP config for a connector. Secrets are injected into the sidecar
  * process from the OS credential manager and never serialized here. */
 export function connectorConfig(
@@ -158,8 +152,15 @@ export function connectorConfig(
   python: string,
   _apiKey?: string,
 ): McpConfig {
-  const command = c.bin
-    ? [scriptBeside(python, c.bin)]
-    : [python, "-m", c.module ?? "", ...(c.args ?? [])];
-  return { type: "local", command, enabled: true };
+  const command = c.entrypoint
+    ? [python, "-s", "-c", c.entrypoint]
+    : [python, "-s", "-m", c.module ?? "", ...(c.args ?? [])];
+  return {
+    type: "local",
+    command,
+    enabled: true,
+    ...(c.apiKeyEnv
+      ? { environment: { [c.apiKeyEnv]: `{env:${c.apiKeyEnv}}` } }
+      : {}),
+  };
 }

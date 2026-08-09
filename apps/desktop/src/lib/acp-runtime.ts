@@ -63,7 +63,7 @@ import { acpToolCallToEvent } from "./acp-normalize";
 export interface AcpRuntimeDeps {
   launch: (request: AcpLaunchRequest) => Promise<AcpStatus>;
   prompt: (text: string, attachments?: AcpPromptAttachment[]) => Promise<void>;
-  setModel: (model: string) => Promise<void>;
+  setModel: (model: string, provider?: string) => Promise<void>;
   cancel: () => Promise<void>;
   respondPermission: (requestId: string, optionId: string | null) => Promise<void>;
   respondQuestion: (requestId: string, answers: string[][] | null) => Promise<void>;
@@ -116,7 +116,7 @@ const CAPABILITY_DISCOVERY_TIMEOUT_MS = 1_500;
  * fresh session and keep every other launch failure visible to the user. */
 function isPersistedSessionLoadFailure(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /(?:stage:\s*SessionLoad|ACP_SESSION_LOAD_FAILED|OpenCode session\/load returned HTTP 404)/i.test(message);
+  return /(?:stage:\s*SessionLoad|ACP_SESSION_LOAD_FAILED|OpenCode session\/load returned HTTP (?:404|500))/i.test(message);
 }
 
 /** Thrown by methods an ACP agent cannot honor (revert, ad-hoc shell). Callers
@@ -228,7 +228,8 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
         if (!this.launchRequest.conversationId || !isPersistedSessionLoadFailure(error)) {
           throw error;
         }
-        const { conversationId: _discarded, ...freshRequest } = this.launchRequest;
+        const freshRequest = { ...this.launchRequest };
+        delete freshRequest.conversationId;
         this.launchRequest = freshRequest;
         this.initialSessionClaimed = false;
         status = await this.deps.launch(freshRequest);
@@ -615,7 +616,9 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
         ? { providerId: this.request.gateway.providerId, model: requestedModel }
         : null;
     if (!this.initialSessionClaimed) {
-      if (requestedBinding) await this.deps.setModel(requestedBinding.model);
+      if (requestedBinding) {
+        await this.deps.setModel(requestedBinding.model, requestedBinding.providerId);
+      }
       this.initialSessionClaimed = true;
       this.executionSessionId = this.deps.currentSessionId?.() ?? this.executionSessionId;
       return this.sessionId;
@@ -750,9 +753,10 @@ export class AcpRuntime extends BaseAgentRuntime implements AgentRuntime {
 
   async setDefaultModel(model: string): Promise<void> {
     const slash = model.indexOf("/");
+    const providerId = slash >= 0 ? model.slice(0, slash) : undefined;
     const modelId = slash >= 0 ? model.slice(slash + 1) : model;
     if (!modelId) throw new Error("ACP model id is required");
-    await this.deps.setModel(modelId);
+    await this.deps.setModel(modelId, providerId);
   }
 
   // ---- agent-driven execution (no ad-hoc shell / command over ACP) ----

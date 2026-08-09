@@ -25,6 +25,8 @@ const MAX_ARCHIVE_FILES: usize = 10_000;
 const MAX_EXTRACTED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 const HTTP_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const HTTP_DOWNLOAD_ATTEMPTS: usize = 5;
+const HTTP_DOWNLOAD_RETRY_DELAY: Duration = Duration::from_secs(1);
 const HEALTH_CHECK_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(60);
 const ENVIRONMENT_RELEASE_LATEST_BASE: &str = "https://zerowall.chengxunkeji.cn/environment/latest";
@@ -43,6 +45,8 @@ pub enum EnvironmentUpdateError {
     InvalidManifest(String),
     #[error("download failed: {0}")]
     Download(String),
+    #[error("download interrupted: {0}")]
+    DownloadInterrupted(String),
     #[error("environment update cancelled")]
     Cancelled,
     #[error("checksum mismatch for {component}: expected {expected}, got {actual}")]
@@ -84,6 +88,7 @@ struct SignedEnvironmentEnvelope {
 pub struct EnvironmentManifest {
     pub schema: String,
     pub version: String,
+    pub target: String,
     pub components: Vec<EnvironmentComponent>,
     pub health_checks: Vec<EnvironmentHealthCheck>,
 }
@@ -379,6 +384,15 @@ fn validate_manifest(
         ));
     }
     validate_safe_segment("version", &manifest.version)?;
+    validate_safe_segment("target", &manifest.target)?;
+    let current_target =
+        environment_target_triple().map_err(EnvironmentUpdateError::InvalidManifest)?;
+    if manifest.target != current_target {
+        return Err(EnvironmentUpdateError::InvalidManifest(format!(
+            "manifest target {} does not match {current_target}",
+            manifest.target
+        )));
+    }
     let mut component_ids = HashSet::new();
     for component in &manifest.components {
         validate_safe_segment("component id", &component.id)?;
@@ -609,7 +623,7 @@ impl HttpPackageDownloader {
         let response = loop {
             tokio::select! {
                 result = &mut send => {
-                    break result.map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
+                    break result.map_err(|error| EnvironmentUpdateError::DownloadInterrupted(error.to_string()))?;
                 }
                 _ = tokio::time::sleep(HTTP_CANCEL_POLL_INTERVAL) => {
                     if self.is_cancelled() {
@@ -670,7 +684,13 @@ impl HttpPackageDownloader {
             let chunk = loop {
                 tokio::select! {
                     result = &mut next => {
-                        break result.map_err(|error| EnvironmentUpdateError::Download(error.to_string()))?;
+                        break match result {
+                            Ok(chunk) => chunk,
+                            Err(error) => {
+                                output.sync_all()?;
+                                return Err(EnvironmentUpdateError::DownloadInterrupted(error.to_string()));
+                            }
+                        };
                     }
                     _ = tokio::time::sleep(HTTP_CANCEL_POLL_INTERVAL) => {
                         if self.is_cancelled() {
@@ -697,7 +717,7 @@ impl HttpPackageDownloader {
             .or(expected_size)
             .is_some_and(|expected| expected != downloaded_bytes)
         {
-            return Err(EnvironmentUpdateError::Download(
+            return Err(EnvironmentUpdateError::DownloadInterrupted(
                 "server returned an incomplete response body".into(),
             ));
         }
@@ -773,7 +793,20 @@ impl PackageDownloader for HttpPackageDownloader {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        runtime.block_on(self.download_to_async(url, target, expected_size))
+        for attempt in 0..HTTP_DOWNLOAD_ATTEMPTS {
+            match runtime.block_on(self.download_to_async(url, target, expected_size)) {
+                Err(EnvironmentUpdateError::DownloadInterrupted(_))
+                    if attempt + 1 < HTTP_DOWNLOAD_ATTEMPTS =>
+                {
+                    if self.is_cancelled() {
+                        return Err(EnvironmentUpdateError::Cancelled);
+                    }
+                    thread::sleep(HTTP_DOWNLOAD_RETRY_DELAY);
+                }
+                result => return result,
+            }
+        }
+        unreachable!("the final HTTP download attempt always returns")
     }
 }
 
@@ -953,7 +986,9 @@ impl<D: PackageDownloader, H: HealthRunner> EnvironmentInstaller<D, H> {
             Err(error) => {
                 if !matches!(
                     error,
-                    EnvironmentUpdateError::Download(_) | EnvironmentUpdateError::Cancelled
+                    EnvironmentUpdateError::Download(_)
+                        | EnvironmentUpdateError::DownloadInterrupted(_)
+                        | EnvironmentUpdateError::Cancelled
                 ) {
                     let _ = fs::remove_dir_all(&staging);
                 }
@@ -1915,6 +1950,7 @@ mod tests {
         serde_json::json!({
             "schema": ENVIRONMENT_SCHEMA,
             "version": version,
+            "target": environment_target_triple().unwrap(),
             "components": components,
             "healthChecks": checks,
         })
@@ -2156,8 +2192,11 @@ mod tests {
     #[test]
     fn verifies_signature_over_the_exact_payload_string() {
         let signing = SigningKey::from_bytes(&[3; 32]);
-        let raw_payload = "{\"schema\":\"zerowall.science/environment/v1\",\"version\":\"v1\",\"components\":[],\"healthChecks\":[]}";
-        let envelope = signed_envelope(raw_payload, &signing);
+        let raw_payload = format!(
+            "{{\"schema\":\"zerowall.science/environment/v1\",\"version\":\"v1\",\"target\":\"{}\",\"components\":[],\"healthChecks\":[]}}",
+            environment_target_triple().unwrap()
+        );
+        let envelope = signed_envelope(&raw_payload, &signing);
         let manifest =
             verify_envelope_with_public_key(&envelope, &signing.verifying_key().to_bytes())
                 .unwrap();
@@ -2781,8 +2820,59 @@ mod tests {
 
         let result = downloader.download_to(&format!("http://{address}"), &target, Some(10));
 
-        assert!(matches!(result, Err(EnvironmentUpdateError::Download(_))));
+        assert!(matches!(
+            result,
+            Err(EnvironmentUpdateError::DownloadInterrupted(_))
+        ));
         server.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn http_download_retries_an_interrupted_body_and_resumes_from_disk() {
+        let root = temp_root("retry-interrupted-http-body");
+        let target = root.join("component.package");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            for attempt in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0_u8; 1024];
+                let read = stream.read(&mut request).unwrap();
+                let request = String::from_utf8_lossy(&request[..read]).to_ascii_lowercase();
+                if attempt == 0 {
+                    assert!(!request.contains("range:"), "{request}");
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nabc",
+                        )
+                        .unwrap();
+                } else {
+                    assert!(request.contains("range: bytes=3-"), "{request}");
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 3-5/6\r\nContent-Length: 3\r\nConnection: close\r\n\r\ndef",
+                        )
+                        .unwrap();
+                }
+            }
+        });
+        let mut downloader = HttpPackageDownloader {
+            client: reqwest::Client::builder()
+                .no_proxy()
+                .timeout(Duration::from_secs(5))
+                .build()
+                .unwrap(),
+            status: None,
+            cancel_requested: None,
+        };
+
+        downloader
+            .download_to(&format!("http://{address}"), &target, Some(6))
+            .unwrap();
+
+        server.join().unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"abcdef");
         let _ = fs::remove_dir_all(root);
     }
 

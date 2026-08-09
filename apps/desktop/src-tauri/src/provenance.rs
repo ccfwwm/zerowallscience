@@ -1121,9 +1121,9 @@ mod tests {
         assert_eq!(explicit(&format!("{} -c 'x'", py.to_string_lossy())), py); // absolute path
 
         // A bare `python` is PATH-resolved, not an explicit path — fall back to default.
-        assert!(matches!(interpreter_from_command("python train.py", &root), None));
+        assert!(interpreter_from_command("python train.py", &root).is_none());
         // A non-Python path-form command is not treated as an interpreter.
-        assert!(matches!(interpreter_from_command("./scripts/run.sh", &root), None));
+        assert!(interpreter_from_command("./scripts/run.sh", &root).is_none());
         // An explicit interpreter that does NOT exist is reported Missing, so the
         // caller attributes no Python env rather than the misleading default (#23).
         assert!(matches!(

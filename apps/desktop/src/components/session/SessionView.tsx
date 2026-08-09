@@ -452,6 +452,7 @@ export function SessionView({
       <div className="relative flex h-full min-w-0 flex-1 flex-col">
         {switching && (
           <div className="pointer-events-none absolute left-1/2 top-14 z-30 -translate-x-1/2">
+            {/* eslint-disable-next-line i18next/no-literal-string -- internal transition kind, not display text */}
             <RuntimeTransitionStatus kind="selection" compact />
           </div>
         )}
@@ -645,6 +646,7 @@ export function SessionView({
           >
             {!connected && shouldShowEnvironmentTransition(status, switching) && (
               <div className="flex min-h-[220px] items-center justify-center">
+                {/* eslint-disable-next-line i18next/no-literal-string -- internal transition kind, not display text */}
                 <RuntimeTransitionStatus kind="environment" />
               </div>
             )}

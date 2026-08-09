@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   orderStatus: vi.fn(),
   openExternal: vi.fn(),
   addCustomProvider: vi.fn(),
+  removeCustomProvider: vi.fn(),
   setDefaultModel: vi.fn(),
   loadCatalog: vi.fn(),
   connectRetry: vi.fn(),
@@ -74,6 +75,7 @@ vi.mock("@/lib/runtime", () => {
   useRuntimeStore.getState = () => state;
   const client = {
     addCustomProvider: mocks.addCustomProvider,
+    removeCustomProvider: mocks.removeCustomProvider,
     setDefaultModel: mocks.setDefaultModel,
   };
   return {
@@ -87,6 +89,7 @@ vi.mock("@/lib/toast", () => ({
 }));
 
 import {
+  routedModelOptions,
   Sub2ApiCard,
   isDomesticModel,
   openGroups,
@@ -146,6 +149,7 @@ beforeEach(() => {
   mocks.register.mockResolvedValue(undefined);
   mocks.balance.mockResolvedValue({ balance: "12.34" });
   mocks.addCustomProvider.mockResolvedValue(undefined);
+  mocks.removeCustomProvider.mockResolvedValue(undefined);
   mocks.setDefaultModel.mockResolvedValue(undefined);
   mocks.connectRetry.mockResolvedValue(true);
   mocks.restoreSession.mockResolvedValue(null);
@@ -173,6 +177,51 @@ describe("model ordering", () => {
       "qwen3-max",
       "gpt-4o",
     ]);
+  });
+
+  it("keeps the same model as an independent route in every provisioned group", () => {
+    expect(routedModelOptions([
+      {
+        providerId: "zerowall-1",
+        groupId: 1,
+        baseUrl: "https://example.test/v1",
+        models: ["gpt-4o", "claude-sonnet-4"],
+        name: "codex",
+      },
+      {
+        providerId: "zerowall-2",
+        groupId: 2,
+        baseUrl: "https://example.test/v1",
+        models: ["kimi-k2", "gpt-4o"],
+        name: "domestic",
+      },
+    ]).map(({ key, providerId, groupId, modelId }) => ({ key, providerId, groupId, modelId })))
+      .toEqual([
+        {
+          key: "zerowall-2|2|kimi-k2",
+          providerId: "zerowall-2",
+          groupId: 2,
+          modelId: "kimi-k2",
+        },
+        {
+          key: "zerowall-1|1|claude-sonnet-4",
+          providerId: "zerowall-1",
+          groupId: 1,
+          modelId: "claude-sonnet-4",
+        },
+        {
+          key: "zerowall-1|1|gpt-4o",
+          providerId: "zerowall-1",
+          groupId: 1,
+          modelId: "gpt-4o",
+        },
+        {
+          key: "zerowall-2|2|gpt-4o",
+          providerId: "zerowall-2",
+          groupId: 2,
+          modelId: "gpt-4o",
+        },
+      ]);
   });
 });
 
@@ -286,7 +335,7 @@ describe("Sub2API panel", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Fetch my models/ }));
 
     // Wait for the final state — model chips appear after the batch provision resolves.
-    await waitFor(() => expect(screen.getByRole("button", { name: /gpt-4o/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /gpt-4o/ })).toHaveLength(3));
 
     expect(mocks.fetchGroups).toHaveBeenCalledTimes(1);
     expect(mocks.provisionGroup).not.toHaveBeenCalled();
@@ -298,26 +347,30 @@ describe("Sub2API panel", () => {
     expect(screen.queryByText("Select a group")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "codex-pro分组" })).not.toBeInTheDocument();
 
-    // The aggregated picker de-duplicates model ids that exist in several groups.
+    // The picker keeps group routes independent even when the model id matches.
     const chips = screen
       .getAllByRole("button")
       .filter((b) => b.getAttribute("aria-pressed") !== null && b.className.includes("font-mono"));
     expect(chips.map((c) => c.textContent?.replace("★", ""))).toEqual([
-      "deepseek-v3",
-      "glm-4.6",
-      "kimi-k2-thinking",
-      "qwen3-max",
-      "claude-sonnet-4",
-      "gpt-4o",
-      "gpt-5.4",
-      "o3",
+      "deepseek-v3· zero-国产模型",
+      "glm-4.6· zero-国产模型",
+      "kimi-k2-thinking· zero-国产模型",
+      "qwen3-max· zero-国产模型",
+      "claude-sonnet-4· codex-pro分组",
+      "gpt-4o· codex-pro分组",
+      "gpt-4o· zero-国产模型",
+      "gpt-4o· zero-GPT模型分组",
+      "gpt-5.4· zero-GPT模型分组",
+      "o3· zero-GPT模型分组",
     ]);
-    expect(chips.filter((c) => c.textContent?.includes("gpt-4o"))).toHaveLength(1);
+    expect(chips.filter((c) => c.textContent?.includes("gpt-4o"))).toHaveLength(3);
     expect(chips.map((c) => c.getAttribute("aria-pressed"))).toEqual([
       "true",
       "true",
       "true",
       "true",
+      "false",
+      "false",
       "false",
       "false",
       "false",
@@ -330,8 +383,8 @@ describe("Sub2API panel", () => {
     mocks.account = { email: "a@b.co", baseUrl: "https://code.aicodeme.cn" };
     render(<Sub2ApiCard />);
     await userEvent.click(await screen.findByRole("button", { name: /Fetch my models/ }));
-    await userEvent.click(await screen.findByRole("button", { name: "gpt-4o" }));
-    await userEvent.click(screen.getByRole("button", { name: "gpt-5.4" }));
+    await userEvent.click(await screen.findByRole("button", { name: "gpt-4o · codex-pro分组" }));
+    await userEvent.click(screen.getByRole("button", { name: "gpt-5.4 · zero-GPT模型分组" }));
     await userEvent.click(screen.getByRole("button", { name: "Save 6 model(s)" }));
 
     expect(mocks.addCustomProvider.mock.calls.map(([id]) => id)).toEqual([
@@ -345,9 +398,8 @@ describe("Sub2API panel", () => {
       "glm-4.6",
       "kimi-k2-thinking",
       "qwen3-max",
-      "gpt-4o",
     ]);
-    expect(mocks.addCustomProvider.mock.calls[2][1].models).toEqual(["gpt-4o", "gpt-5.4"]);
+    expect(mocks.addCustomProvider.mock.calls[2][1].models).toEqual(["gpt-5.4"]);
   });
 
   it("registers the provider with no apiKey and auto-sets a domestic default model", async () => {
@@ -362,7 +414,7 @@ describe("Sub2API panel", () => {
     expect(opts).toEqual({
       // Gateway groups are internal credential routes, not user-facing
       // provider categories.
-      name: "AI Platform",
+      name: "AI Platform · zero-国产模型",
       // Default is the Chat Completions protocol (@ai-sdk/openai-compatible);
       // the gateway only carries image parts on Chat Completions.
       npm: "@ai-sdk/openai-compatible",
@@ -376,6 +428,23 @@ describe("Sub2API panel", () => {
     expect(mocks.loadCatalog).toHaveBeenCalled();
   });
 
+  it("removes a previously registered route when its last model is deselected", async () => {
+    mocks.account = { email: "a@b.co", baseUrl: "https://code.aicodeme.cn" };
+    render(<Sub2ApiCard />);
+    await userEvent.click(await screen.findByRole("button", { name: /Fetch my models/ }));
+    const routed = screen.getByRole("button", { name: "gpt-4o · codex-pro分组" });
+    await userEvent.click(routed);
+    await userEvent.click(screen.getByRole("button", { name: "Save 5 model(s)" }));
+    await waitFor(() => expect(mocks.addCustomProvider).toHaveBeenCalledWith(
+      "zerowall-1",
+      expect.any(Object),
+    ));
+    mocks.removeCustomProvider.mockClear();
+    await userEvent.click(routed);
+    await userEvent.click(screen.getByRole("button", { name: "Save 4 model(s)" }));
+    await waitFor(() => expect(mocks.removeCustomProvider).toHaveBeenCalledWith("zerowall-1"));
+  });
+
   it("adds models typed by hand", async () => {
     mocks.account = { email: "a@b.co", baseUrl: "https://code.aicodeme.cn" };
     render(<Sub2ApiCard />);
@@ -386,7 +455,7 @@ describe("Sub2API panel", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Add" }));
 
-    expect(await screen.findByRole("button", { name: "my-private-model" })).toHaveAttribute(
+    expect(await screen.findByRole("button", { name: "my-private-model · zero-国产模型" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -428,9 +497,9 @@ describe("Sub2API panel", () => {
       "zerowall-3",
     ]);
     expect(mocks.addCustomProvider.mock.calls.map((c) => c[1].name)).toEqual([
-      "AI Platform",
-      "AI Platform",
-      "AI Platform",
+      "AI Platform · codex-pro分组",
+      "AI Platform · zero-国产模型",
+      "AI Platform · zero-GPT模型分组",
     ]);
     // GPT-family models from the second group are now registered, so a model
     // like gpt-5.4 resolves to a configured account instead of erroring.

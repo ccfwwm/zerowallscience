@@ -30,6 +30,8 @@ on:
         required: true
       ZEROWALL_ENV_UPDATE_PUBLIC_KEY:
         required: true
+      ZEROWALL_SMOKE_API_KEY:
+        required: false
 
 permissions:
   contents: read
@@ -69,18 +71,17 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.11
-      - name: Build and publish versioned environment
+      - name: Build and smoke versioned environment
         shell: bash
         env:
-          QINIU_ACCESS_KEY: ${{ secrets.QINIU_ACCESS_KEY }}
-          QINIU_SECRET_KEY: ${{ secrets.QINIU_SECRET_KEY }}
-          ZEROWALL_ENV_UPDATE_PRIVATE_KEY: ${{ secrets.ZEROWALL_ENV_UPDATE_PRIVATE_KEY }}
-          ZEROWALL_ENV_UPDATE_PUBLIC_KEY: ${{ secrets.ZEROWALL_ENV_UPDATE_PUBLIC_KEY || vars.ZEROWALL_ENV_UPDATE_PUBLIC_KEY }}
+          ZEROWALL_SMOKE_API_KEY: ${{ secrets.ZEROWALL_SMOKE_API_KEY }}
+          ZEROWALL_SMOKE_BASE_URL: ${{ vars.ZEROWALL_SMOKE_BASE_URL }}
+          ZEROWALL_SMOKE_PROVIDER_ID: ${{ vars.ZEROWALL_SMOKE_PROVIDER_ID }}
+          ZEROWALL_SMOKE_MODEL_ID: ${{ vars.ZEROWALL_SMOKE_MODEL_ID }}
           ENVIRONMENT_VERSION: ${{ inputs.environment_version || format('env-{0}', github.run_number) }}
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          test -n "$QINIU_ACCESS_KEY" -a -n "$QINIU_SECRET_KEY" -a -n "$ZEROWALL_ENV_UPDATE_PRIVATE_KEY" -a -n "$ZEROWALL_ENV_UPDATE_PUBLIC_KEY"
           pnpm install --frozen-lockfile
           bash scripts/dev/fetch-opencode.sh "$TARGET"
           bash scripts/dev/fetch-acp-runtimes.sh "$TARGET"
@@ -96,19 +97,63 @@ jobs:
           for name in opencode uv agent-browser claude-code-acp codex-acp zerowall-mcp-proxy; do cp "apps/desktop/src-tauri/binaries/${name}-${TARGET}${suffix}" "$stage/${name}${suffix}"; done
           cp -R runtime/acp "$stage/acp-runtime"
           cp -R runtime/skills/core "$stage/skills-core"
+          smoke_names=(ZEROWALL_SMOKE_API_KEY ZEROWALL_SMOKE_BASE_URL ZEROWALL_SMOKE_PROVIDER_ID ZEROWALL_SMOKE_MODEL_ID)
+          smoke_count=0
+          for smoke_name in "${smoke_names[@]}"; do [[ -n "${!smoke_name:-}" ]] && ((smoke_count += 1)); done
+          if (( smoke_count == 0 )); then
+            echo "Skipping OpenCode transport smoke: no model credentials configured"
+          elif (( smoke_count != ${#smoke_names[@]} )); then
+            echo "OpenCode smoke configuration is incomplete" >&2
+            exit 1
+          else
+            (
+              smoke_workspace="$RUNNER_TEMP/zerowall-opencode-smoke-workspace-$TARGET"
+              trap 'rm -rf "$smoke_workspace"' EXIT
+              rm -rf "$smoke_workspace"; mkdir -p "$smoke_workspace"
+              node scripts/environment/smoke-opencode-driver.mjs "$stage/opencode$suffix" "$smoke_workspace" "$ZEROWALL_SMOKE_PROVIDER_ID" "$ZEROWALL_SMOKE_MODEL_ID"
+            )
+          fi
+          python_install="$RUNNER_TEMP/mcp-python-install-$TARGET"
+          "$stage/uv$suffix" --no-config python install 3.12.13 --install-dir "$python_install" --no-registry --compile-bytecode
+          python_source="$(find "$python_install" -mindepth 1 -maxdepth 1 -type d -name 'cpython-3.12.13-*' | head -n 1)"
+          test -n "$python_source"
+          cp -R "$python_source" "$stage/mcp-python"
+          if [[ "$TARGET" == *windows* ]]; then mcp_python="$stage/mcp-python/python.exe"; else mcp_python="$stage/mcp-python/bin/python3"; fi
+          "$stage/uv$suffix" --no-config pip install --python "$mcp_python" --break-system-packages --requirements runtime/mcp/requirements.txt --compile-bytecode
+          export PYTHONNOUSERSITE=1
+          "$mcp_python" -s -c 'from importlib.metadata import version; [version(name) for name in ("jupyterlab", "jupyter-mcp-server", "paper-search-mcp", "biomcp-python", "mcp-materials-project", "fred-mcp", "spaceweather-mcp", "mcp-weather-server", "usgs-mcp", "uniprot-mcp-server", "wikipedia-mcp")]'
+          node scripts/environment/smoke-mcp-stdio.mjs "$mcp_python"
           asset="ZeroWall-Environment-${TARGET}.tar.gz"; tar -czf "$RUNNER_TEMP/$asset" -C "$stage" .
           digest="$(node -e 'const fs=require("fs"),c=require("crypto"); const p=process.argv[1]; const b=fs.readFileSync(p); console.log(c.createHash("sha256").update(b).digest("hex"));' "$RUNNER_TEMP/$asset")"
           size="$(node -e 'const fs=require("fs"); console.log(fs.statSync(process.argv[1]).size);' "$RUNNER_TEMP/$asset")"
-          versioned_key="environment/${ENVIRONMENT_VERSION}/${TARGET}/${asset}"
-          node scripts/environment/build-manifest.mjs --version "$ENVIRONMENT_VERSION" --target "$TARGET" --asset-name "$asset" --asset-url "https://zerowall.chengxunkeji.cn/$versioned_key" --sha256 "$digest" --size "$size" --output "$RUNNER_TEMP/$asset.json"
-          node scripts/upload-qiniu-object.mjs "$RUNNER_TEMP/$asset" "$versioned_key"
-          node scripts/upload-qiniu-object.mjs "$RUNNER_TEMP/$asset.json" "environment/${ENVIRONMENT_VERSION}/${TARGET}/${asset}.json"
           bootstrapper="ZeroWall-Environment-Bootstrapper-${TARGET}${suffix}"
           cp "apps/environment-bootstrapper/target/$TARGET/release/zerowall-environment-bootstrapper${suffix}" "$RUNNER_TEMP/$bootstrapper"
+      - name: Sign and upload versioned environment
+        shell: bash
+        env:
+          QINIU_ACCESS_KEY: ${{ secrets.QINIU_ACCESS_KEY }}
+          QINIU_SECRET_KEY: ${{ secrets.QINIU_SECRET_KEY }}
+          ZEROWALL_ENV_UPDATE_PRIVATE_KEY: ${{ secrets.ZEROWALL_ENV_UPDATE_PRIVATE_KEY }}
+          ENVIRONMENT_VERSION: ${{ inputs.environment_version || format('env-{0}', github.run_number) }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          suffix=""; [[ "$TARGET" == *windows* ]] && suffix=".exe"
+          asset="ZeroWall-Environment-${TARGET}.tar.gz"
+          archive="$RUNNER_TEMP/$asset"
+          test -s "$archive"
+          digest="$(node -e 'const fs=require("fs"),c=require("crypto"); const p=process.argv[1]; const b=fs.readFileSync(p); console.log(c.createHash("sha256").update(b).digest("hex"));' "$archive")"
+          size="$(node -e 'const fs=require("fs"); console.log(fs.statSync(process.argv[1]).size);' "$archive")"
+          versioned_key="environment/${ENVIRONMENT_VERSION}/${TARGET}/${asset}"
+          manifest="$RUNNER_TEMP/$asset.json"
+          node scripts/environment/build-manifest.mjs --version "$ENVIRONMENT_VERSION" --target "$TARGET" --asset-name "$asset" --asset-url "https://zerowall.chengxunkeji.cn/$versioned_key" --sha256 "$digest" --size "$size" --output "$manifest"
+          node scripts/upload-qiniu-object.mjs "$archive" "$versioned_key"
+          node scripts/upload-qiniu-object.mjs "$manifest" "environment/${ENVIRONMENT_VERSION}/${TARGET}/${asset}.json"
+          bootstrapper="ZeroWall-Environment-Bootstrapper-${TARGET}${suffix}"
           node scripts/upload-qiniu-object.mjs "$RUNNER_TEMP/$bootstrapper" "environment/${ENVIRONMENT_VERSION}/${TARGET}/$bootstrapper"
           node scripts/qiniu-release.mjs verify "https://zerowall.chengxunkeji.cn/$versioned_key" "$size" "$digest"
-          manifest_size="$(node -e 'const fs=require("fs"); console.log(fs.statSync(process.argv[1]).size);' "$RUNNER_TEMP/$asset.json")"
-          manifest_digest="$(node -e 'const fs=require("fs"),c=require("crypto"); const b=fs.readFileSync(process.argv[1]); console.log(c.createHash("sha256").update(b).digest("hex"));' "$RUNNER_TEMP/$asset.json")"
+          manifest_size="$(node -e 'const fs=require("fs"); console.log(fs.statSync(process.argv[1]).size);' "$manifest")"
+          manifest_digest="$(node -e 'const fs=require("fs"),c=require("crypto"); const b=fs.readFileSync(process.argv[1]); console.log(c.createHash("sha256").update(b).digest("hex"));' "$manifest")"
           node scripts/qiniu-release.mjs verify "https://zerowall.chengxunkeji.cn/environment/${ENVIRONMENT_VERSION}/${TARGET}/${asset}.json" "$manifest_size" "$manifest_digest"
       - uses: actions/upload-artifact@v4
         with:

@@ -16,28 +16,53 @@ TMP="$(mktemp -d "$ROOT/.acp-runtime.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
 case "$TRIPLE" in
-  x86_64-pc-windows-msvc) NODE_ASSET="node-v${NODE_VERSION}-win-x64.zip"; NODE_DIR="node-v${NODE_VERSION}-win-x64"; EXT=".cmd" ;;
-  aarch64-pc-windows-msvc) NODE_ASSET="node-v${NODE_VERSION}-win-arm64.zip"; NODE_DIR="node-v${NODE_VERSION}-win-arm64"; EXT=".cmd" ;;
-  x86_64-apple-darwin) NODE_ASSET="node-v${NODE_VERSION}-darwin-x64.tar.gz"; NODE_DIR="node-v${NODE_VERSION}-darwin-x64"; EXT="" ;;
-  aarch64-apple-darwin) NODE_ASSET="node-v${NODE_VERSION}-darwin-arm64.tar.gz"; NODE_DIR="node-v${NODE_VERSION}-darwin-arm64"; EXT="" ;;
-  x86_64-unknown-linux-gnu) NODE_ASSET="node-v${NODE_VERSION}-linux-x64.tar.xz"; NODE_DIR="node-v${NODE_VERSION}-linux-x64"; EXT="" ;;
-  aarch64-unknown-linux-gnu) NODE_ASSET="node-v${NODE_VERSION}-linux-arm64.tar.xz"; NODE_DIR="node-v${NODE_VERSION}-linux-arm64"; EXT="" ;;
+  x86_64-pc-windows-msvc) NODE_ASSET="node-v${NODE_VERSION}-win-x64.zip"; NODE_DIR="node-v${NODE_VERSION}-win-x64"; NODE_EXECUTABLE="node.exe"; NODE_ARCH="x64"; EXT=".cmd" ;;
+  aarch64-pc-windows-msvc) NODE_ASSET="node-v${NODE_VERSION}-win-arm64.zip"; NODE_DIR="node-v${NODE_VERSION}-win-arm64"; NODE_EXECUTABLE="node.exe"; NODE_ARCH="arm64"; EXT=".cmd" ;;
+  x86_64-apple-darwin) NODE_ASSET="node-v${NODE_VERSION}-darwin-x64.tar.gz"; NODE_DIR="node-v${NODE_VERSION}-darwin-x64"; NODE_EXECUTABLE="bin/node"; NODE_ARCH="x64"; EXT="" ;;
+  aarch64-apple-darwin) NODE_ASSET="node-v${NODE_VERSION}-darwin-arm64.tar.gz"; NODE_DIR="node-v${NODE_VERSION}-darwin-arm64"; NODE_EXECUTABLE="bin/node"; NODE_ARCH="arm64"; EXT="" ;;
+  x86_64-unknown-linux-gnu) NODE_ASSET="node-v${NODE_VERSION}-linux-x64.tar.xz"; NODE_DIR="node-v${NODE_VERSION}-linux-x64"; NODE_EXECUTABLE="bin/node"; NODE_ARCH="x64"; EXT="" ;;
+  aarch64-unknown-linux-gnu) NODE_ASSET="node-v${NODE_VERSION}-linux-arm64.tar.xz"; NODE_DIR="node-v${NODE_VERSION}-linux-arm64"; NODE_EXECUTABLE="bin/node"; NODE_ARCH="arm64"; EXT="" ;;
   *) echo "Unsupported target: $TRIPLE" >&2; exit 1 ;;
 esac
 
 NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ASSET}"
 ARCHIVE="$TMP/$NODE_ASSET"
-curl --fail --location --retry 3 --output "$ARCHIVE" "$NODE_URL"
-case "$NODE_ASSET" in
-  *.zip) unzip -q "$ARCHIVE" -d "$TMP" ;;
-  *.tar.gz) tar -xzf "$ARCHIVE" -C "$TMP" ;;
-  *.tar.xz) tar -xJf "$ARCHIVE" -C "$TMP" ;;
-esac
+node_runtime_is_ready() {
+  local profile executable actual
+  for profile in claude-code codex; do
+    executable="$OUT/$profile/node/$NODE_EXECUTABLE"
+    [[ -f "$executable" ]] || return 1
+    actual="$("$executable" -p "process.version + ' ' + process.arch" 2>/dev/null || true)"
+    [[ "$actual" == "v${NODE_VERSION} ${NODE_ARCH}" ]] || return 1
+  done
+}
 
-for profile in claude-code codex; do
-  mkdir -p "$OUT/$profile/bin" "$OUT/$profile/node"
-  cp -R "$TMP/$NODE_DIR/." "$OUT/$profile/node/"
-done
+if node_runtime_is_ready; then
+  echo "Reusing the prepared Node runtime v${NODE_VERSION} (${NODE_ARCH})"
+else
+  curl \
+    --fail \
+    --location \
+    --connect-timeout 20 \
+    --speed-limit 1024 \
+    --speed-time 30 \
+    --max-time 600 \
+    --retry 3 \
+    --retry-all-errors \
+    --continue-at - \
+    --output "$ARCHIVE" \
+    "$NODE_URL"
+  case "$NODE_ASSET" in
+    *.zip) unzip -q "$ARCHIVE" -d "$TMP" ;;
+    *.tar.gz) tar -xzf "$ARCHIVE" -C "$TMP" ;;
+    *.tar.xz) tar -xJf "$ARCHIVE" -C "$TMP" ;;
+  esac
+
+  for profile in claude-code codex; do
+    mkdir -p "$OUT/$profile/bin" "$OUT/$profile/node"
+    cp -R "$TMP/$NODE_DIR/." "$OUT/$profile/node/"
+  done
+fi
 
 # npm pack is run only by the release preparation job. Use the host npm that
 # belongs to the host Node executable, not a PATH shim left by a Windows Node

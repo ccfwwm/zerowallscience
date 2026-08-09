@@ -1,5 +1,9 @@
 # Progress
 
+2026-08-10 02:55 · Released ZeroWall Science 1.0.12 to Qiniu after unifying ACP engine execution, pinning MCP/Skill capability handling, and separating environment smoke from release credentials; the public installer is 12,195,125 bytes with SHA-256 694988120FAC23D606A57B739253CA7F85BEA9FAB98804B053C1579678A17406.
+
+2026-08-09 16:45 · Locked the AI cloud model catalog to preserve every provider/group/model route independently, including duplicate model ids with distinct pricing and credentials; 35 targeted settings/catalog tests pass.
+
 2026-08-09 15:15 · Released ZeroWall Science 1.0.11 to Qiniu, verified public metadata and the installer at 12,247,819 bytes with SHA-256 A1C6353D5B682EFE5809BFF83C2D5316F666532C1C4B874BD082EA9A82E42717.
 
 2026-08-09 15:04 · Fixed OpenCode engine switching to create native sessions instead of loading internal execution IDs, preserved fresh-session routing when catalog lookup fails, serialized rapid model changes, added animated preparation/switching and explicit retry states, and removed the lower-left model status for 1.0.11.

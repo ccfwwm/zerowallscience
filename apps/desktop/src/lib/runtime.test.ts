@@ -96,6 +96,7 @@ describe("buildSkillInstallPrompt", () => {
     expect(prompt).toContain("https://example.test/skill.md");
     expect(prompt).toContain("current ACP engine");
     expect(prompt).toContain("project skill directory");
+    expect(prompt).toContain(".zerowall/skills/<skill-id>/SKILL.md");
     expect(prompt).not.toContain("OpenCode");
     expect(prompt).not.toContain("customize-opencode");
     expect(prompt).not.toContain(".opencode");
@@ -243,16 +244,16 @@ describe("foldEvent", () => {
       { type: "text.updated", sessionId: S, partId: "p2", text: "done" },
       { type: "session.idle", sessionId: S },
     ]);
-    expect(s.blocks.map((b) => b.kind)).toEqual(["agent", "tool-call", "agent", "status-line"]);
+    expect(s.blocks.map((b) => b.kind)).toEqual(["agent", "tool-call", "agent"]);
   });
 
-  it("deduplicates repeated session idle events", () => {
+  it("does not render protocol completion markers as standalone messages", () => {
     const s = foldAll([
       { type: "text.updated", sessionId: S, partId: "p1", text: "done" },
       { type: "session.idle", sessionId: S },
       { type: "session.idle", sessionId: S },
     ]);
-    expect(s.blocks.filter((b) => b.kind === "status-line" && b.tone === "done")).toHaveLength(1);
+    expect(s.blocks.filter((b) => b.kind === "status-line" && b.tone === "done")).toHaveLength(0);
   });
 
   it("upserts usage by message id — one tail with the latest cumulative totals", () => {

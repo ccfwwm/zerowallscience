@@ -19,8 +19,27 @@ test("builds a target-specific environment payload", () => {
     sizeBytes: 123,
   });
   assert.equal(payload.schema, "zerowall.science/environment/v1");
+  assert.equal(payload.target, "x86_64-pc-windows-msvc");
   assert.equal(payload.components[0].archive, "tarGz");
   assert.equal(payload.healthChecks[0].executable, "opencode.exe");
+  const pythonCheck = payload.healthChecks.find((check) => check.executable.includes("mcp-python"));
+  assert.deepEqual(pythonCheck?.args.slice(0, 2), ["-s", "-c"]);
+  const pythonProbe = pythonCheck?.args[2] ?? "";
+  assert.match(pythonProbe, /MP_API_KEY/);
+  assert.match(pythonProbe, /FRED_API_KEY/);
+  for (const moduleName of [
+    "paper_search_mcp.server",
+    "biomcp",
+    "mcp_materials",
+    "fred_mcp.main",
+    "spaceweather_mcp.server",
+    "mcp_weather_server",
+    "usgs_mcp.server",
+    "uniprot_mcp.server",
+    "wikipedia_mcp",
+  ]) {
+    assert.ok(pythonProbe.includes(moduleName), `health probe must import ${moduleName}`);
+  }
 });
 
 test("rejects latest and non-versioned bundle URLs", () => {

@@ -57,7 +57,10 @@ pub(crate) fn acp_mcp_server(app: &AppHandle) -> Option<AcpMcpServer> {
     Some(AcpMcpServer {
         name: "jupyter".to_string(),
         command: status.mcp_command?,
-        args: Vec::new(),
+        args: vec![
+            "-c".into(),
+            "from jupyter_mcp_server.cli.cli import serve; serve()".into(),
+        ],
         env: vec![
             (
                 "JUPYTER_URL".to_string(),
@@ -100,7 +103,9 @@ fn kill_orphan_jupyter(app: &AppHandle) {
     #[cfg(unix)]
     if let Ok(dir) = env_dir(app) {
         let pattern = format!("{}/bin/jupyter-lab", dir.to_string_lossy());
-        let _ = std::process::Command::new("pkill").args(["-9", "-f", &pattern]).output();
+        let _ = std::process::Command::new("pkill")
+            .args(["-9", "-f", &pattern])
+            .output();
         std::thread::sleep(std::time::Duration::from_millis(400));
     }
     // Windows: taskkill the recorded PID, filtered to python.exe so a recycled
@@ -125,7 +130,7 @@ fn kill_orphan_jupyter(app: &AppHandle) {
     }
 }
 
-fn bin(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
+fn legacy_bin(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
     let dir = env_dir(app)?;
     #[cfg(windows)]
     return Ok(dir.join("Scripts").join(format!("{name}.exe")));
@@ -137,7 +142,9 @@ fn bin(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
 /// DEFAULT interpreter (kernel::python_bin), so the app's Run button and the
 /// agent's Jupyter MCP share one Python — same packages, same results.
 pub(crate) fn env_python(app: &AppHandle) -> Option<PathBuf> {
-    bin(app, "python").ok().filter(|p| p.exists())
+    crate::science_mcp::python_bin(app)
+        .ok()
+        .filter(|path| path.is_file())
 }
 
 /// The non-secret server port is persisted. The token lives only in the OS
@@ -188,12 +195,7 @@ fn ensure_token(app: &AppHandle) -> Result<String, String> {
         return Ok(token);
     }
     let token = random_token();
-    crate::secret_store::persist_connector_secret_for_app(
-        app,
-        "jupyter",
-        "JUPYTER_TOKEN",
-        &token,
-    )?;
+    crate::secret_store::persist_connector_secret_for_app(app, "jupyter", "JUPYTER_TOKEN", &token)?;
     Ok(token)
 }
 
@@ -214,17 +216,20 @@ pub struct JupyterStatus {
 }
 
 fn status_of(app: &AppHandle, state: &JupyterState) -> JupyterStatus {
-    let installed = bin(app, "jupyter-lab").map(|p| p.exists()).unwrap_or(false);
+    let python = env_python(app);
+    let installed = python.as_deref().is_some_and(|python| {
+        crate::science_mcp::package_is_installed(python, "jupyterlab")
+            && crate::science_mcp::package_is_installed(python, "jupyter-mcp-server")
+    });
     let running = *state.running.lock().unwrap();
     let meta = load_meta(app);
     JupyterStatus {
         installed,
         running,
-        url: meta.as_ref().map(|m| format!("http://127.0.0.1:{}", m.port)),
-        mcp_command: bin(app, "jupyter-mcp-server")
-            .ok()
-            .filter(|p| p.exists())
-            .map(|p| p.to_string_lossy().to_string()),
+        url: meta
+            .as_ref()
+            .map(|m| format!("http://127.0.0.1:{}", m.port)),
+        mcp_command: python.map(|path| path.to_string_lossy().into_owned()),
     }
 }
 
@@ -242,6 +247,25 @@ pub async fn setup_jupyter(app: AppHandle) -> Result<(), String> {
     let dir = env_dir(&app)?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
+    if let Some(python) = crate::science_mcp::integrated_python(&app)? {
+        for package in [
+            "jupyterlab",
+            "jupyter-mcp-server",
+            "ipykernel",
+            "numpy",
+            "pandas",
+            "matplotlib",
+        ] {
+            if !crate::science_mcp::package_is_installed(&python, package) {
+                return Err(format!(
+                    "{package} is missing from the installed base environment; update the base environment and retry"
+                ));
+            }
+        }
+        ensure_server_meta_and_token(&app)?;
+        return Ok(());
+    }
+
     // Same Windows lock-avoidance as setup_science_mcp (#10): `uv venv`
     // rewrites the env's interpreter even with --allow-existing, and a running
     // jupyter-lab holds python.exe — re-running Setup would fail. Only create
@@ -250,7 +274,7 @@ pub async fn setup_jupyter(app: AppHandle) -> Result<(), String> {
         crate::uv::create_venv(&app, "jupyter", &dir).await?;
     }
 
-    let py = bin(&app, "python")?;
+    let py = legacy_bin(&app, "python")?;
     let mut args = vec![
         "pip".to_string(),
         "install".to_string(),
@@ -260,16 +284,19 @@ pub async fn setup_jupyter(app: AppHandle) -> Result<(), String> {
     args.extend(PIP_SPEC.iter().map(|s| s.to_string()));
     crate::uv::run_uv(&app, "jupyter", args, "uv pip install").await?;
 
-    // Fix the port once; the token is keychain-backed and never written here.
-    if load_meta(&app).is_none() {
+    ensure_server_meta_and_token(&app)
+}
+
+fn ensure_server_meta_and_token(app: &AppHandle) -> Result<(), String> {
+    if load_meta(app).is_none() {
         let meta = ServerMeta { port: free_port() };
         std::fs::write(
-            server_meta_path(&app)?,
+            server_meta_path(app)?,
             serde_json::to_string(&meta).map_err(|e| e.to_string())?,
         )
         .map_err(|e| e.to_string())?;
     }
-    ensure_token(&app)?;
+    ensure_token(app)?;
     Ok(())
 }
 
@@ -277,7 +304,10 @@ pub async fn setup_jupyter(app: AppHandle) -> Result<(), String> {
 /// so the agent and the app's Notebooks page see the same files. `async`: the
 /// orphan cleanup alone (taskkill + settle delay) would freeze the UI thread.
 #[tauri::command(async)]
-pub fn start_jupyter(app: AppHandle, state: State<'_, JupyterState>) -> Result<JupyterStatus, String> {
+pub fn start_jupyter(
+    app: AppHandle,
+    state: State<'_, JupyterState>,
+) -> Result<JupyterStatus, String> {
     let _guard = state.lifecycle.lock().unwrap();
     if *state.running.lock().unwrap() {
         return Ok(status_of(&app, &state));
@@ -288,8 +318,8 @@ pub fn start_jupyter(app: AppHandle, state: State<'_, JupyterState>) -> Result<J
 /// Spawn jupyter-lab rooted in the CURRENT active workspace. Caller holds the
 /// lifecycle lock and has ensured no managed instance is running.
 fn spawn_lab(app: &AppHandle, state: &JupyterState) -> Result<JupyterStatus, String> {
-    let lab = bin(app, "jupyter-lab")?;
-    if !lab.exists() {
+    let python = env_python(app).ok_or_else(|| "Jupyter is not set up yet".to_owned())?;
+    if !crate::science_mcp::package_is_installed(&python, "jupyterlab") {
         return Err("Jupyter is not set up yet".into());
     }
     let meta = load_meta(app).ok_or("Jupyter setup is incomplete (no server meta)")?;
@@ -300,8 +330,11 @@ fn spawn_lab(app: &AppHandle, state: &JupyterState) -> Result<JupyterStatus, Str
 
     let cmd = app
         .shell()
-        .command(lab.to_string_lossy().to_string())
+        .command(python.to_string_lossy().to_string())
         .args([
+            "-s".to_string(),
+            "-m".to_string(),
+            "jupyterlab".to_string(),
             "--no-browser".to_string(),
             "--ip".to_string(),
             "127.0.0.1".to_string(),
@@ -311,7 +344,9 @@ fn spawn_lab(app: &AppHandle, state: &JupyterState) -> Result<JupyterStatus, Str
             format!("--ServerApp.root_dir={}", workspace.to_string_lossy()),
         ])
         .current_dir(workspace);
-    let (mut rx, child) = cmd.spawn().map_err(|e| format!("failed to start jupyter: {e}"))?;
+    let (mut rx, child) = cmd
+        .spawn()
+        .map_err(|e| format!("failed to start jupyter: {e}"))?;
     tauri::async_runtime::spawn(async move { while rx.recv().await.is_some() {} });
     // Record the PID so a future run can kill this process if it is orphaned.
     if let Ok(path) = pid_path(app) {
@@ -344,7 +379,10 @@ fn jupyter_lab_url(base_url: &str, token: &str, notebook: Option<&str>) -> Resul
     let mut tree = String::new();
     if !rel.is_empty() {
         let segments = rel.split('/').collect::<Vec<_>>();
-        if segments.iter().any(|segment| segment.is_empty() || *segment == "..") {
+        if segments
+            .iter()
+            .any(|segment| segment.is_empty() || *segment == "..")
+        {
             return Err("notebook path must remain inside the active workspace".into());
         }
         tree.push_str("/tree/");
@@ -364,7 +402,10 @@ fn jupyter_lab_url(base_url: &str, token: &str, notebook: Option<&str>) -> Resul
 pub fn open_jupyter_lab(app: AppHandle, notebook: Option<String>) -> Result<bool, String> {
     let state = app.state::<JupyterState>();
     let _guard = state.lifecycle.lock().unwrap();
-    if !bin(&app, "jupyter-lab")?.exists() {
+    if !env_python(&app)
+        .as_deref()
+        .is_some_and(|python| crate::science_mcp::package_is_installed(python, "jupyterlab"))
+    {
         return Ok(false);
     }
     if !*state.running.lock().unwrap() {
@@ -446,7 +487,6 @@ mod tests {
             url,
             "http://127.0.0.1:9000/lab/tree/folder/my%20notebook.ipynb?token=aabbccdd"
         );
-        assert!(jupyter_lab_url("http://127.0.0.1:9000", "aabbccdd", Some("../secret"))
-            .is_err());
+        assert!(jupyter_lab_url("http://127.0.0.1:9000", "aabbccdd", Some("../secret")).is_err());
     }
 }

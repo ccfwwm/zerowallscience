@@ -178,10 +178,15 @@ fn adapter_model_id(profile_id: &str, model: &str, variant: Option<&str>) -> Str
     if profile_id != "codex" || model.ends_with(']') && model.rsplit_once('[').is_some() {
         return model.to_owned();
     }
-    let effort = match variant.map(str::trim) {
-        Some(effort @ ("none" | "minimal" | "low" | "medium" | "high" | "xhigh")) => effort,
-        _ => "medium",
-    };
+    let effort = variant
+        .map(str::trim)
+        .filter(|effort| {
+            matches!(
+                *effort,
+                "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
+            )
+        })
+        .unwrap_or("medium");
     format!("{model}[{effort}]")
 }
 
@@ -247,10 +252,7 @@ impl AcpHostDriver for AcpProcessDriver {
         })
     }
 
-    async fn new_session(
-        &mut self,
-        request: NewSessionRequest,
-    ) -> Result<SessionState, HostError> {
+    async fn new_session(&mut self, request: NewSessionRequest) -> Result<SessionState, HostError> {
         let actual_id = self.launch_session(AcpSessionStart::New).await?;
         // ACP session/new does not apply ZeroWall's immutable binding by
         // itself. Configure the adapter before the first prompt so a freshly
@@ -258,11 +260,8 @@ impl AcpHostDriver for AcpProcessDriver {
         // receives the catalog's plain id where codex-acp expects
         // `model[reasoning-effort]`.
         if let Some(model) = self.binding.model.as_deref() {
-            let adapter_model = adapter_model_id(
-                &self.profile.id,
-                model,
-                self.binding.variant.as_deref(),
-            );
+            let adapter_model =
+                adapter_model_id(&self.profile.id, model, self.binding.variant.as_deref());
             if let Err(error) = self
                 .require_session(&actual_id)?
                 .set_model(adapter_model)
@@ -350,11 +349,8 @@ impl AcpHostDriver for AcpProcessDriver {
             .get("model")
             .and_then(|value| value.as_str())
             .ok_or_else(|| HostError::Driver("ACP config requires a string model".into()))?;
-        let adapter_model = adapter_model_id(
-            &self.profile.id,
-            model,
-            self.binding.variant.as_deref(),
-        );
+        let adapter_model =
+            adapter_model_id(&self.profile.id, model, self.binding.variant.as_deref());
         self.require_session(&request.session_id)?
             .set_model(adapter_model)
             .await
@@ -849,6 +845,10 @@ mod tests {
             "gpt-5.6-sol[high]"
         );
         assert_eq!(
+            adapter_model_id("codex", "gpt-5.6-sol", Some("unsupported")),
+            "gpt-5.6-sol[medium]"
+        );
+        assert_eq!(
             adapter_model_id("codex", "gpt-5.6-sol[low]", Some("high")),
             "gpt-5.6-sol[low]"
         );
@@ -867,7 +867,10 @@ mod tests {
         );
 
         assert_eq!(state.id, "vendor-session");
-        assert_eq!(state.backing_session_id.as_deref(), Some("requested-session"));
+        assert_eq!(
+            state.backing_session_id.as_deref(),
+            Some("requested-session")
+        );
     }
 
     #[test]

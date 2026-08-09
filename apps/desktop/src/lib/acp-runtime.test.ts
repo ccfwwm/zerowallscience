@@ -190,6 +190,26 @@ describe("AcpRuntime lifecycle", () => {
     expect(runtime.currentExecutionSessionId()).toBe("ses-replacement");
   });
 
+  it("replaces an unreadable OpenCode backing session after a driver HTTP 500", async () => {
+    const { deps } = makeDeps();
+    const launch = deps.launch as ReturnType<typeof vi.fn>;
+    launch
+      .mockRejectedValueOnce(new Error("driver error: OpenCode session/load returned HTTP 500"))
+      .mockResolvedValueOnce(READY);
+    deps.currentSessionId = () => "ses-replacement";
+    const runtime = new AcpRuntime({
+      ...REQUEST,
+      profileId: "opencode",
+      conversationId: "ses-unreadable",
+    }, deps);
+
+    await expect(runtime.connect()).resolves.toBeUndefined();
+
+    expect(launch).toHaveBeenNthCalledWith(2, expect.not.objectContaining({
+      conversationId: expect.anything(),
+    }));
+  });
+
   it("close() unlistens, shuts down, and goes offline", async () => {
     const { runtime, deps, unlisten, statuses } = harness();
     await runtime.connect();
@@ -827,7 +847,7 @@ describe("AcpRuntime model selection", () => {
 
     await runtime.setDefaultModel("zerowall-1/gpt-5.6-terra");
 
-    expect(deps.setModel).toHaveBeenCalledWith("gpt-5.6-terra");
+    expect(deps.setModel).toHaveBeenCalledWith("gpt-5.6-terra", "zerowall-1");
     expect(deps.launch).toHaveBeenCalledOnce();
     expect(deps.shutdown).not.toHaveBeenCalled();
   });

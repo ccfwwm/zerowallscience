@@ -450,6 +450,12 @@ impl ProcessDiagnostics {
                 profile
                     .env
                     .iter()
+                    .chain(
+                        profile
+                            .mcp_servers
+                            .iter()
+                            .flat_map(|server| server.env.iter()),
+                    )
                     .map(|(_, value)| value.clone())
                     .filter(|value| !value.is_empty())
                     .collect(),
@@ -2657,6 +2663,30 @@ mod tests {
         let sanitized = diagnostics.sanitized_stderr_tail();
         assert!(!sanitized.contains("private phrase number 0"));
         assert!(sanitized.contains("ordinary tail"));
+    }
+
+    #[test]
+    fn stderr_sanitizer_redacts_mcp_environment_values() {
+        const MCP_SECRET: &str = "zwi_7f3a92d180c64b1fa208";
+        let profile = AcpAgentProfile {
+            id: "codex".to_string(),
+            label: "Codex".to_string(),
+            command: "codex-acp".to_string(),
+            args: vec![],
+            env: vec![],
+            env_remove: vec![],
+            session_meta: None,
+            mcp_servers: vec![AcpMcpServer {
+                name: "custom".to_string(),
+                command: "custom-mcp".to_string(),
+                args: vec![],
+                env: vec![("CUSTOM_TOKEN".to_string(), MCP_SECRET.to_string())],
+            }],
+        };
+        let diagnostics = ProcessDiagnostics::new(&profile);
+        diagnostics.push_stderr(format!("third-party output was {MCP_SECRET}").as_bytes());
+
+        assert!(!diagnostics.sanitized_stderr_tail().contains(MCP_SECRET));
     }
 
     #[test]

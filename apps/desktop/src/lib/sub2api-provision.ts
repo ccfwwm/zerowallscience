@@ -45,6 +45,41 @@ export function orderModels(models: string[]): string[] {
   });
 }
 
+export interface RoutedModelOption {
+  key: string;
+  providerId: string;
+  groupId: number;
+  groupName: string;
+  modelId: string;
+}
+
+export function routedModelKey(providerId: string, groupId: number, modelId: string): string {
+  return [providerId, String(groupId), modelId].map(encodeURIComponent).join("|");
+}
+
+/** Keep each provider/group/model route independent. The same model id may
+ * carry different prices and credentials in different account groups. */
+export function routedModelOptions(groups: ProvisionedGroupNamed[]): RoutedModelOption[] {
+  const orderedIds = orderModels(groups.flatMap((group) => group.models));
+  return orderedIds.flatMap((modelId) =>
+    groups.flatMap((group) => {
+      if (!group.models.includes(modelId)) return [];
+      return [{
+        key: routedModelKey(group.providerId, group.groupId, modelId),
+        providerId: group.providerId,
+        groupId: group.groupId,
+        groupName: group.name,
+        modelId,
+      }];
+    }),
+  );
+}
+
+export function cloudProviderLabel(platformLabel: string, groupName: string): string {
+  const group = groupName.trim();
+  return group ? `${platformLabel} · ${group}` : platformLabel;
+}
+
 /** The model the app defaults to after provisioning. Leads with Kimi. */
 const DEFAULT_MODEL_PREFERENCE = ["kimi-k3", "kimi"];
 

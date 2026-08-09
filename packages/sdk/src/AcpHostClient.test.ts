@@ -70,6 +70,51 @@ function invokeMock(): AcpHostInvoke {
 }
 
 describe("AcpHostClient", () => {
+  it("treats an omitted MCP allow-list as all servers at the Host boundary", async () => {
+    const invoke = vi.fn(async () => ({
+      id: "conversation-1",
+      binding: {
+        engine: "codex",
+        profile: "codex",
+        model: "gpt-5.4",
+        provider: "cloud",
+        variant: null,
+        projectRoot: "C:/science",
+        profileFingerprint: "fp-1",
+        resolvedAt: "now",
+        mcpAllowList: ["*"],
+      },
+      resumable: true,
+    })) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    const session = await client.launch(launchRequest);
+
+    expect(session.binding.mcpAllowList).toEqual(["*"]);
+  });
+
+  it("preserves an explicit empty MCP allow-list when a legacy Host response omits it", async () => {
+    const invoke = vi.fn(async () => ({
+      id: "conversation-1",
+      binding: {
+        engine: "codex",
+        profile: "codex",
+        model: "gpt-5.4",
+        provider: "cloud",
+        variant: null,
+        projectRoot: "C:/science",
+        profileFingerprint: "fp-1",
+        resolvedAt: "now",
+      },
+      resumable: true,
+    })) as AcpHostInvoke;
+    const client = new AcpHostClient({ invoke });
+
+    const session = await client.launch({ ...launchRequest, mcpAllowList: [] });
+
+    expect(session.binding.mcpAllowList).toEqual([]);
+  });
+
   it("routes desktop provider maintenance through typed Host commands", async () => {
     const invoke = vi.fn(async () => undefined) as AcpHostInvoke;
     const client = new AcpHostClient({ invoke });

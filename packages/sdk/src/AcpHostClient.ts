@@ -310,7 +310,7 @@ export class AcpHostClient {
     const raw = await this.invoke<RawSession>("acp_host_launch", {
       request: serializeLaunchRequest(request),
     });
-    const session = normalizeSession(raw);
+    const session = normalizeSession(raw, requested);
     ensureCompatible(requested, session.binding);
     this.requestedBindings.set(request.sessionId, requested);
     this.sessions.set(session.id, session);
@@ -326,7 +326,7 @@ export class AcpHostClient {
     const raw = await this.invoke<RawSession>("acp_host_new", {
       request: serializeLaunchRequest(request),
     });
-    const session = normalizeSession(raw);
+    const session = normalizeSession(raw, requested);
     ensureCompatible(requested, session.binding);
     this.requestedBindings.set(request.sessionId, requested);
     this.sessions.set(session.id, session);
@@ -337,7 +337,7 @@ export class AcpHostClient {
   /** Return Host-owned sessions without exposing vendor-specific DTOs. */
   async listSessions(): Promise<AgentSession[]> {
     const raw = await this.invoke<RawSession[]>("acp_host_sessions");
-    const sessions = raw.map(normalizeSession);
+    const sessions = raw.map((session) => normalizeSession(session));
     return sessions.map((session) => {
       const existing = this.sessions.get(session.id);
       if (!existing) {
@@ -355,7 +355,7 @@ export class AcpHostClient {
     const raw = await this.invoke<RawSession[]>("acp_host_discover", {
       request: serializeLaunchRequest(request),
     });
-    const sessions = raw.map(normalizeSession);
+    const sessions = raw.map((session) => normalizeSession(session));
     return sessions.map((session) => {
       const existing = this.sessions.get(session.id);
       if (!existing) {
@@ -373,13 +373,14 @@ export class AcpHostClient {
     sessionId: string,
     request?: AcpHostLaunchRequest,
   ): Promise<AgentSession> {
+    const requested = request ? requestBinding(request) : undefined;
+    const current = this.sessions.get(sessionId);
     const raw = await this.invoke<RawSession>("acp_host_load", {
       sessionId,
       ...(request ? { request: serializeLaunchRequest(request) } : {}),
     });
-    const session = normalizeSession(raw);
-    if (request) ensureCompatible(requestBinding(request), session.binding);
-    const current = this.sessions.get(sessionId);
+    const session = normalizeSession(raw, requested ?? current?.binding);
+    if (requested) ensureCompatible(requested, session.binding);
     if (current) ensureCompatible(current.binding, session.binding);
     this.sessions.set(session.id, session);
     this.loadedSessions.add(session.id);
@@ -388,9 +389,9 @@ export class AcpHostClient {
 
   /** Resume a persisted session through its Host-owned immutable binding. */
   async resumeSession(sessionId: string): Promise<AgentSession> {
-    const raw = await this.invoke<RawSession>("acp_host_resume", { sessionId });
-    const session = normalizeSession(raw);
     const current = this.sessions.get(sessionId);
+    const raw = await this.invoke<RawSession>("acp_host_resume", { sessionId });
+    const session = normalizeSession(raw, current?.binding);
     if (current) ensureCompatible(current.binding, session.binding);
     this.sessions.set(session.id, session);
     this.loadedSessions.add(session.id);
@@ -503,7 +504,7 @@ export class AcpHostClient {
     const raw = await this.invoke<RawSession>("acp_host_config", { sessionId, config });
     const session: AgentSession = {
       ...current,
-      binding: normalizeBinding(raw.binding),
+      binding: normalizeBinding(raw.binding, current.binding),
       state: "ready",
       resumable: raw.resumable,
     };
@@ -537,11 +538,11 @@ export class AcpHostClient {
   }
 }
 
-function normalizeSession(raw: RawSession): AgentSession {
+function normalizeSession(raw: RawSession, requested?: AgentBinding): AgentSession {
   return {
     id: raw.id,
     acpSessionId: raw.id,
-    binding: normalizeBinding(raw.binding),
+    binding: normalizeBinding(raw.binding, requested),
     state: raw.state ?? "ready",
     resumable: raw.resumable,
     title: raw.title ?? null,
@@ -587,13 +588,15 @@ function requestBinding(request: AcpHostLaunchRequest): AgentBinding {
     projectRoot: request.projectRoot,
     profileFingerprint: request.profileFingerprint,
     resolvedAt: "",
-    mcpAllowList: normalizeMcpAllowList(request.mcpAllowList),
+    mcpAllowList: request.mcpAllowList === undefined
+      ? ["*"]
+      : normalizeMcpAllowList(request.mcpAllowList),
     mcpToolGrants: normalizeMcpToolGrants(request.mcpToolGrants),
     skillsSnapshot: normalizeSkillSnapshots(request.skillsSnapshot),
   };
 }
 
-function normalizeBinding(raw: RawBinding): AgentBinding {
+function normalizeBinding(raw: RawBinding, requested?: AgentBinding): AgentBinding {
   return {
     engineId: raw.engine,
     profileId: raw.profile,
@@ -603,7 +606,9 @@ function normalizeBinding(raw: RawBinding): AgentBinding {
     projectRoot: raw.projectRoot ?? raw.project_root ?? "",
     profileFingerprint: raw.profileFingerprint ?? raw.profile_fingerprint ?? "",
     resolvedAt: raw.resolvedAt ?? raw.resolved_at ?? "",
-    mcpAllowList: normalizeMcpAllowList(raw.mcpAllowList ?? raw.mcp_allow_list),
+    mcpAllowList: raw.mcpAllowList === undefined && raw.mcp_allow_list === undefined
+      ? requested?.mcpAllowList ?? ["*"]
+      : normalizeMcpAllowList(raw.mcpAllowList ?? raw.mcp_allow_list),
     mcpToolGrants: normalizeMcpToolGrants(raw.mcpToolGrants ?? raw.mcp_tool_grants),
     skillsSnapshot: normalizeSkillSnapshots(raw.skillsSnapshot ?? raw.skills_snapshot),
   };

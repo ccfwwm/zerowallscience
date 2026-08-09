@@ -68,12 +68,39 @@ async function publishApp() {
   log(`app ${version}: ${installer}`);
   if (!dryRun) {
     await uploadObject(installer, key, "application/vnd.microsoft.portable-executable", qiniuEnv);
+    await verifyObject(url, info.size, digest);
     const manifest = JSON.stringify({ version, url, name: `ZeroWall Science ${version}`, notes: process.env.ZEROWALL_RELEASE_NOTES ?? "修复基础环境安装限制，补充下载进度和更新提示。", publishedAt: new Date().toISOString(), assetUrl: url, assetName: basename(installer), assetSha256: digest, sizeBytes: info.size }, null, 2) + "\n";
     const temp = join(process.env.TEMP ?? ".", `zerowall-release-${version}-latest.json`);
     await writeFile(temp, manifest);
     await uploadObject(temp, "releases/latest.json", "application/json", qiniuEnv, { insertOnly: false });
-    await verifyObject(url, info.size, digest);
+    const latestUrl = publicUrl(qiniuEnv.QINIU_DOMAIN, "releases/latest.json");
+    await verifyAppReleaseMetadata(latestUrl, {
+      version,
+      assetSha256: digest,
+      sizeBytes: info.size,
+      bytes: Buffer.from(manifest),
+    });
     log(`verified ${url}`);
+  }
+}
+
+async function verifyAppReleaseMetadata(latestUrl, expected) {
+  const separator = latestUrl.includes("?") ? "&" : "?";
+  const response = await fetch(`${latestUrl}${separator}verify=${Date.now()}`, { cache: "no-store" });
+  if (!response.ok) fail(`release metadata verification failed: HTTP ${response.status} ${latestUrl}`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const expectedSha256 = createHash("sha256").update(expected.bytes).digest("hex");
+  const actualSha256 = createHash("sha256").update(bytes).digest("hex");
+  if (bytes.length !== expected.bytes.length || actualSha256 !== expectedSha256) {
+    fail(`release metadata content mismatch for ${latestUrl}`);
+  }
+  const metadata = JSON.parse(bytes.toString("utf8"));
+  if (
+    metadata.version !== expected.version
+    || metadata.assetSha256 !== expected.assetSha256
+    || Number(metadata.sizeBytes) !== Number(expected.sizeBytes)
+  ) {
+    fail(`release metadata fields mismatch for ${latestUrl}`);
   }
 }
 
@@ -90,9 +117,17 @@ async function publishEnvironment() {
     const versionKey = `environment/${version}/${target}`;
     log(`environment ${target}: ${archive}`);
     if (!dryRun) {
+      const archiveInfo = await stat(archive);
+      const archiveDigest = await sha256(archive);
+      const archiveKey = `${versionKey}/${prefix}`;
+      const manifestKey = `${versionKey}/${prefix}.json`;
       await uploadObject(archive, `${versionKey}/${prefix}`, "application/gzip", qiniuEnv);
-      await uploadObject(manifestPath, `${versionKey}/${prefix}.json`, "application/json", qiniuEnv);
+      await uploadObject(manifestPath, manifestKey, "application/json", qiniuEnv);
       await uploadObject(bootstrapper, `${versionKey}/${basename(bootstrapper)}`, "application/octet-stream", qiniuEnv);
+      await verifyObject(publicUrl(qiniuEnv.QINIU_DOMAIN, archiveKey), archiveInfo.size, archiveDigest);
+      const manifestInfo = await stat(manifestPath);
+      const manifestDigest = await sha256(manifestPath);
+      await verifyObject(publicUrl(qiniuEnv.QINIU_DOMAIN, manifestKey), manifestInfo.size, manifestDigest);
       const envelope = JSON.parse(await readFile(manifestPath, "utf8"));
       manifests.push({ target, envelope });
     }

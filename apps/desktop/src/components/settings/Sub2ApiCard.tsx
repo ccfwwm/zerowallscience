@@ -17,6 +17,7 @@ import {
 import { isGatewayWeb } from "@/lib/webMode";
 import { getProviderControlClient, useRuntimeStore } from "@/lib/runtime";
 import {
+  cloudProviderLabel,
   deriveAcpConfigs,
   isDomesticModel,
   loadProtocol,
@@ -28,6 +29,8 @@ import {
   providerIdForGroup,
   type Protocol,
   type ProvisionedGroupNamed,
+  routedModelOptions,
+  type RoutedModelOption,
 } from "@/lib/sub2api-provision";
 import { clearAcpConfig, saveAcpConfig } from "@/lib/acp-config";
 import { Section } from "./Section";
@@ -39,7 +42,15 @@ import { cn } from "@/lib/cn";
 // The pure provisioning helpers moved to `@/lib/sub2api-provision` so the
 // runtime store can share them without a circular import. Re-exported here so
 // existing test imports (`./Sub2ApiCard`) keep resolving.
-export { isDomesticModel, openGroups, orderModels, pickDefaultModel, providerIdForGroup };
+export {
+  cloudProviderLabel,
+  isDomesticModel,
+  openGroups,
+  orderModels,
+  pickDefaultModel,
+  providerIdForGroup,
+  routedModelOptions,
+};
 
 /** Derive and persist the Claude Code / Codex launch configs from the groups
  *  just provisioned, so the ACP runtimes route through the gateway. */
@@ -86,7 +97,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
   const [busy, setBusy] = useState<null | "auth" | "code" | "fetch" | "connect">(null);
   const [groups, setGroups] = useState<Array<{ id: number; name: string }>>([]);
   const [provisionedGroups, setProvisionedGroups] = useState<ProvisionedGroupNamed[]>([]);
-  const [models, setModels] = useState<string[] | null>(null);
+  const [models, setModels] = useState<RoutedModelOption[] | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [manualModels, setManualModels] = useState<Set<string>>(new Set());
   const [manual, setManual] = useState("");
@@ -151,7 +162,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runtimeStatus, account, providers.length]);
 
-  const ordered = useMemo(() => (models ? orderModels(models) : []), [models]);
+  const ordered = useMemo(() => models ?? [], [models]);
 
   if (!isTauri || isGatewayWeb) return null;
 
@@ -186,10 +197,10 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
     setProvisionedGroups(named);
     writeAcpConfigs(named);
 
-    const aggregated = orderModels(named.flatMap((group) => group.models));
-    const domestic = aggregated.filter(isDomesticModel);
-    setModels(aggregated);
-    setPicked(new Set(domestic.length > 0 ? domestic : aggregated));
+    const routed = routedModelOptions(named);
+    const domestic = routed.filter((model) => isDomesticModel(model.modelId));
+    setModels(routed);
+    setPicked(new Set((domestic.length > 0 ? domestic : routed).map((model) => model.key)));
     setManualModels(new Set());
     return { primary, provisioned: named };
   };
@@ -209,11 +220,11 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       // empty ("未连接供应商" / no models).
       const control = getProviderControlClient();
       if (!control) return; // leave the models staged; the 保存 button still works
-      // One provider per provisioned group. Non-primary providers are labelled
-      // identically; the group remains an internal credential-routing detail.
+      // One provider per provisioned group. Include the group label so equal
+      // model ids remain distinguishable in the shared model catalog.
       for (const group of provisioned) {
         await control.addCustomProvider(group.providerId, {
-          name: t("sub2api.providerName"),
+          name: cloudProviderLabel(t("sub2api.providerName"), group.name),
           npm: npmForProtocol(protocol),
           baseURL: group.baseUrl,
           models: orderModels(group.models),
@@ -222,13 +233,11 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       // Default model belongs to the primary provider, so it stays alive when
       // the user switches groups: the primary provider id is derived from the
       // primary group id, matching the addCustomProvider call above.
-      const chosen = orderModels(provisioned.flatMap((group) => group.models));
-      const def = pickDefaultModel(chosen);
+      const chosen = routedModelOptions(provisioned);
+      const def = pickDefaultModel(chosen.map((model) => model.modelId));
       if (def) {
-        const route =
-          provisioned.find((group) => group.groupId === primary.id && group.models.includes(def)) ??
-          provisioned.find((group) => group.models.includes(def));
-        if (route) await control.setDefaultModel(`${route.providerId}/${def}`);
+        const route = chosen.find((model) => model.modelId === def);
+        if (route) await control.setDefaultModel(`${route.providerId}/${route.modelId}`);
       }
       await loadCatalog();
       const total = provisioned.reduce((n, p) => n + p.models.length, 0);
@@ -310,13 +319,13 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
     setBalance(null);
   };
 
-  // Fetch and provision every visible group in one batch. Group ids stay an
-  // internal credential route; the user sees one de-duplicated model catalog.
+  // Fetch and provision every visible group in one batch. Identical model ids
+  // remain separate because group credentials and prices may differ.
   const fetchGroups = async () => {
     setBusy("fetch");
     try {
       const { provisioned } = await provisionAllGroups();
-      const count = orderModels(provisioned.flatMap((group) => group.models)).length;
+      const count = routedModelOptions(provisioned).length;
       toast.success(t("sub2api.fetched", { count }));
     } catch (err) {
       fail(err);
@@ -331,8 +340,18 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
       .map((m) => m.trim())
       .filter(Boolean);
     if (ids.length === 0) return;
-    setModels((prev) => [...new Set([...(prev ?? []), ...ids])]);
-    setPicked((prev) => new Set([...prev, ...ids]));
+    const primaryGroup =
+      groups.find((group) => /国产|domestic/i.test(group.name)) ??
+      groups.find((group) => /default/i.test(group.name)) ??
+      groups[0];
+    const primaryProvider = provisionedGroups.find((group) => group.groupId === primaryGroup?.id);
+    if (!primaryProvider) return;
+    const additions = routedModelOptions([{ ...primaryProvider, models: ids }]);
+    setModels((prev) => [
+      ...(prev ?? []),
+      ...additions.filter((item) => !(prev ?? []).some((existing) => existing.key === item.key)),
+    ]);
+    setPicked((prev) => new Set([...prev, ...additions.map((item) => item.key)]));
     setManualModels((prev) => new Set([...prev, ...ids]));
     setManual("");
   };
@@ -345,7 +364,7 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
   // explicitly: switching calls this before React re-renders, so the `protocol`
   // state would still read stale here.
   const connect = async (proto: Protocol = protocol) => {
-    const chosen = ordered.filter((m) => picked.has(m));
+    const chosen = ordered.filter((model) => picked.has(model.key));
     if (chosen.length === 0) {
       toast.error(t("sub2api.pickOne"));
       return;
@@ -365,28 +384,34 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
         groups.find((group) => /国产|domestic/i.test(group.name)) ??
         groups.find((group) => /default/i.test(group.name)) ??
         groups[0];
-      const routes: Array<{ providerId: string; models: string[] }> = [];
       for (const group of provisionedGroups) {
         const routed = orderModels([
-          ...group.models.filter((model) => picked.has(model)),
+          ...chosen
+            .filter((model) => model.providerId === group.providerId && model.groupId === group.groupId)
+            .map((model) => model.modelId),
           ...(group.groupId === primary?.id ? [...manualModels] : []),
         ]);
-        if (routed.length === 0) continue;
+        if (routed.length === 0) {
+          // A previously registered duplicate route must be removed when the
+          // user deselects its last model; otherwise it remains usable through
+          // the global catalog despite no longer being selected here.
+          await control.removeCustomProvider(group.providerId);
+          continue;
+        }
         await control.addCustomProvider(group.providerId, {
-          name: t("sub2api.providerName"),
+          name: cloudProviderLabel(t("sub2api.providerName"), group.name),
           npm: npmForProtocol(proto),
           baseURL: group.baseUrl,
           models: routed,
         });
-        routes.push({ providerId: group.providerId, models: routed });
       }
       // Auto-set the default model to a domestic one (preferring Kimi),
       // preventing the "Anthropic API key is missing" error for users who
       // only have an AI 平台 key.
-      const first = pickDefaultModel(chosen);
+      const first = pickDefaultModel(chosen.map((model) => model.modelId));
       if (first) {
-        const route = routes.find((candidate) => candidate.models.includes(first));
-        if (route) await control.setDefaultModel(`${route.providerId}/${first}`);
+        const route = chosen.find((model) => model.modelId === first);
+        if (route) await control.setDefaultModel(`${route.providerId}/${route.modelId}`);
       }
       await loadCatalog();
       toast.success(t("sub2api.connected", { count: chosen.length }));
@@ -512,16 +537,16 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
               )}
               <div className="flex flex-wrap gap-1.5">
                 {ordered.map((m) => {
-                  const on = picked.has(m);
+                  const on = picked.has(m.key);
                   return (
                     <button
-                      key={m}
+                      key={m.key}
                       aria-pressed={on}
                       onClick={() =>
                         setPicked((prev) => {
                           const next = new Set(prev);
-                          if (next.has(m)) next.delete(m);
-                          else next.add(m);
+                          if (next.has(m.key)) next.delete(m.key);
+                          else next.add(m.key);
                           return next;
                         })
                       }
@@ -532,8 +557,9 @@ export function Sub2ApiCard({ onLogin, bare }: { onLogin?: () => void; bare?: bo
                           : "border-faint text-muted hover:text-text",
                       )}
                     >
-                      {m}
-                      {isDomesticModel(m) && (
+                      {m.modelId}
+                      <span className="ml-1 text-muted">· {m.groupName}</span>
+                      {isDomesticModel(m.modelId) && (
                         <span className="ml-1 text-accent" aria-hidden>
                           {DOMESTIC_MARK}
                         </span>

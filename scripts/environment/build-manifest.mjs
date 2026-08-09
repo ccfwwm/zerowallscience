@@ -5,6 +5,13 @@ import { pathToFileURL } from "node:url";
 const ENVELOPE_SCHEMA = "zerowall.science/environment-envelope/v1";
 const PAYLOAD_SCHEMA = "zerowall.science/environment/v1";
 const ED25519_PKCS8_SEED_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
+const MCP_PYTHON_HEALTH_PROBE = [
+  "import importlib, os",
+  "os.environ.setdefault('MP_API_KEY', 'zerowall-health-check')",
+  "os.environ.setdefault('FRED_API_KEY', 'zerowall-health-check')",
+  "modules = ['jupyterlab', 'paper_search_mcp.server', 'biomcp', 'mcp_materials', 'fred_mcp.main', 'spaceweather_mcp.server', 'mcp_weather_server', 'usgs_mcp.server', 'uniprot_mcp.server', 'wikipedia_mcp']",
+  "[importlib.import_module(name) for name in modules]",
+].join("; ");
 
 export function createEd25519PrivateKey(seed) {
   if (!Buffer.isBuffer(seed) || seed.length !== 32) {
@@ -39,9 +46,11 @@ export function buildEnvironmentPayload({
 
   const windows = target.includes("windows");
   const executable = (name) => `${name}${windows ? ".exe" : ""}`;
+  const mcpPython = windows ? "mcp-python/python.exe" : "mcp-python/bin/python3";
   return {
     schema: PAYLOAD_SCHEMA,
     version,
+    target,
     components: [
       {
         id: "environment-bundle",
@@ -55,6 +64,7 @@ export function buildEnvironmentPayload({
       { executable: executable("opencode"), args: ["--version"] },
       { executable: executable("uv"), args: ["--version"] },
       { executable: executable("agent-browser"), args: ["--version"] },
+      { executable: mcpPython, args: ["-s", "-c", MCP_PYTHON_HEALTH_PROBE] },
     ],
   };
 }

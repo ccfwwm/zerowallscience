@@ -1,0 +1,17 @@
+paper-search-mcp==0.1.4
+biomcp-python==0.7.3
+mcp-materials-project==0.3.3
+fred-mcp==1.0.1
+spaceweather-mcp==0.1.0
+mcp-weather-server==0.6.1
+usgs-mcp==0.1.0
+uniprot-mcp-server==1.3.2
+wikipedia-mcp==2.0.1
+jupyterlab==4.4.1
+jupyter-collaboration==4.0.2
+jupyter-mcp-server==1.1.2
+mcp<2
+ipykernel==7.3.0
+numpy==2.5.1
+pandas==3.0.5
+matplotlib==3.11.1

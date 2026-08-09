@@ -48,6 +48,18 @@ describe("model catalog", () => {
     ]);
   });
 
+  it("keeps the same model id as separate choices when providers differ", () => {
+    const duplicated = flattenModelOptions([
+      { id: "zerowall-2", name: "AI 云平台 · standard", models: [{ id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }] },
+      { id: "zerowall-52", name: "AI 云平台 · premium", models: [{ id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }] },
+    ]);
+
+    expect(duplicated.map((model) => [model.key, model.providerName])).toEqual([
+      ["zerowall-2/gpt-5.6-sol", "AI 云平台 · standard"],
+      ["zerowall-52/gpt-5.6-sol", "AI 云平台 · premium"],
+    ]);
+  });
+
   it.each([
     ["gpt-5.2", ["openai/gpt-5.2"]],
     ["QWEN3", ["ollama-cloud/qwen3-coder"]],

@@ -64,12 +64,16 @@ pub struct AgentBinding {
     pub project_root: String,
     pub profile_fingerprint: String,
     pub resolved_at: String,
-    #[serde(default)]
+    #[serde(default = "default_mcp_allow_list")]
     pub mcp_allow_list: Vec<String>,
     #[serde(default)]
     pub mcp_tool_grants: Vec<McpToolGrantSnapshot>,
     #[serde(default)]
     pub skills_snapshot: Vec<SkillSnapshot>,
+}
+
+fn default_mcp_allow_list() -> Vec<String> {
+    vec!["*".to_owned()]
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -1541,7 +1545,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_binding_defaults_capability_snapshots_to_empty() {
+    fn legacy_binding_defaults_to_all_mcp_and_empty_skills() {
         let binding: AgentBinding = serde_json::from_value(json!({
             "engine": "codex",
             "profile": "codex",
@@ -1553,7 +1557,7 @@ mod tests {
             "resolvedAt": "now"
         }))
         .unwrap();
-        assert!(binding.mcp_allow_list.is_empty());
+        assert_eq!(binding.mcp_allow_list, ["*"]);
         assert!(binding.skills_snapshot.is_empty());
     }
 
@@ -1947,7 +1951,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(session.directory.as_deref(), Some("C:/project"));
-        assert_eq!(host.list_sessions()[0].directory.as_deref(), Some("C:/project"));
+        assert_eq!(
+            host.list_sessions()[0].directory.as_deref(),
+            Some("C:/project")
+        );
     }
 
     #[test]
@@ -1977,7 +1984,10 @@ mod tests {
         assert_eq!(first_title, "Analyze the project workflow and produce a…");
 
         block_on(host.prompt("s1".into(), "replace the title".into(), Vec::new())).unwrap();
-        assert_eq!(host.list_sessions()[0].title.as_deref(), Some(first_title.as_str()));
+        assert_eq!(
+            host.list_sessions()[0].title.as_deref(),
+            Some(first_title.as_str())
+        );
     }
 
     #[test]

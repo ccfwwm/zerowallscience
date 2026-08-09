@@ -47,6 +47,27 @@ function fakeInvoke(): AcpHostInvoke {
 }
 
 describe("ACP Host runtime adapter", () => {
+  it("updates the active Host binding with both provider and model", async () => {
+    const calls: Array<[string, Record<string, unknown> | undefined]> = [];
+    const invoke = (async (command: string, args?: Record<string, unknown>) => {
+      calls.push([command, args]);
+      return fakeInvoke()(command, args);
+    }) as AcpHostInvoke;
+    const deps = createAcpHostRuntimeDeps(invoke);
+    await deps.launch({
+      profileId: "codex",
+      projectRoot: "C:/science",
+      gateway: { providerId: "cloud", baseUrl: "https://api.example.test/v1", model: "gpt-5.4" },
+    });
+
+    await deps.setModel("gpt-5.6-sol", "cloud-b");
+
+    expect(calls).toContainEqual(["acp_host_config", {
+      sessionId: "host-session-1",
+      config: { model: "gpt-5.6-sol", provider: "cloud-b" },
+    }]);
+  });
+
   it("forwards ordinary conversation capability snapshots to the Host DTO", () => {
     expect(toAcpHostLaunchRequest({
       profileId: "codex",
@@ -462,5 +483,30 @@ describe("ACP Host runtime adapter", () => {
     const load = calls.find(([command]) => command === "acp_host_load");
     expect(load?.[1]).toMatchObject({ sessionId: "remote", request: { credential: { keychainId: "cloud" } } });
     expect(JSON.stringify(load)).not.toContain("api-key");
+  });
+
+  it("lists the unified Skill catalog for the selected engine", async () => {
+    const calls: Array<[string, Record<string, unknown> | undefined]> = [];
+    const invoke = (async <T = unknown>(command: string, args?: Record<string, unknown>) => {
+      calls.push([command, args]);
+      if (command === "acp_list_skills") {
+        return [{
+          name: "custom-analysis",
+          description: "Project analysis workflow",
+          location: "C:/science/.zerowall/skills/custom-analysis/SKILL.md",
+          sha256: "abc123",
+        }] as T;
+      }
+      return undefined as T;
+    }) as AcpHostInvoke;
+    const deps = createAcpHostRuntimeDeps(invoke);
+
+    await expect(deps.listSkills?.("claude-code")).resolves.toEqual([{
+      name: "custom-analysis",
+      description: "Project analysis workflow",
+      location: "C:/science/.zerowall/skills/custom-analysis/SKILL.md",
+      sha256: "abc123",
+    }]);
+    expect(calls).toEqual([["acp_list_skills", { profileId: "claude-code" }]]);
   });
 });

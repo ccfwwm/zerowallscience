@@ -36,4 +36,18 @@ describe("BlockList", () => {
     expect(screen.getByText("ls -la")).toBeInTheDocument();
     expect(document.querySelector("[data-subagent-activity]")).toBeNull();
   });
+
+  it("hides legacy standalone done rows restored from older sessions", () => {
+    render(
+      <BlockList
+        blocks={[
+          { kind: "agent", markdown: "Answer" },
+          { kind: "status-line", text: "done", tone: "done" },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Answer")).toBeInTheDocument();
+    expect(screen.queryByText(/^done$/i)).not.toBeInTheDocument();
+  });
 });

@@ -1028,16 +1028,16 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("AGENTS.md"), "rules\n").unwrap();
 
-        assert_eq!(commit(&root, "Initialize workspace").unwrap(), true);
+        assert!(commit(&root, "Initialize workspace").unwrap());
         assert!(root.join(".git").is_dir());
         // The snapshot lives on the dedicated per-branch ref, and NO branch
         // commit was made (HEAD is still unborn) — snapshots never touch a branch.
         assert!(rev_parse(&root, &snapshot_ref(&root)).is_some());
         assert!(rev_parse(&root, "HEAD").is_none());
-        assert_eq!(commit(&root, "No changes").unwrap(), false);
+        assert!(!commit(&root, "No changes").unwrap());
 
         fs::write(root.join("AGENTS.md"), "rules\nmore\n").unwrap();
-        assert_eq!(commit(&root, "Update workspace").unwrap(), true);
+        assert!(commit(&root, "Update workspace").unwrap());
         assert!(snapshot_files(&root).contains("AGENTS.md"));
         let _ = fs::remove_dir_all(&root);
     }
@@ -1055,7 +1055,7 @@ mod tests {
         fs::write(root.join("big.bin"), vec![0u8; super::MAX_BLOB_BYTES as usize]).unwrap();
 
         // The small file is snapshotted; the oversized one is not.
-        assert_eq!(commit(&root, "Initialize workspace").unwrap(), true);
+        assert!(commit(&root, "Initialize workspace").unwrap());
         let tracked = snapshot_files(&root);
         assert!(tracked.contains("small.txt"));
         assert!(!tracked.contains("big.bin"));
@@ -1082,7 +1082,7 @@ mod tests {
             fs::write(root.join("dataset").join(format!("sample_{i}.dat")), &chunk).unwrap();
         }
 
-        assert_eq!(commit(&root, "Initialize workspace").unwrap(), true);
+        assert!(commit(&root, "Initialize workspace").unwrap());
         let tracked = snapshot_files(&root);
         assert!(tracked.contains("train.py"));
         assert!(!tracked.contains("dataset/"));
@@ -1102,7 +1102,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("AGENTS.md"), "rules\n").unwrap();
 
-        assert_eq!(commit(&root, "Initialize workspace").unwrap(), true);
+        assert!(commit(&root, "Initialize workspace").unwrap());
         let gitignore = fs::read_to_string(root.join(".gitignore")).unwrap();
         assert!(gitignore.contains("node_modules/"));
         assert!(gitignore.contains(".env"));
@@ -1132,7 +1132,7 @@ mod tests {
         super::run(&root, &["add", "staged.txt"]).unwrap();
 
         // We DO snapshot it now — to the dedicated per-branch ref, not their branch.
-        assert_eq!(commit(&root, "snapshot").unwrap(), true);
+        assert!(commit(&root, "snapshot").unwrap());
         assert!(rev_parse(&root, &snapshot_ref(&root)).is_some());
         assert!(snapshot_files(&root).contains("data.txt"));
 
@@ -1162,7 +1162,7 @@ mod tests {
         assert!(super::no_snapshot_marker(&root).exists());
 
         // A later commit must NOT `git init` it and must NOT commit.
-        assert_eq!(commit(&root, "should be skipped").unwrap(), false);
+        assert!(!commit(&root, "should be skipped").unwrap());
         assert!(!root.join(".git").exists());
         let _ = fs::remove_dir_all(&root);
     }
@@ -1188,7 +1188,7 @@ mod tests {
 
         // It IS snapshotted (to the dedicated per-branch ref), while the user's
         // branch stays untouched (HEAD unborn — we never committed to a branch).
-        assert_eq!(commit(&root, "snapshot").unwrap(), true);
+        assert!(commit(&root, "snapshot").unwrap());
         assert!(rev_parse(&root, &snapshot_ref(&root)).is_some());
         assert!(rev_parse(&root, "HEAD").is_none());
         assert!(snapshot_files(&root).contains("paper.md"));
@@ -1220,7 +1220,7 @@ mod tests {
         super::run(&root, &["commit", "-m", "base"]).unwrap();
         fs::write(root.join("a.txt"), "base + wip\n").unwrap();
 
-        assert_eq!(commit(&root, "snap on base branch").unwrap(), true);
+        assert!(commit(&root, "snap on base branch").unwrap());
         let base_ref = snapshot_ref(&root);
         assert!(rev_parse(&root, &base_ref).is_some());
 
@@ -1233,7 +1233,7 @@ mod tests {
         assert!(rev_parse(&root, &feat_ref).is_none()); // nothing snapped here yet
 
         fs::write(root.join("b.txt"), "feature work\n").unwrap();
-        assert_eq!(commit(&root, "snap on feature branch").unwrap(), true);
+        assert!(commit(&root, "snap on feature branch").unwrap());
         // Both chains exist and are distinct; the base branch's ref is untouched.
         assert!(rev_parse(&root, &feat_ref).is_some());
         assert_ne!(rev_parse(&root, &base_ref), rev_parse(&root, &feat_ref));

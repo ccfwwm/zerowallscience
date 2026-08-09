@@ -1,13 +1,14 @@
 // Manages the bundled OpenCode sidecar so it never interferes with any OpenCode
 // the user already has: it runs the *bundled* binary, on a *dedicated free port*,
 // with an *app-private* XDG config/data dir, and is killed on app exit.
+use sha2::{Digest, Sha256};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
+use zerowall_acp_host::SkillSnapshot;
 
 #[derive(Default)]
 struct RuntimeLifecycle {
@@ -105,7 +106,7 @@ pub fn base_workspace_dir(app: &AppHandle) -> Result<PathBuf, String> {
 
 /// The config file to edit in place: the server may have rewritten the config
 /// as opencode.jsonc — prefer whichever exists, fall back to opencode.json.
-fn effective_config_file(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn effective_config_file(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = xdg_config_home(app)?.join("opencode");
     Ok(["opencode.jsonc", "opencode.json"]
         .iter()
@@ -137,13 +138,15 @@ fn user_auth_source() -> Option<PathBuf> {
 /// (from the Settings page) — never silently. Returns false when there is no
 /// CLI login to import. Restarts the sidecar so it picks the credentials up.
 #[tauri::command(async)]
-pub fn import_opencode_login(app: AppHandle, state: State<'_, RuntimeState>) -> Result<bool, String> {
+pub fn import_opencode_login(
+    app: AppHandle,
+    state: State<'_, RuntimeState>,
+) -> Result<bool, String> {
     let Some(src) = user_auth_source() else {
         return Ok(false);
     };
     // Read the user's CLI auth.json (read-only — never modify their file).
-    let content = std::fs::read_to_string(&src)
-        .map_err(|e| format!("read CLI auth.json: {e}"))?;
+    let content = std::fs::read_to_string(&src).map_err(|e| format!("read CLI auth.json: {e}"))?;
 
     // Import into the OS keychain via the secret store.
     let root = runtime_root(&app)?;
@@ -192,9 +195,9 @@ fn auth_has_provider(text: &str, provider_id: &str) -> bool {
 /// first-party trees are exactly the ones the Science Pack manifests in
 /// `runtime/packs/` reference by relative path.
 pub(crate) const SKILL_RESOURCES: &[&str] = &[
-    "skills",         // external: ai4s-skills
-    "skills-office",  // external: Anthropic document skills
-    "skills-core",    // runtime/skills/core
+    "skills",        // external: ai4s-skills
+    "skills-office", // external: Anthropic document skills
+    "skills-core",   // runtime/skills/core
     "skills-advanced",
     "skills-compute",
     "skills-life-science",
@@ -225,14 +228,19 @@ fn deploy_bundled_skills(app: &AppHandle) {
         Ok(cfg) => cfg.join("opencode").join("skills"),
         Err(_) => return,
     };
-    let _ = deploy_bundled_skills_to(app, &dst);
+    if deploy_bundled_skills_to(app, &dst).is_ok() {
+        if let Ok(workspace) = workspace_dir(app) {
+            let _ = overlay_project_skill_sources(&workspace, &dst);
+        }
+    }
 }
 
 /// Deploy the same app-owned skill packs into a runtime-specific directory.
 /// ACP profiles cannot discover OpenCode's XDG home, so they need this
 /// explicit copy into their isolated `.claude`/`.codex` skills directory.
 pub(crate) fn deploy_bundled_skills_to(app: &AppHandle, dst: &Path) -> Result<(), String> {
-    let mut bundled: std::collections::HashSet<std::ffi::OsString> = std::collections::HashSet::new();
+    let mut bundled: std::collections::HashSet<std::ffi::OsString> =
+        std::collections::HashSet::new();
     let mut all_ok = true;
     for resource in SKILL_RESOURCES {
         let src = match managed_resource(app, resource) {
@@ -265,168 +273,93 @@ pub(crate) fn deploy_bundled_skills_to(app: &AppHandle, dst: &Path) -> Result<()
     }
 }
 
-/// Deploy the complete pack to the project-owned on-demand store while keeping
-/// only a compact core set in the adapter discovery directory. This prevents
-/// Codex's 2% skill-description budget from being consumed at startup.
-pub(crate) fn deploy_bundled_skills_for_acp(
+/// Deploy every enabled Skill into one engine-owned discovery directory. The
+/// project-level `.zerowall/skills` directory is the engine-neutral source for
+/// custom Skills; legacy engine directories are overlaid as a compatibility
+/// migration so existing user content remains available after upgrading.
+pub(crate) fn deploy_all_skills_for_acp(
     app: &AppHandle,
+    workspace: &Path,
     discovery: &Path,
-    store: &Path,
 ) -> Result<(), String> {
-    deploy_bundled_skills_to(app, store)?;
-    let mut bundled = std::collections::HashSet::new();
-    let mut all_ok = true;
-    const CORE: &[&str] = &[
-        "ai4s-agent", "experiment-suite", "file-processing", "image-processing",
-        "mcp-usage", "literature-review", "bio-plausibility", "reproducible-research",
-        "citation-reviewer", "domain-check",
-    ];
-    for resource in SKILL_RESOURCES {
-        let src = match managed_resource(app, resource) {
-            Some(path) if path.is_dir() => path,
-            _ => { all_ok = false; continue; }
-        };
-        match sync_skill_pack_filtered(&src, discovery, CORE) {
-            Ok(names) => bundled.extend(names),
-            Err(_) => all_ok = false,
-        }
-    }
-    if !all_ok { return Err("bundled scientific skills are unavailable".into()); }
-    prune_stale_skills(discovery, &bundled);
-    Ok(())
+    deploy_bundled_skills_to(app, discovery)?;
+    overlay_project_skill_sources(workspace, discovery)
 }
 
-/// Materialize exactly one immutable session snapshot into an adapter-owned
-/// discovery directory. Snapshot hashes cover SKILL.md, while the complete
-/// skill directory is copied only after every requested hash has been verified.
-pub(crate) fn materialize_skill_snapshots(
-    store: &Path,
+/// Apply the immutable skill snapshot captured when a session was created.
+/// An explicit empty snapshot means no Skills are enabled; `None` is handled
+/// by the caller as the legacy/default all-enabled behavior.
+pub(crate) fn enforce_skill_snapshot(
     discovery: &Path,
-    snapshots: &[zerowall_acp_host::SkillSnapshot],
+    snapshots: &[SkillSnapshot],
 ) -> Result<(), String> {
-    if materialized_snapshot_matches(discovery, snapshots) {
-        return Ok(());
-    }
-    let parent = discovery
-        .parent()
-        .ok_or_else(|| "skill discovery directory has no parent".to_string())?;
-    std::fs::create_dir_all(parent)
-        .map_err(|error| format!("create skill discovery parent: {error}"))?;
-    let nonce = random_hex(8);
-    let staging = parent.join(format!(".skills-staging-{nonce}"));
-    let backup = parent.join(format!(".skills-backup-{nonce}"));
-    std::fs::create_dir_all(&staging)
-        .map_err(|error| format!("create skill snapshot staging: {error}"))?;
-
-    let staged = (|| {
-        for snapshot in snapshots {
-            let source = find_snapshot_skill(store, &snapshot.id)?;
-            let skill_file = source.join("SKILL.md");
-            let bytes = std::fs::read(&skill_file)
-                .map_err(|error| format!("read skill {}: {error}", snapshot.id))?;
-            let actual = format!("{:x}", Sha256::digest(&bytes));
-            if !actual.eq_ignore_ascii_case(snapshot.sha256.trim()) {
-                return Err(format!(
-                    "skill {} SHA-256 does not match the session snapshot",
-                    snapshot.id
-                ));
-            }
-            let name = source
-                .file_name()
-                .ok_or_else(|| format!("skill {} has no directory name", snapshot.id))?;
-            copy_dir(&source, &staging.join(name))
-                .map_err(|error| format!("copy skill {}: {error}", snapshot.id))?;
-        }
-        Ok(())
-    })();
-    if let Err(error) = staged {
-        let _ = std::fs::remove_dir_all(&staging);
-        return Err(error);
-    }
-
-    let had_previous = discovery.exists();
-    if had_previous {
-        std::fs::rename(discovery, &backup)
-            .map_err(|error| format!("stage previous skill snapshot: {error}"))?;
-    }
-    if let Err(error) = std::fs::rename(&staging, discovery) {
-        if had_previous {
-            let _ = std::fs::rename(&backup, discovery);
-        }
-        let _ = std::fs::remove_dir_all(&staging);
-        return Err(format!("activate skill snapshot: {error}"));
-    }
-    if had_previous {
-        let _ = std::fs::remove_dir_all(backup);
-    }
-    Ok(())
-}
-
-fn materialized_snapshot_matches(
-    discovery: &Path,
-    snapshots: &[zerowall_acp_host::SkillSnapshot],
-) -> bool {
-    let Ok(entries) = std::fs::read_dir(discovery) else {
-        return false;
-    };
-    let installed = entries
-        .filter_map(Result::ok)
-        .filter(|entry| entry.path().join("SKILL.md").is_file())
-        .count();
-    if installed != snapshots.len() {
-        return false;
-    }
-    snapshots.iter().all(|snapshot| {
-        find_snapshot_skill(discovery, &snapshot.id)
-            .ok()
-            .and_then(|source| std::fs::read(source.join("SKILL.md")).ok())
-            .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
-            .is_some_and(|actual| actual.eq_ignore_ascii_case(snapshot.sha256.trim()))
-    })
-}
-
-fn find_snapshot_skill(store: &Path, requested_id: &str) -> Result<PathBuf, String> {
-    let entries = std::fs::read_dir(store)
-        .map_err(|error| format!("read managed skill store: {error}"))?;
-    let mut matches = Vec::new();
+    let expected = snapshots
+        .iter()
+        .map(|skill| (skill.id.as_str(), skill.sha256.to_ascii_lowercase()))
+        .collect::<std::collections::HashSet<_>>();
+    let mut found = std::collections::HashSet::new();
+    let entries = std::fs::read_dir(discovery)
+        .map_err(|error| format!("read ACP skill snapshot: {error}"))?;
     for entry in entries {
-        let entry = entry.map_err(|error| format!("read managed skill entry: {error}"))?;
-        if !entry
-            .file_type()
-            .map_err(|error| format!("read managed skill type: {error}"))?
-            .is_dir()
-        {
-            continue;
-        }
+        let entry = entry.map_err(|error| format!("read ACP skill snapshot entry: {error}"))?;
         let path = entry.path();
-        let skill_file = path.join("SKILL.md");
-        let Ok(source) = std::fs::read_to_string(&skill_file) else {
+        if !path.is_dir() || !path.join("SKILL.md").is_file() {
             continue;
-        };
-        let directory_id = entry.file_name();
-        let directory_id = directory_id.to_string_lossy();
-        let manifest_id = skill_manifest_name(&source).unwrap_or(&directory_id);
-        if requested_id == directory_id || requested_id == manifest_id {
-            matches.push(path);
+        }
+        let body = std::fs::read(path.join("SKILL.md"))
+            .map_err(|error| format!("read ACP skill {}: {error}", path.display()))?;
+        let digest = format!("{:x}", Sha256::digest(&body));
+        let fallback = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("skill");
+        let id = skill_frontmatter_name(&body, fallback);
+        if expected.contains(&(id.as_str(), digest.clone())) {
+            found.insert((id, digest));
+        } else {
+            std::fs::remove_dir_all(&path).map_err(|error| {
+                format!("remove unselected ACP skill {}: {error}", path.display())
+            })?;
         }
     }
-    match matches.len() {
-        1 => Ok(matches.remove(0)),
-        0 => Err(format!("skill {requested_id} is not installed")),
-        _ => Err(format!("skill {requested_id} is ambiguous")),
+    if found.len() != expected.len() {
+        return Err("one or more requested Skill snapshots are unavailable or changed".into());
     }
+    Ok(())
 }
 
-fn skill_manifest_name(source: &str) -> Option<&str> {
-    let header = source
-        .strip_prefix("---")?
-        .split_once("\n---")?
-        .0;
-    header.lines().find_map(|line| {
-        line.strip_prefix("name:")
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-    })
+fn skill_frontmatter_name(body: &[u8], fallback: &str) -> String {
+    let Ok(text) = std::str::from_utf8(body) else {
+        return fallback.to_owned();
+    };
+    let header = text
+        .strip_prefix("---")
+        .and_then(|rest| rest.split_once("\n---").map(|(header, _)| header))
+        .unwrap_or_default();
+    header
+        .lines()
+        .find_map(|line| line.strip_prefix("name:").map(str::trim))
+        .map(|value| value.trim_matches(['\"', '\'']).to_owned())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| fallback.to_owned())
+}
+
+fn overlay_project_skill_sources(workspace: &Path, destination: &Path) -> Result<(), String> {
+    let sources = [
+        workspace.join(".opencode").join("skills"),
+        workspace.join(".claude").join("skills"),
+        workspace.join(".codex").join("skills"),
+        workspace.join(".zerowall").join("skills"),
+    ];
+    overlay_skill_sources(&sources, destination)
+}
+
+fn overlay_skill_sources(sources: &[PathBuf], destination: &Path) -> Result<(), String> {
+    for source in sources.iter().filter(|source| source.is_dir()) {
+        sync_skill_pack(source, destination)
+            .map_err(|error| format!("deploy project Skills from {}: {error}", source.display()))?;
+    }
+    Ok(())
 }
 
 /// Ship the bundled goal plugin (one self-contained JS file, see
@@ -435,9 +368,11 @@ fn skill_manifest_name(source: &str) -> Option<&str> {
 /// cannot install npm plugin specs itself (silently ignored), so the file is
 /// referenced by absolute path. None in dev runs without the fetch script.
 fn deploy_goal_plugin(app: &AppHandle) -> Option<PathBuf> {
-    let src = managed_resource(app, "goal-plugin/goal-plugin.server.js")
-        .filter(|p| p.is_file())?;
-    let dst = xdg_config_home(app).ok()?.join("opencode").join("goal-plugin.server.js");
+    let src = managed_resource(app, "goal-plugin/goal-plugin.server.js").filter(|p| p.is_file())?;
+    let dst = xdg_config_home(app)
+        .ok()?
+        .join("opencode")
+        .join("goal-plugin.server.js");
     std::fs::create_dir_all(dst.parent()?).ok()?;
     // Refresh on every start so app upgrades replace the plugin in place.
     if let Err(e) = std::fs::copy(&src, &dst) {
@@ -450,12 +385,12 @@ fn deploy_goal_plugin(app: &AppHandle) -> Option<PathBuf> {
 /// Remove every SKILL.md-bearing directory in `dst` whose name is not in
 /// `bundled` (the set just deployed). Non-skill directories are left untouched.
 fn prune_stale_skills(dst: &Path, bundled: &std::collections::HashSet<std::ffi::OsString>) {
-    let Ok(entries) = std::fs::read_dir(dst) else { return };
+    let Ok(entries) = std::fs::read_dir(dst) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.is_dir()
-            && path.join("SKILL.md").is_file()
-            && !bundled.contains(&entry.file_name())
+        if path.is_dir() && path.join("SKILL.md").is_file() && !bundled.contains(&entry.file_name())
         {
             let _ = std::fs::remove_dir_all(&path);
         }
@@ -480,30 +415,6 @@ fn sync_skill_pack(src: &Path, dst: &Path) -> std::io::Result<Vec<std::ffi::OsSt
         }
         copy_dir(&entry.path(), &target)?;
         deployed.push(entry.file_name());
-    }
-    Ok(deployed)
-}
-
-fn sync_skill_pack_filtered(
-    src: &Path,
-    dst: &Path,
-    allow: &[&str],
-) -> std::io::Result<Vec<std::ffi::OsString>> {
-    std::fs::create_dir_all(dst)?;
-    let mut deployed = Vec::new();
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        if !entry.file_type()?.is_dir() || !entry.path().join("SKILL.md").is_file() {
-            continue;
-        }
-        let name = entry.file_name();
-        if !allow.iter().any(|value| name == std::ffi::OsStr::new(value)) {
-            continue;
-        }
-        let target = dst.join(&name);
-        if target.exists() { std::fs::remove_dir_all(&target)?; }
-        copy_dir(&entry.path(), &target)?;
-        deployed.push(name);
     }
     Ok(deployed)
 }
@@ -588,15 +499,17 @@ pub(crate) fn enriched_path() -> String {
     roots.push("C:\\ProgramData\\miniconda3".into());
     let mut extras: Vec<String> = Vec::new();
     for root in roots {
-        for dir in [root.clone(), format!("{root}\\Scripts"), format!("{root}\\Library\\bin")] {
+        for dir in [
+            root.clone(),
+            format!("{root}\\Scripts"),
+            format!("{root}\\Library\\bin"),
+        ] {
             extras.push(dir);
         }
     }
     let mut parts: Vec<String> = extras
         .into_iter()
-        .filter(|p| {
-            !base.split(';').any(|b| b.eq_ignore_ascii_case(p)) && Path::new(p).is_dir()
-        })
+        .filter(|p| !base.split(';').any(|b| b.eq_ignore_ascii_case(p)) && Path::new(p).is_dir())
         .collect();
     if !base.is_empty() {
         parts.push(base);
@@ -848,8 +761,11 @@ fn system_proxy_url() -> Option<String> {
 fn parse_scutil_proxy(text: &str) -> Option<String> {
     let get = |key: &str| -> Option<String> {
         let prefix = format!("{key} : ");
-        text.lines()
-            .find_map(|l| l.trim().strip_prefix(prefix.as_str()).map(|v| v.trim().to_string()))
+        text.lines().find_map(|l| {
+            l.trim()
+                .strip_prefix(prefix.as_str())
+                .map(|v| v.trim().to_string())
+        })
     };
     let enabled = |key: &str| get(key).as_deref() == Some("1");
     for (en, host, port, scheme) in [
@@ -874,7 +790,11 @@ fn system_proxy_url() -> Option<String> {
 }
 
 fn active_opencode_path(app: &AppHandle) -> Result<Option<PathBuf>, String> {
-    let executable = if cfg!(windows) { "opencode.exe" } else { "opencode" };
+    let executable = if cfg!(windows) {
+        "opencode.exe"
+    } else {
+        "opencode"
+    };
     crate::environment_update::active_environment_executable(app, executable)
 }
 
@@ -965,12 +885,18 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
     // inherit connector secrets from this process environment.
     let secrets = crate::secret_store::sidecar_secrets(app)?;
 
-    let executable = active_opencode_path(app)?.ok_or_else(|| {
-        "基础环境尚未安装，请先配置基础环境后再启动运行环境".to_owned()
-    })?;
+    let executable = active_opencode_path(app)?
+        .ok_or_else(|| "基础环境尚未安装，请先配置基础环境后再启动运行环境".to_owned())?;
     let shell = app.shell();
-    let cmd = shell.command(executable.to_string_lossy().into_owned())
-        .args(["serve", "--hostname", "127.0.0.1", "--port", port_str.as_str()])
+    let cmd = shell
+        .command(executable.to_string_lossy().into_owned())
+        .args([
+            "serve",
+            "--hostname",
+            "127.0.0.1",
+            "--port",
+            port_str.as_str(),
+        ])
         // Require auth on every request (P0-7): without a password the server
         // trusts ANY localhost-origin page (verified in the 1.17.13 source —
         // its CORS allowlist admits http://localhost:*/127.0.0.1:* wholesale,
@@ -986,7 +912,10 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
         // Lets bundled skill helpers (e.g. remote-compute's record_run.py) stamp
         // the recording app version into provenance — they run outside the app
         // and can't otherwise know it.
-        .env("ZEROWALL_APP_VERSION", app.package_info().version.to_string())
+        .env(
+            "ZEROWALL_APP_VERSION",
+            app.package_info().version.to_string(),
+        )
         .current_dir(process_current_dir(&workspace));
     // GUI-launched apps get a minimal PATH; give the agent the user's real tools.
     let mut cmd = cmd.env("PATH", enriched_path());
@@ -1036,7 +965,10 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
                 CommandEvent::Terminated(status) => {
                     crate::debug_log::append(
                         &app,
-                        &format!("[opencode] terminated: code={:?} signal={:?}", status.code, status.signal),
+                        &format!(
+                            "[opencode] terminated: code={:?} signal={:?}",
+                            status.code, status.signal
+                        ),
                     );
                 }
                 _ => {}
@@ -1118,8 +1050,11 @@ pub fn set_workspace_base(app: AppHandle, path: String) -> Result<String, String
     }
     std::fs::create_dir_all(&dir).map_err(|e| format!("could not create folder: {e}"))?;
     let canon = dir.canonicalize().map_err(|e| e.to_string())?;
-    std::fs::write(base_workspace_file(&app)?, canon.to_string_lossy().as_bytes())
-        .map_err(|e| e.to_string())?;
+    std::fs::write(
+        base_workspace_file(&app)?,
+        canon.to_string_lossy().as_bytes(),
+    )
+    .map_err(|e| e.to_string())?;
     Ok(canon.to_string_lossy().to_string())
 }
 
@@ -1169,8 +1104,11 @@ pub fn set_workspace(
     let dir = PathBuf::from(&path);
     let canon = prepare_workspace_dir(&dir)?;
     initialize_project_runtime_dirs(&canon)?;
-    std::fs::write(active_workspace_file(&app)?, canon.to_string_lossy().as_bytes())
-        .map_err(|e| e.to_string())?;
+    std::fs::write(
+        active_workspace_file(&app)?,
+        canon.to_string_lossy().as_bytes(),
+    )
+    .map_err(|e| e.to_string())?;
 
     // Follow the active folder with the snapshot watcher so out-of-app edits
     // (external editor, detached process) in the new workspace are captured too.
@@ -1261,25 +1199,48 @@ pub fn kill_child(state: &RuntimeState) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "macos")]
+    use super::parse_scutil_proxy;
     use super::{
-        auth_has_provider, initialize_project_runtime_dirs, materialize_skill_snapshots,
-        prepare_workspace_dir, process_current_dir, prune_stale_skills, random_hex,
-        remove_key_from_config, resolve_proxy_env, sync_skill_pack, validate_proxy_url,
+        auth_has_provider, enforce_skill_snapshot, initialize_project_runtime_dirs,
+        overlay_skill_sources, prepare_workspace_dir, process_current_dir, prune_stale_skills,
+        random_hex, remove_key_from_config, resolve_proxy_env, sync_skill_pack, validate_proxy_url,
         SKILL_RESOURCES,
     };
     use sha2::{Digest, Sha256};
-    #[cfg(target_os = "macos")]
-    use super::parse_scutil_proxy;
     use std::fs;
-    use zerowall_acp_host::{SkillScope, SkillSnapshot};
+
+    #[test]
+    fn project_skills_are_overlaid_without_filtering_bundled_skills() {
+        let tmp = std::env::temp_dir().join(format!("skill-overlay-all-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let bundled = tmp.join("bundled");
+        let custom = tmp.join("custom");
+        let destination = tmp.join("destination");
+        fs::create_dir_all(bundled.join("literature-review")).unwrap();
+        fs::create_dir_all(custom.join("my-lab-skill")).unwrap();
+        fs::write(
+            bundled.join("literature-review/SKILL.md"),
+            "---\nname: literature-review\n---\nBundled.",
+        )
+        .unwrap();
+        fs::write(
+            custom.join("my-lab-skill/SKILL.md"),
+            "---\nname: my-lab-skill\n---\nCustom.",
+        )
+        .unwrap();
+
+        overlay_skill_sources(&[bundled, custom], &destination).unwrap();
+
+        assert!(destination.join("literature-review/SKILL.md").is_file());
+        assert!(destination.join("my-lab-skill/SKILL.md").is_file());
+        fs::remove_dir_all(tmp).unwrap();
+    }
 
     #[test]
     fn environment_opencode_path_prefers_active_version_binary() {
         let root = std::path::Path::new("C:/environment/versions/v1");
-        assert_eq!(
-            root.join("opencode.exe"),
-            root.join("opencode.exe")
-        );
+        assert_eq!(root.join("opencode.exe"), root.join("opencode.exe"));
     }
 
     #[cfg(windows)]
@@ -1301,8 +1262,9 @@ mod tests {
     #[test]
     fn environment_bundle_covers_every_skill_tree() {
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let workflow = std::fs::read_to_string(manifest.join("../../../.github/workflows/build.yml"))
-            .expect("environment bundle workflow must be present");
+        let workflow =
+            std::fs::read_to_string(manifest.join("../../../.github/workflows/build.yml"))
+                .expect("environment bundle workflow must be present");
 
         for resource in SKILL_RESOURCES {
             assert!(
@@ -1381,14 +1343,21 @@ mod tests {
 
     #[test]
     fn project_runtime_initialization_creates_only_app_runtime_dirs() {
-        let root = std::env::temp_dir().join(format!("zerowall-runtime-layout-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("zerowall-runtime-layout-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         initialize_project_runtime_dirs(&root).unwrap();
         for name in [".opencode", ".codex", ".claude", ".zerowall"] {
             assert!(root.join(name).is_dir(), "missing {name}");
         }
-        for name in ["AGENTS.md", "KNOWLEDGE.md", "notes", "knowledge", "README.md"] {
+        for name in [
+            "AGENTS.md",
+            "KNOWLEDGE.md",
+            "notes",
+            "knowledge",
+            "README.md",
+        ] {
             assert!(!root.join(name).exists(), "unexpected scaffold {name}");
         }
         let _ = fs::remove_dir_all(&root);
@@ -1418,11 +1387,17 @@ mod tests {
     fn proxy_env_modes() {
         let none = resolve_proxy_env("none", "");
         assert!(none.iter().any(|(k, v)| *k == "NO_PROXY" && v == "*"));
-        assert!(none.iter().any(|(k, v)| *k == "HTTPS_PROXY" && v.is_empty()));
+        assert!(none
+            .iter()
+            .any(|(k, v)| *k == "HTTPS_PROXY" && v.is_empty()));
 
         let custom = resolve_proxy_env("custom", "http://127.0.0.1:7890");
-        assert!(custom.iter().any(|(k, v)| *k == "HTTPS_PROXY" && v == "http://127.0.0.1:7890"));
-        assert!(custom.iter().any(|(k, v)| *k == "NO_PROXY" && v.contains("127.0.0.1")));
+        assert!(custom
+            .iter()
+            .any(|(k, v)| *k == "HTTPS_PROXY" && v == "http://127.0.0.1:7890"));
+        assert!(custom
+            .iter()
+            .any(|(k, v)| *k == "NO_PROXY" && v.contains("127.0.0.1")));
     }
 
     #[test]
@@ -1430,9 +1405,15 @@ mod tests {
     fn scutil_proxy_parses_and_prefers_https() {
         // Real `scutil --proxy` shape (indented `Key : value` lines).
         let all = "<dictionary> {\n  HTTPEnable : 1\n  HTTPPort : 1087\n  HTTPProxy : 127.0.0.1\n  HTTPSEnable : 1\n  HTTPSPort : 1087\n  HTTPSProxy : 127.0.0.1\n  SOCKSEnable : 1\n  SOCKSPort : 1087\n  SOCKSProxy : 127.0.0.1\n}";
-        assert_eq!(parse_scutil_proxy(all).as_deref(), Some("http://127.0.0.1:1087"));
+        assert_eq!(
+            parse_scutil_proxy(all).as_deref(),
+            Some("http://127.0.0.1:1087")
+        );
         let socks_only = "  SOCKSEnable : 1\n  SOCKSPort : 7890\n  SOCKSProxy : 10.0.0.2\n";
-        assert_eq!(parse_scutil_proxy(socks_only).as_deref(), Some("socks5://10.0.0.2:7890"));
+        assert_eq!(
+            parse_scutil_proxy(socks_only).as_deref(),
+            Some("socks5://10.0.0.2:7890")
+        );
         let disabled = "  HTTPEnable : 0\n  HTTPPort : 1087\n  HTTPProxy : 127.0.0.1\n";
         assert_eq!(parse_scutil_proxy(disabled), None);
         assert_eq!(parse_scutil_proxy(""), None);
@@ -1454,7 +1435,10 @@ mod tests {
         prune_stale_skills(&dst, &bundled);
 
         assert!(dst.join("remote-compute").is_dir(), "bundled skill kept");
-        assert!(!dst.join("hpc-slurm").exists(), "stale renamed skill removed");
+        assert!(
+            !dst.join("hpc-slurm").exists(),
+            "stale renamed skill removed"
+        );
         assert!(dst.join("notes").is_dir(), "non-skill dir left alone");
         let _ = fs::remove_dir_all(&dst);
     }
@@ -1475,9 +1459,15 @@ mod tests {
         // auth.json) — it must be unreadable to other users even when the
         // sidecar later rewrites files inside with a default umask.
         super::tighten_private(&dir);
-        assert_eq!(fs::metadata(&dir).unwrap().permissions().mode() & 0o777, 0o700);
+        assert_eq!(
+            fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
         super::tighten_private(&cfg);
-        assert_eq!(fs::metadata(&cfg).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(
+            fs::metadata(&cfg).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -1535,15 +1525,30 @@ mod tests {
 
         sync_skill_pack(&src, &dst).unwrap();
 
-        assert_eq!(fs::read_to_string(dst.join("paper-writer/SKILL.md")).unwrap(), "v2");
+        assert_eq!(
+            fs::read_to_string(dst.join("paper-writer/SKILL.md")).unwrap(),
+            "v2"
+        );
         assert_eq!(
             fs::read_to_string(dst.join("paper-writer/references/guide.md")).unwrap(),
             "ref"
         );
-        assert!(!dst.join("paper-writer/obsolete.md").exists(), "stale file must be gone");
-        assert_eq!(fs::read_to_string(dst.join("my-skill/SKILL.md")).unwrap(), "user");
-        assert!(!dst.join(".commit").exists(), "top-level files are not skills");
-        assert!(!dst.join("placeholder").exists(), "dirs without SKILL.md are not skills");
+        assert!(
+            !dst.join("paper-writer/obsolete.md").exists(),
+            "stale file must be gone"
+        );
+        assert_eq!(
+            fs::read_to_string(dst.join("my-skill/SKILL.md")).unwrap(),
+            "user"
+        );
+        assert!(
+            !dst.join(".commit").exists(),
+            "top-level files are not skills"
+        );
+        assert!(
+            !dst.join("placeholder").exists(),
+            "dirs without SKILL.md are not skills"
+        );
 
         fs::remove_dir_all(&tmp).unwrap();
     }
@@ -1565,102 +1570,31 @@ mod tests {
     }
 
     #[test]
-    fn materializes_only_the_verified_skill_snapshot_with_all_supporting_files() {
-        let tmp = std::env::temp_dir().join(format!(
-            "skill-snapshot-materialize-{}",
-            std::process::id()
-        ));
+    fn enforce_skill_snapshot_removes_unselected_and_rejects_changed_content() {
+        let tmp = std::env::temp_dir().join(format!("skill-snapshot-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
-        let store = tmp.join("store");
-        let discovery = tmp.join("runtime/skills");
-        let skill = "---\nname: review\n---\nReview papers.";
-        write(&store.join("review/SKILL.md"), skill);
-        write(&store.join("review/references/guide.md"), "guide");
-        write(&store.join("unused/SKILL.md"), "---\nname: unused\n---\nUnused.");
-        let sha256 = format!("{:x}", Sha256::digest(skill.as_bytes()));
-
-        materialize_skill_snapshots(
-            &store,
-            &discovery,
-            &[SkillSnapshot {
-                id: "review".into(),
-                version: "installed".into(),
-                scope: SkillScope::Conversation,
-                sha256,
-            }],
-        )
-        .unwrap();
-
-        assert_eq!(
-            fs::read_to_string(discovery.join("review/references/guide.md")).unwrap(),
-            "guide"
-        );
-        assert!(!discovery.join("unused").exists());
-        fs::remove_dir_all(&tmp).unwrap();
-    }
-
-    #[test]
-    fn skill_snapshot_hash_mismatch_keeps_the_previous_discovery_tree() {
-        let tmp = std::env::temp_dir().join(format!(
-            "skill-snapshot-mismatch-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        let store = tmp.join("store");
-        let discovery = tmp.join("runtime/skills");
-        write(&store.join("review/SKILL.md"), "tampered");
-        write(&discovery.join("previous/SKILL.md"), "previous");
-
-        let error = materialize_skill_snapshots(
-            &store,
-            &discovery,
-            &[SkillSnapshot {
-                id: "review".into(),
-                version: "installed".into(),
-                scope: SkillScope::WorkflowNode,
-                sha256: "00".repeat(32),
-            }],
-        )
-        .unwrap_err();
-
-        assert!(error.contains("SHA-256"), "{error}");
-        assert_eq!(
-            fs::read_to_string(discovery.join("previous/SKILL.md")).unwrap(),
-            "previous"
-        );
-        fs::remove_dir_all(&tmp).unwrap();
-    }
-
-    #[test]
-    fn valid_materialized_snapshot_survives_a_managed_store_upgrade() {
-        let tmp = std::env::temp_dir().join(format!(
-            "skill-snapshot-reuse-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        let store = tmp.join("store");
-        let discovery = tmp.join("runtime/skills");
-        let pinned = "---\nname: review\n---\nPinned version.";
-        write(&store.join("review/SKILL.md"), "---\nname: review\n---\nNew version.");
-        write(&discovery.join("review/SKILL.md"), pinned);
-        let sha256 = format!("{:x}", Sha256::digest(pinned.as_bytes()));
-
-        materialize_skill_snapshots(
-            &store,
-            &discovery,
-            &[SkillSnapshot {
-                id: "review".into(),
-                version: "installed".into(),
-                scope: SkillScope::Conversation,
-                sha256,
-            }],
-        )
-        .unwrap();
-
-        assert_eq!(
-            fs::read_to_string(discovery.join("review/SKILL.md")).unwrap(),
-            pinned
-        );
+        write(&tmp.join("kept/SKILL.md"), "kept");
+        write(&tmp.join("removed/SKILL.md"), "removed");
+        let digest = format!("{:x}", Sha256::digest(b"kept"));
+        let snapshot = zerowall_acp_host::SkillSnapshot {
+            id: "kept".into(),
+            version: "1".into(),
+            scope: zerowall_acp_host::SkillScope::Project,
+            sha256: digest,
+        };
+        enforce_skill_snapshot(&tmp, &[snapshot]).unwrap();
+        assert!(tmp.join("kept/SKILL.md").is_file());
+        assert!(!tmp.join("removed").exists());
+        fs::write(tmp.join("kept/SKILL.md"), "changed").unwrap();
+        let changed = zerowall_acp_host::SkillSnapshot {
+            id: "kept".into(),
+            version: "1".into(),
+            scope: zerowall_acp_host::SkillScope::Project,
+            sha256: format!("{:x}", Sha256::digest(b"kept")),
+        };
+        assert!(enforce_skill_snapshot(&tmp, &[changed]).is_err());
+        enforce_skill_snapshot(&tmp, &[]).unwrap();
+        assert!(!tmp.join("kept").exists());
         fs::remove_dir_all(&tmp).unwrap();
     }
 
@@ -1668,10 +1602,8 @@ mod tests {
     fn import_opencode_login_reads_cli_auth_and_writes_to_keychain() {
         use crate::secret_store::{load_registry, save_registry, CredentialStore};
 
-        let root = std::env::temp_dir().join(format!(
-            "zerowall-import-opencode-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("zerowall-import-opencode-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
 
@@ -1691,7 +1623,8 @@ mod tests {
         let backend = crate::secret_store::KeyringCredentialStore;
         let mut registry = load_registry(&registry_path).unwrap_or_default();
         let content = fs::read_to_string(&cli_auth).unwrap();
-        let count = crate::secret_store::import_auth_document(&backend, &mut registry, &content).unwrap();
+        let count =
+            crate::secret_store::import_auth_document(&backend, &mut registry, &content).unwrap();
 
         assert_eq!(count, 2, "should import 2 providers");
 
@@ -1701,16 +1634,37 @@ mod tests {
         // Verify the registry was created and contains references (but not secrets).
         assert!(registry_path.exists(), "registry file should be created");
         let registry_content = fs::read_to_string(&registry_path).unwrap();
-        assert!(registry_content.contains("provider:anthropic"), "registry should reference anthropic");
-        assert!(registry_content.contains("provider:openai"), "registry should reference openai");
-        assert!(!registry_content.contains("sk-ant-test-key"), "API key must not be in registry");
-        assert!(!registry_content.contains("refresh-token"), "OAuth refresh token must not be in registry");
-        assert!(!registry_content.contains("access-token"), "OAuth access token must not be in registry");
+        assert!(
+            registry_content.contains("provider:anthropic"),
+            "registry should reference anthropic"
+        );
+        assert!(
+            registry_content.contains("provider:openai"),
+            "registry should reference openai"
+        );
+        assert!(
+            !registry_content.contains("sk-ant-test-key"),
+            "API key must not be in registry"
+        );
+        assert!(
+            !registry_content.contains("refresh-token"),
+            "OAuth refresh token must not be in registry"
+        );
+        assert!(
+            !registry_content.contains("access-token"),
+            "OAuth access token must not be in registry"
+        );
 
         // Verify the original CLI file was NOT modified.
         let cli_content_after = fs::read_to_string(&cli_auth).unwrap();
-        assert!(cli_content_after.contains("sk-ant-test-key"), "CLI auth.json must not be modified");
-        assert!(cli_content_after.contains("refresh-token"), "CLI auth.json must not be modified");
+        assert!(
+            cli_content_after.contains("sk-ant-test-key"),
+            "CLI auth.json must not be modified"
+        );
+        assert!(
+            cli_content_after.contains("refresh-token"),
+            "CLI auth.json must not be modified"
+        );
 
         // Clean up: delete keychain entries using the provider IDs we know.
         // This is a best-effort cleanup to avoid polluting the real keychain.
@@ -1760,7 +1714,9 @@ fn remove_key_from_config(text: &str, section: &str, key: &str) -> Result<String
         .map(|p| p.remove(key).is_some())
         .unwrap_or(false);
     if !removed {
-        return Err(format!("\"{key}\" is not in the config's {section} section"));
+        return Err(format!(
+            "\"{key}\" is not in the config's {section} section"
+        ));
     }
     serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())
 }

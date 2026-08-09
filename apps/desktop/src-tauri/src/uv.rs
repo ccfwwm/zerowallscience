@@ -57,7 +57,7 @@ pub async fn run_uv(
             .sidecar("uv")
             .map_err(|e| format!("uv sidecar not found: {e}"))?
     }
-    .args(args);
+    .args(isolated_args(args));
     // Same proxy the OpenCode sidecar uses, plus optional PyPI / Python-download
     // mirrors: a GUI-launched app inherits no shell env, so without this uv's
     // download of the managed Python (github.com) and wheels (pypi.org) ignores
@@ -83,9 +83,7 @@ pub async fn run_uv(
                 ));
             }
             // Channel closed without a Terminated event: treat as failure.
-            Ok(None) => {
-                return Err(format!("{label} exited without a status: {}", last(&tail)))
-            }
+            Ok(None) => return Err(format!("{label} exited without a status: {}", last(&tail))),
             Ok(Some(event)) => event,
         };
         match event {
@@ -97,7 +95,13 @@ pub async fn run_uv(
                         continue;
                     }
                     push_tail(&mut tail, line);
-                    let _ = app.emit("setup-progress", SetupProgress { task, line: line.to_string() });
+                    let _ = app.emit(
+                        "setup-progress",
+                        SetupProgress {
+                            task,
+                            line: line.to_string(),
+                        },
+                    );
                 }
             }
             CommandEvent::Error(e) => push_tail(&mut tail, &e),
@@ -150,7 +154,10 @@ pub async fn create_venv(app: &AppHandle, task: &'static str, dir: &Path) -> Res
     // failed attempt so the retry can't inherit its broken pyvenv.cfg.
     let _ = app.emit(
         "setup-progress",
-        SetupProgress { task, line: "System Python unusable — downloading an isolated managed Python…".into() },
+        SetupProgress {
+            task,
+            line: "System Python unusable — downloading an isolated managed Python…".into(),
+        },
     );
     let _ = std::fs::remove_dir_all(dir);
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -167,6 +174,12 @@ fn last(tail: &VecDeque<String>) -> String {
     } else {
         tail.iter().cloned().collect::<Vec<_>>().join("\n")
     }
+}
+
+fn isolated_args(args: Vec<String>) -> Vec<String> {
+    std::iter::once("--no-config".to_owned())
+        .chain(args)
+        .collect()
 }
 
 #[cfg(test)]
@@ -190,5 +203,13 @@ mod tests {
         let mut tail = VecDeque::new();
         push_tail(&mut tail, "error: boom");
         assert!(last(&tail).contains("boom"));
+    }
+
+    #[test]
+    fn uv_commands_ignore_user_level_uv_configuration() {
+        assert_eq!(
+            isolated_args(vec!["pip".into(), "install".into(), "example".into()]),
+            vec!["--no-config", "pip", "install", "example"]
+        );
     }
 }

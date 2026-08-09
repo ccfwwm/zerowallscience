@@ -49,6 +49,8 @@ const mocks = vi.hoisted(() => ({
     name: string;
     models: { id: string; name: string; variants?: string[] }[];
   }[],
+  /** Number of provider-control method calls that fail while the sidecar restarts. */
+  failProviderCatalogReads: 0,
   /** One delayed skills response, used to reproduce a catalog response that
    * arrives after the user has switched runtimes. */
   skillsGate: null as Promise<{ name: string }[]> | null,
@@ -91,7 +93,13 @@ const mocks = vi.hoisted(() => ({
   hostSessions: [] as {
     id: string;
     directory?: string | null;
-    binding: { projectRoot: string; engineId?: string };
+    binding: {
+      projectRoot: string;
+      engineId?: string;
+      profileId?: string;
+      providerId?: string | null;
+      modelId?: string | null;
+    };
   }[],
   failHostSessionList: false,
   acpShutdown: vi.fn(async () => ({
@@ -323,8 +331,20 @@ vi.mock("@zerowall/sdk", async () => {
       if (mocks.failHostSessionList) throw new Error("session catalog unavailable");
       return mocks.hostSessions;
     }
-    async listProviders() { return mocks.providers; }
-    async getDefaultModel() { return mocks.currentModel; }
+    async listProviders() {
+      if (mocks.failProviderCatalogReads > 0) {
+        mocks.failProviderCatalogReads--;
+        throw new Error("provider catalog connection refused");
+      }
+      return mocks.providers;
+    }
+    async getDefaultModel() {
+      if (mocks.failProviderCatalogReads > 0) {
+        mocks.failProviderCatalogReads--;
+        throw new Error("default model connection refused");
+      }
+      return mocks.currentModel;
+    }
     async setDefaultModel(model: string) { mocks.setDefaultModelSpy(model); mocks.currentModel = model; }
     async addCustomProvider() {}
     async removeCustomProvider() {}
@@ -438,6 +458,27 @@ describe("runtime authentication", () => {
 
     expect(mocks.startRuntime).toHaveBeenCalledTimes(1);
     expect(useRuntimeStore.getState().status).toBe("ready");
+  });
+
+  it("uses the retrying connection path while an ACP engine environment starts", async () => {
+    const originalConnect = useRuntimeStore.getState().connect;
+    const originalConnectRetry = useRuntimeStore.getState().connectRetry;
+    const directConnect = vi.fn(async () => {});
+    const retryConnect = vi.fn(async () => true);
+    try {
+      useRuntimeStore.setState({
+        acpProfileId: "codex",
+        connect: directConnect,
+        connectRetry: retryConnect,
+      });
+
+      await useRuntimeStore.getState().bootstrap();
+
+      expect(retryConnect).toHaveBeenCalledOnce();
+      expect(directConnect).not.toHaveBeenCalled();
+    } finally {
+      useRuntimeStore.setState({ connect: originalConnect, connectRetry: originalConnectRetry });
+    }
   });
 
   it("connect() passes the per-run runtime password to the SDK client", async () => {
@@ -566,7 +607,7 @@ describe("per-session workspace folders", () => {
     mocks.fireEvent({ type: "session.idle", sessionId: "ses_new" });
     const s = useRuntimeStore.getState();
     expect(s.runningSessions["ses_new"]).toBeUndefined();
-    expect(s.threads["ses_new"].blocks.slice(-1)[0]).toMatchObject({ kind: "status-line", tone: "done" });
+    expect(s.threads["ses_new"].blocks).toEqual([{ kind: "user", text: "hi" }]);
   });
 
   it("a session error lands as a red line in the thread and unlocks the turn", async () => {
@@ -975,7 +1016,12 @@ describe("stale running locks and interrupt", () => {
     mocks.fireEvent({ type: "session.idle", sessionId: "ses_new" });
     const s = useRuntimeStore.getState();
     expect(s.runningSessions["ses_new"]).toBeUndefined();
-    expect(s.threads["ses_new"].blocks.slice(-1)[0]).toMatchObject({ kind: "status-line", tone: "done" });
+    expect(s.threads["ses_new"].blocks.slice(-1)[0]).toEqual({ kind: "user", text: "again" });
+    expect(s.threads["ses_new"].blocks).not.toContainEqual({
+      kind: "status-line",
+      text: "done",
+      tone: "done",
+    });
   });
 
   it("interrupt does nothing when no turn is running", async () => {
@@ -1784,9 +1830,11 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
 
   it("normalizes stale desktop runtime ids to the Host-owned OpenCode engine", async () => {
     mocks.acpLaunch.mockClear();
+    mocks.currentModel = "cloud/gpt-5.4";
+    mocks.providers = [{ id: "cloud", name: "Cloud", models: [{ id: "gpt-5.4", name: "GPT-5.4" }] }];
     useRuntimeStore.setState({
       defaultModel: "cloud/gpt-5.4",
-      providers: [{ id: "cloud", name: "Cloud", models: [{ id: "gpt-5.4", name: "GPT-5.4" }] }],
+      providers: mocks.providers,
     });
 
     await useRuntimeStore.getState().switchRuntime("removed-engine");
@@ -1800,9 +1848,11 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
   it("switchRuntime routes OpenCode conversations through the unified Host", async () => {
     mocks.clientOpts.length = 0;
     mocks.acpLaunch.mockClear();
+    mocks.currentModel = "cloud/gpt-5.4";
+    mocks.providers = [{ id: "cloud", name: "Cloud", models: [{ id: "gpt-5.4", name: "GPT-5.4" }] }];
     useRuntimeStore.setState({
       defaultModel: "cloud/gpt-5.4",
-      providers: [{ id: "cloud", name: "Cloud", models: [{ id: "gpt-5.4", name: "GPT-5.4" }] }],
+      providers: mocks.providers,
     });
 
     await useRuntimeStore.getState().switchRuntime("opencode");
@@ -1817,6 +1867,69 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     // but it must never become the turn execution runtime.
     expect(mocks.sendPromptSpy).not.toHaveBeenCalled();
     expect(useRuntimeStore.getState().sessions).toEqual([{ id: "opencode", title: "OpenCode" }]);
+  });
+
+  it("retries OpenCode Host initialization while its sidecar is restarting", async () => {
+    mocks.acpLaunch
+      .mockRejectedValueOnce(new Error("OpenCode request failed: connection refused"))
+      .mockResolvedValueOnce({
+        phase: "ready",
+        profile_id: "opencode",
+        runtime_info: null,
+        last_error: null,
+      });
+    mocks.currentModel = "cloud/gpt-5.4";
+    mocks.providers = [{ id: "cloud", name: "Cloud", models: [{ id: "gpt-5.4", name: "GPT-5.4" }] }];
+    useRuntimeStore.setState({
+      defaultModel: "cloud/gpt-5.4",
+      providers: mocks.providers,
+    });
+
+    await useRuntimeStore.getState().switchRuntime("opencode");
+
+    expect(mocks.acpLaunch).toHaveBeenCalledTimes(2);
+    expect(useRuntimeStore.getState().status).toBe("ready");
+  });
+
+  it("preserves the last model catalog and retries when provider control is temporarily unavailable", async () => {
+    mocks.failProviderCatalogReads = 2;
+    mocks.acpLaunch
+      .mockRejectedValueOnce(new Error("OpenCode request failed: connection refused"))
+      .mockResolvedValueOnce({
+        phase: "ready",
+        profile_id: "opencode",
+        runtime_info: null,
+        last_error: null,
+      });
+    mocks.currentModel = "cloud/gpt-5.4";
+    mocks.providers = [{ id: "cloud", name: "Cloud", models: [{ id: "gpt-5.4", name: "GPT-5.4" }] }];
+    useRuntimeStore.setState({
+      defaultModel: "cloud/gpt-5.4",
+      providers: mocks.providers,
+    });
+
+    await useRuntimeStore.getState().switchRuntime("opencode");
+
+    expect(mocks.acpLaunch).toHaveBeenCalledTimes(2);
+    expect(useRuntimeStore.getState().defaultModel).toBe("cloud/gpt-5.4");
+    expect(useRuntimeStore.getState().providers).toEqual(mocks.providers);
+    expect(useRuntimeStore.getState().status).toBe("ready");
+  });
+
+  it("rejects a hidden or stale OpenCode default until the user selects an available model", async () => {
+    mocks.acpLaunch.mockClear();
+    mocks.currentModel = "opencode/big-pickle";
+    mocks.providers = [{ id: "cloud", name: "Cloud", models: [{ id: "gpt-5.4", name: "GPT-5.4" }] }];
+    useRuntimeStore.setState({
+      defaultModel: "opencode/big-pickle",
+      providers: mocks.providers,
+    });
+
+    await useRuntimeStore.getState().switchRuntime("opencode");
+
+    expect(mocks.acpLaunch).not.toHaveBeenCalled();
+    expect(useRuntimeStore.getState().status).toBe("error");
+    expect(useRuntimeStore.getState().error).toMatch(/select.*model/i);
   });
 
   it("keeps legacy conversation state stable when OpenCode gets a new Host execution", async () => {
@@ -2068,11 +2181,66 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     const saved = JSON.parse(window.localStorage.getItem("zerowall.acp.config.codex")!);
     expect(saved).toEqual({ providerId: "zerowall-2", baseUrl: "https://gw/v1", model: "gpt-5-mini" });
     // … the existing agent accepted the model; no second launch occurs.
-    expect(mocks.acpSetModel).toHaveBeenCalledWith("gpt-5-mini");
+    expect(mocks.acpSetModel).toHaveBeenCalledWith("gpt-5-mini", "zerowall-2");
     expect(mocks.acpLaunch).not.toHaveBeenCalled();
     expect(useRuntimeStore.getState().defaultModel).toBe("zerowall-2/gpt-5-mini");
     // OpenCode's config PATCH was NOT used — this is a launch-env switch.
     expect(mocks.setDefaultModelSpy).not.toHaveBeenCalled();
+    window.localStorage.removeItem("zerowall.acp.config.codex");
+  });
+
+  it("changes an OpenCode Host model without requiring a legacy ACP launch config", async () => {
+    window.localStorage.removeItem("zerowall.acp.config.opencode");
+    mocks.currentModel = "zerowall-2/gpt-5.6-sol";
+    mocks.providers = [
+      { id: "zerowall-2", name: "AI 云平台 · standard", models: [{ id: "gpt-5.6-sol", name: "gpt-5.6-sol" }] },
+      { id: "zerowall-52", name: "AI 云平台 · premium", models: [{ id: "gpt-5.6-sol", name: "gpt-5.6-sol" }] },
+    ];
+    useRuntimeStore.setState({
+      defaultModel: "zerowall-2/gpt-5.6-sol",
+      providers: mocks.providers,
+    });
+    await useRuntimeStore.getState().switchRuntime("opencode");
+    mocks.acpSetModel.mockClear();
+    mocks.setDefaultModelSpy.mockClear();
+
+    await useRuntimeStore.getState().setDefaultModel("zerowall-52/gpt-5.6-sol");
+
+    expect(mocks.acpSetModel).toHaveBeenCalledWith("gpt-5.6-sol", "zerowall-52");
+    expect(mocks.setDefaultModelSpy).toHaveBeenCalledWith("zerowall-52/gpt-5.6-sol");
+    expect(useRuntimeStore.getState().defaultModel).toBe("zerowall-52/gpt-5.6-sol");
+  });
+
+  it("creates a transparent execution when a persisted binding uses another model", async () => {
+    window.localStorage.setItem(
+      "zerowall.acp.config.codex",
+      JSON.stringify({ providerId: "zerowall-52", baseUrl: "https://gw/v1", model: "gpt-5.6-sol" }),
+    );
+    mocks.hostSessions = [{
+      id: "conversation-1",
+      directory: "/ws/project",
+      binding: {
+        projectRoot: "/ws/project",
+        engineId: "codex",
+        profileId: "codex",
+        providerId: "zerowall-2",
+        modelId: "gpt-5",
+      },
+    }];
+    useRuntimeStore.setState({
+      acpProfileId: "codex",
+      currentId: "conversation-1",
+      workspace: "/ws/project",
+    });
+    mocks.acpLaunch.mockClear();
+
+    await useRuntimeStore.getState().connect();
+
+    expect(mocks.acpLaunch).toHaveBeenLastCalledWith(expect.objectContaining({
+      profileId: "codex",
+      logicalConversationId: "conversation-1",
+      newExecution: true,
+    }));
     window.localStorage.removeItem("zerowall.acp.config.codex");
   });
 
@@ -2129,6 +2297,55 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     window.localStorage.removeItem("zerowall.acp.config.codex");
   });
 
+  it("serializes rapid ACP model forks and keeps switching active until the final choice completes", async () => {
+    window.localStorage.setItem(
+      "zerowall.acp.config.codex",
+      JSON.stringify({ providerId: "zerowall-2", baseUrl: "https://gw/v1", model: "gpt-5" }),
+    );
+    useRuntimeStore.setState({
+      currentId: "conversation-1",
+      threads: {
+        "conversation-1": {
+          blocks: [{ kind: "user", text: "existing context" }],
+          index: {},
+          loaded: true,
+        },
+      },
+    });
+    await useRuntimeStore.getState().switchRuntime("codex");
+    let finishFirstFork!: () => void;
+    let finishFinalFork!: () => void;
+    mocks.acpCreateSession
+      .mockImplementationOnce(
+        () => new Promise<string>((resolve) => { finishFirstFork = () => resolve("acp-session-2"); }),
+      )
+      .mockImplementationOnce(
+        () => new Promise<string>((resolve) => { finishFinalFork = () => resolve("acp-session-3"); }),
+      );
+
+    const first = useRuntimeStore.getState().setDefaultModel("zerowall-2/gpt-5-mini");
+    await vi.waitFor(() => expect(mocks.acpCreateSession).toHaveBeenCalledTimes(1));
+    const second = useRuntimeStore.getState().setDefaultModel("zerowall-2/gpt-5.6-terra");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mocks.acpCreateSession).toHaveBeenCalledTimes(1);
+    expect(useRuntimeStore.getState().switching).toBe(true);
+
+    finishFirstFork();
+    await vi.waitFor(() => expect(mocks.acpCreateSession).toHaveBeenCalledTimes(2));
+    expect(useRuntimeStore.getState().switching).toBe(true);
+
+    finishFinalFork();
+    await Promise.all([first, second]);
+
+    expect(useRuntimeStore.getState().switching).toBe(false);
+    expect(useRuntimeStore.getState().defaultModel).toBe("zerowall-2/gpt-5.6-terra");
+    expect(JSON.parse(window.localStorage.getItem("zerowall.acp.config.codex")!)).toMatchObject({
+      model: "gpt-5.6-terra",
+    });
+    window.localStorage.removeItem("zerowall.acp.config.codex");
+  });
+
   it("in ACP mode ignores a model that is already active", async () => {
     await useRuntimeStore.getState().switchRuntime("codex");
     mocks.acpLaunch.mockClear();
@@ -2169,7 +2386,7 @@ describe("runtime factory (OpenCode ⇄ ACP)", () => {
     await new Promise((r) => setTimeout(r, 0)); // settle the fired setDefaultModel
     // Routed through the live ACP session, not a store-only per-pane map.
     expect(useRuntimeStore.getState().sessionModels["codex"]).toBeUndefined();
-    expect(mocks.acpSetModel).toHaveBeenCalledWith("gpt-5-mini");
+    expect(mocks.acpSetModel).toHaveBeenCalledWith("gpt-5-mini", "zerowall-2");
     expect(mocks.acpLaunch).not.toHaveBeenCalled();
     window.localStorage.removeItem("zerowall.acp.config.codex");
   });

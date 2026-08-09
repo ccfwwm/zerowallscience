@@ -10,8 +10,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use futures::channel::oneshot;
-use tauri::{AppHandle, Emitter, Manager, State};
 use sha2::{Digest, Sha256};
+use tauri::{AppHandle, Emitter, Manager, State};
 use zerowall_acp::{
     AcpAgentProfile, AcpClient, AcpEvent, AcpEventErrorKind, AcpEventReceiver, AcpHandshakeStage,
     AcpMcpServer, AcpTokenUsage, PromptAttachment,
@@ -756,7 +756,10 @@ pub(crate) fn bundled_cli_candidates(resource_root: &Path, profile_id: &str) -> 
         vec![cli_name.to_string()]
     };
     candidates.extend(names.into_iter().flat_map(|name| {
-        [runtime_root.join("bin").join(&name), runtime_root.join(&name)]
+        [
+            runtime_root.join("bin").join(&name),
+            runtime_root.join(&name),
+        ]
     }));
     candidates
 }
@@ -1001,31 +1004,36 @@ async fn prepare_environment(
     profile_spec(profile_id)?;
     let workspace = crate::runtime::workspace_dir(app)?;
     let preparation_key = format!("{}::{}", profile_id, workspace.to_string_lossy());
-    if state.prepared_profiles.lock().unwrap().contains(&preparation_key) {
+    if state
+        .prepared_profiles
+        .lock()
+        .unwrap()
+        .contains(&preparation_key)
+    {
         return Ok(());
     }
     let runtime_home = acp_runtime_home(app, profile_id)?;
     prepare_runtime_layout(&runtime_home, profile_id)?;
-    crate::runtime::deploy_bundled_skills_for_acp(
+    crate::runtime::deploy_all_skills_for_acp(
         app,
+        &workspace,
         &acp_skill_directory(&runtime_home, profile_id)?,
-        &runtime_home.join(".zerowall").join("skills-store"),
     )?;
     // MCP provisioning is independent from ACP readiness. Probe descriptors
     // opportunistically and let the supervisor retry failed servers later.
     let _ = managed_mcp_servers(app);
-    state.prepared_profiles.lock().unwrap().insert(preparation_key);
+    state
+        .prepared_profiles
+        .lock()
+        .unwrap()
+        .insert(preparation_key);
     Ok(())
 }
 
 /// Every ACP session receives only host-owned descriptors. Jupyter is optional
 /// and joins only after its managed environment and localhost server are ready.
 fn managed_mcp_servers(app: &AppHandle) -> Result<Vec<AcpMcpServer>, String> {
-    let mut servers = crate::science_mcp::acp_mcp_servers(app)?;
-    if let Some(jupyter) = crate::jupyter::acp_mcp_server(app) {
-        servers.push(jupyter);
-    }
-    Ok(servers)
+    crate::acp_host::configured_mcp_servers_for_acp(app)
 }
 
 #[tauri::command]
@@ -1051,8 +1059,12 @@ pub struct AcpSkillInfo {
 #[tauri::command]
 pub fn acp_list_skills(app: AppHandle, profile_id: String) -> Result<Vec<AcpSkillInfo>, String> {
     profile_spec(&profile_id)?;
-    let root = crate::runtime::workspace_dir(&app)?;
-    let root = acp_skill_directory(&root, &profile_id)?;
+    let workspace = crate::runtime::workspace_dir(&app)?;
+    let root = workspace
+        .join(".zerowall")
+        .join("skill-catalog")
+        .join(profile_id);
+    crate::runtime::deploy_all_skills_for_acp(&app, &workspace, &root)?;
     let mut skills = Vec::new();
     collect_acp_skills(&root, &mut skills)?;
     skills.sort_by(|left, right| left.name.cmp(&right.name));
@@ -1536,7 +1548,10 @@ pub async fn acp_set_model(
             .client
             .clone()
     };
-    client.set_model(model).await.map_err(|error| error.to_string())?;
+    client
+        .set_model(model)
+        .await
+        .map_err(|error| error.to_string())?;
     emit_diagnostic(
         &app,
         AcpDiagnostic {
@@ -1595,7 +1610,8 @@ fn spawn_prompt_watchdog(app: AppHandle, epoch: u64) {
             }
             let force = {
                 let inner = state.inner.lock().unwrap();
-                inner.active_epoch == Some(epoch) && inner.force_watchdog_termination(Instant::now())
+                inner.active_epoch == Some(epoch)
+                    && inner.force_watchdog_termination(Instant::now())
             };
             if force {
                 terminate_stalled_prompt(&app, &state, epoch).await;
@@ -2581,7 +2597,10 @@ mod tests {
     fn active_environment_root_replaces_bundled_runtime_root() {
         let active = PathBuf::from("C:/environment/versions/v1");
         let bundled = PathBuf::from("C:/app");
-        assert_eq!(select_runtime_resource_root(Some(active.clone()), bundled), active);
+        assert_eq!(
+            select_runtime_resource_root(Some(active.clone()), bundled),
+            active
+        );
         assert_eq!(
             select_runtime_resource_root(None, PathBuf::from("C:/app")),
             PathBuf::from("C:/app")

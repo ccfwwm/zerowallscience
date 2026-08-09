@@ -109,14 +109,20 @@ export const BlockList = memo(function BlockList({
    *  (the reviewer card's claims) need it to file that state correctly. */
   sessionId?: string | null;
 }) {
+  // Older builds persisted the protocol's terminal marker as a visible row.
+  // Hide that exact legacy shape while preserving meaningful completed status
+  // lines produced by workflows and tools.
+  const visibleBlocks = blocks.filter(
+    (block) => !(block.kind === "status-line" && block.tone === "done" && block.text.trim().toLowerCase() === "done"),
+  );
   // Runs of quiet tool steps render as one collapsible group (Codex-style);
   // everything else — text, artifacts, prominent tool cards — on its own.
   // The Undo action attaches to the last agent reply only.
   let lastAgentIndex = -1;
-  for (let i = 0; i < blocks.length; i++) if (blocks[i].kind === "agent") lastAgentIndex = i;
+  for (let i = 0; i < visibleBlocks.length; i++) if (visibleBlocks[i].kind === "agent") lastAgentIndex = i;
   return (
     <>
-      {groupToolBlocks(blocks).map((item) =>
+      {groupToolBlocks(visibleBlocks).map((item) =>
         item.kind === "group" ? (
           <ToolGroup
             key={`group:${item.start}`}

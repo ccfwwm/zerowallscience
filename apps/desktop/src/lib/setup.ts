@@ -66,17 +66,17 @@ interface SetupState {
  *  made), so a restart doesn't re-run installs the user may have since removed. */
 const DEFAULTS_KEY = "zerowall:connectorDefaults";
 
-function defaultsAttempted(): boolean {
+function defaultsAttempted(environmentVersion: string): boolean {
   try {
-    return localStorage.getItem(DEFAULTS_KEY) === "done";
+    return localStorage.getItem(DEFAULTS_KEY) === `done:${environmentVersion}`;
   } catch {
     return true; // no storage ⇒ never auto-install, we couldn't remember not to
   }
 }
 
-function markDefaultsAttempted(): void {
+function markDefaultsAttempted(environmentVersion: string): void {
   try {
-    localStorage.setItem(DEFAULTS_KEY, "done");
+    localStorage.setItem(DEFAULTS_KEY, `done:${environmentVersion}`);
   } catch {
     /* ignore */
   }
@@ -215,10 +215,10 @@ let progressUnlisten: (() => void) | null = null;
  * why it announces itself and why it is remembered even on failure: a user who
  * removes a default connector must not find it reinstalled on next launch.
  */
-export function ensureDefaultConnectors(): void {
+export function ensureDefaultConnectors(environmentVersion = "legacy"): void {
   if (isGatewayWeb || !isTauri) return;
-  if (defaultsAttempted()) return;
-  markDefaultsAttempted();
+  if (defaultsAttempted(environmentVersion)) return;
+  markDefaultsAttempted(environmentVersion);
   void (async () => {
     toast.success(
       `Setting up ${RECOMMENDED_CONNECTOR_IDS.length} default connectors in the background — ` +

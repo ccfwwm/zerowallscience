@@ -4,6 +4,7 @@ import {
   type AgentEvent,
   type AgentEngine,
   type PromptAttachment,
+  type SkillInfo,
 } from "@zerowall/sdk";
 import type {
   AcpEventHandlers,
@@ -304,9 +305,12 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
       }
       await hostState.client.close(sessionId);
     },
-    setModel: async (model) => {
+    setModel: async (model, provider) => {
       if (!hostState) throw new Error("ACP Host session is not running");
-      await hostState.client.setConfig(hostState.sessionId, { model });
+      await hostState.client.setConfig(hostState.sessionId, {
+        model,
+        ...(provider ? { provider } : {}),
+      });
     },
     cancel: async () => {
       if (!hostState) return;
@@ -338,6 +342,6 @@ export function createAcpHostRuntimeDeps(invoke: AcpHostInvoke = defaultInvoke):
         if (hostState) hostState.unsubscribe = null;
       };
     },
-    listSkills: async () => [],
+    listSkills: async (profileId) => invoke<SkillInfo[]>("acp_list_skills", { profileId }),
   };
 }

@@ -126,6 +126,7 @@ import { toast } from "@/lib/toast";
 import i18n from "@/i18n";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const OPENCODE_MODEL_SELECTION_REQUIRED = "Select an available model before switching to OpenCode";
 
 /** Build the engine-neutral instruction used by the Skills control surface.
  * The active ACP driver owns the actual project directory convention; the
@@ -133,7 +134,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export function buildSkillInstallPrompt(text: string): string {
   return (
     "Install the following as a project Skill for the current ACP engine. " +
-    "Use the prepared project skill directory discovered by the active engine; " +
+    "Write it to the shared project skill directory at " +
+    "`.zerowall/skills/<skill-id>/SKILL.md`; every engine discovers this directory. " +
     "do not write to a global directory or invoke vendor-specific customization helpers. " +
     "If it is a URL, fetch it only with the user's permission; if it is Markdown, " +
     "save it as a SKILL.md in a new named skill directory. Validate the manifest " +
@@ -277,9 +279,12 @@ function buildOpenCodeHostLaunchRequest(
 ): AcpLaunchRequest {
   const raw = selectedModel?.trim() ?? "";
   const slash = raw.indexOf("/");
-  const providerId = slash > 0 ? raw.slice(0, slash) : providers[0]?.id ?? "default";
-  const model = slash > 0 ? raw.slice(slash + 1) : raw;
-  if (!model) throw new Error("Select a model before switching to OpenCode");
+  const providerId = slash > 0 ? raw.slice(0, slash) : "";
+  const model = slash > 0 ? raw.slice(slash + 1) : "";
+  const provider = providers.find((entry) => entry.id === providerId);
+  if (!provider || !provider.models.some((entry) => entry.id === model)) {
+    throw new Error(OPENCODE_MODEL_SELECTION_REQUIRED);
+  }
   return {
     profileId: "opencode",
     conversationId,
@@ -2251,7 +2256,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         providerControl?.listProviders().catch(() => []) ?? Promise.resolve([]),
       ]);
       if (!ownsCatalog()) return;
-      const defaultModel = acpId ? acpDefaultModelKey(acpId) : clientDefaultModel;
+      const defaultModel = acpId && acpId !== "opencode"
+        ? acpDefaultModelKey(acpId)
+        : clientDefaultModel;
       // A model switch in flight owns `defaultModel`: this read may predate
       // the switch's config write, and applying it would visibly revert the
       // just-selected model.
@@ -2388,7 +2395,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         return activeAcpModelSwitch;
       }
       const current = loadAcpConfig(acpId);
-      const currentKey = current ? `${current.providerId}/${current.model}` : null;
+      const currentKey = acpId === "opencode"
+        ? get().defaultModel
+        : current ? `${current.providerId}/${current.model}` : null;
       // Repeated picker events and delayed catalog refreshes may ask to apply
       // the already-running model. Relaunching an ACP agent for that no-op
       // visibly interrupts the conversation and can create duplicate MCP
@@ -2397,7 +2406,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         set({ defaultModel: model, modelSwitchError: null });
         return;
       }
-      if (!current) {
+      if (!current && acpId !== "opencode") {
         toast.error(i18n.t("settings:toast.noModelSelected"));
         return;
       }
@@ -2436,7 +2445,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
             const targetProviderId = target.slice(0, targetSlash);
             const targetModelId = target.slice(targetSlash + 1);
             const base = loadAcpConfig(acpId);
-            if (!base) {
+            if (!base && acpId !== "opencode") {
               toast.error(i18n.t("settings:toast.noModelSelected"));
               return;
             }
@@ -2452,12 +2461,14 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
               if (get().acpProfileId !== acpId) return;
               // Persist only after the adapter accepted the change. The next
               // runtime launch therefore starts with the last working model.
-              saveAcpConfig(acpId, {
-                providerId: targetProviderId,
-                baseUrl: base.baseUrl,
-                model: targetModelId,
-                ...(base.platform ? { platform: base.platform } : {}),
-              });
+              if (acpId !== "opencode" && base) {
+                saveAcpConfig(acpId, {
+                  providerId: targetProviderId,
+                  baseUrl: base.baseUrl,
+                  model: targetModelId,
+                  ...(base.platform ? { platform: base.platform } : {}),
+                });
+              }
               lastSwitchModel = target;
               lastSwitchAt = Date.now();
               set({ defaultModel: target });
@@ -2562,7 +2573,8 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // surface the same error, so connect once and let connect() paint the error
     // directly. Switching back to OpenCode still uses the retry loop — the
     // bundled sidecar's first boot can legitimately take a while (macOS TCC).
-    if (resolvedProfileId) await get().connect();
+    if (resolvedProfileId === "opencode") await get().connectRetry(12);
+    else if (resolvedProfileId) await get().connect();
     else await get().connectRetry();
   },
 
@@ -2686,11 +2698,23 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           const activeExecutionId = chain?.active ?? currentId;
           const persisted = catalog.find((session) => session.id === activeExecutionId)
             ?? catalog.find((session) => session.id === currentId);
-          const fresh = requestedFresh
-            || Boolean(
-              persisted?.binding.engineId
-              && persisted.binding.engineId !== acpProfileId,
-            );
+          const configuredModel = acpProfileId === "opencode"
+            ? get().defaultModel
+            : acpDefaultModelKey(acpProfileId);
+          const configuredSlash = configuredModel?.indexOf("/") ?? -1;
+          const configuredProvider = configuredSlash > 0
+            ? configuredModel!.slice(0, configuredSlash)
+            : null;
+          const configuredModelId = configuredSlash > 0
+            ? configuredModel!.slice(configuredSlash + 1)
+            : null;
+          const binding = persisted?.binding;
+          const fresh = requestedFresh || Boolean(binding && (
+            (binding.engineId && binding.engineId !== acpProfileId)
+            || (binding.profileId !== undefined && binding.profileId !== acpProfileId)
+            || (binding.providerId !== undefined && binding.providerId !== configuredProvider)
+            || (binding.modelId !== undefined && binding.modelId !== configuredModelId)
+          ));
           executionConversationId = fresh
             ? `execution-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
             : persisted?.id ?? chain?.active ?? currentId;
@@ -2709,28 +2733,54 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           void logDebug(`ACP session workspace lookup failed: ${error}`);
         }
       }
-      if (acpProfileId === "opencode" && !get().defaultModel) {
+      if (acpProfileId === "opencode") {
         const controlClient = getProviderControlClient();
         if (controlClient) {
-          const [defaultModel, providers] = await Promise.all([
-            controlClient.getDefaultModel().catch(() => null),
-            controlClient.listProviders().catch(() => []),
+          const [defaultModelResult, providersResult] = await Promise.all([
+            controlClient.getDefaultModel()
+              .then((value) => ({ ok: true as const, value }))
+              .catch((error) => ({ ok: false as const, error })),
+            controlClient.listProviders()
+              .then((value) => ({ ok: true as const, value }))
+              .catch((error) => ({ ok: false as const, error })),
           ]);
-          set({ defaultModel, providers });
+          if (defaultModelResult.ok) set({ defaultModel: defaultModelResult.value });
+          if (providersResult.ok) set({ providers: providersResult.value });
+          const catalogError = !defaultModelResult.ok
+            ? defaultModelResult.error
+            : !providersResult.ok
+              ? providersResult.error
+              : null;
+          if (catalogError !== null) {
+            const error = catalogError;
+            lastConnectError = `OpenCode provider catalog unavailable: ${error instanceof Error ? error.message : String(error)}`;
+            if (retryLoopActive) set({ status: "connecting", error: null });
+            else set({ status: "error", error: lastConnectError });
+            return;
+          }
         }
       }
       const preset = acpPresetById(acpProfileId);
-      const request = preset
-        ? buildAcpLaunchRequest(preset, executionConversationId, projectRoot)
-        : acpProfileId === "opencode"
-          ? buildOpenCodeHostLaunchRequest(
-              get().serverUrl,
-              get().defaultModel,
-              get().providers,
-              projectRoot,
-              executionConversationId,
-            )
-          : null;
+      let request: AcpLaunchRequest | null;
+      try {
+        request = preset
+          ? buildAcpLaunchRequest(preset, executionConversationId, projectRoot)
+          : acpProfileId === "opencode"
+            ? buildOpenCodeHostLaunchRequest(
+                get().serverUrl,
+                get().defaultModel,
+                get().providers,
+                projectRoot,
+                executionConversationId,
+              )
+            : null;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        lastConnectError = msg;
+        if (retryLoopActive) set({ status: "connecting", error: null });
+        else set({ status: "error", error: msg });
+        return;
+      }
       if (!request) {
         // A stale id whose preset was removed — fall back to OpenCode cleanly.
         set({ acpProfileId: null });
@@ -2970,6 +3020,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
           set({ modelSwitchError: null });
           return true;
         }
+        if (lastConnectError === OPENCODE_MODEL_SELECTION_REQUIRED) break;
         set({ status: "connecting", error: null });
         // Quick retries first — the server is usually up within a second (a
         // reconnect finds it already listening); back off to 1 s for the long
@@ -3045,7 +3096,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       // that its key + base URL are in place.
       if (get().acpProfileId) {
         void logDebug("bootstrap: OpenCode started (config only), connecting ACP runtime");
-        await get().connect();
+        await get().connectRetry();
         await get().recoverWorkflows();
         return;
       }
@@ -4065,11 +4116,9 @@ export function foldEvent(
       return { blocks, index };
     }
     case "session.idle": {
-      const last = blocks[blocks.length - 1];
-      if (last?.kind === "status-line" && last.tone === "done") {
-        return { blocks, index };
-      }
-      blocks.push({ kind: "status-line", text: "done", tone: "done" });
+      // `session.idle` is protocol state, not assistant content. The composer
+      // and activity indicators already reflect it, so a literal `done` row
+      // only looks like an empty assistant message.
       return { blocks, index };
     }
     default:

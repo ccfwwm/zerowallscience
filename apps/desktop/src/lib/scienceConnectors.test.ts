@@ -16,7 +16,7 @@ describe("connectorConfig", () => {
     const cfg = connectorConfig(byId("paper-search"), "/env/bin/python");
     expect(cfg).toMatchObject({
       type: "local",
-      command: ["/env/bin/python", "-m", "paper_search_mcp.server"],
+      command: ["/env/bin/python", "-s", "-m", "paper_search_mcp.server"],
       enabled: true,
     });
     expect(cfg.type === "local" && cfg.environment).toBeUndefined();
@@ -26,41 +26,52 @@ describe("connectorConfig", () => {
     const cfg = connectorConfig(byId("biomcp"), "/env/bin/python");
     expect(cfg.type === "local" && cfg.command).toEqual([
       "/env/bin/python",
+      "-s",
       "-m",
       "biomcp",
       "run",
     ]);
   });
 
-  it("launches a console-script connector beside the interpreter (unix)", () => {
+  it("launches a console entrypoint through the integrated interpreter", () => {
     const cfg = connectorConfig(byId("materials-project"), "/env/bin/python");
     expect(cfg.type === "local" && cfg.command).toEqual([
-      "/env/bin/mcp-materials-project",
+      "/env/bin/python",
+      "-s",
+      "-c",
+      "from mcp_materials import main; main()",
     ]);
   });
 
-  it("resolves the console script on Windows with .exe", () => {
+  it("keeps entrypoint launch portable on Windows", () => {
     const cfg = connectorConfig(byId("fred"), "C:\\env\\Scripts\\python.exe", "KEY");
     expect(cfg.type === "local" && cfg.command).toEqual([
-      "C:\\env\\Scripts\\fred-mcp.exe",
+      "C:\\env\\Scripts\\python.exe",
+      "-s",
+      "-c",
+      "from fred_mcp.main import main; main()",
     ]);
   });
 
-  it("never serializes an API key into the MCP config", () => {
+  it("serializes only a Keychain environment reference for keyed connectors", () => {
     const cfg = connectorConfig(byId("materials-project"), "/env/bin/python", "  mp-secret  ");
-    expect(cfg.type === "local" && cfg.environment).toBeUndefined();
+    expect(cfg.type === "local" && cfg.environment).toEqual({
+      MP_API_KEY: "{env:MP_API_KEY}",
+    });
     expect(JSON.stringify(cfg)).not.toContain("mp-secret");
   });
 
-  it("omits environment when the key is blank", () => {
+  it("keeps the Keychain reference when the key is entered separately", () => {
     const cfg = connectorConfig(byId("fred"), "/env/bin/python", "   ");
-    expect(cfg.type === "local" && cfg.environment).toBeUndefined();
+    expect(cfg.type === "local" && cfg.environment).toEqual({
+      FRED_API_KEY: "{env:FRED_API_KEY}",
+    });
   });
 
   it("every connector declares an id, discipline, package, and a launch path", () => {
     for (const c of SCIENCE_CONNECTORS) {
       expect(c.id && c.discipline && c.pkg && c.source).toBeTruthy();
-      expect(Boolean(c.bin) || Boolean(c.module)).toBe(true);
+      expect(Boolean(c.entrypoint) || Boolean(c.module)).toBe(true);
       if (c.apiKeyEnv) expect(c.apiKeyUrl).toBeTruthy(); // key-needing → tell users where to get one
     }
   });
@@ -77,9 +88,14 @@ describe("connectorConfig", () => {
     expect(disciplines.has("earth/climate")).toBe(true);
   });
 
-  it("launches the space-weather connector as a console script (physics)", () => {
+  it("launches the space-weather connector through Python (physics)", () => {
     const cfg = connectorConfig(byId("spaceweather"), "/env/bin/python");
-    expect(cfg.type === "local" && cfg.command).toEqual(["/env/bin/spaceweather-mcp"]);
+    expect(cfg.type === "local" && cfg.command).toEqual([
+      "/env/bin/python",
+      "-s",
+      "-m",
+      "spaceweather_mcp.server",
+    ]);
   });
 
   it("launches Open-Meteo weather as a `-m module` connector (earth, no key)", () => {
@@ -88,14 +104,36 @@ describe("connectorConfig", () => {
     const cfg = connectorConfig(c, "/env/bin/python");
     expect(cfg.type === "local" && cfg.command).toEqual([
       "/env/bin/python",
+      "-s",
       "-m",
       "mcp_weather_server",
     ]);
   });
 
-  it("launches USGS water data as a console script (earth, no key)", () => {
+  it("launches USGS water data through its Python entrypoint (earth, no key)", () => {
     const cfg = connectorConfig(byId("usgs-water"), "/env/bin/python");
-    expect(cfg.type === "local" && cfg.command).toEqual(["/env/bin/usgs-mcp"]);
+    expect(cfg.type === "local" && cfg.command).toEqual([
+      "/env/bin/python",
+      "-s",
+      "-c",
+      "from usgs_mcp.server import main; main()",
+    ]);
+  });
+
+  it("uses the integrated Python entrypoint for every connector", () => {
+    for (const connector of SCIENCE_CONNECTORS) {
+      const cfg = connectorConfig(connector, "C:\\environment\\mcp-python\\python.exe");
+      expect(cfg.type === "local" && cfg.command[0]).toBe(
+        "C:\\environment\\mcp-python\\python.exe",
+      );
+    }
+  });
+
+  it("isolates every integrated Python connector from user site packages", () => {
+    for (const connector of SCIENCE_CONNECTORS) {
+      const cfg = connectorConfig(connector, "C:\\environment\\mcp-python\\python.exe");
+      expect(cfg.type === "local" && cfg.command[1]).toBe("-s");
+    }
   });
 });
 

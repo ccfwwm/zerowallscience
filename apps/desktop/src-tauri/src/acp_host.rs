@@ -5,17 +5,17 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
-use zerowall_acp::AcpAgentProfile;
+use zerowall_acp::{AcpAgentProfile, AcpMcpServer};
 use zerowall_acp_host::acp_process::AcpProcessDriver;
 use zerowall_acp_host::opencode::{
     CustomProviderRequest, HttpOpenCodeTransport, McpConfig, McpServer, McpServerRequest,
     OpenCodeDriver, OpenCodeMcpControl, OpenCodeProviderControl, ProviderCatalog, ProviderInfo,
 };
 use zerowall_acp_host::{
-    mcp::McpCapabilityBroker, normalize_mcp_allow_list, normalize_mcp_tool_grants,
-    normalize_skill_snapshots, AcpHost, AcpHostDriver, AgentBinding, AgentEvent, CredentialRef,
-    HostDriverKind, HostError, NewSessionRequest, PromptAttachment, PromptResponse, SessionState,
-    SessionStatus, SkillSnapshot,
+    normalize_mcp_allow_list, normalize_mcp_tool_grants, normalize_skill_snapshots, AcpHost,
+    AcpHostDriver, AgentBinding, AgentEvent, CredentialRef, HostDriverKind, HostError,
+    NewSessionRequest, PromptAttachment, PromptResponse, SessionState, SessionStatus,
+    SkillSnapshot,
 };
 
 #[derive(Default)]
@@ -374,6 +374,20 @@ fn validate_base_url(value: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_remote_mcp_url(value: &str, has_headers: bool) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(value).map_err(|_| "MCP URL must be an absolute URL")?;
+    validate_base_url(value)?;
+    if has_headers && parsed.scheme() == "http" {
+        let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
+        let loopback =
+            matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1") || host.starts_with("127.");
+        if !loopback {
+            return Err("remote MCP endpoints with credentials must use HTTPS".into());
+        }
+    }
+    Ok(())
+}
+
 fn claude_base_url(value: &str) -> String {
     let trimmed = value.trim_end_matches('/');
     trimmed.strip_suffix("/v1").unwrap_or(trimmed).to_owned()
@@ -509,25 +523,22 @@ fn process_profile(
     let runtime_home = process_runtime_home(workspace, request);
     std::fs::create_dir_all(&runtime_home)
         .map_err(|error| format!("create ACP runtime directory: {error}"))?;
-    let snapshots = request.skills_snapshot.as_deref().unwrap_or_default();
-    let skill_store = workspace.join(".zerowall").join("skills-store");
-    if !snapshots.is_empty() {
-        crate::runtime::deploy_bundled_skills_to(app, &skill_store)?;
+    let skill_root = runtime_home.join("skills");
+    crate::runtime::deploy_all_skills_for_acp(app, workspace, &skill_root)?;
+    if let Some(snapshot) = request.skills_snapshot.as_deref() {
+        crate::runtime::enforce_skill_snapshot(&skill_root, snapshot)?;
     }
-    crate::runtime::materialize_skill_snapshots(
-        &skill_store,
-        &runtime_home.join("skills"),
-        snapshots,
-    )?;
-    // MCP discovery is best-effort: an unavailable optional connector must not
-    // prevent the unified ACP Host from starting the primary session.
-    let mut mcp_servers = crate::science_mcp::acp_mcp_servers(app).unwrap_or_default();
-    let allow_list = request.mcp_allow_list.as_deref().unwrap_or_default();
+    // Only user-enabled local MCP entries are exposed to process-backed
+    // engines. Bundling a package makes it available, never implicitly enabled.
+    let mut mcp_servers = match configured_mcp_servers_for_acp(app) {
+        Ok(servers) => servers,
+        Err(error) => {
+            eprintln!("custom MCP configuration unavailable: {error}");
+            Vec::new()
+        }
+    };
+    mcp_servers = apply_explicit_mcp_selection(mcp_servers, request.mcp_allow_list.as_deref());
     let grants = request.mcp_tool_grants.as_deref().unwrap_or_default();
-    mcp_servers.retain(|server| {
-        McpCapabilityBroker::allows_server(&server.name, allow_list)
-            && grants.iter().any(|grant| grant.server_id == server.name)
-    });
     mcp_servers = mcp_servers
         .into_iter()
         .map(|server| {
@@ -619,6 +630,207 @@ fn process_profile(
     })
 }
 
+#[derive(Default, Deserialize)]
+struct PersistedMcpConfig {
+    #[serde(default)]
+    mcp: std::collections::BTreeMap<String, McpConfig>,
+}
+
+fn configured_mcp_servers(app: &AppHandle) -> Result<Vec<AcpMcpServer>, String> {
+    let path = crate::runtime::effective_config_file(app)?;
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("read MCP configuration: {error}")),
+    };
+    let secrets = crate::secret_store::sidecar_secrets(app)?;
+    let integrated_python = crate::science_mcp::integrated_python(app)?;
+    let proxy = crate::science_mcp::mcp_proxy_path(app)?;
+    configured_mcp_servers_from_json(
+        &text,
+        &secrets.environment,
+        integrated_python.as_deref(),
+        &proxy,
+    )
+}
+
+pub(crate) fn configured_mcp_servers_for_acp(app: &AppHandle) -> Result<Vec<AcpMcpServer>, String> {
+    configured_mcp_servers(app)
+}
+
+enum ConfiguredMcpTarget {
+    Local(AcpMcpServer),
+    Remote {
+        name: String,
+        url: String,
+        headers: Vec<(String, String)>,
+    },
+}
+
+#[cfg(test)]
+fn configured_local_mcp_servers_from_json(
+    text: &str,
+    inherited_environment: &std::collections::BTreeMap<String, String>,
+    integrated_python: Option<&Path>,
+) -> Result<Vec<AcpMcpServer>, String> {
+    Ok(
+        configured_mcp_targets_from_json(text, inherited_environment, integrated_python)?
+            .into_iter()
+            .filter_map(|target| match target {
+                ConfiguredMcpTarget::Local(server) => Some(server),
+                ConfiguredMcpTarget::Remote { .. } => None,
+            })
+            .collect(),
+    )
+}
+
+fn configured_mcp_servers_from_json(
+    text: &str,
+    inherited_environment: &std::collections::BTreeMap<String, String>,
+    integrated_python: Option<&Path>,
+    proxy: &Path,
+) -> Result<Vec<AcpMcpServer>, String> {
+    let proxy = proxy.to_string_lossy().into_owned();
+    Ok(
+        configured_mcp_targets_from_json(text, inherited_environment, integrated_python)?
+            .into_iter()
+            .map(|target| match target {
+                ConfiguredMcpTarget::Local(mut server) => {
+                    let mut child = vec![server.command];
+                    child.append(&mut server.args);
+                    server.command = proxy.clone();
+                    server.args = child;
+                    server
+                }
+                ConfiguredMcpTarget::Remote { name, url, headers } => {
+                    let mut args = vec!["--remote-url".to_owned(), url];
+                    let mut env = Vec::with_capacity(headers.len());
+                    for (index, (header, value)) in headers.into_iter().enumerate() {
+                        let environment = format!("ZEROWALL_MCP_REMOTE_HEADER_{index}");
+                        args.extend(["--header-env".to_owned(), format!("{header}={environment}")]);
+                        env.push((environment, value));
+                    }
+                    AcpMcpServer {
+                        name,
+                        command: proxy.clone(),
+                        args,
+                        env,
+                    }
+                }
+            })
+            .collect(),
+    )
+}
+
+fn configured_mcp_targets_from_json(
+    text: &str,
+    inherited_environment: &std::collections::BTreeMap<String, String>,
+    integrated_python: Option<&Path>,
+) -> Result<Vec<ConfiguredMcpTarget>, String> {
+    let config: PersistedMcpConfig =
+        serde_json::from_str(text).map_err(|error| format!("parse MCP configuration: {error}"))?;
+    let mut servers = Vec::new();
+    for (name, config) in config.mcp {
+        let server: Result<Option<ConfiguredMcpTarget>, String> = (|| match config {
+            McpConfig::Local {
+                mut command,
+                enabled,
+                environment,
+            } => {
+                if enabled == Some(false) || command.is_empty() {
+                    return Ok(None);
+                }
+                let mut executable = command.remove(0);
+                if is_python_command(&executable) {
+                    let python = integrated_python.ok_or_else(|| {
+                        format!("MCP server {name} requires the installed base environment")
+                    })?;
+                    executable = python.to_string_lossy().into_owned();
+                    if command.first().map(String::as_str) != Some("-s") {
+                        command.insert(0, "-s".to_owned());
+                    }
+                }
+                let environment = resolve_mcp_values(&name, environment, inherited_environment)?;
+                Ok(Some(ConfiguredMcpTarget::Local(AcpMcpServer {
+                    name,
+                    command: executable,
+                    args: command,
+                    env: environment,
+                })))
+            }
+            McpConfig::Remote {
+                url,
+                enabled,
+                headers,
+            } => {
+                if enabled == Some(false) {
+                    return Ok(None);
+                }
+                validate_remote_mcp_url(&url, !headers.is_empty())?;
+                let headers = resolve_mcp_values(&name, headers, inherited_environment)?;
+                Ok(Some(ConfiguredMcpTarget::Remote { name, url, headers }))
+            }
+        })();
+        match server {
+            Ok(Some(server)) => servers.push(server),
+            Ok(None) => {}
+            Err(error) => eprintln!("{error}"),
+        }
+    }
+    Ok(servers)
+}
+
+fn resolve_mcp_values(
+    server_name: &str,
+    values: std::collections::BTreeMap<String, String>,
+    inherited_environment: &std::collections::BTreeMap<String, String>,
+) -> Result<Vec<(String, String)>, String> {
+    values
+        .into_iter()
+        .map(|(key, value)| {
+            let value = if let Some(environment) = value
+                .strip_prefix("{env:")
+                .and_then(|value| value.strip_suffix('}'))
+            {
+                inherited_environment.get(environment).cloned().ok_or_else(|| {
+                    format!(
+                        "MCP server {server_name} requires missing Keychain environment {environment}"
+                    )
+                })?
+            } else {
+                value
+            };
+            Ok((key, value))
+        })
+        .collect()
+}
+
+fn is_python_command(command: &str) -> bool {
+    let normalized = command.replace('\\', "/").to_ascii_lowercase();
+    let file_name = normalized.rsplit('/').next().unwrap_or(&normalized);
+    matches!(
+        file_name,
+        "python" | "python.exe" | "python3" | "python3.exe"
+    ) || normalized.contains("/runtime/science-mcp-env/")
+}
+
+fn apply_explicit_mcp_selection(
+    mut servers: Vec<AcpMcpServer>,
+    selected: Option<&[String]>,
+) -> Vec<AcpMcpServer> {
+    if let Some(selected) = selected {
+        if selected.iter().any(|server| server == "*") {
+            return servers;
+        }
+        let selected = selected
+            .iter()
+            .map(String::as_str)
+            .collect::<std::collections::HashSet<_>>();
+        servers.retain(|server| selected.contains(server.name.as_str()));
+    }
+    servers
+}
+
 fn process_runtime_home(workspace: &Path, request: &AcpHostLaunchRequest) -> PathBuf {
     let engine = match request.engine {
         HostDriverKind::Codex => "codex",
@@ -683,7 +895,10 @@ fn binding(request: &AcpHostLaunchRequest, workspace: &Path) -> AgentBinding {
         project_root: workspace.to_string_lossy().into_owned(),
         profile_fingerprint: request.profile_fingerprint.clone(),
         resolved_at: chrono_like_timestamp(),
-        mcp_allow_list: request.mcp_allow_list.clone().unwrap_or_default(),
+        mcp_allow_list: request
+            .mcp_allow_list
+            .clone()
+            .unwrap_or_else(|| vec!["*".to_owned()]),
         mcp_tool_grants: request.mcp_tool_grants.clone().unwrap_or_default(),
         skills_snapshot: request.skills_snapshot.clone().unwrap_or_default(),
     }
@@ -815,7 +1030,7 @@ fn validate_mcp_request(request: &McpServerRequest) -> Result<(), String> {
             validate_mcp_environment(environment)?;
         }
         McpConfig::Remote { url, headers, .. } => {
-            validate_base_url(url)?;
+            validate_remote_mcp_url(url, !headers.is_empty())?;
             validate_mcp_environment(headers)?;
         }
     }
@@ -1819,6 +2034,244 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use zerowall_acp_host::{DriverCall, DriverCapabilities, FakeDriver, SkillScope};
 
+    #[test]
+    fn remote_mcp_credentials_require_tls_except_on_loopback() {
+        assert!(validate_remote_mcp_url("https://mcp.example.test/rpc", true).is_ok());
+        assert!(validate_remote_mcp_url("http://127.0.0.1:8080/rpc", true).is_ok());
+        assert!(validate_remote_mcp_url("http://localhost:8080/rpc", true).is_ok());
+        let error = validate_remote_mcp_url("http://mcp.example.test/rpc", true).unwrap_err();
+        assert!(error.contains("HTTPS"));
+        assert!(validate_remote_mcp_url("http://mcp.example.test/rpc", false).is_ok());
+    }
+
+    #[test]
+    fn configured_local_mcp_servers_keep_all_enabled_custom_entries() {
+        let config = r#"{
+          "mcp": {
+            "custom-local": {
+              "type": "local",
+              "command": ["python.exe", "-m", "custom_mcp"],
+              "enabled": true,
+              "environment": {"CUSTOM_TOKEN": "{env:CUSTOM_TOKEN}"}
+            },
+            "disabled-local": {
+              "type": "local",
+              "command": ["disabled.exe"],
+              "enabled": false
+            },
+            "custom-remote": {
+              "type": "remote",
+              "url": "https://mcp.example.test",
+              "enabled": true
+            }
+          }
+        }"#;
+        let environment = std::collections::BTreeMap::from([(
+            "CUSTOM_TOKEN".to_owned(),
+            "secret-from-keychain".to_owned(),
+        )]);
+
+        let integrated = Path::new("C:/environment/current/mcp-python/python.exe");
+        let servers =
+            configured_local_mcp_servers_from_json(config, &environment, Some(integrated)).unwrap();
+
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "custom-local");
+        assert_eq!(servers[0].command, integrated.to_string_lossy());
+        assert_eq!(servers[0].args, ["-s", "-m", "custom_mcp"]);
+        assert_eq!(
+            servers[0].env,
+            [("CUSTOM_TOKEN".to_owned(), "secret-from-keychain".to_owned())]
+        );
+    }
+
+    #[test]
+    fn configured_remote_mcp_uses_the_stdio_proxy_and_keychain_backed_headers() {
+        let config = r#"{
+          "mcp": {
+            "remote-papers": {
+              "type": "remote",
+              "url": "https://mcp.example.test/rpc",
+              "enabled": true,
+              "headers": {
+                "Authorization": "{env:PAPERS_TOKEN}",
+                "X-Workspace": "science"
+              }
+            }
+          }
+        }"#;
+        let environment = std::collections::BTreeMap::from([(
+            "PAPERS_TOKEN".to_owned(),
+            "Bearer secret-from-keychain".to_owned(),
+        )]);
+
+        let servers = configured_mcp_servers_from_json(
+            config,
+            &environment,
+            None,
+            Path::new("C:/environment/current/zerowall-mcp-proxy.exe"),
+        )
+        .unwrap();
+
+        assert_eq!(servers.len(), 1);
+        assert_eq!(
+            servers[0].command,
+            "C:/environment/current/zerowall-mcp-proxy.exe"
+        );
+        assert_eq!(
+            servers[0].args,
+            [
+                "--remote-url",
+                "https://mcp.example.test/rpc",
+                "--header-env",
+                "Authorization=ZEROWALL_MCP_REMOTE_HEADER_0",
+                "--header-env",
+                "X-Workspace=ZEROWALL_MCP_REMOTE_HEADER_1",
+            ]
+        );
+        assert_eq!(
+            servers[0].env,
+            [
+                (
+                    "ZEROWALL_MCP_REMOTE_HEADER_0".to_owned(),
+                    "Bearer secret-from-keychain".to_owned(),
+                ),
+                (
+                    "ZEROWALL_MCP_REMOTE_HEADER_1".to_owned(),
+                    "science".to_owned(),
+                ),
+            ]
+        );
+        assert!(!servers[0]
+            .args
+            .iter()
+            .any(|argument| argument.contains("secret-from-keychain")));
+    }
+
+    #[test]
+    fn one_missing_keychain_placeholder_does_not_hide_other_mcp_servers() {
+        let config = r#"{
+          "mcp": {
+            "custom-local": {
+              "type": "local",
+              "command": ["python.exe", "-m", "custom_mcp"],
+              "enabled": true,
+              "environment": {"CUSTOM_TOKEN": "{env:CUSTOM_TOKEN}"}
+            },
+            "healthy-local": {
+              "type": "local",
+              "command": ["healthy.exe"],
+              "enabled": true
+            }
+          }
+        }"#;
+
+        let servers = configured_local_mcp_servers_from_json(
+            config,
+            &std::collections::BTreeMap::new(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "healthy-local");
+    }
+
+    #[test]
+    fn python_mcp_requires_the_integrated_base_environment() {
+        let config = r#"{
+          "mcp": {
+            "python-local": {
+              "type": "local",
+              "command": ["python", "-m", "custom_mcp"],
+              "enabled": true
+            },
+            "native-local": {
+              "type": "local",
+              "command": ["native-mcp.exe"],
+              "enabled": true
+            }
+          }
+        }"#;
+
+        let servers = configured_local_mcp_servers_from_json(
+            config,
+            &std::collections::BTreeMap::new(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "native-local");
+    }
+
+    #[test]
+    fn explicit_mcp_selection_filters_only_when_the_user_supplies_it() {
+        let servers = || {
+            vec![
+                AcpMcpServer {
+                    name: "papers".into(),
+                    command: "papers.exe".into(),
+                    args: Vec::new(),
+                    env: Vec::new(),
+                },
+                AcpMcpServer {
+                    name: "custom".into(),
+                    command: "custom.exe".into(),
+                    args: Vec::new(),
+                    env: Vec::new(),
+                },
+            ]
+        };
+
+        assert_eq!(
+            apply_explicit_mcp_selection(servers(), None)
+                .into_iter()
+                .map(|server| server.name)
+                .collect::<Vec<_>>(),
+            ["papers", "custom"]
+        );
+        assert_eq!(
+            apply_explicit_mcp_selection(servers(), Some(&["custom".to_owned()]))
+                .into_iter()
+                .map(|server| server.name)
+                .collect::<Vec<_>>(),
+            ["custom"]
+        );
+        assert!(apply_explicit_mcp_selection(servers(), Some(&[])).is_empty());
+        assert_eq!(
+            apply_explicit_mcp_selection(servers(), Some(&["*".to_owned()]))
+                .into_iter()
+                .map(|server| server.name)
+                .collect::<Vec<_>>(),
+            ["papers", "custom"]
+        );
+    }
+
+    #[test]
+    fn legacy_science_python_commands_migrate_to_the_integrated_environment() {
+        let config = r#"{
+          "mcp": {
+            "custom-local": {
+              "type": "local",
+              "command": ["C:/Users/test/AppData/Roaming/com.zerowall.science/runtime/science-mcp-env/Scripts/python.exe", "-m", "custom_mcp"],
+              "enabled": true
+            }
+          }
+        }"#;
+        let integrated = Path::new("C:/environment/current/mcp-python/python.exe");
+
+        let servers = configured_local_mcp_servers_from_json(
+            config,
+            &std::collections::BTreeMap::new(),
+            Some(integrated),
+        )
+        .unwrap();
+
+        assert_eq!(servers[0].command, integrated.to_string_lossy());
+        assert_eq!(servers[0].args.first().map(String::as_str), Some("-s"));
+    }
+
     fn test_binding(engine: HostDriverKind, root: &Path) -> AgentBinding {
         AgentBinding {
             engine,
@@ -1897,11 +2350,7 @@ mod tests {
     #[test]
     fn persisted_session_falls_back_to_the_immutable_binding_root() {
         let root = Path::new("C:/work/project");
-        let state = test_session(
-            "session",
-            test_binding(HostDriverKind::Codex, root),
-            None,
-        );
+        let state = test_session("session", test_binding(HostDriverKind::Codex, root), None);
 
         let persisted = persisted_session_from_state(&state, None, None);
 
@@ -1987,6 +2436,17 @@ mod tests {
     }
 
     #[test]
+    fn omitted_mcp_selection_binds_all_servers_instead_of_disabling_opencode() {
+        let root = std::env::current_dir().unwrap();
+        let request = test_launch_request(HostDriverKind::OpenCode, &root, "session-1");
+
+        let normalized = validate_request(&request).unwrap();
+        let session_binding = binding(&normalized, &root);
+
+        assert_eq!(session_binding.mcp_allow_list, ["*"]);
+    }
+
+    #[test]
     fn process_runtime_home_is_session_isolated_and_uses_no_raw_session_path() {
         let root = PathBuf::from("C:/science");
         let first = test_launch_request(HostDriverKind::Codex, &root, "../unsafe/session");
@@ -2026,11 +2486,8 @@ mod tests {
             &root,
             "32713ca5-1438-43a8-a573-4eb725c3d325",
         );
-        let persisted = test_persisted_session(
-            &request.session_id,
-            HostDriverKind::ClaudeCode,
-            &root,
-        );
+        let persisted =
+            test_persisted_session(&request.session_id, HostDriverKind::ClaudeCode, &root);
 
         restore_process_launch_metadata(&mut request, &persisted);
 
@@ -2038,7 +2495,7 @@ mod tests {
     }
 
     #[test]
-    fn launch_request_rejects_invalid_skill_snapshot_and_legacy_catalog_defaults_empty() {
+    fn launch_request_rejects_invalid_skill_snapshot_and_legacy_catalog_defaults_all_mcp() {
         let root = std::env::current_dir().unwrap();
         let mut request = test_launch_request(HostDriverKind::Codex, &root, "session-1");
         request.skills_snapshot = Some(vec![SkillSnapshot {
@@ -2067,7 +2524,7 @@ mod tests {
             "resumable": true
         }))
         .unwrap();
-        assert!(legacy.binding.mcp_allow_list.is_empty());
+        assert_eq!(legacy.binding.mcp_allow_list, ["*"]);
         assert!(legacy.binding.skills_snapshot.is_empty());
     }
 

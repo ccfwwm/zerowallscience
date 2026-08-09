@@ -15,10 +15,12 @@ export function AuthPage() {
           <span className="flex h-9 w-9 items-center justify-center rounded-input bg-text text-bg">
             <Cloud size={18} strokeWidth={1.8} />
           </span>
+          {/* eslint-disable-next-line i18next/no-literal-string -- locale-independent product brand */}
           <span className="text-sm font-semibold">ZeroWall Science</span>
         </div>
 
         <div className="max-w-md pb-10">
+          {/* eslint-disable-next-line i18next/no-literal-string -- locale-independent product slogan */}
           <p className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
             ZeroWall: Science Without Walls.
           </p>
@@ -30,7 +32,7 @@ export function AuthPage() {
           </p>
         </div>
 
-        <span className="text-xs text-muted">Local-first research workbench</span>
+        <span className="text-xs text-muted">{t("page.subtitle")}</span>
       </section>
 
       <section className="flex items-center justify-center px-12 py-10">

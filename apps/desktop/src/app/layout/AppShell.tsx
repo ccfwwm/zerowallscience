@@ -89,12 +89,12 @@ export function AppShell() {
   const runtimeReady = useRuntimeStore((s) => s.status) === "ready";
   useEffect(() => {
     if (runtimeReady && !import.meta.env.TEST) {
-      ensureDefaultConnectors();
+      ensureDefaultConnectors(environmentVersion ?? "legacy");
       // Heal pre-fix Jupyter MCP entries so they stop starting a kernel at
       // launch (which blocked the handshake and showed the server "failed").
       void healJupyterMcpEnv();
     }
-  }, [runtimeReady]);
+  }, [environmentVersion, runtimeReady]);
 
   // Web client: if the gateway rejects the token (rotated/revoked), drop back
   // to the token gate instead of looping on a failed connection.

@@ -16,6 +16,8 @@ const ENVELOPE_SCHEMA: &str = "zerowall.science/environment-envelope/v1";
 const PAYLOAD_SCHEMA: &str = "zerowall.science/environment/v1";
 const EMBEDDED_MANIFEST_URL: Option<&str> = option_env!("ZEROWALL_ENV_MANIFEST_URL");
 const EMBEDDED_PUBLIC_KEY: Option<&str> = option_env!("ZEROWALL_ENV_UPDATE_PUBLIC_KEY");
+const COMPONENT_DOWNLOAD_ATTEMPTS: usize = 5;
+const COMPONENT_DOWNLOAD_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 
 #[derive(Debug, Error)]
 enum BootstrapError {
@@ -56,6 +58,7 @@ struct Envelope {
 struct Manifest {
     schema: String,
     version: String,
+    target: String,
     components: Vec<ComponentSpec>,
     health_checks: Vec<HealthCheck>,
 }
@@ -134,20 +137,47 @@ fn verify_envelope(raw: &str, key_text: &str) -> Result<Manifest, BootstrapError
 }
 
 fn verify_index(raw: &str, key_text: &str) -> Result<EnvironmentIndex, BootstrapError> {
-    let bytes = base64::engine::general_purpose::STANDARD.decode(key_text.trim()).map_err(|_| BootstrapError::InvalidPublicKey)?;
-    let key_bytes: [u8; 32] = bytes.try_into().map_err(|_| BootstrapError::InvalidPublicKey)?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(key_text.trim())
+        .map_err(|_| BootstrapError::InvalidPublicKey)?;
+    let key_bytes: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| BootstrapError::InvalidPublicKey)?;
     let key = VerifyingKey::from_bytes(&key_bytes).map_err(|_| BootstrapError::InvalidPublicKey)?;
     let envelope: Envelope = serde_json::from_str(raw)?;
-    if envelope.schema != ENVELOPE_SCHEMA { return Err(BootstrapError::InvalidManifest("unsupported index envelope schema".into())); }
-    let signature = base64::engine::general_purpose::STANDARD.decode(envelope.signature).map_err(|_| BootstrapError::InvalidSignature)?;
-    key.verify(envelope.payload.as_bytes(), &Signature::from_slice(&signature).map_err(|_| BootstrapError::InvalidSignature)?).map_err(|_| BootstrapError::InvalidSignature)?;
+    if envelope.schema != ENVELOPE_SCHEMA {
+        return Err(BootstrapError::InvalidManifest(
+            "unsupported index envelope schema".into(),
+        ));
+    }
+    let signature = base64::engine::general_purpose::STANDARD
+        .decode(envelope.signature)
+        .map_err(|_| BootstrapError::InvalidSignature)?;
+    key.verify(
+        envelope.payload.as_bytes(),
+        &Signature::from_slice(&signature).map_err(|_| BootstrapError::InvalidSignature)?,
+    )
+    .map_err(|_| BootstrapError::InvalidSignature)?;
     let index: EnvironmentIndex = serde_json::from_str(&envelope.payload)?;
-    if index.schema != "zerowall.science/environment-index/v1" || index.version.is_empty() { return Err(BootstrapError::InvalidManifest("unsupported environment index".into())); }
+    if index.schema != "zerowall.science/environment-index/v1" || index.version.is_empty() {
+        return Err(BootstrapError::InvalidManifest(
+            "unsupported environment index".into(),
+        ));
+    }
     for target in index.targets.values() {
-        let url = reqwest::Url::parse(&target.manifest_url).map_err(|_| BootstrapError::InvalidManifest("invalid target manifest URL".into()))?;
-        if url.scheme() != "https" { return Err(BootstrapError::InvalidManifest("target manifest URL must use HTTPS".into())); }
+        let url = reqwest::Url::parse(&target.manifest_url)
+            .map_err(|_| BootstrapError::InvalidManifest("invalid target manifest URL".into()))?;
+        if url.scheme() != "https" {
+            return Err(BootstrapError::InvalidManifest(
+                "target manifest URL must use HTTPS".into(),
+            ));
+        }
         if let Some(hash) = target.manifest_sha256.as_deref() {
-            if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) { return Err(BootstrapError::InvalidManifest("invalid target manifest SHA-256".into())); }
+            if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                return Err(BootstrapError::InvalidManifest(
+                    "invalid target manifest SHA-256".into(),
+                ));
+            }
         }
     }
     Ok(index)
@@ -164,8 +194,19 @@ fn validate_manifest(manifest: Manifest) -> Result<Manifest, BootstrapError> {
             "exactly one environment bundle is required".into(),
         ));
     }
-    for value in [&manifest.version, &manifest.components[0].id] {
+    for value in [
+        &manifest.version,
+        &manifest.target,
+        &manifest.components[0].id,
+    ] {
         validate_path_segment(value)?;
+    }
+    let target = current_target()?;
+    if manifest.target != target {
+        return Err(BootstrapError::InvalidManifest(format!(
+            "manifest target {} does not match {target}",
+            manifest.target
+        )));
     }
     let component = &manifest.components[0];
     let url = reqwest::Url::parse(&component.url)
@@ -292,14 +333,48 @@ fn download_component(
         fs::create_dir_all(parent)?;
     }
 
-    let mut existing = fs::metadata(&partial)
+    let mut last_error = None;
+    for attempt in 0..COMPONENT_DOWNLOAD_ATTEMPTS {
+        match download_component_attempt(client, &partial, component) {
+            Ok(()) => {
+                last_error = None;
+                break;
+            }
+            Err(error @ BootstrapError::Download(_))
+                if attempt + 1 < COMPONENT_DOWNLOAD_ATTEMPTS =>
+            {
+                last_error = Some(error);
+                std::thread::sleep(COMPONENT_DOWNLOAD_RETRY_DELAY);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    if let Some(error) = last_error {
+        return Err(error);
+    }
+
+    if let Err(error) = verify_checksum(&partial, &component.sha256) {
+        if matches!(error, BootstrapError::ChecksumMismatch { .. }) {
+            let _ = fs::remove_file(&partial);
+        }
+        return Err(error);
+    }
+    Ok(partial)
+}
+
+fn download_component_attempt(
+    client: &reqwest::blocking::Client,
+    partial: &Path,
+    component: &ComponentSpec,
+) -> Result<(), BootstrapError> {
+    let mut existing = fs::metadata(partial)
         .map(|metadata| metadata.len())
         .unwrap_or(0);
     if component
         .size_bytes
         .is_some_and(|expected| existing > expected)
     {
-        fs::remove_file(&partial)?;
+        fs::remove_file(partial)?;
         existing = 0;
     }
 
@@ -340,29 +415,28 @@ fn download_component(
             .write(true)
             .append(append)
             .truncate(!append);
-        let mut output = open_with_retry(&options, &partial).map_err(|error| {
-            BootstrapError::Download(format!("open partial download {}: {error}", partial.display()))
+        let mut output = open_with_retry(&options, partial).map_err(|error| {
+            BootstrapError::Download(format!(
+                "open partial download {}: {error}",
+                partial.display()
+            ))
         })?;
-        std::io::copy(&mut response, &mut output)?;
+        std::io::copy(&mut response, &mut output).map_err(|error| {
+            BootstrapError::Download(format!("component stream interrupted: {error}"))
+        })?;
         output.flush()?;
         output.sync_all()?;
     }
 
     if let Some(expected) = component.size_bytes {
-        let actual = fs::metadata(&partial)?.len();
+        let actual = fs::metadata(partial)?.len();
         if actual != expected {
             return Err(BootstrapError::Download(format!(
                 "component size mismatch: expected {expected}, got {actual}"
             )));
         }
     }
-    if let Err(error) = verify_checksum(&partial, &component.sha256) {
-        if matches!(error, BootstrapError::ChecksumMismatch { .. }) {
-            let _ = fs::remove_file(&partial);
-        }
-        return Err(error);
-    }
-    Ok(partial)
+    Ok(())
 }
 
 fn extract_archive(archive: &Path, destination: &Path) -> Result<(), BootstrapError> {
@@ -378,19 +452,29 @@ fn extract_archive(archive: &Path, destination: &Path) -> Result<(), BootstrapEr
         }
         let target = destination.join(&relative);
         if entry.header().entry_type().is_dir() {
-            create_dir_all_with_retry(&target)
-                .map_err(|error| BootstrapError::Download(format!("extract directory {}: {error}", relative.display())))?;
+            create_dir_all_with_retry(&target).map_err(|error| {
+                BootstrapError::Download(format!(
+                    "extract directory {}: {error}",
+                    relative.display()
+                ))
+            })?;
         } else if entry.header().entry_type().is_file() {
             if let Some(parent) = target.parent() {
-                create_dir_all_with_retry(parent)
-                    .map_err(|error| BootstrapError::Download(format!("extract parent {}: {error}", parent.display())))?;
+                create_dir_all_with_retry(parent).map_err(|error| {
+                    BootstrapError::Download(format!(
+                        "extract parent {}: {error}",
+                        parent.display()
+                    ))
+                })?;
             }
             let mut options = OpenOptions::new();
             options.write(true).create_new(true);
-            let mut output = open_with_retry(&options, &target)
-                .map_err(|error| BootstrapError::Download(format!("extract {}: {error}", relative.display())))?;
-            std::io::copy(&mut entry, &mut output)
-                .map_err(|error| BootstrapError::Download(format!("extract file {}: {error}", relative.display())))?;
+            let mut output = open_with_retry(&options, &target).map_err(|error| {
+                BootstrapError::Download(format!("extract {}: {error}", relative.display()))
+            })?;
+            std::io::copy(&mut entry, &mut output).map_err(|error| {
+                BootstrapError::Download(format!("extract file {}: {error}", relative.display()))
+            })?;
         } else {
             return Err(BootstrapError::UnsafeArchivePath(
                 relative.display().to_string(),
@@ -431,10 +515,7 @@ fn run_health_checks(
     Ok(())
 }
 
-fn activate_current(
-    environment: &Path,
-    version: &str,
-) -> Result<(), BootstrapError> {
+fn activate_current(environment: &Path, version: &str) -> Result<(), BootstrapError> {
     let current = environment.join("current.json");
     let previous = fs::read(&current)
         .ok()
@@ -450,10 +531,15 @@ fn activate_current(
         installed_at: timestamp(),
     };
     let temp = environment.join(format!("current-{}.json.tmp", timestamp()));
-    write_file_with_retry(&temp, &serde_json::to_vec_pretty(&state)?)
-        .map_err(|error| BootstrapError::Download(format!("write current state {}: {error}", temp.display())))?;
-    replace_file_with_retry(&temp, &current)
-        .map_err(|error| BootstrapError::Download(format!("activate current state {}: {error}", current.display())))?;
+    write_file_with_retry(&temp, &serde_json::to_vec_pretty(&state)?).map_err(|error| {
+        BootstrapError::Download(format!("write current state {}: {error}", temp.display()))
+    })?;
+    replace_file_with_retry(&temp, &current).map_err(|error| {
+        BootstrapError::Download(format!(
+            "activate current state {}: {error}",
+            current.display()
+        ))
+    })?;
     Ok(())
 }
 
@@ -464,11 +550,17 @@ fn install(app_data: &Path, manifest: &Manifest, archive: &Path) -> Result<(), B
         .join("staging")
         .join(format!("{}-{}", manifest.version, timestamp()));
     let version_dir = versions.join(&manifest.version);
-    create_dir_all_with_retry(&versions).map_err(|error| BootstrapError::Download(format!("create versions {}: {error}", versions.display())))?;
+    create_dir_all_with_retry(&versions).map_err(|error| {
+        BootstrapError::Download(format!("create versions {}: {error}", versions.display()))
+    })?;
     if version_dir.exists() {
         let metadata_path = version_dir.join(".environment-manifest.json");
-        let persisted = fs::read(&metadata_path)
-            .map_err(|error| BootstrapError::Download(format!("read existing environment manifest {}: {error}", metadata_path.display())))?;
+        let persisted = fs::read(&metadata_path).map_err(|error| {
+            BootstrapError::Download(format!(
+                "read existing environment manifest {}: {error}",
+                metadata_path.display()
+            ))
+        })?;
         let persisted = validate_manifest(serde_json::from_slice(&persisted)?)?;
         if persisted.version != manifest.version {
             return Err(BootstrapError::InvalidManifest(format!(
@@ -479,13 +571,21 @@ fn install(app_data: &Path, manifest: &Manifest, archive: &Path) -> Result<(), B
         run_health_checks(&version_dir, &persisted.health_checks)?;
         return activate_current(&environment, &manifest.version);
     }
-    create_dir_all_with_retry(&staging).map_err(|error| BootstrapError::Download(format!("create staging {}: {error}", staging.display())))?;
+    create_dir_all_with_retry(&staging).map_err(|error| {
+        BootstrapError::Download(format!("create staging {}: {error}", staging.display()))
+    })?;
     let staged = (|| {
         extract_archive(archive, &staging)
             .map_err(|error| BootstrapError::Download(format!("extract archive: {error}")))?;
         let metadata_path = staging.join(".environment-manifest.json");
-        write_file_with_retry(&metadata_path, &serde_json::to_vec_pretty(manifest)?)
-            .map_err(|error| BootstrapError::Download(format!("write environment manifest {}: {error}", metadata_path.display())))?;
+        write_file_with_retry(&metadata_path, &serde_json::to_vec_pretty(manifest)?).map_err(
+            |error| {
+                BootstrapError::Download(format!(
+                    "write environment manifest {}: {error}",
+                    metadata_path.display()
+                ))
+            },
+        )?;
         run_health_checks(&staging, &manifest.health_checks)?;
         rename_with_retry(&staging, &version_dir)
             .map_err(|error| BootstrapError::Download(format!("activate environment: {error}")))?;
@@ -624,6 +724,18 @@ fn default_app_data() -> PathBuf {
         .join(".local/share/com.zerowall.science")
 }
 
+fn current_target() -> Result<&'static str, BootstrapError> {
+    match (std::env::consts::ARCH, std::env::consts::OS) {
+        ("x86_64", "windows") => Ok("x86_64-pc-windows-msvc"),
+        ("aarch64", "macos") => Ok("aarch64-apple-darwin"),
+        ("x86_64", "macos") => Ok("x86_64-apple-darwin"),
+        ("x86_64", "linux") => Ok("x86_64-unknown-linux-gnu"),
+        _ => Err(BootstrapError::InvalidManifest(
+            "unsupported platform target".into(),
+        )),
+    }
+}
+
 fn arg(args: &[String], name: &str) -> Option<String> {
     args.windows(2)
         .find(|pair| pair[0] == name)
@@ -687,20 +799,31 @@ fn run() -> Result<(), BootstrapError> {
         .text()
         .map_err(|error| BootstrapError::Download(error.to_string()))?;
     let index = verify_index(&index_raw, &config.public_key)?;
-    let target = match (std::env::consts::ARCH, std::env::consts::OS) {
-        ("x86_64", "windows") => "x86_64-pc-windows-msvc",
-        ("aarch64", "macos") => "aarch64-apple-darwin",
-        ("x86_64", "macos") => "x86_64-apple-darwin",
-        ("x86_64", "linux") => "x86_64-unknown-linux-gnu",
-        _ => return Err(BootstrapError::InvalidManifest("unsupported platform target".into())),
-    };
-    let target_manifest = index.targets.get(target).ok_or_else(|| BootstrapError::InvalidManifest(format!("target {target} is not published")))?;
-    let manifest_bytes = client.get(&target_manifest.manifest_url).send().and_then(|response| response.error_for_status()).map_err(|error| BootstrapError::Download(error.to_string()))?.bytes().map_err(|error| BootstrapError::Download(error.to_string()))?;
+    let target = current_target()?;
+    let target_manifest = index.targets.get(target).ok_or_else(|| {
+        BootstrapError::InvalidManifest(format!("target {target} is not published"))
+    })?;
+    let manifest_bytes = client
+        .get(&target_manifest.manifest_url)
+        .send()
+        .and_then(|response| response.error_for_status())
+        .map_err(|error| BootstrapError::Download(error.to_string()))?
+        .bytes()
+        .map_err(|error| BootstrapError::Download(error.to_string()))?;
     if let Some(expected) = target_manifest.manifest_sha256.as_deref() {
-        let actual = Sha256::digest(&manifest_bytes).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
-        if !actual.eq_ignore_ascii_case(expected) { return Err(BootstrapError::ChecksumMismatch { expected: expected.into(), actual }); }
+        let actual = Sha256::digest(&manifest_bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        if !actual.eq_ignore_ascii_case(expected) {
+            return Err(BootstrapError::ChecksumMismatch {
+                expected: expected.into(),
+                actual,
+            });
+        }
     }
-    let envelope = String::from_utf8(manifest_bytes.to_vec()).map_err(|error| BootstrapError::Download(error.to_string()))?;
+    let envelope = String::from_utf8(manifest_bytes.to_vec())
+        .map_err(|error| BootstrapError::Download(error.to_string()))?;
     let manifest = verify_envelope(&envelope, &config.public_key)?;
     let component = &manifest.components[0];
     let archive = download_component(&client, &config.app_data, &manifest.version, component)?;
@@ -722,8 +845,21 @@ mod tests {
     use ed25519_dalek::{Signer, SigningKey};
     use flate2::{write::GzEncoder, Compression};
 
+    fn test_target() -> &'static str {
+        match (std::env::consts::ARCH, std::env::consts::OS) {
+            ("x86_64", "windows") => "x86_64-pc-windows-msvc",
+            ("aarch64", "macos") => "aarch64-apple-darwin",
+            ("x86_64", "macos") => "x86_64-apple-darwin",
+            ("x86_64", "linux") => "x86_64-unknown-linux-gnu",
+            _ => "unsupported-test-target",
+        }
+    }
+
     fn valid_payload() -> String {
-        r#"{"schema":"zerowall.science/environment/v1","version":"v1","components":[{"id":"bundle","url":"https://example.test/bundle.tar.gz","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","archive":"tarGz"}],"healthChecks":[{"executable":"opencode.exe","args":["--version"]}]}"#.into()
+        let target = test_target();
+        format!(
+            r#"{{"schema":"zerowall.science/environment/v1","version":"v1","target":"{target}","components":[{{"id":"bundle","url":"https://example.test/bundle.tar.gz","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","archive":"tarGz"}}],"healthChecks":[{{"executable":"opencode.exe","args":["--version"]}}]}}"#
+        )
     }
 
     fn signed_envelope(payload: &str, key: &SigningKey) -> String {
@@ -798,6 +934,21 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(error, BootstrapError::InvalidSignature));
+    }
+
+    #[test]
+    fn rejects_a_manifest_for_a_different_platform_target() {
+        let key = SigningKey::from_bytes(&[3; 32]);
+        let payload = valid_payload().replace(
+            &format!("\"target\":\"{}\"", test_target()),
+            "\"target\":\"different-platform\"",
+        );
+        let error = verify_envelope(
+            &signed_envelope(&payload, &key),
+            &base64::engine::general_purpose::STANDARD.encode(key.verifying_key().to_bytes()),
+        )
+        .unwrap_err();
+        assert!(matches!(error, BootstrapError::InvalidManifest(_)));
     }
 
     #[test]
@@ -973,6 +1124,55 @@ mod tests {
     }
 
     #[test]
+    fn retries_an_interrupted_environment_download_and_resumes_the_partial_file() {
+        use std::io::{Read as _, Write as _};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            for attempt in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0_u8; 4096];
+                let read = stream.read(&mut request).unwrap();
+                let request = String::from_utf8_lossy(&request[..read]).to_ascii_lowercase();
+                if attempt == 0 {
+                    assert!(!request.contains("range:"), "{request}");
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nabc",
+                        )
+                        .unwrap();
+                } else {
+                    assert!(request.contains("range: bytes=3-"), "{request}");
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\nContent-Range: bytes 3-5/6\r\nConnection: close\r\n\r\ndef",
+                        )
+                        .unwrap();
+                }
+            }
+        });
+        let root = temp_root("retry-interrupted-download");
+        let expected = root.join("expected");
+        fs::write(&expected, b"abcdef").unwrap();
+        let component = ComponentSpec {
+            id: "environment-bundle".into(),
+            url: format!("http://{address}/bundle.tar.gz"),
+            sha256: hash_file(&expected).unwrap(),
+            archive: "tarGz".into(),
+            size_bytes: Some(6),
+        };
+
+        let downloaded =
+            download_component(&reqwest::blocking::Client::new(), &root, "v1", &component).unwrap();
+
+        server.join().unwrap();
+        assert_eq!(fs::read(&downloaded).unwrap(), b"abcdef");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn removes_install_staging_after_a_failed_health_check() {
         let root = temp_root("health-cleanup");
         let archive = root.join("bundle.tar.gz");
@@ -980,6 +1180,7 @@ mod tests {
         let manifest = Manifest {
             schema: PAYLOAD_SCHEMA.into(),
             version: "v1".into(),
+            target: test_target().into(),
             components: vec![ComponentSpec {
                 id: "environment-bundle".into(),
                 url: "https://example.test/bundle.tar.gz".into(),
@@ -1018,6 +1219,7 @@ mod tests {
         let manifest = Manifest {
             schema: PAYLOAD_SCHEMA.into(),
             version: "v1".into(),
+            target: test_target().into(),
             components: vec![ComponentSpec {
                 id: "environment-bundle".into(),
                 url: "https://example.test/bundle.tar.gz".into(),
@@ -1046,10 +1248,9 @@ mod tests {
             fs::read(version_dir.join("payload.txt")).unwrap(),
             b"running-version"
         );
-        let current: CurrentEnvironment = serde_json::from_slice(
-            &fs::read(root.join("environment/current.json")).unwrap(),
-        )
-        .unwrap();
+        let current: CurrentEnvironment =
+            serde_json::from_slice(&fs::read(root.join("environment/current.json")).unwrap())
+                .unwrap();
         assert_eq!(current.current_version, "v1");
         let _ = fs::remove_dir_all(root);
     }

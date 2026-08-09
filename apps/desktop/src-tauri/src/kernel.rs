@@ -795,6 +795,7 @@ mod tests {
         let v = read_response(&mut out, "1").expect("must find the response past the banner");
         assert_eq!(v["stdout"], "hi");
         let _ = child.kill();
+        let _ = child.wait();
     }
 
     // A response for another cell must never be handed over as this cell's
@@ -812,6 +813,7 @@ mod tests {
         let v = read_response(&mut out, "2").expect("must wait for the requested id");
         assert_eq!(v["stdout"], "fresh");
         let _ = child.kill();
+        let _ = child.wait();
     }
 
     // A kernel that died mid-cell must surface as an error, not hang.
@@ -825,6 +827,7 @@ mod tests {
         let e = read_response(&mut out, "1").unwrap_err();
         assert!(e.contains("exited"), "got: {e}");
         let _ = child.kill();
+        let _ = child.wait();
     }
 
     // Endless noise must not loop forever.
@@ -839,6 +842,7 @@ mod tests {
         let e = read_response(&mut out, "1").unwrap_err();
         assert!(e.contains("no usable response"), "got: {e}");
         let _ = child.kill();
+        let _ = child.wait();
     }
 
     #[test]
@@ -949,6 +953,7 @@ mod tests {
         assert!(r3["error"].as_str().unwrap().contains("ZeroDivisionError"));
 
         let _ = child.kill();
+        let _ = child.wait();
     }
 
     // The protocol stream must be unreachable from cell code. A subprocess
@@ -1002,6 +1007,7 @@ mod tests {
         assert_eq!(r3["result"], "'alive'");
 
         let _ = child.kill();
+        let _ = child.wait();
     }
 
     // A runaway loop must not produce one unbounded response line: the host
@@ -1040,6 +1046,7 @@ mod tests {
         assert!(out.trim_end().ends_with("199999"), "the tail must survive");
 
         let _ = child.kill();
+        let _ = child.wait();
     }
 
     // Figures: a matplotlib plot must come back as a base64 PNG, and a cell
@@ -1078,6 +1085,7 @@ mod tests {
         if read(&mut stdout)["result"].as_str() != Some("True") {
             eprintln!("skipping the figure assertion: matplotlib not installed");
             let _ = child.kill();
+            let _ = child.wait();
             return;
         }
 
@@ -1096,6 +1104,7 @@ mod tests {
         assert!(read(&mut stdout)["image"].is_null(), "a shown figure must not repeat");
 
         let _ = child.kill();
+        let _ = child.wait();
     }
 
     // Same round trip against the real R bridge (skipped if R is not installed):
@@ -1150,6 +1159,7 @@ mod tests {
         assert!(r4["error"].as_str().unwrap().contains("boom"));
 
         let _ = child.kill();
+        let _ = child.wait();
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1208,6 +1218,7 @@ mod tests {
         assert!(read(&mut stdout)["image"].is_null(), "a cell that draws nothing has no figure");
 
         let _ = child.kill();
+        let _ = child.wait();
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1243,6 +1254,7 @@ mod tests {
         assert!(out.contains("characters omitted"), "the clip must be visible to the user");
 
         let _ = child.kill();
+        let _ = child.wait();
         let _ = std::fs::remove_dir_all(&dir);
     }
 

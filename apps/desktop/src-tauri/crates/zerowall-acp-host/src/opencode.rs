@@ -132,6 +132,12 @@ pub enum McpConfig {
 }
 
 impl McpConfig {
+    fn is_enabled(&self) -> bool {
+        match self {
+            Self::Local { enabled, .. } | Self::Remote { enabled, .. } => *enabled != Some(false),
+        }
+    }
+
     fn set_enabled(&mut self, value: bool) {
         match self {
             Self::Local { enabled, .. } | Self::Remote { enabled, .. } => {
@@ -649,6 +655,7 @@ impl<T: OpenCodeTransport> OpenCodeMcpControl<T> {
         let mut names = statuses
             .keys()
             .chain(configs.keys())
+            .filter(|name| configs.get(*name).is_none_or(McpConfig::is_enabled))
             .cloned()
             .collect::<Vec<_>>();
         names.sort();
@@ -1239,18 +1246,14 @@ impl<T: OpenCodeTransport> AcpHostDriver for OpenCodeDriver<T> {
     }
 
     async fn set_config(&mut self, request: SetConfigRequest) -> Result<SessionState, HostError> {
-        let backing_session_id = self.backing_session_id(&request.session_id).to_owned();
-        let path = self.with_directory(&format!("/session/{}", encode_path(&backing_session_id)));
-        let body = request.config.to_string();
-        let response = self.send("PATCH", &path, Some(&body)).await?;
-        ensure_success(response.status, "session/config")?;
         crate::apply_config_to_binding(&mut self.binding, &request.config);
+        let backing_session_id = self.backing_session_id(&request.session_id).to_owned();
         Ok(SessionState {
             id: request.session_id.clone(),
             binding: self.binding.clone(),
             state: SessionStatus::Ready,
             resumable: false,
-            backing_session_id: Some(self.backing_session_id(&request.session_id).to_owned()),
+            backing_session_id: Some(backing_session_id),
             title: None,
             directory: Some(self.binding.project_root.clone()),
             parent_id: None,
@@ -3970,6 +3973,48 @@ mod tests {
         assert_eq!(value["model"]["providerID"], "cloud");
         assert_eq!(value["model"]["modelID"], "gpt-5.4");
         assert_eq!(value["variant"], "high");
+    }
+
+    #[test]
+    fn mcp_control_does_not_list_disabled_servers_as_available() {
+        let fake = Fake {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            responses: vec![
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"mcp":{"disabled":{"type":"local","command":["disabled.exe"],"enabled":false}}}"#.into(),
+                },
+                TransportResponse {
+                    status: 200,
+                    body: r#"{"disabled":{"status":"disabled"}}"#.into(),
+                },
+            ],
+        };
+        let mut control = OpenCodeMcpControl::new(fake, "http://x/", "u", "p");
+
+        let servers = block_on(control.list_mcp_servers()).unwrap();
+
+        assert!(servers.is_empty());
+    }
+
+    #[test]
+    fn set_config_updates_the_host_binding_without_patching_vendor_session_metadata() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let fake = Fake {
+            calls: calls.clone(),
+            responses: vec![],
+        };
+        let mut driver = OpenCodeDriver::new(fake, "http://x", "u", "p", binding());
+
+        let state = block_on(driver.set_config(SetConfigRequest {
+            session_id: "s1".into(),
+            config: json!({"provider": "cloud-b", "model": "gpt-5.6-sol"}),
+        }))
+        .unwrap();
+
+        assert_eq!(state.binding.provider.as_deref(), Some("cloud-b"));
+        assert_eq!(state.binding.model.as_deref(), Some("gpt-5.6-sol"));
+        assert!(calls.lock().unwrap().is_empty());
     }
 
     #[test]
