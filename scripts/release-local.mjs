@@ -41,10 +41,23 @@ async function publishApp() {
   if (!installer) {
     if (process.platform !== "win32") fail("automatic app build currently supports Windows only; pass --installer on other platforms");
     await run("pnpm", ["--filter", "@zerowall/desktop", "tauri", "build", "--bundles", "nsis"], qiniuEnv);
-    const bundleDir = join(root, "apps", "desktop", "src-tauri", "target", "x86_64-pc-windows-msvc", "release", "bundle", "nsis");
-    const files = (await readdir(bundleDir)).filter((file) => file.endsWith("-setup.exe") && file.includes(version));
-    if (files.length !== 1) fail(`expected one ${version} NSIS installer in ${bundleDir}`);
-    installer = join(bundleDir, files[0]);
+    const bundleDirs = [
+      join(root, "apps", "desktop", "src-tauri", "target", "release", "bundle", "nsis"),
+      join(root, "apps", "desktop", "src-tauri", "target", "x86_64-pc-windows-msvc", "release", "bundle", "nsis"),
+    ];
+    const installers = [];
+    for (const bundleDir of bundleDirs) {
+      const files = await readdir(bundleDir).catch(() => []);
+      installers.push(
+        ...files
+          .filter((file) => file.endsWith("-setup.exe") && file.includes(version))
+          .map((file) => join(bundleDir, file)),
+      );
+    }
+    if (installers.length !== 1) {
+      fail(`expected one ${version} NSIS installer across ${bundleDirs.join(", ")}`);
+    }
+    installer = installers[0];
   }
   installer = resolve(installer);
   const info = await stat(installer);
