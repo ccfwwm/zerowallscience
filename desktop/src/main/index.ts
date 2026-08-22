@@ -20,7 +20,7 @@ import type { DesktopInfo, RuntimeSnapshot } from '../shared/contracts.js'
 const { autoUpdater } = updaterPackage
 // Update pointers are mutable objects on the CDN; always revalidate them.
 autoUpdater.requestHeaders = { 'Cache-Control': 'no-cache' }
-const MCP_ENVIRONMENT_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAvWXBgM/HZGxpgW6fM8bbrHENAT//87AkphWPdymtuh4=\n-----END PUBLIC KEY-----`
+const MCP_ENVIRONMENT_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAu8wAGfgRWqQBdIGcbkwPlBq01SjgEMybgNh3xVv0ej4=\n-----END PUBLIC KEY-----`
 
 let mainWindow: BrowserWindow | undefined
 let runtime: HarnessRuntime | undefined

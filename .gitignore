@@ -31,3 +31,4 @@ __pycache__/
 *.pyc
 *.pyo
 .vscode
+mcp-environment-staging/
