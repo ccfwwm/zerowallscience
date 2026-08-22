@@ -9,6 +9,22 @@
     root: !!js dshHomePath('sessions')
     compression: none
 
+# The ZeroWall provider follows the active AI Cloud DeepSeek route. Keep the
+# DSH web seam pinned to it; the stock provider remains bundled for users who
+# run an official DeepSeek credential outside the desktop account.
+- id: web
+  config:
+    searchProvider: zerowall-ai-cloud-search
+
+# Both local coding assistants are installed on the desktop and their DSH
+# provider bundles are part of the runtime closure. Keep their tools enabled
+# in every preset; they still fail closed when the local CLI is unavailable.
+- insert:
+    - id: subagent-codex
+      name: '@deepseek-ai/dsh-subagent-codex'
+    - id: subagent-claude-code
+      name: '@deepseek-ai/dsh-subagent-claude-code'
+
 - id: attachment-local
   config:
     maxImageBytes: 52428800

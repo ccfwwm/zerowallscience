@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-web-search",
-  "version": "4.1.6",
+  "version": "4.1.7",
   "description": "ZeroWall Science web-search domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -85,7 +85,9 @@
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@zerowallscience/plugin-account": "workspace:^",
     "@zerowallscience/plugin-secrets": "workspace:^",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@deepseek-ai/dsh-web": "workspace:^",
+    "@deepseek-ai/dsh-web-search-deepseek": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.3"

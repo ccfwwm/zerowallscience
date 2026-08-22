@@ -63,7 +63,11 @@ const npmDependencies = {
   runs: { '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   publications: { '@zerowallscience/research-store': 'workspace:^', jszip: '3.10.1', zod: '^4.4.3' },
   presentations: { '@zerowallscience/research-store': 'workspace:^', '@pdf-lib/fontkit': '1.1.1', 'pdf-lib': '1.17.1', pptxgenjs: '4.0.1', zod: '^4.4.3' },
-  'web-search': { zod: '^4.4.3' },
+  'web-search': {
+    zod: '^4.4.3',
+    '@deepseek-ai/dsh-web': 'workspace:^',
+    '@deepseek-ai/dsh-web-search-deepseek': 'workspace:^',
+  },
   wechat: { qrcode: '^1.5.4', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0' },
 }
 

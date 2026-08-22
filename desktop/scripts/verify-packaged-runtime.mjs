@@ -138,13 +138,16 @@ async function verifySizePolicy() {
   // 3.0.8 bundles the local PDF.js, OOXML, and XLSX parsers so installed
   // runtime remains self-contained on clean machines. Keep a bounded gate,
   // but account for those offline parser assets.
-  if (installedBytes > 600 * MIB) throw new Error(`Installed output ${(installedBytes / MIB).toFixed(1)} MiB exceeds the 600 MiB gate.`)
+  // The stable profile now ships the opt-in Claude Code bridge and its signed
+  // Windows SDK runtime. Keep a hard ceiling, but account for that provider's
+  // ~250 MiB native payload instead of failing every release at 600 MiB.
+  if (installedBytes > 900 * MIB) throw new Error(`Installed output ${(installedBytes / MIB).toFixed(1)} MiB exceeds the 900 MiB gate.`)
 
   const installers = (await readdir(resolve(packageRoot, 'dist'), { withFileTypes: true }))
     .filter(entry => entry.isFile() && entry.name.includes(`-${packagedManifest.version}-`) && entry.name.endsWith('.exe') && !entry.name.toLowerCase().includes('uninstall'))
   for (const installer of installers) {
     const size = (await stat(resolve(packageRoot, 'dist', installer.name))).size
-    if (size > 160 * MIB) throw new Error(`Installer ${installer.name} ${(size / MIB).toFixed(1)} MiB exceeds the 160 MiB gate.`)
+    if (size > 240 * MIB) throw new Error(`Installer ${installer.name} ${(size / MIB).toFixed(1)} MiB exceeds the 240 MiB gate.`)
   }
 }
 

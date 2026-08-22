@@ -1,5 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
+import type { WebSearchProvider } from '@deepseek-ai/dsh-web'
+import { DeepSeekSearchProvider, type DeepSeekSearchProviderOptions } from '@deepseek-ai/dsh-web-search-deepseek'
 import type { AiCloudAccountSnapshot, AiCloudManagedModel } from '@zerowallscience/plugin-account/types'
 import { AiCloudClient, type AccountSecretStore } from '@zerowallscience/plugin-account'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
@@ -57,13 +59,13 @@ export class ZeroWallWebSearchController implements ZeroWallWebSearchService {
     const model = initiator?.options.model
     if (provider === undefined || model === undefined || !provider.startsWith(ROUTE_PREFIX)) return undefined
     const managed = this.models.get(`${provider}\0${model}`)
-    if (managed === undefined) return undefined
-    const groupId = managed.providerId.slice(ROUTE_PREFIX.length)
+    if (managed === undefined || !/^deepseek(?:[-_]|$)/iu.test(managed.modelId)) return undefined
+    const groupId = managed.groupId
     return {
       provider: managed.providerId,
       model: managed.modelId,
-      supportsWebSearch: false,
-      searchProtocol: 'openai-completions',
+      supportsWebSearch: true,
+      searchProtocol: 'anthropic-messages',
       // DeepSeek search uses the Anthropic-compatible gateway endpoint, not
       // the chat model's protocol-specific base. Claude model metadata may
       // intentionally be rooted at the host, so normalize search to `/v1`.
@@ -77,12 +79,30 @@ export class ZeroWallWebSearchController implements ZeroWallWebSearchService {
 }
 
 export const name = 'zerowall-web-search'
-export const inject = ['agents']
+export const inject = ['agents', 'web']
 
 export function apply(ctx: Context): void {
   const secrets = new SecretBrokerClient()
   const controller = new ZeroWallWebSearchController(ctx, { secrets })
   ctx.provide('zerowallWebSearch', controller)
+  const provider: WebSearchProvider = {
+    id: 'zerowall-ai-cloud-search',
+    available: () => controller.currentRoute()?.supportsWebSearch === true,
+    search: (request, signal) => {
+      const route = controller.currentRoute()
+      if (route === undefined) throw new Error('No active DeepSeek AI Cloud route is available for web search.')
+      const search = new DeepSeekSearchProvider((): DeepSeekSearchProviderOptions => ({
+        resolveApiKey: route.resolveApiKey,
+        baseURL: route.searchEndpoint,
+        model: route.model,
+        apiVersion: '2023-06-01',
+        maxTokens: 4096,
+        maxUses: 5,
+      }))
+      return search.search(request, signal)
+    },
+  }
+  ctx.get('web')?.registerSearchProvider(provider)
   ctx.on('zerowall/account-updated', snapshot => controller.update(snapshot))
   const account = new AiCloudClient({ secrets })
   void account.current().then(snapshot => controller.update(snapshot)).catch((error: unknown) => {
