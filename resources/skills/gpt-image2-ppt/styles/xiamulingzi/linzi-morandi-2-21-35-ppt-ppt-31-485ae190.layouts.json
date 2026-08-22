@@ -1,0 +1,493 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-35-ppt-ppt-31-485ae190",
+  "source": "local-pptx-distillation",
+  "source_hash": "485ae1903df70d74fa8a966a9cccda3fb50d1768882ba6b74234b95730f4c08f",
+  "global_style": "Minimalist Morandi-style template featuring muted earth tones, subtle marble textures, asymmetrical splits, and polaroid-style image framing with soft shadows.",
+  "theme": {
+    "palette": [
+      "#FFFFFF",
+      "#C6B398",
+      "#7C7876",
+      "#F4F4F4"
+    ],
+    "identity_anchors": [
+      "Asymmetrical split-screen backgrounds (often 20/80 or 30/70 ratios)",
+      "Subtle marble texture applied to specific layout zones or geometric shapes",
+      "Polaroid-style image frames with prominent white borders and soft drop shadows",
+      "Large, cropped geometric background elements (circles, diagonal sections)"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Asymmetrical split background with overlapping vertical accent block, large cropped background circle, and edge-aligned vertical text.",
+      "visual_signature": "Asymmetrical split background with overlapping vertical accent block, large cropped background circle, and edge-aligned vertical text. | zones=[\"Asymmetrical split background with overlapping vertical accent block, large cropped background circle, and edge-aligned vertical text.\"] | anchors=Asymmetrical split-screen backgrounds (often 20/80 or 30/70 ratios); Subtle marble texture applied to specific layout zones or geometric shapes; Polaroid-style image frames with prominent white borders and soft drop shadows",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Presentation title",
+        "Section breaker"
+      ],
+      "avoid_for": [
+        "Dense data",
+        "Image galleries",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "minimalist",
+        "split-background",
+        "typographic"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Narrow left sidebar with date/metadata and oversized typography, alongside a massive edge-to-edge landscape image anchored by a bottom banner.",
+      "visual_signature": "Narrow left sidebar with date/metadata and oversized typography, alongside a massive edge-to-edge landscape image anchored by a bottom banner. | zones=[\"Narrow left sidebar with date/metadata and oversized typography, alongside a massive edge-to-edge landscape image anchored by a bottom banner.\"] | anchors=Asymmetrical split-screen backgrounds (often 20/80 or 30/70 ratios); Subtle marble texture applied to specific layout zones or geometric shapes; Polaroid-style image frames with prominent white borders and soft drop shadows",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Chapter titles",
+        "Event announcements",
+        "Portfolio dividers"
+      ],
+      "avoid_for": [
+        "Standard bullet points",
+        "Multi-image layouts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "hero-image",
+        "date-focus",
+        "sidebar"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-05"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "hero-landscape",
+          "purpose": "Full-bleed section image",
+          "bbox": [
+            0.27,
+            0.1,
+            0.7,
+            0.8
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Three-column vertical card layout on a textured background, with the center card highlighted via an inverted background color.",
+      "visual_signature": "Three-column vertical card layout on a textured background, with the center card highlighted via an inverted background color. | zones=[\"Three-column vertical card layout on a textured background, with the center card highlighted via an inverted background color.\"] | anchors=Asymmetrical split-screen backgrounds (often 20/80 or 30/70 ratios); Subtle marble texture applied to specific layout zones or geometric shapes; Polaroid-style image frames with prominent white borders and soft drop shadows",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Product features",
+        "Service pillars",
+        "Portfolio gallery"
+      ],
+      "avoid_for": [
+        "Long-form text",
+        "Complex timelines",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "3-column",
+        "cards",
+        "gallery"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "card-left",
+          "purpose": "Left feature image",
+          "bbox": [
+            0.08,
+            0.26,
+            0.24,
+            0.35
+          ],
+          "priority": 2
+        },
+        {
+          "id": "card-center",
+          "purpose": "Center feature image",
+          "bbox": [
+            0.38,
+            0.26,
+            0.24,
+            0.35
+          ],
+          "priority": 1
+        },
+        {
+          "id": "card-right",
+          "purpose": "Right feature image",
+          "bbox": [
+            0.67,
+            0.26,
+            0.24,
+            0.35
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Left-aligned text blocks with a prominently overlapping, polaroid-style framed image on the right, bridging a split background.",
+      "visual_signature": "Left-aligned text blocks with a prominently overlapping, polaroid-style framed image on the right, bridging a split background. | zones=[\"Left-aligned text blocks with a prominently overlapping, polaroid-style framed image on the right, bridging a split background.\"] | anchors=Asymmetrical split-screen backgrounds (often 20/80 or 30/70 ratios); Subtle marble texture applied to specific layout zones or geometric shapes; Polaroid-style image frames with prominent white borders and soft drop shadows",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Single item showcase",
+        "Team member highlight",
+        "Key concept introduction"
+      ],
+      "avoid_for": [
+        "Multiple data points",
+        "Lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "polaroid",
+        "overlap",
+        "focus"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "main-showcase",
+          "purpose": "Primary subject showcase",
+          "bbox": [
+            0.46,
+            0.14,
+            0.37,
+            0.72
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Three-column vertical card layout on a textured background, with the center card highlighted via an inverted background color.",
+      "visual_signature": "Three-column vertical card layout on a textured background, with the center card highlighted via an inverted background color. | zones=[\"Three-column vertical card layout on a textured background, with the center card highlighted via an inverted background color.\"] | anchors=Asymmetrical split-screen backgrounds (often 20/80 or 30/70 ratios); Subtle marble texture applied to specific layout zones or geometric shapes; Polaroid-style image frames with prominent white borders and soft drop shadows",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Product features",
+        "Service pillars",
+        "Portfolio gallery"
+      ],
+      "avoid_for": [
+        "Long-form text",
+        "Complex timelines",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "3-column",
+        "cards",
+        "gallery"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "card-left",
+          "purpose": "Left feature image",
+          "bbox": [
+            0.08,
+            0.26,
+            0.24,
+            0.35
+          ],
+          "priority": 2
+        },
+        {
+          "id": "card-center",
+          "purpose": "Center feature image",
+          "bbox": [
+            0.38,
+            0.26,
+            0.24,
+            0.35
+          ],
+          "priority": 1
+        },
+        {
+          "id": "card-right",
+          "purpose": "Right feature image",
+          "bbox": [
+            0.67,
+            0.26,
+            0.24,
+            0.35
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Left-aligned text blocks with a prominently overlapping, polaroid-style framed image on the right, bridging a split background.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Left-aligned text blocks with a prominently overlapping, polaroid-style framed image on the right, bridging a split background. | zones=[\"Left-aligned text blocks with a prominently overlapping, polaroid-style framed image on the right, bridging a split background.\"] | anchors=Asymmetrical split-screen backgrounds (often 20/80 or 30/70 ratios); Subtle marble texture applied to specific layout zones or geometric shapes; Polaroid-style image frames with prominent white borders and soft drop shadows",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Single item showcase",
+        "Team member highlight",
+        "Key concept introduction"
+      ],
+      "avoid_for": [
+        "Multiple data points",
+        "Lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "polaroid",
+        "overlap",
+        "focus"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "main-showcase",
+          "purpose": "Primary subject showcase",
+          "bbox": [
+            0.46,
+            0.14,
+            0.37,
+            0.72
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "quote-primary",
+      "page_index": 6,
+      "page_type": "quote",
+      "semantic_role": "quote",
+      "summary": "Polaroid-style image overlapping a large cropped background circle on the left, paired with right-aligned text featuring decorative quotation marks.",
+      "visual_signature": "Polaroid-style image overlapping a large cropped background circle on the left, paired with right-aligned text featuring decorative quotation marks. | zones=[\"Polaroid-style image overlapping a large cropped background circle on the left, paired with right-aligned text featuring decorative quotation marks.\"] | anchors=Asymmetrical split-screen backgrounds (often 20/80 or 30/70 ratios); Subtle marble texture applied to specific layout zones or geometric shapes; Polaroid-style image frames with prominent white borders and soft drop shadows",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 2
+      },
+      "best_for": [
+        "Client quotes",
+        "Mission statements",
+        "Executive summaries"
+      ],
+      "avoid_for": [
+        "Data charts",
+        "Process flows",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "quote",
+        "geometric-accent",
+        "framed-image"
+      ],
+      "routing": {
+        "content_shapes": [
+          "quote",
+          "testimonial"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-06"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "quote-context",
+          "purpose": "Image accompanying the quote",
+          "bbox": [
+            0.07,
+            0.29,
+            0.41,
+            0.42
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 7,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Asymmetrical split background with overlapping vertical accent block, large cropped background circle, and edge-aligned vertical text, mirroring the cover.",
+      "visual_signature": "Asymmetrical split background with overlapping vertical accent block, large cropped background circle, and edge-aligned vertical text, mirroring the cover. | zones=[\"Asymmetrical split background with overlapping vertical accent block, large cropped background circle, and edge-aligned vertical text, mirroring the cover.\"] | anchors=Asymmetrical split-screen backgrounds (often 20/80 or 30/70 ratios); Subtle marble texture applied to specific layout zones or geometric shapes; Polaroid-style image frames with prominent white borders and soft drop shadows",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Closing slide",
+        "Contact information"
+      ],
+      "avoid_for": [
+        "Content delivery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing",
+        "bookend",
+        "minimalist"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

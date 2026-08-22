@@ -1,0 +1,46 @@
+packages:
+  - desktop
+  - store
+  - plugins/*
+  - dsh/source
+  - dsh/source/vendor/*
+  - dsh/source/packages/*/*
+  - dsh/source/native/landlock-run
+  - dsh/source/native/landlock-run/packages/*
+  - dsh/source/apps/*
+  - dsh/source/website
+  - dsh/source/examples
+  - dsh/source/python/sdk-runtime
+
+linkWorkspacePackages: true
+
+# `pnpm run` would otherwise re-check dependency status and shell out to
+# `pnpm install` before every script. The lockfile is already the gate, and the
+# implicit install re-runs `dsh/source`'s lefthook postinstall, which refuses to
+# migrate the submodule's `core.worktree` out of its common git config and fails
+# the whole build. Install explicitly instead.
+verifyDepsBeforeRun: false
+
+overrides:
+  'tsdown': '0.22.2'
+  '@tsdown/css': '0.22.2'
+  '@electron/get': '5.1.0'
+  '@deepseek-ai/cosmokit': 'link:dsh/source/vendor/cosmokit'
+  '@deepseek-ai/schemastery': 'link:dsh/source/vendor/schemastery'
+
+peerDependencyRules:
+  allowedVersions:
+    typescript: '>=5 <7'
+
+allowBuilds:
+  esbuild: true
+  electron: true
+  electron-winstaller: true
+  node: true
+  node-pty: true
+  koffi: true
+  lefthook: false
+  '@deepseek-ai/dsh-subprocess-local@file:dsh/source/packages/subprocess/subprocess-local': true
+  '@google/genai': false
+  protobufjs: false
+  node-addon-require-builtin: false

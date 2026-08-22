@@ -1,0 +1,418 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-3-0725-9-1d1b7106",
+  "source": "local-pptx-distillation",
+  "source_hash": "1d1b7106bceae252c92cee6e9dd9305a2b2a36ae9b83fb8c409b803b25325398",
+  "global_style": "A sophisticated, academic-leaning presentation template featuring a muted Morandi palette, organic brushstroke accents, and clean split-column layouts.",
+  "theme": {
+    "palette": [
+      "#7F9C9F",
+      "#8A9098",
+      "#CDE5DC",
+      "#F6F6F6"
+    ],
+    "identity_anchors": [
+      "Muted pastel 'Morandi' color scheme",
+      "Organic, rough-edged brushstroke vectors framing the canvas edges",
+      "Asymmetrically rounded cards (one soft corner, three sharp corners)",
+      "Strict vertical split-screen alignments"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Centered typography framed by asymmetrical organic edge brushstrokes on the left and right.",
+      "visual_signature": "Centered typography framed by asymmetrical organic edge brushstrokes on the left and right. | zones=[\"Centered typography framed by asymmetrical organic edge brushstrokes on the left and right.\"] | anchors=Muted pastel 'Morandi' color scheme; Organic, rough-edged brushstroke vectors framing the canvas edges; Asymmetrically rounded cards (one soft corner, three sharp corners)",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Title slides",
+        "Major presentation demarcations"
+      ],
+      "avoid_for": [
+        "Data-heavy content",
+        "Bullet lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "framed",
+        "centered",
+        "brush-edges"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Centered typography framed by asymmetrical organic edge brushstrokes, mirroring the cover.",
+      "visual_signature": "Centered typography framed by asymmetrical organic edge brushstrokes, mirroring the cover. | zones=[\"Centered typography framed by asymmetrical organic edge brushstrokes, mirroring the cover.\"] | anchors=Muted pastel 'Morandi' color scheme; Organic, rough-edged brushstroke vectors framing the canvas edges; Asymmetrically rounded cards (one soft corner, three sharp corners)",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Chapter transitions",
+        "Section headers"
+      ],
+      "avoid_for": [
+        "Body content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "framed",
+        "centered",
+        "transition"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Left side bleed image overlaid with a floating opaque text card. Right side features clear vertical column text.",
+      "visual_signature": "Left side bleed image overlaid with a floating opaque text card. Right side features clear vertical column text. | zones=[\"Left side bleed image overlaid with a floating opaque text card. Right side features clear vertical column text.\"] | anchors=Muted pastel 'Morandi' color scheme; Organic, rough-edged brushstroke vectors framing the canvas edges; Asymmetrically rounded cards (one soft corner, three sharp corners)",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Background and significance",
+        "Detailed introductions",
+        "Image-driven narratives"
+      ],
+      "avoid_for": [
+        "Sequential process flows",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "image-bleed",
+        "overlapping-card",
+        "split-layout"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "background-left",
+          "purpose": "Contextual background image taking up left half",
+          "bbox": [
+            0.0,
+            0.0,
+            0.6,
+            1.0
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "50/50 vertical split layout: full bleed image on the left, solid color block with icon list on the right.",
+      "visual_signature": "50/50 vertical split layout: full bleed image on the left, solid color block with icon list on the right. | zones=[\"50/50 vertical split layout: full bleed image on the left, solid color block with icon list on the right.\"] | anchors=Muted pastel 'Morandi' color scheme; Organic, rough-edged brushstroke vectors framing the canvas edges; Asymmetrically rounded cards (one soft corner, three sharp corners)",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Features lists",
+        "Summaries alongside a hero image"
+      ],
+      "avoid_for": [
+        "Complex tables",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "50-50-split",
+        "image-left",
+        "icon-list"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-05"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "hero-left",
+          "purpose": "Primary contextual image",
+          "bbox": [
+            0.05,
+            0.2,
+            0.35,
+            0.6
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Four-column horizontal sequence featuring asymmetrically rounded cards with overlapping numeric tabs.",
+      "visual_signature": "Four-column horizontal sequence featuring asymmetrically rounded cards with overlapping numeric tabs. | zones=[\"Four-column horizontal sequence featuring asymmetrically rounded cards with overlapping numeric tabs.\"] | anchors=Muted pastel 'Morandi' color scheme; Organic, rough-edged brushstroke vectors framing the canvas edges; Asymmetrically rounded cards (one soft corner, three sharp corners)",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Process steps",
+        "Methodologies",
+        "Sequential workflows"
+      ],
+      "avoid_for": [
+        "Large blocks of text",
+        "Single focal point images",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "four-column",
+        "process-steps",
+        "custom-shape-cards"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: 30/70 split layout with a solid color column on the left containing large typographic markers, and a device mockup on the right.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: 30/70 split layout with a solid color column on the left containing large typographic markers, and a device mockup on the right. | zones=[\"30/70 split layout with a solid color column on the left containing large typographic markers, and a device mockup on the right.\"] | anchors=Muted pastel 'Morandi' color scheme; Organic, rough-edged brushstroke vectors framing the canvas edges; Asymmetrically rounded cards (one soft corner, three sharp corners)",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Key quotes",
+        "Product showcases",
+        "Executive summaries"
+      ],
+      "avoid_for": [
+        "Complex data charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "device-mockup",
+        "quote-focus"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "screen-mockup",
+          "purpose": "Replaceable image inside the laptop screen",
+          "bbox": [
+            0.56,
+            0.38,
+            0.34,
+            0.35
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "quote-primary",
+      "page_index": 6,
+      "page_type": "quote",
+      "semantic_role": "quote",
+      "summary": "30/70 split layout with a solid color column on the left containing large typographic markers, and a device mockup on the right.",
+      "visual_signature": "30/70 split layout with a solid color column on the left containing large typographic markers, and a device mockup on the right. | zones=[\"30/70 split layout with a solid color column on the left containing large typographic markers, and a device mockup on the right.\"] | anchors=Muted pastel 'Morandi' color scheme; Organic, rough-edged brushstroke vectors framing the canvas edges; Asymmetrically rounded cards (one soft corner, three sharp corners)",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Key quotes",
+        "Product showcases",
+        "Executive summaries"
+      ],
+      "avoid_for": [
+        "Complex data charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "device-mockup",
+        "quote-focus"
+      ],
+      "routing": {
+        "content_shapes": [
+          "quote",
+          "testimonial"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "screen-mockup",
+          "purpose": "Replaceable image inside the laptop screen",
+          "bbox": [
+            0.56,
+            0.38,
+            0.34,
+            0.35
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 7,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Closing slide mirroring cover structure with organic edge framing.",
+      "visual_signature": "Closing slide mirroring cover structure with organic edge framing. | zones=[\"Closing slide mirroring cover structure with organic edge framing.\"] | anchors=Muted pastel 'Morandi' color scheme; Organic, rough-edged brushstroke vectors framing the canvas edges; Asymmetrically rounded cards (one soft corner, three sharp corners)",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Thank you slides",
+        "Q&A prompts"
+      ],
+      "avoid_for": [
+        "Content delivery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "framed",
+        "centered",
+        "closing"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

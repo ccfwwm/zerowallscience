@@ -1,0 +1,496 @@
+{
+  "version": "2",
+  "style_id": "linzi-punk-fg11-6108-ppt-9c460a91",
+  "source": "local-pptx-distillation",
+  "source_hash": "9c460a911ae1f4cd84ff945bfd9ce7cf5dd3d59f136f092e93d2eccd7162eabc",
+  "global_style": "Energetic, punk-inspired template featuring tilted typography, overlapping polaroid frames, and a subtle paper texture.",
+  "theme": {
+    "palette": [
+      "#D91414",
+      "#FFB800",
+      "#F4F4F4",
+      "#111111"
+    ],
+    "identity_anchors": [
+      "Tilted, ultra-bold uppercase headings (approx. -5 to -10 degrees)",
+      "Polaroid-style image containers with thick white borders and drop shadows",
+      "Skewed pastel color blocks acting as text highlights behind primary headings",
+      "Subtle crumpled paper texture on light backgrounds"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Dark, centered hero layout with a prominent central focal point and minimal text.",
+      "visual_signature": "Dark, centered hero layout with a prominent central focal point and minimal text. | zones=[\"Dark, centered hero layout with a prominent central focal point and minimal text.\"] | anchors=Tilted, ultra-bold uppercase headings (approx. -5 to -10 degrees); Polaroid-style image containers with thick white borders and drop shadows; Skewed pastel color blocks acting as text highlights behind primary headings",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Title slides",
+        "Dramatic introductions"
+      ],
+      "avoid_for": [
+        "Data-heavy introductions",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "dark-mode",
+        "centered",
+        "hero"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "background-hero",
+          "purpose": "Dark, atmospheric background image",
+          "bbox": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Tilted text over a skewed color block on the left, dual overlapping polaroids on the right.",
+      "visual_signature": "Tilted text over a skewed color block on the left, dual overlapping polaroids on the right. | zones=[\"Tilted text over a skewed color block on the left, dual overlapping polaroids on the right.\"] | anchors=Tilted, ultra-bold uppercase headings (approx. -5 to -10 degrees); Polaroid-style image containers with thick white borders and drop shadows; Skewed pastel color blocks acting as text highlights behind primary headings",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Section introductions",
+        "Key statements with visual support"
+      ],
+      "avoid_for": [
+        "Detailed bullet lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "tilted-text",
+        "polaroid-pair",
+        "asymmetrical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "image-1",
+          "purpose": "Primary framed photograph",
+          "bbox": [
+            0.55,
+            0.15,
+            0.35,
+            0.6
+          ],
+          "priority": 1
+        },
+        {
+          "id": "image-2",
+          "purpose": "Secondary framed photograph",
+          "bbox": [
+            0.7,
+            0.5,
+            0.25,
+            0.4
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Triple overlapping polaroid cluster dominating the center/right, with tilted text anchored to the left.",
+      "visual_signature": "Triple overlapping polaroid cluster dominating the center/right, with tilted text anchored to the left. | zones=[\"Triple overlapping polaroid cluster dominating the center/right, with tilted text anchored to the left.\"] | anchors=Tilted, ultra-bold uppercase headings (approx. -5 to -10 degrees); Polaroid-style image containers with thick white borders and drop shadows; Skewed pastel color blocks acting as text highlights behind primary headings",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Portfolio showcases",
+        "Image-driven narratives"
+      ],
+      "avoid_for": [
+        "Complex data presentation",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "triple-image",
+        "image-cluster",
+        "angled-layout"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "cluster-1",
+          "purpose": "Center photograph",
+          "bbox": [
+            0.4,
+            0.1,
+            0.4,
+            0.7
+          ],
+          "priority": 1
+        },
+        {
+          "id": "cluster-2",
+          "purpose": "Left overlapping photograph",
+          "bbox": [
+            0.6,
+            0.4,
+            0.3,
+            0.5
+          ],
+          "priority": 2
+        },
+        {
+          "id": "cluster-3",
+          "purpose": "Right overlapping photograph",
+          "bbox": [
+            0.7,
+            0.05,
+            0.25,
+            0.45
+          ],
+          "priority": 3
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Split layout: Image anchored by a solid vertical accent block on the left, staggered numbered list on the right.",
+      "visual_signature": "Split layout: Image anchored by a solid vertical accent block on the left, staggered numbered list on the right. | zones=[\"Split layout: Image anchored by a solid vertical accent block on the left, staggered numbered list on the right.\"] | anchors=Tilted, ultra-bold uppercase headings (approx. -5 to -10 degrees); Polaroid-style image containers with thick white borders and drop shadows; Skewed pastel color blocks acting as text highlights behind primary headings",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 6
+      },
+      "best_for": [
+        "Key takeaways",
+        "Step-by-step processes",
+        "Numbered lists"
+      ],
+      "avoid_for": [
+        "Dense paragraphs",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "staggered-list",
+        "split-layout",
+        "numbered"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "side-image",
+          "purpose": "Supporting image on the left panel",
+          "bbox": [
+            0.1,
+            0.15,
+            0.45,
+            0.85
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Side-by-side data visualization: a clean bar chart on the left and a concentric donut chart on the right with icon-based legends.",
+      "visual_signature": "Side-by-side data visualization: a clean bar chart on the left and a concentric donut chart on the right with icon-based legends. | zones=[\"Side-by-side data visualization: a clean bar chart on the left and a concentric donut chart on the right with icon-based legends.\"] | anchors=Tilted, ultra-bold uppercase headings (approx. -5 to -10 degrees); Polaroid-style image containers with thick white borders and drop shadows; Skewed pastel color blocks acting as text highlights behind primary headings",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 6
+      },
+      "best_for": [
+        "Statistical overviews",
+        "Demographic breakdowns",
+        "Performance metrics"
+      ],
+      "avoid_for": [
+        "Highly granular, complex data sets",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "bar-chart",
+        "donut-chart",
+        "data-viz"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-07"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Tilted text over a skewed color block on the left, dual overlapping polaroids on the right.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Tilted text over a skewed color block on the left, dual overlapping polaroids on the right. | zones=[\"Tilted text over a skewed color block on the left, dual overlapping polaroids on the right.\"] | anchors=Tilted, ultra-bold uppercase headings (approx. -5 to -10 degrees); Polaroid-style image containers with thick white borders and drop shadows; Skewed pastel color blocks acting as text highlights behind primary headings",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Section introductions",
+        "Key statements with visual support"
+      ],
+      "avoid_for": [
+        "Detailed bullet lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "tilted-text",
+        "polaroid-pair",
+        "asymmetrical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image-1",
+          "purpose": "Primary framed photograph",
+          "bbox": [
+            0.55,
+            0.15,
+            0.35,
+            0.6
+          ],
+          "priority": 1
+        },
+        {
+          "id": "image-2",
+          "purpose": "Secondary framed photograph",
+          "bbox": [
+            0.7,
+            0.5,
+            0.25,
+            0.4
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "quote-primary",
+      "page_index": 6,
+      "page_type": "quote",
+      "semantic_role": "quote",
+      "summary": "Split composition: Full-bleed image left overlaid with massive 3D-shadowed typography, clean text area right.",
+      "visual_signature": "Split composition: Full-bleed image left overlaid with massive 3D-shadowed typography, clean text area right. | zones=[\"Split composition: Full-bleed image left overlaid with massive 3D-shadowed typography, clean text area right.\"] | anchors=Tilted, ultra-bold uppercase headings (approx. -5 to -10 degrees); Polaroid-style image containers with thick white borders and drop shadows; Skewed pastel color blocks acting as text highlights behind primary headings",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Impact statements",
+        "Quotes",
+        "Section dividers"
+      ],
+      "avoid_for": [
+        "Standard body content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-screen",
+        "3d-text",
+        "high-impact"
+      ],
+      "routing": {
+        "content_shapes": [
+          "quote",
+          "testimonial"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "left-hero",
+          "purpose": "Full-bleed background image for the left panel",
+          "bbox": [
+            0,
+            0,
+            0.5,
+            1
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 7,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Central tilted focus text surrounded by a chaotic, edge-to-edge collage of scattered polaroid frames.",
+      "visual_signature": "Central tilted focus text surrounded by a chaotic, edge-to-edge collage of scattered polaroid frames. | zones=[\"Central tilted focus text surrounded by a chaotic, edge-to-edge collage of scattered polaroid frames.\"] | anchors=Tilted, ultra-bold uppercase headings (approx. -5 to -10 degrees); Polaroid-style image containers with thick white borders and drop shadows; Skewed pastel color blocks acting as text highlights behind primary headings",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Closing slides",
+        "Q&A prompts",
+        "Mood boards"
+      ],
+      "avoid_for": [
+        "Any slide requiring body text or lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "collage-background",
+        "scattered-images",
+        "closing"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "collage-grid",
+          "purpose": "Multiple background collage images",
+          "bbox": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    }
+  ]
+}

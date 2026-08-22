@@ -1,0 +1,479 @@
+{
+  "version": "2",
+  "style_id": "geometric-clinical-case",
+  "style_name": "几何临床案例演示模板 / Geometric Clinical Case Presentation",
+  "global_style": "A Bauhaus-inspired, high-contrast presentation style featuring modular geometric patterns (squares, triangles, quarter circles) in a strict navy, light blue, black, and white palette. Ideal for clinical, corporate, or analytical content requiring a clean, mode",
+  "theme": {
+    "primary": "",
+    "accent": [],
+    "background": "",
+    "fonts": {
+      "title": "",
+      "body": ""
+    }
+  },
+  "layouts": [
+    {
+      "id": "cover-hero-composition",
+      "page_type": "cover",
+      "summary": "Top section filled with a dense geometric tile pattern; bottom section solid navy with left-aligned title, subtitle, and a thin horizontal rule.",
+      "visual_signature": "封面主视觉",
+      "content_capacity": {
+        "title": "8-18 个中文字符",
+        "subtitle": "1 行短副标题",
+        "meta": "可选 1-2 行日期、作者或机构"
+      },
+      "best_for": [
+        "cover",
+        "opening",
+        "brand title"
+      ],
+      "avoid_for": [
+        "dense content",
+        "table",
+        "multi-metric data"
+      ],
+      "variation_tags": [
+        "cover",
+        "hero",
+        "title-focus"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": false,
+      "reuse_reason": "该页面形态视觉锚点较强，建议同一 deck 只使用一次。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "主标题"
+          },
+          "subtitle": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 56,
+            "description": "副标题"
+          },
+          "meta": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 40,
+            "description": "日期、作者或机构"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "agenda-structured-overview",
+      "page_type": "agenda",
+      "summary": "Cover: Top geometric pattern block, bottom solid color with left-aligned text. Agenda: Centered header with thin top/bottom rules, structured grid or numbered list below, optional bottom geometric border. Section: Split layout with one side dedicated to a dens",
+      "visual_signature": "结构化议程概览",
+      "content_capacity": {
+        "items": "3-6 个短议程项，每项 1 个短标题 + 可选 1 句说明"
+      },
+      "best_for": [
+        "agenda",
+        "overview",
+        "chapter list"
+      ],
+      "avoid_for": [
+        "dense table",
+        "long legal copy",
+        "tiny text"
+      ],
+      "variation_tags": [
+        "agenda",
+        "overview",
+        "list"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "议程标题"
+          },
+          "items": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 6,
+            "description": "议程项",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 18
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 36
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "title",
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "section-divider-composition",
+      "page_type": "section",
+      "summary": "Split screen: one half or third features a dense geometric pattern block, while the other side holds a solid background with a bold, oversized section number and title, often separated by a thin vertical line.",
+      "visual_signature": "章节分隔页",
+      "content_capacity": {
+        "section_number": "可选章节编号",
+        "title": "6-18 个中文字符",
+        "description": "1 句短说明"
+      },
+      "best_for": [
+        "section",
+        "chapter divider",
+        "major transition"
+      ],
+      "avoid_for": [
+        "dense table",
+        "long legal copy",
+        "tiny text"
+      ],
+      "variation_tags": [
+        "section",
+        "divider",
+        "chapter"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "section_number": {
+            "type": "string",
+            "maxLength": 6,
+            "description": "章节编号"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "章节标题"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 70,
+            "description": "章节说明"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "content-structured-grid",
+      "page_type": "content",
+      "summary": "Solid color background with geometric motifs restricted to a specific edge (e.g., left vertical strip or top-right corner) to maximize negative space for text.",
+      "visual_signature": "结构化内容页",
+      "content_capacity": {
+        "items": "2-4 个短要点或卡片，每项 1 个标题 + 1 句说明"
+      },
+      "best_for": [
+        "content",
+        "feature list",
+        "structured explanation"
+      ],
+      "avoid_for": [
+        "dense table",
+        "long legal copy",
+        "tiny text"
+      ],
+      "variation_tags": [
+        "content",
+        "structured-grid"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 28,
+            "description": "页面标题"
+          },
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 4,
+            "description": "内容要点",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 16
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 48
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "comparison-two-zone",
+      "page_type": "content",
+      "summary": "Cover: Top geometric pattern block, bottom solid color with left-aligned text. Agenda: Centered header with thin top/bottom rules, structured grid or numbered list below, optional bottom geometric border. Section: Split layout with one side dedicated to a dens",
+      "visual_signature": "双区对比页",
+      "content_capacity": {
+        "left": "1 个标题 + 2-3 条短要点",
+        "right": "1 个标题 + 2-3 条短要点"
+      },
+      "best_for": [
+        "comparison",
+        "before after",
+        "two options",
+        "tradeoff"
+      ],
+      "avoid_for": [
+        "three or more categories",
+        "large chart",
+        "long prose"
+      ],
+      "variation_tags": [
+        "content",
+        "comparison",
+        "two-zone"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "对比页标题"
+          },
+          "left": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120,
+            "description": "左侧内容"
+          },
+          "right": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120,
+            "description": "右侧内容"
+          }
+        },
+        "required": [
+          "title",
+          "left",
+          "right"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "data-visual-callouts",
+      "page_type": "data",
+      "summary": "Clean tables with solid color fills and thin borders; simple block-and-arrow flowcharts; diagonal background splits to separate data points.",
+      "visual_signature": "数据可视化页",
+      "content_capacity": {
+        "metrics": "2-5 个关键指标，每个含数字和短标签"
+      },
+      "best_for": [
+        "data",
+        "metrics",
+        "comparison numbers"
+      ],
+      "avoid_for": [
+        "long prose",
+        "agenda",
+        "quote"
+      ],
+      "variation_tags": [
+        "data",
+        "metrics",
+        "chart"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "数据页标题"
+          },
+          "metrics": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 5,
+            "description": "关键指标",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "maxLength": 16
+                },
+                "metric": {
+                  "type": "string",
+                  "maxLength": 14
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 32
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "title",
+          "metrics"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "quote-statement-focus",
+      "page_type": "quote",
+      "summary": "Cover: Top geometric pattern block, bottom solid color with left-aligned text. Agenda: Centered header with thin top/bottom rules, structured grid or numbered list below, optional bottom geometric border. Section: Split layout with one side dedicated to a dens",
+      "visual_signature": "大引语焦点页",
+      "content_capacity": {
+        "quote": "1 句 16-42 个中文字符",
+        "attribution": "可选署名 1 行"
+      },
+      "best_for": [
+        "quote",
+        "key insight",
+        "transition statement"
+      ],
+      "avoid_for": [
+        "bullet list",
+        "dense data",
+        "agenda"
+      ],
+      "variation_tags": [
+        "quote",
+        "statement",
+        "large-text"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": false,
+      "reuse_reason": "该页面形态视觉锚点较强，建议同一 deck 只使用一次。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "quote": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 56,
+            "description": "核心引语"
+          },
+          "attribution": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 28,
+            "description": "署名或注释"
+          }
+        },
+        "required": [
+          "quote"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "closing-summary-contact",
+      "page_type": "closing",
+      "summary": "Symmetrical or heavily framed geometric borders surrounding centered closing remarks or contact information.",
+      "visual_signature": "收尾联系页",
+      "content_capacity": {
+        "title": "谢谢 / 下一步 / 结论短句",
+        "contact": "2-4 条联系信息"
+      },
+      "best_for": [
+        "closing",
+        "thank you",
+        "contact",
+        "next step"
+      ],
+      "avoid_for": [
+        "new section",
+        "complex chart",
+        "long prose"
+      ],
+      "variation_tags": [
+        "closing",
+        "contact",
+        "summary"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": false,
+      "reuse_reason": "该页面形态视觉锚点较强，建议同一 deck 只使用一次。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "收尾主标题"
+          },
+          "subtitle": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 56,
+            "description": "收尾短句"
+          },
+          "contact": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 90,
+            "description": "联系信息"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

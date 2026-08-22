@@ -1,0 +1,16 @@
+{
+  "extends": "./dsh/source/tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@deepseek-ai/dsh-client-locale/client": ["./dsh/source/packages/client/locale/src/client/index.ts"],
+      "@deepseek-ai/dsh-client-ui-attachment/client": ["./dsh/source/packages/client/ui-attachment/src/client/index.ts"],
+      "@deepseek-ai/dsh-client-ui-conversation/client": ["./dsh/source/packages/client/ui-conversation/src/client/index.ts"],
+      "@deepseek-ai/dsh-client-ui-sidebar/client": ["./dsh/source/packages/client/ui-sidebar/src/client/index.ts"],
+      "@deepseek-ai/dsh-client-ui-tool/client": ["./dsh/source/packages/client/ui-tool/src/client/index.ts"],
+      "@zerowallscience/research-store": ["./store/src/index.ts"],
+      "@zerowallscience/plugin-*/client": ["./plugins/*/src/client/index.ts"],
+      "@zerowallscience/plugin-*": ["./plugins/*/src/host/index.ts"]
+    }
+  }
+}

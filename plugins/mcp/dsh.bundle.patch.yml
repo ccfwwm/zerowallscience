@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-mcp
+      name: '@zerowallscience/plugin-mcp'

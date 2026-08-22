@@ -1,0 +1,337 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-ppt-ppt-35-2fc576e8",
+  "source": "local-pptx-distillation",
+  "source_hash": "2fc576e8a4bd2a21dfdb35fd4dce8501c29de5eae8416b82f93180a8d512bf65",
+  "global_style": "A minimalist, elegant presentation template featuring a soft Morandi color palette, organic corner frames, and clean geometric content containers.",
+  "theme": {
+    "palette": [
+      "#F8F8F8",
+      "#8C7A70",
+      "#CA8D72",
+      "#C8B7A4",
+      "#E2DACD"
+    ],
+    "identity_anchors": [
+      "Fluid, organic 'blob' shapes framing the corners of the slides.",
+      "Soft, muted earthy 'Morandi' tones.",
+      "Centralized geometric nodes (circles, squares, diamonds) housing minimalist icons.",
+      "High negative space with monochromatic text."
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Centered title and subtitle block with a bottom pill, framed by four organic corner shapes.",
+      "visual_signature": "Centered title and subtitle block with a bottom pill, framed by four organic corner shapes. | zones=[\"Centered title and subtitle block with a bottom pill, framed by four organic corner shapes.\"] | anchors=Fluid, organic 'blob' shapes framing the corners of the slides.; Soft, muted earthy 'Morandi' tones.; Centralized geometric nodes (circles, squares, diamonds) housing minimalist icons.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "presentation covers",
+        "title sequences"
+      ],
+      "avoid_for": [
+        "data-heavy introductions",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "centered",
+        "organic-frame",
+        "minimal"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Centered title over a colored pill, mirroring the cover's organic framing.",
+      "visual_signature": "Centered title over a colored pill, mirroring the cover's organic framing. | zones=[\"Centered title over a colored pill, mirroring the cover's organic framing.\"] | anchors=Fluid, organic 'blob' shapes framing the corners of the slides.; Soft, muted earthy 'Morandi' tones.; Centralized geometric nodes (circles, squares, diamonds) housing minimalist icons.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "chapter transitions",
+        "section dividers"
+      ],
+      "avoid_for": [
+        "detailed content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "transition",
+        "pill-label"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Four horizontally distributed columns with circular icon nodes at the top.",
+      "visual_signature": "Four horizontally distributed columns with circular icon nodes at the top. | zones=[\"Four horizontally distributed columns with circular icon nodes at the top.\"] | anchors=Fluid, organic 'blob' shapes framing the corners of the slides.; Soft, muted earthy 'Morandi' tones.; Centralized geometric nodes (circles, squares, diamonds) housing minimalist icons.",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "feature lists",
+        "core values",
+        "team roles"
+      ],
+      "avoid_for": [
+        "long sequential narratives",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "4-columns",
+        "icon-circles",
+        "horizontal-list"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Central tight cluster of four rotated squares (diamonds) containing icons, flanked by text blocks.",
+      "visual_signature": "Central tight cluster of four rotated squares (diamonds) containing icons, flanked by text blocks. | zones=[\"Central tight cluster of four rotated squares (diamonds) containing icons, flanked by text blocks.\"] | anchors=Fluid, organic 'blob' shapes framing the corners of the slides.; Soft, muted earthy 'Morandi' tones.; Centralized geometric nodes (circles, squares, diamonds) housing minimalist icons.",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "interconnected concepts",
+        "quadrant features"
+      ],
+      "avoid_for": [
+        "linear processes",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "diamond-cluster",
+        "flanking-text",
+        "symmetrical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Half-width image on the left, horizontally stacked square data blocks on the top right over a paragraph.",
+      "visual_signature": "Half-width image on the left, horizontally stacked square data blocks on the top right over a paragraph. | zones=[\"Half-width image on the left, horizontally stacked square data blocks on the top right over a paragraph.\"] | anchors=Fluid, organic 'blob' shapes framing the corners of the slides.; Soft, muted earthy 'Morandi' tones.; Centralized geometric nodes (circles, squares, diamonds) housing minimalist icons.",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "key statistics",
+        "project highlights",
+        "case studies"
+      ],
+      "avoid_for": [
+        "complex charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "stat-squares",
+        "image-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "content-image",
+          "purpose": "contextual visual support",
+          "bbox": [
+            0.0,
+            0.27,
+            0.43,
+            0.51
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Centered title over a colored pill, mirroring the cover's organic framing.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Centered title over a colored pill, mirroring the cover's organic framing. | zones=[\"Centered title over a colored pill, mirroring the cover's organic framing.\"] | anchors=Fluid, organic 'blob' shapes framing the corners of the slides.; Soft, muted earthy 'Morandi' tones.; Centralized geometric nodes (circles, squares, diamonds) housing minimalist icons.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "chapter transitions",
+        "section dividers"
+      ],
+      "avoid_for": [
+        "detailed content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "transition",
+        "pill-label"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Centered closing message mimicking the cover's organic frame.",
+      "visual_signature": "Centered closing message mimicking the cover's organic frame. | zones=[\"Centered closing message mimicking the cover's organic frame.\"] | anchors=Fluid, organic 'blob' shapes framing the corners of the slides.; Soft, muted earthy 'Morandi' tones.; Centralized geometric nodes (circles, squares, diamonds) housing minimalist icons.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "thank you slides",
+        "Q&A prompts"
+      ],
+      "avoid_for": [
+        "summaries or recaps",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "bookend",
+        "minimal",
+        "centered"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

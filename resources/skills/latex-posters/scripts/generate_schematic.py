@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""
+Scientific schematic generation using Nano Banana 2.
+
+Generate any scientific diagram by describing it in natural language.
+Nano Banana 2 handles everything automatically with smart iterative refinement.
+
+Smart iteration: Only regenerates if quality is below threshold for your document type.
+Quality review: Uses Gemini 3.6 Flash for professional scientific evaluation.
+
+Usage:
+    # Generate for journal paper (highest quality threshold)
+    python generate_schematic.py "CONSORT flowchart" -o flowchart.png --doc-type journal
+    
+    # Generate for presentation (lower threshold, faster)
+    python generate_schematic.py "Transformer architecture" -o transformer.png --doc-type presentation
+    
+    # Generate for poster
+    python generate_schematic.py "MAPK signaling pathway" -o pathway.png --doc-type poster
+"""
+
+import argparse
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+# Variables forwarded to the generation subprocess. The child needs the
+# OpenRouter credential; the rest keep networking, TLS, and locale working.
+# Copying the whole parent environment instead would hand the child every
+# unrelated secret that happens to be exported in the calling shell.
+FORWARDED_ENV_VARS = (
+    "PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "PYTHONPATH",
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "no_proxy",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE",
+    # Windows needs these for sockets, temp files, and interpreter startup.
+    "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT",
+    "APPDATA", "LOCALAPPDATA", "USERPROFILE", "TEMP", "TMP",
+)
+
+
+def resolve_api_key():
+    """Read the key injected by ZeroWall Settings > Credentials."""
+    return os.environ.get("OPENROUTER_API_KEY", "").strip() or None
+
+
+def build_subprocess_env(api_key):
+    """Return a minimal environment for the AI generation subprocess."""
+    env = {name: os.environ[name] for name in FORWARDED_ENV_VARS if name in os.environ}
+    if api_key:
+        env["OPENROUTER_API_KEY"] = api_key
+    return env
+
+
+def main():
+    """Command-line interface."""
+    parser = argparse.ArgumentParser(
+        description="Generate scientific schematics using AI with smart iterative refinement",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+How it works:
+  Simply describe your diagram in natural language
+  Nano Banana 2 generates it automatically with:
+  - Smart iteration (only regenerates if quality is below threshold)
+  - Quality review by Gemini 3.6 Flash
+  - Document-type aware quality thresholds
+  - Publication-ready output
+
+Document Types (quality thresholds):
+  journal      8.5/10  - Nature, Science, peer-reviewed journals
+  conference   8.0/10  - Conference papers
+  thesis       8.0/10  - Dissertations, theses
+  grant        8.0/10  - Grant proposals
+  preprint     7.5/10  - arXiv, bioRxiv, etc.
+  report       7.5/10  - Technical reports
+  poster       7.0/10  - Academic posters
+  presentation 6.5/10  - Slides, talks
+  default      7.5/10  - General purpose
+
+Examples:
+  # Generate for journal paper (strict quality)
+  python generate_schematic.py "CONSORT participant flow" -o flowchart.png --doc-type journal
+  
+  # Generate for poster (moderate quality)
+  python generate_schematic.py "Transformer architecture" -o arch.png --doc-type poster
+  
+  # Generate for slides (faster, lower threshold)
+  python generate_schematic.py "System diagram" -o system.png --doc-type presentation
+  
+  # Custom max iterations
+  python generate_schematic.py "Complex pathway" -o pathway.png --iterations 2
+  
+  # Verbose output
+  python generate_schematic.py "Circuit diagram" -o circuit.png -v
+
+Environment Variables:
+  OPENROUTER_API_KEY    Required for AI generation
+        """
+    )
+    
+    parser.add_argument("prompt", 
+                       help="Description of the diagram to generate")
+    parser.add_argument("-o", "--output", required=True,
+                       help="Output file path")
+    parser.add_argument("--doc-type", default="default",
+                       choices=["journal", "conference", "poster", "presentation",
+                               "report", "grant", "thesis", "preprint", "default"],
+                       help="Document type for quality threshold (default: default)")
+    parser.add_argument("--iterations", type=int, default=2,
+                       help="Maximum refinement iterations (default: 2, max: 2)")
+    parser.add_argument("--execute", action="store_true",
+                       help="Perform the billable external generation request")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                       help="Verbose output")
+    
+    args = parser.parse_args()
+
+    # Validated here rather than clamped silently, and before the credential
+    # lookup so an out-of-range value reports itself rather than an absent key.
+    if not 1 <= args.iterations <= 2:
+        parser.error("--iterations must be 1 or 2")
+
+    if not args.execute:
+        print("Dry run: no external request was sent.")
+        print(f"prompt={args.prompt!r} output={args.output!r} "
+              f"doc_type={args.doc_type!r} iterations={args.iterations}")
+        print("Re-run with --execute only after the user approves the external call.")
+        return
+
+    api_key = resolve_api_key()
+    if not api_key:
+        print("Error: OPENROUTER_API_KEY not found")
+        print("\nFor AI generation, you need an OpenRouter API key.")
+        print("Get one at: https://openrouter.ai/keys")
+        print("\nConfigure OPENROUTER_API_KEY in ZeroWall Settings > Credentials.")
+        sys.exit(1)
+    
+    # Find AI generation script
+    script_dir = Path(__file__).parent
+    ai_script = script_dir / "generate_schematic_ai.py"
+    
+    if not ai_script.exists():
+        print(f"Error: AI generation script not found: {ai_script}")
+        sys.exit(1)
+    
+    # Build command
+    cmd = [sys.executable, str(ai_script), args.prompt, "-o", args.output]
+    
+    if args.doc_type != "default":
+        cmd.extend(["--doc-type", args.doc_type])
+
+    cmd.extend(["--iterations", str(args.iterations)])
+
+    if args.verbose:
+        cmd.append("-v")
+    
+    # Execute — pass API key via environment to avoid exposure in process listings
+    try:
+        result = subprocess.run(cmd, check=False, env=build_subprocess_env(api_key))
+        sys.exit(result.returncode)
+    except Exception as e:
+        print(f"Error executing AI generation: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+

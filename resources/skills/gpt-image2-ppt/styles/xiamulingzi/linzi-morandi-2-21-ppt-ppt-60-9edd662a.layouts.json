@@ -1,0 +1,418 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-ppt-ppt-60-9edd662a",
+  "source": "local-pptx-distillation",
+  "source_hash": "9edd662a7a99d9cb632ac95cd9ca22eee155258d323648049a63e29e0f042112",
+  "global_style": "Minimalist corporate presentation utilizing wide geometric typography, continuous organic line motifs, and striking diagonal image masks in a yellow and gray palette.",
+  "theme": {
+    "palette": [
+      "#DFB142",
+      "#777777",
+      "#595959",
+      "#F4F4F4",
+      "#FFFFFF"
+    ],
+    "identity_anchors": [
+      "Continuous, intersecting organic yellow wavy line spanning across slides.",
+      "Sharp diagonal divisions and V-shaped masks for imagery.",
+      "Persistent vertical tracking text along the right margin.",
+      "Circular motifs including solid yellow dots, gray rings, and circular image crops.",
+      "Pill-shaped solid color buttons/callouts."
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Massive centered typography intersected by a continuous organic line and a small circular image mask.",
+      "visual_signature": "Massive centered typography intersected by a continuous organic line and a small circular image mask. | zones=[\"Massive centered typography intersected by a continuous organic line and a small circular image mask.\"] | anchors=Continuous, intersecting organic yellow wavy line spanning across slides.; Sharp diagonal divisions and V-shaped masks for imagery.; Persistent vertical tracking text along the right margin.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Title slides",
+        "Year-in-review openers"
+      ],
+      "avoid_for": [
+        "Text-heavy introductions",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "hero-typography",
+        "circular-mask",
+        "organic-line"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "cover-circle",
+          "purpose": "Abstract or thematic focal image",
+          "bbox": [
+            0.55,
+            0.3,
+            0.2,
+            0.35
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Top-left diagonal image mask with right-aligned text block and bottom-right wavy line accent.",
+      "visual_signature": "Top-left diagonal image mask with right-aligned text block and bottom-right wavy line accent. | zones=[\"Top-left diagonal image mask with right-aligned text block and bottom-right wavy line accent.\"] | anchors=Continuous, intersecting organic yellow wavy line spanning across slides.; Sharp diagonal divisions and V-shaped masks for imagery.; Persistent vertical tracking text along the right margin.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "About us",
+        "Section introductions"
+      ],
+      "avoid_for": [
+        "Data charts",
+        "Complex lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "diagonal-cut",
+        "right-aligned",
+        "asymmetrical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "top-left-diag",
+          "purpose": "Atmospheric or portrait image",
+          "bbox": [
+            0.0,
+            0.0,
+            0.4,
+            0.7
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Bottom-right diagonal solid shape, left-aligned text, large right-aligned floating title.",
+      "visual_signature": "Bottom-right diagonal solid shape, left-aligned text, large right-aligned floating title. | zones=[\"Bottom-right diagonal solid shape, left-aligned text, large right-aligned floating title.\"] | anchors=Continuous, intersecting organic yellow wavy line spanning across slides.; Sharp diagonal divisions and V-shaped masks for imagery.; Persistent vertical tracking text along the right margin.",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Feature highlights",
+        "Key takeaways"
+      ],
+      "avoid_for": [
+        "Detailed comparisons",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "pill-button",
+        "diagonal-background",
+        "split-layout"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Left-side organic line, solid circle overlaid with strikethrough text, two stacked right-aligned content blocks.",
+      "visual_signature": "Left-side organic line, solid circle overlaid with strikethrough text, two stacked right-aligned content blocks. | zones=[\"Left-side organic line, solid circle overlaid with strikethrough text, two stacked right-aligned content blocks.\"] | anchors=Continuous, intersecting organic yellow wavy line spanning across slides.; Sharp diagonal divisions and V-shaped masks for imagery.; Persistent vertical tracking text along the right margin.",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Conclusions",
+        "Two-point comparisons"
+      ],
+      "avoid_for": [
+        "Long continuous paragraphs",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "circle-badge",
+        "stacked-text",
+        "wavy-divider"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "S-curve segmented arrow path (timeline/process) dominating the center, flanked by text blocks.",
+      "visual_signature": "S-curve segmented arrow path (timeline/process) dominating the center, flanked by text blocks. | zones=[\"S-curve segmented arrow path (timeline/process) dominating the center, flanked by text blocks.\"] | anchors=Continuous, intersecting organic yellow wavy line spanning across slides.; Sharp diagonal divisions and V-shaped masks for imagery.; Persistent vertical tracking text along the right margin.",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Process diagrams",
+        "Timelines",
+        "Journey mapping"
+      ],
+      "avoid_for": [
+        "Quantitative data",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "s-curve",
+        "timeline",
+        "process-flow"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Top-left diagonal image mask with right-aligned text block and bottom-right wavy line accent.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Top-left diagonal image mask with right-aligned text block and bottom-right wavy line accent. | zones=[\"Top-left diagonal image mask with right-aligned text block and bottom-right wavy line accent.\"] | anchors=Continuous, intersecting organic yellow wavy line spanning across slides.; Sharp diagonal divisions and V-shaped masks for imagery.; Persistent vertical tracking text along the right margin.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "About us",
+        "Section introductions"
+      ],
+      "avoid_for": [
+        "Data charts",
+        "Complex lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "diagonal-cut",
+        "right-aligned",
+        "asymmetrical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "top-left-diag",
+          "purpose": "Atmospheric or portrait image",
+          "bbox": [
+            0.0,
+            0.0,
+            0.4,
+            0.7
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "quote-primary",
+      "page_index": 6,
+      "page_type": "quote",
+      "semantic_role": "quote",
+      "summary": "Large central V-shaped mask revealing an image, with text tucked into the lower-left negative space.",
+      "visual_signature": "Large central V-shaped mask revealing an image, with text tucked into the lower-left negative space. | zones=[\"Large central V-shaped mask revealing an image, with text tucked into the lower-left negative space.\"] | anchors=Continuous, intersecting organic yellow wavy line spanning across slides.; Sharp diagonal divisions and V-shaped masks for imagery.; Persistent vertical tracking text along the right margin.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Impact quotes",
+        "Section dividers",
+        "Vision statements"
+      ],
+      "avoid_for": [
+        "Data, lists, or complex diagrams",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "v-mask",
+        "hero-image",
+        "dramatic-crop"
+      ],
+      "routing": {
+        "content_shapes": [
+          "quote",
+          "testimonial"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-08"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "center-v-shape",
+          "purpose": "Dramatic focal background image",
+          "bbox": [
+            0.2,
+            0.0,
+            0.6,
+            1.0
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 7,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Echoes the cover slide: large centered typography, background wavy line, without the image mask.",
+      "visual_signature": "Echoes the cover slide: large centered typography, background wavy line, without the image mask. | zones=[\"Echoes the cover slide: large centered typography, background wavy line, without the image mask.\"] | anchors=Continuous, intersecting organic yellow wavy line spanning across slides.; Sharp diagonal divisions and V-shaped masks for imagery.; Persistent vertical tracking text along the right margin.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Closing slides",
+        "Q&A prompts"
+      ],
+      "avoid_for": [
+        "Contact detail lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing",
+        "centered-text",
+        "minimal"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

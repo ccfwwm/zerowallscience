@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-wechat
+      name: '@zerowallscience/plugin-wechat'

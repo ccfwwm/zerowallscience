@@ -1,0 +1,385 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-ppt-61-7b8851ea",
+  "source": "local-pptx-distillation",
+  "source_hash": "7b8851eaf189f6f206350fe9bd9c60c194a61d1ac2a898e154ea1820822f74c4",
+  "global_style": "A minimalist, Morandi-themed design system featuring muted pastel tones, fluid organic background shapes, and elegant botanical line-art accents.",
+  "theme": {
+    "palette": [
+      "#EBEBEA",
+      "#7A877B",
+      "#BBAFA5",
+      "#D6CDC4",
+      "#657065"
+    ],
+    "identity_anchors": [
+      "Muted 'Morandi' pastel color scheme",
+      "Fluid, organic blob background framing elements",
+      "Delicate, overlapping line-art botanical illustrations in corners",
+      "Pill-shaped badges for section tagging",
+      "Softly rounded rectangles for structural containers"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Centered dual-language titles with pill-tag author block, framed by organic corner blobs and botanical lines",
+      "visual_signature": "Centered dual-language titles with pill-tag author block, framed by organic corner blobs and botanical lines | zones=[\"Centered dual-language titles with pill-tag author block, framed by organic corner blobs and botanical lines\"] | anchors=Muted 'Morandi' pastel color scheme; Fluid, organic blob background framing elements; Delicate, overlapping line-art botanical illustrations in corners",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Presentation openings",
+        "Title slides"
+      ],
+      "avoid_for": [
+        "Data delivery",
+        "Complex lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "minimal",
+        "centered",
+        "botanical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Centered title and subtitle with a pill-tag section number below",
+      "visual_signature": "Centered title and subtitle with a pill-tag section number below | zones=[\"Centered title and subtitle with a pill-tag section number below\"] | anchors=Muted 'Morandi' pastel color scheme; Fluid, organic blob background framing elements; Delicate, overlapping line-art botanical illustrations in corners",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Chapter transitions",
+        "Agenda markers"
+      ],
+      "avoid_for": [
+        "Detailed content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "transition",
+        "section-break"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Four-column grid of teardrop/pin icon containers over discrete text blocks",
+      "visual_signature": "Four-column grid of teardrop/pin icon containers over discrete text blocks | zones=[\"Four-column grid of teardrop/pin icon containers over discrete text blocks\"] | anchors=Muted 'Morandi' pastel color scheme; Fluid, organic blob background framing elements; Delicate, overlapping line-art botanical illustrations in corners",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Core features",
+        "Four-point summaries",
+        "Value propositions"
+      ],
+      "avoid_for": [
+        "Long-form paragraphs",
+        "Image-heavy content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "4-columns",
+        "icons",
+        "features"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Four vertical rounded-rectangle cards connected by directional icon badges",
+      "visual_signature": "Four vertical rounded-rectangle cards connected by directional icon badges | zones=[\"Four vertical rounded-rectangle cards connected by directional icon badges\"] | anchors=Muted 'Morandi' pastel color scheme; Fluid, organic blob background framing elements; Delicate, overlapping line-art botanical illustrations in corners",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Process steps",
+        "Methodology",
+        "Sequential workflows"
+      ],
+      "avoid_for": [
+        "Unordered lists",
+        "High-density data",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "cards",
+        "process",
+        "timeline"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Centered title and subtitle with a pill-tag section number below",
+      "visual_signature": "Centered title and subtitle with a pill-tag section number below | zones=[\"Centered title and subtitle with a pill-tag section number below\"] | anchors=Muted 'Morandi' pastel color scheme; Fluid, organic blob background framing elements; Delicate, overlapping line-art botanical illustrations in corners",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Chapter transitions",
+        "Agenda markers"
+      ],
+      "avoid_for": [
+        "Detailed content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "transition",
+        "section-break"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Four-column grid of teardrop/pin icon containers over discrete text blocks",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Four-column grid of teardrop/pin icon containers over discrete text blocks | zones=[\"Four-column grid of teardrop/pin icon containers over discrete text blocks\"] | anchors=Muted 'Morandi' pastel color scheme; Fluid, organic blob background framing elements; Delicate, overlapping line-art botanical illustrations in corners",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Core features",
+        "Four-point summaries",
+        "Value propositions"
+      ],
+      "avoid_for": [
+        "Long-form paragraphs",
+        "Image-heavy content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "4-columns",
+        "icons",
+        "features"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "quote-primary",
+      "page_index": 6,
+      "page_type": "quote",
+      "semantic_role": "quote",
+      "summary": "Oversized decorative quote mark on top left over an image, central text block, and right-side solid color sidebar with secondary points",
+      "visual_signature": "Oversized decorative quote mark on top left over an image, central text block, and right-side solid color sidebar with secondary points | zones=[\"Oversized decorative quote mark on top left over an image, central text block, and right-side solid color sidebar with secondary points\"] | anchors=Muted 'Morandi' pastel color scheme; Fluid, organic blob background framing elements; Delicate, overlapping line-art botanical illustrations in corners",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Testimonials",
+        "Key statements",
+        "Mission/Vision slides"
+      ],
+      "avoid_for": [
+        "Data charts",
+        "Process flows",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "quote",
+        "sidebar",
+        "overlapping"
+      ],
+      "routing": {
+        "content_shapes": [
+          "quote",
+          "testimonial"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-08"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "quote-image",
+          "purpose": "author or context image",
+          "bbox": [
+            0.05,
+            0.32,
+            0.32,
+            0.43
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 7,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Centered dual-language thank you message with pill-tag author block, framed by organic corner blobs and botanical lines",
+      "visual_signature": "Centered dual-language thank you message with pill-tag author block, framed by organic corner blobs and botanical lines | zones=[\"Centered dual-language thank you message with pill-tag author block, framed by organic corner blobs and botanical lines\"] | anchors=Muted 'Morandi' pastel color scheme; Fluid, organic blob background framing elements; Delicate, overlapping line-art botanical illustrations in corners",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Presentation closing",
+        "Q&A prompts"
+      ],
+      "avoid_for": [
+        "Content delivery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing",
+        "minimal",
+        "centered"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

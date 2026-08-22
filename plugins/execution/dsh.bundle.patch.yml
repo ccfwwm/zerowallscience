@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-execution
+      name: '@zerowallscience/plugin-execution'

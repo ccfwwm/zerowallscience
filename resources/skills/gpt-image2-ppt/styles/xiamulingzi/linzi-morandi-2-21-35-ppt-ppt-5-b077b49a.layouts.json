@@ -1,0 +1,477 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-35-ppt-ppt-5-b077b49a",
+  "source": "local-pptx-distillation",
+  "source_hash": "b077b49a7597658b1137b513dfd382fda8c42c6a353a7d8f1a0540c1eb70ac36",
+  "global_style": "A sophisticated, editorial-style presentation featuring a Morandi color palette, grainy organic background shapes, botanical shadow overlays, and elegant serif typography.",
+  "theme": {
+    "palette": [
+      "#A33E20",
+      "#DE9842",
+      "#C0A78E",
+      "#3A332E",
+      "#F3EFE9"
+    ],
+    "identity_anchors": [
+      "Floating central white content cards with soft drop shadows",
+      "Textured, grainy organic blob shapes spanning backgrounds",
+      "Photorealistic botanical/leaf shadow overlays on edges",
+      "Signature three-dot decorative accent (rust, sand, mustard) placed near titles",
+      "Pill-shaped call-to-action buttons"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Floating rectangular content card centered over a grainy, organically-shaped background with botanical shadows.",
+      "visual_signature": "Floating rectangular content card centered over a grainy, organically-shaped background with botanical shadows. | zones=[\"Floating rectangular content card centered over a grainy, organically-shaped background with botanical shadows.\"] | anchors=Floating central white content cards with soft drop shadows; Textured, grainy organic blob shapes spanning backgrounds; Photorealistic botanical/leaf shadow overlays on edges",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Deck titles",
+        "Section breaks"
+      ],
+      "avoid_for": [
+        "Data-heavy content",
+        "Image galleries",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "minimal",
+        "floating-card",
+        "textured-background"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Full-bleed left image taking up half the slide, paired with a stark white right half containing right-aligned typography.",
+      "visual_signature": "Full-bleed left image taking up half the slide, paired with a stark white right half containing right-aligned typography. | zones=[\"Full-bleed left image taking up half the slide, paired with a stark white right half containing right-aligned typography.\"] | anchors=Floating central white content cards with soft drop shadows; Textured, grainy organic blob shapes spanning backgrounds; Photorealistic botanical/leaf shadow overlays on edges",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section dividers",
+        "Bold statements",
+        "Chapter introductions"
+      ],
+      "avoid_for": [
+        "Detailed bullet lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "half-bleed-image",
+        "right-aligned-text",
+        "chapter-break"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-08"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "left-bleed",
+          "purpose": "Immersive section mood image",
+          "bbox": [
+            0.0,
+            0.0,
+            0.55,
+            1.0
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Two-column layout featuring a text/data block on the left and a large rectangular image on the right, under a centered title.",
+      "visual_signature": "Two-column layout featuring a text/data block on the left and a large rectangular image on the right, under a centered title. | zones=[\"Two-column layout featuring a text/data block on the left and a large rectangular image on the right, under a centered title.\"] | anchors=Floating central white content cards with soft drop shadows; Textured, grainy organic blob shapes spanning backgrounds; Photorealistic botanical/leaf shadow overlays on edges",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Key statistics alongside imagery",
+        "Feature highlights"
+      ],
+      "avoid_for": [
+        "Long-form text reading",
+        "Timeline graphics",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "image-right",
+        "data-callout",
+        "split-column"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "right-feature",
+          "purpose": "Visual anchor corresponding to data",
+          "bbox": [
+            0.45,
+            0.35,
+            0.48,
+            0.55
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Asymmetrical 50/50 split layout: white background with text/image on the left, solid accent background with text/button on the right.",
+      "visual_signature": "Asymmetrical 50/50 split layout: white background with text/image on the left, solid accent background with text/button on the right. | zones=[\"Asymmetrical 50/50 split layout: white background with text/image on the left, solid accent background with text/button on the right.\"] | anchors=Floating central white content cards with soft drop shadows; Textured, grainy organic blob shapes spanning backgrounds; Photorealistic botanical/leaf shadow overlays on edges",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 6
+      },
+      "best_for": [
+        "Product feature deep-dives",
+        "Comparative statements",
+        "Call-to-action sections"
+      ],
+      "avoid_for": [
+        "Dense data tables",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "50-50-split",
+        "contrast-panels",
+        "interactive-prompt"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "left-media",
+          "purpose": "Product or feature visualization",
+          "bbox": [
+            0.05,
+            0.45,
+            0.4,
+            0.45
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Horizontally split layout with a solid color top header and a four-column white lower section for numbered items.",
+      "visual_signature": "Horizontally split layout with a solid color top header and a four-column white lower section for numbered items. | zones=[\"Horizontally split layout with a solid color top header and a four-column white lower section for numbered items.\"] | anchors=Floating central white content cards with soft drop shadows; Textured, grainy organic blob shapes spanning backgrounds; Photorealistic botanical/leaf shadow overlays on edges",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 8
+      },
+      "best_for": [
+        "Table of contents",
+        "Multi-step processes",
+        "Core services lists"
+      ],
+      "avoid_for": [
+        "Large image displays",
+        "Single focus quotes",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-background",
+        "four-columns",
+        "numbered-list"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Two-column layout featuring a text/data block on the left and a large rectangular image on the right, under a centered title.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Two-column layout featuring a text/data block on the left and a large rectangular image on the right, under a centered title. | zones=[\"Two-column layout featuring a text/data block on the left and a large rectangular image on the right, under a centered title.\"] | anchors=Floating central white content cards with soft drop shadows; Textured, grainy organic blob shapes spanning backgrounds; Photorealistic botanical/leaf shadow overlays on edges",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Key statistics alongside imagery",
+        "Feature highlights"
+      ],
+      "avoid_for": [
+        "Long-form text reading",
+        "Timeline graphics",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "image-right",
+        "data-callout",
+        "split-column"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "right-feature",
+          "purpose": "Visual anchor corresponding to data",
+          "bbox": [
+            0.45,
+            0.35,
+            0.48,
+            0.55
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "agenda-primary",
+      "page_index": 6,
+      "page_type": "agenda",
+      "semantic_role": "agenda",
+      "summary": "Horizontally split layout with a solid color top header and a four-column white lower section for numbered items.",
+      "visual_signature": "Horizontally split layout with a solid color top header and a four-column white lower section for numbered items. | zones=[\"Horizontally split layout with a solid color top header and a four-column white lower section for numbered items.\"] | anchors=Floating central white content cards with soft drop shadows; Textured, grainy organic blob shapes spanning backgrounds; Photorealistic botanical/leaf shadow overlays on edges",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 8
+      },
+      "best_for": [
+        "Table of contents",
+        "Multi-step processes",
+        "Core services lists"
+      ],
+      "avoid_for": [
+        "Large image displays",
+        "Single focus quotes",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-background",
+        "four-columns",
+        "numbered-list"
+      ],
+      "routing": {
+        "content_shapes": [
+          "agenda",
+          "numbered-list"
+        ],
+        "min_items": 3,
+        "max_items": 8
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "quote-primary",
+      "page_index": 7,
+      "page_type": "quote",
+      "semantic_role": "quote",
+      "summary": "Minimalist layout with top-corner typography and a dominant wide, panoramic image spanning the bottom half.",
+      "visual_signature": "Minimalist layout with top-corner typography and a dominant wide, panoramic image spanning the bottom half. | zones=[\"Minimalist layout with top-corner typography and a dominant wide, panoramic image spanning the bottom half.\"] | anchors=Floating central white content cards with soft drop shadows; Textured, grainy organic blob shapes spanning backgrounds; Photorealistic botanical/leaf shadow overlays on edges",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Hero product shots",
+        "Impactful quotes with background imagery",
+        "Section transitions"
+      ],
+      "avoid_for": [
+        "Complex data or lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "minimalist",
+        "panoramic-image",
+        "generous-whitespace"
+      ],
+      "routing": {
+        "content_shapes": [
+          "quote",
+          "testimonial"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-07"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "panoramic-feature",
+          "purpose": "Wide hero image or mood texture",
+          "bbox": [
+            0.05,
+            0.38,
+            0.9,
+            0.53
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 8,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Closing slide mirroring the cover: Floating rectangular card centered over a grainy, organically-shaped background.",
+      "visual_signature": "Closing slide mirroring the cover: Floating rectangular card centered over a grainy, organically-shaped background. | zones=[\"Closing slide mirroring the cover: Floating rectangular card centered over a grainy, organically-shaped background.\"] | anchors=Floating central white content cards with soft drop shadows; Textured, grainy organic blob shapes spanning backgrounds; Photorealistic botanical/leaf shadow overlays on edges",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "End of presentation",
+        "Contact information"
+      ],
+      "avoid_for": [
+        "Content delivery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "bookend",
+        "floating-card",
+        "minimal-closing"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

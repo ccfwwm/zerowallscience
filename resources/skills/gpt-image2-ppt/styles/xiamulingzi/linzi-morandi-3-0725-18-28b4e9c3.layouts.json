@@ -1,0 +1,397 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-3-0725-18-28b4e9c3",
+  "source": "local-pptx-distillation",
+  "source_hash": "28b4e9c3e627d74a7955e0960281562055821ebb9262f7fb810fe3fa00b0a4e1",
+  "global_style": "A minimalist presentation template featuring a muted pastel color palette, clean geometric content blocks, and soft organic background accents.",
+  "theme": {
+    "palette": [
+      "#FAF7F5",
+      "#6B5349",
+      "#F9A494",
+      "#C1AE9F",
+      "#FCE6E1"
+    ],
+    "identity_anchors": [
+      "Muted, warm pastel 'Morandi' color scheme",
+      "Strict flat design with no gradients or drop shadows",
+      "Mix of fluid background shapes and sharp rectangular content blocks",
+      "High-contrast color blocking for layout structuring"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Fluid organic shapes framing the corners; central stacked typography with subtitle and presenter meta-info blocks.",
+      "visual_signature": "Fluid organic shapes framing the corners; central stacked typography with subtitle and presenter meta-info blocks. | zones=[\"Fluid organic shapes framing the corners; central stacked typography with subtitle and presenter meta-info blocks.\"] | anchors=Muted, warm pastel 'Morandi' color scheme; Strict flat design with no gradients or drop shadows; Mix of fluid background shapes and sharp rectangular content blocks",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Presentation title",
+        "Event introduction"
+      ],
+      "avoid_for": [
+        "Detailed content",
+        "Data visualization",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "title-slide",
+        "organic-frame",
+        "minimalist"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Horizontal process flow using connected chevron arrows spanning the middle, with explanatory text blocks staggered above and below.",
+      "visual_signature": "Horizontal process flow using connected chevron arrows spanning the middle, with explanatory text blocks staggered above and below. | zones=[\"Horizontal process flow using connected chevron arrows spanning the middle, with explanatory text blocks staggered above and below.\"] | anchors=Muted, warm pastel 'Morandi' color scheme; Strict flat design with no gradients or drop shadows; Mix of fluid background shapes and sharp rectangular content blocks",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Linear processes",
+        "Timelines",
+        "Step-by-step methodologies"
+      ],
+      "avoid_for": [
+        "Non-linear relationships",
+        "Large bodies of text",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "timeline",
+        "process-flow",
+        "chevrons"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-06"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Three-column edge-to-edge layout: image left, solid color block center with icon/text, solid color block right with numbered list.",
+      "visual_signature": "Three-column edge-to-edge layout: image left, solid color block center with icon/text, solid color block right with numbered list. | zones=[\"Three-column edge-to-edge layout: image left, solid color block center with icon/text, solid color block right with numbered list.\"] | anchors=Muted, warm pastel 'Morandi' color scheme; Strict flat design with no gradients or drop shadows; Mix of fluid background shapes and sharp rectangular content blocks",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Agenda introduction",
+        "Multi-faceted concepts",
+        "Numbered lists"
+      ],
+      "avoid_for": [
+        "Long continuous paragraphs",
+        "Complex diagrams",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "3-column",
+        "color-blocking",
+        "image-text-split"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image-col-1",
+          "purpose": "Contextual photography",
+          "bbox": [
+            0.0,
+            0.15,
+            0.33,
+            0.7
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Asymmetrical split: left side features an image layered over an offset background block; right side features a vertical list anchored by circular icons.",
+      "visual_signature": "Asymmetrical split: left side features an image layered over an offset background block; right side features a vertical list anchored by circular icons. | zones=[\"Asymmetrical split: left side features an image layered over an offset background block; right side features a vertical list anchored by circular icons.\"] | anchors=Muted, warm pastel 'Morandi' color scheme; Strict flat design with no gradients or drop shadows; Mix of fluid background shapes and sharp rectangular content blocks",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Key takeaways",
+        "Feature lists",
+        "Process steps"
+      ],
+      "avoid_for": [
+        "Heavy data",
+        "Single large narratives",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "icon-list",
+        "offset-image",
+        "vertical-rhythm"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image-left",
+          "purpose": "Subject photography",
+          "bbox": [
+            0.05,
+            0.1,
+            0.3,
+            0.8
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Four-column vertical layout alternating between cropped images and solid color blocks containing large statistical numbers.",
+      "visual_signature": "Four-column vertical layout alternating between cropped images and solid color blocks containing large statistical numbers. | zones=[\"Four-column vertical layout alternating between cropped images and solid color blocks containing large statistical numbers.\"] | anchors=Muted, warm pastel 'Morandi' color scheme; Strict flat design with no gradients or drop shadows; Mix of fluid background shapes and sharp rectangular content blocks",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Highlighting key metrics",
+        "Portfolio showcases",
+        "Impact statements"
+      ],
+      "avoid_for": [
+        "Complex charts",
+        "Lengthy text descriptions",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "stat-callouts",
+        "4-column",
+        "alternating-grid"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-05"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image-col-1",
+          "purpose": "Supporting visuals",
+          "bbox": [
+            0.05,
+            0.15,
+            0.2,
+            0.4
+          ],
+          "priority": 1
+        },
+        {
+          "id": "image-col-3",
+          "purpose": "Supporting visuals",
+          "bbox": [
+            0.55,
+            0.15,
+            0.2,
+            0.4
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Three-column edge-to-edge layout: image left, solid color block center with icon/text, solid color block right with numbered list.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Three-column edge-to-edge layout: image left, solid color block center with icon/text, solid color block right with numbered list. | zones=[\"Three-column edge-to-edge layout: image left, solid color block center with icon/text, solid color block right with numbered list.\"] | anchors=Muted, warm pastel 'Morandi' color scheme; Strict flat design with no gradients or drop shadows; Mix of fluid background shapes and sharp rectangular content blocks",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Agenda introduction",
+        "Multi-faceted concepts",
+        "Numbered lists"
+      ],
+      "avoid_for": [
+        "Long continuous paragraphs",
+        "Complex diagrams",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "3-column",
+        "color-blocking",
+        "image-text-split"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image-col-1",
+          "purpose": "Contextual photography",
+          "bbox": [
+            0.0,
+            0.15,
+            0.33,
+            0.7
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Fluid organic shapes framing the corners; central stacked typography for closing remarks and presenter info.",
+      "visual_signature": "Fluid organic shapes framing the corners; central stacked typography for closing remarks and presenter info. | zones=[\"Fluid organic shapes framing the corners; central stacked typography for closing remarks and presenter info.\"] | anchors=Muted, warm pastel 'Morandi' color scheme; Strict flat design with no gradients or drop shadows; Mix of fluid background shapes and sharp rectangular content blocks",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Q&A prompts",
+        "Thank you slides",
+        "Contact information"
+      ],
+      "avoid_for": [
+        "New information",
+        "Data charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing",
+        "organic-frame",
+        "bookend"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

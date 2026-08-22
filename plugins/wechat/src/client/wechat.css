@@ -1,0 +1,442 @@
+/*
+ * dsh-weixin-clawbot 弹窗与侧边栏入口样式。
+ * 颜色/字体全部走 --dsw-alias-* 令牌（深浅色自动适配）；
+ * 唯二硬编码色：微信品牌绿 #07C160（logo）与二维码白底（可扫性要求）。
+ */
+
+/* ── 侧边栏入口 ─────────────────────────────────────────── */
+
+.dsh-weixin-clawbot-entry {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+}
+
+.dsh-weixin-clawbot-entry:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 宽侧栏：与设置行一致的 34px 圆角行 */
+.dsh-weixin-clawbot-entry-wide {
+  width: auto;
+  height: 34px;
+  margin: 4px -4px 4px;
+  padding: 0 10px;
+  border-radius: 12px;
+}
+
+/* 连通角标：图标右下角 8px 圆点；已连接=绿，连接失败=红 */
+.dsh-weixin-clawbot-badge {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-success-primary);
+  box-shadow: 0 0 0 2px var(--dsw-alias-bg-layer-1);
+}
+
+.dsh-weixin-clawbot-badge-error {
+  background: var(--dsw-alias-state-error-primary);
+}
+
+/* ── 弹窗（挂 Modal className，卡片从 380 扩到 420） ─────── */
+
+.dsh-weixin-clawbot-dialog {
+  width: min(420px, 100%);
+}
+
+/* headless 模式自绘 frame：左右 24 / 上 22 的内容边距 */
+.dsh-weixin-clawbot-frame {
+  display: flex;
+  flex-direction: column;
+  padding: 22px 24px 0;
+}
+
+/* 自绘关闭钮（对齐 Modal 默认 header 的 close 规格） */
+.dsh-weixin-clawbot-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-weixin-clawbot-close:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dsh-weixin-clawbot-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dsh-weixin-clawbot-header-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.dsh-weixin-clawbot-logo {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: #07c160; /* 微信品牌绿 */
+  color: #fff;
+}
+
+.dsh-weixin-clawbot-title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-weixin-clawbot-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 状态行：StateDot + 文案 */
+.dsh-weixin-clawbot-statusline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ── 分区（关联机器人 / 颗粒度 / 工作区范围） ────────────── */
+
+.dsh-weixin-clawbot-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.dsh-weixin-clawbot-section-title {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-weixin-clawbot-section-desc {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ── 二维码卡片 ─────────────────────────────────────────── */
+
+.dsh-weixin-clawbot-qr-card {
+  align-self: center;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 16px;
+  background: #fff; /* 二维码可扫性要求白底 */
+}
+
+.dsh-weixin-clawbot-qr-img {
+  display: block;
+  width: 220px;
+  height: 220px;
+}
+
+.dsh-weixin-clawbot-qr-hint {
+  align-self: center;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* 「无法扫码？」链接行 */
+.dsh-weixin-clawbot-linkrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-weixin-clawbot-linkbtn {
+  border: none;
+  padding: 0;
+  background: none;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+}
+
+.dsh-weixin-clawbot-linkbtn:hover {
+  color: var(--dsw-alias-label-primary);
+  text-decoration: underline;
+}
+
+/* ── 已连通 ─────────────────────────────────────────────── */
+
+.dsh-weixin-clawbot-connected {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.dsh-weixin-clawbot-connected-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dsh-weixin-clawbot-connected-name {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-weixin-clawbot-connected-id {
+  font-size: 12px;
+  line-height: 18px;
+  font-family: var(--ds-font-family-code);
+  color: var(--dsw-alias-label-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 首条消息提示框 */
+.dsh-weixin-clawbot-note {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ── 设置行（标题/描述 左，控件 右） ───────────────────── */
+
+.dsh-weixin-clawbot-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.dsh-weixin-clawbot-row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.dsh-weixin-clawbot-row-label {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-weixin-clawbot-row-desc {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* 下拉触发按钮（Menu 的 anchor） */
+.dsh-weixin-clawbot-select {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  max-width: 200px;
+}
+
+.dsh-weixin-clawbot-select:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dsh-weixin-clawbot-select:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.dsh-weixin-clawbot-select-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ── 工作区多选列表（zcode 同款 checkbox 行） ───────────── */
+
+.dsh-weixin-clawbot-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.dsh-weixin-clawbot-check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dsh-weixin-clawbot-check-row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dsh-weixin-clawbot-check-row:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.dsh-weixin-clawbot-check-box {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 5px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary-foreground, #fff);
+}
+
+.dsh-weixin-clawbot-check-box[data-checked='true'] {
+  border-color: transparent;
+  background: var(--dsw-alias-brand-primary);
+}
+
+.dsh-weixin-clawbot-check-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.dsh-weixin-clawbot-check-title {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-weixin-clawbot-check-path {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 16px;
+  font-family: var(--ds-font-family-code);
+  color: var(--dsw-alias-label-tertiary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dsh-weixin-clawbot-check-empty {
+  padding: 7px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ── iLink 配对码输入行 ─────────────────────────────────── */
+
+.dsh-weixin-clawbot-verify {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.dsh-weixin-clawbot-verify-label {
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-weixin-clawbot-verify-input {
+  width: 90px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  font-family: var(--ds-font-family-code);
+}
+
+.dsh-weixin-clawbot-verify-input:focus {
+  outline: none;
+  border-color: var(--dsw-alias-brand-primary);
+}

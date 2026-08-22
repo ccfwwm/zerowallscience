@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-runs
+      name: '@zerowallscience/plugin-runs'

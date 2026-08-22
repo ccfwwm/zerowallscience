@@ -1,0 +1,394 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-40ppt-ppt-14-1678fc3d",
+  "source": "local-pptx-distillation",
+  "source_hash": "1678fc3de720cf4e6a9a9a6e32c89bf5ba3e8241a98d18c420182271d2914eed",
+  "global_style": "A sophisticated, minimalist presentation system featuring a muted Morandi color palette, clean geometric layouts, and high-contrast typography.",
+  "theme": {
+    "palette": [
+      "#4b6455",
+      "#d68f80",
+      "#eedcc6",
+      "#ffffff",
+      "#595959"
+    ],
+    "identity_anchors": [
+      "Muted, earthy color palette with high-contrast accent blocks",
+      "Expressive brush script paired with neutral sans-serif typography",
+      "Strictly orthogonal geometric layouts with solid color blocking",
+      "Generous, asymmetrical negative space"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Solid background with asymmetrical two-column layout: square image left, layered text and accent block right.",
+      "visual_signature": "Solid background with asymmetrical two-column layout: square image left, layered text and accent block right. | zones=[\"Solid background with asymmetrical two-column layout: square image left, layered text and accent block right.\"] | anchors=Muted, earthy color palette with high-contrast accent blocks; Expressive brush script paired with neutral sans-serif typography; Strictly orthogonal geometric layouts with solid color blocking",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Title slides",
+        "High-impact visual introductions"
+      ],
+      "avoid_for": [
+        "Data-heavy introductions",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "cover",
+        "split-layout",
+        "dark-mode"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "hero",
+          "purpose": "hero brand imagery",
+          "bbox": [
+            0.14,
+            0.17,
+            0.31,
+            0.55
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Asymmetrical split layout: large vertical image anchored left, right-aligned accent bar, central text block.",
+      "visual_signature": "Asymmetrical split layout: large vertical image anchored left, right-aligned accent bar, central text block. | zones=[\"Asymmetrical split layout: large vertical image anchored left, right-aligned accent bar, central text block.\"] | anchors=Muted, earthy color palette with high-contrast accent blocks; Expressive brush script paired with neutral sans-serif typography; Strictly orthogonal geometric layouts with solid color blocking",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Chapter transitions",
+        "Section dividers"
+      ],
+      "avoid_for": [
+        "Detailed content",
+        "Complex diagrams",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "section-divider",
+        "left-image",
+        "minimal"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "section-hero",
+          "purpose": "thematic section image",
+          "bbox": [
+            0.06,
+            0.24,
+            0.29,
+            0.64
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Symmetrical three-column layout with centered circular focal points over text blocks.",
+      "visual_signature": "Symmetrical three-column layout with centered circular focal points over text blocks. | zones=[\"Symmetrical three-column layout with centered circular focal points over text blocks.\"] | anchors=Muted, earthy color palette with high-contrast accent blocks; Expressive brush script paired with neutral sans-serif typography; Strictly orthogonal geometric layouts with solid color blocking",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Features lists",
+        "Core values",
+        "Three-step processes"
+      ],
+      "avoid_for": [
+        "Long paragraphs",
+        "Complex data visualization",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "3-column",
+        "icon-grid",
+        "symmetrical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Horizontal split background with three-column text grid and one overlapping image anchored to the left.",
+      "visual_signature": "Horizontal split background with three-column text grid and one overlapping image anchored to the left. | zones=[\"Horizontal split background with three-column text grid and one overlapping image anchored to the left.\"] | anchors=Muted, earthy color palette with high-contrast accent blocks; Expressive brush script paired with neutral sans-serif typography; Strictly orthogonal geometric layouts with solid color blocking",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Timelines",
+        "Team profiles",
+        "Product features"
+      ],
+      "avoid_for": [
+        "Full-bleed photography",
+        "Single focused message",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "horizontal-split",
+        "3-column",
+        "overlapping-image"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-05"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "feature-image",
+          "purpose": "supporting context image",
+          "bbox": [
+            0.1,
+            0.46,
+            0.17,
+            0.31
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Two-column layout: left column contains framed text block and horizontal chart row; right column contains text list with vertical separator.",
+      "visual_signature": "Two-column layout: left column contains framed text block and horizontal chart row; right column contains text list with vertical separator. | zones=[\"Two-column layout: left column contains framed text block and horizontal chart row; right column contains text list with vertical separator.\"] | anchors=Muted, earthy color palette with high-contrast accent blocks; Expressive brush script paired with neutral sans-serif typography; Strictly orthogonal geometric layouts with solid color blocking",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 6
+      },
+      "best_for": [
+        "Key metrics",
+        "Process highlights",
+        "Statistical summaries"
+      ],
+      "avoid_for": [
+        "Dense financial tables",
+        "Complex multi-axis charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-content",
+        "metrics",
+        "framed-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Asymmetrical split layout: large vertical image anchored left, right-aligned accent bar, central text block.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Asymmetrical split layout: large vertical image anchored left, right-aligned accent bar, central text block. | zones=[\"Asymmetrical split layout: large vertical image anchored left, right-aligned accent bar, central text block.\"] | anchors=Muted, earthy color palette with high-contrast accent blocks; Expressive brush script paired with neutral sans-serif typography; Strictly orthogonal geometric layouts with solid color blocking",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Chapter transitions",
+        "Section dividers"
+      ],
+      "avoid_for": [
+        "Detailed content",
+        "Complex diagrams",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "section-divider",
+        "left-image",
+        "minimal"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "section-hero",
+          "purpose": "thematic section image",
+          "bbox": [
+            0.06,
+            0.24,
+            0.29,
+            0.64
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Solid background with asymmetrical two-column layout: square image left, prominent typographic focal point right.",
+      "visual_signature": "Solid background with asymmetrical two-column layout: square image left, prominent typographic focal point right. | zones=[\"Solid background with asymmetrical two-column layout: square image left, prominent typographic focal point right.\"] | anchors=Muted, earthy color palette with high-contrast accent blocks; Expressive brush script paired with neutral sans-serif typography; Strictly orthogonal geometric layouts with solid color blocking",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Final slide",
+        "Contact information"
+      ],
+      "avoid_for": [
+        "Summary bullet points",
+        "New information",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing",
+        "split-layout",
+        "dark-mode"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "closing-image",
+          "purpose": "memorable exit visual",
+          "bbox": [
+            0.09,
+            0.17,
+            0.31,
+            0.55
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    }
+  ]
+}

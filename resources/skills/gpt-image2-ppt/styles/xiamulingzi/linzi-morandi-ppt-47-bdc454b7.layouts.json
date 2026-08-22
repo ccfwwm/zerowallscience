@@ -1,0 +1,328 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-ppt-47-bdc454b7",
+  "source": "local-pptx-distillation",
+  "source_hash": "bdc454b75070bc84aac7274252b597044594cced1b2a1484b7e98406c68f0f06",
+  "global_style": "A minimalist corporate template featuring a muted blue-and-taupe palette with flowing abstract wave backgrounds and white content containers.",
+  "theme": {
+    "palette": [
+      "#628A9E",
+      "#BAAA9E",
+      "#FFFFFF",
+      "#4C7488",
+      "#5A656B"
+    ],
+    "identity_anchors": [
+      "Semi-transparent flowing wave vectors spanning the background",
+      "Central white rectangular cards housing the main slide content",
+      "Muted 'Morandi' dual-tone color usage (dusty blue paired with taupe)",
+      "Pill-shaped badges for section numbers and tags"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Centered typography over a full-bleed flowing wave background, anchored by a bottom pill badge",
+      "visual_signature": "Centered typography over a full-bleed flowing wave background, anchored by a bottom pill badge | zones=[\"Centered typography over a full-bleed flowing wave background, anchored by a bottom pill badge\"] | anchors=Semi-transparent flowing wave vectors spanning the background; Central white rectangular cards housing the main slide content; Muted 'Morandi' dual-tone color usage (dusty blue paired with taupe)",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Presentation titles",
+        "Opening slides"
+      ],
+      "avoid_for": [
+        "Heavy text",
+        "Data visualization",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "cover",
+        "centered",
+        "minimal"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Centered text layout identical to the cover, acting as a section divider",
+      "visual_signature": "Centered text layout identical to the cover, acting as a section divider | zones=[\"Centered text layout identical to the cover, acting as a section divider\"] | anchors=Semi-transparent flowing wave vectors spanning the background; Central white rectangular cards housing the main slide content; Muted 'Morandi' dual-tone color usage (dusty blue paired with taupe)",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section transitions"
+      ],
+      "avoid_for": [
+        "Detailed content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "section-break",
+        "centered",
+        "transition"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Four-column layout within a white container, featuring teardrop/pin shapes for icons",
+      "visual_signature": "Four-column layout within a white container, featuring teardrop/pin shapes for icons | zones=[\"Four-column layout within a white container, featuring teardrop/pin shapes for icons\"] | anchors=Semi-transparent flowing wave vectors spanning the background; Central white rectangular cards housing the main slide content; Muted 'Morandi' dual-tone color usage (dusty blue paired with taupe)",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Features list",
+        "Core values",
+        "Categorized items"
+      ],
+      "avoid_for": [
+        "Sequential processes",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "4-column",
+        "icons",
+        "teardrop-shapes"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Four-step horizontal sequence using alternating trapezoidal/chevron blocks",
+      "visual_signature": "Four-step horizontal sequence using alternating trapezoidal/chevron blocks | zones=[\"Four-step horizontal sequence using alternating trapezoidal/chevron blocks\"] | anchors=Semi-transparent flowing wave vectors spanning the background; Central white rectangular cards housing the main slide content; Muted 'Morandi' dual-tone color usage (dusty blue paired with taupe)",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Process flows",
+        "Sequential steps",
+        "Timelines"
+      ],
+      "avoid_for": [
+        "Unrelated feature lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "process",
+        "4-step",
+        "horizontal-flow"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Horizontal paired bar chart on the left and a 3-item numbered list on the right",
+      "visual_signature": "Horizontal paired bar chart on the left and a 3-item numbered list on the right | zones=[\"Horizontal paired bar chart on the left and a 3-item numbered list on the right\"] | anchors=Semi-transparent flowing wave vectors spanning the background; Central white rectangular cards housing the main slide content; Muted 'Morandi' dual-tone color usage (dusty blue paired with taupe)",
+      "content_capacity": {
+        "density": "high",
+        "max_items": 6
+      },
+      "best_for": [
+        "Comparative data",
+        "Key performance indicators",
+        "Market overviews"
+      ],
+      "avoid_for": [
+        "Complex financial tables",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "bar-chart",
+        "data-visualization",
+        "split-layout"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-06"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Centered text layout identical to the cover, acting as a section divider",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Centered text layout identical to the cover, acting as a section divider | zones=[\"Centered text layout identical to the cover, acting as a section divider\"] | anchors=Semi-transparent flowing wave vectors spanning the background; Central white rectangular cards housing the main slide content; Muted 'Morandi' dual-tone color usage (dusty blue paired with taupe)",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section transitions"
+      ],
+      "avoid_for": [
+        "Detailed content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "section-break",
+        "centered",
+        "transition"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Centered typography over a full-bleed flowing wave background, mimicking the cover slide",
+      "visual_signature": "Centered typography over a full-bleed flowing wave background, mimicking the cover slide | zones=[\"Centered typography over a full-bleed flowing wave background, mimicking the cover slide\"] | anchors=Semi-transparent flowing wave vectors spanning the background; Central white rectangular cards housing the main slide content; Muted 'Morandi' dual-tone color usage (dusty blue paired with taupe)",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Q&A",
+        "Thank you slides",
+        "Contact information"
+      ],
+      "avoid_for": [
+        "Final data points",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing",
+        "centered",
+        "bookend"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

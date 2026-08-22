@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-desktop-compat
+      name: '@zerowallscience/plugin-desktop-compat'

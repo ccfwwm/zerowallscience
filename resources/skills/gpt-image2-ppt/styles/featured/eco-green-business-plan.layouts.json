@@ -1,0 +1,249 @@
+{
+  "version": "2",
+  "style_id": "eco-green-business-plan",
+  "style_name": "环保绿色商业计划书 / Eco Green Business Plan",
+  "global_style": "环保商业计划书风格，鼠尾草绿、米白、深炭黑为主。使用优雅高对比衬线标题、干净无衬线正文、几何色块、短粗分隔线、深色圆形装饰和自然材质摄影块。整体克制、留白充足、无阴影、无渐变、无卡通感。",
+  "theme": {
+    "primary": "#8FAF8F",
+    "accent": ["#2F332F", "#F4F1EA", "#C9D8C4"],
+    "background": "#F4F1EA",
+    "fonts": {
+      "title": "elegant high-contrast serif",
+      "body": "clean modern sans-serif"
+    }
+  },
+  "layouts": [
+    {
+      "id": "cover-split-natural-photo",
+      "page_type": "cover",
+      "summary": "不对称分屏封面，一侧为大幅自然材质或植物摄影块，另一侧为鼠尾草绿色实底文字区；大号衬线标题居中或左对齐，副标题上方有短粗分隔线，深炭黑圆形压在色块交界或角落。",
+      "visual_signature": "自然照片与绿色色块分屏封面",
+      "content_capacity": {
+        "title": "8-18 个中文字符",
+        "subtitle": "1 行短副标题",
+        "meta": "日期、作者或机构 1-2 行"
+      },
+      "best_for": ["cover", "opening", "brand title"],
+      "avoid_for": ["dense content", "table", "multi-metric data"],
+      "variation_tags": ["cover", "split-screen", "photo-block", "large-serif-title"],
+      "reuse_friendly": false,
+      "reuse_reason": "封面视觉锚点强，同一 deck 重复会显得像重新开场。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {"type": "string", "minLength": 2, "maxLength": 24, "description": "封面主标题"},
+          "subtitle": {"type": "string", "minLength": 0, "maxLength": 48, "description": "封面副标题"},
+          "meta": {"type": "string", "minLength": 0, "maxLength": 40, "description": "日期、作者或机构"}
+        },
+        "required": ["title"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "agenda-2x2-number-grid",
+      "page_type": "agenda",
+      "summary": "2x2 议程网格，四个大号衬线数字作为锚点，每格配短标题和一句说明；背景使用米白与浅鼠尾草绿横向色带交替，数字下方用短粗线强调层级。",
+      "visual_signature": "2x2 大数字议程网格",
+      "content_capacity": {
+        "items": "4 个议程项，每项 1 个短标题 + 1 句短说明"
+      },
+      "best_for": ["agenda", "overview", "four-part structure"],
+      "avoid_for": ["single idea", "long prose", "complex chart"],
+      "variation_tags": ["agenda", "2x2-grid", "large-numerals", "structured-list"],
+      "reuse_friendly": true,
+      "reuse_reason": "目录网格可用于阶段概览，但建议只复用一次。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {"type": "string", "minLength": 2, "maxLength": 20, "description": "议程页标题"},
+          "items": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 4,
+            "description": "议程项",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {"type": "string", "maxLength": 16},
+                "description": {"type": "string", "maxLength": 32}
+              }
+            }
+          }
+        },
+        "required": ["title", "items"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "section-number-photo-split",
+      "page_type": "section",
+      "summary": "章节页使用垂直分屏，一侧是大幅自然照片或材质块，另一侧是纯色信息区；超大衬线章节数字、短粗下划线和章节标题形成强层级，深炭黑圆形作为边界装饰。",
+      "visual_signature": "超大章节数字分屏页",
+      "content_capacity": {
+        "section_number": "01-09",
+        "title": "6-16 个中文字符",
+        "description": "1 句短说明"
+      },
+      "best_for": ["section", "chapter divider", "major transition"],
+      "avoid_for": ["agenda", "detailed list", "dense metrics"],
+      "variation_tags": ["section", "split-screen", "large-number", "photo-block"],
+      "reuse_friendly": true,
+      "reuse_reason": "章节页可随章节编号复用，但应替换照片方向或色块比例。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "section_number": {"type": "string", "maxLength": 4, "description": "章节编号"},
+          "title": {"type": "string", "minLength": 2, "maxLength": 20, "description": "章节标题"},
+          "description": {"type": "string", "minLength": 0, "maxLength": 60, "description": "章节短说明"}
+        },
+        "required": ["title"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "content-three-card-grid",
+      "page_type": "content",
+      "summary": "顶部居中衬线标题放在浅绿色或深炭色横向 banner 内，下方为三列卡片网格。卡片在米白与浅鼠尾草绿之间交替，内部使用小标题、短正文和极简图标，留白充足。",
+      "visual_signature": "顶部 banner + 三卡片网格",
+      "content_capacity": {
+        "items": "3 个卡片，每卡 1 个短标题 + 1-2 句正文"
+      },
+      "best_for": ["feature list", "three pillars", "timeline summary"],
+      "avoid_for": ["one big quote", "wide chart", "long paragraph"],
+      "variation_tags": ["content", "three-cards", "top-banner", "grid"],
+      "reuse_friendly": true,
+      "reuse_reason": "通用内容页可复用，但建议和对比页、数据页错开。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {"type": "string", "minLength": 2, "maxLength": 24, "description": "页面标题"},
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 3,
+            "description": "三列卡片内容",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {"type": "string", "maxLength": 14},
+                "description": {"type": "string", "maxLength": 42}
+              }
+            }
+          }
+        },
+        "required": ["title", "items"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "comparison-sage-white-blocks",
+      "page_type": "content",
+      "summary": "左右并列对比布局，一侧为鼠尾草绿实底，另一侧为米白或白色实底；每侧有大号小标题、2-3 条短要点和细线分隔，中心可用短竖线或圆点连接。",
+      "visual_signature": "鼠尾草绿 vs 米白并列对比",
+      "content_capacity": {
+        "left": "1 个标题 + 2-3 条短要点",
+        "right": "1 个标题 + 2-3 条短要点"
+      },
+      "best_for": ["comparison", "before after", "two options", "tradeoff"],
+      "avoid_for": ["three or more categories", "large chart"],
+      "variation_tags": ["comparison", "two-column", "color-blocks"],
+      "reuse_friendly": true,
+      "reuse_reason": "对比页结构通用，但多次使用会显得节奏单一。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {"type": "string", "minLength": 2, "maxLength": 24, "description": "对比页标题"},
+          "left": {"type": "string", "minLength": 2, "maxLength": 120, "description": "左侧对比内容"},
+          "right": {"type": "string", "minLength": 2, "maxLength": 120, "description": "右侧对比内容"}
+        },
+        "required": ["title", "left", "right"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "data-pie-callout-labels",
+      "page_type": "data",
+      "summary": "中心或偏左放置扁平 2D 饼图或环形图，只使用鼠尾草绿、米白、深炭黑；两侧是矩形数据标签，通过细线和小方形节点连接到图表分区，标题保持优雅衬线风格。",
+      "visual_signature": "扁平饼图 + 矩形 callout",
+      "content_capacity": {
+        "metrics": "3-5 个数据标签，每个含数字和短说明"
+      },
+      "best_for": ["data", "proportion", "market split", "impact metrics"],
+      "avoid_for": ["long table", "multi-series trend", "qualitative quote"],
+      "variation_tags": ["data", "pie-chart", "callouts", "flat-chart"],
+      "reuse_friendly": true,
+      "reuse_reason": "数据页可复用，但需更换图表类型或标签方向以避免重复。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {"type": "string", "minLength": 2, "maxLength": 24, "description": "数据页标题"},
+          "metrics": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 5,
+            "description": "数据标签",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {"type": "string", "maxLength": 14},
+                "metric": {"type": "string", "maxLength": 12},
+                "description": {"type": "string", "maxLength": 24}
+              }
+            }
+          }
+        },
+        "required": ["title", "metrics"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "quote-image-banner-serif",
+      "page_type": "quote",
+      "summary": "横向自然照片 banner 占据顶部或底部三分之一，其余区域为大面积纯色块；中央放置大号衬线引语，下面用小号无衬线署名或注释，整体极简。",
+      "visual_signature": "照片横幅 + 大号衬线引语",
+      "content_capacity": {
+        "quote": "1 句 16-36 个中文字符",
+        "attribution": "可选署名 1 行"
+      },
+      "best_for": ["quote", "key insight", "principle", "transition"],
+      "avoid_for": ["bullet list", "dense data", "agenda"],
+      "variation_tags": ["quote", "image-banner", "large-serif-text"],
+      "reuse_friendly": false,
+      "reuse_reason": "大引语页记忆点强，重复会削弱节奏。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "quote": {"type": "string", "minLength": 6, "maxLength": 48, "description": "核心引语"},
+          "attribution": {"type": "string", "minLength": 0, "maxLength": 24, "description": "署名或注释"}
+        },
+        "required": ["quote"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "closing-centered-contact-banner",
+      "page_type": "closing",
+      "summary": "极简收尾页，中央放置大号衬线感谢语或结论，下方为干净的联系信息网格；页面顶部或底部使用一条自然材质照片横幅，深炭黑圆形作为克制装饰。",
+      "visual_signature": "居中感谢语 + 联系信息网格",
+      "content_capacity": {
+        "title": "谢谢 / 下一步 / 结论短句",
+        "contact": "2-4 条联系信息"
+      },
+      "best_for": ["closing", "thank you", "contact", "next step"],
+      "avoid_for": ["new section", "complex chart", "long prose"],
+      "variation_tags": ["closing", "centered", "contact-grid", "image-banner"],
+      "reuse_friendly": false,
+      "reuse_reason": "收尾页通常只出现一次。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {"type": "string", "minLength": 2, "maxLength": 20, "description": "收尾主标题"},
+          "subtitle": {"type": "string", "minLength": 0, "maxLength": 50, "description": "收尾短句"},
+          "contact": {"type": "string", "minLength": 0, "maxLength": 80, "description": "联系信息"}
+        },
+        "required": ["title"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

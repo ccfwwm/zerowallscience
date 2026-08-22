@@ -1,0 +1,57 @@
+name: Windows Electron Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Package identity and update channel
+        required: true
+        default: preview
+        type: choice
+        options: [preview, stable]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.9.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm typecheck
+      - run: pnpm plugins:typert
+      - run: pnpm --workspace-concurrency=1 --filter @zerowallscience/plugin-* run bundle
+      - run: node tools/plugins/inline-css.mjs
+      - name: Run tests with stable temporary paths
+        shell: pwsh
+        run: |
+          $env:TEMP = $env:RUNNER_TEMP
+          $env:TMP = $env:RUNNER_TEMP
+          pnpm test
+      - run: pnpm audit:runtime
+      - name: Build Windows package
+        shell: pwsh
+        run: |
+          if ('${{ inputs.channel }}' -eq 'stable') {
+            pnpm package:stable:win
+          } else {
+            pnpm package:win
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zerowall-science-${{ inputs.channel }}-windows-x64
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.yml
+            desktop/dist/*.blockmap

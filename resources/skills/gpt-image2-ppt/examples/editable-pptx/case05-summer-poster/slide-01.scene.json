@@ -1,0 +1,102 @@
+{
+  "slide_number": 1,
+  "canvas": {"width": 1672, "height": 941},
+  "visual_master": "original.png",
+  "clean_plate": "clean-plate.png",
+  "reconstruction": {
+    "mode": "editable",
+    "layer_route": "B",
+    "reason": "毛绒、白色冰淇淋与水彩云混合，A1/A2 边缘不稳定；使用原图参考生成单色键背景组合素材后本地去背景"
+  },
+  "elements": [
+    {
+      "id": "watercolor_text_panel",
+      "type": "native_shape",
+      "bbox_px": [82, 151, 696, 609],
+      "z_index": 10,
+      "style": {"shape": "rounded_rectangle", "fill": "#FFFDE8", "fill_transparency": 12, "line": "#FFFFFF", "line_transparency": 50}
+    },
+    {
+      "id": "summer_badge",
+      "type": "native_shape",
+      "bbox_px": [639, 408, 107, 107],
+      "z_index": 12,
+      "style": {"shape": "star_5", "fill": "#59B9EB", "line": "#59B9EB", "rotation": -8}
+    },
+    {
+      "id": "product_banner",
+      "type": "native_shape",
+      "bbox_px": [169, 537, 495, 83],
+      "z_index": 13,
+      "style": {"shape": "rounded_rectangle", "fill": "#FFF8CD", "fill_transparency": 5, "line": "#F4BE33", "line_width_pt": 1.4}
+    },
+    {
+      "id": "decor_star_1",
+      "type": "native_shape",
+      "bbox_px": [125, 157, 28, 28],
+      "z_index": 14,
+      "style": {"shape": "star_5", "fill": "#FFD124", "line": "#FFD124"}
+    },
+    {
+      "id": "decor_star_2",
+      "type": "native_shape",
+      "bbox_px": [709, 201, 23, 23],
+      "z_index": 14,
+      "style": {"shape": "star_5", "fill": "#FFD124", "line": "#FFD124"}
+    },
+    {
+      "id": "decor_star_3",
+      "type": "native_shape",
+      "bbox_px": [709, 671, 25, 25],
+      "z_index": 14,
+      "style": {"shape": "star_5", "fill": "#FFD124", "line": "#FFD124"}
+    },
+    {
+      "id": "tagline",
+      "type": "native_text",
+      "bbox_px": [157, 195, 552, 57],
+      "z_index": 20,
+      "content": "★  把夏天 · 甜进心里  ☆",
+      "style": {"font_face": "HanziPen SC", "font_size_pt": 17, "font_weight": 400, "color": "#4D875B", "align": "center"}
+    },
+    {
+      "id": "main_title",
+      "type": "native_text",
+      "bbox_px": [119, 257, 596, 195],
+      "z_index": 21,
+      "content": "星星人",
+      "style": {"font_face": "HanziPen SC", "font_size_pt": 68, "font_weight": 700, "color": "#4A8750", "align": "center"}
+    },
+    {
+      "id": "summer_badge_text",
+      "type": "native_text",
+      "bbox_px": [650, 420, 83, 73],
+      "z_index": 22,
+      "content": "夏日\n限定",
+      "style": {"font_face": "Hiragino Sans GB", "font_size_pt": 11, "font_weight": 700, "color": "#FFFFFF", "align": "center"}
+    },
+    {
+      "id": "product_line",
+      "type": "native_text",
+      "bbox_px": [186, 545, 464, 67],
+      "z_index": 23,
+      "content": "粽子 × 冰淇淋",
+      "style": {"font_face": "HanziPen SC", "font_size_pt": 25, "font_weight": 700, "color": "#4A8750", "align": "center"}
+    },
+    {
+      "id": "footer",
+      "type": "native_text",
+      "bbox_px": [144, 659, 558, 57],
+      "z_index": 24,
+      "content": "★  软萌星星人 · 惊喜盲盒系列  ★",
+      "style": {"font_face": "Hiragino Sans GB", "font_size_pt": 17, "font_weight": 400, "color": "#4D875B", "align": "center"}
+    },
+    {
+      "id": "mascot_icecream_group",
+      "type": "image_layer",
+      "bbox_px": [784, 78, 796, 809],
+      "z_index": 30,
+      "asset": "layers/mascot-icecream-group.png"
+    }
+  ]
+}

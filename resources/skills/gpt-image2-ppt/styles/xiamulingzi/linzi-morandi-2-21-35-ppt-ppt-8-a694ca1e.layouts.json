@@ -1,0 +1,346 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-35-ppt-ppt-8-a694ca1e",
+  "source": "local-pptx-distillation",
+  "source_hash": "a694ca1e0ce8500ac3ebb3998fc6e58c136c5f66df5dcc59c28fe71451f02e55",
+  "global_style": "A minimalist, artistic presentation theme featuring fluid organic shapes, muted warm earth tones, and wide-tracked elegant typography.",
+  "theme": {
+    "palette": [
+      "#EAE6DA",
+      "#855C41",
+      "#B3A293",
+      "#D5BCAD",
+      "#D5CCBF"
+    ],
+    "identity_anchors": [
+      "Fluid, overlapping organic vector background shapes",
+      "Muted, low-contrast earth-tone color palette",
+      "Delicate, scattered dashed line 'confetti' accents",
+      "Wide-tracked, all-caps geometric sans-serif headings",
+      "Circular framing for focal elements and image masks"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Central oversized white circle overlapping organic corner blobs, scattered dash accents.",
+      "visual_signature": "Central oversized white circle overlapping organic corner blobs, scattered dash accents. | zones=[\"Central oversized white circle overlapping organic corner blobs, scattered dash accents.\"] | anchors=Fluid, overlapping organic vector background shapes; Muted, low-contrast earth-tone color palette; Delicate, scattered dashed line 'confetti' accents",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Presentation titles",
+        "Section breaks"
+      ],
+      "avoid_for": [
+        "Detailed content",
+        "Data visualization",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "minimal-cover",
+        "organic-frame",
+        "centered-title"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Minimalist layout with a small central circle containing grid-aligned text, crossed by thin curved lines.",
+      "visual_signature": "Minimalist layout with a small central circle containing grid-aligned text, crossed by thin curved lines. | zones=[\"Minimalist layout with a small central circle containing grid-aligned text, crossed by thin curved lines.\"] | anchors=Fluid, overlapping organic vector background shapes; Muted, low-contrast earth-tone color palette; Delicate, scattered dashed line 'confetti' accents",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section transitions",
+        "Chapter titles",
+        "Pauses in narrative"
+      ],
+      "avoid_for": [
+        "Detailed explanations",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "transition",
+        "typographic-art",
+        "minimalist-lines"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-06"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Three large circular numerical anchors arranged horizontally above corresponding text blocks.",
+      "visual_signature": "Three large circular numerical anchors arranged horizontally above corresponding text blocks. | zones=[\"Three large circular numerical anchors arranged horizontally above corresponding text blocks.\"] | anchors=Fluid, overlapping organic vector background shapes; Muted, low-contrast earth-tone color palette; Delicate, scattered dashed line 'confetti' accents",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Key takeaways",
+        "Three-step processes",
+        "Core values"
+      ],
+      "avoid_for": [
+        "Long text paragraphs",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "three-columns",
+        "numbered-list",
+        "icon-replacements"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Left-aligned text block balanced by a large circular image mask on the right, framed by corner shapes.",
+      "visual_signature": "Left-aligned text block balanced by a large circular image mask on the right, framed by corner shapes. | zones=[\"Left-aligned text block balanced by a large circular image mask on the right, framed by corner shapes.\"] | anchors=Fluid, overlapping organic vector background shapes; Muted, low-contrast earth-tone color palette; Delicate, scattered dashed line 'confetti' accents",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 2
+      },
+      "best_for": [
+        "Product feature highlights",
+        "Team member bios",
+        "Quote with portrait"
+      ],
+      "avoid_for": [
+        "Heavy data",
+        "Multi-step flows",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "text-and-image",
+        "circular-mask",
+        "split-layout"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "right-circle-image",
+          "purpose": "Subject portrait or product highlight",
+          "bbox": [
+            0.63,
+            0.27,
+            0.27,
+            0.48
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Flat, multi-series column chart overlaid on a muted, faint area chart background.",
+      "visual_signature": "Flat, multi-series column chart overlaid on a muted, faint area chart background. | zones=[\"Flat, multi-series column chart overlaid on a muted, faint area chart background.\"] | anchors=Fluid, overlapping organic vector background shapes; Muted, low-contrast earth-tone color palette; Delicate, scattered dashed line 'confetti' accents",
+      "content_capacity": {
+        "density": "high",
+        "max_items": 1
+      },
+      "best_for": [
+        "Trend analysis",
+        "Monthly performance data",
+        "Comparative metrics"
+      ],
+      "avoid_for": [
+        "Text heavy explanations",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "combo-chart",
+        "minimal-data",
+        "no-gridlines"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-08"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Three large circular numerical anchors arranged horizontally above corresponding text blocks.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Three large circular numerical anchors arranged horizontally above corresponding text blocks. | zones=[\"Three large circular numerical anchors arranged horizontally above corresponding text blocks.\"] | anchors=Fluid, overlapping organic vector background shapes; Muted, low-contrast earth-tone color palette; Delicate, scattered dashed line 'confetti' accents",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Key takeaways",
+        "Three-step processes",
+        "Core values"
+      ],
+      "avoid_for": [
+        "Long text paragraphs",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "three-columns",
+        "numbered-list",
+        "icon-replacements"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Centered floating text over an asymmetrical organic background framing the corners.",
+      "visual_signature": "Centered floating text over an asymmetrical organic background framing the corners. | zones=[\"Centered floating text over an asymmetrical organic background framing the corners.\"] | anchors=Fluid, overlapping organic vector background shapes; Muted, low-contrast earth-tone color palette; Delicate, scattered dashed line 'confetti' accents",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Thank you slides",
+        "Final contact info",
+        "End of presentation"
+      ],
+      "avoid_for": [
+        "Body content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing",
+        "organic-frame",
+        "centered-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-research
+      name: '@zerowallscience/plugin-research'

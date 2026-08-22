@@ -1,0 +1,442 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-ppt-ppt-77-2f9df692",
+  "source": "local-pptx-distillation",
+  "source_hash": "2f9df692d4440240928ac77e92137e2979ceba3df51946bfe2413ed83fbace14",
+  "global_style": "Minimalist editorial presentation featuring asymmetrical overlapping blocks, muted beige accents, light textured structural panels, and generous whitespace.",
+  "theme": {
+    "palette": [
+      "#FFFFFF",
+      "#C4AF8B",
+      "#111111",
+      "#7A7A7A",
+      "#E8E8E8"
+    ],
+    "identity_anchors": [
+      "Asymmetrical overlapping geometric blocks",
+      "Prominent use of light textured panels (e.g., marble) as structural backgrounds",
+      "Muted, desaturated aesthetic with beige/khaki accents",
+      "High contrast bold sans-serif typography paired with ample whitespace"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Full-width textured horizontal band with a centered, overlapping colored text box.",
+      "visual_signature": "Full-width textured horizontal band with a centered, overlapping colored text box. | zones=[\"Full-width textured horizontal band with a centered, overlapping colored text box.\"] | anchors=Asymmetrical overlapping geometric blocks; Prominent use of light textured panels (e.g., marble) as structural backgrounds; Muted, desaturated aesthetic with beige/khaki accents",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Title slides",
+        "Section dividers"
+      ],
+      "avoid_for": [
+        "Data-heavy content",
+        "Multi-point lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "centered",
+        "horizontal-band",
+        "high-impact"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Left-aligned text column, right floating image card overlapping a split color/texture background.",
+      "visual_signature": "Left-aligned text column, right floating image card overlapping a split color/texture background. | zones=[\"Left-aligned text column, right floating image card overlapping a split color/texture background.\"] | anchors=Asymmetrical overlapping geometric blocks; Prominent use of light textured panels (e.g., marble) as structural backgrounds; Muted, desaturated aesthetic with beige/khaki accents",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Team member profiles",
+        "Topic introductions"
+      ],
+      "avoid_for": [
+        "Complex data charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-background",
+        "floating-card",
+        "asymmetrical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "portrait-feature",
+          "purpose": "Focus image or portrait",
+          "bbox": [
+            0.2,
+            0.57,
+            0.27,
+            0.53
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Left thin vertical textured strip, large central landscape image, right floating colored text box overlapping the image edge.",
+      "visual_signature": "Left thin vertical textured strip, large central landscape image, right floating colored text box overlapping the image edge. | zones=[\"Left thin vertical textured strip, large central landscape image, right floating colored text box overlapping the image edge.\"] | anchors=Asymmetrical overlapping geometric blocks; Prominent use of light textured panels (e.g., marble) as structural backgrounds; Muted, desaturated aesthetic with beige/khaki accents",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Visual transitions",
+        "Striking singular statements"
+      ],
+      "avoid_for": [
+        "Detailed explanations",
+        "Bullet points",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "image-heavy",
+        "floating-title",
+        "minimalist"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "hero-landscape",
+          "purpose": "Primary background or feature image",
+          "bbox": [
+            0.18,
+            0.27,
+            0.65,
+            0.64
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Laptop mockup framing an image, an overlapping colored text block, and right-aligned text with an oversized quote icon.",
+      "visual_signature": "Laptop mockup framing an image, an overlapping colored text block, and right-aligned text with an oversized quote icon. | zones=[\"Laptop mockup framing an image, an overlapping colored text block, and right-aligned text with an oversized quote icon.\"] | anchors=Asymmetrical overlapping geometric blocks; Prominent use of light textured panels (e.g., marble) as structural backgrounds; Muted, desaturated aesthetic with beige/khaki accents",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Digital product showcases",
+        "Website portfolio pieces"
+      ],
+      "avoid_for": [
+        "Physical product specs",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "device-mockup",
+        "overlapping-elements",
+        "digital-portfolio"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "screen-content",
+          "purpose": "Image displayed inside the laptop mockup",
+          "bbox": [
+            0.26,
+            0.08,
+            0.4,
+            0.48
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Left-aligned text column, right floating image card overlapping a split color/texture background.",
+      "visual_signature": "Left-aligned text column, right floating image card overlapping a split color/texture background. | zones=[\"Left-aligned text column, right floating image card overlapping a split color/texture background.\"] | anchors=Asymmetrical overlapping geometric blocks; Prominent use of light textured panels (e.g., marble) as structural backgrounds; Muted, desaturated aesthetic with beige/khaki accents",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Team member profiles",
+        "Topic introductions"
+      ],
+      "avoid_for": [
+        "Complex data charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-background",
+        "floating-card",
+        "asymmetrical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "portrait-feature",
+          "purpose": "Focus image or portrait",
+          "bbox": [
+            0.2,
+            0.57,
+            0.27,
+            0.53
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Left large image with an overlapping colored text block, vertical textured divider, right text block with oversized quotation mark.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Left large image with an overlapping colored text block, vertical textured divider, right text block with oversized quotation mark. | zones=[\"Left large image with an overlapping colored text block, vertical textured divider, right text block with oversized quotation mark.\"] | anchors=Asymmetrical overlapping geometric blocks; Prominent use of light textured panels (e.g., marble) as structural backgrounds; Muted, desaturated aesthetic with beige/khaki accents",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Client testimonials",
+        "Core values",
+        "Key takeaways"
+      ],
+      "avoid_for": [
+        "Process flows",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "quote",
+        "vertical-divider",
+        "overlapping-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "quote-image",
+          "purpose": "Contextual image for the quote or section",
+          "bbox": [
+            0.15,
+            0.19,
+            0.3,
+            0.7
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "quote-primary",
+      "page_index": 6,
+      "page_type": "quote",
+      "semantic_role": "quote",
+      "summary": "Left large image with an overlapping colored text block, vertical textured divider, right text block with oversized quotation mark.",
+      "visual_signature": "Left large image with an overlapping colored text block, vertical textured divider, right text block with oversized quotation mark. | zones=[\"Left large image with an overlapping colored text block, vertical textured divider, right text block with oversized quotation mark.\"] | anchors=Asymmetrical overlapping geometric blocks; Prominent use of light textured panels (e.g., marble) as structural backgrounds; Muted, desaturated aesthetic with beige/khaki accents",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Client testimonials",
+        "Core values",
+        "Key takeaways"
+      ],
+      "avoid_for": [
+        "Process flows",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "quote",
+        "vertical-divider",
+        "overlapping-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "quote",
+          "testimonial"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "quote-image",
+          "purpose": "Contextual image for the quote or section",
+          "bbox": [
+            0.15,
+            0.19,
+            0.3,
+            0.7
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 7,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Full-width textured horizontal band with a centered overlapping accent text box (similar to cover).",
+      "visual_signature": "Full-width textured horizontal band with a centered overlapping accent text box (similar to cover). | zones=[\"Full-width textured horizontal band with a centered overlapping accent text box (similar to cover).\"] | anchors=Asymmetrical overlapping geometric blocks; Prominent use of light textured panels (e.g., marble) as structural backgrounds; Muted, desaturated aesthetic with beige/khaki accents",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Thank you slides",
+        "Contact information"
+      ],
+      "avoid_for": [
+        "Content summaries",
+        "Q&A details",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing",
+        "symmetrical",
+        "centered-box"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

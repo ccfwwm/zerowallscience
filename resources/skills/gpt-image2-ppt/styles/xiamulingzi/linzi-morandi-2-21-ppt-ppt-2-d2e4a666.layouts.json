@@ -1,0 +1,436 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-ppt-ppt-2-d2e4a666",
+  "source": "local-pptx-distillation",
+  "source_hash": "d2e4a6662a94bf1c7c517d41e2f04c7ebd87f5ea14d55b86b17703016f3f97ee",
+  "global_style": "Editorial magazine-style presentation with a muted Morandi palette, asymmetrical layouts, and oversized intersecting typography.",
+  "theme": {
+    "palette": [
+      "#5e6354",
+      "#333333",
+      "#e5e1da",
+      "#716454",
+      "#d8cdbe"
+    ],
+    "identity_anchors": [
+      "Oversized, word-breaking display typography layered over images",
+      "Muted, earthy 'Morandi' color palette with low saturation",
+      "Asymmetrical floating image placement with intersecting geometric background shapes",
+      "Frequent use of 90-degree rotated vertical text labels",
+      "Thin horizontal and vertical separator lines for structural alignment"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Centered square image overlaid with massive, multi-line, line-separated text on a solid color background.",
+      "visual_signature": "Centered square image overlaid with massive, multi-line, line-separated text on a solid color background. | zones=[\"Centered square image overlaid with massive, multi-line, line-separated text on a solid color background.\"] | anchors=Oversized, word-breaking display typography layered over images; Muted, earthy 'Morandi' color palette with low saturation; Asymmetrical floating image placement with intersecting geometric background shapes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Impactful title covers",
+        "Portfolio introductions"
+      ],
+      "avoid_for": [
+        "Corporate decks requiring prominent logos",
+        "Text-heavy executive summaries",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "hero-image",
+        "oversized-text",
+        "centered-layout"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "hero",
+          "purpose": "Central background portrait/image",
+          "bbox": [
+            0.22,
+            0.08,
+            0.56,
+            0.84
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Four equal-width vertical columns; one solid color text column and three edge-to-edge image columns.",
+      "visual_signature": "Four equal-width vertical columns; one solid color text column and three edge-to-edge image columns. | zones=[\"Four equal-width vertical columns; one solid color text column and three edge-to-edge image columns.\"] | anchors=Oversized, word-breaking display typography layered over images; Muted, earthy 'Morandi' color palette with low saturation; Asymmetrical floating image placement with intersecting geometric background shapes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Team profiles",
+        "Collection overviews",
+        "Section transitions"
+      ],
+      "avoid_for": [
+        "Detailed content delivery",
+        "Charts and graphs",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "vertical-columns",
+        "gallery",
+        "full-bleed"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "col-1",
+          "purpose": "Vertical portrait slice",
+          "bbox": [
+            0.28,
+            0.0,
+            0.24,
+            1.0
+          ],
+          "priority": 1
+        },
+        {
+          "id": "col-2",
+          "purpose": "Vertical portrait slice",
+          "bbox": [
+            0.52,
+            0.0,
+            0.24,
+            1.0
+          ],
+          "priority": 2
+        },
+        {
+          "id": "col-3",
+          "purpose": "Vertical portrait slice",
+          "bbox": [
+            0.76,
+            0.0,
+            0.24,
+            1.0
+          ],
+          "priority": 3
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "50/50 vertical split with an edge-to-edge image on the left and a minimalist typography layout on the right.",
+      "visual_signature": "50/50 vertical split with an edge-to-edge image on the left and a minimalist typography layout on the right. | zones=[\"50/50 vertical split with an edge-to-edge image on the left and a minimalist typography layout on the right.\"] | anchors=Oversized, word-breaking display typography layered over images; Muted, earthy 'Morandi' color palette with low saturation; Asymmetrical floating image placement with intersecting geometric background shapes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section introductions",
+        "Single-point highlights"
+      ],
+      "avoid_for": [
+        "Dense data lists",
+        "Multi-chart comparisons",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-screen",
+        "minimalist",
+        "asymmetrical-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "left-half",
+          "purpose": "Full height editorial image",
+          "bbox": [
+            0.0,
+            0.0,
+            0.5,
+            1.0
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Two floating rectangular images placed asymmetrically with abstract geometric shapes bleeding off the left edge.",
+      "visual_signature": "Two floating rectangular images placed asymmetrically with abstract geometric shapes bleeding off the left edge. | zones=[\"Two floating rectangular images placed asymmetrically with abstract geometric shapes bleeding off the left edge.\"] | anchors=Oversized, word-breaking display typography layered over images; Muted, earthy 'Morandi' color palette with low saturation; Asymmetrical floating image placement with intersecting geometric background shapes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Moodboards",
+        "Dual product showcases"
+      ],
+      "avoid_for": [
+        "Text-heavy explanations",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "floating-images",
+        "asymmetrical",
+        "geometry-accents"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image-left-bottom",
+          "purpose": "Landscape visual",
+          "bbox": [
+            0.05,
+            0.5,
+            0.45,
+            0.5
+          ],
+          "priority": 1
+        },
+        {
+          "id": "image-right-top",
+          "purpose": "Portrait visual",
+          "bbox": [
+            0.63,
+            0.23,
+            0.23,
+            0.53
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Minimalist map visualization adjacent to a horizontal timeline, unified by massive background watermark typography.",
+      "visual_signature": "Minimalist map visualization adjacent to a horizontal timeline, unified by massive background watermark typography. | zones=[\"Minimalist map visualization adjacent to a horizontal timeline, unified by massive background watermark typography.\"] | anchors=Oversized, word-breaking display typography layered over images; Muted, earthy 'Morandi' color palette with low saturation; Asymmetrical floating image placement with intersecting geometric background shapes",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Geographic roadmaps",
+        "Location-based timelines",
+        "Expansion plans"
+      ],
+      "avoid_for": [
+        "Complex data charts (bar/pie)",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "map",
+        "timeline",
+        "watermark-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-08"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: 50/50 vertical split with an edge-to-edge image on the left and a minimalist typography layout on the right.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: 50/50 vertical split with an edge-to-edge image on the left and a minimalist typography layout on the right. | zones=[\"50/50 vertical split with an edge-to-edge image on the left and a minimalist typography layout on the right.\"] | anchors=Oversized, word-breaking display typography layered over images; Muted, earthy 'Morandi' color palette with low saturation; Asymmetrical floating image placement with intersecting geometric background shapes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section introductions",
+        "Single-point highlights"
+      ],
+      "avoid_for": [
+        "Dense data lists",
+        "Multi-chart comparisons",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-screen",
+        "minimalist",
+        "asymmetrical-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "left-half",
+          "purpose": "Full height editorial image",
+          "bbox": [
+            0.0,
+            0.0,
+            0.5,
+            1.0
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "quote-primary",
+      "page_index": 6,
+      "page_type": "quote",
+      "semantic_role": "quote",
+      "summary": "Central, heavily margined landscape image treated as a focal window, with minimal text arranged in the left margin.",
+      "visual_signature": "Central, heavily margined landscape image treated as a focal window, with minimal text arranged in the left margin. | zones=[\"Central, heavily margined landscape image treated as a focal window, with minimal text arranged in the left margin.\"] | anchors=Oversized, word-breaking display typography layered over images; Muted, earthy 'Morandi' color palette with low saturation; Asymmetrical floating image placement with intersecting geometric background shapes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Key takeaways",
+        "Focus on a single powerful visual"
+      ],
+      "avoid_for": [
+        "Multi-item lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "dark-mode",
+        "focal-image",
+        "wide-margins"
+      ],
+      "routing": {
+        "content_shapes": [
+          "quote",
+          "testimonial"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-07"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "center-window",
+          "purpose": "Primary focal landscape image",
+          "bbox": [
+            0.26,
+            0.14,
+            0.74,
+            0.72
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    }
+  ]
+}

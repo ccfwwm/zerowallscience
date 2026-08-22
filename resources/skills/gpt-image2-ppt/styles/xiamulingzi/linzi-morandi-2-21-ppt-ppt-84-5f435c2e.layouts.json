@@ -1,0 +1,327 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-ppt-ppt-84-5f435c2e",
+  "source": "local-pptx-distillation",
+  "source_hash": "5f435c2e9ed92e54ea8deb43d08aa3064c64b2a35807bda4e82c408735eee354",
+  "global_style": "An elegant, soft-toned presentation template featuring a 'Morandi' color palette, layered paper depth effects, and minimalist geometric content structures.",
+  "theme": {
+    "palette": [
+      "#FDF6F5",
+      "#DE8A84",
+      "#A78A72",
+      "#9F946A",
+      "#785F4D"
+    ],
+    "identity_anchors": [
+      "Muted, earthy pastel color scheme",
+      "Layered paper aesthetic with diagonal cuts and subtle drop shadows on cover/section slides",
+      "Elegant, high-contrast serif typography for large headings",
+      "Solid geometric shapes (hexagons, circles) used uniformly as icon containers",
+      "Thin, organic connecting lines in process diagrams"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Diagonal overlapping layers on top-right and bottom-left, framing a central text cluster with a pill-shaped button below.",
+      "visual_signature": "Diagonal overlapping layers on top-right and bottom-left, framing a central text cluster with a pill-shaped button below. | zones=[\"Diagonal overlapping layers on top-right and bottom-left, framing a central text cluster with a pill-shaped button below.\"] | anchors=Muted, earthy pastel color scheme; Layered paper aesthetic with diagonal cuts and subtle drop shadows on cover/section slides; Elegant, high-contrast serif typography for large headings",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Title slides",
+        "Section dividers"
+      ],
+      "avoid_for": [
+        "Data heavy content",
+        "Detailed lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "layered-corners",
+        "centered-hero",
+        "minimal"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Diagonal overlapping layers framing a central title block with a rectangular text backdrop and decorative slashes.",
+      "visual_signature": "Diagonal overlapping layers framing a central title block with a rectangular text backdrop and decorative slashes. | zones=[\"Diagonal overlapping layers framing a central title block with a rectangular text backdrop and decorative slashes.\"] | anchors=Muted, earthy pastel color scheme; Layered paper aesthetic with diagonal cuts and subtle drop shadows on cover/section slides; Elegant, high-contrast serif typography for large headings",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section transitions"
+      ],
+      "avoid_for": [
+        "Content delivery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "layered-corners",
+        "centered-title",
+        "text-backdrop"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Triangular layout of three circular nodes with internal icons, accompanied by adjacent text blocks, converging around a central axis.",
+      "visual_signature": "Triangular layout of three circular nodes with internal icons, accompanied by adjacent text blocks, converging around a central axis. | zones=[\"Triangular layout of three circular nodes with internal icons, accompanied by adjacent text blocks, converging around a central axis.\"] | anchors=Muted, earthy pastel color scheme; Layered paper aesthetic with diagonal cuts and subtle drop shadows on cover/section slides; Elegant, high-contrast serif typography for large headings",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Core pillars",
+        "Three-part concepts"
+      ],
+      "avoid_for": [
+        "Sequential processes",
+        "Long paragraphs",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "triangular-layout",
+        "radial-nodes",
+        "icon-circles"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Four side-by-side rectangular cards with thin borders and overlapping solid-color rectangular tabs at the top center of each card.",
+      "visual_signature": "Four side-by-side rectangular cards with thin borders and overlapping solid-color rectangular tabs at the top center of each card. | zones=[\"Four side-by-side rectangular cards with thin borders and overlapping solid-color rectangular tabs at the top center of each card.\"] | anchors=Muted, earthy pastel color scheme; Layered paper aesthetic with diagonal cuts and subtle drop shadows on cover/section slides; Elegant, high-contrast serif typography for large headings",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Feature comparisons",
+        "Parallel lists"
+      ],
+      "avoid_for": [
+        "Single narrative flows",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "four-columns",
+        "bordered-cards",
+        "overlapping-tabs"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Diagonal overlapping layers framing a central title block with a rectangular text backdrop and decorative slashes.",
+      "visual_signature": "Diagonal overlapping layers framing a central title block with a rectangular text backdrop and decorative slashes. | zones=[\"Diagonal overlapping layers framing a central title block with a rectangular text backdrop and decorative slashes.\"] | anchors=Muted, earthy pastel color scheme; Layered paper aesthetic with diagonal cuts and subtle drop shadows on cover/section slides; Elegant, high-contrast serif typography for large headings",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section transitions"
+      ],
+      "avoid_for": [
+        "Content delivery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "layered-corners",
+        "centered-title",
+        "text-backdrop"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Triangular layout of three circular nodes with internal icons, accompanied by adjacent text blocks, converging around a central axis.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Triangular layout of three circular nodes with internal icons, accompanied by adjacent text blocks, converging around a central axis. | zones=[\"Triangular layout of three circular nodes with internal icons, accompanied by adjacent text blocks, converging around a central axis.\"] | anchors=Muted, earthy pastel color scheme; Layered paper aesthetic with diagonal cuts and subtle drop shadows on cover/section slides; Elegant, high-contrast serif typography for large headings",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Core pillars",
+        "Three-part concepts"
+      ],
+      "avoid_for": [
+        "Sequential processes",
+        "Long paragraphs",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "triangular-layout",
+        "radial-nodes",
+        "icon-circles"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Diagonal overlapping layers on top-right and bottom-left framing a central typographic cluster, identical to the cover structure.",
+      "visual_signature": "Diagonal overlapping layers on top-right and bottom-left framing a central typographic cluster, identical to the cover structure. | zones=[\"Diagonal overlapping layers on top-right and bottom-left framing a central typographic cluster, identical to the cover structure.\"] | anchors=Muted, earthy pastel color scheme; Layered paper aesthetic with diagonal cuts and subtle drop shadows on cover/section slides; Elegant, high-contrast serif typography for large headings",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "End of presentation",
+        "Q&A prompts"
+      ],
+      "avoid_for": [
+        "Detail delivery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "layered-corners",
+        "centered-hero",
+        "bookend"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "slide_number": 1,
+  "visual_master": "../../docs/assets/demo1_after.jpg",
+  "canvas": {
+    "width": 1672,
+    "height": 941
+  },
+  "repair_regions": [
+    [450, 330, 800, 170],
+    [535, 495, 640, 105]
+  ],
+  "elements": [
+    {
+      "id": "title",
+      "type": "native_text",
+      "bbox_px": [470, 340, 770, 150],
+      "z_index": 20,
+      "content": "年度战略复盘",
+      "style": {
+        "font_face": "PingFang SC",
+        "font_size_pt": 58,
+        "font_weight": 700,
+        "color": "#FFFFFF",
+        "align": "center"
+      }
+    },
+    {
+      "id": "subtitle",
+      "type": "native_text",
+      "bbox_px": [540, 500, 620, 105],
+      "z_index": 21,
+      "content": "AI 驱动的数字化未来",
+      "style": {
+        "font_face": "PingFang SC",
+        "font_size_pt": 31,
+        "font_weight": 400,
+        "color": "#B4B9CC",
+        "align": "center"
+      }
+    }
+  ]
+}

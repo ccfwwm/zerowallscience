@@ -1,0 +1,30 @@
+.mark {
+  display: block;
+  flex: none;
+  border-radius: 6px;
+  object-fit: contain;
+  box-shadow: 0 1px 4px rgb(47 91 202 / 24%);
+}
+
+.name {
+  color: var(--color-text-primary, #101828);
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.version {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  color: var(--color-text-secondary, #667085);
+  font-size: 12px;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.version > :first-child {
+  color: var(--color-text-primary, #344054);
+  font-weight: 600;
+}

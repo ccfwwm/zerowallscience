@@ -1,0 +1,345 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-3-0725-4-e3e628e2",
+  "source": "local-pptx-distillation",
+  "source_hash": "e3e628e2fa1eb53d6dfd60bceeec8ff2397b72219fcf893cf0b9836de7a0ab85",
+  "global_style": "Elegant minimalist presentation using a Morandi watercolor aesthetic, featuring soft pastel accents, generous margins, and subtle typographic watermarks.",
+  "theme": {
+    "palette": [
+      "#829DB0",
+      "#EAC6A9",
+      "#8B7E74",
+      "#F8F8F8"
+    ],
+    "identity_anchors": [
+      "Fluid watercolor washes serving as corner framing elements.",
+      "Oversized, ultra-low opacity watermark typography behind primary titles.",
+      "Soft Morandi pastel color coding (muted blue and peach/beige).",
+      "Pill-shaped containers for secondary labels and buttons."
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Centered title lockup over subtle watermark, framed by top-right and bottom-left organic corner textures, with a pill-shaped tag.",
+      "visual_signature": "Centered title lockup over subtle watermark, framed by top-right and bottom-left organic corner textures, with a pill-shaped tag. | zones=[\"Centered title lockup over subtle watermark, framed by top-right and bottom-left organic corner textures, with a pill-shaped tag.\"] | anchors=Fluid watercolor washes serving as corner framing elements.; Oversized, ultra-low opacity watermark typography behind primary titles.; Soft Morandi pastel color coding (muted blue and peach/beige).",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Presentation openings",
+        "Title slides"
+      ],
+      "avoid_for": [
+        "Heavy data",
+        "Multiple images",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "centered",
+        "elegant",
+        "minimal"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Central focal circle with large numeral, floating above a title lockup and a giant faded watermark letter.",
+      "visual_signature": "Central focal circle with large numeral, floating above a title lockup and a giant faded watermark letter. | zones=[\"Central focal circle with large numeral, floating above a title lockup and a giant faded watermark letter.\"] | anchors=Fluid watercolor washes serving as corner framing elements.; Oversized, ultra-low opacity watermark typography behind primary titles.; Soft Morandi pastel color coding (muted blue and peach/beige).",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Agenda transitions",
+        "Chapter headers"
+      ],
+      "avoid_for": [
+        "Detailed lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "transition",
+        "numbered",
+        "centered"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Asymmetrical two-column grid with a diagonal balance of image and text blocks.",
+      "visual_signature": "Asymmetrical two-column grid with a diagonal balance of image and text blocks. | zones=[\"Asymmetrical two-column grid with a diagonal balance of image and text blocks.\"] | anchors=Fluid watercolor washes serving as corner framing elements.; Oversized, ultra-low opacity watermark typography behind primary titles.; Soft Morandi pastel color coding (muted blue and peach/beige).",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Concept introductions",
+        "Team or product showcases"
+      ],
+      "avoid_for": [
+        "Complex data visualizations",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "diagonal-balance",
+        "image-text-pairing"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image-top-left",
+          "purpose": "Contextual visual for first point",
+          "bbox": [
+            0.08,
+            0.33,
+            0.37,
+            0.28
+          ],
+          "priority": 1
+        },
+        {
+          "id": "image-bottom-right",
+          "purpose": "Contextual visual for second point",
+          "bbox": [
+            0.55,
+            0.62,
+            0.36,
+            0.27
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Three-zone layout: left-aligned descriptive text, a central oversized statistic in a circle, and a right-aligned vertical list of three numbered items.",
+      "visual_signature": "Three-zone layout: left-aligned descriptive text, a central oversized statistic in a circle, and a right-aligned vertical list of three numbered items. | zones=[\"Three-zone layout: left-aligned descriptive text, a central oversized statistic in a circle, and a right-aligned vertical list of three numbered items.\"] | anchors=Fluid watercolor washes serving as corner framing elements.; Oversized, ultra-low opacity watermark typography behind primary titles.; Soft Morandi pastel color coding (muted blue and peach/beige).",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Key performance indicators",
+        "Problem/Solution breakdowns"
+      ],
+      "avoid_for": [
+        "Long paragraph text",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "statistic-focus",
+        "numbered-list"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-05"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Two-column layout: an unbordered area chart on the left and descriptive text blocks on the right.",
+      "visual_signature": "Two-column layout: an unbordered area chart on the left and descriptive text blocks on the right. | zones=[\"Two-column layout: an unbordered area chart on the left and descriptive text blocks on the right.\"] | anchors=Fluid watercolor washes serving as corner framing elements.; Oversized, ultra-low opacity watermark typography behind primary titles.; Soft Morandi pastel color coding (muted blue and peach/beige).",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Financial reviews",
+        "Trend analysis"
+      ],
+      "avoid_for": [
+        "Highly dense multi-metric dashboards",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "chart",
+        "data-storytelling"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Central focal circle with large numeral, floating above a title lockup and a giant faded watermark letter.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Central focal circle with large numeral, floating above a title lockup and a giant faded watermark letter. | zones=[\"Central focal circle with large numeral, floating above a title lockup and a giant faded watermark letter.\"] | anchors=Fluid watercolor washes serving as corner framing elements.; Oversized, ultra-low opacity watermark typography behind primary titles.; Soft Morandi pastel color coding (muted blue and peach/beige).",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Agenda transitions",
+        "Chapter headers"
+      ],
+      "avoid_for": [
+        "Detailed lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "transition",
+        "numbered",
+        "centered"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Centered closing text lockup over subtle watermark, framed by top-right and bottom-left organic corner textures, mirroring the cover.",
+      "visual_signature": "Centered closing text lockup over subtle watermark, framed by top-right and bottom-left organic corner textures, mirroring the cover. | zones=[\"Centered closing text lockup over subtle watermark, framed by top-right and bottom-left organic corner textures, mirroring the cover.\"] | anchors=Fluid watercolor washes serving as corner framing elements.; Oversized, ultra-low opacity watermark typography behind primary titles.; Soft Morandi pastel color coding (muted blue and peach/beige).",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "End of presentation",
+        "Q&A prompts"
+      ],
+      "avoid_for": [
+        "Any content delivery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing",
+        "bookend",
+        "centered"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

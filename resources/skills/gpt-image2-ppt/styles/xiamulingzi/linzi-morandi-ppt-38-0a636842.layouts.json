@@ -1,0 +1,355 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-ppt-38-0a636842",
+  "source": "local-pptx-distillation",
+  "source_hash": "0a636842ec57f415b3522ca8038f78060d0beb15713ef1758cf4446854c0a1a6",
+  "global_style": "An elegant, Morandi-toned presentation theme featuring minimalist layouts, fluid organic background shapes, and delicate botanical line art.",
+  "theme": {
+    "palette": [
+      "#F7EFEA",
+      "#713B2C",
+      "#C8694C",
+      "#E29F41",
+      "#D99478"
+    ],
+    "identity_anchors": [
+      "Delicate, hand-drawn botanical line-art vectors in corners",
+      "Fluid, organic solid-color shapes anchoring the edges of the canvas",
+      "Warm, low-saturation earth tones (Morandi colors) for all graphic elements",
+      "High-contrast classic serif headings mixed with clean sans-serif body text"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Centered typographic hierarchy framed by organic corner blobs and botanical line art",
+      "visual_signature": "Centered typographic hierarchy framed by organic corner blobs and botanical line art | zones=[\"Centered typographic hierarchy framed by organic corner blobs and botanical line art\"] | anchors=Delicate, hand-drawn botanical line-art vectors in corners; Fluid, organic solid-color shapes anchoring the edges of the canvas; Warm, low-saturation earth tones (Morandi colors) for all graphic elements",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Title slides",
+        "Section dividers"
+      ],
+      "avoid_for": [
+        "Data-heavy content",
+        "Bullet lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "minimal",
+        "cover",
+        "centered"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Left side vertical device mockup, right side text and icon list",
+      "visual_signature": "Left side vertical device mockup, right side text and icon list | zones=[\"Left side vertical device mockup, right side text and icon list\"] | anchors=Delicate, hand-drawn botanical line-art vectors in corners; Fluid, organic solid-color shapes anchoring the edges of the canvas; Warm, low-saturation earth tones (Morandi colors) for all graphic elements",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "App features",
+        "Digital product showcases",
+        "Key takeaways"
+      ],
+      "avoid_for": [
+        "Large datasets",
+        "Complex workflows",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "device-mockup",
+        "icon-list",
+        "split-layout"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "mockup-screen",
+          "purpose": "Replaceable screen content within the tablet frame",
+          "bbox": [
+            0.1,
+            0.21,
+            0.28,
+            0.7
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Centered header over a 50/50 split of left vertical list and right rectangular image",
+      "visual_signature": "Centered header over a 50/50 split of left vertical list and right rectangular image | zones=[\"Centered header over a 50/50 split of left vertical list and right rectangular image\"] | anchors=Delicate, hand-drawn botanical line-art vectors in corners; Fluid, organic solid-color shapes anchoring the edges of the canvas; Warm, low-saturation earth tones (Morandi colors) for all graphic elements",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Company history",
+        "Service lists",
+        "Team introductions"
+      ],
+      "avoid_for": [
+        "Financial data",
+        "Single focus quotes",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "list-left",
+        "image-right",
+        "two-column"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "hero-office",
+          "purpose": "Replaceable situational or office photography",
+          "bbox": [
+            0.52,
+            0.26,
+            0.43,
+            0.58
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Left side desktop mockup, right side numbered list with oversized numerals",
+      "visual_signature": "Left side desktop mockup, right side numbered list with oversized numerals | zones=[\"Left side desktop mockup, right side numbered list with oversized numerals\"] | anchors=Delicate, hand-drawn botanical line-art vectors in corners; Fluid, organic solid-color shapes anchoring the edges of the canvas; Warm, low-saturation earth tones (Morandi colors) for all graphic elements",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Software features",
+        "Step-by-step processes",
+        "Platform benefits"
+      ],
+      "avoid_for": [
+        "Dense paragraphs",
+        "Team profiles",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "numbered-list",
+        "desktop-mockup",
+        "steps"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "monitor-screen",
+          "purpose": "Replaceable screen content for desktop",
+          "bbox": [
+            0.05,
+            0.25,
+            0.43,
+            0.51
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Left side image, right side three large horizontal stat cards",
+      "visual_signature": "Left side image, right side three large horizontal stat cards | zones=[\"Left side image, right side three large horizontal stat cards\"] | anchors=Delicate, hand-drawn botanical line-art vectors in corners; Fluid, organic solid-color shapes anchoring the edges of the canvas; Warm, low-saturation earth tones (Morandi colors) for all graphic elements",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Market data",
+        "Key performance indicators",
+        "Milestones"
+      ],
+      "avoid_for": [
+        "Long text descriptions",
+        "Complex charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "stat-cards",
+        "metrics",
+        "split-layout"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "hero-stats",
+          "purpose": "Contextual photography supporting data",
+          "bbox": [
+            0.05,
+            0.25,
+            0.43,
+            0.57
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Left side vertical device mockup, right side text and icon list",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Left side vertical device mockup, right side text and icon list | zones=[\"Left side vertical device mockup, right side text and icon list\"] | anchors=Delicate, hand-drawn botanical line-art vectors in corners; Fluid, organic solid-color shapes anchoring the edges of the canvas; Warm, low-saturation earth tones (Morandi colors) for all graphic elements",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "App features",
+        "Digital product showcases",
+        "Key takeaways"
+      ],
+      "avoid_for": [
+        "Large datasets",
+        "Complex workflows",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "device-mockup",
+        "icon-list",
+        "split-layout"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "mockup-screen",
+          "purpose": "Replaceable screen content within the tablet frame",
+          "bbox": [
+            0.1,
+            0.21,
+            0.28,
+            0.7
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    }
+  ]
+}

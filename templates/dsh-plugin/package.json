@@ -1,0 +1,30 @@
+{
+  "name": "@zerowallscience/plugin-example",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./src/host/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/host/index.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./src/client/index.ts",
+      "default": "./lib/client.js"
+    },
+    "./manifest": "./zerowall.plugin.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "dsh.bundle.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2"
+  }
+}

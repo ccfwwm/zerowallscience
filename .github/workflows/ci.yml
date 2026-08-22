@@ -1,0 +1,74 @@
+name: ZeroWall Science 4.1 CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows typecheck, tests, and build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.9.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm typecheck
+      - run: pnpm plugins:typert
+      - run: pnpm --workspace-concurrency=1 --filter @zerowallscience/plugin-* run bundle
+      - run: node tools/plugins/inline-css.mjs
+      - name: Run tests with stable temporary paths
+        shell: pwsh
+        run: |
+          $env:TEMP = $env:RUNNER_TEMP
+          $env:TMP = $env:RUNNER_TEMP
+          pnpm test
+      - run: pnpm test:wechat
+      - run: pnpm test:security
+      - run: pnpm audit:runtime
+
+  linux-host:
+    name: Linux Host logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.9.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm dsh:verify-rc1
+      - run: pnpm dsh:build:host
+      - run: pnpm dsh:build:client
+      - run: pnpm dsh:build:web
+      - run: pnpm --filter @zerowallscience/research-store test
+      - run: pnpm --filter @zerowallscience/research-store run bundle
+      - run: pnpm plugins:typecheck
+      - run: pnpm audit:runtime
+      - run: pnpm licenses list --prod --no-optional --json > dependency-licenses.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-licenses
+          path: dependency-licenses.json

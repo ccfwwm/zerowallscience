@@ -1,0 +1,442 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-ppt-ppt-3-ae50f86b",
+  "source": "local-pptx-distillation",
+  "source_hash": "ae50f86b7fbc9da6233218c1fb2cfffd412e9efa6720fef625649aea7e1fd1aa",
+  "global_style": "An elegant, editorial-style presentation design system featuring a muted earthy palette, overlapping geometric shapes, and a sophisticated serif/sans-serif typography mix.",
+  "theme": {
+    "palette": [
+      "#FFFFFF",
+      "#4D4D4D",
+      "#B0B386",
+      "#D9DBC6",
+      "#EAEAEA"
+    ],
+    "identity_anchors": [
+      "Muted, natural color palette anchored by sage green",
+      "Elegant serif typography for main headings",
+      "Overlapping solid or semi-transparent rectangular color blocks behind text or images",
+      "Asymmetrical, magazine-style layouts with generous whitespace",
+      "Prominent but subtle slide numbering in large light grey serif type"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Full bleed background image with dark overlay, left-aligned title overlapping a prominent central translucent color block.",
+      "visual_signature": "Full bleed background image with dark overlay, left-aligned title overlapping a prominent central translucent color block. | zones=[\"Full bleed background image with dark overlay, left-aligned title overlapping a prominent central translucent color block.\"] | anchors=Muted, natural color palette anchored by sage green; Elegant serif typography for main headings; Overlapping solid or semi-transparent rectangular color blocks behind text or images",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Presentation covers",
+        "Major section dividers"
+      ],
+      "avoid_for": [
+        "Data-heavy content",
+        "Complex lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "hero-image",
+        "overlay",
+        "layered-title"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "bg-image",
+          "purpose": "Full bleed background image",
+          "bbox": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Split layout: left text column, right image column overlapping an offset background color block.",
+      "visual_signature": "Split layout: left text column, right image column overlapping an offset background color block. | zones=[\"Split layout: left text column, right image column overlapping an offset background color block.\"] | anchors=Muted, natural color palette anchored by sage green; Elegant serif typography for main headings; Overlapping solid or semi-transparent rectangular color blocks behind text or images",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Team member introductions",
+        "Product highlights",
+        "Key concept with visual aid"
+      ],
+      "avoid_for": [
+        "Multi-step processes",
+        "Quantitative data",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "image-right",
+        "offset-background"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "image-right",
+          "purpose": "Feature image supporting text",
+          "bbox": [
+            0.54,
+            0.12,
+            0.36,
+            0.75
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Asymmetrical layout: center-left vertical image, text broken into top-left background block and right-aligned main block.",
+      "visual_signature": "Asymmetrical layout: center-left vertical image, text broken into top-left background block and right-aligned main block. | zones=[\"Asymmetrical layout: center-left vertical image, text broken into top-left background block and right-aligned main block.\"] | anchors=Muted, natural color palette anchored by sage green; Elegant serif typography for main headings; Overlapping solid or semi-transparent rectangular color blocks behind text or images",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Editorial content",
+        "Case studies",
+        "Quotes with context"
+      ],
+      "avoid_for": [
+        "Dense data display",
+        "Simple bullet points",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "asymmetrical",
+        "image-left",
+        "floating-block"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image-left-center",
+          "purpose": "Primary visual subject",
+          "bbox": [
+            0.22,
+            0.29,
+            0.3,
+            0.71
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Left-heavy layout: left image anchored to bottom, right column text with an overlapping right-edge background block.",
+      "visual_signature": "Left-heavy layout: left image anchored to bottom, right column text with an overlapping right-edge background block. | zones=[\"Left-heavy layout: left image anchored to bottom, right column text with an overlapping right-edge background block.\"] | anchors=Muted, natural color palette anchored by sage green; Elegant serif typography for main headings; Overlapping solid or semi-transparent rectangular color blocks behind text or images",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Chapter introductions",
+        "Vision/Mission statements",
+        "Product showcases"
+      ],
+      "avoid_for": [
+        "Comparison tables",
+        "Timelines",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "image-left",
+        "text-right",
+        "overlapping-title"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image-left",
+          "purpose": "Dominant visual",
+          "bbox": [
+            0.16,
+            0.17,
+            0.35,
+            0.83
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Split layout: left text column, right image column overlapping an offset background color block.",
+      "visual_signature": "Split layout: left text column, right image column overlapping an offset background color block. | zones=[\"Split layout: left text column, right image column overlapping an offset background color block.\"] | anchors=Muted, natural color palette anchored by sage green; Elegant serif typography for main headings; Overlapping solid or semi-transparent rectangular color blocks behind text or images",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Team member introductions",
+        "Product highlights",
+        "Key concept with visual aid"
+      ],
+      "avoid_for": [
+        "Multi-step processes",
+        "Quantitative data",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "image-right",
+        "offset-background"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image-right",
+          "purpose": "Feature image supporting text",
+          "bbox": [
+            0.54,
+            0.12,
+            0.36,
+            0.75
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Centered header over a 2x3 grid of text items separated by small directional icons.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Centered header over a 2x3 grid of text items separated by small directional icons. | zones=[\"Centered header over a 2x3 grid of text items separated by small directional icons.\"] | anchors=Muted, natural color palette anchored by sage green; Elegant serif typography for main headings; Overlapping solid or semi-transparent rectangular color blocks behind text or images",
+      "content_capacity": {
+        "density": "high",
+        "max_items": 8
+      },
+      "best_for": [
+        "Agendas",
+        "Tables of contents",
+        "Feature matrices"
+      ],
+      "avoid_for": [
+        "Image-driven narratives",
+        "Single impactful statements",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "grid-layout",
+        "text-heavy",
+        "list-view"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-06"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "agenda-primary",
+      "page_index": 6,
+      "page_type": "agenda",
+      "semantic_role": "agenda",
+      "summary": "Centered header over a 2x3 grid of text items separated by small directional icons.",
+      "visual_signature": "Centered header over a 2x3 grid of text items separated by small directional icons. | zones=[\"Centered header over a 2x3 grid of text items separated by small directional icons.\"] | anchors=Muted, natural color palette anchored by sage green; Elegant serif typography for main headings; Overlapping solid or semi-transparent rectangular color blocks behind text or images",
+      "content_capacity": {
+        "density": "high",
+        "max_items": 8
+      },
+      "best_for": [
+        "Agendas",
+        "Tables of contents",
+        "Feature matrices"
+      ],
+      "avoid_for": [
+        "Image-driven narratives",
+        "Single impactful statements",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "grid-layout",
+        "text-heavy",
+        "list-view"
+      ],
+      "routing": {
+        "content_shapes": [
+          "agenda",
+          "numbered-list"
+        ],
+        "min_items": 3,
+        "max_items": 8
+      },
+      "evidence_pages": [
+        "page-06"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 7,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Dark background, left-aligned minimal text, centered accent color block overlapping the main title.",
+      "visual_signature": "Dark background, left-aligned minimal text, centered accent color block overlapping the main title. | zones=[\"Dark background, left-aligned minimal text, centered accent color block overlapping the main title.\"] | anchors=Muted, natural color palette anchored by sage green; Elegant serif typography for main headings; Overlapping solid or semi-transparent rectangular color blocks behind text or images",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Thank you slides",
+        "Contact information",
+        "Final quotes"
+      ],
+      "avoid_for": [
+        "Introducing new information",
+        "Detailed content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "dark-mode",
+        "minimalist",
+        "overlapping-title"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

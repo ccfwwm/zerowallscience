@@ -1,0 +1,6 @@
+interface:
+  display_name: "GPT Image 生成器"
+  short_description: "使用当前 AI Cloud 的 gpt-image-2 安全生成图片"
+  default_prompt: "使用 $gpt-image-generator 根据我的描述生成图片并保存到当前项目。"
+policy:
+  allow_implicit_invocation: true

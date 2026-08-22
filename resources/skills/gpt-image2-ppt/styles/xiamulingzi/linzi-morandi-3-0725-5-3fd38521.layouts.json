@@ -1,0 +1,362 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-3-0725-5-3fd38521",
+  "source": "local-pptx-distillation",
+  "source_hash": "3fd38521236f0e63cf33ecca7d43ed63c8e440af34778d7890905a3d7b258723",
+  "global_style": "Elegant, artistic template featuring muted Morandi colors, watercolor brushstroke corners, and serif typography. Ideal for academic or creative presentations.",
+  "theme": {
+    "palette": [
+      "#FDFBF7",
+      "#798897",
+      "#E39B8F",
+      "#DEB26A",
+      "#807796",
+      "#4A4A4A"
+    ],
+    "identity_anchors": [
+      "Organic watercolor brushstrokes framing the corners",
+      "Muted, dusty pastel color palette (Morandi style)",
+      "Minimalist colored dot nodes and dotted connecting lines",
+      "Centralized layouts with generous negative space"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Centered title and subtitle suspended above a row of alternating colored dots, framed by organic corner textures",
+      "visual_signature": "Centered title and subtitle suspended above a row of alternating colored dots, framed by organic corner textures | zones=[\"Centered title and subtitle suspended above a row of alternating colored dots, framed by organic corner textures\"] | anchors=Organic watercolor brushstrokes framing the corners; Muted, dusty pastel color palette (Morandi style); Minimalist colored dot nodes and dotted connecting lines",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Title slides",
+        "Presentation opening"
+      ],
+      "avoid_for": [
+        "Heavy data",
+        "Detailed agendas",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "minimal",
+        "centered",
+        "artistic"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Offset section title on the left with a centralized, vertically connected dotted list on the right",
+      "visual_signature": "Offset section title on the left with a centralized, vertically connected dotted list on the right | zones=[\"Offset section title on the left with a centralized, vertically connected dotted list on the right\"] | anchors=Organic watercolor brushstrokes framing the corners; Muted, dusty pastel color palette (Morandi style); Minimalist colored dot nodes and dotted connecting lines",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 5
+      },
+      "best_for": [
+        "Agendas",
+        "Table of contents",
+        "High-level outlines"
+      ],
+      "avoid_for": [
+        "Long paragraph text",
+        "Images",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "timeline",
+        "list",
+        "vertical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Sweeping horizontal curved arrow acting as a timeline, with alternating text blocks and a right-anchored portrait image",
+      "visual_signature": "Sweeping horizontal curved arrow acting as a timeline, with alternating text blocks and a right-anchored portrait image | zones=[\"Sweeping horizontal curved arrow acting as a timeline, with alternating text blocks and a right-anchored portrait image\"] | anchors=Organic watercolor brushstrokes framing the corners; Muted, dusty pastel color palette (Morandi style); Minimalist colored dot nodes and dotted connecting lines",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Process overviews",
+        "Historical timelines",
+        "Step-by-step methodologies"
+      ],
+      "avoid_for": [
+        "Comparative data",
+        "Dense paragraphs",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "timeline",
+        "flow",
+        "curved"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "right-portrait",
+          "purpose": "contextual photography",
+          "bbox": [
+            0.68,
+            0.12,
+            0.2,
+            0.49
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Split top zone with an image and three icon-headed text columns, grounded by a wide, top-and-bottom bordered text row",
+      "visual_signature": "Split top zone with an image and three icon-headed text columns, grounded by a wide, top-and-bottom bordered text row | zones=[\"Split top zone with an image and three icon-headed text columns, grounded by a wide, top-and-bottom bordered text row\"] | anchors=Organic watercolor brushstrokes framing the corners; Muted, dusty pastel color palette (Morandi style); Minimalist colored dot nodes and dotted connecting lines",
+      "content_capacity": {
+        "density": "high",
+        "max_items": 5
+      },
+      "best_for": [
+        "Executive summaries",
+        "Multi-faceted concepts",
+        "Combining media with detailed notes"
+      ],
+      "avoid_for": [
+        "Simple singular messages",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "columns",
+        "summary"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-06"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "top-left-rounded",
+          "purpose": "supporting visual",
+          "bbox": [
+            0.13,
+            0.28,
+            0.24,
+            0.28
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Symmetrical 2x3 matrix of outlined cards featuring corner-anchored icons",
+      "visual_signature": "Symmetrical 2x3 matrix of outlined cards featuring corner-anchored icons | zones=[\"Symmetrical 2x3 matrix of outlined cards featuring corner-anchored icons\"] | anchors=Organic watercolor brushstrokes framing the corners; Muted, dusty pastel color palette (Morandi style); Minimalist colored dot nodes and dotted connecting lines",
+      "content_capacity": {
+        "density": "high",
+        "max_items": 6
+      },
+      "best_for": [
+        "Feature highlights",
+        "Categorized text blocks",
+        "Methodology details"
+      ],
+      "avoid_for": [
+        "Large images",
+        "Continuous narratives",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "grid",
+        "cards",
+        "matrix"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Offset section title on the left with a centralized, vertically connected dotted list on the right",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Offset section title on the left with a centralized, vertically connected dotted list on the right | zones=[\"Offset section title on the left with a centralized, vertically connected dotted list on the right\"] | anchors=Organic watercolor brushstrokes framing the corners; Muted, dusty pastel color palette (Morandi style); Minimalist colored dot nodes and dotted connecting lines",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 5
+      },
+      "best_for": [
+        "Agendas",
+        "Table of contents",
+        "High-level outlines"
+      ],
+      "avoid_for": [
+        "Long paragraph text",
+        "Images",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "timeline",
+        "list",
+        "vertical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Centered closing statement with a multi-colored dotted underline and painted corner accents",
+      "visual_signature": "Centered closing statement with a multi-colored dotted underline and painted corner accents | zones=[\"Centered closing statement with a multi-colored dotted underline and painted corner accents\"] | anchors=Organic watercolor brushstrokes framing the corners; Muted, dusty pastel color palette (Morandi style); Minimalist colored dot nodes and dotted connecting lines",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Q&A prompts",
+        "Thank you slides",
+        "Contact information"
+      ],
+      "avoid_for": [
+        "New information",
+        "Data summaries",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "minimal",
+        "closing",
+        "centered"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

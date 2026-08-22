@@ -1,0 +1,357 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-35-ppt-ppt-28-242aaa71",
+  "source": "local-pptx-distillation",
+  "source_hash": "242aaa7114974fc547f45da320c20e894769d8d9c2a55bcce44d56a6741f95c2",
+  "global_style": "A modern, minimalist presentation template featuring bold blue geometric crops, ample whitespace, and asymmetrical layouts ideal for portfolios or creative agencies.",
+  "theme": {
+    "palette": [
+      "#4660A9",
+      "#FFFFFF",
+      "#1A1A1A",
+      "#808080"
+    ],
+    "identity_anchors": [
+      "Oversized, cropped blue geometric shapes (circles, rings, semi-circles) anchoring slide edges and corners.",
+      "Asymmetrical, modular layouts balancing large rectangular image blocks with generous negative space.",
+      "Stark contrast between heavy, bold headers and light, small body copy.",
+      "Complete absence of gradients, shadows, or 3D effects, maintaining a strictly flat design language."
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Vertical image block on the left third, large typography block centered on the right, framed by cropped circular shapes on opposite corners.",
+      "visual_signature": "Vertical image block on the left third, large typography block centered on the right, framed by cropped circular shapes on opposite corners. | zones=[\"Vertical image block on the left third, large typography block centered on the right, framed by cropped circular shapes on opposite corners.\"] | anchors=Oversized, cropped blue geometric shapes (circles, rings, semi-circles) anchoring slide edges and corners.; Asymmetrical, modular layouts balancing large rectangular image blocks with generous negative space.; Stark contrast between heavy, bold headers and light, small body copy.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Title slides",
+        "Section intros"
+      ],
+      "avoid_for": [
+        "Dense data",
+        "Multi-point lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "asymmetrical",
+        "hero-image",
+        "minimalist"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "hero",
+          "purpose": "Main cover image",
+          "bbox": [
+            0.09,
+            0.09,
+            0.31,
+            0.82
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Centered solid color rectangle holding white text, surrounded by white space and corner geometric accents.",
+      "visual_signature": "Centered solid color rectangle holding white text, surrounded by white space and corner geometric accents. | zones=[\"Centered solid color rectangle holding white text, surrounded by white space and corner geometric accents.\"] | anchors=Oversized, cropped blue geometric shapes (circles, rings, semi-circles) anchoring slide edges and corners.; Asymmetrical, modular layouts balancing large rectangular image blocks with generous negative space.; Stark contrast between heavy, bold headers and light, small body copy.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Section dividers",
+        "Pull quotes",
+        "Transition slides"
+      ],
+      "avoid_for": [
+        "Detailed content",
+        "Images",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "text-focus",
+        "centered-block"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Full-height solid color column on the left containing text, adjacent to a large image block dominating the right side.",
+      "visual_signature": "Full-height solid color column on the left containing text, adjacent to a large image block dominating the right side. | zones=[\"Full-height solid color column on the left containing text, adjacent to a large image block dominating the right side.\"] | anchors=Oversized, cropped blue geometric shapes (circles, rings, semi-circles) anchoring slide edges and corners.; Asymmetrical, modular layouts balancing large rectangular image blocks with generous negative space.; Stark contrast between heavy, bold headers and light, small body copy.",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Feature highlights",
+        "Product descriptions"
+      ],
+      "avoid_for": [
+        "Multiple discrete data points",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "color-block",
+        "split-screen"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "hero",
+          "purpose": "Primary visual subject",
+          "bbox": [
+            0.37,
+            0.05,
+            0.51,
+            0.9
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Two staggered, overlapping image blocks on the left half, balanced by a text block on the right, integrated with background circles.",
+      "visual_signature": "Two staggered, overlapping image blocks on the left half, balanced by a text block on the right, integrated with background circles. | zones=[\"Two staggered, overlapping image blocks on the left half, balanced by a text block on the right, integrated with background circles.\"] | anchors=Oversized, cropped blue geometric shapes (circles, rings, semi-circles) anchoring slide edges and corners.; Asymmetrical, modular layouts balancing large rectangular image blocks with generous negative space.; Stark contrast between heavy, bold headers and light, small body copy.",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Before/After",
+        "Comparisons",
+        "Team introductions"
+      ],
+      "avoid_for": [
+        "Single hero visuals",
+        "Data heavy content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "multi-image",
+        "collage",
+        "staggered"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image1",
+          "purpose": "Secondary/background context image",
+          "bbox": [
+            0.06,
+            0.16,
+            0.27,
+            0.32
+          ],
+          "priority": 2
+        },
+        {
+          "id": "image2",
+          "purpose": "Primary foreground image",
+          "bbox": [
+            0.24,
+            0.38,
+            0.3,
+            0.35
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Left-aligned vertical image opposite oversized, bold numeric data taking up the right half.",
+      "visual_signature": "Left-aligned vertical image opposite oversized, bold numeric data taking up the right half. | zones=[\"Left-aligned vertical image opposite oversized, bold numeric data taking up the right half.\"] | anchors=Oversized, cropped blue geometric shapes (circles, rings, semi-circles) anchoring slide edges and corners.; Asymmetrical, modular layouts balancing large rectangular image blocks with generous negative space.; Stark contrast between heavy, bold headers and light, small body copy.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Key metrics",
+        "Milestones",
+        "Impact statements"
+      ],
+      "avoid_for": [
+        "Long form text",
+        "Complex charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "big-numbers",
+        "split-layout"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "hero",
+          "purpose": "Contextual supporting image",
+          "bbox": [
+            0.06,
+            0.1,
+            0.28,
+            0.76
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Full-height solid color column on the left containing text, adjacent to a large image block dominating the right side.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Full-height solid color column on the left containing text, adjacent to a large image block dominating the right side. | zones=[\"Full-height solid color column on the left containing text, adjacent to a large image block dominating the right side.\"] | anchors=Oversized, cropped blue geometric shapes (circles, rings, semi-circles) anchoring slide edges and corners.; Asymmetrical, modular layouts balancing large rectangular image blocks with generous negative space.; Stark contrast between heavy, bold headers and light, small body copy.",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Feature highlights",
+        "Product descriptions"
+      ],
+      "avoid_for": [
+        "Multiple discrete data points",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "color-block",
+        "split-screen"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "hero",
+          "purpose": "Primary visual subject",
+          "bbox": [
+            0.37,
+            0.05,
+            0.51,
+            0.9
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    }
+  ]
+}

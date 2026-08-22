@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-web-search
+      name: '@zerowallscience/plugin-web-search'

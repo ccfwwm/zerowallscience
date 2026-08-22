@@ -1,0 +1,168 @@
+name: "🐛 Bug 报告"
+description: "报告可复现的异常、崩溃或工具调用失败"
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请尽量完整填写以下信息；缺少版本、环境或复现步骤时，我们通常无法定位问题。
+
+        ZeroWall Science 版本号可在窗口标题栏或“设置”页面底部找到。提交截图或日志前，请务必遮盖 API Key、Token、密码、SSH 私钥等敏感信息。
+
+  - type: checkboxes
+    attributes:
+      label: 提交前检查
+      options:
+        - label: "我已搜索现有 Issue，确认没有相同问题。"
+          required: true
+        - label: "我已从截图、日志和配置中移除 API Key、Token、密码及私钥等敏感信息。"
+          required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: ZeroWall Science 版本
+      description: "请填写完整版本号，可在窗口标题栏或“设置”页面底部查看。不要只写“最新版”。"
+      placeholder: "例如：0.20.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation-source
+    attributes:
+      label: 安装方式
+      options:
+        - 七牛云在线安装包
+        - 从源码构建
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: 操作系统
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: system-details
+    attributes:
+      label: 系统版本与架构
+      description: "请同时填写系统版本和 CPU 架构。"
+      placeholder: "例如：Windows 11 24H2 / x86_64，或 macOS 15.5 / Apple Silicon"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: execution-context
+    attributes:
+      label: 执行环境
+      description: "问题发生在哪种执行环境中？"
+      options:
+        - 本机
+        - WSL
+        - SSH 远程主机
+        - 不确定或不适用
+    validations:
+      required: true
+
+  - type: input
+    id: affected-feature
+    attributes:
+      label: 出问题的功能或工具
+      description: "如果是工具调用失败，请填写具体工具名。"
+      placeholder: "例如：shell、read_file、Python REPL、MCP 工具"
+    validations:
+      required: true
+
+  - type: input
+    id: provider
+    attributes:
+      label: 模型服务商
+      placeholder: "例如：OpenAI、Anthropic、OpenRouter、Ollama、自定义兼容接口"
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: 模型名称
+      description: "请填写配置页面中显示的完整模型 ID。"
+      placeholder: "例如：gpt-5.1、claude-sonnet-4-5、本地模型名称"
+    validations:
+      required: true
+
+  - type: textarea
+    id: connection-config
+    attributes:
+      label: 模型连接配置
+      description: "如果使用代理、自定义 Base URL 或兼容接口，请说明接口类型和地址；请勿填写 API Key。使用官方默认配置可写“默认”。"
+      placeholder: |
+        接口类型：
+        Base URL：
+        其他非敏感配置：
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: 复现步骤
+      description: "请从启动应用开始，按顺序写出能够稳定触发问题的操作。"
+      placeholder: |
+        1. 打开……
+        2. 配置……
+        3. 输入或运行……
+        4. 出现……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: 预期行为
+      placeholder: "你认为正常情况下应该发生什么？"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: 实际行为
+      placeholder: "实际发生了什么？问题是否每次都能复现？"
+    validations:
+      required: true
+
+  - type: textarea
+    id: error-output
+    attributes:
+      label: 完整错误信息或日志
+      description: "请优先粘贴可复制的完整原始文本，不要只发截图。若没有可复制的日志，请写明“无可复制日志”，并在下方上传截图。请先移除敏感信息。"
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: last-known-good-version
+    attributes:
+      label: 最后正常工作的版本
+      description: "如果这是升级后才出现的问题，请填写此前正常工作的 ZeroWall Science 版本；否则可留空。"
+      placeholder: "例如：0.19.0"
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图或录屏
+      description: "可将文件直接拖到这里。上传前请遮盖敏感信息。"
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 其他补充信息
+      description: "例如最近修改过的配置、相关 Issue 链接或临时解决办法。"

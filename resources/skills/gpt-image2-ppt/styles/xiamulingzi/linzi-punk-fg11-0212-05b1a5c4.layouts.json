@@ -1,0 +1,384 @@
+{
+  "version": "2",
+  "style_id": "linzi-punk-fg11-0212-05b1a5c4",
+  "source": "local-pptx-distillation",
+  "source_hash": "05b1a5c4f3f597985ceb8eb0405e9358b2eec86a84ccf3ceb2c104c5e0fb95a5",
+  "global_style": "An edgy, brutalist-inspired magazine-style layout featuring stark black and white contrasts, vivid orange-red accents, and bold typographic arrangements.",
+  "theme": {
+    "palette": [
+      "#FFFFFF",
+      "#000000",
+      "#F04D30"
+    ],
+    "identity_anchors": [
+      "High-contrast monochromatic blocks with selective vibrant accents",
+      "Brutalist, oversized geometric sans-serif typography",
+      "Text set on circular paths forming graphic badges",
+      "Frequent 90-degree rotated structural text framing the canvas edges"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Asymmetrical split with oversized center-left typography, edge-aligned rotated text, and a bottom-right structural image block.",
+      "visual_signature": "Asymmetrical split with oversized center-left typography, edge-aligned rotated text, and a bottom-right structural image block. | zones=[\"Asymmetrical split with oversized center-left typography, edge-aligned rotated text, and a bottom-right structural image block.\"] | anchors=High-contrast monochromatic blocks with selective vibrant accents; Brutalist, oversized geometric sans-serif typography; Text set on circular paths forming graphic badges",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Title slides",
+        "High-impact introductions"
+      ],
+      "avoid_for": [
+        "Data heavy content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "cover-asymmetrical",
+        "brutalist-intro"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "hero-bottom-right",
+          "purpose": "Abstract monochrome hero image",
+          "bbox": [
+            0.52,
+            0.2,
+            0.48,
+            0.8
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Dark mode 50/50 split layout. Large layered typography overlapping a half-bleed image on one side, paired with a stark dark text column on the other.",
+      "visual_signature": "Dark mode 50/50 split layout. Large layered typography overlapping a half-bleed image on one side, paired with a stark dark text column on the other. | zones=[\"Dark mode 50/50 split layout. Large layered typography overlapping a half-bleed image on one side, paired with a stark dark text column on the other.\"] | anchors=High-contrast monochromatic blocks with selective vibrant accents; Brutalist, oversized geometric sans-serif typography; Text set on circular paths forming graphic badges",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section dividers",
+        "Major chapter introductions"
+      ],
+      "avoid_for": [
+        "Detailed charts",
+        "Multi-image galleries",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "dark-split",
+        "text-over-image"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "left-half-bleed",
+          "purpose": "Textured background for section title",
+          "bbox": [
+            0.07,
+            0.14,
+            0.37,
+            0.72
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Dominant asymmetrical image block spanning the top left, thick vertical marginal block, and segmented white spaces for stacked typography.",
+      "visual_signature": "Dominant asymmetrical image block spanning the top left, thick vertical marginal block, and segmented white spaces for stacked typography. | zones=[\"Dominant asymmetrical image block spanning the top left, thick vertical marginal block, and segmented white spaces for stacked typography.\"] | anchors=High-contrast monochromatic blocks with selective vibrant accents; Brutalist, oversized geometric sans-serif typography; Text set on circular paths forming graphic badges",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Manifesto statements",
+        "Hero image showcases"
+      ],
+      "avoid_for": [
+        "Lists and bullet points",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "asymmetrical-hero",
+        "stacked-typography"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "main-top-left",
+          "purpose": "Dominant thematic image",
+          "bbox": [
+            0.07,
+            0.0,
+            0.63,
+            0.74
+          ],
+          "priority": 1
+        },
+        {
+          "id": "accent-bottom-right",
+          "purpose": "Secondary supporting texture",
+          "bbox": [
+            0.7,
+            0.74,
+            0.3,
+            0.26
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "White canvas dominated by massive central typographic lockup, accented by a circular text badge and floating disconnected square image blocks.",
+      "visual_signature": "White canvas dominated by massive central typographic lockup, accented by a circular text badge and floating disconnected square image blocks. | zones=[\"White canvas dominated by massive central typographic lockup, accented by a circular text badge and floating disconnected square image blocks.\"] | anchors=High-contrast monochromatic blocks with selective vibrant accents; Brutalist, oversized geometric sans-serif typography; Text set on circular paths forming graphic badges",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 5
+      },
+      "best_for": [
+        "Key messaging",
+        "Project titles"
+      ],
+      "avoid_for": [
+        "Complex data",
+        "Long-form reading",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "type-as-image",
+        "floating-blocks"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "top-left-square",
+          "purpose": "Abstract visual anchor",
+          "bbox": [
+            0.06,
+            0.04,
+            0.19,
+            0.38
+          ],
+          "priority": 2
+        },
+        {
+          "id": "bottom-right-large",
+          "purpose": "Main visual focus",
+          "bbox": [
+            0.66,
+            0.55,
+            0.3,
+            0.4
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Dark mode 50/50 split layout. Large layered typography overlapping a half-bleed image on one side, paired with a stark dark text column on the other.",
+      "visual_signature": "Dark mode 50/50 split layout. Large layered typography overlapping a half-bleed image on one side, paired with a stark dark text column on the other. | zones=[\"Dark mode 50/50 split layout. Large layered typography overlapping a half-bleed image on one side, paired with a stark dark text column on the other.\"] | anchors=High-contrast monochromatic blocks with selective vibrant accents; Brutalist, oversized geometric sans-serif typography; Text set on circular paths forming graphic badges",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section dividers",
+        "Major chapter introductions"
+      ],
+      "avoid_for": [
+        "Detailed charts",
+        "Multi-image galleries",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "dark-split",
+        "text-over-image"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "left-half-bleed",
+          "purpose": "Textured background for section title",
+          "bbox": [
+            0.07,
+            0.14,
+            0.37,
+            0.72
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Dominant asymmetrical image block spanning the top left, thick vertical marginal block, and segmented white spaces for stacked typography.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Dominant asymmetrical image block spanning the top left, thick vertical marginal block, and segmented white spaces for stacked typography. | zones=[\"Dominant asymmetrical image block spanning the top left, thick vertical marginal block, and segmented white spaces for stacked typography.\"] | anchors=High-contrast monochromatic blocks with selective vibrant accents; Brutalist, oversized geometric sans-serif typography; Text set on circular paths forming graphic badges",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Manifesto statements",
+        "Hero image showcases"
+      ],
+      "avoid_for": [
+        "Lists and bullet points",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "asymmetrical-hero",
+        "stacked-typography"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "main-top-left",
+          "purpose": "Dominant thematic image",
+          "bbox": [
+            0.07,
+            0.0,
+            0.63,
+            0.74
+          ],
+          "priority": 1
+        },
+        {
+          "id": "accent-bottom-right",
+          "purpose": "Secondary supporting texture",
+          "bbox": [
+            0.7,
+            0.74,
+            0.3,
+            0.26
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    }
+  ]
+}

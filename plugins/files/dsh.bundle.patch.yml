@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-files
+      name: '@zerowallscience/plugin-files'

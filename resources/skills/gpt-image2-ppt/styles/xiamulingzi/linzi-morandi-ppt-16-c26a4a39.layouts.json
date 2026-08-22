@@ -1,0 +1,389 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-ppt-16-c26a4a39",
+  "source": "local-pptx-distillation",
+  "source_hash": "c26a4a39c52d9e715a90e746d76b8891c84e5f0b29df26261fc46d5728c0e0a1",
+  "global_style": "An elegant, organic presentation style featuring soft watercolor washes, paper textures, and minimalist botanical line art.",
+  "theme": {
+    "palette": [
+      "#f2f4f1",
+      "#b8d9c2",
+      "#264b48",
+      "#82aba2",
+      "#eaf1ec"
+    ],
+    "identity_anchors": [
+      "Textured paper background canvas",
+      "Fluid watercolor washes masking the top and left corners",
+      "Botanical line art accents in dark teal",
+      "High-contrast serif typography for large headers",
+      "Overlapping translucent geometric elements"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Centered prominent serif title with a delicate subtitle, framed by organic watercolor washes and a botanical line-art leaf.",
+      "visual_signature": "Centered prominent serif title with a delicate subtitle, framed by organic watercolor washes and a botanical line-art leaf. | zones=[\"Centered prominent serif title with a delicate subtitle, framed by organic watercolor washes and a botanical line-art leaf.\"] | anchors=Textured paper background canvas; Fluid watercolor washes masking the top and left corners; Botanical line art accents in dark teal",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Presentation title",
+        "Minimalist opening"
+      ],
+      "avoid_for": [
+        "Heavy data",
+        "Multiple images",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "centered",
+        "minimal",
+        "organic-frame"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Oversized, slightly angled serif numeral acting as a graphic element on the left, with title and subtitle clustered below center.",
+      "visual_signature": "Oversized, slightly angled serif numeral acting as a graphic element on the left, with title and subtitle clustered below center. | zones=[\"Oversized, slightly angled serif numeral acting as a graphic element on the left, with title and subtitle clustered below center.\"] | anchors=Textured paper background canvas; Fluid watercolor washes masking the top and left corners; Botanical line art accents in dark teal",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section breaks",
+        "Chapter titles"
+      ],
+      "avoid_for": [
+        "Detailed content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "angled-text",
+        "section-divider",
+        "typographic-focus"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Split asymmetric layout featuring a wide background-style banner top-left and an overlapping framed image right, with tiered body text.",
+      "visual_signature": "Split asymmetric layout featuring a wide background-style banner top-left and an overlapping framed image right, with tiered body text. | zones=[\"Split asymmetric layout featuring a wide background-style banner top-left and an overlapping framed image right, with tiered body text.\"] | anchors=Textured paper background canvas; Fluid watercolor washes masking the top and left corners; Botanical line art accents in dark teal",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Introductions",
+        "Feature highlights with context"
+      ],
+      "avoid_for": [
+        "Full-screen charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "overlapping-images",
+        "numbered-list",
+        "asymmetric"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "top-banner",
+          "purpose": "Atmospheric wide background image",
+          "bbox": [
+            0.1,
+            0.15,
+            0.75,
+            0.35
+          ],
+          "priority": 2
+        },
+        {
+          "id": "feature-image",
+          "purpose": "Primary subject photograph",
+          "bbox": [
+            0.6,
+            0.25,
+            0.3,
+            0.4
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Two-column layout with a tall soft-rounded rectangular image on the left and a dedicated text block on the right.",
+      "visual_signature": "Two-column layout with a tall soft-rounded rectangular image on the left and a dedicated text block on the right. | zones=[\"Two-column layout with a tall soft-rounded rectangular image on the left and a dedicated text block on the right.\"] | anchors=Textured paper background canvas; Fluid watercolor washes masking the top and left corners; Botanical line art accents in dark teal",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Product feature",
+        "Quote alongside image",
+        "Key takeaway"
+      ],
+      "avoid_for": [
+        "Complex data comparisons",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "image-left",
+        "text-right",
+        "rounded-image"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "tall-feature",
+          "purpose": "Tall lifestyle or product image",
+          "bbox": [
+            0.12,
+            0.18,
+            0.24,
+            0.6
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Horizontal process/timeline composed of overlapping, differently styled circles (solid and outlined) with attached text columns.",
+      "visual_signature": "Horizontal process/timeline composed of overlapping, differently styled circles (solid and outlined) with attached text columns. | zones=[\"Horizontal process/timeline composed of overlapping, differently styled circles (solid and outlined) with attached text columns.\"] | anchors=Textured paper background canvas; Fluid watercolor washes masking the top and left corners; Botanical line art accents in dark teal",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Simple timelines",
+        "4-step processes",
+        "Sequential statistics"
+      ],
+      "avoid_for": [
+        "Long-form text paragraphs",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "process",
+        "circles",
+        "overlapping",
+        "timeline"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Split asymmetric layout featuring a wide background-style banner top-left and an overlapping framed image right, with tiered body text.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Split asymmetric layout featuring a wide background-style banner top-left and an overlapping framed image right, with tiered body text. | zones=[\"Split asymmetric layout featuring a wide background-style banner top-left and an overlapping framed image right, with tiered body text.\"] | anchors=Textured paper background canvas; Fluid watercolor washes masking the top and left corners; Botanical line art accents in dark teal",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Introductions",
+        "Feature highlights with context"
+      ],
+      "avoid_for": [
+        "Full-screen charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "overlapping-images",
+        "numbered-list",
+        "asymmetric"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "top-banner",
+          "purpose": "Atmospheric wide background image",
+          "bbox": [
+            0.1,
+            0.15,
+            0.75,
+            0.35
+          ],
+          "priority": 2
+        },
+        {
+          "id": "feature-image",
+          "purpose": "Primary subject photograph",
+          "bbox": [
+            0.6,
+            0.25,
+            0.3,
+            0.4
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Centered large concluding message with subtitle and two horizontal footer details (presenter/date), framed identically to the cover.",
+      "visual_signature": "Centered large concluding message with subtitle and two horizontal footer details (presenter/date), framed identically to the cover. | zones=[\"Centered large concluding message with subtitle and two horizontal footer details (presenter/date), framed identically to the cover.\"] | anchors=Textured paper background canvas; Fluid watercolor washes masking the top and left corners; Botanical line art accents in dark teal",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Closing slide",
+        "Q&A introduction",
+        "Contact info"
+      ],
+      "avoid_for": [
+        "Content delivery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "centered",
+        "closing",
+        "bookend"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

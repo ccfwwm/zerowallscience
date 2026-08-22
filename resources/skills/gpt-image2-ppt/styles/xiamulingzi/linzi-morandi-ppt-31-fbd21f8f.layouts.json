@@ -1,0 +1,416 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-ppt-31-fbd21f8f",
+  "source": "local-pptx-distillation",
+  "source_hash": "fbd21f8f22ad1d111f67dac80bcc11f1d92550141f0a8aec22b4af72caa0c1c4",
+  "global_style": "A modern, artistic presentation template featuring a Morandi earth-tone palette, fluid organic shapes, and minimalist typography.",
+  "theme": {
+    "palette": [
+      "#E9E1D6",
+      "#67453B",
+      "#BB5A45",
+      "#E9C883",
+      "#C8A892"
+    ],
+    "identity_anchors": [
+      "Earthy Morandi color palette",
+      "Fluid, abstract background shapes with subtly textured/stippled edges",
+      "Thin, overlapping, continuous contour line accents",
+      "Pill-shaped badges for tags and primary labels"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Centered typographic lockup over asymmetrical fluid background shapes and contour lines.",
+      "visual_signature": "Centered typographic lockup over asymmetrical fluid background shapes and contour lines. | zones=[\"Centered typographic lockup over asymmetrical fluid background shapes and contour lines.\"] | anchors=Earthy Morandi color palette; Fluid, abstract background shapes with subtly textured/stippled edges; Thin, overlapping, continuous contour line accents",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Title slides",
+        "Major chapter openings"
+      ],
+      "avoid_for": [
+        "Data-heavy introductions",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "centered",
+        "organic-frame",
+        "minimal"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Centered hierarchical text with a prominent pill badge, flanked by soft background corners.",
+      "visual_signature": "Centered hierarchical text with a prominent pill badge, flanked by soft background corners. | zones=[\"Centered hierarchical text with a prominent pill badge, flanked by soft background corners.\"] | anchors=Earthy Morandi color palette; Fluid, abstract background shapes with subtly textured/stippled edges; Thin, overlapping, continuous contour line accents",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Section transitions",
+        "Key takeaway statements"
+      ],
+      "avoid_for": [
+        "Complex lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "transition",
+        "text-focus",
+        "centered"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Left-aligned image bleeding off edge, overlaid with a horizontal color block containing columned text.",
+      "visual_signature": "Left-aligned image bleeding off edge, overlaid with a horizontal color block containing columned text. | zones=[\"Left-aligned image bleeding off edge, overlaid with a horizontal color block containing columned text.\"] | anchors=Earthy Morandi color palette; Fluid, abstract background shapes with subtly textured/stippled edges; Thin, overlapping, continuous contour line accents",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Team introductions",
+        "Feature highlights",
+        "Case study summaries"
+      ],
+      "avoid_for": [
+        "Large datasets",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "overlap",
+        "columns"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "side-feature",
+          "purpose": "Contextual lifestyle or product image",
+          "bbox": [
+            0.0,
+            0.0,
+            0.38,
+            0.6
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Staggered checkerboard layout alternating image blocks and colored text blocks.",
+      "visual_signature": "Staggered checkerboard layout alternating image blocks and colored text blocks. | zones=[\"Staggered checkerboard layout alternating image blocks and colored text blocks.\"] | anchors=Earthy Morandi color palette; Fluid, abstract background shapes with subtly textured/stippled edges; Thin, overlapping, continuous contour line accents",
+      "content_capacity": {
+        "density": "high",
+        "max_items": 5
+      },
+      "best_for": [
+        "Product feature grids",
+        "Dual-concept comparisons",
+        "Service breakdowns"
+      ],
+      "avoid_for": [
+        "Single narrative flows",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "checkerboard",
+        "grid",
+        "image-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-07"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "grid-img-top",
+          "purpose": "Supporting visual for first point",
+          "bbox": [
+            0.12,
+            0.24,
+            0.17,
+            0.31
+          ],
+          "priority": 1
+        },
+        {
+          "id": "grid-img-bottom",
+          "purpose": "Supporting visual for second point",
+          "bbox": [
+            0.7,
+            0.57,
+            0.17,
+            0.31
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Four-column horizontal array of donut charts with corresponding labels and captions.",
+      "visual_signature": "Four-column horizontal array of donut charts with corresponding labels and captions. | zones=[\"Four-column horizontal array of donut charts with corresponding labels and captions.\"] | anchors=Earthy Morandi color palette; Fluid, abstract background shapes with subtly textured/stippled edges; Thin, overlapping, continuous contour line accents",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 8
+      },
+      "best_for": [
+        "High-level statistics",
+        "Market share comparisons",
+        "Survey results"
+      ],
+      "avoid_for": [
+        "Deep, complex financial tables",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "charts",
+        "4-column",
+        "metrics"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-06"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Centered hierarchical text with a prominent pill badge, flanked by soft background corners.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Centered hierarchical text with a prominent pill badge, flanked by soft background corners. | zones=[\"Centered hierarchical text with a prominent pill badge, flanked by soft background corners.\"] | anchors=Earthy Morandi color palette; Fluid, abstract background shapes with subtly textured/stippled edges; Thin, overlapping, continuous contour line accents",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Section transitions",
+        "Key takeaway statements"
+      ],
+      "avoid_for": [
+        "Complex lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "transition",
+        "text-focus",
+        "centered"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "quote-primary",
+      "page_index": 6,
+      "page_type": "quote",
+      "semantic_role": "quote",
+      "summary": "Vertical bi-color split background with a large quotation mark watermark and an overlapping device mockup.",
+      "visual_signature": "Vertical bi-color split background with a large quotation mark watermark and an overlapping device mockup. | zones=[\"Vertical bi-color split background with a large quotation mark watermark and an overlapping device mockup.\"] | anchors=Earthy Morandi color palette; Fluid, abstract background shapes with subtly textured/stippled edges; Thin, overlapping, continuous contour line accents",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Client testimonials",
+        "Digital product showcases",
+        "Executive quotes"
+      ],
+      "avoid_for": [
+        "Print-only references",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "bi-color",
+        "mockup",
+        "quote"
+      ],
+      "routing": {
+        "content_shapes": [
+          "quote",
+          "testimonial"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "device-screen",
+          "purpose": "Screen replacement for digital mockup",
+          "bbox": [
+            0.55,
+            0.34,
+            0.36,
+            0.38
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 7,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Minimalist centered text surrounded by inward-pointing organic abstract shapes.",
+      "visual_signature": "Minimalist centered text surrounded by inward-pointing organic abstract shapes. | zones=[\"Minimalist centered text surrounded by inward-pointing organic abstract shapes.\"] | anchors=Earthy Morandi color palette; Fluid, abstract background shapes with subtly textured/stippled edges; Thin, overlapping, continuous contour line accents",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Closing remarks",
+        "Contact information slides"
+      ],
+      "avoid_for": [
+        "Any content presentation",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing",
+        "organic-frame",
+        "minimal"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "status": "pass",
+  "mode": "editable",
+  "slide_count": 1,
+  "native_text_count": 5,
+  "image_layer_count": 1,
+  "native_shape_count": 6,
+  "connector_count": 0,
+  "picture_count": 2,
+  "scene_files": [
+    "examples/editable-pptx/case05-summer-poster/slide-01.scene.json"
+  ],
+  "pptx": "examples/editable-pptx/case05-summer-poster/editable.pptx"
+}

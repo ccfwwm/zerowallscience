@@ -1,0 +1,335 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-ppt-ppt-102-979ca9b0",
+  "source": "local-pptx-distillation",
+  "source_hash": "979ca9b0ac7f994469ecc91e6b2cdc398fc267c44a8948da33255ceb0e385c3d",
+  "global_style": "A modern, academic presentation template featuring a soothing Morandi pastel color palette, organic wavy borders, and terrazzo speckle accents.",
+  "theme": {
+    "palette": [
+      "#576F64",
+      "#A78C84",
+      "#DBCAC0",
+      "#F8F6F4",
+      "#7D6C65"
+    ],
+    "identity_anchors": [
+      "Organic, fluid, wavy color-blocked shapes framing the slide corners.",
+      "Terrazzo-style speckled dots clustered primarily in the bottom-left corner.",
+      "Elevated rounded-rectangle badges with soft drop shadows for section numbering.",
+      "Delicate, minimalist outline icons centered in circular nodes."
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Center-aligned stacked title with an overarching circular crest icon, framed by fluid organic corner shapes and terrazzo speckles.",
+      "visual_signature": "Center-aligned stacked title with an overarching circular crest icon, framed by fluid organic corner shapes and terrazzo speckles. | zones=[\"Center-aligned stacked title with an overarching circular crest icon, framed by fluid organic corner shapes and terrazzo speckles.\"] | anchors=Organic, fluid, wavy color-blocked shapes framing the slide corners.; Terrazzo-style speckled dots clustered primarily in the bottom-left corner.; Elevated rounded-rectangle badges with soft drop shadows for section numbering.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Title slides",
+        "Presentation introduction"
+      ],
+      "avoid_for": [
+        "Data-heavy content",
+        "Detailed lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "center-aligned",
+        "organic-frame",
+        "crest-icon"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Central horizontal grouping containing an elevated rounded square (for numbers) on the left and typography on the right.",
+      "visual_signature": "Central horizontal grouping containing an elevated rounded square (for numbers) on the left and typography on the right. | zones=[\"Central horizontal grouping containing an elevated rounded square (for numbers) on the left and typography on the right.\"] | anchors=Organic, fluid, wavy color-blocked shapes framing the slide corners.; Terrazzo-style speckled dots clustered primarily in the bottom-left corner.; Elevated rounded-rectangle badges with soft drop shadows for section numbering.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Chapter transitions",
+        "Section breaks"
+      ],
+      "avoid_for": [
+        "Body content",
+        "Charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "section-break",
+        "elevated-badge",
+        "minimalist"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Radial hexagonal diagram with a central core connected to 6 surrounding nodes via thick straight lines.",
+      "visual_signature": "Radial hexagonal diagram with a central core connected to 6 surrounding nodes via thick straight lines. | zones=[\"Radial hexagonal diagram with a central core connected to 6 surrounding nodes via thick straight lines.\"] | anchors=Organic, fluid, wavy color-blocked shapes framing the slide corners.; Terrazzo-style speckled dots clustered primarily in the bottom-left corner.; Elevated rounded-rectangle badges with soft drop shadows for section numbering.",
+      "content_capacity": {
+        "density": "high",
+        "max_items": 7
+      },
+      "best_for": [
+        "Ecosystem maps",
+        "Core feature breakdowns",
+        "Component analysis"
+      ],
+      "avoid_for": [
+        "Sequential timelines",
+        "Linear narratives",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "radial-diagram",
+        "hexagonal",
+        "hub-and-spoke"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Horizontal timeline with alternating top/bottom text nodes and a larger concluding node on the right.",
+      "visual_signature": "Horizontal timeline with alternating top/bottom text nodes and a larger concluding node on the right. | zones=[\"Horizontal timeline with alternating top/bottom text nodes and a larger concluding node on the right.\"] | anchors=Organic, fluid, wavy color-blocked shapes framing the slide corners.; Terrazzo-style speckled dots clustered primarily in the bottom-left corner.; Elevated rounded-rectangle badges with soft drop shadows for section numbering.",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Project roadmaps",
+        "Historical timelines",
+        "Process steps"
+      ],
+      "avoid_for": [
+        "Hierarchical org charts",
+        "Data comparisons",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "horizontal-timeline",
+        "alternating-layout",
+        "milestones"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-05"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Split layout (60/40) with a line chart on the left and a vertical list of three icon-led items on the right.",
+      "visual_signature": "Split layout (60/40) with a line chart on the left and a vertical list of three icon-led items on the right. | zones=[\"Split layout (60/40) with a line chart on the left and a vertical list of three icon-led items on the right.\"] | anchors=Organic, fluid, wavy color-blocked shapes framing the slide corners.; Terrazzo-style speckled dots clustered primarily in the bottom-left corner.; Elevated rounded-rectangle badges with soft drop shadows for section numbering.",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Trend analysis",
+        "Data with key takeaways"
+      ],
+      "avoid_for": [
+        "Dense text paragraphs",
+        "Process flows",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "line-chart",
+        "vertical-list"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Central horizontal grouping containing an elevated rounded square (for numbers) on the left and typography on the right.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Central horizontal grouping containing an elevated rounded square (for numbers) on the left and typography on the right. | zones=[\"Central horizontal grouping containing an elevated rounded square (for numbers) on the left and typography on the right.\"] | anchors=Organic, fluid, wavy color-blocked shapes framing the slide corners.; Terrazzo-style speckled dots clustered primarily in the bottom-left corner.; Elevated rounded-rectangle badges with soft drop shadows for section numbering.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Chapter transitions",
+        "Section breaks"
+      ],
+      "avoid_for": [
+        "Body content",
+        "Charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "section-break",
+        "elevated-badge",
+        "minimalist"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Center-aligned closing message with a top crest icon, framed by fluid organic corner shapes and terrazzo speckles, matching the cover.",
+      "visual_signature": "Center-aligned closing message with a top crest icon, framed by fluid organic corner shapes and terrazzo speckles, matching the cover. | zones=[\"Center-aligned closing message with a top crest icon, framed by fluid organic corner shapes and terrazzo speckles, matching the cover.\"] | anchors=Organic, fluid, wavy color-blocked shapes framing the slide corners.; Terrazzo-style speckled dots clustered primarily in the bottom-left corner.; Elevated rounded-rectangle badges with soft drop shadows for section numbering.",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Q&A slides",
+        "Thank you slides",
+        "Contact information"
+      ],
+      "avoid_for": [
+        "Content presentation",
+        "Data analysis",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "bookend",
+        "center-aligned",
+        "closing"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

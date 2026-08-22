@@ -1,0 +1,6 @@
+.card { display: grid; gap: 12px; max-width: 620px; padding: 16px; border: 1px solid #d8dde2; border-radius: 6px; background: #fff; }
+.card label { display: grid; gap: 5px; color: #3d4852; font-size: 12px; }
+.card input:not([type="checkbox"]), .card select { box-sizing: border-box; width: 100%; min-height: 32px; padding: 5px 8px; border: 1px solid #cbd2d8; border-radius: 4px; background: #fff; color: #182028; }
+.toggle { display: flex !important; grid-template-columns: none !important; align-items: center; gap: 8px !important; font-weight: 600; }
+.toggle input { width: 16px; height: 16px; }
+.note { margin: 0; color: #68737d; font-size: 11px; }

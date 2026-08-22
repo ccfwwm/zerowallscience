@@ -1,0 +1,335 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-40ppt-ppt-25-5d8944ef",
+  "source": "local-pptx-distillation",
+  "source_hash": "5d8944efb61d6cf28d4583bd4e8a52619b4e0769830ff3cfb1ac3daf27fe4964",
+  "global_style": "An elegant, trendy presentation style featuring fluid organic shapes, a warm Morandi color palette, and soft environmental shadows for a modern boho aesthetic.",
+  "theme": {
+    "palette": [
+      "#ba5b31",
+      "#e29532",
+      "#6c8474",
+      "#facfd1",
+      "#bfa281",
+      "#f8f8f8"
+    ],
+    "identity_anchors": [
+      "Fluid, asymmetrical organic 'blob' background shapes",
+      "Muted, earthy 'Morandi' color palette",
+      "Subtle environmental leaf shadows for depth",
+      "High-contrast serif headings paired with sans-serif body text"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Centered typography overlaid on intersecting large fluid color blocks with a subtle environmental shadow cast from the edge.",
+      "visual_signature": "Centered typography overlaid on intersecting large fluid color blocks with a subtle environmental shadow cast from the edge. | zones=[\"Centered typography overlaid on intersecting large fluid color blocks with a subtle environmental shadow cast from the edge.\"] | anchors=Fluid, asymmetrical organic 'blob' background shapes; Muted, earthy 'Morandi' color palette; Subtle environmental leaf shadows for depth",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Title slides",
+        "Section dividers"
+      ],
+      "avoid_for": [
+        "Dense data",
+        "Complex lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "organic-cover",
+        "centered-title",
+        "shadow-overlay"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Top centered heading above a two-column split containing an image and a colored text box, bracketed by organic corner shapes.",
+      "visual_signature": "Top centered heading above a two-column split containing an image and a colored text box, bracketed by organic corner shapes. | zones=[\"Top centered heading above a two-column split containing an image and a colored text box, bracketed by organic corner shapes.\"] | anchors=Fluid, asymmetrical organic 'blob' background shapes; Muted, earthy 'Morandi' color palette; Subtle environmental leaf shadows for depth",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "About us",
+        "Mission statements"
+      ],
+      "avoid_for": [
+        "Multi-metric dashboards",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "image-text-block",
+        "corner-accents"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "image-left",
+          "purpose": "Replaceable real image",
+          "bbox": [
+            0.16,
+            0.27,
+            0.38,
+            0.51
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Large left-aligned image block occupying half the slide, with right-aligned text floating in negative space framed by corner shapes.",
+      "visual_signature": "Large left-aligned image block occupying half the slide, with right-aligned text floating in negative space framed by corner shapes. | zones=[\"Large left-aligned image block occupying half the slide, with right-aligned text floating in negative space framed by corner shapes.\"] | anchors=Fluid, asymmetrical organic 'blob' background shapes; Muted, earthy 'Morandi' color palette; Subtle environmental leaf shadows for depth",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Highlighting a key product",
+        "Introduction to a topic"
+      ],
+      "avoid_for": [
+        "Dense text documents",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "half-bleed-image",
+        "text-right",
+        "minimal"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image-half-left",
+          "purpose": "Hero visual context",
+          "bbox": [
+            0.0,
+            0.09,
+            0.52,
+            0.81
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Right-aligned image block with left-aligned text placed over a massive fluid background shape spanning the majority of the slide.",
+      "visual_signature": "Right-aligned image block with left-aligned text placed over a massive fluid background shape spanning the majority of the slide. | zones=[\"Right-aligned image block with left-aligned text placed over a massive fluid background shape spanning the majority of the slide.\"] | anchors=Fluid, asymmetrical organic 'blob' background shapes; Muted, earthy 'Morandi' color palette; Subtle environmental leaf shadows for depth",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Detailed descriptions",
+        "Product features"
+      ],
+      "avoid_for": [
+        "Full-screen charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "image-right",
+        "fluid-text-zone",
+        "asymmetrical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image-half-right",
+          "purpose": "Supporting visual",
+          "bbox": [
+            0.7,
+            0.0,
+            0.3,
+            1.0
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Three vertical cards with solid colored headers and footers forming a structured grid over an organic background.",
+      "visual_signature": "Three vertical cards with solid colored headers and footers forming a structured grid over an organic background. | zones=[\"Three vertical cards with solid colored headers and footers forming a structured grid over an organic background.\"] | anchors=Fluid, asymmetrical organic 'blob' background shapes; Muted, earthy 'Morandi' color palette; Subtle environmental leaf shadows for depth",
+      "content_capacity": {
+        "density": "high",
+        "max_items": 4
+      },
+      "best_for": [
+        "Pricing tiers",
+        "Service packages",
+        "Feature comparisons"
+      ],
+      "avoid_for": [
+        "Narrative storytelling",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "three-columns",
+        "pricing-table",
+        "color-blocked-cards"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Top centered heading above a two-column split containing an image and a colored text box, bracketed by organic corner shapes.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Top centered heading above a two-column split containing an image and a colored text box, bracketed by organic corner shapes. | zones=[\"Top centered heading above a two-column split containing an image and a colored text box, bracketed by organic corner shapes.\"] | anchors=Fluid, asymmetrical organic 'blob' background shapes; Muted, earthy 'Morandi' color palette; Subtle environmental leaf shadows for depth",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "About us",
+        "Mission statements"
+      ],
+      "avoid_for": [
+        "Multi-metric dashboards",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "image-text-block",
+        "corner-accents"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "image-left",
+          "purpose": "Replaceable real image",
+          "bbox": [
+            0.16,
+            0.27,
+            0.38,
+            0.51
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    }
+  ]
+}

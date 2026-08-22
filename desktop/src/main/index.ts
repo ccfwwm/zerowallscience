@@ -1,0 +1,279 @@
+import { spawn } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, Tray, type OpenDialogOptions } from 'electron'
+import updaterPackage from 'electron-updater'
+import { HarnessRuntime, type HarnessChildProcess } from './runtime/harness-runtime.js'
+import { attachCredentialBroker } from './credentials/broker.js'
+import { CredentialVault } from './credentials/vault.js'
+import { secureWindow } from './security.js'
+import { resolveDesktopIdentity } from './identity.js'
+import { findDesktopWorkspaceRoot, resolveDesktopIconPath, resolveDesktopResourcePath } from './paths.js'
+import { stopBeforeExit } from './shutdown.js'
+import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
+import { DesktopUpdateController, isDailyUpdateCheckDue } from './updater.js'
+import type { DesktopInfo, RuntimeSnapshot } from '../shared/contracts.js'
+
+const { autoUpdater } = updaterPackage
+
+let mainWindow: BrowserWindow | undefined
+let runtime: HarnessRuntime | undefined
+let tray: Tray | undefined
+let quitting = false
+
+function readPackagedChannel(): unknown {
+  try {
+    const manifest = JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf8')) as { zerowallChannel?: unknown }
+    return manifest.zerowallChannel
+  } catch {
+    return process.env.ZEROWALL_RELEASE_CHANNEL
+  }
+}
+
+const identity = resolveDesktopIdentity(readPackagedChannel())
+
+function configureIdentity(): void {
+  app.setName(identity.productName)
+  const userDataOverride = process.env.ZEROWALL_USER_DATA_DIR
+  app.setPath('userData', userDataOverride ? resolve(userDataOverride) : join(app.getPath('appData'), identity.userDataDirectory))
+}
+
+function resourcePath(name: string): string {
+  return resolveDesktopResourcePath({ appPath: app.getAppPath(), isPackaged: app.isPackaged, name, resourcesPath: process.resourcesPath })
+}
+
+function desktopIconPath(): string {
+  return resolveDesktopIconPath({ appPath: app.getAppPath(), isPackaged: app.isPackaged, resourcesPath: process.resourcesPath })
+}
+
+function bundledSkillsPath(): string {
+  return app.isPackaged ? join(process.resourcesPath, 'skills') : join(findWorkspaceRoot(), 'resources', 'skills')
+}
+
+function brandIconPath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'zerowall-icon.png')
+    : join(findWorkspaceRoot(), 'resources', 'brand', 'zerowall', 'zerowall-icon.png')
+}
+
+interface UpdateCheckRecord { lastCheckedAt?: number }
+
+async function readUpdateCheckRecord(path: string): Promise<UpdateCheckRecord> {
+  try {
+    const parsed = JSON.parse(await readFile(path, 'utf8')) as UpdateCheckRecord
+    return typeof parsed.lastCheckedAt === 'number' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+async function writeUpdateCheckRecord(path: string, lastCheckedAt: number): Promise<void> {
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, `${JSON.stringify({ lastCheckedAt })}\n`, 'utf8')
+}
+
+function findWorkspaceRoot(): string {
+  return findDesktopWorkspaceRoot(app.getAppPath())
+}
+
+function dshEntryPath(): string {
+  if (app.isPackaged) return join(app.getAppPath(), 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+  return join(findWorkspaceRoot(), 'dsh', 'source', 'apps', 'cli', 'lib', 'bin.js')
+}
+
+function nodeExecutablePath(): string {
+  if (app.isPackaged) return process.execPath
+  return process.env.npm_node_execpath ?? process.execPath
+}
+
+function nodeEntryPath(): string {
+  return app.isPackaged ? join(app.getAppPath(), 'runtime', 'harness-node-entry.mjs') : resourcePath('harness-node-entry.mjs')
+}
+
+function nodeResolverPath(): string | undefined {
+  return app.isPackaged ? join(app.getAppPath(), 'runtime', 'runtime-esm-register.mjs') : undefined
+}
+
+function runtimeModulesPath(): string | undefined {
+  return app.isPackaged ? join(app.getAppPath(), 'node_modules') : undefined
+}
+
+function createWindow(): BrowserWindow {
+  const window = new BrowserWindow({
+    width: 1380,
+    height: 900,
+    minWidth: 960,
+    minHeight: 680,
+    show: false,
+    title: identity.productName,
+    icon: desktopIconPath(),
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#17181a' : '#f6f7f8',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: join(import.meta.dirname, '../preload/index.cjs'),
+      sandbox: true,
+      webSecurity: true,
+    },
+  })
+  window.on('page-title-updated', (event) => {
+    event.preventDefault()
+    window.setTitle(identity.productName)
+  })
+  window.on('close', (event) => {
+    if (quitting) return
+    event.preventDefault()
+    hideWindowToTray(window, process.platform)
+  })
+  secureWindow(window, () => runtime?.snapshot().url)
+  window.on('closed', () => { if (mainWindow === window) mainWindow = undefined })
+  mainWindow = window
+  return window
+}
+
+function showMainWindow(): void {
+  const window = mainWindow
+  if (window === undefined || window.isDestroyed()) return
+  showWindowFromTray(window, process.platform)
+}
+
+function ensureTray(): void {
+  if (tray !== undefined && !tray.isDestroyed()) return
+  const source = nativeImage.createFromPath(desktopIconPath())
+  const icon = source.resize({ width: process.platform === 'darwin' ? 18 : 16, height: process.platform === 'darwin' ? 18 : 16 })
+  const next = new Tray(icon)
+  const chinese = app.getLocale().toLowerCase().startsWith('zh')
+  next.setToolTip(identity.productName)
+  next.setContextMenu(Menu.buildFromTemplate([
+    { label: chinese ? `显示 ${identity.productName}` : `Show ${identity.productName}`, click: showMainWindow },
+    { type: 'separator' },
+    { label: chinese ? '退出' : 'Quit', click: () => app.quit() },
+  ]))
+  next.on('click', showMainWindow)
+  next.on('double-click', showMainWindow)
+  tray = next
+}
+
+async function showSplash(): Promise<void> {
+  const window = mainWindow ?? createWindow()
+  ensureTray()
+  await window.loadFile(resourcePath('splash.html'), { query: { icon: pathToFileURL(desktopIconPath()).href } })
+  if (!window.isDestroyed()) window.show()
+}
+
+async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
+  if (snapshot.phase !== 'ready' || snapshot.url === undefined) return
+  const window = mainWindow ?? createWindow()
+  await window.loadURL(snapshot.url)
+  if (!window.isDestroyed()) {
+    window.show()
+    window.focus()
+  }
+}
+
+async function launch(): Promise<void> {
+  await showSplash()
+  await runtime?.start(join(app.getPath('userData'), 'workspace'))
+}
+
+app.commandLine.appendSwitch('lang', 'zh-CN')
+configureIdentity()
+
+app.whenReady().then(async () => {
+  if (process.platform !== 'darwin') Menu.setApplicationMenu(null)
+  const userData = app.getPath('userData')
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Operating-system credential encryption is unavailable. ZeroWallScience will not store account secrets without it.')
+  }
+  const credentialVault = new CredentialVault(join(userData, 'credentials', 'vault.json'), {
+    encrypt: (value) => safeStorage.encryptString(value),
+    decrypt: (value) => safeStorage.decryptString(value),
+  })
+  const harnessRuntime = new HarnessRuntime({
+    dshEntryPath: dshEntryPath(),
+    nodeExecutablePath: nodeExecutablePath(),
+    nodeEntryPath: nodeEntryPath(),
+    nodeResolverPath: nodeResolverPath(),
+    runtimeModulesPath: runtimeModulesPath(),
+    runAsNode: app.isPackaged,
+    dshPatchPath: resourcePath('zerowall.patch.yml'),
+    dshHome: join(userData, 'harness'),
+    userSkillsPath: join(userData, 'harness', 'zerowall-skills', 'enabled'),
+    researchDbPath: join(userData, 'research', 'zerowall-research.sqlite'),
+    bundledSkillsPath: bundledSkillsPath(),
+    brandIconPath: brandIconPath(),
+    logPath: join(app.getPath('logs'), 'harness.log'),
+    portPath: join(userData, 'harness', 'endpoint-port.txt'),
+    launchProcess: (executable, args, options) => spawn(executable, args, options) as HarnessChildProcess,
+    onChildStarted: (child) => { attachCredentialBroker(child, credentialVault) },
+    onChanged: (snapshot) => {
+      if (snapshot.phase === 'ready') void showHarness(snapshot)
+      if (snapshot.phase === 'failed' && !quitting) dialog.showErrorBox('ZeroWallScience could not start', snapshot.message)
+    },
+  })
+  runtime = harnessRuntime
+
+  const updates = new DesktopUpdateController({
+    updater: autoUpdater,
+    enabled: app.isPackaged && identity.channel === 'stable',
+    currentVersion: app.getVersion(),
+    publish: status => {
+      const window = mainWindow
+      if (window !== undefined && !window.isDestroyed()) window.webContents.send('desktop:update-status', status)
+    },
+  })
+
+  ipcMain.handle('desktop:info', (): DesktopInfo => ({ version: app.getVersion(), platform: process.platform, architecture: process.arch }))
+  ipcMain.handle('desktop:choose-directory', async () => {
+    const options: OpenDialogOptions = { properties: ['openDirectory', 'createDirectory'] }
+    const result = mainWindow && !mainWindow.isDestroyed()
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options)
+    return result.canceled ? null : result.filePaths[0] ?? null
+  })
+  ipcMain.handle('desktop:get-update-status', () => updates.current())
+  ipcMain.handle('desktop:check-for-updates', () => updates.check())
+  ipcMain.handle('desktop:download-update', () => updates.download())
+  ipcMain.handle('desktop:install-update', async () => {
+    if (updates.current().phase !== 'downloaded') return false
+    await stopBeforeExit(() => runtime?.stop() ?? Promise.resolve(), 6_000)
+    quitting = true
+    tray?.destroy()
+    tray = undefined
+    return updates.install()
+  })
+
+  await launch()
+  const updateRecordPath = join(userData, 'updates', 'last-check.json')
+  const updateTimer = setTimeout(() => {
+    void (async () => {
+      const record = await readUpdateCheckRecord(updateRecordPath)
+      if (!isDailyUpdateCheckDue(record.lastCheckedAt)) return
+      // Persist the attempt before contacting the feed. A failed background
+      // check remains retryable manually, but cannot retry-loop on startup.
+      await writeUpdateCheckRecord(updateRecordPath, Date.now())
+      await updates.check()
+    })().catch(() => undefined)
+  }, 5_000)
+  updateTimer.unref()
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0 && runtime !== undefined) void showHarness(runtime.snapshot())
+    else showMainWindow()
+  })
+}).catch((error: unknown) => dialog.showErrorBox('ZeroWall Science startup failed', error instanceof Error ? error.stack ?? error.message : String(error)))
+
+app.on('before-quit', (event) => {
+  if (quitting) return
+  event.preventDefault()
+  quitting = true
+  const activeRuntime = runtime
+  void stopBeforeExit(() => activeRuntime?.stop() ?? Promise.resolve(), 6_000).finally(() => {
+    tray?.destroy()
+    tray = undefined
+    app.exit(0)
+  })
+})
+
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })

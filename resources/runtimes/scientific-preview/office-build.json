@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "toolchain": {
+    "esbuild": "0.28.1",
+    "docxPreview": "0.4.0",
+    "pptxRenderer": "1.2.4",
+    "jszip": "3.10.1",
+    "echarts": "6.1.0"
+  },
+  "jszipChunk": "office-chunks/chunk-DUTJHONS.mjs",
+  "files": {
+    "docx-preview.mjs": {
+      "bytes": 75976,
+      "gzipBytes": 20784,
+      "sha256": "6b3fab44280d7db5fbf21ccfd06c0c0cea29ba5cb8504d358e19d3f6ef3747ca"
+    },
+    "office-chunks/chunk-DUTJHONS.mjs": {
+      "bytes": 98641,
+      "gzipBytes": 30244,
+      "sha256": "f4a49312eb79d25d728d0bef01b20275dca0cd6923e1868be86f4515f52556a8"
+    },
+    "pptx-preview.mjs": {
+      "bytes": 996388,
+      "gzipBytes": 321185,
+      "sha256": "f2b5a32ce2a17dde28f2f26c2e99fe7d2e046a66f9138915b977d478ef195bab"
+    }
+  }
+}

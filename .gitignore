@@ -1,0 +1,33 @@
+*.sqlite
+*.sqlite-journal
+.env
+.env.*
+.venv
+node_modules
+dist
+/desktop/out/
+/desktop/dist/
+/.build/
+/desktop/build/runtime-skills/
+/store/lib/
+/plugins/*/lib/
+# tsc incremental caches: machine-local, absolute-path bearing, never committed
+*.tsbuildinfo
+.zerowall/
+zerowallscience*.exe
+playwright-report/
+test-results/
+*.log
+/.sessions/
+/.tmp/
+# local session / recordings (never commit)
+.claude/
+cladue_science.mp4
+*.mp4
+.cursor
+.superpowers/
+.worktrees/
+__pycache__/
+*.pyc
+*.pyo
+.vscode

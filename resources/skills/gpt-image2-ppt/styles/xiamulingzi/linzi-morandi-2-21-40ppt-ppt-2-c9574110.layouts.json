@@ -1,0 +1,327 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-40ppt-ppt-2-c9574110",
+  "source": "local-pptx-distillation",
+  "source_hash": "c957411048cc1159e148213a23719cfa89371fe99f6498753c7d9fb3b7b41012",
+  "global_style": "Minimalist Morandi-styled presentation template featuring muted pastel palettes, flat geometric motifs, and generous use of negative space.",
+  "theme": {
+    "palette": [
+      "#8F9A8C",
+      "#D9C3B0",
+      "#C8CBC5",
+      "#766E65",
+      "#FAFAFA"
+    ],
+    "identity_anchors": [
+      "Muted, desaturated 'Morandi' color palette",
+      "Abstract corner decorations (quarter circles, 3x3 dot matrices, thin diagonal lines)",
+      "Centered, symmetrical layout structures",
+      "Flat, minimalist vector graphics without depth"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Centered title inside a leaf-like vector shape, flanked by abstract geometric corner accents",
+      "visual_signature": "Centered title inside a leaf-like vector shape, flanked by abstract geometric corner accents | zones=[\"Centered title inside a leaf-like vector shape, flanked by abstract geometric corner accents\"] | anchors=Muted, desaturated 'Morandi' color palette; Abstract corner decorations (quarter circles, 3x3 dot matrices, thin diagonal lines); Centered, symmetrical layout structures",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Presentation title and subtitle"
+      ],
+      "avoid_for": [
+        "Heavy text, bullet points",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "minimal-cover",
+        "geometric-corners",
+        "centered-title"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Centered numerical section header featuring a nested circle and semi-circle motif",
+      "visual_signature": "Centered numerical section header featuring a nested circle and semi-circle motif | zones=[\"Centered numerical section header featuring a nested circle and semi-circle motif\"] | anchors=Muted, desaturated 'Morandi' color palette; Abstract corner decorations (quarter circles, 3x3 dot matrices, thin diagonal lines); Centered, symmetrical layout structures",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Chapter or section transitions"
+      ],
+      "avoid_for": [
+        "Body content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "section-divider",
+        "numerical-header",
+        "centered-motif"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Framed text slide with central alignment and layered background typography",
+      "visual_signature": "Framed text slide with central alignment and layered background typography | zones=[\"Framed text slide with central alignment and layered background typography\"] | anchors=Muted, desaturated 'Morandi' color palette; Abstract corner decorations (quarter circles, 3x3 dot matrices, thin diagonal lines); Centered, symmetrical layout structures",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 2
+      },
+      "best_for": [
+        "Executive summary",
+        "Brief introductory statements"
+      ],
+      "avoid_for": [
+        "Data-heavy content",
+        "Multi-column lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "framed-border",
+        "text-heavy",
+        "centered-paragraph"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Four-node radial diagram resembling a clover, with corresponding text blocks in the four corners",
+      "visual_signature": "Four-node radial diagram resembling a clover, with corresponding text blocks in the four corners | zones=[\"Four-node radial diagram resembling a clover, with corresponding text blocks in the four corners\"] | anchors=Muted, desaturated 'Morandi' color palette; Abstract corner decorations (quarter circles, 3x3 dot matrices, thin diagonal lines); Centered, symmetrical layout structures",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Core values",
+        "Four-part interconnected concepts"
+      ],
+      "avoid_for": [
+        "Linear processes",
+        "Long paragraphs",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "radial-diagram",
+        "four-nodes",
+        "icon-driven"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Five-column comparison table with alternating header colors and a concluding bottom summary box",
+      "visual_signature": "Five-column comparison table with alternating header colors and a concluding bottom summary box | zones=[\"Five-column comparison table with alternating header colors and a concluding bottom summary box\"] | anchors=Muted, desaturated 'Morandi' color palette; Abstract corner decorations (quarter circles, 3x3 dot matrices, thin diagonal lines); Centered, symmetrical layout structures",
+      "content_capacity": {
+        "density": "high",
+        "max_items": 25
+      },
+      "best_for": [
+        "Feature comparisons",
+        "Pricing or spec tables"
+      ],
+      "avoid_for": [
+        "Visual storytelling",
+        "Large imagery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "data-table",
+        "multi-column",
+        "summary-box"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Framed text slide with central alignment and layered background typography",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Framed text slide with central alignment and layered background typography | zones=[\"Framed text slide with central alignment and layered background typography\"] | anchors=Muted, desaturated 'Morandi' color palette; Abstract corner decorations (quarter circles, 3x3 dot matrices, thin diagonal lines); Centered, symmetrical layout structures",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 2
+      },
+      "best_for": [
+        "Executive summary",
+        "Brief introductory statements"
+      ],
+      "avoid_for": [
+        "Data-heavy content",
+        "Multi-column lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "framed-border",
+        "text-heavy",
+        "centered-paragraph"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Symmetrical closing slide reusing the structural geometry of the cover slide",
+      "visual_signature": "Symmetrical closing slide reusing the structural geometry of the cover slide | zones=[\"Symmetrical closing slide reusing the structural geometry of the cover slide\"] | anchors=Muted, desaturated 'Morandi' color palette; Abstract corner decorations (quarter circles, 3x3 dot matrices, thin diagonal lines); Centered, symmetrical layout structures",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Thank you slides",
+        "Contact information"
+      ],
+      "avoid_for": [
+        "Detailed summaries",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing-slide",
+        "bookend-design",
+        "centered-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

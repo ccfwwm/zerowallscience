@@ -1,0 +1,92 @@
+- id: hmr
+  name: '@deepseek-ai/cordis-plugin-hmr'
+  disabled: false
+  config:
+    root: ['.']
+
+- id: session-persistence-jsonl
+  config:
+    root: !!js dshHomePath('sessions')
+    compression: none
+
+- id: attachment-local
+  config:
+    maxImageBytes: 52428800
+    maxMessageImageBytes: 838860800
+
+# The file-backed providers declare their path fields in the runtime schema.
+# Keep the product patch explicit so a packaged profile does not leave the
+# browser roster waiting forever for the settings service.
+- id: settings
+  config:
+    path: !!js dshHomePath('settings.yaml')
+    dshHome: !!js dshHomePath()
+    watch: true
+
+- id: credentials
+  config:
+    path: !!js dshHomePath('.credentials.yaml')
+    dshHome: !!js dshHomePath()
+    watch: true
+
+- insert:
+    - id: zerowall-base
+      name: '@zerowallscience/plugin-base'
+
+    - id: zerowall-secrets
+      name: '@zerowallscience/plugin-secrets'
+
+    - id: zerowall-desktop-compat
+      name: '@zerowallscience/plugin-desktop-compat'
+
+    - id: zerowall-projects
+      name: '@zerowallscience/plugin-projects'
+
+    - id: zerowall-mcp
+      name: '@zerowallscience/plugin-mcp'
+
+    - id: zerowall-account
+      name: '@zerowallscience/plugin-account'
+
+    - id: zerowall-ai-cloud-llm
+      name: '@zerowallscience/plugin-ai-cloud'
+
+    - id: zerowall-web-search
+      name: '@zerowallscience/plugin-web-search'
+
+    - id: zerowall-image-generation
+      name: '@zerowallscience/plugin-images'
+
+    - id: zerowall-files
+      name: '@zerowallscience/plugin-files'
+
+    - id: zerowall-reviewer
+      name: '@zerowallscience/plugin-reviewer'
+
+    - id: zerowall-research
+      name: '@zerowallscience/plugin-research'
+
+    - id: zerowall-execution
+      name: '@zerowallscience/plugin-execution'
+
+    - id: zerowall-runs
+      name: '@zerowallscience/plugin-runs'
+
+    - id: zerowall-publication
+      name: '@zerowallscience/plugin-publications'
+
+    - id: zerowall-presentation
+      name: '@zerowallscience/plugin-presentations'
+
+    - id: zerowall-skills-plugin
+      name: '@zerowallscience/plugin-skills'
+
+    - id: zerowall-wechat
+      name: '@zerowallscience/plugin-wechat'
+      config:
+        channel: ilink
+        enabled: true
+        autoConnect: false
+        dmPolicy: open
+        groupPolicy: allowlist
+        groups: []

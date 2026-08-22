@@ -1,0 +1,31 @@
+{
+  "name": "@zerowallscience/research-store",
+  "version": "4.1.2",
+  "description": "Transactional scientific domain store for ZeroWall Science 4.1.",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./types": {
+      "types": "./lib/types/index.d.ts"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": ["lib/index.js", "lib/types/**/*.d.ts"],
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "bundle": "tsc -b && tsdown --env.DSH_BUILD_FACE host",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "tsdown": "^0.22.2",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,293 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-ppt-ppt-101-7e1b51d2",
+  "source": "local-pptx-distillation",
+  "source_hash": "7e1b51d210b7b6d221e888bd6c7ff5bab5c9440b17855d0981d0fc85c2405f11",
+  "global_style": "A minimalist, elegant presentation system featuring Morandi gradient backgrounds, translucent frosted-glass panels, and highly structured typographic layouts.",
+  "theme": {
+    "palette": [
+      "#C893A0",
+      "#97C0AC",
+      "#FFFFFF",
+      "#E2B9C3",
+      "#AED3C4"
+    ],
+    "identity_anchors": [
+      "Dusty rose to sage green continuous background gradients.",
+      "Translucent white framing panels creating a subtle glassmorphism effect.",
+      "Large, high-contrast structural typography (numerals and section headers).",
+      "Rotated vertical watermark typography on the margins."
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Central translucent framed box containing tiered centered text, flanked by thin outlined pill shapes.",
+      "visual_signature": "Central translucent framed box containing tiered centered text, flanked by thin outlined pill shapes. | zones=[\"Central translucent framed box containing tiered centered text, flanked by thin outlined pill shapes.\"] | anchors=Dusty rose to sage green continuous background gradients.; Translucent white framing panels creating a subtle glassmorphism effect.; Large, high-contrast structural typography (numerals and section headers).",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Title page",
+        "Section introduction"
+      ],
+      "avoid_for": [
+        "Data presentation",
+        "Heavy text reading",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "centered",
+        "glassmorphism",
+        "minimal"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Asymmetrical two-column split within a translucent frame, oversized numeral on the left, title and description on the right.",
+      "visual_signature": "Asymmetrical two-column split within a translucent frame, oversized numeral on the left, title and description on the right. | zones=[\"Asymmetrical two-column split within a translucent frame, oversized numeral on the left, title and description on the right.\"] | anchors=Dusty rose to sage green continuous background gradients.; Translucent white framing panels creating a subtle glassmorphism effect.; Large, high-contrast structural typography (numerals and section headers).",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section dividers",
+        "Chapter headers"
+      ],
+      "avoid_for": [
+        "Detailed lists",
+        "Complex data",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "typographic-anchor",
+        "chapter-break"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "2x4 uniform grid of circular icons with centered text lockups below each.",
+      "visual_signature": "2x4 uniform grid of circular icons with centered text lockups below each. | zones=[\"2x4 uniform grid of circular icons with centered text lockups below each.\"] | anchors=Dusty rose to sage green continuous background gradients.; Translucent white framing panels creating a subtle glassmorphism effect.; Large, high-contrast structural typography (numerals and section headers).",
+      "content_capacity": {
+        "density": "high",
+        "max_items": 8
+      },
+      "best_for": [
+        "Features overview",
+        "Service lists",
+        "Team profiles (if icons are swapped for circular portraits)"
+      ],
+      "avoid_for": [
+        "Deep narrative text",
+        "Sequential storytelling",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "grid-8",
+        "icon-centric",
+        "balanced"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Central composite diamond shape made of 4 smaller rotated squares, flanked by text blocks in the four corners.",
+      "visual_signature": "Central composite diamond shape made of 4 smaller rotated squares, flanked by text blocks in the four corners. | zones=[\"Central composite diamond shape made of 4 smaller rotated squares, flanked by text blocks in the four corners.\"] | anchors=Dusty rose to sage green continuous background gradients.; Translucent white framing panels creating a subtle glassmorphism effect.; Large, high-contrast structural typography (numerals and section headers).",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Core value propositions",
+        "SWOT analysis",
+        "Interconnected concepts"
+      ],
+      "avoid_for": [
+        "Long sequential lists",
+        "Data-heavy charts",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "diamond-matrix",
+        "radial-layout",
+        "corner-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-06"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Left-aligned dominant donut chart paired with a right-aligned vertical list of key metrics and icon blocks.",
+      "visual_signature": "Left-aligned dominant donut chart paired with a right-aligned vertical list of key metrics and icon blocks. | zones=[\"Left-aligned dominant donut chart paired with a right-aligned vertical list of key metrics and icon blocks.\"] | anchors=Dusty rose to sage green continuous background gradients.; Translucent white framing panels creating a subtle glassmorphism effect.; Large, high-contrast structural typography (numerals and section headers).",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "High-level statistics",
+        "Quarterly summaries",
+        "Proportion visualization"
+      ],
+      "avoid_for": [
+        "Complex line trends",
+        "Dense tables",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "donut-chart",
+        "data-summary",
+        "split-data"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Asymmetrical two-column split within a translucent frame, oversized numeral on the left, title and description on the right.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Asymmetrical two-column split within a translucent frame, oversized numeral on the left, title and description on the right. | zones=[\"Asymmetrical two-column split within a translucent frame, oversized numeral on the left, title and description on the right.\"] | anchors=Dusty rose to sage green continuous background gradients.; Translucent white framing panels creating a subtle glassmorphism effect.; Large, high-contrast structural typography (numerals and section headers).",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section dividers",
+        "Chapter headers"
+      ],
+      "avoid_for": [
+        "Detailed lists",
+        "Complex data",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "typographic-anchor",
+        "chapter-break"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

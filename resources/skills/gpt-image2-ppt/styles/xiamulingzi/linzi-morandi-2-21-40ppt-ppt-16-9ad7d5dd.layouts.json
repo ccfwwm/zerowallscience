@@ -1,0 +1,400 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-40ppt-ppt-16-9ad7d5dd",
+  "source": "local-pptx-distillation",
+  "source_hash": "9ad7d5dd433039a04445965663083cff155ce5e89f829b27ae5415f4c91802cd",
+  "global_style": "An elegant, organic presentation template featuring Morandi tones, fluid abstract shapes, and textured brush stroke accents.",
+  "theme": {
+    "palette": [
+      "#F6F4EF",
+      "#627E74",
+      "#D5AD96",
+      "#3E3636",
+      "#FFFFFF"
+    ],
+    "identity_anchors": [
+      "Overlapping amorphous fluid blobs",
+      "Muted, earthy Morandi color palette",
+      "Textured dry-brush/chalk stroke overlays on shapes",
+      "Asymmetrical corner framing creating central negative space"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Title horizontally centered with vertical accent line, framed by heavy organic blobs in top-left and bottom-right corners.",
+      "visual_signature": "Title horizontally centered with vertical accent line, framed by heavy organic blobs in top-left and bottom-right corners. | zones=[\"Title horizontally centered with vertical accent line, framed by heavy organic blobs in top-left and bottom-right corners.\"] | anchors=Overlapping amorphous fluid blobs; Muted, earthy Morandi color palette; Textured dry-brush/chalk stroke overlays on shapes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Deck introductions",
+        "Title slides"
+      ],
+      "avoid_for": [
+        "Heavy text or data",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "minimalist-cover",
+        "corner-framed",
+        "center-aligned"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Deep, multi-layered blob framing around all four edges, creating a concentrated central white-space void for the section title.",
+      "visual_signature": "Deep, multi-layered blob framing around all four edges, creating a concentrated central white-space void for the section title. | zones=[\"Deep, multi-layered blob framing around all four edges, creating a concentrated central white-space void for the section title.\"] | anchors=Overlapping amorphous fluid blobs; Muted, earthy Morandi color palette; Textured dry-brush/chalk stroke overlays on shapes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Major section breaks",
+        "Chapter titles"
+      ],
+      "avoid_for": [
+        "Detailed content",
+        "Images",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "full-border",
+        "portal-frame",
+        "section-divider"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Top centered title. Split layout: left column for text and small circular image lists, right column dominated by a large rectangular image.",
+      "visual_signature": "Top centered title. Split layout: left column for text and small circular image lists, right column dominated by a large rectangular image. | zones=[\"Top centered title. Split layout: left column for text and small circular image lists, right column dominated by a large rectangular image.\"] | anchors=Overlapping amorphous fluid blobs; Muted, earthy Morandi color palette; Textured dry-brush/chalk stroke overlays on shapes",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Executive summaries",
+        "Service overviews",
+        "Team profiles"
+      ],
+      "avoid_for": [
+        "Complex data visualizations",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "text-heavy",
+        "image-right"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "main-image-right",
+          "purpose": "Primary visual context for text",
+          "bbox": [
+            0.64,
+            0.26,
+            0.27,
+            0.65
+          ],
+          "priority": 1
+        },
+        {
+          "id": "list-icon-1",
+          "purpose": "Visual bullet point 1",
+          "bbox": [
+            0.09,
+            0.61,
+            0.06,
+            0.11
+          ],
+          "priority": 2
+        },
+        {
+          "id": "list-icon-2",
+          "purpose": "Visual bullet point 2",
+          "bbox": [
+            0.09,
+            0.79,
+            0.06,
+            0.11
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Text column on the left. Masonry-style grid on the right comprising three rectangular images and one solid-color text box.",
+      "visual_signature": "Text column on the left. Masonry-style grid on the right comprising three rectangular images and one solid-color text box. | zones=[\"Text column on the left. Masonry-style grid on the right comprising three rectangular images and one solid-color text box.\"] | anchors=Overlapping amorphous fluid blobs; Muted, earthy Morandi color palette; Textured dry-brush/chalk stroke overlays on shapes",
+      "content_capacity": {
+        "density": "high",
+        "max_items": 5
+      },
+      "best_for": [
+        "Mood boards",
+        "Project showcases",
+        "Gallery views"
+      ],
+      "avoid_for": [
+        "Data charts",
+        "Single focus messaging",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "masonry-grid",
+        "image-heavy",
+        "mixed-media"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-06"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "masonry-top",
+          "purpose": "Showcase image",
+          "bbox": [
+            0.41,
+            0.24,
+            0.29,
+            0.34
+          ],
+          "priority": 1
+        },
+        {
+          "id": "masonry-bottom-left",
+          "purpose": "Showcase image",
+          "bbox": [
+            0.41,
+            0.59,
+            0.21,
+            0.34
+          ],
+          "priority": 2
+        },
+        {
+          "id": "masonry-bottom-right",
+          "purpose": "Showcase image",
+          "bbox": [
+            0.63,
+            0.59,
+            0.29,
+            0.34
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Minimal framing. A wide U-shaped dashed line connecting four colored circular nodes with accompanying text.",
+      "visual_signature": "Minimal framing. A wide U-shaped dashed line connecting four colored circular nodes with accompanying text. | zones=[\"Minimal framing. A wide U-shaped dashed line connecting four colored circular nodes with accompanying text.\"] | anchors=Overlapping amorphous fluid blobs; Muted, earthy Morandi color palette; Textured dry-brush/chalk stroke overlays on shapes",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Process flows",
+        "Timelines",
+        "Step-by-step guides"
+      ],
+      "avoid_for": [
+        "Large blocks of text",
+        "Photographic content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "curved-timeline",
+        "process-nodes",
+        "dashed-connector"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Deep, multi-layered blob framing around all four edges, creating a concentrated central white-space void for the section title.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Deep, multi-layered blob framing around all four edges, creating a concentrated central white-space void for the section title. | zones=[\"Deep, multi-layered blob framing around all four edges, creating a concentrated central white-space void for the section title.\"] | anchors=Overlapping amorphous fluid blobs; Muted, earthy Morandi color palette; Textured dry-brush/chalk stroke overlays on shapes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Major section breaks",
+        "Chapter titles"
+      ],
+      "avoid_for": [
+        "Detailed content",
+        "Images",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "full-border",
+        "portal-frame",
+        "section-divider"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Left-aligned closing text. Dense, cascading organic blobs dominating the top-right and right-edge areas.",
+      "visual_signature": "Left-aligned closing text. Dense, cascading organic blobs dominating the top-right and right-edge areas. | zones=[\"Left-aligned closing text. Dense, cascading organic blobs dominating the top-right and right-edge areas.\"] | anchors=Overlapping amorphous fluid blobs; Muted, earthy Morandi color palette; Textured dry-brush/chalk stroke overlays on shapes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Thank you slides",
+        "Contact information"
+      ],
+      "avoid_for": [
+        "Detailed content delivery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing",
+        "asymmetrical-weight",
+        "bookend"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

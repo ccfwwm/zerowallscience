@@ -1,0 +1,17 @@
+.card { margin: 8px 0 4px; padding: 10px 12px; border: 1px solid #d8dde2; border-left: 3px solid #7a8792; border-radius: 6px; background: #fff; color: #20262c; }
+.card[data-status="passed"] { border-left-color: #26834a; }
+.card[data-status="failed"] { border-left-color: #c43d3d; }
+.card[data-status="unreviewable"] { border-left-color: #b87916; }
+.card[data-status="error"] { border-left-color: #8c4b9e; }
+.header { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.title { font-size: 13px; font-weight: 650; }
+.status { font-size: 12px; color: #53606b; }
+.model { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #68737d; font: 11px ui-monospace,Consolas,monospace; }
+.summary { margin: 7px 0; font-size: 12px; line-height: 1.45; white-space: pre-wrap; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 14px; color: #68737d; font-size: 11px; }
+.findings { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.finding { padding: 7px 8px; border: 1px solid #e3e7ea; border-radius: 4px; background: #fafbfc; font-size: 11px; line-height: 1.4; }
+.finding strong { display: block; margin-bottom: 3px; font-size: 12px; }
+.evidence { color: #58646e; }
+.fix { color: #1f6840; }
+.gaps { margin: 7px 0 0; color: #936315; font-size: 11px; }

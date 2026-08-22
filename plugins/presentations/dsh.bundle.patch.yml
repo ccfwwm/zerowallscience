@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-presentations
+      name: '@zerowallscience/plugin-presentations'

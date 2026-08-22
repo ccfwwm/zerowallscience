@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-base
+      name: '@zerowallscience/plugin-base'

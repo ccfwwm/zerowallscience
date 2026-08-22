@@ -1,0 +1,29 @@
+version: 1
+id: zerowall-preview
+channel: preview
+dsh: 0.1.1-rc.1
+plugins:
+  - '@zerowallscience/plugin-base'
+  - '@zerowallscience/plugin-secrets'
+  - '@zerowallscience/plugin-desktop-compat'
+  - '@zerowallscience/plugin-projects'
+  - '@zerowallscience/plugin-account'
+  - '@zerowallscience/plugin-ai-cloud'
+  - '@zerowallscience/plugin-files'
+  - '@zerowallscience/plugin-images'
+  - '@zerowallscience/plugin-mcp'
+  - '@zerowallscience/plugin-skills'
+  - '@zerowallscience/plugin-reviewer'
+  - '@zerowallscience/plugin-research'
+  - '@zerowallscience/plugin-execution'
+  - '@zerowallscience/plugin-runs'
+  - '@zerowallscience/plugin-publications'
+  - '@zerowallscience/plugin-presentations'
+  - '@zerowallscience/plugin-web-search'
+  - '@zerowallscience/plugin-wechat'
+wechat:
+  enabled: true
+  autoConnect: false
+  channel: ilink
+  dmPolicy: open
+  groupPolicy: allowlist

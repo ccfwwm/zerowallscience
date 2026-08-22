@@ -1,0 +1,4 @@
+interface:
+  display_name: "Probe compute environment"
+  short_description: "Inspect server hardware, runtimes, and privileges"
+  default_prompt: "Use $probe-compute-environment to inspect this server before planning compute work."

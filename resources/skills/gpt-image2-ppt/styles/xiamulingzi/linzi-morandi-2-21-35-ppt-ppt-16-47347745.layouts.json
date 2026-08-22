@@ -1,0 +1,503 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-35-ppt-ppt-16-47347745",
+  "source": "local-pptx-distillation",
+  "source_hash": "473477451243d71352791d90694e2271abb460655a74b0c23e40f720c6dc052c",
+  "global_style": "Elegant, muted presentation template featuring soft environmental shadow overlays, organic vector accents, and a calm, earthy color palette.",
+  "theme": {
+    "palette": [
+      "#F4F4F4",
+      "#9FB498",
+      "#CD9A8B",
+      "#E4770D",
+      "#2C2C2C"
+    ],
+    "identity_anchors": [
+      "Simulated dappled light/window shadow overlays across the entire slide canvas",
+      "Muted, earthy background shapes (blobs) behind a central elevated white slide canvas",
+      "Continuous-line organic vector overlays breaking the boundaries of image boxes",
+      "Pill-shaped call-to-action buttons in accent colors"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Central landscape image flanked by large asymmetric typography and organic line-art overlays",
+      "visual_signature": "Central landscape image flanked by large asymmetric typography and organic line-art overlays | zones=[\"Central landscape image flanked by large asymmetric typography and organic line-art overlays\"] | anchors=Simulated dappled light/window shadow overlays across the entire slide canvas; Muted, earthy background shapes (blobs) behind a central elevated white slide canvas; Continuous-line organic vector overlays breaking the boundaries of image boxes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Title slides",
+        "Section dividers"
+      ],
+      "avoid_for": [
+        "Data-heavy introductions",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "hero-image",
+        "stylized-title",
+        "overlapping-elements"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "hero",
+          "purpose": "replaceable real image",
+          "bbox": [
+            0.34,
+            0.28,
+            0.4,
+            0.43
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Top-left text block with a bottom-spanning split of landscape image and solid color block",
+      "visual_signature": "Top-left text block with a bottom-spanning split of landscape image and solid color block | zones=[\"Top-left text block with a bottom-spanning split of landscape image and solid color block\"] | anchors=Simulated dappled light/window shadow overlays across the entire slide canvas; Muted, earthy background shapes (blobs) behind a central elevated white slide canvas; Continuous-line organic vector overlays breaking the boundaries of image boxes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Section introductions",
+        "Key quotes",
+        "Vision statements"
+      ],
+      "avoid_for": [
+        "Multi-point lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-bottom",
+        "color-block",
+        "minimal-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "landscape-bottom",
+          "purpose": "contextual background",
+          "bbox": [
+            0.13,
+            0.5,
+            0.51,
+            0.35
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Four-column symmetrical image gallery with text blocks below",
+      "visual_signature": "Four-column symmetrical image gallery with text blocks below | zones=[\"Four-column symmetrical image gallery with text blocks below\"] | anchors=Simulated dappled light/window shadow overlays across the entire slide canvas; Muted, earthy background shapes (blobs) behind a central elevated white slide canvas; Continuous-line organic vector overlays breaking the boundaries of image boxes",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Team introductions",
+        "Product galleries",
+        "Core value pillars"
+      ],
+      "avoid_for": [
+        "Complex technical explanations",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "4-column",
+        "image-grid",
+        "symmetrical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "col1",
+          "purpose": "gallery item",
+          "bbox": [
+            0.15,
+            0.4,
+            0.16,
+            0.3
+          ],
+          "priority": 1
+        },
+        {
+          "id": "col2",
+          "purpose": "gallery item",
+          "bbox": [
+            0.33,
+            0.4,
+            0.16,
+            0.3
+          ],
+          "priority": 2
+        },
+        {
+          "id": "col3",
+          "purpose": "gallery item",
+          "bbox": [
+            0.51,
+            0.4,
+            0.16,
+            0.3
+          ],
+          "priority": 3
+        },
+        {
+          "id": "col4",
+          "purpose": "gallery item",
+          "bbox": [
+            0.68,
+            0.4,
+            0.16,
+            0.3
+          ],
+          "priority": 4
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Three-column layout with top images, middle text, and bottom pill-shaped buttons",
+      "visual_signature": "Three-column layout with top images, middle text, and bottom pill-shaped buttons | zones=[\"Three-column layout with top images, middle text, and bottom pill-shaped buttons\"] | anchors=Simulated dappled light/window shadow overlays across the entire slide canvas; Muted, earthy background shapes (blobs) behind a central elevated white slide canvas; Continuous-line organic vector overlays breaking the boundaries of image boxes",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 3
+      },
+      "best_for": [
+        "Service offerings",
+        "Pricing tiers",
+        "Actionable steps"
+      ],
+      "avoid_for": [
+        "Long continuous narratives",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "3-column",
+        "cards",
+        "call-to-action"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "card1",
+          "purpose": "feature highlight",
+          "bbox": [
+            0.11,
+            0.18,
+            0.2,
+            0.22
+          ],
+          "priority": 1
+        },
+        {
+          "id": "card2",
+          "purpose": "feature highlight",
+          "bbox": [
+            0.4,
+            0.18,
+            0.2,
+            0.22
+          ],
+          "priority": 2
+        },
+        {
+          "id": "card3",
+          "purpose": "feature highlight",
+          "bbox": [
+            0.69,
+            0.18,
+            0.2,
+            0.22
+          ],
+          "priority": 3
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Four-column symmetrical image gallery with text blocks below",
+      "visual_signature": "Four-column symmetrical image gallery with text blocks below | zones=[\"Four-column symmetrical image gallery with text blocks below\"] | anchors=Simulated dappled light/window shadow overlays across the entire slide canvas; Muted, earthy background shapes (blobs) behind a central elevated white slide canvas; Continuous-line organic vector overlays breaking the boundaries of image boxes",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Team introductions",
+        "Product galleries",
+        "Core value pillars"
+      ],
+      "avoid_for": [
+        "Complex technical explanations",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "4-column",
+        "image-grid",
+        "symmetrical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "col1",
+          "purpose": "gallery item",
+          "bbox": [
+            0.15,
+            0.4,
+            0.16,
+            0.3
+          ],
+          "priority": 1
+        },
+        {
+          "id": "col2",
+          "purpose": "gallery item",
+          "bbox": [
+            0.33,
+            0.4,
+            0.16,
+            0.3
+          ],
+          "priority": 2
+        },
+        {
+          "id": "col3",
+          "purpose": "gallery item",
+          "bbox": [
+            0.51,
+            0.4,
+            0.16,
+            0.3
+          ],
+          "priority": 3
+        },
+        {
+          "id": "col4",
+          "purpose": "gallery item",
+          "bbox": [
+            0.68,
+            0.4,
+            0.16,
+            0.3
+          ],
+          "priority": 4
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Top-left text block with a bottom-spanning split of landscape image and solid color block",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Top-left text block with a bottom-spanning split of landscape image and solid color block | zones=[\"Top-left text block with a bottom-spanning split of landscape image and solid color block\"] | anchors=Simulated dappled light/window shadow overlays across the entire slide canvas; Muted, earthy background shapes (blobs) behind a central elevated white slide canvas; Continuous-line organic vector overlays breaking the boundaries of image boxes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Section introductions",
+        "Key quotes",
+        "Vision statements"
+      ],
+      "avoid_for": [
+        "Multi-point lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-bottom",
+        "color-block",
+        "minimal-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "landscape-bottom",
+          "purpose": "contextual background",
+          "bbox": [
+            0.13,
+            0.5,
+            0.51,
+            0.35
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Central landscape image flanked by large closing typography and organic line-art overlays (reprise of cover)",
+      "visual_signature": "Central landscape image flanked by large closing typography and organic line-art overlays (reprise of cover) | zones=[\"Central landscape image flanked by large closing typography and organic line-art overlays (reprise of cover)\"] | anchors=Simulated dappled light/window shadow overlays across the entire slide canvas; Muted, earthy background shapes (blobs) behind a central elevated white slide canvas; Continuous-line organic vector overlays breaking the boundaries of image boxes",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Thank you slides",
+        "Q&A prompts",
+        "Contact information"
+      ],
+      "avoid_for": [
+        "New content introduction",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "bookend",
+        "hero-image",
+        "stylized-closing"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "closing-hero",
+          "purpose": "final memorable image",
+          "bbox": [
+            0.34,
+            0.28,
+            0.4,
+            0.43
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    }
+  ]
+}

@@ -1,0 +1,378 @@
+{
+  "version": "2",
+  "style_id": "linzi-punk-fg11-2707-1dee59f0",
+  "source": "local-pptx-distillation",
+  "source_hash": "1dee59f0dc8fd1b277b848bc12138171deb6e4499631f1d153afb4d18f84d447",
+  "global_style": "A dark-mode brutalist presentation template featuring high-contrast neon accents, oversized typography, visible grid lines, and text-as-texture techniques.",
+  "theme": {
+    "palette": [
+      "#161616",
+      "#FFFFFF",
+      "#F43518",
+      "#299385"
+    ],
+    "identity_anchors": [
+      "Visible 1px thin grid lines defining asymmetrical structural panes",
+      "Oversized, bold geometric sans-serif typography contrasting with micro-copy",
+      "Repeating 'marquee' text bands used as borders or background textures",
+      "Solid accent circles and transparent colored geometric overlays"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Asymmetrical grid layout with central oversized title, bottom ticker-tape text band, and floating outline icon",
+      "visual_signature": "Asymmetrical grid layout with central oversized title, bottom ticker-tape text band, and floating outline icon | zones=[\"Asymmetrical grid layout with central oversized title, bottom ticker-tape text band, and floating outline icon\"] | anchors=Visible 1px thin grid lines defining asymmetrical structural panes; Oversized, bold geometric sans-serif typography contrasting with micro-copy; Repeating 'marquee' text bands used as borders or background textures",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Title slides",
+        "Section openers"
+      ],
+      "avoid_for": [
+        "Data-heavy content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "grid-based",
+        "marquee-text",
+        "high-contrast"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Minimal text layout with intersecting horizontal text blocks and a contrasting accent word",
+      "visual_signature": "Minimal text layout with intersecting horizontal text blocks and a contrasting accent word | zones=[\"Minimal text layout with intersecting horizontal text blocks and a contrasting accent word\"] | anchors=Visible 1px thin grid lines defining asymmetrical structural panes; Oversized, bold geometric sans-serif typography contrasting with micro-copy; Repeating 'marquee' text bands used as borders or background textures",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Quotes",
+        "Mission statements",
+        "Key takeaways"
+      ],
+      "avoid_for": [
+        "Complex lists",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "text-overlap",
+        "minimalist",
+        "typographic-focus"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Central circular image masked with a neon gradient glow, flanked by warped/curved text and floating shapes",
+      "visual_signature": "Central circular image masked with a neon gradient glow, flanked by warped/curved text and floating shapes | zones=[\"Central circular image masked with a neon gradient glow, flanked by warped/curved text and floating shapes\"] | anchors=Visible 1px thin grid lines defining asymmetrical structural panes; Oversized, bold geometric sans-serif typography contrasting with micro-copy; Repeating 'marquee' text bands used as borders or background textures",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 4
+      },
+      "best_for": [
+        "Hero statements",
+        "Product or portrait showcase"
+      ],
+      "avoid_for": [
+        "Standard body copy",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "neon-glow",
+        "circular-mask",
+        "warped-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "hero_circle",
+          "purpose": "Showcase portrait or key visual",
+          "bbox": [
+            0.5,
+            0.5,
+            0.35,
+            0.6
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Tall rectangular central image intersected by diagonal transparent color bars, bordered by vertical text",
+      "visual_signature": "Tall rectangular central image intersected by diagonal transparent color bars, bordered by vertical text | zones=[\"Tall rectangular central image intersected by diagonal transparent color bars, bordered by vertical text\"] | anchors=Visible 1px thin grid lines defining asymmetrical structural panes; Oversized, bold geometric sans-serif typography contrasting with micro-copy; Repeating 'marquee' text bands used as borders or background textures",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Speaker introductions",
+        "Artist profiles",
+        "Event highlights"
+      ],
+      "avoid_for": [
+        "Heavy data",
+        "Long paragraphs",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "diagonal-overlay",
+        "vertical-text",
+        "portrait-layout"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "profile_image",
+          "purpose": "Portrait of speaker/artist",
+          "bbox": [
+            0.5,
+            0.5,
+            0.3,
+            0.7
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Oversized central countdown/timer typography supported by a thin horizontal rule and minimal labels",
+      "visual_signature": "Oversized central countdown/timer typography supported by a thin horizontal rule and minimal labels | zones=[\"Oversized central countdown/timer typography supported by a thin horizontal rule and minimal labels\"] | anchors=Visible 1px thin grid lines defining asymmetrical structural panes; Oversized, bold geometric sans-serif typography contrasting with micro-copy; Repeating 'marquee' text bands used as borders or background textures",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 5
+      },
+      "best_for": [
+        "Countdowns",
+        "Key metrics",
+        "Event schedules"
+      ],
+      "avoid_for": [
+        "Long form text",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "oversized-numbers",
+        "metric-display",
+        "minimalist-data"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-08"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Full-bleed busy background image with huge floating typography and a horizontal connected-node timeline",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Full-bleed busy background image with huge floating typography and a horizontal connected-node timeline | zones=[\"Full-bleed busy background image with huge floating typography and a horizontal connected-node timeline\"] | anchors=Visible 1px thin grid lines defining asymmetrical structural panes; Oversized, bold geometric sans-serif typography contrasting with micro-copy; Repeating 'marquee' text bands used as borders or background textures",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 6
+      },
+      "best_for": [
+        "Schedules",
+        "Timelines",
+        "Agendas"
+      ],
+      "avoid_for": [
+        "Dense reading material",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "full-bleed",
+        "timeline-nodes",
+        "overlay-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-05"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "background_ambient",
+          "purpose": "Atmospheric full bleed background",
+          "bbox": [
+            0.5,
+            0.5,
+            1.0,
+            1.0
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "agenda-primary",
+      "page_index": 6,
+      "page_type": "agenda",
+      "semantic_role": "agenda",
+      "summary": "Full-bleed busy background image with huge floating typography and a horizontal connected-node timeline",
+      "visual_signature": "Full-bleed busy background image with huge floating typography and a horizontal connected-node timeline | zones=[\"Full-bleed busy background image with huge floating typography and a horizontal connected-node timeline\"] | anchors=Visible 1px thin grid lines defining asymmetrical structural panes; Oversized, bold geometric sans-serif typography contrasting with micro-copy; Repeating 'marquee' text bands used as borders or background textures",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 6
+      },
+      "best_for": [
+        "Schedules",
+        "Timelines",
+        "Agendas"
+      ],
+      "avoid_for": [
+        "Dense reading material",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "full-bleed",
+        "timeline-nodes",
+        "overlay-text"
+      ],
+      "routing": {
+        "content_shapes": [
+          "agenda",
+          "numbered-list"
+        ],
+        "min_items": 3,
+        "max_items": 8
+      },
+      "evidence_pages": [
+        "page-05"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "background_ambient",
+          "purpose": "Atmospheric full bleed background",
+          "bbox": [
+            0.5,
+            0.5,
+            1.0,
+            1.0
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    }
+  ]
+}

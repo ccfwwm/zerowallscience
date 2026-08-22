@@ -1,0 +1,395 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-ppt-ppt-58-9aa43cdb",
+  "source": "local-pptx-distillation",
+  "source_hash": "9aa43cdb83bb79a8061cd5646827e48d4a59db02a7d506051ac04e0c15182cd2",
+  "global_style": "Earthy, Morandi-inspired presentation template utilizing organic background shapes framing elevated white content cards.",
+  "theme": {
+    "palette": [
+      "#EBE6E0",
+      "#595C38",
+      "#C66537",
+      "#C99B29",
+      "#FFFFFF"
+    ],
+    "identity_anchors": [
+      "Organic, oversized fluid shapes in muted earthy tones serving as a background frame",
+      "Central elevated white rectangular canvas with subtle drop shadow for content hosting",
+      "Use of twin colored circular dots flanking slide titles as a recurring motif",
+      "High-contrast elegant serif typography for large display headings"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Large fluid background shapes framing a centered serif title and sans-serif subtitle",
+      "visual_signature": "Large fluid background shapes framing a centered serif title and sans-serif subtitle | zones=[\"Large fluid background shapes framing a centered serif title and sans-serif subtitle\"] | anchors=Organic, oversized fluid shapes in muted earthy tones serving as a background frame; Central elevated white rectangular canvas with subtle drop shadow for content hosting; Use of twin colored circular dots flanking slide titles as a recurring motif",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "presentation title",
+        "section introduction"
+      ],
+      "avoid_for": [
+        "data display",
+        "detailed text",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "cover",
+        "minimal",
+        "organic-frame"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Direct text placement on organic background without a white card, featuring offset square accents",
+      "visual_signature": "Direct text placement on organic background without a white card, featuring offset square accents | zones=[\"Direct text placement on organic background without a white card, featuring offset square accents\"] | anchors=Organic, oversized fluid shapes in muted earthy tones serving as a background frame; Central elevated white rectangular canvas with subtle drop shadow for content hosting; Use of twin colored circular dots flanking slide titles as a recurring motif",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "quotes",
+        "section breaks",
+        "key takeaways"
+      ],
+      "avoid_for": [
+        "detailed content",
+        "images",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "transition",
+        "no-card",
+        "minimalist"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-05"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Elevated white card hosting a 2x2 text grid with top-centered title and minimal outline icons",
+      "visual_signature": "Elevated white card hosting a 2x2 text grid with top-centered title and minimal outline icons | zones=[\"Elevated white card hosting a 2x2 text grid with top-centered title and minimal outline icons\"] | anchors=Organic, oversized fluid shapes in muted earthy tones serving as a background frame; Central elevated white rectangular canvas with subtle drop shadow for content hosting; Use of twin colored circular dots flanking slide titles as a recurring motif",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "key features",
+        "services overview",
+        "summaries"
+      ],
+      "avoid_for": [
+        "complex charts",
+        "large images",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "2x2-grid",
+        "text-heavy",
+        "card-layout"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "White card divided horizontally: top half contains two side-by-side images, bottom half contains two corresponding text columns",
+      "visual_signature": "White card divided horizontally: top half contains two side-by-side images, bottom half contains two corresponding text columns | zones=[\"White card divided horizontally: top half contains two side-by-side images, bottom half contains two corresponding text columns\"] | anchors=Organic, oversized fluid shapes in muted earthy tones serving as a background frame; Central elevated white rectangular canvas with subtle drop shadow for content hosting; Use of twin colored circular dots flanking slide titles as a recurring motif",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "product comparisons",
+        "case studies",
+        "before/after scenarios"
+      ],
+      "avoid_for": [
+        "single focus narratives",
+        "heavy text",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "image-heavy",
+        "side-by-side"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "left-half-image",
+          "purpose": "primary context image",
+          "bbox": [
+            0.06,
+            0.24,
+            0.44,
+            0.38
+          ],
+          "priority": 1
+        },
+        {
+          "id": "right-half-image",
+          "purpose": "secondary context image",
+          "bbox": [
+            0.5,
+            0.24,
+            0.44,
+            0.38
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Vertical dotted timeline centered on a white card, with alternating text/image nodes",
+      "visual_signature": "Vertical dotted timeline centered on a white card, with alternating text/image nodes | zones=[\"Vertical dotted timeline centered on a white card, with alternating text/image nodes\"] | anchors=Organic, oversized fluid shapes in muted earthy tones serving as a background frame; Central elevated white rectangular canvas with subtle drop shadow for content hosting; Use of twin colored circular dots flanking slide titles as a recurring motif",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "process steps",
+        "company history",
+        "roadmaps"
+      ],
+      "avoid_for": [
+        "large continuous text",
+        "dense data tables",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "timeline",
+        "vertical-flow",
+        "alternating"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "node-image-1",
+          "purpose": "small square illustrative thumbnail",
+          "bbox": [
+            0.38,
+            0.35,
+            0.07,
+            0.12
+          ],
+          "priority": 2
+        },
+        {
+          "id": "node-image-2",
+          "purpose": "small square illustrative thumbnail",
+          "bbox": [
+            0.54,
+            0.53,
+            0.07,
+            0.12
+          ],
+          "priority": 2
+        },
+        {
+          "id": "node-image-3",
+          "purpose": "small square illustrative thumbnail",
+          "bbox": [
+            0.38,
+            0.71,
+            0.07,
+            0.12
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Elevated white card hosting a 2x2 text grid with top-centered title and minimal outline icons",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Elevated white card hosting a 2x2 text grid with top-centered title and minimal outline icons | zones=[\"Elevated white card hosting a 2x2 text grid with top-centered title and minimal outline icons\"] | anchors=Organic, oversized fluid shapes in muted earthy tones serving as a background frame; Central elevated white rectangular canvas with subtle drop shadow for content hosting; Use of twin colored circular dots flanking slide titles as a recurring motif",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "key features",
+        "services overview",
+        "summaries"
+      ],
+      "avoid_for": [
+        "complex charts",
+        "large images",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "2x2-grid",
+        "text-heavy",
+        "card-layout"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 6,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Large fluid background shapes framing a centered serif 'Thanks' message",
+      "visual_signature": "Large fluid background shapes framing a centered serif 'Thanks' message | zones=[\"Large fluid background shapes framing a centered serif 'Thanks' message\"] | anchors=Organic, oversized fluid shapes in muted earthy tones serving as a background frame; Central elevated white rectangular canvas with subtle drop shadow for content hosting; Use of twin colored circular dots flanking slide titles as a recurring motif",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Q&A prompts",
+        "contact information",
+        "presentation end"
+      ],
+      "avoid_for": [
+        "new information",
+        "summaries",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing",
+        "bookend",
+        "organic-frame"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}

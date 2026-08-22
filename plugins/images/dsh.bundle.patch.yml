@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-images
+      name: '@zerowallscience/plugin-images'

@@ -1,0 +1,479 @@
+{
+  "version": "2",
+  "style_id": "clean-tech-blue",
+  "style_name": "清爽科技蓝 / Stripe-grade Blue",
+  "global_style": "对标 Stripe / Linear / Notion 官网与 Pitch 路演 deck 的高级蓝白风：纯白背景 + 克制蓝调 + 大留白 + 精致网格。比传统 McKinsey 蓝更现代、更产品化，比 SaaS landing 更适合长篇内容。适合融资路演、商业计划书、企业战略汇报。 背景：纯白 #FFFFFF，绝不使用深色背景；可在大块区域用极淡冰蓝 #F4F7FF 区分。 主蓝：Stripe 紫蓝 #635BFF 或皇家蓝 #1E40AF，作为标题、强调数字、品牌色块。 次蓝：浅蓝 #93C5FD 用于柔性",
+  "theme": {
+    "primary": "",
+    "accent": [],
+    "background": "",
+    "fonts": {
+      "title": "",
+      "body": ""
+    }
+  },
+  "layouts": [
+    {
+      "id": "cover-hero-composition",
+      "page_type": "cover",
+      "summary": "左 60% 放主标题（深墨黑超大粗体，2-3 行内）+ 下方副标题（中蓝标准字重）+ 底部 1 行 tagline；右 40% 放一个浅蓝色简洁 3D 几何体（棱柱、球、抽象 SaaS 图形），透明度 30%，绝不喧宾夺主。顶部或底部一条 4px 高的蓝色渐变细带作为品牌锚点。",
+      "visual_signature": "封面主视觉",
+      "content_capacity": {
+        "title": "8-18 个中文字符",
+        "subtitle": "1 行短副标题",
+        "meta": "可选 1-2 行日期、作者或机构"
+      },
+      "best_for": [
+        "cover",
+        "opening",
+        "brand title"
+      ],
+      "avoid_for": [
+        "dense content",
+        "table",
+        "multi-metric data"
+      ],
+      "variation_tags": [
+        "cover",
+        "hero",
+        "title-focus"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": false,
+      "reuse_reason": "该页面形态视觉锚点较强，建议同一 deck 只使用一次。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "主标题"
+          },
+          "subtitle": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 56,
+            "description": "副标题"
+          },
+          "meta": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 40,
+            "description": "日期、作者或机构"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "agenda-structured-overview",
+      "page_type": "agenda",
+      "summary": "清爽科技蓝 / Stripe-grade Blue 的 结构化议程概览，遵循该风格的配色、字体、网格和装饰语言。",
+      "visual_signature": "结构化议程概览",
+      "content_capacity": {
+        "items": "3-6 个短议程项，每项 1 个短标题 + 可选 1 句说明"
+      },
+      "best_for": [
+        "agenda",
+        "overview",
+        "chapter list"
+      ],
+      "avoid_for": [
+        "dense table",
+        "long legal copy",
+        "tiny text"
+      ],
+      "variation_tags": [
+        "agenda",
+        "overview",
+        "list"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "议程标题"
+          },
+          "items": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 6,
+            "description": "议程项",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 18
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 36
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "title",
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "section-divider-composition",
+      "page_type": "section",
+      "summary": "清爽科技蓝 / Stripe-grade Blue 的 章节分隔页，遵循该风格的配色、字体、网格和装饰语言。",
+      "visual_signature": "章节分隔页",
+      "content_capacity": {
+        "section_number": "可选章节编号",
+        "title": "6-18 个中文字符",
+        "description": "1 句短说明"
+      },
+      "best_for": [
+        "section",
+        "chapter divider",
+        "major transition"
+      ],
+      "avoid_for": [
+        "dense table",
+        "long legal copy",
+        "tiny text"
+      ],
+      "variation_tags": [
+        "section",
+        "divider",
+        "chapter"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "section_number": {
+            "type": "string",
+            "maxLength": 6,
+            "description": "章节编号"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "章节标题"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 70,
+            "description": "章节说明"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "content-structured-grid",
+      "page_type": "content",
+      "summary": "顶部留 1 行小标题 + 1 条蓝色细分隔线；主体 3 列卡片或 2 列文字+图表布局；每张卡片白底浅蓝描边、左侧 3px 实心蓝色边作为 accent；要点用蓝色实心圆点 / 短横线，绝不用 emoji。整页留白占 45% 以上。",
+      "visual_signature": "结构化内容页",
+      "content_capacity": {
+        "items": "2-4 个短要点或卡片，每项 1 个标题 + 1 句说明"
+      },
+      "best_for": [
+        "content",
+        "feature list",
+        "structured explanation"
+      ],
+      "avoid_for": [
+        "dense table",
+        "long legal copy",
+        "tiny text"
+      ],
+      "variation_tags": [
+        "content",
+        "structured-grid"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 28,
+            "description": "页面标题"
+          },
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 4,
+            "description": "内容要点",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 16
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 48
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "comparison-two-zone",
+      "page_type": "content",
+      "summary": "顶部留 1 行小标题 + 1 条蓝色细分隔线；主体 3 列卡片或 2 列文字+图表布局；每张卡片白底浅蓝描边、左侧 3px 实心蓝色边作为 accent；要点用蓝色实心圆点 / 短横线，绝不用 emoji。整页留白占 45% 以上。",
+      "visual_signature": "双区对比页",
+      "content_capacity": {
+        "left": "1 个标题 + 2-3 条短要点",
+        "right": "1 个标题 + 2-3 条短要点"
+      },
+      "best_for": [
+        "comparison",
+        "before after",
+        "two options",
+        "tradeoff"
+      ],
+      "avoid_for": [
+        "three or more categories",
+        "large chart",
+        "long prose"
+      ],
+      "variation_tags": [
+        "content",
+        "comparison",
+        "two-zone"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "对比页标题"
+          },
+          "left": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120,
+            "description": "左侧内容"
+          },
+          "right": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120,
+            "description": "右侧内容"
+          }
+        },
+        "required": [
+          "title",
+          "left",
+          "right"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "data-visual-callouts",
+      "page_type": "data",
+      "summary": "关键数字超大（占页面高度 25-30%）深蓝粗体居中或左对齐，数字下方一行小字解释含义；旁边或下方放简洁柱状图 / 折线图 / 环形图，配色用蓝色 5 阶渐变（#1E40AF -> #93C5FD），对照组用浅灰 #E2E8F0。每个数据点必须有清晰标签，绝不裸图。",
+      "visual_signature": "数据可视化页",
+      "content_capacity": {
+        "metrics": "2-5 个关键指标，每个含数字和短标签"
+      },
+      "best_for": [
+        "data",
+        "metrics",
+        "comparison numbers"
+      ],
+      "avoid_for": [
+        "long prose",
+        "agenda",
+        "quote"
+      ],
+      "variation_tags": [
+        "data",
+        "metrics",
+        "chart"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "数据页标题"
+          },
+          "metrics": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 5,
+            "description": "关键指标",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "maxLength": 16
+                },
+                "metric": {
+                  "type": "string",
+                  "maxLength": 14
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 32
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "title",
+          "metrics"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "quote-statement-focus",
+      "page_type": "quote",
+      "summary": "清爽科技蓝 / Stripe-grade Blue 的 大引语焦点页，遵循该风格的配色、字体、网格和装饰语言。",
+      "visual_signature": "大引语焦点页",
+      "content_capacity": {
+        "quote": "1 句 16-42 个中文字符",
+        "attribution": "可选署名 1 行"
+      },
+      "best_for": [
+        "quote",
+        "key insight",
+        "transition statement"
+      ],
+      "avoid_for": [
+        "bullet list",
+        "dense data",
+        "agenda"
+      ],
+      "variation_tags": [
+        "quote",
+        "statement",
+        "large-text"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": false,
+      "reuse_reason": "该页面形态视觉锚点较强，建议同一 deck 只使用一次。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "quote": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 56,
+            "description": "核心引语"
+          },
+          "attribution": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 28,
+            "description": "署名或注释"
+          }
+        },
+        "required": [
+          "quote"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "closing-summary-contact",
+      "page_type": "closing",
+      "summary": "清爽科技蓝 / Stripe-grade Blue 的 收尾联系页，遵循该风格的配色、字体、网格和装饰语言。",
+      "visual_signature": "收尾联系页",
+      "content_capacity": {
+        "title": "谢谢 / 下一步 / 结论短句",
+        "contact": "2-4 条联系信息"
+      },
+      "best_for": [
+        "closing",
+        "thank you",
+        "contact",
+        "next step"
+      ],
+      "avoid_for": [
+        "new section",
+        "complex chart",
+        "long prose"
+      ],
+      "variation_tags": [
+        "closing",
+        "contact",
+        "summary"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": false,
+      "reuse_reason": "该页面形态视觉锚点较强，建议同一 deck 只使用一次。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "收尾主标题"
+          },
+          "subtitle": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 56,
+            "description": "收尾短句"
+          },
+          "contact": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 90,
+            "description": "联系信息"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

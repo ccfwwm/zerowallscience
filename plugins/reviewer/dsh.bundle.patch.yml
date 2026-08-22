@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-reviewer
+      name: '@zerowallscience/plugin-reviewer'

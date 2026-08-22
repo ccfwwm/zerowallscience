@@ -1,0 +1,479 @@
+{
+  "version": "2",
+  "style_id": "risograph",
+  "style_name": "Riso 印刷 / Risograph",
+  "global_style": "对标日本 / 欧洲独立设计师工作室的 Risograph 双套色印刷美学：荧光粉 + 钴蓝（或其他 2 色组合）+ 网点纹理 + 轻微套印偏移 + 米白纸感。粗粝、有手感、有 zine 气质。适合创意工作室、文创品牌、独立播客、活动海报式 PPT。 背景：米白 #F4EDD9 或牛皮纸黄 #E5D5A8，必须有清晰可见的纸张颗粒纹理与轻微纤维感。 油墨（每份 deck 只允许 2-3 色组合，常用：荧光粉 #FF48B0 + 钴蓝 #2A47B0；或芥末黄 #E2B441 + 翠绿 #00A878；或荧光橙 #FF",
+  "theme": {
+    "primary": "",
+    "accent": [],
+    "background": "",
+    "fonts": {
+      "title": "",
+      "body": ""
+    }
+  },
+  "layouts": [
+    {
+      "id": "cover-hero-composition",
+      "page_type": "cover",
+      "summary": "海报式：超大主标题占画面 50%+，可 2 行错位排版（一行荧光粉、一行钴蓝），下方副标题在一个粗描边色块里；背景叠加 1-2 个大色块几何（圆、半圆、不规则形），有套印偏移；角落点缀小的网点星形、波浪线、对话气泡。",
+      "visual_signature": "封面主视觉",
+      "content_capacity": {
+        "title": "8-18 个中文字符",
+        "subtitle": "1 行短副标题",
+        "meta": "可选 1-2 行日期、作者或机构"
+      },
+      "best_for": [
+        "cover",
+        "opening",
+        "brand title"
+      ],
+      "avoid_for": [
+        "dense content",
+        "table",
+        "multi-metric data"
+      ],
+      "variation_tags": [
+        "cover",
+        "hero",
+        "title-focus"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": false,
+      "reuse_reason": "该页面形态视觉锚点较强，建议同一 deck 只使用一次。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "主标题"
+          },
+          "subtitle": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 56,
+            "description": "副标题"
+          },
+          "meta": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 40,
+            "description": "日期、作者或机构"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "agenda-structured-overview",
+      "page_type": "agenda",
+      "summary": "Riso 印刷 / Risograph 的 结构化议程概览，遵循该风格的配色、字体、网格和装饰语言。",
+      "visual_signature": "结构化议程概览",
+      "content_capacity": {
+        "items": "3-6 个短议程项，每项 1 个短标题 + 可选 1 句说明"
+      },
+      "best_for": [
+        "agenda",
+        "overview",
+        "chapter list"
+      ],
+      "avoid_for": [
+        "dense table",
+        "long legal copy",
+        "tiny text"
+      ],
+      "variation_tags": [
+        "agenda",
+        "overview",
+        "list"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "议程标题"
+          },
+          "items": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 6,
+            "description": "议程项",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 18
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 36
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "title",
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "section-divider-composition",
+      "page_type": "section",
+      "summary": "Riso 印刷 / Risograph 的 章节分隔页，遵循该风格的配色、字体、网格和装饰语言。",
+      "visual_signature": "章节分隔页",
+      "content_capacity": {
+        "section_number": "可选章节编号",
+        "title": "6-18 个中文字符",
+        "description": "1 句短说明"
+      },
+      "best_for": [
+        "section",
+        "chapter divider",
+        "major transition"
+      ],
+      "avoid_for": [
+        "dense table",
+        "long legal copy",
+        "tiny text"
+      ],
+      "variation_tags": [
+        "section",
+        "divider",
+        "chapter"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "section_number": {
+            "type": "string",
+            "maxLength": 6,
+            "description": "章节编号"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "章节标题"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 70,
+            "description": "章节说明"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "content-structured-grid",
+      "page_type": "content",
+      "summary": "zine spread 风：内容分成 3-4 个色块区域，区域形状不规则（圆角矩形、不对称六边形），每个区域填一种网点色，文字反白或叠在色块上；要点之间用粗手绘箭头或感叹号点缀；可在某处放一个 illustration 元素（手、眼睛、对话气泡，全部 monoline + halftone 填充）。",
+      "visual_signature": "结构化内容页",
+      "content_capacity": {
+        "items": "2-4 个短要点或卡片，每项 1 个标题 + 1 句说明"
+      },
+      "best_for": [
+        "content",
+        "feature list",
+        "structured explanation"
+      ],
+      "avoid_for": [
+        "dense table",
+        "long legal copy",
+        "tiny text"
+      ],
+      "variation_tags": [
+        "content",
+        "structured-grid"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 28,
+            "description": "页面标题"
+          },
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 4,
+            "description": "内容要点",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 16
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 48
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "comparison-two-zone",
+      "page_type": "content",
+      "summary": "zine spread 风：内容分成 3-4 个色块区域，区域形状不规则（圆角矩形、不对称六边形），每个区域填一种网点色，文字反白或叠在色块上；要点之间用粗手绘箭头或感叹号点缀；可在某处放一个 illustration 元素（手、眼睛、对话气泡，全部 monoline + halftone 填充）。",
+      "visual_signature": "双区对比页",
+      "content_capacity": {
+        "left": "1 个标题 + 2-3 条短要点",
+        "right": "1 个标题 + 2-3 条短要点"
+      },
+      "best_for": [
+        "comparison",
+        "before after",
+        "two options",
+        "tradeoff"
+      ],
+      "avoid_for": [
+        "three or more categories",
+        "large chart",
+        "long prose"
+      ],
+      "variation_tags": [
+        "content",
+        "comparison",
+        "two-zone"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "对比页标题"
+          },
+          "left": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120,
+            "description": "左侧内容"
+          },
+          "right": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120,
+            "description": "右侧内容"
+          }
+        },
+        "required": [
+          "title",
+          "left",
+          "right"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "data-visual-callouts",
+      "page_type": "data",
+      "summary": "数据部分用 zine 海报风：数字超大、粗、错位排版（数字本身有套印偏移效果）；旁边放粗描边的几何图表（实心圆 + 网点扇形 = 饼图，粗矩形 = 柱图），所有图形带 halftone；底部用一行 wood-type 大字给结论。",
+      "visual_signature": "数据可视化页",
+      "content_capacity": {
+        "metrics": "2-5 个关键指标，每个含数字和短标签"
+      },
+      "best_for": [
+        "data",
+        "metrics",
+        "comparison numbers"
+      ],
+      "avoid_for": [
+        "long prose",
+        "agenda",
+        "quote"
+      ],
+      "variation_tags": [
+        "data",
+        "metrics",
+        "chart"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": true,
+      "reuse_reason": "通用结构可复用，但应优先错开其他 layout 以增加页面变化。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "数据页标题"
+          },
+          "metrics": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 5,
+            "description": "关键指标",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "maxLength": 16
+                },
+                "metric": {
+                  "type": "string",
+                  "maxLength": 14
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 32
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "title",
+          "metrics"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "quote-statement-focus",
+      "page_type": "quote",
+      "summary": "Riso 印刷 / Risograph 的 大引语焦点页，遵循该风格的配色、字体、网格和装饰语言。",
+      "visual_signature": "大引语焦点页",
+      "content_capacity": {
+        "quote": "1 句 16-42 个中文字符",
+        "attribution": "可选署名 1 行"
+      },
+      "best_for": [
+        "quote",
+        "key insight",
+        "transition statement"
+      ],
+      "avoid_for": [
+        "bullet list",
+        "dense data",
+        "agenda"
+      ],
+      "variation_tags": [
+        "quote",
+        "statement",
+        "large-text"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": false,
+      "reuse_reason": "该页面形态视觉锚点较强，建议同一 deck 只使用一次。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "quote": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 56,
+            "description": "核心引语"
+          },
+          "attribution": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 28,
+            "description": "署名或注释"
+          }
+        },
+        "required": [
+          "quote"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "closing-summary-contact",
+      "page_type": "closing",
+      "summary": "Riso 印刷 / Risograph 的 收尾联系页，遵循该风格的配色、字体、网格和装饰语言。",
+      "visual_signature": "收尾联系页",
+      "content_capacity": {
+        "title": "谢谢 / 下一步 / 结论短句",
+        "contact": "2-4 条联系信息"
+      },
+      "best_for": [
+        "closing",
+        "thank you",
+        "contact",
+        "next step"
+      ],
+      "avoid_for": [
+        "new section",
+        "complex chart",
+        "long prose"
+      ],
+      "variation_tags": [
+        "closing",
+        "contact",
+        "summary"
+      ],
+      "external_image_slots": [],
+      "reuse_friendly": false,
+      "reuse_reason": "该页面形态视觉锚点较强，建议同一 deck 只使用一次。",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 24,
+            "description": "收尾主标题"
+          },
+          "subtitle": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 56,
+            "description": "收尾短句"
+          },
+          "contact": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 90,
+            "description": "联系信息"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

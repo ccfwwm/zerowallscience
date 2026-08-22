@@ -1,0 +1,518 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-2-21-35-ppt-ppt-4-349295b8",
+  "source": "local-pptx-distillation",
+  "source_hash": "349295b85b607c815d61f6f5b0dfdfb451399b69b6d4b100156993dad4bb2795",
+  "global_style": "An editorial, magazine-style presentation featuring aggressive white space, stark red and yellow accents, and strict rectangular image masking.",
+  "theme": {
+    "palette": [
+      "#FFFFFF",
+      "#D32F2F",
+      "#F2A900",
+      "#000000"
+    ],
+    "identity_anchors": [
+      "Partial red rectangular brackets framing text",
+      "Textured yellow brush stroke accents",
+      "Solid red geometric blocks and circles",
+      "Asymmetrical masonry image grids bleeding to edges"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Asymmetrical split with rotated margin text, layered geometric shapes, and a right-aligned cutout hero image.",
+      "visual_signature": "Asymmetrical split with rotated margin text, layered geometric shapes, and a right-aligned cutout hero image. | zones=[\"Asymmetrical split with rotated margin text, layered geometric shapes, and a right-aligned cutout hero image.\"] | anchors=Partial red rectangular brackets framing text; Textured yellow brush stroke accents; Solid red geometric blocks and circles",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Title slides",
+        "Bold introductions"
+      ],
+      "avoid_for": [
+        "Data-heavy introductions",
+        "Standard corporate titles",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "cover",
+        "split-layout",
+        "bold-typography",
+        "cutout-image"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "hero-cutout",
+          "purpose": "Replaceable cutout hero portrait",
+          "bbox": [
+            0.6,
+            0.1,
+            0.4,
+            0.9
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Three-column layout: left text list, center vertical image stack, right solid color block with centered text.",
+      "visual_signature": "Three-column layout: left text list, center vertical image stack, right solid color block with centered text. | zones=[\"Three-column layout: left text list, center vertical image stack, right solid color block with centered text.\"] | anchors=Partial red rectangular brackets framing text; Textured yellow brush stroke accents; Solid red geometric blocks and circles",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 6
+      },
+      "best_for": [
+        "Section dividers",
+        "Mission statements"
+      ],
+      "avoid_for": [
+        "Data visualization",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "three-column",
+        "image-column",
+        "solid-block"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "center-top-image",
+          "purpose": "Replaceable square/landscape image",
+          "bbox": [
+            0.44,
+            0.1,
+            0.22,
+            0.25
+          ],
+          "priority": 1
+        },
+        {
+          "id": "center-mid-image",
+          "purpose": "Replaceable square/landscape image",
+          "bbox": [
+            0.44,
+            0.38,
+            0.22,
+            0.25
+          ],
+          "priority": 2
+        },
+        {
+          "id": "center-bottom-image",
+          "purpose": "Replaceable square/landscape image",
+          "bbox": [
+            0.44,
+            0.65,
+            0.22,
+            0.25
+          ],
+          "priority": 3
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Left-aligned text and progress bars balanced by a right-aligned vertical image bounded by a solid red edge block.",
+      "visual_signature": "Left-aligned text and progress bars balanced by a right-aligned vertical image bounded by a solid red edge block. | zones=[\"Left-aligned text and progress bars balanced by a right-aligned vertical image bounded by a solid red edge block.\"] | anchors=Partial red rectangular brackets framing text; Textured yellow brush stroke accents; Solid red geometric blocks and circles",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Key metrics",
+        "Feature highlights"
+      ],
+      "avoid_for": [
+        "Complex charts",
+        "Long-form text",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "text-with-image",
+        "progress-bars",
+        "asymmetrical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "right-vertical-image",
+          "purpose": "Replaceable editorial portrait or feature image",
+          "bbox": [
+            0.55,
+            0.15,
+            0.3,
+            0.7
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Left-aligned stacked horizontal images bleeding off-edge, right-aligned text grid with pill-shaped labels.",
+      "visual_signature": "Left-aligned stacked horizontal images bleeding off-edge, right-aligned text grid with pill-shaped labels. | zones=[\"Left-aligned stacked horizontal images bleeding off-edge, right-aligned text grid with pill-shaped labels.\"] | anchors=Partial red rectangular brackets framing text; Textured yellow brush stroke accents; Solid red geometric blocks and circles",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 6
+      },
+      "best_for": [
+        "Product features",
+        "Service lists"
+      ],
+      "avoid_for": [
+        "Single-focus narratives",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "image-stack",
+        "text-grid",
+        "pill-labels"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "top-left-image",
+          "purpose": "Replaceable landscape image",
+          "bbox": [
+            0.05,
+            0.15,
+            0.35,
+            0.35
+          ],
+          "priority": 1
+        },
+        {
+          "id": "bottom-left-image",
+          "purpose": "Replaceable landscape image",
+          "bbox": [
+            0.05,
+            0.5,
+            0.35,
+            0.35
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Left-aligned text and progress bars balanced by a right-aligned vertical image bounded by a solid red edge block.",
+      "visual_signature": "Left-aligned text and progress bars balanced by a right-aligned vertical image bounded by a solid red edge block. | zones=[\"Left-aligned text and progress bars balanced by a right-aligned vertical image bounded by a solid red edge block.\"] | anchors=Partial red rectangular brackets framing text; Textured yellow brush stroke accents; Solid red geometric blocks and circles",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Key metrics",
+        "Feature highlights"
+      ],
+      "avoid_for": [
+        "Complex charts",
+        "Long-form text",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "text-with-image",
+        "progress-bars",
+        "asymmetrical"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "right-vertical-image",
+          "purpose": "Replaceable editorial portrait or feature image",
+          "bbox": [
+            0.55,
+            0.15,
+            0.3,
+            0.7
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Left-aligned stacked horizontal images bleeding off-edge, right-aligned text grid with pill-shaped labels.",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Left-aligned stacked horizontal images bleeding off-edge, right-aligned text grid with pill-shaped labels. | zones=[\"Left-aligned stacked horizontal images bleeding off-edge, right-aligned text grid with pill-shaped labels.\"] | anchors=Partial red rectangular brackets framing text; Textured yellow brush stroke accents; Solid red geometric blocks and circles",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 6
+      },
+      "best_for": [
+        "Product features",
+        "Service lists"
+      ],
+      "avoid_for": [
+        "Single-focus narratives",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "image-stack",
+        "text-grid",
+        "pill-labels"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "top-left-image",
+          "purpose": "Replaceable landscape image",
+          "bbox": [
+            0.05,
+            0.15,
+            0.35,
+            0.35
+          ],
+          "priority": 1
+        },
+        {
+          "id": "bottom-left-image",
+          "purpose": "Replaceable landscape image",
+          "bbox": [
+            0.05,
+            0.5,
+            0.35,
+            0.35
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "quote-primary",
+      "page_index": 6,
+      "page_type": "quote",
+      "semantic_role": "quote",
+      "summary": "Extreme asymmetrical layout with scattered rectangular blocks (images, color, black numbering square) and vast empty white space.",
+      "visual_signature": "Extreme asymmetrical layout with scattered rectangular blocks (images, color, black numbering square) and vast empty white space. | zones=[\"Extreme asymmetrical layout with scattered rectangular blocks (images, color, black numbering square) and vast empty white space.\"] | anchors=Partial red rectangular brackets framing text; Textured yellow brush stroke accents; Solid red geometric blocks and circles",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 2
+      },
+      "best_for": [
+        "Quotes",
+        "Section transitions"
+      ],
+      "avoid_for": [
+        "Standard content delivery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "extreme-negative-space",
+        "scattered-blocks",
+        "numbering"
+      ],
+      "routing": {
+        "content_shapes": [
+          "quote",
+          "testimonial"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-06"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "top-left-landscape",
+          "purpose": "Replaceable landscape image",
+          "bbox": [
+            0.0,
+            0.05,
+            0.6,
+            0.4
+          ],
+          "priority": 1
+        },
+        {
+          "id": "bottom-left-square",
+          "purpose": "Replaceable square image",
+          "bbox": [
+            0.0,
+            0.5,
+            0.25,
+            0.45
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 7,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Identical structure to the cover page but with severe text clipping at the bottom edge.",
+      "visual_signature": "Identical structure to the cover page but with severe text clipping at the bottom edge. | zones=[\"Identical structure to the cover page but with severe text clipping at the bottom edge.\"] | anchors=Partial red rectangular brackets framing text; Textured yellow brush stroke accents; Solid red geometric blocks and circles",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Closing slides"
+      ],
+      "avoid_for": [
+        "Any slide requiring legible text at the bottom",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "closing",
+        "cutout-image",
+        "broken-typography"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [
+        {
+          "id": "hero-cutout",
+          "purpose": "Replaceable cutout hero portrait",
+          "bbox": [
+            0.6,
+            0.1,
+            0.4,
+            0.9
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    }
+  ]
+}

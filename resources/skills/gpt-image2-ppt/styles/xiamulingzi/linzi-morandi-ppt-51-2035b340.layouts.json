@@ -1,0 +1,417 @@
+{
+  "version": "2",
+  "style_id": "linzi-morandi-ppt-51-2035b340",
+  "source": "local-pptx-distillation",
+  "source_hash": "2035b3407b2efbdbf0ec98e79d9a99f68a57fa84c44581bacb0f97e4b6e4f3e3",
+  "global_style": "An elegant, minimalist presentation template utilizing a warm Morandi color palette, overlapping circular geometry, and clean sans-serif typography.",
+  "theme": {
+    "palette": [
+      "#FCF8F5",
+      "#C56B52",
+      "#A2361B",
+      "#DCAA9D",
+      "#6A6A6A"
+    ],
+    "identity_anchors": [
+      "Overlapping solid and striped circular primitives placed at edges and corners",
+      "Pill-shaped (fully rounded) buttons and section labels",
+      "Soft, warm terracotta and cream color blocking",
+      "Organic, overlapping 'mountain-like' shapes for data visualization"
+    ],
+    "density_rules": {
+      "low": "Use one focal idea and generous whitespace.",
+      "medium": "Use two to six concise content groups on the observed grid.",
+      "high": "Remove decoration before reducing label size or hierarchy."
+    },
+    "variation_rules": [
+      "Vary image/text balance and emphasis while preserving anchors, grid, and color ratios."
+    ],
+    "anti_repetition_rules": [
+      "Do not repeat the same primary composition or decoration placement on adjacent slides."
+    ]
+  },
+  "layouts": [
+    {
+      "id": "cover-primary",
+      "page_index": 0,
+      "page_type": "cover",
+      "semantic_role": "cover",
+      "summary": "Centered title lockup surrounded by scattered geometric shapes",
+      "visual_signature": "Centered title lockup surrounded by scattered geometric shapes | zones=[\"Centered title lockup surrounded by scattered geometric shapes\"] | anchors=Overlapping solid and striped circular primitives placed at edges and corners; Pill-shaped (fully rounded) buttons and section labels; Soft, warm terracotta and cream color blocking",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Title slides",
+        "Major presentation transitions"
+      ],
+      "avoid_for": [
+        "Data-heavy introductions",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "centered",
+        "geometric-border",
+        "minimal"
+      ],
+      "routing": {
+        "content_shapes": [
+          "hero",
+          "title-subtitle"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-00"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "section-primary",
+      "page_index": 1,
+      "page_type": "section",
+      "semantic_role": "section",
+      "summary": "Centered dual-language title block with a pill-shaped section tag below",
+      "visual_signature": "Centered dual-language title block with a pill-shaped section tag below | zones=[\"Centered dual-language title block with a pill-shaped section tag below\"] | anchors=Overlapping solid and striped circular primitives placed at edges and corners; Pill-shaped (fully rounded) buttons and section labels; Soft, warm terracotta and cream color blocking",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section dividers",
+        "Agenda introductions"
+      ],
+      "avoid_for": [
+        "Detailed content delivery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "centered",
+        "pill-tag",
+        "corner-accents"
+      ],
+      "routing": {
+        "content_shapes": [
+          "section-divider"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "content-content",
+      "page_index": 2,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Split layout inside a solid container, featuring an asymmetrical image grid on one side and text on the other",
+      "visual_signature": "Split layout inside a solid container, featuring an asymmetrical image grid on one side and text on the other | zones=[\"Split layout inside a solid container, featuring an asymmetrical image grid on one side and text on the other\"] | anchors=Overlapping solid and striped circular primitives placed at edges and corners; Pill-shaped (fully rounded) buttons and section labels; Soft, warm terracotta and cream color blocking",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Team introductions",
+        "Project showcases",
+        "Product feature overviews"
+      ],
+      "avoid_for": [
+        "Complex data sets",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "split-layout",
+        "image-grid",
+        "block-container"
+      ],
+      "routing": {
+        "content_shapes": [
+          "bullets",
+          "cards",
+          "grid"
+        ],
+        "min_items": 2,
+        "max_items": 6
+      },
+      "evidence_pages": [
+        "page-03"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "mosaic-grid",
+          "purpose": "Replaceable clustered image grid",
+          "bbox": [
+            0.08,
+            0.3,
+            0.5,
+            0.6
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "content-comparison",
+      "page_index": 3,
+      "page_type": "content",
+      "semantic_role": "content",
+      "summary": "Top half two-column image split, bottom half three-column icon/text grid",
+      "visual_signature": "Top half two-column image split, bottom half three-column icon/text grid | zones=[\"Top half two-column image split, bottom half three-column icon/text grid\"] | anchors=Overlapping solid and striped circular primitives placed at edges and corners; Pill-shaped (fully rounded) buttons and section labels; Soft, warm terracotta and cream color blocking",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 5
+      },
+      "best_for": [
+        "Service breakdowns",
+        "Product capabilities",
+        "Case study summaries"
+      ],
+      "avoid_for": [
+        "Single narrative points",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "horizontal-split",
+        "top-media",
+        "3-column-features"
+      ],
+      "routing": {
+        "content_shapes": [
+          "comparison",
+          "before-after"
+        ],
+        "requires": [
+          "paired groups"
+        ]
+      },
+      "evidence_pages": [
+        "page-04"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "top-left-img",
+          "purpose": "Contextual photo",
+          "bbox": [
+            0.08,
+            0.28,
+            0.4,
+            0.3
+          ],
+          "priority": 1
+        },
+        {
+          "id": "top-right-img",
+          "purpose": "Contextual photo",
+          "bbox": [
+            0.5,
+            0.28,
+            0.4,
+            0.3
+          ],
+          "priority": 2
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "data-metrics",
+      "page_index": 4,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Four-column vertical card grid with overlapping central icons",
+      "visual_signature": "Four-column vertical card grid with overlapping central icons | zones=[\"Four-column vertical card grid with overlapping central icons\"] | anchors=Overlapping solid and striped circular primitives placed at edges and corners; Pill-shaped (fully rounded) buttons and section labels; Soft, warm terracotta and cream color blocking",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 4
+      },
+      "best_for": [
+        "Key metrics",
+        "Four-step processes",
+        "Core feature highlights"
+      ],
+      "avoid_for": [
+        "Lengthy explanatory text",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "4-column",
+        "cards",
+        "split-color"
+      ],
+      "routing": {
+        "content_shapes": [
+          "metrics-series",
+          "chart",
+          "trend"
+        ],
+        "requires": [
+          "metrics or series"
+        ]
+      },
+      "evidence_pages": [
+        "page-02"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "data-table",
+      "page_index": 5,
+      "page_type": "data",
+      "semantic_role": "data",
+      "summary": "Adapt the source-supported grid into a table or timeline: Centered dual-language title block with a pill-shaped section tag below",
+      "visual_signature": "Adapt the source-supported grid into a table or timeline: Centered dual-language title block with a pill-shaped section tag below | zones=[\"Centered dual-language title block with a pill-shaped section tag below\"] | anchors=Overlapping solid and striped circular primitives placed at edges and corners; Pill-shaped (fully rounded) buttons and section labels; Soft, warm terracotta and cream color blocking",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "Section dividers",
+        "Agenda introductions"
+      ],
+      "avoid_for": [
+        "Detailed content delivery",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "centered",
+        "pill-tag",
+        "corner-accents"
+      ],
+      "routing": {
+        "content_shapes": [
+          "table",
+          "timeline",
+          "milestone"
+        ],
+        "requires": [
+          "table or timeline"
+        ]
+      },
+      "evidence_pages": [
+        "page-01"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [],
+      "reference_image": null
+    },
+    {
+      "id": "quote-primary",
+      "page_index": 6,
+      "page_type": "quote",
+      "semantic_role": "quote",
+      "summary": "Split background with oversized decorative quote marks on the solid half, intersected by a realistic device mockup on the other",
+      "visual_signature": "Split background with oversized decorative quote marks on the solid half, intersected by a realistic device mockup on the other | zones=[\"Split background with oversized decorative quote marks on the solid half, intersected by a realistic device mockup on the other\"] | anchors=Overlapping solid and striped circular primitives placed at edges and corners; Pill-shaped (fully rounded) buttons and section labels; Soft, warm terracotta and cream color blocking",
+      "content_capacity": {
+        "density": "medium",
+        "max_items": 2
+      },
+      "best_for": [
+        "Software demonstrations",
+        "Client testimonials",
+        "Platform features"
+      ],
+      "avoid_for": [
+        "Text-heavy technical specs",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "mockup",
+        "oversized-quote",
+        "split-background"
+      ],
+      "routing": {
+        "content_shapes": [
+          "quote",
+          "testimonial"
+        ],
+        "max_items": 2
+      },
+      "evidence_pages": [
+        "page-07"
+      ],
+      "validation_default": false,
+      "reuse_friendly": true,
+      "reuse_reason": "Reusable with variation rules",
+      "external_image_slots": [
+        {
+          "id": "device-screen",
+          "purpose": "Software or website UI placement",
+          "bbox": [
+            0.55,
+            0.3,
+            0.35,
+            0.4
+          ],
+          "priority": 1
+        }
+      ],
+      "reference_image": null
+    },
+    {
+      "id": "closing-primary",
+      "page_index": 7,
+      "page_type": "closing",
+      "semantic_role": "closing",
+      "summary": "Centered title lockup surrounded by scattered geometric shapes (identical to cover)",
+      "visual_signature": "Centered title lockup surrounded by scattered geometric shapes (identical to cover) | zones=[\"Centered title lockup surrounded by scattered geometric shapes (identical to cover)\"] | anchors=Overlapping solid and striped circular primitives placed at edges and corners; Pill-shaped (fully rounded) buttons and section labels; Soft, warm terracotta and cream color blocking",
+      "content_capacity": {
+        "density": "low",
+        "max_items": 3
+      },
+      "best_for": [
+        "End of presentation",
+        "Q&A prompts",
+        "Contact information"
+      ],
+      "avoid_for": [
+        "Any core content",
+        "copying source assets, source text, or an exact source arrangement"
+      ],
+      "variation_tags": [
+        "bookend",
+        "centered",
+        "minimal"
+      ],
+      "routing": {
+        "content_shapes": [
+          "closing",
+          "call-to-action",
+          "contact"
+        ],
+        "max_items": 3
+      },
+      "evidence_pages": [
+        "page-09"
+      ],
+      "validation_default": false,
+      "reuse_friendly": false,
+      "reuse_reason": "Distinctive rhythm page",
+      "external_image_slots": [],
+      "reference_image": null
+    }
+  ]
+}
