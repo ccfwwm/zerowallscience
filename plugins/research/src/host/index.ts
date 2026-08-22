@@ -1,10 +1,11 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import {
   type ArtifactRecord, type AuditEventRecord, type CreateArtifactInput, type CreateDataAssetInput,
   type CreateDecisionInput, type CreateExecutionContextInput, type CreatePaperInput, type CreateResearchEdgeInput,
   type CreateRunInput, type DataAssetRecord, type DecisionRecord, type ExecutionContextRecord, type PaperRecord,
-  type ProjectRecord, type ResearchEdgeRecord, type ResearchProjectSnapshotV1, type RunRecord, type UpdateRunChanges,
+  type ProjectRecord, type ResearchEdgeRecord, type ResearchProjectSnapshotV1, type RunRecord, type UpdateRunChanges, type AuditReport,
 } from '@zerowallscience/research-store/types'
 import { ResearchStore } from '@zerowallscience/research-store'
 import type {} from 'zod'
@@ -26,6 +27,24 @@ export class ZeroWallResearchService extends TypertRemoteService {
     const path = process.env.ZEROWALL_RESEARCH_DB?.trim()
     if (!path) throw new Error('ZEROWALL_RESEARCH_DB is required.')
     this.store = new ResearchStore(path)
+    ctx.on('session/event', (session: Session, event: SessionEvent) => {
+      if (event.type !== 'tool/call' && event.type !== 'tool/result') return
+      const project = this.store.listProjects().find(item => session.header.cwd !== undefined && isWithin(session.header.cwd, item.rootPath))
+      if (project === undefined) return
+      if (event.type === 'tool/call') {
+        this.store.recordAuditEvent(project.id, 'session.tool-call', {
+          sessionId: String(session.id), turn: event.data.turn, step: event.data.step,
+          callId: String(event.data.callId), tool: event.data.name,
+        }, String(session.id))
+      } else {
+        const content = event.data.message.content
+        this.store.recordAuditEvent(project.id, 'session.tool-result', {
+          sessionId: String(session.id), turn: event.data.turn, step: event.data.step,
+          outcome: event.data.error === undefined ? 'success' : 'error',
+          contentBlocks: content.length, contentChars: content.reduce((total, block) => total + ('text' in block && typeof block.text === 'string' ? block.text.length : 0), 0),
+        }, String(session.id))
+      }
+    })
     ctx.effect(() => () => this.store.close(), 'zerowall-research: close research store')
   }
 
@@ -45,6 +64,8 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('createEdge') createEdge(input: CreateResearchEdgeInput): ResearchEdgeRecord { return this.store.createResearchEdge(input) }
   @Remote('listEdges') listEdges(projectId: string): ResearchEdgeRecord[] { return this.store.listResearchEdges(projectId) }
   @Remote('listAuditEvents') listAuditEvents(projectId: string): AuditEventRecord[] { return this.store.listAuditEvents(projectId) }
+  @Remote('getAuditReport') getAuditReport(projectId: string): AuditReport { return this.store.getAuditReport(projectId) }
+  @Remote('exportAuditReport') exportAuditReport(input: { projectId: string; format: 'json' | 'markdown' }): string { return this.store.exportAuditReport(input.projectId, input.format) }
   @Remote('exportSnapshot') exportSnapshot(projectId: string): ResearchProjectSnapshotV1 { return this.store.exportResearchSnapshot(projectId) }
   @Remote('importSnapshot') importSnapshot(snapshot: ResearchProjectSnapshotV1): ProjectRecord { return this.store.importResearchSnapshot(snapshot) }
   @Remote('preview') async preview(input: { projectId: string; uri: string; mediaType?: string }): Promise<ScientificPreviewPayload> {
@@ -65,6 +86,12 @@ export class ZeroWallResearchService extends TypertRemoteService {
 function mediaTypeFromPath(path: string): string {
   const extension = path.toLowerCase().split('.').pop()
   return ({ pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', csv: 'text/csv', tsv: 'text/tab-separated-values', fasta: 'text/x-fasta', fa: 'text/x-fasta', fastq: 'text/x-fastq', pdb: 'chemical/x-pdb', sdf: 'chemical/x-mdl-sdfile', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', svg: 'image/svg+xml' } as Record<string, string>)[extension ?? ''] ?? 'application/octet-stream'
+}
+
+function isWithin(path: string, root: string): boolean {
+  const normalizedPath = resolve(path)
+  const normalizedRoot = resolve(root)
+  return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}${process.platform === 'win32' ? '\\' : '/'}`)
 }
 
 export function apply(ctx: Context): void {

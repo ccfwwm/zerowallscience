@@ -102,6 +102,7 @@ export function McpConnectionsButton(props: Props) {
   const [deleteTarget, setDeleteTarget] = useState<McpServerView>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  const [environment, setEnvironment] = useState<{ phase: string; version?: string; progress?: number; message?: string }>()
   const importInput = useRef<HTMLInputElement>(null)
 
   const selected = useMemo(() => servers.find(server => server.id === selectedId), [servers, selectedId])
@@ -135,7 +136,21 @@ export function McpConnectionsButton(props: Props) {
   useEffect(() => {
     if (!open) return
     void refresh()
+    void window.zerowallDesktop?.getMcpEnvironmentStatus?.().then(setEnvironment)
+    return window.zerowallDesktop?.onMcpEnvironmentStatus?.(setEnvironment)
   }, [open])
+
+  const retryEnvironment = async () => {
+    const next = await window.zerowallDesktop?.retryMcpEnvironment?.()
+    if (next !== undefined) setEnvironment(next)
+    await refresh()
+  }
+
+  const selectEnvironment = async () => {
+    const next = await window.zerowallDesktop?.selectMcpEnvironment?.()
+    if (next !== undefined) setEnvironment(next)
+    await refresh()
+  }
 
   useEffect(() => {
     if (!open) return
@@ -249,6 +264,10 @@ export function McpConnectionsButton(props: Props) {
           {!embedded && <button className={css.iconButton} type="button" onClick={() => setOpen(false)} title={props.t('common.close')} aria-label={props.t('common.close')}><X size={18} /></button>}
         </div>
       </header>
+      {environment !== undefined && environment.phase !== 'idle' && <div className={environment.phase === 'failed' ? css.error : css.warning} role="status">
+        <strong>{props.t('mcp.environment')}: </strong>{environment.message ?? environment.phase}{environment.version ? ` (${environment.version})` : ''}{typeof environment.progress === 'number' ? ` ${Math.round(environment.progress)}%` : ''}
+        {(environment.phase === 'failed' || environment.phase === 'unavailable') && <><button type="button" onClick={() => void retryEnvironment()}>{props.t('mcp.environmentRetry')}</button><button type="button" onClick={() => void selectEnvironment()}>{props.t('mcp.environmentManual')}</button></>}
+      </div>}
       <div className={css.workspace}>
         <aside className={css.sidebar}>
           <button className={`${css.serverRow} ${selectedId === NEW_SERVER ? css.selected : ''}`} type="button" onClick={chooseNew}>

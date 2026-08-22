@@ -14,6 +14,9 @@ export interface DesktopInfo {
   architecture: string
 }
 
+export type McpEnvironmentPhase = 'idle' | 'downloading' | 'verifying' | 'installing' | 'ready' | 'failed' | 'manual' | 'unavailable'
+export interface McpEnvironmentStatus { phase: McpEnvironmentPhase; version?: string; progress?: number; message?: string }
+
 export type DesktopUpdatePhase = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'upToDate' | 'error' | 'unavailable'
 
 export interface DesktopUpdateStatus {

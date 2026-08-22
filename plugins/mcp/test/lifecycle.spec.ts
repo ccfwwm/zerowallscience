@@ -75,14 +75,16 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       const servers = await ctx.zerowallMcp.list()
-      expect(servers).toHaveLength(1)
-      expect(servers[0]).toMatchObject({
+      expect(servers).toHaveLength(3)
+      expect(servers.find(server => server.serverName === 'zerowall_filesystem')).toMatchObject({
         name: '科研工作区文件',
         serverName: 'zerowall_filesystem',
         enabled: true,
         runtimeState: 'active',
       })
       expect(ctx.tools.get('mcp__zerowall_filesystem__read_text_file')).toBeDefined()
+      expect(servers.find(server => server.serverName === 'zerowall_managed_bio_tools')).toMatchObject({ runtimeState: 'blocked' })
+      expect(servers.find(server => server.serverName === 'zerowall_managed_ketcher')).toMatchObject({ runtimeState: 'blocked' })
     } finally {
       await ctx.fiber.dispose()
     }

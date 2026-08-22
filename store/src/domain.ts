@@ -113,6 +113,16 @@ export interface AuditEventRecord {
   createdAt: string
 }
 
+export interface AuditReport {
+  projectId: string
+  generatedAt: string
+  eventCount: number
+  chainHash: string
+  chainValid: boolean
+  events: Array<AuditEventRecord & { eventHash: string }>
+  warnings: string[]
+}
+
 export interface PublicationRecord {
   id: string
   projectId: string

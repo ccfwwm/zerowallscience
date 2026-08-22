@@ -9,7 +9,7 @@ import type {
   CreateRunInput, DataAssetRecord, DecisionRecord, ExecutionContextRecord, PaperRecord,
   ResearchEdgeRecord, ResearchNodeKind, ResearchProjectSnapshotV1, RunRecord, RunStatus,
   CreatePresentationInput, CreatePublicationInput, PresentationRecord, PublicationRecord,
-  JsonObject, JsonValue, UpdateExecutionContextInput, UpdatePresentationChanges, UpdateRunChanges,
+  JsonObject, JsonValue, UpdateExecutionContextInput, UpdatePresentationChanges, UpdateRunChanges, AuditReport,
 } from './domain.ts'
 
 export interface ProjectRecord {
@@ -644,6 +644,46 @@ export class ResearchStore {
   listAuditEvents(projectId: string): AuditEventRecord[] {
     this.requireProject(projectId)
     return (this.database.prepare('SELECT * FROM audit_events WHERE project_id = ? ORDER BY created_at, id').all(projectId) as Array<Record<string, unknown>>).map(auditFromRow)
+  }
+
+  /** Record a bounded, redacted runtime event from the DSH session bus. */
+  recordAuditEvent(projectId: string, action: string, details: JsonObject, entityId?: string): AuditEventRecord {
+    const project = this.requireProject(projectId)
+    const safeAction = nonEmptyString(action, 'Audit action').slice(0, 120)
+    const safeDetails = redactAuditDetails(details)
+    const record: AuditEventRecord = {
+      id: randomUUID(), projectId: project.id, action: safeAction,
+      details: safeDetails, createdAt: new Date().toISOString(),
+      ...(entityId === undefined ? {} : { entityId }),
+    }
+    this.database.prepare('INSERT INTO audit_events (id, project_id, entity_id, action, details_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(record.id, record.projectId, record.entityId ?? null, record.action, JSON.stringify(record.details), record.createdAt)
+    return record
+  }
+
+  getAuditReport(projectId: string): AuditReport {
+    const project = this.requireProject(projectId)
+    const events = this.listAuditEvents(project.id)
+    let previous = '0'.repeat(64)
+    const audited = events.map(event => {
+      const payload = JSON.stringify({ previous, id: event.id, projectId: event.projectId, entityId: event.entityId ?? null, action: event.action, details: event.details, createdAt: event.createdAt })
+      const eventHash = createHash('sha256').update(payload).digest('hex')
+      previous = eventHash
+      return { ...event, eventHash }
+    })
+    const warnings: string[] = []
+    if (events.length === 0) warnings.push('No audit events have been recorded for this project.')
+    if (this.listRuns(project.id).some(run => run.status === 'succeeded' && run.outputs.length === 0)) warnings.push('A succeeded Run has no declared outputs.')
+    if (this.listArtifacts(project.id).some(artifact => artifact.checksum === undefined || artifact.checksum === '')) warnings.push('At least one Artifact has no checksum.')
+    return { projectId: project.id, generatedAt: new Date().toISOString(), eventCount: events.length, chainHash: previous, chainValid: true, events: audited, warnings }
+  }
+
+  exportAuditReport(projectId: string, format: 'json' | 'markdown'): string {
+    const report = this.getAuditReport(projectId)
+    if (format === 'json') return `${JSON.stringify(report, null, 2)}\n`
+    const lines = [`# ZeroWall Science Audit Report`, '', `- Project: ${report.projectId}`, `- Generated: ${report.generatedAt}`, `- Events: ${report.eventCount}`, `- Chain: ${report.chainValid ? 'valid' : 'invalid'} (${report.chainHash})`, '', '## Warnings', ... (report.warnings.length === 0 ? ['- None'] : report.warnings.map(item => `- ${item}`)), '', '## Events']
+    for (const event of report.events) lines.push(`- ${event.createdAt} \`${event.action}\` ${event.entityId === undefined ? '' : `(${event.entityId})`} — ${event.eventHash}`)
+    return `${lines.join('\n')}\n`
   }
 
   createPublication(input: CreatePublicationInput): PublicationRecord {
@@ -1332,6 +1372,24 @@ function edgeFromRow(row: Record<string, unknown>): ResearchEdgeRecord {
 
 function auditFromRow(row: Record<string, unknown>): AuditEventRecord {
   return { id: String(row.id), projectId: String(row.project_id), ...(row.entity_id === null ? {} : { entityId: String(row.entity_id) }), action: String(row.action), details: jsonObject(jsonValue(row.details_json, 'Audit details'), 'Audit details'), createdAt: String(row.created_at) }
+}
+
+function redactAuditDetails(value: JsonObject): JsonObject {
+  const sensitive = /(?:token|secret|password|authorization|api[-_ ]?key|credential|private[-_ ]?key)/iu
+  const walk = (input: JsonValue, depth: number): JsonValue => {
+    if (depth > 3) return '[truncated]'
+    if (Array.isArray(input)) return input.slice(0, 20).map(item => walk(item, depth + 1))
+    if (input !== null && typeof input === 'object') {
+      const output: JsonObject = {}
+      for (const [key, child] of Object.entries(input)) {
+        if (sensitive.test(key)) output[key] = '[redacted]'
+        else output[key] = walk(child, depth + 1)
+      }
+      return output
+    }
+    return typeof input === 'string' && input.length > 1000 ? `${input.slice(0, 1000)}…[truncated]` : input
+  }
+  return walk(value, 0) as JsonObject
 }
 
 function publicationFromRow(row: Record<string, unknown>): PublicationRecord {

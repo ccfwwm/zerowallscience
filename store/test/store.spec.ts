@@ -267,6 +267,33 @@ describe('ResearchStore', () => {
     expect(reopened.listPresentations(project.id)[0]).toMatchObject({ status: 'ready', slides: [{ id: 'slide-1' }] })
     reopened.close()
   })
+
+  it('exports a deterministic audit report with evidence warnings', () => {
+    const store = new ResearchStore(databasePath())
+    const project = store.createProject({ name: 'Audit', rootPath: 'C:/science/audit' })
+    const run = store.createRun({ projectId: project.id, name: 'Finished without output', command: 'run', workingDirectory: '.', status: 'succeeded' })
+    store.createArtifact({ projectId: project.id, runId: run.id, name: 'Unhashed', uri: 'file:///result.dat', mediaType: 'application/octet-stream' })
+    const report = store.getAuditReport(project.id)
+    expect(report.chainValid).toBe(true)
+    expect(report.eventCount).toBeGreaterThan(0)
+    expect(report.events.every(event => /^[a-f0-9]{64}$/u.test(event.eventHash))).toBe(true)
+    expect(report.warnings).toEqual(expect.arrayContaining(['A succeeded Run has no declared outputs.', 'At least one Artifact has no checksum.']))
+    expect(store.exportAuditReport(project.id, 'markdown')).toContain('# ZeroWall Science Audit Report')
+    store.close()
+  })
+
+  it('records runtime audit summaries without persisting secrets or unbounded payloads', () => {
+    const store = new ResearchStore(databasePath())
+    const project = store.createProject({ name: 'Runtime audit', rootPath: 'C:/science/runtime-audit' })
+    const event = store.recordAuditEvent(project.id, 'session.tool-call', {
+      tool: 'python', token: 'do-not-store', nested: { authorization: 'also-secret' },
+      output: 'x'.repeat(2_000),
+    })
+    expect(event.details).toMatchObject({ token: '[redacted]', nested: { authorization: '[redacted]' } })
+    expect(String(event.details.output)).toContain('[truncated]')
+    expect(store.listAuditEvents(project.id)).toHaveLength(1)
+    store.close()
+  })
 })
 
 function sessionLog(id: string, cwd: string, parentSession?: string): string {

@@ -12,11 +12,13 @@ import { secureWindow } from './security.js'
 import { resolveDesktopIdentity } from './identity.js'
 import { findDesktopWorkspaceRoot, resolveDesktopIconPath, resolveDesktopResourcePath } from './paths.js'
 import { stopBeforeExit } from './shutdown.js'
+import { McpEnvironmentController } from './mcp-environment.js'
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
 import { DesktopUpdateController, isDailyUpdateCheckDue } from './updater.js'
 import type { DesktopInfo, RuntimeSnapshot } from '../shared/contracts.js'
 
 const { autoUpdater } = updaterPackage
+const MCP_ENVIRONMENT_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAvWXBgM/HZGxpgW6fM8bbrHENAT//87AkphWPdymtuh4=\n-----END PUBLIC KEY-----`
 
 let mainWindow: BrowserWindow | undefined
 let runtime: HarnessRuntime | undefined
@@ -184,6 +186,8 @@ configureIdentity()
 app.whenReady().then(async () => {
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null)
   const userData = app.getPath('userData')
+  const mcpEnvironmentRoot = join(userData, 'mcp-environments')
+  process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = mcpEnvironmentRoot
   if (!safeStorage.isEncryptionAvailable()) {
     throw new Error('Operating-system credential encryption is unavailable. ZeroWallScience will not store account secrets without it.')
   }
@@ -215,6 +219,16 @@ app.whenReady().then(async () => {
   })
   runtime = harnessRuntime
 
+  const mcpEnvironment = new McpEnvironmentController({
+    root: mcpEnvironmentRoot,
+    manifestUrl: process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/mcp-environments/windows-x64/latest.json',
+    publicKey: process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? MCP_ENVIRONMENT_PUBLIC_KEY,
+    publish: status => {
+      const window = mainWindow
+      if (window !== undefined && !window.isDestroyed()) window.webContents.send('desktop:mcp-environment:status-changed', status)
+    },
+  })
+
   const updates = new DesktopUpdateController({
     updater: autoUpdater,
     enabled: app.isPackaged && identity.channel === 'stable',
@@ -244,8 +258,16 @@ app.whenReady().then(async () => {
     tray = undefined
     return updates.install()
   })
+  ipcMain.handle('desktop:mcp-environment:get-status', () => mcpEnvironment.current())
+  ipcMain.handle('desktop:mcp-environment:retry', () => mcpEnvironment.retry())
+  ipcMain.handle('desktop:mcp-environment:select-path', async () => {
+    const result = await dialog.showOpenDialog(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined as never, { properties: ['openDirectory'] })
+    if (result.canceled || result.filePaths[0] === undefined) return mcpEnvironment.current()
+    return mcpEnvironment.selectManual(result.filePaths[0])
+  })
 
   await launch()
+  void mcpEnvironment.initialize()
   const updateRecordPath = join(userData, 'updates', 'last-check.json')
   const updateTimer = setTimeout(() => {
     void (async () => {

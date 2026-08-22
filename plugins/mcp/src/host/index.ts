@@ -2,7 +2,7 @@ import type { Context, Fiber } from '@deepseek-ai/cordis'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { createRequire } from 'node:module'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
@@ -187,6 +187,13 @@ export class ZeroWallMcpService extends TypertRemoteService {
         failOnStartupError: false,
       })
     }
+    const bundled = this.projects().listMcpServers()
+    if (!bundled.some(server => server.serverName === 'zerowall_managed_bio_tools')) {
+      this.projects().createMcpServer({ name: 'Claude Science Bio Tools', serverName: 'zerowall_managed_bio_tools', transport: 'stdio', enabled: true, command: 'zerowall-managed:bio-tools', cwd: '', failOnStartupError: false })
+    }
+    if (!bundled.some(server => server.serverName === 'zerowall_managed_ketcher')) {
+      this.projects().createMcpServer({ name: 'Claude Science Ketcher Chemistry', serverName: 'zerowall_managed_ketcher', transport: 'stdio', enabled: true, command: 'zerowall-managed:ketcher', cwd: '', failOnStartupError: false })
+    }
     await mkdir(dirname(marker), { recursive: true })
     await writeFile(marker, '{"version":1}\n', 'utf8')
   }
@@ -208,6 +215,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
     await this.disposeOne(record.id)
     if (!record.enabled) {
       this.statuses.set(record.id, { state: 'disabled', error: '', missingEnvironmentVariables: [] })
+      return
+    }
+    if (isManagedMcp(record.serverName) && !managedEnvironmentReady()) {
+      this.statuses.set(record.id, { state: 'blocked', error: 'The Claude Science MCP environment is not ready. Retry initialization or select a user-managed environment in Settings.', missingEnvironmentVariables: [] })
       return
     }
     const resolved = resolveMcpConfig(record, process.env)
@@ -290,6 +301,8 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
 }
 
 export function resolveStdioLaunch(record: Pick<McpServerRecord, 'command' | 'args' | 'cwd'>, hostCwd = process.cwd()): { command: string; args: string[]; cwd: string } {
+  const managed = resolveManagedLaunch(record.command)
+  if (managed !== undefined) return managed
   const expandHome = (value: string): string => value === '~'
     ? homedir()
     : value.startsWith('~/') || value.startsWith('~\\') ? join(homedir(), value.slice(2)) : value
@@ -306,6 +319,27 @@ export function resolveStdioLaunch(record: Pick<McpServerRecord, 'command' | 'ar
     args: record.args.map(value => value.startsWith('-') || /^[A-Za-z][A-Za-z\d+.-]*:\/\//u.test(value) ? value : pathValue(value)),
     cwd,
   }
+}
+
+function isManagedMcp(serverName: string): boolean { return serverName === 'zerowall_managed_bio_tools' || serverName === 'zerowall_managed_ketcher' }
+
+function managedEnvironmentRecord(): { root?: string } | undefined {
+  const root = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
+  if (!root) return undefined
+  try { return JSON.parse(readFileSync(join(root, 'current.json'), 'utf8')) as { root?: string } } catch { return undefined }
+}
+
+function managedEnvironmentReady(): boolean {
+  const root = managedEnvironmentRecord()?.root
+  if (!root) return false
+  return existsSync(join(root, 'bio-tools', 'run_server.py')) && existsSync(join(root, 'ketcher-chemistry', 'server.js'))
+}
+
+function resolveManagedLaunch(command: string): { command: string; args: string[]; cwd: string } | undefined {
+  const root = managedEnvironmentRecord()?.root
+  if (!root || (command !== 'zerowall-managed:bio-tools' && command !== 'zerowall-managed:ketcher')) return undefined
+  if (command === 'zerowall-managed:bio-tools') return { command: join(root, 'bio-tools', 'python', 'python.exe'), args: [join(root, 'bio-tools', 'run_server.py')], cwd: join(root, 'bio-tools') }
+  return { command: process.execPath, args: [join(root, 'ketcher-chemistry', 'server.js')], cwd: join(root, 'ketcher-chemistry') }
 }
 
 export function redactError(error: unknown): string {
