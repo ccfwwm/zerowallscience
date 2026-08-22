@@ -11,12 +11,12 @@ export function resolveDesktopIdentity(channel: unknown): DesktopIdentity {
     return {
       channel: 'stable',
       productName: 'ZeroWallScience',
-      userDataDirectory: 'zerowall-science-3',
+      userDataDirectory: 'zerowall-science',
     }
   }
   return {
     channel: 'preview',
     productName: 'ZeroWallScience Preview',
-    userDataDirectory: 'zerowall-science-3-preview',
+    userDataDirectory: 'zerowall-science-preview',
   }
 }

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, Tray, type OpenDialogOptions } from 'electron'
@@ -42,6 +42,23 @@ function configureIdentity(): void {
   app.setName(identity.productName)
   const userDataOverride = process.env.ZEROWALL_USER_DATA_DIR
   app.setPath('userData', userDataOverride ? resolve(userDataOverride) : join(app.getPath('appData'), identity.userDataDirectory))
+}
+
+async function migrateLegacyUserData(): Promise<void> {
+  const target = app.getPath('userData')
+  const legacyNames = identity.channel === 'stable'
+    ? ['zerowall-science-3']
+    : ['zerowall-science-3-preview']
+  for (const name of legacyNames) {
+    const legacy = join(app.getPath('appData'), name)
+    if (legacy === target) continue
+    try {
+      await cp(legacy, target, { recursive: true, force: false, errorOnExist: false })
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'ENOENT' && code !== 'EEXIST') throw error
+    }
+  }
 }
 
 function resourcePath(name: string): string {
@@ -188,6 +205,7 @@ configureIdentity()
 app.whenReady().then(async () => {
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null)
   const userData = app.getPath('userData')
+  await migrateLegacyUserData()
   const mcpEnvironmentRoot = join(userData, 'mcp-environments')
   process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = mcpEnvironmentRoot
   if (!safeStorage.isEncryptionAvailable()) {

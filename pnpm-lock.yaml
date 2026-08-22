@@ -136,9 +136,6 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@4.4.3)
-      '@modelcontextprotocol/server-filesystem':
-        specifier: 2026.7.10
-        version: 2026.7.10(zod@4.4.3)
       '@pdf-lib/fontkit':
         specifier: 1.1.1
         version: 1.1.1
@@ -10264,9 +10261,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../dsh/source/vendor/schemastery
         version: link:../../dsh/source/vendor/schemastery
-      '@modelcontextprotocol/server-filesystem':
-        specifier: 2026.7.10
-        version: 2026.7.10(zod@4.4.3)
       '@zerowallscience/plugin-base':
         specifier: workspace:^
         version: link:../base

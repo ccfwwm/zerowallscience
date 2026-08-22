@@ -13,7 +13,6 @@ const zerowallPackageRoots = [
 ]
 const desktopRuntimeSeeds = [
   '@earendil-works/pi-ai',
-  '@modelcontextprotocol/server-filesystem',
   '@modelcontextprotocol/sdk',
   '@pdf-lib/fontkit',
   'jszip',

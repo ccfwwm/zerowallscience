@@ -62,7 +62,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     }
   }, 30_000)
 
-  it('loads the bundled scientific workspace MCP on a fresh 3.x profile', async () => {
+  it('loads both managed scientific MCP servers without a fixed filesystem server', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-default-mcp-'))
     roots.push(root)
     process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
@@ -75,14 +75,8 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       const servers = await ctx.zerowallMcp.list()
-      expect(servers).toHaveLength(3)
-      expect(servers.find(server => server.serverName === 'zerowall_filesystem')).toMatchObject({
-        name: '科研工作区文件',
-        serverName: 'zerowall_filesystem',
-        enabled: true,
-        runtimeState: 'active',
-      })
-      expect(ctx.tools.get('mcp__zerowall_filesystem__read_text_file')).toBeDefined()
+      expect(servers).toHaveLength(2)
+      expect(servers.find(server => server.serverName === 'zerowall_filesystem')).toBeUndefined()
       expect(servers.find(server => server.serverName === 'zerowall_managed_bio_tools')).toMatchObject({ runtimeState: 'blocked' })
       expect(servers.find(server => server.serverName === 'zerowall_managed_ketcher')).toMatchObject({ runtimeState: 'blocked' })
     } finally {

@@ -6,7 +6,7 @@ describe('desktop release identity', () => {
     expect(resolveDesktopIdentity('preview')).toEqual({
       channel: 'preview',
       productName: 'ZeroWallScience Preview',
-      userDataDirectory: 'zerowall-science-3-preview',
+      userDataDirectory: 'zerowall-science-preview',
     })
   })
 
@@ -14,7 +14,7 @@ describe('desktop release identity', () => {
     expect(resolveDesktopIdentity('stable')).toEqual({
       channel: 'stable',
       productName: 'ZeroWallScience',
-      userDataDirectory: 'zerowall-science-3',
+      userDataDirectory: 'zerowall-science',
     })
     expect(resolveDesktopIdentity(undefined).channel).toBe('preview')
   })

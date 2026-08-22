@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-mcp",
-  "version": "4.1.5",
+  "version": "4.1.6",
   "description": "ZeroWall Science mcp domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -116,7 +116,6 @@
     "@zerowallscience/plugin-projects": "workspace:^",
     "@zerowallscience/plugin-base": "workspace:^",
     "@zerowallscience/research-store": "workspace:^",
-    "@modelcontextprotocol/server-filesystem": "2026.7.10",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

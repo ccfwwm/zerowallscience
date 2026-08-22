@@ -1,7 +1,6 @@
 import type { Context, Fiber } from '@deepseek-ai/cordis'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { createRequire } from 'node:module'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
@@ -167,35 +166,31 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private async seedBundledServers(): Promise<void> {
     if (process.env.ZEROWALL_DISABLE_DEFAULT_MCP === '1') return
     const marker = defaultMcpMarkerPath()
+    let markerVersion = 0
     try {
-      await readFile(marker, 'utf8')
-      return
+      const parsed = JSON.parse(await readFile(marker, 'utf8')) as { version?: unknown }
+      markerVersion = typeof parsed.version === 'number' ? parsed.version : 0
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
-    const workspace = defaultMcpWorkspace()
-    await mkdir(workspace, { recursive: true })
-    if (!this.projects().listMcpServers().some(server => server.serverName === 'zerowall_filesystem')) {
-      this.projects().createMcpServer({
-        name: '科研工作区文件',
-        serverName: 'zerowall_filesystem',
-        transport: 'stdio',
-        enabled: true,
-        command: process.execPath,
-        args: [bundledFilesystemServer(), workspace],
-        cwd: workspace,
-        failOnStartupError: false,
-      })
+    const projects = this.projects()
+    if (markerVersion < 2) {
+      // This was an early product default with a machine-specific path in its
+      // arguments. Remove only the known ZeroWall default; user-created MCP
+      // records use a different namespace and remain untouched.
+      for (const server of projects.listMcpServers()) {
+        if (server.serverName === 'zerowall_filesystem') projects.deleteMcpServer(server.id)
+      }
     }
-    const bundled = this.projects().listMcpServers()
+    const bundled = projects.listMcpServers()
     if (!bundled.some(server => server.serverName === 'zerowall_managed_bio_tools')) {
-      this.projects().createMcpServer({ name: 'Claude Science Bio Tools', serverName: 'zerowall_managed_bio_tools', transport: 'stdio', enabled: true, command: 'zerowall-managed:bio-tools', cwd: '', failOnStartupError: false })
+      projects.createMcpServer({ name: 'Claude Science Bio Tools', serverName: 'zerowall_managed_bio_tools', transport: 'stdio', enabled: true, command: 'zerowall-managed:bio-tools', cwd: '', failOnStartupError: false })
     }
     if (!bundled.some(server => server.serverName === 'zerowall_managed_ketcher')) {
-      this.projects().createMcpServer({ name: 'Claude Science Ketcher Chemistry', serverName: 'zerowall_managed_ketcher', transport: 'stdio', enabled: true, command: 'zerowall-managed:ketcher', cwd: '', failOnStartupError: false })
+      projects.createMcpServer({ name: 'Claude Science Ketcher Chemistry', serverName: 'zerowall_managed_ketcher', transport: 'stdio', enabled: true, command: 'zerowall-managed:ketcher', cwd: '', failOnStartupError: false })
     }
     await mkdir(dirname(marker), { recursive: true })
-    await writeFile(marker, '{"version":1}\n', 'utf8')
+    await writeFile(marker, '{"version":2}\n', 'utf8')
   }
 
   private projects() {
@@ -268,12 +263,6 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
 function dshHome(): string { return resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh')) }
 function defaultMcpMarkerPath(): string { return join(dshHome(), 'zerowall-mcp-defaults-v1.json') }
-function defaultMcpWorkspace(): string { return resolve(process.env.ZEROWALL_DEFAULT_MCP_ROOT ?? join(dshHome(), 'research-workspace')) }
-function bundledFilesystemServer(): string {
-  const require = createRequire(import.meta.url)
-  return join(dirname(require.resolve('@modelcontextprotocol/server-filesystem/package.json')), 'dist', 'index.js')
-}
-
 export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.ProcessEnv, hostCwd = process.cwd()): ResolvedMcpConfig {
   const missing = new Set<string>()
   const resolveRefs = (refs: Record<string, string>): Record<string, string> => Object.fromEntries(
