@@ -69,6 +69,7 @@ verifyArchivePolicy()
 await verifyExternalPolicy()
 await verifySizePolicy()
 await verifyImports()
+verifyQuestionComposerBundle()
 await verifyNativeRuntime()
 await verifyDirectoryPickerWorker()
 await verifyHostStartup()
@@ -105,6 +106,13 @@ function verifyArchivePolicy() {
   if (!/^4\.\d+\.\d+$/u.test(packagedManifest.version)) throw new Error(`Packaged desktop version must be a 4.x release; found ${packagedManifest.version}.`)
   const dshManifest = JSON.parse(readArchiveFile('node_modules/@deepseek-ai/dsh/package.json').toString('utf8'))
   if (dshManifest.version !== '0.1.1-rc.1') throw new Error(`Packaged DSH must be 0.1.1-rc.1; found ${dshManifest.version}.`)
+}
+
+function verifyQuestionComposerBundle() {
+  const bundle = readArchiveFile('node_modules/@deepseek-ai/dsh-client-ui-user-questions/lib/client.js').toString('utf8')
+  for (const marker of ['data-question-key', 'radio', 'checkbox', 'pending.answer']) {
+    if (!bundle.includes(marker)) throw new Error(`Packaged QuestionComposer bundle is missing interaction marker: ${marker}`)
+  }
 }
 
 function hasForbiddenRuntimeDirectory(path) {
@@ -318,6 +326,7 @@ async function verifyHostStartup() {
       if (response !== undefined && response.status >= 200 && response.status < 500) {
         await verifyWebBootManifest(url)
         await verifyPluginInventory(url)
+        await verifyEventWebSockets(url)
         await verifyPlaintextSessionPersistence(url, root)
         // DSH binds the loopback server before every asynchronous Loader row
         // has settled. Keep the process alive long enough to catch a plugin
@@ -326,6 +335,7 @@ async function verifyHostStartup() {
         if (child.exitCode !== null) throw new Error(`Packaged Host exited after becoming ready.\n${output.slice(-12_000)}`)
         await verifyWebBootManifest(url)
         await verifyPluginInventory(url)
+        await verifyEventWebSockets(url)
         return
       }
       await new Promise(resolvePromise => setTimeout(resolvePromise, 250))
@@ -334,6 +344,45 @@ async function verifyHostStartup() {
   } finally {
     if (child.exitCode === null) child.kill('SIGTERM')
   }
+}
+
+async function verifyEventWebSockets(url) {
+  if (typeof WebSocket !== 'function') throw new Error('Node WebSocket support is required for packaged transport verification.')
+  const base = new URL(url)
+  base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:'
+  const open = path => new Promise((resolvePromise, reject) => {
+    const socket = new WebSocket(new URL(path, base))
+    const timeout = setTimeout(() => {
+      socket.close()
+      reject(new Error(`Packaged Host WebSocket timed out: ${path}`))
+    }, 10_000)
+    socket.addEventListener('open', () => {
+      clearTimeout(timeout)
+      resolvePromise(socket)
+    }, { once: true })
+    socket.addEventListener('error', () => {
+      clearTimeout(timeout)
+      reject(new Error(`Packaged Host WebSocket failed to open: ${path}`))
+    }, { once: true })
+  })
+  const close = socket => new Promise(resolvePromise => {
+    if (socket.readyState === WebSocket.CLOSED) return resolvePromise()
+    const timeout = setTimeout(() => {
+      socket.close()
+      resolvePromise()
+    }, 2_000)
+    socket.addEventListener('close', () => {
+      clearTimeout(timeout)
+      resolvePromise()
+    }, { once: true })
+    socket.close(1000, 'packaged transport verification')
+  })
+
+  const first = await Promise.all(['/api/events.mux', '/api/events.host'].map(open))
+  const second = await Promise.all(['/api/events.mux', '/api/events.host'].map(open))
+  await Promise.all([...first, ...second].map(close))
+  const reconnected = await Promise.all(['/api/events.mux', '/api/events.host'].map(open))
+  await Promise.all(reconnected.map(close))
 }
 
 async function verifyPluginInventory(url) {
@@ -492,6 +541,7 @@ async function verifyDesktopStartup() {
         throw new Error(`Packaged desktop ${name} button is missing or unstyled: ${JSON.stringify(button)}`)
       }
     }
+
   } finally {
     await browser?.close().catch(() => undefined)
     if (child.exitCode === null && child.pid !== undefined) {

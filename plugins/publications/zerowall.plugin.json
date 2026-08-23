@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-publications",
-  "version": "4.1.10",
+  "version": "4.1.11",
   "dsh": {
     "min": "0.1.1-rc.1",
     "max": "0.1.1-rc.1"

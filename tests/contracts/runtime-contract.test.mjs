@@ -17,6 +17,23 @@ test('desktop patch keeps the structured question composer enabled', async () =>
   assert.match(patch, /- id: ui-user-questions\s+disabled: false/u)
 })
 
+test('desktop image limits fit inside the buffered client connection carrier', async () => {
+  const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
+  const readLimit = (name) => {
+    const match = new RegExp(`\\b${name}:\\s*(\\d+)`, 'u').exec(patch)
+    assert.ok(match, `desktop patch must declare ${name}`)
+    return Number(match[1])
+  }
+  const maxImageBytes = readLimit('maxImageBytes')
+  const maxMessageImageBytes = readLimit('maxMessageImageBytes')
+  const maxRequestBodyBytes = readLimit('maxRequestBodyBytes')
+  const requiredBodyBytes = Math.ceil(maxMessageImageBytes * 4 / 3) + 1024 * 1024
+
+  assert.ok(maxMessageImageBytes >= maxImageBytes, 'aggregate image limit must fit at least one image')
+  assert.ok(requiredBodyBytes <= maxRequestBodyBytes,
+    `base64 image envelope requires ${requiredBodyBytes} bytes but carrier allows ${maxRequestBodyBytes}`)
+})
+
 test('all ZeroWall plugins expose a manifest and rc1 range', async () => {
   const names = ['base', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'runs', 'publications', 'presentations', 'web-search', 'wechat']
   for (const name of names) {

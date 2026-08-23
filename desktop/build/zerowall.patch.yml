@@ -55,7 +55,15 @@
 - id: attachment-local
   config:
     maxImageBytes: 52428800
-    maxMessageImageBytes: 838860800
+    maxMessageImageBytes: 104857600
+
+# The HTTP carrier buffers JSON requests in memory. Keep the aggregate image
+# limit (after base64 expansion and envelope headroom) below this explicit cap.
+# A mismatch here prevents both event WebSockets from registering, which used
+# to leave ask_user_question stuck as a plain tool row with no answer card.
+- id: client-connection
+  config:
+    maxRequestBodyBytes: 167772160
 
 # The file-backed providers declare their path fields in the runtime schema.
 # Keep the product patch explicit so a packaged profile does not leave the
