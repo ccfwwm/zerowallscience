@@ -99,11 +99,18 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private readonly fibers = new Map<string, Fiber>()
   private readonly statuses = new Map<string, RuntimeStatus>()
   private operation: Promise<void> = Promise.resolve()
+  private environmentPoller: NodeJS.Timeout | undefined
+  private environmentSignature = ''
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallMcp')
     this.operation = this.initialize()
-    ctx.effect(() => () => this.disposeAll(), 'zerowall-mcp: dispose dynamic clients')
+    this.startEnvironmentRefresh()
+    ctx.effect(() => () => {
+      if (this.environmentPoller !== undefined) clearInterval(this.environmentPoller)
+      this.environmentPoller = undefined
+      void this.disposeAll()
+    }, 'zerowall-mcp: dispose dynamic clients')
   }
 
   @Remote('list')
@@ -161,6 +168,37 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private async initialize(): Promise<void> {
     await this.seedBundledServers()
     await this.reconcileAll()
+  }
+
+  /**
+   * The desktop installer atomically replaces current.json after a health
+   * check. The Host runs in a separate process, so it cannot receive the
+   * Electron IPC event directly; polling the small state file handles both
+   * atomic replacement and temporary rename gaps without a fragile fs.watch
+   * subscription.
+   */
+  private startEnvironmentRefresh(): void {
+    if (this.environmentPoller !== undefined || process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim() === '') return
+    this.environmentPoller = setInterval(() => { void this.pollEnvironment() }, 500)
+    void this.pollEnvironment()
+  }
+
+  private async pollEnvironment(): Promise<void> {
+    const record = managedEnvironmentRecord()
+    const signature = record === undefined
+      ? 'missing'
+      : `${record.health ?? 'unknown'}:${record.version ?? 'unknown'}:${record.root ?? ''}`
+    if (signature === this.environmentSignature) return
+    this.environmentSignature = signature
+    // Never tear down a healthy client because an in-progress download or a
+    // transient current.json gap made the new environment unavailable. A
+    // later ready/manual signature performs the safe generation swap.
+    if (record?.health !== 'ready' || typeof record.root !== 'string' || record.root.trim() === '') return
+    await this.exclusive(async () => {
+      await this.reconcileAll()
+    }).catch((error) => {
+      this.ctx.logger.warn(`zerowall-mcp: managed environment refresh failed: ${redactError(error)}`)
+    })
   }
 
   private async seedBundledServers(): Promise<void> {
@@ -315,10 +353,10 @@ export function resolveStdioLaunch(record: Pick<McpServerRecord, 'command' | 'ar
 
 function isManagedMcp(serverName: string): boolean { return serverName === 'zerowall_managed_bio_tools' || serverName === 'zerowall_managed_ketcher' || serverName === 'zerowall_managed_scimaster' }
 
-function managedEnvironmentRecord(): { root?: string; health?: string } | undefined {
+function managedEnvironmentRecord(): { root?: string; health?: string; version?: string; mode?: string } | undefined {
   const root = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
   if (!root) return undefined
-  try { return JSON.parse(readFileSync(join(root, 'current.json'), 'utf8')) as { root?: string } } catch { return undefined }
+  try { return JSON.parse(readFileSync(join(root, 'current.json'), 'utf8')) as { root?: string; health?: string; version?: string; mode?: string } } catch { return undefined }
 }
 
 function managedEnvironmentReady(): boolean {

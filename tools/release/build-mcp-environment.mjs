@@ -1,4 +1,4 @@
-import { createHash, createPrivateKey, sign } from 'node:crypto'
+import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve } from 'node:path'
@@ -18,12 +18,22 @@ const privateKey = privateKeyText.startsWith('base64:')
   ? createPrivateKey({ key: Buffer.from(privateKeyText.slice('base64:'.length), 'base64'), format: 'der', type: 'pkcs8' })
   : privateKeyText
 
-async function filesUnder(path) {
+const expectedPublicKey = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAu8wAGfgRWqQBdIGcbkwPlBq01SjgEMybgNh3xVv0ej4=\n-----END PUBLIC KEY-----`
+const derivedPublicKey = createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }).trim()
+if (derivedPublicKey !== expectedPublicKey.trim()) throw new Error('MCP signing key does not match the pinned stable-1 public key.')
+
+const excludedStagingFiles = new Set([
+  'mcp-private-key.pem',
+  'mcp-public-key.pem',
+])
+
+async function filesUnder(path, { exclude = () => false } = {}) {
   const entries = await readdir(path, { withFileTypes: true })
   const files = []
   for (const entry of entries) {
     const child = join(path, entry.name)
-    if (entry.isDirectory()) files.push(...await filesUnder(child))
+    if (exclude(child, entry)) continue
+    if (entry.isDirectory()) files.push(...await filesUnder(child, { exclude }))
     else if (entry.isFile()) files.push(child)
   }
   return files
@@ -37,7 +47,10 @@ await stat(join(staging, 'sci', 'dist', 'mcp.cjs'))
 await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })
 const zip = new JSZip()
-for (const path of await filesUnder(staging)) zip.file(relative(staging, path).replaceAll('\\', '/'), await readFile(path))
+const stagingFiles = await filesUnder(staging, {
+  exclude: (path, entry) => entry.isFile() && excludedStagingFiles.has(relative(staging, path).replaceAll('\\', '/')),
+})
+for (const path of stagingFiles) zip.file(relative(staging, path).replaceAll('\\', '/'), await readFile(path))
 for (const path of await filesUnder(join(root, 'resources', 'skills'))) {
   const rel = relative(join(root, 'resources', 'skills'), path).replaceAll('\\', '/')
   zip.file(`skills/${rel}`, await readFile(path))
@@ -48,12 +61,12 @@ const archivePath = join(output, archiveName)
 await writeFile(archivePath, archive)
 const archiveSha256 = createHash('sha256').update(archive).digest('hex')
 const sourceHashes = {}
-for (const path of await filesUnder(staging)) sourceHashes[relative(staging, path).replaceAll('\\', '/')] = createHash('sha256').update(await readFile(path)).digest('hex')
+for (const path of stagingFiles) sourceHashes[relative(staging, path).replaceAll('\\', '/')] = createHash('sha256').update(await readFile(path)).digest('hex')
 const baseUrl = (process.env.ZEROWALL_MCP_ENVIRONMENT_BASE_URL ?? 'https://zerowall.chengxunkeji.cn/stable/mcp-environments/windows-x64').replace(/\/$/u, '')
 const manifest = {
   schema: 2, environmentId: 'claude-science-mcp', version, platform: 'win32', architecture: 'x64',
   archiveUrl: `${baseUrl}/${version}/${archiveName}`, archiveSha256, archiveSize: archive.byteLength,
-  python: { version: process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12', relativeExecutable: 'bio-tools/python/python.exe' },
+  python: { version: process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12', relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/Lib/site-packages', modules: ['mcp', 'numpy', 'pandas', 'httpx'], supportsZeroWallTool: true },
   pythonHealth: { imports: ['mcp', 'numpy', 'pandas', 'httpx'], bioServer: 'bio-tools/run_server.py mcp_bio', ketcherServer: 'ketcher-chemistry/server.js' },
   skillsRoot: 'skills',
   sci: { version: process.env.ZEROWALL_SCIMASTER_VERSION ?? '0.3.15', nodeMinimum: '20.3.0', cli: 'sci/dist/cli.mjs', mcp: 'sci/dist/mcp.cjs' },
@@ -63,6 +76,7 @@ const manifest = {
 }
 const { signature: _signature, ...unsigned } = manifest
 manifest.signature.value = sign(null, Buffer.from(JSON.stringify(unsigned)), privateKey).toString('base64')
+if (!verify(null, Buffer.from(JSON.stringify(unsigned)), expectedPublicKey, Buffer.from(manifest.signature.value, 'base64'))) throw new Error('MCP manifest self-verification failed.')
 await writeFile(join(output, `${version}.json`), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
 await writeFile(join(output, 'latest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
 console.log(`Built ${archiveName} (${archive.byteLength} bytes, ${archiveSha256})`)

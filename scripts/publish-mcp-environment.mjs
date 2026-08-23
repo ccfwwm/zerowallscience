@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, verify } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
@@ -13,9 +13,30 @@ const version = process.env.ZEROWALL_MCP_ENVIRONMENT_VERSION?.trim()
 if (!version) throw new Error('ZEROWALL_MCP_ENVIRONMENT_VERSION is required.')
 const dist = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_OUTPUT ?? resolve(root, 'desktop', 'dist', 'mcp-environment'))
 const archive = `zerowall-mcp-windows-x64-${version}.zip`
+const publicKey = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAu8wAGfgRWqQBdIGcbkwPlBq01SjgEMybgNh3xVv0ej4=\n-----END PUBLIC KEY-----`
+const manifest = JSON.parse(await readFile(resolve(dist, 'latest.json'), 'utf8'))
+const versionManifest = JSON.parse(await readFile(resolve(dist, `${version}.json`), 'utf8'))
+if (manifest.version !== version || JSON.stringify(manifest) !== JSON.stringify(versionManifest)) throw new Error('MCP latest and version manifests do not match the requested version.')
+if (manifest.signature?.algorithm !== 'ed25519' || manifest.signature.keyId !== 'stable-1') throw new Error('MCP manifest must use the current stable-1 Ed25519 key.')
+const { signature, ...unsigned } = manifest
+if (!verify(null, Buffer.from(JSON.stringify(unsigned)), publicKey, Buffer.from(signature.value, 'base64'))) throw new Error('MCP manifest signature failed local verification.')
+const archiveBytes = await readFile(resolve(dist, archive))
+if (archiveBytes.byteLength !== manifest.archiveSize || createHash('sha256').update(archiveBytes).digest('hex') !== manifest.archiveSha256) throw new Error('MCP archive does not match its signed manifest.')
 const files = [[`stable/mcp-environments/windows-x64/${version}/${archive}`, archive, false], [`stable/mcp-environments/windows-x64/${version}/manifest.json`, `${version}.json`, false], ['stable/mcp-environments/windows-x64/latest.json', 'latest.json', true]]
 const mac = new qiniu.auth.digest.Mac(env.QINIU_ACCESS_KEY, env.QINIU_SECRET_KEY)
 const config = new qiniu.conf.Config(); config.zone = qiniu.zone[`Zone_${env.QINIU_REGION}`] ?? qiniu.zone.Zone_z2
 const uploader = new qiniu.form_up.FormUploader(config)
 function upload(key, file, overwrite) { return new Promise((resolvePromise, reject) => { const policy = new qiniu.rs.PutPolicy({ scope: `${env.QINIU_BUCKET}:${key}`, overwrite }); uploader.putFile(policy.uploadToken(mac), key, resolve(dist, file), new qiniu.form_up.PutExtra(), (error, body, info) => info?.statusCode === 200 ? resolvePromise(body) : reject(error ?? new Error(`Qiniu upload failed for ${key}: HTTP ${info?.statusCode}`))) }) }
 for (const [key, file, overwrite] of files) { const info = await stat(resolve(dist, file)); await upload(key, file, overwrite); const bytes = await readFile(resolve(dist, file)); console.log(`${key}\t${info.size}\t${createHash('sha256').update(bytes).digest('hex')}`) }
+
+const publicBase = env.QINIU_DOMAIN.replace(/\/$/u, '')
+const publicManifestResponse = await fetch(`${publicBase}/stable/mcp-environments/windows-x64/latest.json`, { cache: 'no-store' })
+if (!publicManifestResponse.ok) throw new Error(`Public MCP manifest returned HTTP ${publicManifestResponse.status}.`)
+const publicManifest = await publicManifestResponse.json()
+const { signature: publicSignature, ...publicUnsigned } = publicManifest
+if (publicSignature?.keyId !== 'stable-1' || !verify(null, Buffer.from(JSON.stringify(publicUnsigned)), publicKey, Buffer.from(publicSignature?.value ?? '', 'base64'))) throw new Error('Public MCP manifest signature verification failed.')
+const publicArchiveResponse = await fetch(publicManifest.archiveUrl, { cache: 'no-store' })
+if (!publicArchiveResponse.ok) throw new Error(`Public MCP archive returned HTTP ${publicArchiveResponse.status}.`)
+const publicArchive = Buffer.from(await publicArchiveResponse.arrayBuffer())
+if (publicArchive.byteLength !== publicManifest.archiveSize || createHash('sha256').update(publicArchive).digest('hex') !== publicManifest.archiveSha256) throw new Error('Public MCP archive does not match its signed manifest.')
+console.log(`Public MCP environment ${version} signature, size, and SHA-256 verified.`)

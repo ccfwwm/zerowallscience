@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-presentations",
-  "version": "4.1.8",
+  "version": "4.1.10",
   "description": "ZeroWall Science presentations domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

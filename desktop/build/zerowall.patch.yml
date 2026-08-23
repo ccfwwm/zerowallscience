@@ -112,6 +112,9 @@
     - id: zerowall-execution
       name: '@zerowallscience/plugin-execution'
 
+    - id: zerowall-python
+      name: '@zerowallscience/plugin-python'
+
     - id: zerowall-runs
       name: '@zerowallscience/plugin-runs'
 

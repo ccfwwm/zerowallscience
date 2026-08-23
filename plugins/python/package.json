@@ -1,7 +1,7 @@
 {
-  "name": "@zerowallscience/plugin-research",
+  "name": "@zerowallscience/plugin-python",
   "version": "4.1.10",
-  "description": "ZeroWall Science research domain plugin.",
+  "description": "ZeroWall Science python domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./src/host/index.ts",
@@ -10,18 +10,6 @@
       "types": "./src/host/index.ts",
       "default": "./lib/index.js"
     },
-    "./client": {
-      "types": "./src/client/index.ts",
-      "default": "./lib/client.js"
-    },
-    "./typert": {
-      "types": "./lib/typert.host.d.ts",
-      "default": "./lib/typert.host.js"
-    },
-    "./remote": {
-      "types": "./lib/typert.remote-client.d.ts",
-      "default": "./lib/typert.remote-client.js"
-    },
     "./types": "./src/shared/types.ts",
     "./manifest": "./zerowall.plugin.json",
     "./package.json": "./package.json"
@@ -29,20 +17,6 @@
   "dsh": {
     "bundle": {
       "patch": "dsh.bundle.patch.yml"
-    },
-    "client": {
-      "inject": [
-        "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-api-remotes",
-        "@deepseek-ai/dsh-client-locale",
-        "@deepseek-ai/dsh-client-ui-slots",
-        "@deepseek-ai/dsh-client-ui-sidebar",
-        "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-attachment",
-        "@deepseek-ai/dsh-client-ui-tool"
-      ],
-      "platform": "web"
     }
   },
   "zerowall": {
@@ -53,11 +27,10 @@
     "requiredServices": [],
     "optionalServices": [],
     "capabilities": [
-      "research",
-      "data-assets",
-      "artifacts"
+      "python"
     ],
     "permissions": [
+      "processes",
       "files"
     ],
     "profiles": [
@@ -69,16 +42,12 @@
   },
   "scripts": {
     "bundle": "tsdown",
-    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "typecheck": "tsc -p tsconfig.host.json --noEmit",
     "test": "vitest run --config ../../vitest.plugins.config.ts"
   },
   "license": "AGPL-3.0-only",
   "files": [
     "lib",
-    "lib/typert.host.js",
-    "lib/typert.host.d.ts",
-    "lib/typert.remote-client.js",
-    "lib/typert.remote-client.d.ts",
     "dsh.bundle.patch.yml",
     "zerowall.plugin.json",
     "README.md"
@@ -113,14 +82,7 @@
     "@deepseek-ai/dsh-client-ui-conversation": "workspace:^",
     "@deepseek-ai/dsh-client-ui-attachment": "workspace:^",
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
-    "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
-    "@zerowallscience/plugin-projects": "workspace:^",
-    "@zerowallscience/plugin-base": "workspace:^",
-    "@zerowallscience/research-store": "workspace:^",
-    "lucide-react": "^0.468.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "zod": "^4.4.3"
+    "@deepseek-ai/dsh-client-ui-primitives": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.3"

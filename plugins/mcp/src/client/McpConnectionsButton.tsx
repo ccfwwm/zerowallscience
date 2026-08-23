@@ -102,7 +102,7 @@ export function McpConnectionsButton(props: Props) {
   const [deleteTarget, setDeleteTarget] = useState<McpServerView>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const [environment, setEnvironment] = useState<{ phase: string; version?: string; progress?: number; message?: string }>()
+  const [environment, setEnvironment] = useState<{ phase: string; version?: string; progress?: number; message?: string; python?: { ready: boolean; version?: string; message?: string } }>()
   const importInput = useRef<HTMLInputElement>(null)
 
   const selected = useMemo(() => servers.find(server => server.id === selectedId), [servers, selectedId])
@@ -136,9 +136,15 @@ export function McpConnectionsButton(props: Props) {
   useEffect(() => {
     if (!open) return
     void refresh()
-    void window.zerowallDesktop?.getMcpEnvironmentStatus?.().then(setEnvironment)
-    return window.zerowallDesktop?.onMcpEnvironmentStatus?.(setEnvironment)
-  }, [open])
+    void window.zerowallDesktop?.getMcpEnvironmentStatus?.().then(status => {
+      setEnvironment(status)
+      if (status.phase === 'ready' || status.phase === 'manual') void refresh()
+    })
+    return window.zerowallDesktop?.onMcpEnvironmentStatus?.(status => {
+      setEnvironment(status)
+      if (status.phase === 'ready' || status.phase === 'manual') void refresh()
+    })
+  }, [open, refresh])
 
   const retryEnvironment = async () => {
     const next = await window.zerowallDesktop?.retryMcpEnvironment?.()
@@ -266,6 +272,7 @@ export function McpConnectionsButton(props: Props) {
       </header>
       {environment !== undefined && environment.phase !== 'idle' && <div className={environment.phase === 'failed' ? css.error : css.warning} role="status">
         <strong>{props.t('mcp.environment')}: </strong>{environment.message ?? environment.phase}{environment.version ? ` (${environment.version})` : ''}{typeof environment.progress === 'number' ? ` ${Math.round(environment.progress)}%` : ''}
+        {environment.python !== undefined && <div>Python: {environment.python.ready ? `ready${environment.python.version === undefined ? '' : ` (${environment.python.version})`}` : environment.python.message ?? 'unavailable'}</div>}
         {(environment.phase === 'failed' || environment.phase === 'unavailable') && <><button type="button" onClick={() => void retryEnvironment()}>{props.t('mcp.environmentRetry')}</button><button type="button" onClick={() => void selectEnvironment()}>{props.t('mcp.environmentManual')}</button></>}
       </div>}
       <div className={css.workspace}>

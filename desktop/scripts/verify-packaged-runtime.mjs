@@ -35,6 +35,7 @@ const requiredArchivePaths = [
   'runtime/runtime-esm-loader.mjs',
   'node_modules/@deepseek-ai/dsh/lib/bin.js',
   'node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js',
+  'node_modules/@deepseek-ai/dsh-client-ui-user-questions/lib/client.js',
   'node_modules/@deepseek-ai/schemastery/lib/index.mjs',
   'node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js',
   'node_modules/@earendil-works/pi-ai/dist/index.js',
@@ -43,6 +44,7 @@ const requiredArchivePaths = [
   'node_modules/@zerowallscience/plugin-base/lib/client.js',
   'node_modules/@zerowallscience/plugin-projects/lib/index.js',
   'node_modules/@zerowallscience/plugin-files/lib/index.js',
+  'node_modules/@zerowallscience/plugin-python/lib/index.js',
   'node_modules/@zerowallscience/plugin-images/lib/client.js',
   'node_modules/@zerowallscience/plugin-wechat/lib/index.js',
   'node_modules/@zerowallscience/plugin-wechat/lib/client.js',
@@ -88,7 +90,7 @@ function verifyArchivePolicy() {
 
   const pluginNames = [
     'base', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp',
-    'skills', 'reviewer', 'research', 'execution', 'runs', 'publications', 'presentations', 'web-search', 'wechat',
+    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat',
   ]
   for (const name of [...pluginNames.map(value => `plugin-${value}`), 'research-store']) {
     const packagePaths = archiveFiles.filter(path => path.endsWith(`@zerowallscience/${name}/package.json`))
@@ -381,6 +383,7 @@ async function verifyWebBootManifest(url) {
     '@deepseek-ai/dsh-client-ui-theme',
     '@deepseek-ai/dsh-client-locale',
     '@deepseek-ai/dsh-client-ui-layout',
+    '@deepseek-ai/dsh-client-ui-user-questions',
     '@zerowallscience/plugin-base',
     '@zerowallscience/plugin-projects',
     '@zerowallscience/plugin-account',

@@ -15,7 +15,13 @@ export interface DesktopInfo {
 }
 
 export type McpEnvironmentPhase = 'idle' | 'downloading' | 'verifying' | 'installing' | 'ready' | 'failed' | 'manual' | 'unavailable'
-export interface McpEnvironmentStatus { phase: McpEnvironmentPhase; version?: string; progress?: number; message?: string }
+export interface McpEnvironmentStatus {
+  phase: McpEnvironmentPhase
+  version?: string
+  progress?: number
+  message?: string
+  python?: { ready: boolean; version?: string; executable?: string; sitePackages?: string; message?: string }
+}
 
 export type DesktopUpdatePhase = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'upToDate' | 'error' | 'unavailable'
 

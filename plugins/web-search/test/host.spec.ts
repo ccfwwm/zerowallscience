@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { mapOpenAIResponsesResult, OpenAIResponsesSearchProvider, ZeroWallWebSearchController } from '../src/host/index.ts'
+import { mapOpenAIChatResult, mapOpenAIResponsesResult, OpenAIChatSearchProvider, OpenAIResponsesSearchProvider, ZeroWallWebSearchController } from '../src/host/index.ts'
 
 describe('ZeroWall web search routing', () => {
   it('describes the active AI Cloud route without resolving its credential eagerly', async () => {
@@ -72,5 +72,27 @@ describe('ZeroWall web search routing', () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ output: [{ content: [{ annotations: [{ type: 'url_citation', url: 'https://example.test/paper' }] }] }] }), { status: 200, headers: { 'content-type': 'application/json' } }))
     await expect(new OpenAIResponsesSearchProvider(() => ({ resolveApiKey: async () => 'key', baseURL: 'https://code.aicodeme.xyz/v1', model: 'gpt-5.6-sol', fetcher })).search({ query: 'paper' })).resolves.toMatchObject({ sources: [{ url: 'https://example.test/paper' }] })
     expect(fetcher).toHaveBeenCalledWith('https://code.aicodeme.xyz/v1/responses', expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('retries the legacy Responses preview tool when web_search is rejected', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ output: [{ content: [{ annotations: [{ type: 'url_citation', url: 'https://example.test/legacy' }] }] }] }), { status: 200 }))
+    const provider = new OpenAIResponsesSearchProvider(() => ({ resolveApiKey: async () => 'key', baseURL: 'https://code.aicodeme.xyz/v1', model: 'gpt-5.6-sol', fetcher }))
+    await expect(provider.search({ query: 'paper' })).resolves.toMatchObject({ sources: [{ url: 'https://example.test/legacy' }] })
+    expect(JSON.parse(fetcher.mock.calls[0]?.[1]?.body as string).tools).toEqual([{ type: 'web_search' }])
+    expect(JSON.parse(fetcher.mock.calls[1]?.[1]?.body as string).tools).toEqual([{ type: 'web_search_preview' }])
+  })
+
+  it('maps chat-completions citations for gateways without Responses search', async () => {
+    expect(mapOpenAIChatResult({ choices: [{ message: { annotations: [{ type: 'url_citation', url: 'https://example.test/chat', title: 'Chat result' }] } }] })).toEqual({
+      sources: [{ url: 'https://example.test/chat', title: 'Chat result' }], truncated: false,
+    })
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/responses')) return new Response('', { status: 400 })
+      return new Response(JSON.stringify({ choices: [{ message: { annotations: [{ type: 'url_citation', url: 'https://example.test/chat' }] } }] }), { status: 200 })
+    })
+    const provider = new OpenAIChatSearchProvider(() => ({ resolveApiKey: async () => 'key', baseURL: 'https://code.aicodeme.xyz/v1', model: 'gpt-5.6-sol', fetcher }))
+    await expect(provider.search({ query: 'paper' })).resolves.toMatchObject({ sources: [{ url: 'https://example.test/chat' }] })
   })
 })

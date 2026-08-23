@@ -11,7 +11,7 @@ export interface McpEnvironmentManifest {
   archiveUrl: string
   archiveSha256: string
   archiveSize: number
-  python: { version: string; relativeExecutable: string }
+  python: { version: string; relativeExecutable: string; relativeSitePackages: string; modules: string[]; supportsZeroWallTool: boolean }
   pythonHealth: { imports: string[]; bioServer: string; ketcherServer: string }
   skillsRoot: string
   sci: { version: string; nodeMinimum: string; cli: string; mcp: string }
@@ -31,6 +31,8 @@ export function validateMcpEnvironmentManifest(value: unknown): McpEnvironmentMa
   for (const key of ['environmentId', 'version', 'archiveUrl', 'archiveSha256']) if (typeof item[key] !== 'string' || item[key] === '') throw new Error(`MCP environment manifest field ${key} is required.`)
   if (!/^https:\/\//u.test(String(item.archiveUrl))) throw new Error('MCP environment archive URL must use HTTPS.')
   if (!/^[a-f0-9]{64}$/u.test(String(item.archiveSha256))) throw new Error('MCP environment archive SHA-256 is invalid.')
+  const python = item.python as Record<string, unknown> | undefined
+  if (typeof python?.version !== 'string' || typeof python.relativeExecutable !== 'string' || typeof python.relativeSitePackages !== 'string' || !Array.isArray(python.modules) || python.supportsZeroWallTool !== true) throw new Error('MCP environment Python runtime metadata is invalid.')
   if (!Number.isSafeInteger(item.archiveSize) || Number(item.archiveSize) <= 0) throw new Error('MCP environment archive size is invalid.')
   const signature = item.signature
   if (signature === null || typeof signature !== 'object' || (signature as Record<string, unknown>).algorithm !== 'ed25519') throw new Error('MCP environment manifest signature is invalid.')

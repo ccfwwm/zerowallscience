@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "4.1.8",
+  "version": "4.1.10",
   "description": "ZeroWall Science 4.1 local-first scientific research workbench.",
   "private": true,
   "type": "module",
@@ -34,6 +34,7 @@
     "@zerowallscience/plugin-reviewer": "workspace:^",
     "@zerowallscience/plugin-research": "workspace:^",
     "@zerowallscience/plugin-execution": "workspace:^",
+    "@zerowallscience/plugin-python": "workspace:^",
     "@zerowallscience/plugin-runs": "workspace:^",
     "@zerowallscience/plugin-publications": "workspace:^",
     "@zerowallscience/plugin-presentations": "workspace:^",

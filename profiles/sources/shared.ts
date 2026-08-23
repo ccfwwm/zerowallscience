@@ -12,6 +12,7 @@ export const bundledPlugins = [
   '@zerowallscience/plugin-reviewer',
   '@zerowallscience/plugin-research',
   '@zerowallscience/plugin-execution',
+  '@zerowallscience/plugin-python',
   '@zerowallscience/plugin-runs',
   '@zerowallscience/plugin-publications',
   '@zerowallscience/plugin-presentations',

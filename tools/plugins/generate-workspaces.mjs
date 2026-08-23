@@ -91,6 +91,7 @@ const plugins = [
   { id: 'reviewer', client: true, capabilities: ['reviewer'], permissions: ['approvals'], dependencies: ['base'] },
   { id: 'research', client: true, remote: true, capabilities: ['research', 'data-assets', 'artifacts'], permissions: ['files'], dependencies: ['projects', 'base'] },
   { id: 'execution', remote: true, capabilities: ['execution-contexts'], permissions: ['processes', 'files'] },
+  { id: 'python', capabilities: ['python'], permissions: ['processes', 'files'], dependencies: [] },
   { id: 'runs', remote: true, capabilities: ['runs'], permissions: ['processes', 'files'], dependencies: ['execution'] },
   { id: 'publications', remote: true, capabilities: ['papers', 'publications'], permissions: ['files'], dependencies: ['runs'] },
   { id: 'presentations', remote: true, capabilities: ['presentations'], permissions: ['files', 'processes'] },
