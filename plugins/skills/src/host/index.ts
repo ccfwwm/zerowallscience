@@ -38,6 +38,7 @@ export interface CreateSkillInput {
 }
 
 export interface ImportSkillInput { sourcePath: string }
+export interface CopyBundledSkillInput { name: string }
 
 declare module '@deepseek-ai/cordis' {
   interface Context { zerowallCapabilities: ZeroWallCapabilitiesService }
@@ -64,6 +65,9 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
         providerName: 'zerowall-user-skills',
         includeDefaultRoots: false,
         customSkillDirs: [userSkillsDir],
+        // DSH resolves lower ranks first within one layer. Keep editable user
+        // Skills ahead of the read-only bundled catalog for same-name overrides.
+        customSkillRank: 100,
         watch: true,
       })
     }
@@ -120,6 +124,20 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
     return await this.getSkill(parsed.name)
   }
 
+  @Remote('copyBundledSkill')
+  async copyBundledSkill(input: CopyBundledSkillInput): Promise<ZeroWallSkillSummary> {
+    const name = validateSkillName(input.name)
+    const bundled = bundledSkillDir()
+    if (bundled === undefined) throw new Error('No bundled Skills directory is available.')
+    const source = safeSkillPath(bundled, name)
+    const markdown = await readSkillMarkdown(join(source, 'SKILL.md'))
+    const parsed = validateSkillMarkdown(markdown)
+    const target = safeSkillPath(userSkillDir(), parsed.name)
+    if (await exists(target)) throw new Error(`A user Skill already exists: ${parsed.name}`)
+    await copySkillTree(source, target)
+    return await this.getSkill(parsed.name)
+  }
+
   @Remote('removeImportedSkill')
   async removeImportedSkill(name: string): Promise<void> {
     const normalized = validateSkillName(name)
@@ -142,6 +160,11 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
 
 function userSkillDir(): string {
   return resolve(process.env.ZEROWALL_USER_SKILLS ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'zerowall-skills', 'enabled'))
+}
+
+function bundledSkillDir(): string | undefined {
+  const root = process.env.ZEROWALL_BUNDLED_SKILLS ?? process.env.DSH_BUNDLED_SKILL_DIR
+  return root?.trim() ? resolve(root) : undefined
 }
 
 function disabledSkillDir(): string { return join(dirname(userSkillDir()), 'disabled') }

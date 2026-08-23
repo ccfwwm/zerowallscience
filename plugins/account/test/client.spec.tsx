@@ -67,15 +67,33 @@ describe('AI Cloud account panel', () => {
 
   it('discovers managed models immediately after login', async () => {
     const actions = props()
-    actions.login.mockResolvedValue({ status: 'signedIn', email: 'user@example.com', balanceFreshness: 'current', lowBalance: false, models: [] })
-    actions.discoverModels.mockResolvedValue({ status: 'signedIn', email: 'user@example.com', balanceFreshness: 'current', lowBalance: false, models: [{ providerId: 'zerowall-ai-cloud-1', groupId: '1', groupName: '科研', modelId: 'model-a', baseUrl: 'https://code.aicodeme.xyz/v1' }] })
+    actions.login.mockResolvedValue({ status: 'signedIn', email: 'user@example.com', balanceFreshness: 'current', lowBalance: false, models: [{ providerId: 'zerowall-ai-cloud-1', groupId: '1', groupName: '科研', modelId: 'model-a', baseUrl: 'https://code.aicodeme.xyz/v1' }] })
     render(<AiCloudAccountButton {...actions} />)
     await screen.findByRole('dialog', { name: '登录或注册' })
     fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'user@example.com' } })
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'not-persisted' } })
     fireEvent.click(screen.getByRole('button', { name: '登录并配置模型' }))
-    await waitFor(() => expect(actions.discoverModels).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(actions.login).toHaveBeenCalledTimes(1))
+    expect(actions.discoverModels).not.toHaveBeenCalled()
     expect(screen.queryByRole('dialog', { name: '登录或注册' })).toBeNull()
+  })
+
+  it('provides a manual model sync action for an already signed-in account', async () => {
+    const actions = props()
+    actions.getAccount.mockResolvedValue({
+      status: 'signedIn', email: 'user@example.com', balanceFreshness: 'current', lowBalance: false, models: [],
+    })
+    actions.discoverModels.mockResolvedValue({
+      status: 'signedIn', email: 'user@example.com', balanceFreshness: 'current', lowBalance: false,
+      models: [{ providerId: 'zerowall-ai-cloud-1', groupId: '1', groupName: '科研', modelId: 'model-a', baseUrl: 'https://code.aicodeme.xyz/v1' }],
+    })
+    render(<AiCloudAccountButton {...actions} />)
+    await waitFor(() => expect(actions.getAccount).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: 'ZeroWall 云账户' }))
+    const sync = await screen.findByRole('button', { name: '同步模型' })
+    fireEvent.click(sync)
+    await waitFor(() => expect(actions.discoverModels).toHaveBeenCalledOnce())
+    expect(screen.getByRole('button', { name: '同步模型' })).toBeTruthy()
   })
 
   it('shows the Hong Kong gateway by default and switches through the account Remote', async () => {

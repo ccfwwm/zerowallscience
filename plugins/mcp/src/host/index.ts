@@ -189,6 +189,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
     if (!bundled.some(server => server.serverName === 'zerowall_managed_ketcher')) {
       projects.createMcpServer({ name: 'Claude Science Ketcher Chemistry', serverName: 'zerowall_managed_ketcher', transport: 'stdio', enabled: true, command: 'zerowall-managed:ketcher', cwd: '', failOnStartupError: false })
     }
+    if (!bundled.some(server => server.serverName === 'zerowall_managed_scimaster')) {
+      projects.createMcpServer({ name: 'SciMaster', serverName: 'zerowall_managed_scimaster', transport: 'stdio', enabled: true, command: 'zerowall-managed:scimaster', cwd: '', failOnStartupError: false })
+    }
     await mkdir(dirname(marker), { recursive: true })
     await writeFile(marker, '{"version":2}\n', 'utf8')
   }
@@ -310,25 +313,30 @@ export function resolveStdioLaunch(record: Pick<McpServerRecord, 'command' | 'ar
   }
 }
 
-function isManagedMcp(serverName: string): boolean { return serverName === 'zerowall_managed_bio_tools' || serverName === 'zerowall_managed_ketcher' }
+function isManagedMcp(serverName: string): boolean { return serverName === 'zerowall_managed_bio_tools' || serverName === 'zerowall_managed_ketcher' || serverName === 'zerowall_managed_scimaster' }
 
-function managedEnvironmentRecord(): { root?: string } | undefined {
+function managedEnvironmentRecord(): { root?: string; health?: string } | undefined {
   const root = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
   if (!root) return undefined
   try { return JSON.parse(readFileSync(join(root, 'current.json'), 'utf8')) as { root?: string } } catch { return undefined }
 }
 
 function managedEnvironmentReady(): boolean {
-  const root = managedEnvironmentRecord()?.root
-  if (!root) return false
-  return existsSync(join(root, 'bio-tools', 'run_server.py')) && existsSync(join(root, 'ketcher-chemistry', 'server.js'))
+  const record = managedEnvironmentRecord()
+  const root = record?.root
+  if (!root || record?.health !== 'ready') return false
+  return existsSync(join(root, 'bio-tools', 'python', 'python.exe'))
+    && existsSync(join(root, 'bio-tools', 'run_server.py'))
+    && existsSync(join(root, 'ketcher-chemistry', 'server.js'))
+    && existsSync(join(root, 'sci', 'dist', 'mcp.cjs'))
 }
 
 function resolveManagedLaunch(command: string): { command: string; args: string[]; cwd: string } | undefined {
   const root = managedEnvironmentRecord()?.root
-  if (!root || (command !== 'zerowall-managed:bio-tools' && command !== 'zerowall-managed:ketcher')) return undefined
-  if (command === 'zerowall-managed:bio-tools') return { command: join(root, 'bio-tools', 'python', 'python.exe'), args: [join(root, 'bio-tools', 'run_server.py')], cwd: join(root, 'bio-tools') }
-  return { command: process.execPath, args: [join(root, 'ketcher-chemistry', 'server.js')], cwd: join(root, 'ketcher-chemistry') }
+  if (!root || !['zerowall-managed:bio-tools', 'zerowall-managed:ketcher', 'zerowall-managed:scimaster'].includes(command)) return undefined
+  if (command === 'zerowall-managed:bio-tools') return { command: join(root, 'bio-tools', 'python', 'python.exe'), args: [join(root, 'bio-tools', 'run_server.py'), 'mcp_bio'], cwd: join(root, 'bio-tools') }
+  if (command === 'zerowall-managed:ketcher') return { command: process.execPath, args: [join(root, 'ketcher-chemistry', 'server.js')], cwd: join(root, 'ketcher-chemistry') }
+  return { command: process.execPath, args: [join(root, 'sci', 'dist', 'mcp.cjs')], cwd: join(root, 'sci') }
 }
 
 export function redactError(error: unknown): string {

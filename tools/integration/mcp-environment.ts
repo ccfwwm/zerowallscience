@@ -3,7 +3,7 @@ import { access, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 export interface McpEnvironmentManifest {
-  schema: 1
+  schema: 2
   environmentId: string
   version: string
   platform: 'win32'
@@ -12,7 +12,10 @@ export interface McpEnvironmentManifest {
   archiveSha256: string
   archiveSize: number
   python: { version: string; relativeExecutable: string }
-  mcp: { bioToolsVersion: string; ketcherChemistryVersion: string; toolCount: number; licenseToolCount: number }
+  pythonHealth: { imports: string[]; bioServer: string; ketcherServer: string }
+  skillsRoot: string
+  sci: { version: string; nodeMinimum: string; cli: string; mcp: string }
+  mcp: { bioToolsVersion: string; ketcherChemistryVersion: string; sciMasterVersion: string; toolCount: number; licenseToolCount: number; servers: string[] }
   source: { claudeScienceRuntime: string; sourceHashes: Record<string, string> }
   signature: { algorithm: 'ed25519'; keyId: string; value: string }
 }
@@ -24,13 +27,19 @@ export type McpEnvironmentStatus =
 export function validateMcpEnvironmentManifest(value: unknown): McpEnvironmentManifest {
   if (value === null || typeof value !== 'object') throw new Error('MCP environment manifest must be an object.')
   const item = value as Record<string, unknown>
-  if (item.schema !== 1 || item.platform !== 'win32' || item.architecture !== 'x64') throw new Error('MCP environment manifest is not for Windows x64.')
+  if (item.schema !== 2 || item.platform !== 'win32' || item.architecture !== 'x64') throw new Error('MCP environment manifest is not for Windows x64.')
   for (const key of ['environmentId', 'version', 'archiveUrl', 'archiveSha256']) if (typeof item[key] !== 'string' || item[key] === '') throw new Error(`MCP environment manifest field ${key} is required.`)
   if (!/^https:\/\//u.test(String(item.archiveUrl))) throw new Error('MCP environment archive URL must use HTTPS.')
   if (!/^[a-f0-9]{64}$/u.test(String(item.archiveSha256))) throw new Error('MCP environment archive SHA-256 is invalid.')
   if (!Number.isSafeInteger(item.archiveSize) || Number(item.archiveSize) <= 0) throw new Error('MCP environment archive size is invalid.')
   const signature = item.signature
   if (signature === null || typeof signature !== 'object' || (signature as Record<string, unknown>).algorithm !== 'ed25519') throw new Error('MCP environment manifest signature is invalid.')
+  const health = item.pythonHealth as Record<string, unknown> | undefined
+  const sci = item.sci as Record<string, unknown> | undefined
+  const mcp = item.mcp as Record<string, unknown> | undefined
+  if (!Array.isArray(health?.imports) || typeof health.bioServer !== 'string' || typeof health.ketcherServer !== 'string') throw new Error('MCP environment Python health metadata is invalid.')
+  if (typeof item.skillsRoot !== 'string' || typeof sci?.version !== 'string' || typeof sci.nodeMinimum !== 'string' || typeof sci.cli !== 'string' || typeof sci.mcp !== 'string') throw new Error('MCP environment SciMaster metadata is invalid.')
+  if (typeof mcp?.sciMasterVersion !== 'string' || !Array.isArray(mcp.servers)) throw new Error('MCP environment server metadata is invalid.')
   return value as McpEnvironmentManifest
 }
 

@@ -3,7 +3,7 @@ import type { Readable, Writable } from 'node:stream'
 import { createWriteStream, existsSync, type WriteStream } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
-import { dirname } from 'node:path'
+import { delimiter, dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { RuntimePhase, RuntimeSnapshot } from '../../shared/contracts.js'
 
@@ -57,6 +57,16 @@ export function buildHarnessSpawnOptions(
       DSH_BUNDLED_SKILL_DIR: options.bundledSkillsPath,
       ZEROWALL_RESEARCH_DB: options.researchDbPath,
       ZEROWALL_BUNDLED_SKILLS: options.bundledSkillsPath,
+      // Managed MCP processes inherit these explicit mounts. They are roots,
+      // never development-machine paths, and user skills may shadow bundled
+      // names through the skill registry's normal priority rules.
+      // Managed MCP processes inherit both read-only bundled Skills and the
+      // user's editable Skills. Keep the legacy single-root variable pointed
+      // at the bundled catalog while exposing an ordered roots list and
+      // explicit roots for consumers that understand the richer contract.
+      ZEROWALL_MCP_SKILLS: [options.bundledSkillsPath, options.userSkillsPath].join(delimiter),
+      ZEROWALL_MCP_BUNDLED_SKILLS: options.bundledSkillsPath,
+      ZEROWALL_MCP_USER_SKILLS: options.userSkillsPath,
       ...(options.brandIconPath === undefined ? {} : { ZEROWALL_BRAND_ICON: options.brandIconPath }),
       DSH_TELEMETRY_DISABLED: '1',
       NO_COLOR: '1',

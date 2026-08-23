@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { ZeroWallWebSearchController } from '../src/host/index.ts'
+import { mapOpenAIResponsesResult, OpenAIResponsesSearchProvider, ZeroWallWebSearchController } from '../src/host/index.ts'
 
 describe('ZeroWall web search routing', () => {
   it('describes the active AI Cloud route without resolving its credential eagerly', async () => {
@@ -58,5 +58,19 @@ describe('ZeroWall web search routing', () => {
     })
     expect(controller.currentRoute()?.supportsWebSearch).toBe(true)
     expect(controller.currentRoute()?.searchProtocol).toBe('anthropic-messages')
+  })
+
+  it('selects the codex enterprise gpt-5.6-sol route and maps Responses citations', async () => {
+    const ctx = new Context()
+    ctx.provide('agents', { currentInitiator: () => ({ options: { provider: 'zerowall-ai-cloud-50-completions', model: 'deepseek-v4-flash' } }) } as never)
+    const controller = new ZeroWallWebSearchController(ctx, { secrets: { get: vi.fn(async () => 'key'), set: vi.fn(), delete: vi.fn() } })
+    controller.update({ status: 'signedIn', balanceFreshness: 'current', lowBalance: false, models: [
+      { providerId: 'zerowall-ai-cloud-77-responses', groupId: '77', groupName: 'codex-企业分组', modelId: 'gpt-5.6-sol', baseUrl: 'https://code.aicodeme.xyz/v1' },
+    ] })
+    expect(controller.preferredRoute()).toMatchObject({ model: 'gpt-5.6-sol', searchProtocol: 'openai-responses' })
+    expect(mapOpenAIResponsesResult({ output: [{ content: [{ annotations: [{ type: 'url_citation', url: 'https://example.test/paper', title: 'Paper' }] }] }] })).toEqual({ sources: [{ url: 'https://example.test/paper', title: 'Paper' }], truncated: false })
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ output: [{ content: [{ annotations: [{ type: 'url_citation', url: 'https://example.test/paper' }] }] }] }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    await expect(new OpenAIResponsesSearchProvider(() => ({ resolveApiKey: async () => 'key', baseURL: 'https://code.aicodeme.xyz/v1', model: 'gpt-5.6-sol', fetcher })).search({ query: 'paper' })).resolves.toMatchObject({ sources: [{ url: 'https://example.test/paper' }] })
+    expect(fetcher).toHaveBeenCalledWith('https://code.aicodeme.xyz/v1/responses', expect.objectContaining({ method: 'POST' }))
   })
 })

@@ -26,8 +26,7 @@ describe('AI Cloud account client', () => {
     })
     const client = new AiCloudClient({ secrets, fetch: fetcher, bases: ['https://code.aicodeme.xyz'] })
 
-    await client.login({ email: 'research@example.com', password: 'not-a-real-password' })
-    const account = await client.discoverModels()
+    const account = await client.login({ email: 'research@example.com', password: 'not-a-real-password' })
 
     expect(account.models).toEqual([expect.objectContaining({ groupId: '3', modelId: 'science-model' })])
     expect(await secrets.get('zerowall.ai-cloud.group.3')).toBe('group-key')
@@ -46,9 +45,7 @@ describe('AI Cloud account client', () => {
     })
     const client = new AiCloudClient({ secrets, fetch: fetcher, bases: ['https://hkcode.aicodeme.xyz'] })
     const account = await client.login({ email: 'claude@example.com', password: 'test-password' })
-    expect(account.models).toEqual([])
-    const discovered = await client.discoverModels()
-    expect(discovered.models).toEqual([
+    expect(account.models).toEqual([
       { providerId: 'zerowall-ai-cloud-4-messages', groupId: '4', groupName: 'Claude', modelId: 'claude-sonnet-4', baseUrl: 'https://hkcode.aicodeme.xyz' },
       { providerId: 'zerowall-ai-cloud-4-responses', groupId: '4', groupName: 'Claude', modelId: 'gpt-5.6-sol', baseUrl: 'https://hkcode.aicodeme.xyz/v1' },
     ])

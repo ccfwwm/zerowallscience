@@ -33,6 +33,11 @@
 .identity small { display: inline-flex; align-items: center; gap: 5px; color: #27845a; }
 .accountCard span, .accountCard small, .sectionHeading p, .ordersHeader p, .orderRow small { color: var(--dsw-alias-label-secondary, #687078); font-size: 11px; }
 .accountCard strong { overflow-wrap: anywhere; font-size: 14px; }
+.modelSync { margin-top: 12px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 7px; background: var(--dsw-alias-bg-layer-2, #f7f8f9); }
+.modelSync h3 { margin: 0; font-size: 13px; }
+.modelSync p { margin: 3px 0 0; color: var(--dsw-alias-label-secondary, #687078); font-size: 11px; }
+.spin { animation: zerowall-spin .8s linear infinite; }
+@keyframes zerowall-spin { to { transform: rotate(360deg); } }
 .balance { min-width: 140px; text-align: right; }
 .balance strong { font-size: 20px; letter-spacing: 0; }
 .logoutButton { min-height: 34px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--dsw-alias-border-l2, #cfd5d9); border-radius: 6px; color: var(--dsw-alias-label-secondary, #687078); background: transparent; cursor: pointer; font: 600 12px/1 inherit; }
@@ -69,4 +74,4 @@
 .orderRow strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .orderRow button { border: 0; color: #315b7d; background: transparent; cursor: pointer; font-size: 11px; }
 .emptyOrders { padding: 24px 0; color: var(--dsw-alias-label-secondary, #687078); text-align: center; font-size: 12px; }
-@media (max-width: 720px) { .backdrop { padding: 8px; } .accountCard, .billingGrid { grid-template-columns: 1fr; } .balance { text-align: left; } .orderRow { grid-template-columns: minmax(0, 1fr) auto; } .orderRow .status, .orderRow button { justify-self: start; } .authActions { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .backdrop { padding: 8px; } .accountCard, .billingGrid { grid-template-columns: 1fr; } .modelSync { align-items: stretch; flex-direction: column; } .modelSync .secondary { width: 100%; } .balance { text-align: left; } .orderRow { grid-template-columns: minmax(0, 1fr) auto; } .orderRow .status, .orderRow button { justify-self: start; } .authActions { grid-template-columns: 1fr; } }

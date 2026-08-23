@@ -12,6 +12,11 @@ test('stable profile pins rc1 and includes the bundled WeChat plugin', async () 
   assert.match(profile, /'@zerowallscience\/plugin-wechat'/)
 })
 
+test('desktop patch keeps the structured question composer enabled', async () => {
+  const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
+  assert.match(patch, /- id: ui-user-questions\s+disabled: false/u)
+})
+
 test('all ZeroWall plugins expose a manifest and rc1 range', async () => {
   const names = ['base', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'runs', 'publications', 'presentations', 'web-search', 'wechat']
   for (const name of names) {

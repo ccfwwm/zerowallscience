@@ -42,6 +42,7 @@ export function AiCloudAccountButton(props: Props) {
   const [gateways, setGateways] = useState<AiCloudGatewayView[]>([])
   const [checkout, setCheckout] = useState<AiCloudCheckoutView>()
   const [registering, setRegistering] = useState(false)
+  const [syncingModels, setSyncingModels] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
@@ -147,14 +148,28 @@ export function AiCloudAccountButton(props: Props) {
       setAccount(next)
       setPassword('')
       setCode('')
-      const discovered = await props.discoverModels()
-      setAccount(discovered)
+      // Host login performs discovery as part of the authenticated operation.
+      // A catalog outage must not turn a valid login into a failed UI flow;
+      // the signed-in panel exposes the explicit retry action below.
       await loadBilling()
       setOpen(false)
     } catch (reason) {
       setError(message(reason))
     } finally {
       setBusy(false)
+    }
+  }
+
+  const syncModels = async () => {
+    if (syncingModels || account?.status !== 'signedIn') return
+    setSyncingModels(true)
+    setError(undefined)
+    try {
+      setAccount(await props.discoverModels())
+    } catch (reason) {
+      setError(message(reason))
+    } finally {
+      setSyncingModels(false)
     }
   }
 
@@ -254,6 +269,13 @@ export function AiCloudAccountButton(props: Props) {
             <div className={css.balance}><span>{props.t('account.balance')}</span><strong>{formatBalance(account)}</strong></div>
             <button className={css.logoutButton} type="button" onClick={() => void logout()} disabled={busy}><LogOut size={16} />{props.t('account.logout')}</button>
           </div>
+          <section className={css.modelSync} aria-live="polite">
+            <div><h3>{props.t('account.modelsTitle')}</h3><p>{props.t('account.modelsDescription')}</p></div>
+            <button className={css.secondary} type="button" onClick={() => void syncModels()} disabled={busy || syncingModels}>
+              <RefreshCw size={15} className={syncingModels ? css.spin : undefined} />
+              {syncingModels ? props.t('account.modelsSyncing') : props.t('account.modelsSync')}
+            </button>
+          </section>
           {account.lowBalance && <p className={css.warning}>{props.t('account.lowBalance')}</p>}
           <div className={css.billingGrid}>
             <section className={css.rechargeCard}>

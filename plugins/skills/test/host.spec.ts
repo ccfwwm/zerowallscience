@@ -108,4 +108,61 @@ describe('ZeroWall capabilities Remote', () => {
       else process.env.ZEROWALL_USER_SKILLS = previous
     }
   })
+
+  it('copies a bundled Skill into the editable user directory', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-copy-bundled-skill-'))
+    const bundled = join(root, 'bundled')
+    const enabled = join(root, 'enabled')
+    const skill = join(bundled, 'paper-triage')
+    await mkdir(skill, { recursive: true })
+    await writeFile(join(skill, 'SKILL.md'), '---\nname: paper-triage\ndescription: Triage papers.\n---\n\n# Triage\n')
+    const previousBundled = process.env.ZEROWALL_BUNDLED_SKILLS
+    const previousUser = process.env.ZEROWALL_USER_SKILLS
+    process.env.ZEROWALL_BUNDLED_SKILLS = bundled
+    process.env.ZEROWALL_USER_SKILLS = enabled
+    try {
+      const ctx = new Context()
+      await ctx.plugin(SkillRegistry)
+      const service = new ZeroWallCapabilitiesService(ctx)
+      await expect(service.copyBundledSkill({ name: 'paper-triage' })).resolves.toEqual(expect.objectContaining({ provider: 'zerowall-user-skills' }))
+      await expect(service.listSkillSources()).resolves.toEqual({ enabled: ['paper-triage'], disabled: [] })
+      await ctx.fiber.dispose()
+    } finally {
+      if (previousBundled === undefined) delete process.env.ZEROWALL_BUNDLED_SKILLS
+      else process.env.ZEROWALL_BUNDLED_SKILLS = previousBundled
+      if (previousUser === undefined) delete process.env.ZEROWALL_USER_SKILLS
+      else process.env.ZEROWALL_USER_SKILLS = previousUser
+    }
+  })
+
+  it('lets an editable user Skill override a same-name bundled Skill', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-skill-override-'))
+    const bundled = join(root, 'bundled')
+    const enabled = join(root, 'enabled')
+    await mkdir(join(bundled, 'shared-skill'), { recursive: true })
+    await mkdir(enabled, { recursive: true })
+    await writeFile(join(bundled, 'shared-skill', 'SKILL.md'), '---\nname: shared-skill\ndescription: Bundled copy.\n---\n\nBundled body.\n')
+    await mkdir(join(enabled, 'shared-skill'))
+    await writeFile(join(enabled, 'shared-skill', 'SKILL.md'), '---\nname: shared-skill\ndescription: User copy.\n---\n\nUser body.\n')
+    const previousBundled = process.env.ZEROWALL_BUNDLED_SKILLS
+    const previousUser = process.env.ZEROWALL_USER_SKILLS
+    process.env.ZEROWALL_BUNDLED_SKILLS = bundled
+    process.env.ZEROWALL_USER_SKILLS = enabled
+    try {
+      const ctx = new Context()
+      await ctx.plugin(SkillRegistry)
+      const service = new ZeroWallCapabilitiesService(ctx)
+      await expect(service.getSkill('shared-skill')).resolves.toEqual(expect.objectContaining({
+        provider: 'zerowall-user-skills',
+        description: 'User copy.',
+        content: 'User body.',
+      }))
+      await ctx.fiber.dispose()
+    } finally {
+      if (previousBundled === undefined) delete process.env.ZEROWALL_BUNDLED_SKILLS
+      else process.env.ZEROWALL_BUNDLED_SKILLS = previousBundled
+      if (previousUser === undefined) delete process.env.ZEROWALL_USER_SKILLS
+      else process.env.ZEROWALL_USER_SKILLS = previousUser
+    }
+  })
 })

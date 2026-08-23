@@ -107,7 +107,16 @@ export class AiCloudClient {
     const email = required(input.email, 'Email')
     const password = required(input.password, 'Password')
     const authenticated = await this.authenticate(email, password)
-    return await this.finishAuthentication(authenticated.baseUrl, email, password, authenticated.accessToken)
+    const account = await this.finishAuthentication(authenticated.baseUrl, email, password, authenticated.accessToken)
+    // Model discovery is part of signing in, not a UI follow-up. This keeps
+    // every caller (desktop, restored sessions, and automation) on the same
+    // contract while retaining a valid login when the catalog endpoint is
+    // temporarily unavailable.
+    try {
+      return await this.discoverModels()
+    } catch {
+      return account
+    }
   }
 
   async register(input: AiCloudRegisterRequest): Promise<AiCloudAccountSnapshot> {
@@ -126,7 +135,12 @@ export class AiCloudClient {
       const login = await this.request(registered.base, '/auth/login', { method: 'POST', body: { email, password } })
       token = accessToken(login.body)
     }
-    return await this.finishAuthentication(registered.base, email, password, token, config)
+    const account = await this.finishAuthentication(registered.base, email, password, token, config)
+    try {
+      return await this.discoverModels()
+    } catch {
+      return account
+    }
   }
 
   async current(): Promise<AiCloudAccountSnapshot> {

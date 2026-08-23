@@ -4,6 +4,33 @@
   config:
     root: ['.']
 
+# Keep the structured question composer active in the desktop overlay. A
+# disabled renderer leaves only the waiting tool row and no selectable options.
+- id: ui-user-questions
+  disabled: false
+
+# Keep the access selector and the Windows execution boundary visible in the
+# packaged desktop. The web bundle owns the same rows, but the product patch is
+# the final layer and must not leave them disabled in a desktop profile.
+- id: ui-permission
+  disabled: false
+- id: permission
+  disabled: false
+- id: sandbox
+  disabled: false
+- id: sandbox-policy
+  disabled: false
+- id: approval
+  disabled: false
+- id: pwsh-sandbox
+  disabled: false
+- id: tool-pwsh
+  disabled: false
+- id: tool-fs
+  disabled: false
+- id: tool-fs-search
+  disabled: false
+
 - id: session-persistence-jsonl
   config:
     root: !!js dshHomePath('sessions')

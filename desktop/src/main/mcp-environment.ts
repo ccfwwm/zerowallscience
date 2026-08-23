@@ -1,11 +1,13 @@
 import { createHash, verify } from 'node:crypto'
-import { access, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { createInterface } from 'node:readline'
+import { access, lstat, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path'
 import JSZip from 'jszip'
 import type { McpEnvironmentStatus } from '../shared/contracts.js'
 
 export interface McpEnvironmentManifest {
-  schema: 1
+  schema: 2
   environmentId: 'claude-science-mcp'
   version: string
   platform: 'win32'
@@ -14,7 +16,10 @@ export interface McpEnvironmentManifest {
   archiveSha256: string
   archiveSize: number
   python: { version: string; relativeExecutable: string }
-  mcp: { bioToolsVersion: string; ketcherChemistryVersion: string; toolCount: number; licenseToolCount: number }
+  pythonHealth: { imports: string[]; bioServer: string; ketcherServer: string }
+  skillsRoot: string
+  sci: { version: string; nodeMinimum: string; cli: string; mcp: string }
+  mcp: { bioToolsVersion: string; ketcherChemistryVersion: string; sciMasterVersion: string; toolCount: number; licenseToolCount: number; servers: string[] }
   source: { claudeScienceRuntime: string; sourceHashes: Record<string, string> }
   signature: { algorithm: 'ed25519'; keyId: string; value: string }
 }
@@ -24,6 +29,7 @@ export interface McpEnvironmentControllerOptions {
   manifestUrl: string
   publicKey: string
   fetcher?: typeof fetch
+  healthCheck?(root: string, manifest: McpEnvironmentManifest): Promise<void>
   publish(status: McpEnvironmentStatus): void
 }
 
@@ -45,16 +51,10 @@ export class McpEnvironmentController {
 
   async selectManual(root: string): Promise<McpEnvironmentStatus> {
     const selected = resolve(root)
-    const python = join(selected, 'bio-tools', 'python', 'python.exe')
-    const bio = join(selected, 'bio-tools', 'run_server.py')
-    const ketcher = join(selected, 'ketcher-chemistry', 'server.js')
-    await Promise.all([python, bio, ketcher].map(async path => {
-      await access(path)
-      const info = await stat(path)
-      if (!info.isFile()) throw new Error(`Selected MCP environment entry is not a regular file: ${path}`)
-    }))
+    const manifest = await this.readInstalledManifest(selected)
+    await this.verifyHealth(selected, manifest)
     await mkdir(this.options.root, { recursive: true })
-    await writeFile(join(this.options.root, 'current.json'), `${JSON.stringify({ mode: 'manual', root: selected, installedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8')
+    await writeFile(join(this.options.root, 'current.json'), `${JSON.stringify({ mode: 'manual', version: manifest.version, root: selected, health: 'ready', installedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8')
     return this.set({ phase: 'manual', message: selected })
   }
 
@@ -83,11 +83,8 @@ export class McpEnvironmentController {
       this.set({ phase: 'installing', version: manifest.version, progress: 80, message: '正在安装科研 MCP 环境' })
       try {
         await extractZip(archive, temporary)
-        await Promise.all([
-          access(join(temporary, manifest.python.relativeExecutable)),
-          access(join(temporary, 'bio-tools', 'run_server.py')),
-          access(join(temporary, 'ketcher-chemistry', 'server.js')),
-        ])
+        await this.verifyHealth(temporary, manifest)
+        await writeFile(join(temporary, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
         await mkdir(dirname(target), { recursive: true })
         await rm(target, { recursive: true, force: true })
         await rename(temporary, target)
@@ -96,7 +93,7 @@ export class McpEnvironmentController {
         throw error
       }
       await mkdir(this.options.root, { recursive: true })
-      await writeFile(join(this.options.root, 'current.json'), `${JSON.stringify({ mode: 'managed', version: manifest.version, root: target, manifest, installedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8')
+      await writeFile(join(this.options.root, 'current.json'), `${JSON.stringify({ mode: 'managed', version: manifest.version, root: target, manifest, health: 'ready', installedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8')
       return this.set({ phase: 'ready', version: manifest.version, progress: 100, message: target })
     } catch (error) {
       return this.set({ phase: 'failed', message: sanitizeError(error) })
@@ -105,15 +102,27 @@ export class McpEnvironmentController {
 
   private async installedRoot(version: string): Promise<string | undefined> {
     try {
-      const record = JSON.parse(await readFile(join(this.options.root, 'current.json'), 'utf8')) as { version?: unknown; root?: unknown }
+      const record = JSON.parse(await readFile(join(this.options.root, 'current.json'), 'utf8')) as { version?: unknown; root?: unknown; health?: unknown }
       if (record.version !== version || typeof record.root !== 'string') return undefined
-      await Promise.all([
-        access(join(record.root, 'bio-tools', 'python', 'python.exe')),
-        access(join(record.root, 'bio-tools', 'run_server.py')),
-        access(join(record.root, 'ketcher-chemistry', 'server.js')),
-      ])
+      if (record.health !== 'ready') return undefined
+      await this.verifyHealth(record.root, await this.readInstalledManifest(record.root, version))
       return record.root
     } catch { return undefined }
+  }
+
+  private async readInstalledManifest(root: string, expectedVersion?: string): Promise<McpEnvironmentManifest> {
+    const record = JSON.parse(await readFile(join(this.options.root, 'current.json'), 'utf8')) as { manifest?: unknown }
+    const embedded = await readFile(join(root, 'manifest.json'), 'utf8').then(value => JSON.parse(value) as unknown, () => undefined)
+    for (const candidate of [record.manifest, embedded]) if (candidate !== undefined) {
+      const manifest = validateManifest(candidate)
+      if (expectedVersion === undefined || manifest.version === expectedVersion) return manifest
+    }
+    throw new Error('The selected MCP environment has no signed schema 2 manifest. Select a managed environment installed by ZeroWall Science.')
+  }
+
+  private async verifyHealth(root: string, manifest: McpEnvironmentManifest): Promise<void> {
+    await assertEnvironmentFiles(root, manifest)
+    await (this.options.healthCheck ?? verifyMcpEnvironmentHealth)(root, manifest)
   }
 
   private set(status: McpEnvironmentStatus): McpEnvironmentStatus { this.status = status; this.options.publish(this.current()); return this.current() }
@@ -122,12 +131,18 @@ export class McpEnvironmentController {
 export function validateManifest(value: unknown): McpEnvironmentManifest {
   if (value === null || typeof value !== 'object') throw new Error('MCP environment manifest must be an object.')
   const item = value as Record<string, unknown>
-  if (item.schema !== 1 || item.environmentId !== 'claude-science-mcp' || item.platform !== 'win32' || item.architecture !== 'x64') throw new Error('MCP environment manifest identity or target is invalid.')
+  if (item.schema !== 2 || item.environmentId !== 'claude-science-mcp' || item.platform !== 'win32' || item.architecture !== 'x64') throw new Error('MCP environment manifest identity or target is invalid.')
   for (const key of ['version', 'archiveUrl', 'archiveSha256']) if (typeof item[key] !== 'string' || item[key] === '') throw new Error(`MCP environment manifest field ${key} is required.`)
   if (!String(item.archiveUrl).startsWith('https://')) throw new Error('MCP environment archive URL must use HTTPS.')
   if (!/^[a-f0-9]{64}$/u.test(String(item.archiveSha256)) || !Number.isSafeInteger(item.archiveSize) || Number(item.archiveSize) <= 0) throw new Error('MCP environment archive metadata is invalid.')
   const signature = item.signature as Record<string, unknown> | undefined
   if (signature?.algorithm !== 'ed25519' || typeof signature.value !== 'string' || typeof signature.keyId !== 'string') throw new Error('MCP environment signature is invalid.')
+  const pythonHealth = item.pythonHealth as Record<string, unknown> | undefined
+  const sci = item.sci as Record<string, unknown> | undefined
+  const mcp = item.mcp as Record<string, unknown> | undefined
+  if (!Array.isArray(pythonHealth?.imports) || !pythonHealth.imports.every(item => typeof item === 'string') || typeof pythonHealth.bioServer !== 'string' || typeof pythonHealth.ketcherServer !== 'string') throw new Error('MCP environment Python health metadata is invalid.')
+  if (typeof item.skillsRoot !== 'string' || item.skillsRoot.trim() === '' || typeof sci?.version !== 'string' || typeof sci.nodeMinimum !== 'string' || typeof sci.cli !== 'string' || typeof sci.mcp !== 'string') throw new Error('MCP environment SciMaster metadata is invalid.')
+  if (typeof mcp?.sciMasterVersion !== 'string' || !Array.isArray(mcp.servers) || !mcp.servers.every(item => typeof item === 'string')) throw new Error('MCP environment server metadata is invalid.')
   return value as McpEnvironmentManifest
 }
 
@@ -155,3 +170,81 @@ async function extractZip(archive: Uint8Array, target: string): Promise<void> {
 
 function sha256(value: Uint8Array): string { return createHash('sha256').update(value).digest('hex') }
 function sanitizeError(error: unknown): string { return (error instanceof Error ? error.message : String(error)).replace(/https?:\/\/[^\s]+/gu, '[download-url]').slice(0, 500) }
+
+async function assertRegularFile(path: string): Promise<void> {
+  await access(path)
+  const info = await lstat(path)
+  if (!info.isFile() || info.isSymbolicLink()) throw new Error(`MCP environment entry must be a regular file: ${path}`)
+}
+
+export async function assertEnvironmentFiles(root: string, manifest: McpEnvironmentManifest): Promise<void> {
+  const paths = [
+    manifest.python.relativeExecutable,
+    'bio-tools/run_server.py',
+    'ketcher-chemistry/server.js',
+    manifest.sci.cli,
+    manifest.sci.mcp,
+  ].map(path => join(root, path))
+  await Promise.all(paths.map(assertRegularFile))
+  const skills = join(root, manifest.skillsRoot)
+  const info = await lstat(skills)
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`MCP environment Skills directory is invalid: ${skills}`)
+}
+
+interface ProcessResult { stdout: string; stderr: string }
+
+function execute(command: string, args: string[], cwd: string, input?: string): Promise<ProcessResult> {
+  return new Promise((resolveResult, reject) => {
+    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
+    let stdout = ''
+    let stderr = ''
+    const timer = setTimeout(() => { child.kill(); reject(new Error(`MCP health check timed out: ${args.at(-1) ?? command}`)) }, 15_000)
+    child.stdout.setEncoding('utf8').on('data', value => { stdout += value })
+    child.stderr.setEncoding('utf8').on('data', value => { stderr += value })
+    child.once('error', error => { clearTimeout(timer); reject(error) })
+    child.once('exit', code => { clearTimeout(timer); code === 0 ? resolveResult({ stdout, stderr }) : reject(new Error((stderr || stdout || `process exited ${code}`).trim().slice(0, 500))) })
+    if (input !== undefined) child.stdin.end(input)
+  })
+}
+
+async function checkMcpServer(command: string, args: string[], cwd: string): Promise<void> {
+  const initialize = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'zerowall-health', version: '1' } } })
+  const initialized = JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })
+  const tools = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })
+  await new Promise<void>((resolveCheck, reject) => {
+    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
+    const lines = createInterface({ input: child.stdout })
+    let phase: 'initialize' | 'tools' = 'initialize'
+    const timer = setTimeout(() => { child.kill(); lines.close(); reject(new Error(`MCP server health check timed out: ${args.at(-1) ?? command}`)) }, 15_000)
+    const finish = (error?: Error) => { clearTimeout(timer); lines.close(); child.kill(); error === undefined ? resolveCheck() : reject(error) }
+    child.once('error', error => finish(error))
+    child.stderr.resume()
+    lines.on('line', line => {
+      let reply: { id?: number; result?: unknown; error?: unknown }
+      try { reply = JSON.parse(line) as typeof reply } catch { return }
+      if (phase === 'initialize' && reply.id === 1) {
+        if (reply.error !== undefined || reply.result === undefined) return finish(new Error(`MCP initialize failed: ${args.at(-1) ?? command}`))
+        phase = 'tools'
+        child.stdin.write(`${initialized}\n${tools}\n`)
+      } else if (phase === 'tools' && reply.id === 2) {
+        const result = reply.result as { tools?: unknown } | undefined
+        if (reply.error !== undefined || result === undefined || !Array.isArray(result.tools)) return finish(new Error(`MCP tools/list failed: ${args.at(-1) ?? command}`))
+        finish()
+      }
+    })
+    child.stdin.write(`${initialize}\n`)
+  })
+}
+
+export async function verifyMcpEnvironmentHealth(root: string, manifest: McpEnvironmentManifest): Promise<void> {
+  const python = join(root, manifest.python.relativeExecutable)
+  const node = process.execPath
+  const pythonVersion = await execute(python, ['--version'], root)
+  const reported = `${pythonVersion.stdout}\n${pythonVersion.stderr}`
+  const expected = manifest.python.version.match(/^\d+\.\d+/u)?.[0] ?? manifest.python.version
+  if (!new RegExp(`Python ${expected.replace('.', '\\.')}(?:\\.|\\s|$)`, 'u').test(reported)) throw new Error(`Managed Python version does not match ${manifest.python.version}.`)
+  await execute(python, ['-c', `import ${manifest.pythonHealth.imports.join(', ')}`], root)
+  await checkMcpServer(python, [join(root, 'bio-tools', 'run_server.py'), 'mcp_bio'], join(root, 'bio-tools'))
+  await checkMcpServer(node, [join(root, 'ketcher-chemistry', 'server.js')], join(root, 'ketcher-chemistry'))
+  await checkMcpServer(node, [join(root, manifest.sci.mcp)], join(root, 'sci'))
+}

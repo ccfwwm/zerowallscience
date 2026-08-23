@@ -32,6 +32,10 @@ describe('Harness runtime boundary', () => {
     expect(options.env?.ZEROWALL_USER_SKILLS).toBe('C:/data/harness/zerowall-skills/enabled')
     expect(options.env?.ZEROWALL_RESEARCH_DB).toBe('C:/data/research/zerowall-research.sqlite')
     expect(options.env?.ZEROWALL_BUNDLED_SKILLS).toBe('C:/app/resources/skills')
+    expect(options.env?.ZEROWALL_MCP_BUNDLED_SKILLS).toBe('C:/app/resources/skills')
+    expect(options.env?.ZEROWALL_MCP_USER_SKILLS).toBe('C:/data/harness/zerowall-skills/enabled')
+    expect(options.env?.ZEROWALL_MCP_SKILLS).toContain('C:/app/resources/skills')
+    expect(options.env?.ZEROWALL_MCP_SKILLS).toContain('C:/data/harness/zerowall-skills/enabled')
     expect(options.stdio).toEqual(['pipe', 'pipe', 'pipe', 'ipc'])
   })
 
