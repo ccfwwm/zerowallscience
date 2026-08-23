@@ -12,7 +12,7 @@ import { secureWindow } from './security.js'
 import { resolveDesktopIdentity } from './identity.js'
 import { findDesktopWorkspaceRoot, resolveDesktopIconPath, resolveDesktopResourcePath } from './paths.js'
 import { stopBeforeExit } from './shutdown.js'
-import { McpEnvironmentController } from './mcp-environment.js'
+import { McpEnvironmentController, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
 import { DesktopUpdateController, isDailyUpdateCheckDue } from './updater.js'
 import type { DesktopInfo, RuntimeSnapshot } from '../shared/contracts.js'
@@ -243,6 +243,7 @@ app.whenReady().then(async () => {
     root: mcpEnvironmentRoot,
     manifestUrl: process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/mcp-environments/windows-x64/latest.json',
     publicKey: process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? MCP_ENVIRONMENT_PUBLIC_KEY,
+    publicKeys: MCP_ENVIRONMENT_KEYRING,
     publish: status => {
       const window = mainWindow
       if (window !== undefined && !window.isDestroyed()) window.webContents.send('desktop:mcp-environment:status-changed', status)

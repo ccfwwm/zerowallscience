@@ -13,13 +13,16 @@ const version = process.env.ZEROWALL_MCP_ENVIRONMENT_VERSION?.trim()
 if (!version) throw new Error('ZEROWALL_MCP_ENVIRONMENT_VERSION is required.')
 const dist = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_OUTPUT ?? resolve(root, 'desktop', 'dist', 'mcp-environment'))
 const archive = `zerowall-mcp-windows-x64-${version}.zip`
-const publicKey = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAu8wAGfgRWqQBdIGcbkwPlBq01SjgEMybgNh3xVv0ej4=\n-----END PUBLIC KEY-----`
+const publicKeys = {
+  'stable-1': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAu8wAGfgRWqQBdIGcbkwPlBq01SjgEMybgNh3xVv0ej4=\n-----END PUBLIC KEY-----`,
+  'stable-2': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAUvKwSI31zGGut3nRi4kRqZGg8eBJskIrfa8Xmp/7VJw=\n-----END PUBLIC KEY-----`,
+}
 const manifest = JSON.parse(await readFile(resolve(dist, 'latest.json'), 'utf8'))
 const versionManifest = JSON.parse(await readFile(resolve(dist, `${version}.json`), 'utf8'))
 if (manifest.version !== version || JSON.stringify(manifest) !== JSON.stringify(versionManifest)) throw new Error('MCP latest and version manifests do not match the requested version.')
-if (manifest.signature?.algorithm !== 'ed25519' || manifest.signature.keyId !== 'stable-1') throw new Error('MCP manifest must use the current stable-1 Ed25519 key.')
+if (manifest.signature?.algorithm !== 'ed25519' || !publicKeys[manifest.signature.keyId]) throw new Error('MCP manifest must use a trusted Ed25519 key.')
 const { signature, ...unsigned } = manifest
-if (!verify(null, Buffer.from(JSON.stringify(unsigned)), publicKey, Buffer.from(signature.value, 'base64'))) throw new Error('MCP manifest signature failed local verification.')
+if (!verify(null, Buffer.from(JSON.stringify(unsigned)), publicKeys[signature.keyId], Buffer.from(signature.value, 'base64'))) throw new Error('MCP manifest signature failed local verification.')
 const archiveBytes = await readFile(resolve(dist, archive))
 if (archiveBytes.byteLength !== manifest.archiveSize || createHash('sha256').update(archiveBytes).digest('hex') !== manifest.archiveSha256) throw new Error('MCP archive does not match its signed manifest.')
 const files = [[`stable/mcp-environments/windows-x64/${version}/${archive}`, archive, false], [`stable/mcp-environments/windows-x64/${version}/manifest.json`, `${version}.json`, false], ['stable/mcp-environments/windows-x64/latest.json', 'latest.json', true]]
@@ -34,7 +37,7 @@ const publicManifestResponse = await fetch(`${publicBase}/stable/mcp-environment
 if (!publicManifestResponse.ok) throw new Error(`Public MCP manifest returned HTTP ${publicManifestResponse.status}.`)
 const publicManifest = await publicManifestResponse.json()
 const { signature: publicSignature, ...publicUnsigned } = publicManifest
-if (publicSignature?.keyId !== 'stable-1' || !verify(null, Buffer.from(JSON.stringify(publicUnsigned)), publicKey, Buffer.from(publicSignature?.value ?? '', 'base64'))) throw new Error('Public MCP manifest signature verification failed.')
+if (!publicSignature?.keyId || !publicKeys[publicSignature.keyId] || !verify(null, Buffer.from(JSON.stringify(publicUnsigned)), publicKeys[publicSignature.keyId], Buffer.from(publicSignature?.value ?? '', 'base64'))) throw new Error('Public MCP manifest signature verification failed.')
 const publicArchiveResponse = await fetch(publicManifest.archiveUrl, { cache: 'no-store' })
 if (!publicArchiveResponse.ok) throw new Error(`Public MCP archive returned HTTP ${publicArchiveResponse.status}.`)
 const publicArchive = Buffer.from(await publicArchiveResponse.arrayBuffer())

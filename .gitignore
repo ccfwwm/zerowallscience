@@ -32,3 +32,5 @@ __pycache__/
 *.pyo
 .vscode
 mcp-environment-staging/
+.secrets/
+

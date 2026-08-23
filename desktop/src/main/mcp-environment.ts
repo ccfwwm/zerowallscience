@@ -1,7 +1,7 @@
 import { createHash, verify } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { access, lstat, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path'
 import JSZip from 'jszip'
 import type { McpEnvironmentStatus } from '../shared/contracts.js'
@@ -28,11 +28,16 @@ export interface McpEnvironmentControllerOptions {
   root: string
   manifestUrl: string
   publicKey: string
-  /** Trusted verification keys by manifest key id; stable-1 is the current key. */
+  /** Trusted verification keys by manifest key id. */
   publicKeys?: Record<string, string>
   fetcher?: typeof fetch
   healthCheck?(root: string, manifest: McpEnvironmentManifest): Promise<void>
   publish(status: McpEnvironmentStatus): void
+}
+
+export const MCP_ENVIRONMENT_KEYRING: Record<string, string> = {
+  'stable-1': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAu8wAGfgRWqQBdIGcbkwPlBq01SjgEMybgNh3xVv0ej4=\n-----END PUBLIC KEY-----`,
+  'stable-2': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAUvKwSI31zGGut3nRi4kRqZGg8eBJskIrfa8Xmp/7VJw=\n-----END PUBLIC KEY-----`,
 }
 
 export class McpEnvironmentController {
@@ -64,6 +69,7 @@ export class McpEnvironmentController {
     try {
       if (process.platform !== 'win32' || process.arch !== 'x64') return this.set({ phase: 'unavailable', message: 'Managed scientific MCP environments are currently available on Windows x64 only.' })
       if (this.options.publicKey.trim() === '') throw new Error('The MCP environment verification key is not configured.')
+      await this.cleanupTemporaryInstallations()
       this.set({ phase: 'downloading', progress: 0, message: '正在获取科研 MCP 环境清单' })
       const fetcher = this.options.fetcher ?? fetch
       const manifestResponse = await fetcher(this.options.manifestUrl, { cache: 'no-store' })
@@ -102,6 +108,16 @@ export class McpEnvironmentController {
       if (retained !== undefined) return this.set({ phase: 'ready', version: retained.version, progress: 100, message: retained.root })
       return this.set({ phase: 'failed', message: sanitizeError(error) })
     }
+  }
+
+  private async cleanupTemporaryInstallations(): Promise<void> {
+    const versions = join(this.options.root, 'versions')
+    let entries
+    try { entries = await readdir(versions, { withFileTypes: true }) } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+      throw error
+    }
+    await Promise.all(entries.filter(entry => entry.isDirectory() && entry.name.includes('.tmp-')).map(entry => rm(join(versions, entry.name), { recursive: true, force: true })))
   }
 
   private async currentHealthyRoot(): Promise<{ root: string; version: string } | undefined> {

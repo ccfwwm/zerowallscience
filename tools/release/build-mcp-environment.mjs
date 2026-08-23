@@ -18,9 +18,10 @@ const privateKey = privateKeyText.startsWith('base64:')
   ? createPrivateKey({ key: Buffer.from(privateKeyText.slice('base64:'.length), 'base64'), format: 'der', type: 'pkcs8' })
   : privateKeyText
 
-const expectedPublicKey = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAu8wAGfgRWqQBdIGcbkwPlBq01SjgEMybgNh3xVv0ej4=\n-----END PUBLIC KEY-----`
+const keyId = process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-2'
+const expectedPublicKey = (process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAUvKwSI31zGGut3nRi4kRqZGg8eBJskIrfa8Xmp/7VJw=\n-----END PUBLIC KEY-----`).trim()
 const derivedPublicKey = createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }).trim()
-if (derivedPublicKey !== expectedPublicKey.trim()) throw new Error('MCP signing key does not match the pinned stable-1 public key.')
+if (derivedPublicKey !== expectedPublicKey.trim()) throw new Error(`MCP signing key does not match the pinned ${keyId} public key.`)
 
 const excludedStagingFiles = new Set([
   'mcp-private-key.pem',
@@ -66,13 +67,13 @@ const baseUrl = (process.env.ZEROWALL_MCP_ENVIRONMENT_BASE_URL ?? 'https://zerow
 const manifest = {
   schema: 2, environmentId: 'claude-science-mcp', version, platform: 'win32', architecture: 'x64',
   archiveUrl: `${baseUrl}/${version}/${archiveName}`, archiveSha256, archiveSize: archive.byteLength,
-  python: { version: process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12', relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/Lib/site-packages', modules: ['mcp', 'numpy', 'pandas', 'httpx'], supportsZeroWallTool: true },
+  python: { version: process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12', relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/site-packages', modules: ['mcp', 'numpy', 'pandas', 'httpx'], supportsZeroWallTool: true },
   pythonHealth: { imports: ['mcp', 'numpy', 'pandas', 'httpx'], bioServer: 'bio-tools/run_server.py mcp_bio', ketcherServer: 'ketcher-chemistry/server.js' },
   skillsRoot: 'skills',
   sci: { version: process.env.ZEROWALL_SCIMASTER_VERSION ?? '0.3.15', nodeMinimum: '20.3.0', cli: 'sci/dist/cli.mjs', mcp: 'sci/dist/mcp.cjs' },
   mcp: { bioToolsVersion: process.env.ZEROWALL_BIO_TOOLS_VERSION ?? version, ketcherChemistryVersion: process.env.ZEROWALL_KETCHER_VERSION ?? version, sciMasterVersion: process.env.ZEROWALL_SCIMASTER_VERSION ?? '0.3.15', toolCount: Number(process.env.ZEROWALL_BIO_TOOL_COUNT ?? 247), licenseToolCount: Number(process.env.ZEROWALL_BIO_LICENSE_TOOL_COUNT ?? 14), servers: ['zerowall_managed_bio_tools', 'zerowall_managed_ketcher', 'zerowall_managed_scimaster'] },
   source: { claudeScienceRuntime: process.env.ZEROWALL_CLAUDE_SCIENCE_RUNTIME ?? '0.0.37-linux-x64', sourceHashes },
-  signature: { algorithm: 'ed25519', keyId: process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-1', value: '' },
+  signature: { algorithm: 'ed25519', keyId, value: '' },
 }
 const { signature: _signature, ...unsigned } = manifest
 manifest.signature.value = sign(null, Buffer.from(JSON.stringify(unsigned)), privateKey).toString('base64')
