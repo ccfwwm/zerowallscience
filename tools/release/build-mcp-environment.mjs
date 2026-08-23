@@ -1,8 +1,11 @@
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto'
 import { createRequire } from 'node:module'
-import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 const JSZip = createRequire(resolve(import.meta.dirname, '../../desktop/package.json'))('jszip')
+const execFileAsync = promisify(execFile)
 
 const root = resolve(import.meta.dirname, '../..')
 const staging = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_STAGING ?? join(root, 'mcp-environment-staging'))
@@ -45,6 +48,28 @@ await stat(join(staging, 'bio-tools', 'run_server.py'))
 await stat(join(staging, 'ketcher-chemistry', 'server.js'))
 await stat(join(root, 'resources', 'skills'))
 await stat(join(staging, 'sci', 'dist', 'mcp.cjs'))
+
+// The embedded Windows Python uses python312._pth. That mode does not process
+// pywin32.pth, so mcp's top-level `import pywintypes` cannot find the shim in
+// win32/lib. Keep a private top-level copy in the environment so imports work
+// without relying on a machine-wide pywin32 installation.
+const pywintypesTarget = join(staging, 'bio-tools', 'python', 'site-packages', 'pywintypes.py')
+try {
+  await stat(pywintypesTarget)
+} catch {
+  await copyFile(join(staging, 'bio-tools', 'python', 'site-packages', 'win32', 'lib', 'pywintypes.py'), pywintypesTarget)
+}
+const embeddedPth = join(staging, 'bio-tools', 'python', 'python312._pth')
+const embeddedPthText = await readFile(embeddedPth, 'utf8')
+const requiredPthEntries = ['site-packages/win32', 'site-packages/win32/lib', 'site-packages/pythonwin']
+const missingPthEntries = requiredPthEntries.filter(entry => !embeddedPthText.split(/\r?\n/u).includes(entry))
+if (missingPthEntries.length > 0) await writeFile(embeddedPth, `${embeddedPthText.trimEnd()}\n${missingPthEntries.join('\n')}\n`, 'utf8')
+const pythonExecutable = join(staging, 'bio-tools', 'python', 'python.exe')
+await execFileAsync(pythonExecutable, ['-c', 'import mcp, numpy, pandas, httpx'], {
+  cwd: staging,
+  env: { ...process.env, PYTHONNOUSERSITE: '1' },
+  windowsHide: true,
+})
 await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })
 const zip = new JSZip()
