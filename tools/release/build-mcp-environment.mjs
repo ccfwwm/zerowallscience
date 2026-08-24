@@ -13,6 +13,11 @@ const staging = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_STAGING ?? join(roo
 const output = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_OUTPUT ?? join(root, 'desktop', 'dist', 'mcp-environment'))
 const environmentVersion = (process.env.ZEROWALL_MCP_ENVIRONMENT_VERSION ?? process.env.ZEROWALL_MCP_ENVIRONMENT_REVISION ?? '1.0.0').trim()
 if (!environmentVersion) throw new Error('ZEROWALL_MCP_ENVIRONMENT_VERSION is required.')
+// Keep the previous desktop-version field as a compatibility alias for
+// clients released before the MCP environment was decoupled from the app.
+// New clients use environmentVersion exclusively; the alias is signed with
+// the manifest and never affects environment identity or update matching.
+const legacyApplicationVersion = (process.env.ZEROWALL_MCP_LEGACY_VERSION ?? '').trim()
 const contentRevision = Number(process.env.ZEROWALL_MCP_CONTENT_REVISION ?? '1')
 if (!Number.isSafeInteger(contentRevision) || contentRevision < 1) throw new Error('ZEROWALL_MCP_CONTENT_REVISION must be a positive integer.')
 const privateKeyFile = process.env.ZEROWALL_MCP_ENVIRONMENT_PRIVATE_KEY_FILE?.trim()
@@ -101,7 +106,7 @@ for (const path of stagingFiles) {
 }
 const baseUrl = (process.env.ZEROWALL_MCP_ENVIRONMENT_BASE_URL ?? 'https://zerowall.chengxunkeji.cn/stable/mcp-environments/windows-x64').replace(/\/$/u, '')
 const manifest = {
-  schema: 2, environmentVersion, contentRevision, environmentId: 'claude-science-mcp', platform: 'win32', architecture: 'x64',
+  schema: 2, environmentVersion, ...(legacyApplicationVersion ? { version: legacyApplicationVersion } : {}), contentRevision, environmentId: 'claude-science-mcp', platform: 'win32', architecture: 'x64',
   archiveUrl: `${baseUrl}/${environmentVersion}/${archiveName}`, archiveSha256, archiveSize: archive.byteLength,
   python: { version: process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12', relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/site-packages', modules: ['mcp', 'numpy', 'pandas', 'httpx'], supportsZeroWallTool: true },
   pythonHealth: { imports: ['mcp', 'numpy', 'pandas', 'httpx'], bioServer: 'bio-tools/run_server.py mcp_bio', ketcherServer: 'ketcher-chemistry/server.js' },
