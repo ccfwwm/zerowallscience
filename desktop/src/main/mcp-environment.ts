@@ -8,6 +8,7 @@ import type { McpEnvironmentStatus } from '../shared/contracts.js'
 
 export interface McpEnvironmentManifest {
   schema: 2
+  contentRevision?: number
   environmentId: 'claude-science-mcp'
   version: string
   platform: 'win32'
@@ -76,7 +77,7 @@ export class McpEnvironmentController {
       if (!manifestResponse.ok) throw new Error(`MCP environment manifest returned HTTP ${manifestResponse.status}.`)
       const manifest = validateManifest(await manifestResponse.json())
       if (!verifyManifestWithKeyring(manifest, this.options.publicKey, this.options.publicKeys)) throw new Error('MCP environment manifest signature is invalid.')
-      const installed = await this.installedRoot(manifest.version)
+      const installed = await this.installedRoot(manifest)
       if (installed !== undefined) return this.set({ phase: 'ready', version: manifest.version, progress: 100, message: installed, python: pythonStatus(manifest) })
       this.set({ phase: 'downloading', version: manifest.version, progress: 5, message: '正在下载科研 MCP 环境' })
       const archiveResponse = await fetcher(manifest.archiveUrl, { cache: 'no-store' })
@@ -84,7 +85,7 @@ export class McpEnvironmentController {
       const archive = Buffer.from(await archiveResponse.arrayBuffer())
       this.set({ phase: 'verifying', version: manifest.version, progress: 70, message: '正在验证科研 MCP 环境' })
       if (archive.byteLength !== manifest.archiveSize || sha256(archive) !== manifest.archiveSha256) throw new Error('MCP environment archive hash or size is invalid.')
-      const target = join(this.options.root, 'versions', manifest.version)
+      const target = join(this.options.root, 'versions', environmentDirectoryName(manifest))
       const temporary = `${target}.tmp-${process.pid}-${Date.now()}`
       await rm(temporary, { recursive: true, force: true })
       await mkdir(temporary, { recursive: true })
@@ -130,12 +131,14 @@ export class McpEnvironmentController {
     } catch { return undefined }
   }
 
-  private async installedRoot(version: string): Promise<string | undefined> {
+  private async installedRoot(manifest: McpEnvironmentManifest): Promise<string | undefined> {
     try {
       const record = JSON.parse(await readFile(join(this.options.root, 'current.json'), 'utf8')) as { version?: unknown; root?: unknown; health?: unknown }
-      if (record.version !== version || typeof record.root !== 'string') return undefined
+      if (record.version !== manifest.version || typeof record.root !== 'string') return undefined
       if (record.health !== 'ready') return undefined
-      await this.verifyHealth(record.root, await this.readInstalledManifest(record.root, version))
+      const installed = await this.readInstalledManifest(record.root, manifest.version)
+      if (contentRevision(installed) !== contentRevision(manifest) || installed.archiveSha256 !== manifest.archiveSha256) return undefined
+      await this.verifyHealth(record.root, installed)
       return record.root
     } catch { return undefined }
   }
@@ -184,6 +187,7 @@ export function validateManifest(value: unknown): McpEnvironmentManifest {
   const python = item.python as Record<string, unknown> | undefined
   if (typeof python?.version !== 'string' || typeof python.relativeExecutable !== 'string' || typeof python.relativeSitePackages !== 'string' || !Array.isArray(python.modules) || !python.modules.every(value => typeof value === 'string') || python.supportsZeroWallTool !== true) throw new Error('MCP environment Python runtime metadata is invalid.')
   if (typeof item.skillsRoot !== 'string' || item.skillsRoot.trim() === '' || typeof sci?.version !== 'string' || typeof sci.nodeMinimum !== 'string' || typeof sci.cli !== 'string' || typeof sci.mcp !== 'string') throw new Error('MCP environment SciMaster metadata is invalid.')
+  if (item.contentRevision !== undefined && (!Number.isSafeInteger(item.contentRevision) || Number(item.contentRevision) < 1)) throw new Error('MCP environment content revision is invalid.')
   if (typeof mcp?.sciMasterVersion !== 'string' || !Array.isArray(mcp.servers) || !mcp.servers.every(item => typeof item === 'string')) throw new Error('MCP environment server metadata is invalid.')
   return value as McpEnvironmentManifest
 }
@@ -204,6 +208,12 @@ export function verifyManifestWithKeyring(manifest: McpEnvironmentManifest, curr
 
 function pythonStatus(manifest: McpEnvironmentManifest): NonNullable<McpEnvironmentStatus['python']> {
   return { ready: true, version: manifest.python.version, sitePackages: manifest.python.relativeSitePackages }
+}
+
+function contentRevision(manifest: McpEnvironmentManifest): number { return manifest.contentRevision ?? 1 }
+
+function environmentDirectoryName(manifest: McpEnvironmentManifest): string {
+  return `${manifest.version}-${manifest.archiveSha256.slice(0, 12)}`
 }
 
 async function extractZip(archive: Uint8Array, target: string): Promise<void> {

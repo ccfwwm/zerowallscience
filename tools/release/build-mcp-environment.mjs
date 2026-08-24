@@ -4,6 +4,7 @@ import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { basename, dirname, join, relative, resolve } from 'node:path'
+import { patchSciMasterMcp } from './scimaster-compat.mjs'
 const JSZip = createRequire(resolve(import.meta.dirname, '../../desktop/package.json'))('jszip')
 const execFileAsync = promisify(execFile)
 
@@ -47,7 +48,8 @@ await stat(join(staging, 'bio-tools', 'python', 'python.exe'))
 await stat(join(staging, 'bio-tools', 'run_server.py'))
 await stat(join(staging, 'ketcher-chemistry', 'server.js'))
 await stat(join(root, 'resources', 'skills'))
-await stat(join(staging, 'sci', 'dist', 'mcp.cjs'))
+const sciMcpPath = join(staging, 'sci', 'dist', 'mcp.cjs')
+await stat(sciMcpPath)
 
 // The embedded Windows Python uses python312._pth. That mode does not process
 // pywin32.pth, so mcp's top-level `import pywintypes` cannot find the shim in
@@ -76,7 +78,11 @@ const zip = new JSZip()
 const stagingFiles = await filesUnder(staging, {
   exclude: (path, entry) => entry.isFile() && excludedStagingFiles.has(relative(staging, path).replaceAll('\\', '/')),
 })
-for (const path of stagingFiles) zip.file(relative(staging, path).replaceAll('\\', '/'), await readFile(path))
+const patchedSciMcp = patchSciMasterMcp(await readFile(sciMcpPath))
+for (const path of stagingFiles) {
+  const rel = relative(staging, path).replaceAll('\\', '/')
+  zip.file(rel, rel === 'sci/dist/mcp.cjs' ? patchedSciMcp : await readFile(path))
+}
 for (const path of await filesUnder(join(root, 'resources', 'skills'))) {
   const rel = relative(join(root, 'resources', 'skills'), path).replaceAll('\\', '/')
   zip.file(`skills/${rel}`, await readFile(path))
@@ -87,10 +93,13 @@ const archivePath = join(output, archiveName)
 await writeFile(archivePath, archive)
 const archiveSha256 = createHash('sha256').update(archive).digest('hex')
 const sourceHashes = {}
-for (const path of stagingFiles) sourceHashes[relative(staging, path).replaceAll('\\', '/')] = createHash('sha256').update(await readFile(path)).digest('hex')
+for (const path of stagingFiles) {
+  const rel = relative(staging, path).replaceAll('\\', '/')
+  sourceHashes[rel] = createHash('sha256').update(rel === 'sci/dist/mcp.cjs' ? patchedSciMcp : await readFile(path)).digest('hex')
+}
 const baseUrl = (process.env.ZEROWALL_MCP_ENVIRONMENT_BASE_URL ?? 'https://zerowall.chengxunkeji.cn/stable/mcp-environments/windows-x64').replace(/\/$/u, '')
 const manifest = {
-  schema: 2, environmentId: 'claude-science-mcp', version, platform: 'win32', architecture: 'x64',
+  schema: 2, contentRevision: 2, environmentId: 'claude-science-mcp', version, platform: 'win32', architecture: 'x64',
   archiveUrl: `${baseUrl}/${version}/${archiveName}`, archiveSha256, archiveSize: archive.byteLength,
   python: { version: process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12', relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/site-packages', modules: ['mcp', 'numpy', 'pandas', 'httpx'], supportsZeroWallTool: true },
   pythonHealth: { imports: ['mcp', 'numpy', 'pandas', 'httpx'], bioServer: 'bio-tools/run_server.py mcp_bio', ketcherServer: 'ketcher-chemistry/server.js' },

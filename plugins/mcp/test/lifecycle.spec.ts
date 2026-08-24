@@ -77,6 +77,9 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     writeFileSync(join(installed, 'bio-tools', 'run_server.py'), server)
     writeFileSync(join(installed, 'ketcher-chemistry', 'server.js'), server)
     writeFileSync(join(installed, 'sci', 'dist', 'mcp.cjs'), server)
+    // The fixture launcher is itself a stdio server so disposing the MCP client
+    // cannot leave a detached child process behind on Windows.
+    writeFileSync(join(installed, 'sci', 'zerowall-mcp-launcher.cjs'), server)
 
     const ctx = new Context()
     try {
@@ -87,8 +90,12 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect((await ctx.zerowallMcp.list()).every(item => item.runtimeState === 'blocked')).toBe(true)
       mkdirSync(environmentStore, { recursive: true })
       writeFileSync(join(environmentStore, 'current.json'), JSON.stringify({ version: '4.1.10', root: installed, health: 'ready' }))
-      await expect.poll(async () => (await ctx.zerowallMcp.list()).map(item => item.runtimeState), { timeout: 10_000, interval: 100 })
-        .toEqual(['active', 'active', 'active'])
+      await expect.poll(async () => Object.fromEntries((await ctx.zerowallMcp.list()).map(item => [item.serverName, item.runtimeState])), { timeout: 10_000, interval: 100 })
+        .toMatchObject({
+          zerowall_managed_bio_tools: 'active',
+          zerowall_managed_ketcher: 'active',
+          zerowall_managed_scimaster: 'blocked',
+        })
     } finally {
       await ctx.fiber.dispose()
     }

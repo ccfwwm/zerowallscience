@@ -13,8 +13,14 @@ import type {
   UpdateMcpServerInput,
 } from '@zerowallscience/research-store/types'
 import type {} from 'zod'
+import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
 
 export type McpRuntimeState = 'disabled' | 'blocked' | 'active' | 'error'
+
+// Credential vault keys are restricted to the ZeroWall domain and lowercase
+// POSIX-style segments. Keep the SciMaster key under the MCP namespace.
+export const SCIMASTER_API_KEY_CREDENTIAL = 'zerowall.mcp.scimaster_api_key'
+export const SCIMASTER_API_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/home'
 
 export interface McpServerDto extends McpServerRecord {
   runtimeState: McpRuntimeState
@@ -101,6 +107,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private operation: Promise<void> = Promise.resolve()
   private environmentPoller: NodeJS.Timeout | undefined
   private environmentSignature = ''
+  private readonly secrets = new SecretBrokerClient()
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallMcp')
@@ -150,6 +157,40 @@ export class ZeroWallMcpService extends TypertRemoteService {
     return this.exclusive(async () => {
       const record = this.projects().getMcpServer(id)
       if (record === undefined) throw new Error(`MCP server was not found: ${id}`)
+      await this.reconcile(record)
+      return this.dto(record)
+    })
+  }
+
+  @Remote('getSciMasterCredentialStatus')
+  async getSciMasterCredentialStatus(): Promise<{ configured: boolean }> {
+    try {
+      const value = await this.secrets.get(SCIMASTER_API_KEY_CREDENTIAL)
+      return { configured: typeof value === 'string' && value.trim() !== '' }
+    } catch {
+      return { configured: false }
+    }
+  }
+
+  @Remote('setSciMasterApiKey')
+  setSciMasterApiKey(apiKey: string): Promise<McpServerDto | undefined> {
+    return this.exclusive(async () => {
+      const value = apiKey.trim()
+      if (value === '') throw new Error('SciMaster API Key 不能为空。')
+      await this.secrets.set(SCIMASTER_API_KEY_CREDENTIAL, value)
+      const record = this.projects().listMcpServers().find(item => item.serverName === 'zerowall_managed_scimaster')
+      if (record === undefined) return undefined
+      await this.reconcile(record)
+      return this.dto(record)
+    })
+  }
+
+  @Remote('clearSciMasterApiKey')
+  clearSciMasterApiKey(): Promise<McpServerDto | undefined> {
+    return this.exclusive(async () => {
+      await this.secrets.delete(SCIMASTER_API_KEY_CREDENTIAL)
+      const record = this.projects().listMcpServers().find(item => item.serverName === 'zerowall_managed_scimaster')
+      if (record === undefined) return undefined
       await this.reconcile(record)
       return this.dto(record)
     })
@@ -257,6 +298,18 @@ export class ZeroWallMcpService extends TypertRemoteService {
       this.statuses.set(record.id, { state: 'blocked', error: 'The Claude Science MCP environment is not ready. Retry initialization or select a user-managed environment in Settings.', missingEnvironmentVariables: [] })
       return
     }
+    let sciMasterApiKey: string | undefined
+    if (record.serverName === 'zerowall_managed_scimaster') {
+      try {
+        sciMasterApiKey = await this.secrets.get(SCIMASTER_API_KEY_CREDENTIAL)
+      } catch {
+        sciMasterApiKey = undefined
+      }
+      if (!sciMasterApiKey?.trim()) {
+        this.statuses.set(record.id, { state: 'blocked', error: 'SciMaster 需要配置 API Key。请在设置中保存 Key 后重试。', missingEnvironmentVariables: [] })
+        return
+      }
+    }
     const resolved = resolveMcpConfig(record, process.env)
     if (resolved.config === undefined) {
       this.statuses.set(record.id, {
@@ -267,7 +320,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
       return
     }
     try {
-      const fiber = this.ctx.plugin(McpClient, resolved.config as McpClient.Config)
+      const config = resolved.config as McpClient.Config
+      if (sciMasterApiKey !== undefined && config.transport === 'stdio') config.env.ZEROWALL_SCIMASTER_API_KEY = sciMasterApiKey
+      const fiber = this.ctx.plugin(McpClient, config)
       await fiber
       this.fibers.set(record.id, fiber)
       this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
@@ -367,6 +422,7 @@ function managedEnvironmentReady(): boolean {
     && existsSync(join(root, 'bio-tools', 'run_server.py'))
     && existsSync(join(root, 'ketcher-chemistry', 'server.js'))
     && existsSync(join(root, 'sci', 'dist', 'mcp.cjs'))
+    && existsSync(join(root, 'sci', 'zerowall-mcp-launcher.cjs'))
 }
 
 function resolveManagedLaunch(command: string): { command: string; args: string[]; cwd: string } | undefined {
@@ -374,7 +430,7 @@ function resolveManagedLaunch(command: string): { command: string; args: string[
   if (!root || !['zerowall-managed:bio-tools', 'zerowall-managed:ketcher', 'zerowall-managed:scimaster'].includes(command)) return undefined
   if (command === 'zerowall-managed:bio-tools') return { command: join(root, 'bio-tools', 'python', 'python.exe'), args: [join(root, 'bio-tools', 'run_server.py'), 'mcp_bio'], cwd: join(root, 'bio-tools') }
   if (command === 'zerowall-managed:ketcher') return { command: process.execPath, args: [join(root, 'ketcher-chemistry', 'server.js')], cwd: join(root, 'ketcher-chemistry') }
-  return { command: process.execPath, args: [join(root, 'sci', 'dist', 'mcp.cjs')], cwd: join(root, 'sci') }
+  return { command: process.execPath, args: [join(root, 'sci', 'zerowall-mcp-launcher.cjs')], cwd: join(root, 'sci') }
 }
 
 export function redactError(error: unknown): string {

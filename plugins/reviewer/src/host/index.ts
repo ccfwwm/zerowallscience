@@ -20,23 +20,14 @@ sessionEventTypes.add('zerowall/reviewer/mode')
 sessionEventTypes.add('zerowall/reviewer/report')
 
 export type ReviewerMode = 'inherit' | 'on' | 'off'
-export type ReviewerModelMode = 'follow-session' | 'fixed'
 export type ReviewStatus = 'passed' | 'failed' | 'unreviewable' | 'error'
 
 export interface ReviewerSettings {
   autoReview: boolean
-  modelMode: ReviewerModelMode
-  provider: string
-  model: string
-  reasoningEffort?: string
 }
 
 export const ReviewerSettingsSchema: z<ReviewerSettings> = z.object({
-  autoReview: z.boolean().default(false),
-  modelMode: z.union(['follow-session', 'fixed'] as const).default('follow-session'),
-  provider: z.string().default(''),
-  model: z.string().default(''),
-  reasoningEffort: z.string().default(''),
+  autoReview: z.boolean().default(true),
 })
 
 export interface ReviewFinding {
@@ -245,15 +236,20 @@ function currentTurnEvents(session: Session, turn: number): SessionEvent[] {
   return session.events.filter(event => 'turn' in event.data && (event.data as { turn?: number }).turn === turn)
 }
 
-function currentModel(agent: Agent, settings: ReviewerSettings): { options?: AgentOptions; label: string; effort?: string } {
-  if (settings.modelMode === 'fixed') {
-    if (!settings.provider || !settings.model) throw new Error('Reviewer fixed model is not configured.')
-    return { options: { provider: settings.provider, model: settings.model }, label: `${settings.provider}/${settings.model}`, ...(settings.reasoningEffort ? { effort: settings.reasoningEffort } : {}) }
+function currentModel(agent: Agent, events: readonly SessionEvent[]): { options?: AgentOptions; label: string; effort?: string } {
+  const header = [...events, ...agent.session.events].reverse().find(event => event.type === 'request/header')
+  if (header?.type === 'request/header') {
+    const config = header.data.header.config
+    if (config.provider && config.model) {
+      return { options: { provider: config.provider, model: config.model }, label: `${config.provider}/${config.model}`, ...(config.reasoningEffort ? { effort: String(config.reasoningEffort) } : {}) }
+    }
   }
-  const header = [...agent.session.events].reverse().find(event => event.type === 'request/header')
-  if (header?.type !== 'request/header') throw new Error('Current session has no valid model request configuration.')
-  const config = header.data.header.config
-  return { options: { provider: config.provider, model: config.model }, label: `${config.provider}/${config.model}`, ...(config.reasoningEffort ? { effort: String(config.reasoningEffort) } : {}) }
+  const assistant = [...events, ...agent.session.events].reverse().find(event => event.type === 'assistant/message')
+  if (assistant?.type === 'assistant/message' && assistant.data.message.source?.provider && assistant.data.message.source?.model) {
+    const source = assistant.data.message.source
+    return { options: { provider: source.provider, model: source.model }, label: `${source.provider}/${source.model}` }
+  }
+  throw new Error('Reviewer could not resolve the model from the current session.')
 }
 
 function reviewerModelCandidate(entry: LlmModelInfo): boolean {
@@ -263,7 +259,7 @@ function reviewerModelCandidate(entry: LlmModelInfo): boolean {
 
 async function runReview(ctx: Context, agent: Agent, events: readonly SessionEvent[], turn: number, signal: AbortSignal): Promise<ReviewReport> {
   const settings = ctx.settings.get(REVIEWER_SETTINGS_NS) as ReviewerSettings
-  const model = currentModel(agent, settings)
+  const model = currentModel(agent, events)
   if (model.options?.provider && model.options.model) {
     const models = await ctx.llm.listModels(model.options.provider)
     if (!models.some((entry: LlmModelInfo) => entry.id === model.options?.model && reviewerModelCandidate(entry))) {
@@ -284,7 +280,12 @@ async function runReview(ctx: Context, agent: Agent, events: readonly SessionEve
       prompt: [{ type: 'text', text: prompt }],
       persona: REVIEWER_PERSONA,
       outputSchema: REVIEW_SCHEMA,
-      toolFilter: { allow: ['structured_output'] },
+      // `structured_output` is attached by the in-process spawn driver as a
+      // child-local runtime tool, not a global registry entry. An allow-list
+      // naming it is rejected by tools.restrict() as an unknown global tool.
+      // Keep every global tool out of the reviewer while allowing the driver
+      // to add its scoped structured-output tool after composition.
+      toolFilter: { allow: [] },
       ...(model.options === undefined ? {} : { agentOptions: model.options }),
     })
   } catch (error) {
@@ -312,6 +313,13 @@ function correctionPrompt(report: ReviewReport): string {
 
 export function apply(ctx: Context): void {
   const scope = ctx.settings.register(REVIEWER_SETTINGS_NS, ReviewerSettingsSchema)
+  // Remove legacy fixed-model fields once. They are no longer part of the
+  // public Reviewer contract and could otherwise keep an old incomplete mode
+  // alive in the persisted settings document.
+  const legacy = scope.get()
+  void scope.replace({ autoReview: legacy.autoReview !== false }).catch((error: unknown) => {
+    ctx.logger.warn(`Reviewer settings migration failed: ${error instanceof Error ? error.message : String(error)}`)
+  })
   ctx.on('agent/request', async ({ agent }, next) => {
     const parent = agent.session.header.parentSession
     if (parent === undefined || !ACTIVE_REVIEWER_PARENTS.has(String(parent))) return await next()
@@ -335,7 +343,7 @@ export function apply(ctx: Context): void {
       return report
     } catch (error) {
       const report: ReviewReport = {
-        id: crypto.randomUUID(), turn, summary: error instanceof Error ? error.message : String(error), findings: [], reviewerModel: settings.modelMode === 'fixed' && settings.provider && settings.model ? `${settings.provider}/${settings.model}` : 'unavailable', reviewerBackend: 'spawn', reviewStatus: 'error', evidenceCoverage: 0, coverageGaps: [], correction: 'none', reReviewed: false,
+        id: crypto.randomUUID(), turn, summary: error instanceof Error ? error.message : String(error), findings: [], reviewerModel: 'session', reviewerBackend: 'spawn', reviewStatus: 'error', evidenceCoverage: 0, coverageGaps: [], correction: 'none', reReviewed: false,
       }
       appendReport(agent.session, report)
       ctx.logger.warn(`Reviewer failed for ${String(agent.id)}: ${report.summary}`)
@@ -405,7 +413,7 @@ export function apply(ctx: Context): void {
     if (action !== 'status') return { kind: 'error', text: `Unknown review action: ${action}` }
     const mode = latestMode(agent.session)
     const settings = scope.get()
-    return { kind: 'success', text: `Reviewer ${mode === 'inherit' ? (settings.autoReview ? 'on' : 'off') : mode}; ${settings.modelMode}` }
+    return { kind: 'success', text: `Reviewer ${mode === 'inherit' ? (settings.autoReview ? 'on' : 'off') : mode}; follows the current session model` }
   })
 }
 

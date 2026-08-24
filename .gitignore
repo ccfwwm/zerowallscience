@@ -31,6 +31,8 @@ __pycache__/
 *.pyc
 *.pyo
 .vscode
-mcp-environment-staging/
+mcp-environment-staging/*
+!mcp-environment-staging/sci/
+mcp-environment-staging/sci/*
+!mcp-environment-staging/sci/zerowall-mcp-launcher.cjs
 .secrets/
-

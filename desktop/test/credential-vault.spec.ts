@@ -21,10 +21,12 @@ describe('Electron credential vault', () => {
       vault.set('zerowall.ai-cloud.session', 'session-secret'),
       vault.set('zerowall.ai-cloud.login', 'account-password'),
       vault.set('zerowall.ai-cloud.group.2', 'group-secret'),
+      vault.set('zerowall.mcp.scimaster_api_key', 'scimaster-secret'),
       vault.set('zerowall.wechat.ilink', 'wechat-token'),
     ])
     expect(await vault.get('zerowall.ai-cloud.session')).toBe('session-secret')
     expect(await vault.get('zerowall.wechat.ilink')).toBe('wechat-token')
+    expect(await vault.get('zerowall.mcp.scimaster_api_key')).toBe('scimaster-secret')
     const raw = await readFile(path, 'utf8')
     expect(raw).not.toContain('session-secret')
     expect(raw).not.toContain('account-password')

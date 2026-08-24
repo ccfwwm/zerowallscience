@@ -13,6 +13,7 @@ const version = process.env.ZEROWALL_MCP_ENVIRONMENT_VERSION?.trim()
 if (!version) throw new Error('ZEROWALL_MCP_ENVIRONMENT_VERSION is required.')
 const dist = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_OUTPUT ?? resolve(root, 'desktop', 'dist', 'mcp-environment'))
 const archive = `zerowall-mcp-windows-x64-${version}.zip`
+const overwriteVersionAssets = process.env.ZEROWALL_MCP_OVERWRITE === '1'
 const publicKeys = {
   'stable-1': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAu8wAGfgRWqQBdIGcbkwPlBq01SjgEMybgNh3xVv0ej4=\n-----END PUBLIC KEY-----`,
   'stable-2': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAUvKwSI31zGGut3nRi4kRqZGg8eBJskIrfa8Xmp/7VJw=\n-----END PUBLIC KEY-----`,
@@ -25,7 +26,7 @@ const { signature, ...unsigned } = manifest
 if (!verify(null, Buffer.from(JSON.stringify(unsigned)), publicKeys[signature.keyId], Buffer.from(signature.value, 'base64'))) throw new Error('MCP manifest signature failed local verification.')
 const archiveBytes = await readFile(resolve(dist, archive))
 if (archiveBytes.byteLength !== manifest.archiveSize || createHash('sha256').update(archiveBytes).digest('hex') !== manifest.archiveSha256) throw new Error('MCP archive does not match its signed manifest.')
-const files = [[`stable/mcp-environments/windows-x64/${version}/${archive}`, archive, false], [`stable/mcp-environments/windows-x64/${version}/manifest.json`, `${version}.json`, false], ['stable/mcp-environments/windows-x64/latest.json', 'latest.json', true]]
+const files = [[`stable/mcp-environments/windows-x64/${version}/${archive}`, archive, overwriteVersionAssets], [`stable/mcp-environments/windows-x64/${version}/manifest.json`, `${version}.json`, overwriteVersionAssets], ['stable/mcp-environments/windows-x64/latest.json', 'latest.json', true]]
 const mac = new qiniu.auth.digest.Mac(env.QINIU_ACCESS_KEY, env.QINIU_SECRET_KEY)
 const config = new qiniu.conf.Config(); config.zone = qiniu.zone[`Zone_${env.QINIU_REGION}`] ?? qiniu.zone.Zone_z2
 const uploader = new qiniu.form_up.FormUploader(config)

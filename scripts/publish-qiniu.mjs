@@ -37,9 +37,10 @@ function refresh(urls) {
     : reject(error ?? new Error(`Qiniu CDN refresh failed: HTTP ${info?.statusCode}`))))
 }
 const metadataOnly = process.env.ZEROWALL_QINIU_METADATA_ONLY === '1'
+const overwriteVersionAssets = process.env.ZEROWALL_QINIU_OVERWRITE === '1'
 const objects = metadataOnly
   ? [['stable/latest.yml', 'latest.yml', true], [`stable/releases/${version}/${latest}`, latest, true], ['stable/releases/latest.json', 'releases-latest.json', true], ['stable/releases-zerowallsciencedev/latest.json', 'releases-zerowallsciencedev-latest.json', true]]
-  : [['stable/latest.yml', 'latest.yml', true], [`stable/releases/${version}/${installer}`, installer, false], [`stable/releases/${version}/${blockmap}`, blockmap, false], [`stable/releases/${version}/${latest}`, latest, false], ['stable/releases/latest.json', 'releases-latest.json', true], ['stable/releases-zerowallsciencedev/latest.json', 'releases-zerowallsciencedev-latest.json', true]]
+  : [['stable/latest.yml', 'latest.yml', true], [`stable/releases/${version}/${installer}`, installer, overwriteVersionAssets], [`stable/releases/${version}/${blockmap}`, blockmap, overwriteVersionAssets], [`stable/releases/${version}/${latest}`, latest, overwriteVersionAssets], ['stable/releases/latest.json', 'releases-latest.json', true], ['stable/releases-zerowallsciencedev/latest.json', 'releases-zerowallsciencedev-latest.json', true]]
 if (process.env.ZEROWALL_QINIU_REFRESH_ONLY !== '1') {
   for (const [key, file, overwrite] of objects) {
     await upload(key, file, overwrite)

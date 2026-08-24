@@ -1,15 +1,13 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
 import { reviewerModeDefinition, reviewerReportDefinition } from './definition.js'
 import { ReviewerCard } from './ReviewerCard.tsx'
 import { ReviewerModeAction } from './ReviewerModeAction.tsx'
 import { ReviewerSettings, type ReviewerSettingsValue } from './ReviewerSettings.tsx'
 import { NS } from '@zerowallscience/plugin-base/client-helpers'
 
-export const inject = ['slots', 'conversationEvents', 'settingsScope', 'connection']
+export const inject = ['slots', 'conversationEvents', 'settingsScope']
 
 export function apply(ctx: ClientContext): void {
-  const connection = ctx.get('connection') as ConnectionHandle
   ctx.conversationEvents.register(reviewerReportDefinition)
   ctx.conversationEvents.register(reviewerModeDefinition)
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
@@ -24,6 +22,6 @@ export function apply(ctx: ClientContext): void {
   const scope = ctx.settingsScope.bind<ReviewerSettingsValue>({ namespace: 'zerowall-reviewer' })
   ctx.slots.inject('settings.general.item', () => ctx.slots.register({
     name: 'settings.general.item', id: 'zerowall-reviewer', order: 30, locale: NS,
-    inject: () => ({ scope, api: connection.api }),
+    inject: () => ({ scope }),
   }, ReviewerSettings))
 }

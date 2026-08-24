@@ -68,6 +68,9 @@ interface McpActions {
   updateMcpServer: (id: string, input: McpServerInput) => Promise<McpServerView>
   removeMcpServer: (id: string) => Promise<void>
   reloadMcpServer: (id: string) => Promise<McpServerView>
+  getSciMasterCredentialStatus: () => Promise<{ configured: boolean }>
+  setSciMasterApiKey: (apiKey: string) => Promise<McpServerView | undefined>
+  clearSciMasterApiKey: () => Promise<McpServerView | undefined>
 }
 
 interface Draft {
@@ -94,7 +97,7 @@ type Props = Partial<SidebarFooterActionOwnerProps> & McpActions & PropsLocale<t
 const NEW_SERVER = '__new__'
 
 export function McpConnectionsButton(props: Props) {
-  const { wide = false, embedded = false, listMcpServers, createMcpServer, updateMcpServer, removeMcpServer, reloadMcpServer } = props
+  const { wide = false, embedded = false, listMcpServers, createMcpServer, updateMcpServer, removeMcpServer, reloadMcpServer, getSciMasterCredentialStatus, setSciMasterApiKey, clearSciMasterApiKey } = props
   const [open, setOpen] = useState(embedded)
   const [servers, setServers] = useState<McpServerView[]>([])
   const [selectedId, setSelectedId] = useState(NEW_SERVER)
@@ -103,6 +106,9 @@ export function McpConnectionsButton(props: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [environment, setEnvironment] = useState<{ phase: string; version?: string; progress?: number; message?: string; python?: { ready: boolean; version?: string; message?: string } }>()
+  const [sciMasterConfigured, setSciMasterConfigured] = useState(false)
+  const [sciMasterKey, setSciMasterKey] = useState('')
+  const [sciMasterBusy, setSciMasterBusy] = useState(false)
   const importInput = useRef<HTMLInputElement>(null)
 
   const selected = useMemo(() => servers.find(server => server.id === selectedId), [servers, selectedId])
@@ -140,11 +146,42 @@ export function McpConnectionsButton(props: Props) {
       setEnvironment(status)
       if (status.phase === 'ready' || status.phase === 'manual') void refresh()
     })
+    void getSciMasterCredentialStatus().then(status => setSciMasterConfigured(status.configured)).catch(() => setSciMasterConfigured(false))
     return window.zerowallDesktop?.onMcpEnvironmentStatus?.(status => {
       setEnvironment(status)
       if (status.phase === 'ready' || status.phase === 'manual') void refresh()
     })
-  }, [open, refresh])
+  }, [getSciMasterCredentialStatus, open, refresh])
+
+  const saveSciMasterKey = async () => {
+    if (sciMasterKey.trim() === '') return
+    setSciMasterBusy(true)
+    setError(undefined)
+    try {
+      await setSciMasterApiKey(sciMasterKey)
+      setSciMasterKey('')
+      setSciMasterConfigured(true)
+      await refresh()
+    } catch (reason) {
+      setError(message(reason))
+    } finally {
+      setSciMasterBusy(false)
+    }
+  }
+
+  const clearSciMaster = async () => {
+    setSciMasterBusy(true)
+    setError(undefined)
+    try {
+      await clearSciMasterApiKey()
+      setSciMasterConfigured(false)
+      await refresh()
+    } catch (reason) {
+      setError(message(reason))
+    } finally {
+      setSciMasterBusy(false)
+    }
+  }
 
   const retryEnvironment = async () => {
     const next = await window.zerowallDesktop?.retryMcpEnvironment?.()
@@ -298,6 +335,15 @@ export function McpConnectionsButton(props: Props) {
           {selected?.runtimeError && <p className={css.error} role="alert">{selected.runtimeError}</p>}
           {(selected?.missingEnvironmentVariables.length ?? 0) > 0 && <p className={css.warning}>{props.t('mcp.missing', { names: selected?.missingEnvironmentVariables.join(', ') ?? '' })}</p>}
           {error && <p className={css.error} role="alert">{error}</p>}
+          {selected?.serverName === 'zerowall_managed_scimaster' && <section className={css.form} aria-label={props.t('mcp.sciMasterSettings')}>
+            <div className={css.settingRow}><strong>{props.t('mcp.sciMasterApiKey')}</strong><span>{sciMasterConfigured ? props.t('mcp.sciMasterConfigured') : props.t('mcp.sciMasterMissing')}</span></div>
+            <div className={css.settingRow}>
+              <input type="password" value={sciMasterKey} onChange={event => setSciMasterKey(event.target.value)} placeholder={props.t('mcp.sciMasterApiKeyPlaceholder')} autoComplete="off" />
+              <button type="button" className={css.saveButton} onClick={() => void saveSciMasterKey()} disabled={sciMasterBusy || sciMasterKey.trim() === ''}>{props.t('mcp.sciMasterSave')}</button>
+              {sciMasterConfigured && <button type="button" onClick={() => void clearSciMaster()} disabled={sciMasterBusy}>{props.t('mcp.sciMasterClear')}</button>}
+            </div>
+            <a href="https://scimaster.bohrium.com/vibe-write/home" target="_blank" rel="noreferrer">{props.t('mcp.sciMasterGetKey')}</a>
+          </section>}
           <div className={css.form}>
             <div className={css.twoColumns}>
               <Field label={props.t('common.name')}><input value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} placeholder="Literature tools" /></Field>
