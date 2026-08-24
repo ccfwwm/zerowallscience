@@ -202,6 +202,7 @@ export class AiCloudClient {
           // itself. Keeping the protocol-specific base here avoids the
           // erroneous `/v1/v1/messages` URL for Claude routes.
           baseUrl: modelBaseUrl(session.baseUrl, modelId),
+          ...(isImageGenerationGroup(group.name) ? { capability: 'image-generation' as const } : {}),
         })
       }
     }
@@ -329,7 +330,15 @@ export class AiCloudClient {
     if (!this.bases.includes(parsed.baseUrl) || typeof parsed.accessToken !== 'string' || parsed.accessToken.length === 0) {
       throw new Error('Stored AI Cloud session is invalid.')
     }
-    return { ...parsed, models: parsed.models.map(model => ({ ...model, providerId: managedProviderId(model.groupId, model.modelId) })) }
+    return {
+      ...parsed,
+      models: parsed.models.map(model => ({
+        ...model,
+        providerId: managedProviderId(model.groupId, model.modelId),
+        ...(model.capability === 'image-generation' || isImageGenerationGroup(model.groupName)
+          ? { capability: 'image-generation' as const } : {}),
+      })),
+    }
   }
 
   private async loadLogin(): Promise<StoredLogin | undefined> {
@@ -411,6 +420,10 @@ export class AiCloudClient {
     if (!response.ok) throw new GatewayHttpError(response.status, errorMessage(response.status, body))
     return body
   }
+}
+
+function isImageGenerationGroup(name: string): boolean {
+  return name.trim().includes('生图')
 }
 
 interface RequestOptions { method?: 'POST'; body?: Record<string, unknown>; token?: string }

@@ -59,7 +59,7 @@ describe('Reviewer transcript and trigger policy', () => {
   it('marks empty tool results as evidence gaps instead of full coverage', () => {
     const callId = CallId('call-empty')
     const empty = event('tool/result', 0, { turn: 1, step: 1, message: createToolResultMessage({ callId, content: [], isError: false }) })
-    expect(assessEvidence([empty])).toEqual({ coverage: 0, gaps: ['tool result at seq 0 has no inspectable output'] })
+    expect(assessEvidence([empty])).toEqual({ coverage: 0, gaps: ['工具结果（序号 0）没有可检查的输出'] })
   })
 
   it('keeps findings whose cited evidence cannot be verified', () => {
@@ -72,7 +72,7 @@ describe('Reviewer transcript and trigger policy', () => {
     expect(report.findings[0]?.evidenceStatus).toBe('unverified')
     expect(report.findings[0]?.verdict).toBe('inconclusive')
     expect(report.reviewStatus).toBe('unreviewable')
-    expect(report.coverageGaps[0]).toContain('did not quote')
+    expect(report.coverageGaps[0]).toContain('没有引用')
   })
 
   it('normalizes copied evidence and keeps the transcript source text', () => {
@@ -98,7 +98,7 @@ describe('Reviewer transcript and trigger policy', () => {
       { messageIndex: 0, claim: 'wrong two', evidence: 'missing', fix: 'fix', verdict: 'fail', severity: 'high' },
     ] }, 'mock/model', { coverage: 100, gaps: [] }, 1, transcript)
     expect(report.findings).toHaveLength(2)
-    expect(report.coverageGaps.filter(gap => gap.includes('msg:0'))).toHaveLength(1)
+    expect(report.coverageGaps.filter(gap => gap.includes('问题 1'))).toHaveLength(1)
     expect(report.citationCoverage).toBe(0)
     expect(canAutoCorrect(report)).toBe(false)
   })

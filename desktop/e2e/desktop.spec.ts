@@ -13,7 +13,6 @@ let application: ChildProcessWithoutNullStreams
 let browser: Browser
 let page: Page
 let root: string
-let loginFirstRunVerified = false
 
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'zerowall-electron-e2e-')); roots.push(root)
@@ -35,11 +34,7 @@ beforeAll(async () => {
   if (!context) throw new Error('Electron did not expose a browser context')
   page = await waitForMainPage(context, application, 150_000)
   await page.getByText('ZeroWall Science', { exact: true }).first().waitFor({ state: 'visible', timeout: 150_000 })
-  const login = page.getByRole('dialog', { name: '登录或注册' })
-  await login.waitFor({ state: 'visible', timeout: 30_000 })
-  loginFirstRunVerified = await login.getByText(/自动发现并配置当前账户可用的模型/).isVisible()
-  await login.getByRole('button', { name: '暂时跳过' }).click()
-  await login.waitFor({ state: 'hidden' })
+  await expect.poll(() => page.getByRole('dialog', { name: '登录或注册' }).count()).toBe(0)
 })
 
 afterAll(async () => {
@@ -61,7 +56,6 @@ afterEach(async () => {
 describe('ZeroWall Science Electron', () => {
   it('loads a direct, sandboxed, fully ZeroWall-branded Renderer', async () => {
     expect(page.url()).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/)
-    expect(loginFirstRunVerified).toBe(true)
     expect(await page.locator('iframe').count()).toBe(0)
     expect(await page.getByText('ZeroWall Science', { exact: true }).count()).toBeGreaterThanOrEqual(2)
     expect(await page.getByText(/DeepSeek Harness/i).count()).toBe(0)

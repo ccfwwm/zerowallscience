@@ -60,12 +60,17 @@ export function UpdateButton(props: Props) {
     else await check()
   }
   const busy = status.phase === 'checking' || status.phase === 'downloading'
-  const title = status.phase === 'available' || status.phase === 'downloaded' ? props.t('update.available') : props.t('update.title')
+  const hasUpdate = status.phase === 'available' || status.phase === 'downloaded'
+  const title = hasUpdate ? props.t('update.available') : props.t('update.title')
+  const triggerLabel = hasUpdate ? props.t('update.newVersion') : props.t('update.trigger')
 
   return <>
-    <button className={css.trigger} type="button" onClick={() => { setOpen(true); void check() }} title={props.t('update.trigger')} aria-label={props.t('update.trigger')} data-update={status.phase}>
-      <ArrowUpCircle size={18} aria-hidden="true" />{props.wide && <span>{props.t('update.nav')}</span>}
-      {(status.phase === 'available' || status.phase === 'downloaded') && <i aria-hidden="true" />}
+    {hasUpdate && <button className={css.statusBar} type="button" onClick={() => setOpen(true)} role="status">
+      <Download size={16} aria-hidden="true" /><span>{props.t('update.versionAvailable', { version: status.version ?? '' })}</span><strong>{status.phase === 'downloaded' ? props.t('update.restart') : props.t('update.newVersion')}</strong>
+    </button>}
+    <button className={`${css.trigger} ${hasUpdate ? css.triggerAvailable : ''}`} type="button" onClick={() => { setOpen(true); if (!hasUpdate) void check() }} title={triggerLabel} aria-label={triggerLabel} data-update={status.phase}>
+      <ArrowUpCircle size={18} aria-hidden="true" />{props.wide && <span>{hasUpdate ? props.t('update.newVersion') : props.t('update.nav')}</span>}
+      {hasUpdate && <i aria-hidden="true" />}
     </button>
     {open && createPortal(<div className={css.backdrop} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false) }}>
       <section className={css.panel} role="dialog" aria-modal="true" aria-labelledby="zerowall-update-title">

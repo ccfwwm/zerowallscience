@@ -7,6 +7,7 @@ const zerowallVersion = String(JSON.parse(readFileSync(new URL('../../package.js
 export interface ZeroWallBundleOptions {
   host?: boolean
   client?: boolean
+  hostAlwaysBundle?: RegExp[]
 }
 
 export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) {
@@ -23,6 +24,9 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
       fixedExtension: false,
       dts: false,
       clean: false,
+      ...options.hostAlwaysBundle === undefined ? {} : {
+        deps: { alwaysBundle: options.hostAlwaysBundle },
+      },
       plugins: [typertPlugin({ mode: 'package', faces: ['host'] })],
     })
   }

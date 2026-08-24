@@ -12,6 +12,8 @@ const zerowallPackageRoots = [
   ...await pluginRoots(resolve(root, 'plugins')),
 ]
 const desktopRuntimeSeeds = [
+  '@deepseek-ai/dsh-subagent-claude-code',
+  '@deepseek-ai/dsh-subagent-codex',
   '@earendil-works/pi-ai',
   '@modelcontextprotocol/sdk',
   '@pdf-lib/fontkit',
@@ -35,7 +37,9 @@ const workspacePackages = new Map()
 
 for (const manifestPath of await findPackageManifests(dshRoot)) {
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
-  if (dshNames.has(manifest.name)) workspacePackages.set(manifest.name, { manifest, manifestPath, sourceRoot: dirname(manifestPath) })
+  if (dshNames.has(manifest.name) || desktopRuntimeSeeds.includes(manifest.name)) {
+    workspacePackages.set(manifest.name, { manifest, manifestPath, sourceRoot: dirname(manifestPath) })
+  }
 }
 for (const sourceRoot of zerowallPackageRoots) {
   const manifestPath = resolve(sourceRoot, 'package.json')

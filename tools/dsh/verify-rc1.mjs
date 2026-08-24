@@ -12,5 +12,5 @@ if (manifest.version !== expected.version) throw new Error(`DSH version must be 
 if (commit !== expected.commit) throw new Error(`DSH commit must be ${expected.commit}, received ${commit}`)
 if (status !== '') throw new Error('dsh/source must be clean; commit DSH adaptations before building a release.')
 const upstreamBase = execFileSync('git', ['merge-base', 'HEAD', expected.upstreamCommit], { cwd: source, encoding: 'utf8' }).trim()
-if (upstreamBase !== expected.upstreamCommit) throw new Error(`DSH must derive from upstream rc1 ${expected.upstreamCommit}; merge-base is ${upstreamBase}`)
-console.log(`Verified DSH ${manifest.version} at ${commit}, based on upstream rc1 ${expected.upstreamCommit}.`)
+if (upstreamBase !== expected.upstreamCommit) throw new Error(`DSH must derive from upstream rc2 ${expected.upstreamCommit}; merge-base is ${upstreamBase}`)
+console.log(`Verified DSH ${manifest.version} at ${commit}, based on upstream rc2 ${expected.upstreamCommit}.`)

@@ -5,7 +5,7 @@
 - Node.js 24.9.0
 - pnpm 11.7.0
 - Electron 43.4.0
-- DSH 0.1.1-rc.1，ZeroWall fork 提交 `23f001ff3f953d33827ba099ba6476c8ec3fc7d6`，上游 rc1 基线 `528c682e061696f5a160f363f236ecbf53cbd006`
+- DSH 0.1.1-rc.2，ZeroWall fork 当前基于上游提交 `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`
 
 首次拉取必须包含子模块，然后使用锁文件安装：
 
@@ -16,17 +16,17 @@ pnpm install --frozen-lockfile
 
 ## 修改 DSH 源码
 
-DSH 适配一律直接修改 `dsh/source` 源码，仓库不使用补丁文件。`dsh/source` 是指向 ZeroWall fork（`zerowall` remote，分支 `zerowall-rc1`）的 submodule，`pnpm dsh:verify-rc1` 要求工作区干净、HEAD 与锁文件一致、且仍派生自上游 rc1，因此修改必须先落成提交：
+DSH 适配一律直接修改 `dsh/source` 源码，仓库不使用补丁文件。`dsh/source` 是指向 ZeroWall fork（`zerowall` remote，分支 `zerowall-rc2`）的 submodule，`pnpm dsh:verify` 要求工作区干净、HEAD 与锁文件一致、且仍派生自上游 rc2，因此修改必须先落成提交：
 
 ```bash
 cd dsh/source
 git add -A
 git commit -m "..."
-git push zerowall zerowall-rc1
+git push zerowall zerowall-rc2
 git rev-parse HEAD
 ```
 
-把新的 commit 写入 `dsh/lock/upstream.json` 的 `commit` 字段，再在父仓库 `git add dsh/source` 更新 gitlink，最后运行 `pnpm dsh:verify-rc1` 确认 pin 一致。`upstreamCommit` 与 `tag` 只在整体升级上游基线时才改动，且需要独立评审。
+把新的 commit 写入 `dsh/lock/upstream.json` 的 `commit` 字段，再在父仓库 `git add dsh/source` 更新 gitlink，最后运行 `pnpm dsh:verify` 确认 pin 一致。`upstreamCommit` 与 `tag` 应与上游 release 一致。
 
 ## 本地验证
 
@@ -39,7 +39,7 @@ pnpm package:dir
 
 `package:dir` 生成 Preview 的解包目录并执行真实 Host 启动、运行时闭包、Skills、许可证和回环 HTTP 检查。Windows 安装包使用 `pnpm package:win`；Stable 使用 `pnpm package:stable:win`。
 
-完整验证只覆盖 4.1 的 Node/Electron/DSH 构建图，不调用 Rust、Cargo、Tauri 或 Leptos 工具链。Agent 组合修改还需运行 `pnpm test:dsh:rc1`。
+完整验证只覆盖 4.1 的 Node/Electron/DSH 构建图，不调用 Rust、Cargo、Tauri 或 Leptos 工具链。Agent 组合修改还需运行 `pnpm test:dsh:rc2`。
 
 ## macOS
 

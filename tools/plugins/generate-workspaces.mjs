@@ -50,6 +50,7 @@ const dshDependencies = {
 }
 
 const npmDependencies = {
+  opencode: {},
   base: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0' },
   projects: { '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   account: { qrcode: '^1.5.4', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
@@ -72,6 +73,7 @@ const npmDependencies = {
 }
 
 const plugins = [
+  { id: 'opencode', capabilities: ['llm.free', 'llm.discovery'], permissions: ['network'] },
   { id: 'base', client: true, clientExternal: [], capabilities: ['ui.locale', 'ui.update'], permissions: [], requiredServices: [], optionalServices: ['updater'] },
   { id: 'desktop-compat', capabilities: ['desktop.profiles', 'desktop.plugins'], permissions: [], requiredServices: [], optionalServices: ['desktopProfiles', 'desktopPnpm'] },
   { id: 'secrets', capabilities: ['credentials.read', 'credentials.write'], permissions: ['credentials'], requiredServices: [], optionalServices: ['credentialBroker'] },
@@ -129,7 +131,7 @@ for (const plugin of plugins) {
       ...(plugin.client ? { './client': { types: './src/client/index.ts', default: './lib/client.js' } } : {}),
       ...(plugin.id === 'base' ? { './client-helpers': './src/shared/client-helpers.ts' } : {}),
       ...(plugin.remote ? {
-        // DSH rc1 Typert composition discovers remote contracts through these
+        // DSH rc2 Typert composition discovers remote contracts through these
         // generated faces. Without the exports the generator intentionally
         // skips typert.host/remote artifacts and the Web client waits forever
         // for remote.* services even though the Host plugin itself starts.
@@ -151,7 +153,7 @@ for (const plugin of plugins) {
       } : {}),
     },
     zerowall: {
-      dsh: { min: '0.1.1-rc.1', max: '0.1.1-rc.1' },
+      dsh: { min: '0.1.1-rc.2', max: '0.1.1-rc.2' },
       requiredServices: plugin.requiredServices ?? [],
       optionalServices: plugin.optionalServices ?? [],
       capabilities: plugin.capabilities,
@@ -238,7 +240,9 @@ for (const plugin of plugins) {
   await writeFile(resolve(dir, 'tsdown.config.ts'), [
     "import { zerowallBundle } from '../../tools/plugins/tsdown.ts'",
     '',
-    `export default zerowallBundle('${name}', { host: true, client: ${plugin.client === true} })`,
+    `export default zerowallBundle('${name}', { host: true, client: ${plugin.client === true}${plugin.id === 'ai-cloud'
+      ? String.raw`, hostAlwaysBundle: [/^@deepseek-ai\/dsh-llm-pi-ai\/src\/config\.ts$/u, /llm-pi-ai[\\/]src[\\/]config\.ts$/u]`
+      : ''} })`,
     '',
   ].join('\n'))
   if (plugin.client) {

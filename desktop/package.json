@@ -1,7 +1,7 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "4.1.14",
-  "description": "ZeroWall Science 4.1 local-first scientific research workbench.",
+  "version": "4.2.1",
+  "description": "ZeroWall Science 4.2 local-first scientific research workbench.",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",

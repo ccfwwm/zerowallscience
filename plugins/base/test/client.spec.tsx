@@ -40,7 +40,7 @@ describe('desktop update button', () => {
     expect(await screen.findByRole('dialog', { name: '发现新版本' })).toBeTruthy()
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: '发现新版本' })).toBeNull()
-    expect(screen.getByRole('button', { name: '检查应用更新' }).isConnected).toBe(true)
+    expect(screen.getByRole('button', { name: '有新版本' }).isConnected).toBe(true)
   })
 
   it('downloads an available update and installs only after explicit confirmation', async () => {

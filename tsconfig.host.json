@@ -1,8 +1,30 @@
 {
   "extends": "./dsh/source/tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@deepseek-ai/cordis": ["dsh/source/vendor/cordis/src/index.ts"],
+      "@deepseek-ai/dsh-typert-protocol": ["dsh/source/packages/typert/protocol/src/index.ts"],
+      "@zerowallscience/research-store": ["store/src/index.ts"],
+      "@zerowallscience/research-store/types": ["store/src/index.ts"],
+      "@zerowallscience/plugin-*/types": ["plugins/*/src/shared/types.ts"],
+      "@zerowallscience/plugin-*": ["plugins/*/src/host/index.ts"]
+    }
+  },
   "files": [],
   "references": [
+    { "path": "./dsh/source/packages/typert/protocol" },
     { "path": "./store" },
-    { "path": "./desktop" }
+    { "path": "./desktop" },
+    { "path": "./plugins/account/tsconfig.host.json" },
+    { "path": "./plugins/execution/tsconfig.host.json" },
+    { "path": "./plugins/files/tsconfig.host.json" },
+    { "path": "./plugins/mcp/tsconfig.host.json" },
+    { "path": "./plugins/presentations/tsconfig.host.json" },
+    { "path": "./plugins/projects/tsconfig.host.json" },
+    { "path": "./plugins/publications/tsconfig.host.json" },
+    { "path": "./plugins/research/tsconfig.host.json" },
+    { "path": "./plugins/runs/tsconfig.host.json" },
+    { "path": "./plugins/skills/tsconfig.host.json" }
   ]
 }

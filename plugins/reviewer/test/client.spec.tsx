@@ -20,9 +20,11 @@ describe('Reviewer UI projection', () => {
     render(<ReviewerCard node={{ data: report } as never} t={translator()} {...({} as never)} />)
     expect(screen.getByText('需要修正')).toBeTruthy()
     expect(screen.getByText('mock/reviewer')).toBeTruthy()
-    expect(screen.getByText('工具证据完整度 100%')).toBeTruthy()
-    expect(screen.getByText('引用核验覆盖率 100%')).toBeTruthy()
-    expect(screen.getByText('[msg:3] The output says five.')).toBeTruthy()
+    expect(screen.getByText('工具证据')).toBeTruthy()
+    expect(screen.getByText('引用核验')).toBeTruthy()
+    expect(screen.getByText('对应消息：第 4 条')).toBeTruthy()
+    expect(screen.getByText('问题说明')).toBeTruthy()
+    expect(screen.getByText('修正建议')).toBeTruthy()
   })
 
   it('folds a re-review event into the original report context', () => {

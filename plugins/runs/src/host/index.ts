@@ -3,7 +3,8 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { dirname, join } from 'node:path'
 import { ResearchStore } from '@zerowallscience/research-store'
 import type { RunRecord } from '@zerowallscience/research-store/types'
-import { RunManager, type RunSubmission } from './manager.js'
+import { RunManager } from './manager.js'
+import type { RunSubmission } from '../shared/types.js'
 import type {} from 'zod'
 
 declare module '@deepseek-ai/cordis' { interface Context { zerowallRuns: ZeroWallRunsService } }
@@ -38,4 +39,4 @@ export function apply(ctx: Context): void {
 }
 
 export default { apply }
-export type { RunSubmission } from './manager.js'
+export type { RunSubmission } from '../shared/types.js'

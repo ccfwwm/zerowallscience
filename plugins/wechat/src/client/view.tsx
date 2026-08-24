@@ -77,6 +77,8 @@ function statusOf(
         dot: 'done',
         text: `已连通：${payload.user?.name ?? payload.state.userName}`,
       }
+    case 'failed':
+      return { dot: 'error', text: payload.state.message }
   }
 }
 
@@ -453,6 +455,12 @@ function WechatDialog(props: {
 
           {(state === undefined || state.kind === 'none') && (
             <div className="dsh-weixin-clawbot-qr-hint">等待微信后端就绪后显示二维码…</div>
+          )}
+          {state?.kind === 'failed' && (
+            <div className="dsh-weixin-clawbot-qr-hint">
+              <span>{state.message}</span>
+              <button type="button" className="dsh-weixin-clawbot-linkbtn" onClick={() => void postJson('/wechat/retry').then(props.refresh)}>重试</button>
+            </div>
           )}
         </div>
 

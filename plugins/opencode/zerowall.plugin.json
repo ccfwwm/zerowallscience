@@ -1,0 +1,28 @@
+{
+  "name": "@zerowallscience/plugin-opencode",
+  "version": "4.2.1",
+  "dsh": {
+    "min": "0.1.1-rc.2",
+    "max": "0.1.1-rc.2"
+  },
+  "host": "./lib/index.js",
+  "requiredServices": [],
+  "optionalServices": [],
+  "capabilities": [
+    "llm.free",
+    "llm.discovery"
+  ],
+  "permissions": [
+    "network"
+  ],
+  "network": true,
+  "files": false,
+  "credentials": false,
+  "approvals": false,
+  "profiles": [
+    "development",
+    "preview",
+    "stable"
+  ],
+  "migrationVersion": 1
+}

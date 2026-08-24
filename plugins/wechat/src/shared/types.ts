@@ -8,6 +8,7 @@ export type WechatQrState =
   | { kind: 'none' }
   | { kind: 'scan'; qrcode: string; status: number; png: string; verifyCode?: 'needed' | 'wrong' | 'blocked' }
   | { kind: 'logged-in'; userId: string; userName: string }
+  | { kind: 'failed'; message: string }
 
 export type WechatQrPayload = {
   ok: boolean

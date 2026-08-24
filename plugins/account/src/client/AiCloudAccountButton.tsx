@@ -87,7 +87,9 @@ export function AiCloudAccountButton(props: Props) {
   useEffect(() => {
     if (firstCheck.current) return
     firstCheck.current = true
-    void refresh().then(next => { if (next?.status !== 'signedIn') setOpen(true) })
+    // Account setup is optional. OpenCode Zen provides the anonymous default,
+    // so a signed-out first launch must remain on the conversation surface.
+    void refresh()
   }, [refresh])
 
   useEffect(() => {

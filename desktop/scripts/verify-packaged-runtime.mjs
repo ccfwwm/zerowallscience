@@ -14,7 +14,7 @@ const repositoryRoot = resolve(packageRoot, '..')
 
 if (process.argv.includes('--audit-source')) {
   await verifySourceRuntimePolicy()
-  console.log('ZeroWall source runtime policy verified for DSH rc1 and iLink-only WeChat.')
+  console.log('ZeroWall source runtime policy verified for DSH rc2 and iLink-only WeChat.')
   process.exit(0)
 }
 
@@ -35,6 +35,8 @@ const requiredArchivePaths = [
   'runtime/runtime-esm-loader.mjs',
   'node_modules/@deepseek-ai/dsh/lib/bin.js',
   'node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js',
+  'node_modules/@deepseek-ai/dsh-subagent-claude-code/lib/index.js',
+  'node_modules/@deepseek-ai/dsh-subagent-codex/lib/index.js',
   'node_modules/@deepseek-ai/dsh-client-ui-user-questions/lib/client.js',
   'node_modules/@deepseek-ai/schemastery/lib/index.mjs',
   'node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js',
@@ -42,6 +44,7 @@ const requiredArchivePaths = [
   'node_modules/@pdf-lib/fontkit/dist/fontkit.es.js',
   'node_modules/@deepseek-ai/cordis-plugin-group/lib/index.js',
   'node_modules/@zerowallscience/plugin-base/lib/client.js',
+  'node_modules/@zerowallscience/plugin-opencode/lib/index.js',
   'node_modules/@zerowallscience/plugin-projects/lib/index.js',
   'node_modules/@zerowallscience/plugin-files/lib/index.js',
   'node_modules/@zerowallscience/plugin-python/lib/index.js',
@@ -90,7 +93,7 @@ function verifyArchivePolicy() {
   if (nativeMismatch.length > 0) throw new Error(`Non-Windows-x64 native files found in ASAR:\n${nativeMismatch.join('\n')}`)
 
   const pluginNames = [
-    'base', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp',
+    'base', 'opencode', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp',
     'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat',
   ]
   for (const name of [...pluginNames.map(value => `plugin-${value}`), 'research-store']) {
@@ -105,7 +108,7 @@ function verifyArchivePolicy() {
 
   if (!/^4\.\d+\.\d+$/u.test(packagedManifest.version)) throw new Error(`Packaged desktop version must be a 4.x release; found ${packagedManifest.version}.`)
   const dshManifest = JSON.parse(readArchiveFile('node_modules/@deepseek-ai/dsh/package.json').toString('utf8'))
-  if (dshManifest.version !== '0.1.1-rc.1') throw new Error(`Packaged DSH must be 0.1.1-rc.1; found ${dshManifest.version}.`)
+  if (dshManifest.version !== '0.1.1-rc.2') throw new Error(`Packaged DSH must be 0.1.1-rc.2; found ${dshManifest.version}.`)
 }
 
 function verifyQuestionComposerBundle() {
@@ -173,8 +176,10 @@ async function verifyImports() {
     ]);
     for (const name of [
       '@zerowallscience/plugin-base',
+      '@zerowallscience/plugin-opencode',
       '@zerowallscience/plugin-projects',
       '@zerowallscience/plugin-account',
+      '@zerowallscience/plugin-ai-cloud',
       '@zerowallscience/plugin-files',
       '@zerowallscience/plugin-images',
       '@zerowallscience/plugin-mcp',
@@ -324,19 +329,26 @@ async function verifyHostStartup() {
         // Expected while the packaged Host binds its loopback endpoint.
       }
       if (response !== undefined && response.status >= 200 && response.status < 500) {
-        await verifyWebBootManifest(url)
-        await verifyPluginInventory(url)
-        await verifyEventWebSockets(url)
-        await verifyPlaintextSessionPersistence(url, root)
-        // DSH binds the loopback server before every asynchronous Loader row
-        // has settled. Keep the process alive long enough to catch a plugin
-        // that briefly reports active and then fails during its apply phase.
-        await new Promise(resolvePromise => setTimeout(resolvePromise, 2_000))
-        if (child.exitCode !== null) throw new Error(`Packaged Host exited after becoming ready.\n${output.slice(-12_000)}`)
-        await verifyWebBootManifest(url)
-        await verifyPluginInventory(url)
-        await verifyEventWebSockets(url)
-        return
+        try {
+          await verifyWebBootManifest(url)
+          await verifyPluginInventory(url)
+          await verifyEventWebSockets(url)
+          await verifyPlaintextSessionPersistence(url, root)
+          // DSH binds the loopback server before every asynchronous Loader row
+          // has settled. Keep the process alive long enough to catch a plugin
+          // that briefly reports active and then fails during its apply phase.
+          await new Promise(resolvePromise => setTimeout(resolvePromise, 2_000))
+          if (child.exitCode !== null) throw new Error(`Packaged Host exited after becoming ready.\n${output.slice(-12_000)}`)
+          await verifyWebBootManifest(url)
+          await verifyPluginInventory(url)
+          await verifyEventWebSockets(url)
+          return
+        } catch (error) {
+          if (!isTransientHostProbeError(error) || child.exitCode !== null) {
+            const reason = error instanceof Error ? error.stack ?? error.message : String(error)
+            throw new Error(`Packaged Host verification failed.\n${reason}\n${output.slice(-12_000)}`)
+          }
+        }
       }
       await new Promise(resolvePromise => setTimeout(resolvePromise, 250))
     }
@@ -344,6 +356,16 @@ async function verifyHostStartup() {
   } finally {
     if (child.exitCode === null) child.kill('SIGTERM')
   }
+}
+
+function isTransientHostProbeError(error) {
+  for (let current = error; current !== undefined && current !== null; current = current.cause) {
+    if (current instanceof DOMException && ['AbortError', 'TimeoutError'].includes(current.name)) return true
+    if (current instanceof TypeError && current.message === 'fetch failed') return true
+    if (current instanceof Error && /^Packaged Host WebSocket (?:failed to open|timed out): /u.test(current.message)) return true
+    if (typeof current === 'object' && ['UND_ERR_SOCKET', 'ECONNRESET', 'ECONNREFUSED'].includes(current.code)) return true
+  }
+  return false
 }
 
 async function verifyEventWebSockets(url) {
@@ -405,8 +427,8 @@ async function verifyPluginInventory(url) {
   }
   const entries = envelope.result.value.entries
   const expected = [
-    'base', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp',
-    'skills', 'reviewer', 'research', 'execution', 'runs', 'publications', 'presentations', 'web-search', 'wechat',
+    'base', 'opencode', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp',
+    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat',
   ].map(name => `@zerowallscience/plugin-${name}`)
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
   const missing = expected.filter(name => !byModule.has(name))
@@ -419,7 +441,7 @@ async function verifyWebBootManifest(url) {
   const response = await fetch(url, { signal: AbortSignal.timeout(10_000) })
   if (!response.ok) throw new Error(`Packaged Host index returned HTTP ${response.status}.`)
   const html = await response.text()
-  // DSH rc1 injects the boot graph as `globalThis["__DSH_BOOT__"]`; earlier
+  // DSH rc2 injects the boot graph as `globalThis["__DSH_BOOT__"]`; earlier
   // releases assigned `window.__DSH_BOOT__`. Accept either spelling, and take
   // everything up to the closing tag so a nested object is not truncated.
   const match = /(?:window\.__DSH_BOOT__|globalThis\[["']__DSH_BOOT__["']\])\s*=\s*(\{[\s\S]*?\})\s*;?<\/script>/u.exec(html)
@@ -512,10 +534,10 @@ async function verifyDesktopStartup() {
       if (!ids.includes(id)) throw new Error(`Packaged desktop Web boot is missing ${id}.`)
     }
     try {
-      await page.getByText('ZeroWallScience', { exact: false }).first().waitFor({ state: 'visible', timeout: 30_000 })
+      await page.getByText('ZeroWall Science', { exact: true }).first().waitFor({ state: 'visible', timeout: 30_000 })
     } catch (error) {
       const snapshot = (await page.locator('body').innerText().catch(() => '')).slice(0, 4_000)
-      throw new Error(`Packaged desktop did not render the ZeroWallScience brand. body=${JSON.stringify(snapshot)} errors=${JSON.stringify(browserErrors.slice(-20))}\n${error.message}`)
+      throw new Error(`Packaged desktop did not render the ZeroWall Science brand. body=${JSON.stringify(snapshot)} errors=${JSON.stringify(browserErrors.slice(-20))}\n${error.message}`)
     }
     const bodyText = await page.locator('body').innerText()
     if (/Failed to load plugins|missed the module table|Cannot use import statement outside a module/iu.test(bodyText)) {
@@ -661,11 +683,11 @@ function readArchiveFile(path) {
 
 async function verifySourceRuntimePolicy() {
   const upstream = JSON.parse(await readFile(resolve(repositoryRoot, 'dsh', 'lock', 'upstream.json'), 'utf8'))
-  if (upstream.version !== '0.1.1-rc.1' || upstream.tag !== 'dsh-v0.1.1-rc.1') {
-    throw new Error(`Pinned DSH must be rc1; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
+  if (upstream.version !== '0.1.1-rc.2' || upstream.tag !== 'dsh-v0.1.1-rc.2') {
+    throw new Error(`Pinned DSH must be rc2; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
   }
   const sourceDsh = JSON.parse(await readFile(resolve(repositoryRoot, 'dsh', 'source', 'package.json'), 'utf8'))
-  if (sourceDsh.version !== '0.1.1-rc.1') throw new Error(`DSH source package must be rc1; found ${sourceDsh.version}.`)
+  if (sourceDsh.version !== '0.1.1-rc.2') throw new Error(`DSH source package must be rc2; found ${sourceDsh.version}.`)
 
   for (const oldPath of ['apps/desktop', 'vendor/deepseek-harness', 'packages/platform-host', 'packages/platform-client']) {
     try {

@@ -1,9 +1,10 @@
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import css from './ReviewerModeAction.module.css'
 import type { ReviewerMode, ReviewerModeData } from './definition.js'
+import { NS } from '@zerowallscience/plugin-base/client-helpers'
 
-type ReviewerModeActionProps = PropsRuntime<'conversation.session.header.actions'>
+type ReviewerModeActionProps = PropsRuntime<'conversation.session.header.actions'> & PropsLocale<typeof NS>
 
 function latestMode(nodes: readonly { kind: string; anchorSeq?: number; data: unknown }[]): ReviewerMode {
   let mode: ReviewerMode = 'inherit'
@@ -19,17 +20,17 @@ function latestMode(nodes: readonly { kind: string; anchorSeq?: number; data: un
   return mode
 }
 
-export function ReviewerModeAction({ useSession, inputActions }: ReviewerModeActionProps) {
+export function ReviewerModeAction({ useSession, inputActions, t }: ReviewerModeActionProps) {
   const mode = useSession(snapshot => latestMode(snapshot.chat.nodes as unknown as readonly { kind: string; anchorSeq?: number; data: unknown }[]))
   const choose = (next: ReviewerMode): void => {
     inputActions.setDraft(`/review ${next}`)
     inputActions.submit()
   }
   return (
-    <div className={css.group} role="group" aria-label="Reviewer mode">
+    <div className={css.group} role="group" aria-label={t('reviewer.mode.aria')}>
       {(['inherit', 'on', 'off'] as const).map(item => (
         <button key={item} type="button" className={css.button} data-active={mode === item ? 'true' : undefined} aria-pressed={mode === item} onClick={() => { choose(item) }}>
-          {item}
+          {t(`reviewer.mode.${item}`)}
         </button>
       ))}
     </div>

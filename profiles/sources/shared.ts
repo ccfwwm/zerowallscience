@@ -1,5 +1,6 @@
 export const bundledPlugins = [
   '@zerowallscience/plugin-base',
+  '@zerowallscience/plugin-opencode',
   '@zerowallscience/plugin-secrets',
   '@zerowallscience/plugin-desktop-compat',
   '@zerowallscience/plugin-projects',

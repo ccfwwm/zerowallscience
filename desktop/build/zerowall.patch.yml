@@ -46,6 +46,24 @@
   config:
     searchProvider: zerowall-ai-cloud-search
 
+# OpenCode Zen is the anonymous, free default. Its adapter omits
+# Authorization when OPENCODE_API_KEY is absent and refreshes the free catalog
+# in the background, so the first conversation never depends on account setup.
+- id: session-title-llm
+  config:
+    targetWords: 5
+    targetCjkCharacters: 10
+    maxInputBytes: 4096
+    maxOutputTokens: 64
+    timeoutMs: 60000
+    provider: opencode-zen
+    model: big-pickle
+
+- id: agent-default-model
+  config:
+    provider: opencode-zen
+    model: big-pickle
+
 # Both local coding assistants are installed on the desktop and their DSH
 # provider bundles are part of the runtime closure. Keep their tools enabled
 # in every preset; they still fail closed when the local CLI is unavailable.
@@ -104,6 +122,9 @@
 
     - id: zerowall-ai-cloud-llm
       name: '@zerowallscience/plugin-ai-cloud'
+
+    - id: zerowall-opencode
+      name: '@zerowallscience/plugin-opencode'
 
     - id: zerowall-web-search
       name: '@zerowallscience/plugin-web-search'

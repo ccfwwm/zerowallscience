@@ -38,7 +38,7 @@ function signedIn() {
     balanceFreshness: 'current' as const,
     lowBalance: false,
     models: [{
-      providerId: 'zerowall-ai-cloud-7', groupId: '7', groupName: 'Images',
+      providerId: 'zerowall-ai-cloud-7', groupId: '7', groupName: '生图', capability: 'image-generation',
       modelId: 'gpt-image-2', baseUrl: 'https://code.aicodeme.xyz/v1',
     }],
   }

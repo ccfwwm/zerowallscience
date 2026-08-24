@@ -12,7 +12,7 @@ for (const source of [development, preview, stable]) {
     'version: 1',
     `id: zerowall-${source.id}`,
     `channel: ${source.channel}`,
-    'dsh: 0.1.1-rc.1',
+    'dsh: 0.1.1-rc.2',
     'plugins:',
     ...source.plugins.map(name => `  - '${name}'`),
     'wechat:',

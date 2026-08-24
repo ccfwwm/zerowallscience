@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-opencode
+      name: '@zerowallscience/plugin-opencode'

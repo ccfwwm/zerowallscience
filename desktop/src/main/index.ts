@@ -14,7 +14,7 @@ import { findDesktopWorkspaceRoot, resolveDesktopIconPath, resolveDesktopResourc
 import { stopBeforeExit } from './shutdown.js'
 import { McpEnvironmentController, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
-import { DesktopUpdateController, isDailyUpdateCheckDue } from './updater.js'
+import { DesktopUpdateController, isUpdateCheckDue, UPDATE_CHECK_INTERVAL_MS } from './updater.js'
 import type { DesktopInfo, RuntimeSnapshot } from '../shared/contracts.js'
 
 const { autoUpdater } = updaterPackage
@@ -26,6 +26,7 @@ let mainWindow: BrowserWindow | undefined
 let runtime: HarnessRuntime | undefined
 let tray: Tray | undefined
 let quitting = false
+const desktopPluginProcesses = new Map<string, ReturnType<typeof spawn>>()
 
 function readPackagedChannel(): unknown {
   try {
@@ -97,6 +98,45 @@ async function writeUpdateCheckRecord(path: string, lastCheckedAt: number): Prom
 
 function findWorkspaceRoot(): string {
   return findDesktopWorkspaceRoot(app.getAppPath())
+}
+
+function attachDesktopBridge(child: HarnessChildProcess): void {
+  child.on('message', (message: unknown) => {
+    if (!message || typeof message !== 'object') return
+    const value = message as { type?: string; requestId?: string; op?: string; args?: readonly string[]; invokingDir?: string }
+    if (value.type === 'zerowall:desktop:restart-runtime') {
+      void runtime?.start(join(app.getPath('userData'), 'workspace'))
+      return
+    }
+    if (value.type === 'zerowall:desktop:cancel' && value.requestId !== undefined) {
+      desktopPluginProcesses.get(value.requestId)?.kill()
+      return
+    }
+    if (value.type !== 'zerowall:desktop' || value.requestId === undefined || value.op === undefined) return
+    if (value.op === 'selectProfile') {
+      child.send({ type: 'zerowall:desktop:result', requestId: value.requestId, result: { ok: true, result: undefined } })
+      return
+    }
+    if (value.op !== 'runPlugin' && value.op !== 'run') return
+    const args = Array.isArray(value.args) ? [...value.args] : []
+    const invokingDir = value.invokingDir ?? join(app.getPath('userData'), 'harness')
+    const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
+    let operation: ReturnType<typeof spawn>
+    try {
+      operation = spawn(command, args, { cwd: invokingDir, env: process.env, windowsHide: true, shell: false })
+    } catch (error) {
+      child.send({ type: 'zerowall:desktop:result', requestId: value.requestId, result: { ok: false, error: error instanceof Error ? error.message : String(error) } })
+      return
+    }
+    desktopPluginProcesses.set(value.requestId, operation)
+    operation.stdout?.on('data', chunk => child.send({ type: 'zerowall:desktop:result', requestId: value.requestId, stream: 'stdout', chunk: String(chunk) }))
+    operation.stderr?.on('data', chunk => child.send({ type: 'zerowall:desktop:result', requestId: value.requestId, stream: 'stderr', chunk: String(chunk) }))
+    operation.once('error', error => child.send({ type: 'zerowall:desktop:result', requestId: value.requestId, result: { ok: false, error: error.message } }))
+    operation.once('exit', (code, signal) => {
+      desktopPluginProcesses.delete(value.requestId as string)
+      child.send({ type: 'zerowall:desktop:result', requestId: value.requestId, result: { ok: true, result: { exitCode: code, signal } } })
+    })
+  })
 }
 
 function dshEntryPath(): string {
@@ -231,7 +271,7 @@ app.whenReady().then(async () => {
     logPath: join(app.getPath('logs'), 'harness.log'),
     portPath: join(userData, 'harness', 'endpoint-port.txt'),
     launchProcess: (executable, args, options) => spawn(executable, args, options) as HarnessChildProcess,
-    onChildStarted: (child) => { attachCredentialBroker(child, credentialVault) },
+    onChildStarted: (child) => { attachCredentialBroker(child, credentialVault); attachDesktopBridge(child) },
     onChanged: (snapshot) => {
       if (snapshot.phase === 'ready') void showHarness(snapshot)
       if (snapshot.phase === 'failed' && !quitting) dialog.showErrorBox('ZeroWallScience could not start', snapshot.message)
@@ -290,17 +330,18 @@ app.whenReady().then(async () => {
   await launch()
   void mcpEnvironment.initialize()
   const updateRecordPath = join(userData, 'updates', 'last-check.json')
-  const updateTimer = setTimeout(() => {
-    void (async () => {
-      const record = await readUpdateCheckRecord(updateRecordPath)
-      if (!isDailyUpdateCheckDue(record.lastCheckedAt)) return
-      // Persist the attempt before contacting the feed. A failed background
-      // check remains retryable manually, but cannot retry-loop on startup.
-      await writeUpdateCheckRecord(updateRecordPath, Date.now())
-      await updates.check()
-    })().catch(() => undefined)
-  }, 5_000)
+  const runScheduledUpdateCheck = async (): Promise<void> => {
+    const record = await readUpdateCheckRecord(updateRecordPath)
+    if (!isUpdateCheckDue(record.lastCheckedAt)) return
+    // Persist the attempt before contacting the feed. A failed background
+    // check remains retryable manually, but cannot retry-loop on startup.
+    await writeUpdateCheckRecord(updateRecordPath, Date.now())
+    await updates.check()
+  }
+  const updateTimer = setTimeout(() => { void runScheduledUpdateCheck().catch(() => undefined) }, 5_000)
   updateTimer.unref()
+  const updateInterval = setInterval(() => { void runScheduledUpdateCheck().catch(() => undefined) }, UPDATE_CHECK_INTERVAL_MS)
+  updateInterval.unref()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && runtime !== undefined) void showHarness(runtime.snapshot())
     else showMainWindow()

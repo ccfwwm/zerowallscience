@@ -33,10 +33,12 @@ export interface ReviewerCoverageGap {
 
 export interface ReviewerSettings {
   autoReview: boolean
+  autoReviewConfigured: boolean
 }
 
 export const ReviewerSettingsSchema: z<ReviewerSettings> = z.object({
-  autoReview: z.boolean().default(true),
+  autoReview: z.boolean().default(false),
+  autoReviewConfigured: z.boolean().default(false),
 })
 
 export interface ReviewFinding {
@@ -82,7 +84,7 @@ const TOTAL_CAP = 80_000
 const MAX_FINDINGS = 8
 const REVIEW_TIMEOUT_MS = 60_000
 const ACTIVE_REVIEWER_PARENTS = new Map<string, string | undefined>()
-const REVIEWER_PERSONA = `You are ZeroWall Science's independent Reviewer. Trace the supplied transcript only. Do not recompute or use outside knowledge. Every finding must cite a [msg:N ...] block and copy evidence verbatim from that block. Do not paraphrase evidence, add markdown wrappers, or invent text. If a concern cannot be supported by an exact transcript quote, still return the finding with the best reported evidence and let the host mark it unverified. Any factual statement in summary must be supported by summaryEvidence. Return only the requested structured object. Do not report correct work.`
+const REVIEWER_PERSONA = `You are ZeroWall Science's independent Reviewer. Trace the supplied transcript only. Do not recompute or use outside knowledge. Every finding must cite a [msg:N ...] block and copy evidence verbatim from that block. Do not paraphrase evidence, add markdown wrappers, or invent text. If a concern cannot be supported by an exact transcript quote, still return the finding with the best reported evidence and let the host mark it unverified. Any factual statement in summary must be supported by summaryEvidence. Return only the requested structured object. Do not report correct work. IMPORTANT OUTPUT LANGUAGE: write summary, claim, and fix in Simplified Chinese. Keep evidence exactly as quoted from the transcript, even when the transcript is English. Do not write English explanations or headings.`
 const REVIEW_SCHEMA: ObjectJsonSchema = {
   type: 'object',
   additionalProperties: false,
@@ -190,16 +192,16 @@ function assessEvidenceDetailed(events: readonly SessionEvent[]): EvidenceAssess
   for (const event of toolResults) {
     const text = eventText(event).trim()
     if (text.length === 0) {
-      gaps.push(`tool result at seq ${event.seq} has no inspectable output`)
+      gaps.push(`工具结果（序号 ${event.seq}）没有可检查的输出`)
       details.push({ code: 'tool-empty', seq: event.seq })
     } else if (text.length > PER_TOOL_CAP) {
-      gaps.push(`tool result at seq ${event.seq} exceeded ${PER_TOOL_CAP} characters and was truncated`)
+      gaps.push(`工具结果（序号 ${event.seq}）超过 ${PER_TOOL_CAP} 个字符，已截断`)
       details.push({ code: 'tool-truncated', seq: event.seq })
     }
     else complete += 1
   }
   if (serializeTranscript(events).startsWith('[…earlier transcript truncated…]')) {
-    gaps.push(`transcript exceeded ${TOTAL_CAP} characters and older evidence was truncated`)
+    gaps.push(`审核记录超过 ${TOTAL_CAP} 个字符，较早证据已截断`)
     details.push({ code: 'transcript-truncated' })
   }
   const unique = new Map<string, { text: string; detail?: ReviewerCoverageGap }>()
@@ -340,7 +342,7 @@ export function normalizeReport(
     const messageIndex = Number.isSafeInteger(row.messageIndex) ? row.messageIndex as number : -1
     const resolved = resolveEvidence(citedBlocks, messageIndex, row.evidence)
     if (resolved.status === 'unverified') {
-      coverageGaps.push(`finding for msg:${messageIndex} did not quote evidence from its cited transcript block`)
+      coverageGaps.push(`问题 ${messageIndex + 1} 没有引用对应审核记录中的原文证据`)
       gapDetails.push({ code: 'finding-citation-unverified', messageIndex })
     }
     return [{ messageIndex: resolved.messageIndex, claim: row.claim, evidence: resolved.text, reportedEvidence: row.evidence, evidenceStatus: resolved.status, fix: row.fix, verdict: resolved.status === 'unverified' ? 'inconclusive' : verdict, severity, status: 'open' }]
@@ -356,7 +358,7 @@ export function normalizeReport(
     return typeof row.evidence !== 'string' || resolveEvidence(citedBlocks, index, row.evidence).status === 'unverified'
   })) {
     summaryEvidenceStatus = 'unverified'
-    coverageGaps.push('review summary did not quote evidence from its cited transcript block')
+    coverageGaps.push('审核结论没有引用对应审核记录中的原文证据')
     gapDetails.push({ code: 'summary-citation-unverified' })
   }
   const dedupedDetails = uniqueGaps(gapDetails)
@@ -364,7 +366,7 @@ export function normalizeReport(
   return {
     id: crypto.randomUUID(),
     turn,
-    summary: typeof value.summary === 'string' && value.summary.trim() ? value.summary : findings.length ? `${findings.length} finding(s) require correction.` : 'No issues found.',
+    summary: typeof value.summary === 'string' && value.summary.trim() ? value.summary : findings.length ? `有 ${findings.length} 项内容需要修正。` : '未发现需要修正的问题。',
     findings,
     reviewerModel: model,
     ...(effort === undefined ? {} : { reviewerEffort: effort }),
@@ -467,7 +469,7 @@ function appendReport(session: Session, report: ReviewReport): void {
 }
 
 function correctionPrompt(report: ReviewReport): string {
-  return `Independent review found issues in your latest answer. Correct the answer once, using tools again if needed. Preserve supported conclusions and explicitly state corrections.\n\n${report.findings.map((finding, index) => `${index + 1}. Claim: ${finding.claim}\nEvidence: ${finding.evidence}\nRequired fix: ${finding.fix}`).join('\n\n')}`
+  return `审核发现上一条回答存在问题。请只修正一次，必要时重新使用工具；保留已经有证据支持的结论，并用简体中文明确说明改动。\n\n${report.findings.map((finding, index) => `${index + 1}. 问题：${finding.claim}\n证据：${finding.evidence}\n修正要求：${finding.fix}`).join('\n\n')}`
 }
 
 export function canAutoCorrect(report: ReviewReport): boolean {
@@ -479,13 +481,14 @@ export function canAutoCorrect(report: ReviewReport): boolean {
 
 export function apply(ctx: Context): void {
   const scope = ctx.settings.register(REVIEWER_SETTINGS_NS, ReviewerSettingsSchema)
-  // Remove legacy fixed-model fields once. They are no longer part of the
-  // public Reviewer contract and could otherwise keep an old incomplete mode
-  // alive in the persisted settings document.
+  // Existing installations used an implicit default-on reviewer. Migrate that
+  // implicit value to opt-in once while preserving later explicit choices.
   const legacy = scope.get()
-  void scope.replace({ autoReview: legacy.autoReview !== false }).catch((error: unknown) => {
-    ctx.logger.warn(`Reviewer settings migration failed: ${error instanceof Error ? error.message : String(error)}`)
-  })
+  if (legacy.autoReviewConfigured !== true) {
+    void scope.replace({ autoReview: false, autoReviewConfigured: true }).catch((error: unknown) => {
+      ctx.logger.warn(`Reviewer settings migration failed: ${error instanceof Error ? error.message : String(error)}`)
+    })
+  }
   ctx.on('agent/request', async ({ agent }, next) => {
     const parent = agent.session.header.parentSession
     if (parent === undefined || !ACTIVE_REVIEWER_PARENTS.has(String(parent))) return await next()
@@ -508,11 +511,11 @@ export function apply(ctx: Context): void {
       if (allowCorrection && report.reviewStatus === 'failed' && report.hasUnverifiedEvidence === true) {
         report.coverageGaps = [...new Set([...report.coverageGaps, '自动纠正已跳过：存在未验证证据'])].slice(0, 12)
       }
-      appendReport(agent.session, report)
+      if (!(allowCorrection && report.reviewStatus === 'passed' && report.findings.length === 0 && report.coverageGaps.length === 0)) appendReport(agent.session, report)
       return report
     } catch (error) {
       const report: ReviewReport = {
-        id: crypto.randomUUID(), turn, summary: error instanceof Error ? error.message : String(error), findings: [], reviewerModel: 'session', reviewerBackend: 'spawn', reviewStatus: 'error', evidenceCoverage: 0, citationCoverage: 0, hasUnverifiedEvidence: false, summaryEvidenceStatus: 'legacy', coverageGaps: [], coverageGapDetails: [], correction: 'none', reReviewed: false,
+        id: crypto.randomUUID(), turn, summary: `审核失败：${error instanceof Error ? error.message : String(error)}`, findings: [], reviewerModel: 'session', reviewerBackend: 'spawn', reviewStatus: 'error', evidenceCoverage: 0, citationCoverage: 0, hasUnverifiedEvidence: false, summaryEvidenceStatus: 'legacy', coverageGaps: [], coverageGapDetails: [], correction: 'none', reReviewed: false,
       }
       appendReport(agent.session, report)
       ctx.logger.warn(`Reviewer failed for ${String(agent.id)}: ${report.summary}`)
@@ -575,18 +578,20 @@ export function apply(ctx: Context): void {
     const action = raw.trim().split(/\s+/u)[0] || 'status'
     if (action === 'on' || action === 'off' || action === 'follow') {
       agent.session.append('zerowall/reviewer/mode', { mode: action === 'follow' ? 'inherit' : action })
-      return { kind: 'success', text: `Reviewer mode: ${action}` }
+      const label = action === 'on' ? '本会话已开启审核' : action === 'off' ? '本会话已关闭审核' : '已跟随审核设置'
+      return { kind: 'success', text: label }
     }
     if (action === 'now') {
       const last = [...agent.session.events].reverse().find(event => event.type === 'turn/end' && event.data.reason.kind === 'completed')
-      if (last?.type !== 'turn/end') return { kind: 'error', text: 'No completed answer is available for review.' }
+      if (last?.type !== 'turn/end') return { kind: 'error', text: '没有可供审核的已完成回答。' }
       const report = await review(agent, last.data.turn, signal, false)
-      return { kind: 'success', text: report?.summary ?? 'Reviewer did not run.' }
+      return { kind: 'success', text: report?.summary ?? '审核未执行。' }
     }
-    if (action !== 'status') return { kind: 'error', text: `Unknown review action: ${action}` }
+    if (action !== 'status') return { kind: 'error', text: `未知的审核命令：${action}` }
     const mode = latestMode(agent.session)
     const settings = scope.get()
-    return { kind: 'success', text: `Reviewer ${mode === 'inherit' ? (settings.autoReview ? 'on' : 'off') : mode}; follows the current session model` }
+    const state = mode === 'inherit' ? (settings.autoReview ? '已开启' : '已关闭') : mode === 'on' ? '本会话开启' : '本会话关闭'
+    return { kind: 'success', text: `审核${state}；可使用 /review now 进行一次审核` }
   })
 }
 

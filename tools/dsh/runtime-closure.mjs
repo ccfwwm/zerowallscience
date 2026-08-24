@@ -37,7 +37,7 @@ for (let index = 0; index < queue.length; index += 1) {
 }
 
 const generated = `${JSON.stringify({
-  dshVersion: '0.1.1-rc.1',
+  dshVersion: '0.1.1-rc.2',
   packages: [...closure].sort(),
 }, null, 2)}\n`
 

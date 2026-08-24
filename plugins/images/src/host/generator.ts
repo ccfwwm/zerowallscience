@@ -224,9 +224,19 @@ function nonEmptyPrompt(raw: string): string {
 
 function selectImageModel(snapshot: AiCloudAccountSnapshot, requested: string): AiCloudManagedModel {
   if (snapshot.status !== 'signedIn') throw new Error('Sign in to ZeroWall AI Cloud before generating or editing images.')
-  const model = snapshot.models.find(candidate => candidate.modelId === requested)
+  const candidates = snapshot.models.filter(candidate =>
+    candidate.capability === 'image-generation'
+    && isImageGenerationGroup(candidate.groupName)
+    && candidate.modelId === requested,
+  )
+  if (candidates.length > 1) throw new Error(`The AI Cloud image model ${requested} is ambiguous across the 生图 groups. Refresh the account model list.`)
+  const model = candidates[0]
   if (model === undefined) throw new Error(`The current AI Cloud account has no configured ${requested} model. Refresh the account model list.`)
   return model
+}
+
+function isImageGenerationGroup(name: string): boolean {
+  return name.trim().includes('生图')
 }
 
 async function workspaceRoot(cwd: string): Promise<string> {

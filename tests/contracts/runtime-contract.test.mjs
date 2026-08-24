@@ -5,10 +5,10 @@ import { resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
 
-test('stable profile pins rc1 and includes the bundled WeChat plugin', async () => {
+test('stable profile pins rc2 and includes the bundled WeChat plugin', async () => {
   const profile = await readFile(resolve(root, 'profiles/generated/stable.yml'), 'utf8')
   assert.match(profile, /channel: stable/)
-  assert.match(profile, /dsh: 0\.1\.1-rc\.1/)
+  assert.match(profile, /dsh: 0\.1\.1-rc\.2/)
   assert.match(profile, /'@zerowallscience\/plugin-wechat'/)
 })
 
@@ -34,13 +34,13 @@ test('desktop image limits fit inside the buffered client connection carrier', a
     `base64 image envelope requires ${requiredBodyBytes} bytes but carrier allows ${maxRequestBodyBytes}`)
 })
 
-test('all ZeroWall plugins expose a manifest and rc1 range', async () => {
-  const names = ['base', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'runs', 'publications', 'presentations', 'web-search', 'wechat']
+test('all ZeroWall plugins expose a manifest and rc2 range', async () => {
+  const names = ['base', 'opencode', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'runs', 'publications', 'presentations', 'web-search', 'wechat']
   for (const name of names) {
     const manifest = JSON.parse(await readFile(resolve(root, `plugins/${name}/zerowall.plugin.json`), 'utf8'))
     assert.match(manifest.name, /^@zerowallscience\/plugin-/)
-    assert.equal(manifest.dsh.min, '0.1.1-rc.1')
-    assert.equal(manifest.dsh.max, '0.1.1-rc.1')
+    assert.equal(manifest.dsh.min, '0.1.1-rc.2')
+    assert.equal(manifest.dsh.max, '0.1.1-rc.2')
   }
 })
 

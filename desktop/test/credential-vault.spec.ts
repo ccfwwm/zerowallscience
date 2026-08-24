@@ -54,4 +54,33 @@ describe('Electron credential vault', () => {
     expect(replies[1]).toMatchObject({ requestId: 'bad-1', ok: false })
     detach()
   })
+
+  it('removes one undecryptable credential without losing the remaining vault', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-vault-'))
+    const path = join(root, 'credentials', 'vault.json')
+    const vault = new CredentialVault(path, {
+      encrypt: encryption.encrypt,
+      decrypt: (value) => {
+        if (value.toString() === 'broken') throw new Error('safeStorage decrypt failed')
+        return encryption.decrypt(value)
+      },
+    })
+    await vault.set('zerowall.ai-cloud.session', 'session-secret')
+    await vault.set('zerowall.wechat.ilink', 'wechat-secret')
+    const document = JSON.parse(await readFile(path, 'utf8')) as { entries: Record<string, string> }
+    document.entries['zerowall.wechat.ilink'] = Buffer.from('broken').toString('base64')
+    await (await import('node:fs/promises')).writeFile(path, `${JSON.stringify(document)}\n`)
+
+    const restored = new CredentialVault(path, {
+      encrypt: encryption.encrypt,
+      decrypt: (value) => {
+        if (value.toString() === 'broken') throw new Error('safeStorage decrypt failed')
+        return encryption.decrypt(value)
+      },
+    })
+    await expect(restored.get('zerowall.wechat.ilink')).resolves.toBeUndefined()
+    await expect(restored.get('zerowall.ai-cloud.session')).resolves.toBe('session-secret')
+    const repaired = JSON.parse(await readFile(path, 'utf8')) as { entries: Record<string, string> }
+    expect(repaired.entries['zerowall.wechat.ilink']).toBeUndefined()
+  })
 })

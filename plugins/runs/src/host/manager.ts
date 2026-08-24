@@ -4,21 +4,13 @@ import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { ResearchStore } from '@zerowallscience/research-store'
 import type { ExecutionContextRecord, RunRecord } from '@zerowallscience/research-store/types'
+import type { RunSubmission } from '../shared/types.js'
+
+export type { RunSubmission } from '../shared/types.js'
 
 const REMOTE_PID_MARKER = '__ZEROWALL_REMOTE_PID__='
 const EXIT_CODE_MARKER = '__ZEROWALL_EXIT_CODE__='
 const TERMINAL_STATUSES = new Set<RunRecord['status']>(['succeeded', 'failed', 'cancelled', 'timed_out'])
-
-export interface RunSubmission {
-  projectId: string
-  executionContextId?: string
-  name: string
-  command: string
-  workingDirectory: string
-  timeoutMs?: number
-  inputs?: RunRecord['inputs']
-  outputs?: RunRecord['outputs']
-}
 
 export interface RunLaunchSpec { executable: string; args: string[]; cwd?: string; logPath: string }
 export interface RunProcess { pid: number; exited: Promise<{ code: number | null; signal: string | null }> }

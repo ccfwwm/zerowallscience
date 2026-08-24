@@ -16,12 +16,16 @@ interface UpdateInfo {
   releaseNotes?: unknown
 }
 
-const DAILY_CHECK_MS = 24 * 60 * 60 * 1_000
+/** Background checks are deliberately infrequent to avoid waking the app/feed unnecessarily. */
+export const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1_000
 
-/** A background check is attempted at most once per local 24-hour interval. */
-export function isDailyUpdateCheckDue(lastCheckedAt: number | undefined, now = Date.now()): boolean {
-  return lastCheckedAt === undefined || !Number.isFinite(lastCheckedAt) || now - lastCheckedAt >= DAILY_CHECK_MS
+/** A background check is attempted at most once per four-hour interval. */
+export function isUpdateCheckDue(lastCheckedAt: number | undefined, now = Date.now()): boolean {
+  return lastCheckedAt === undefined || !Number.isFinite(lastCheckedAt) || now - lastCheckedAt >= UPDATE_CHECK_INTERVAL_MS
 }
+
+/** @deprecated Keep the old helper name for consumers compiled against 4.2.1. */
+export const isDailyUpdateCheckDue = isUpdateCheckDue
 
 function releaseNotesOf(value: unknown): string[] | undefined {
   const lines = typeof value === 'string'

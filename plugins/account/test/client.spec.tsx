@@ -38,22 +38,21 @@ function props() {
 }
 
 describe('AI Cloud account panel', () => {
-  it('opens the Chinese login surface on first signed-out launch and can be skipped', async () => {
+  it('does not block the conversation with a login surface on first signed-out launch', async () => {
     const actions = props()
     render(<AiCloudAccountButton {...actions} />)
-    expect(await screen.findByRole('dialog', { name: '登录或注册' })).toBeTruthy()
     await waitFor(() => expect(actions.getAccount).toHaveBeenCalledTimes(1))
-    expect(actions.getPublicConfig).toHaveBeenCalledTimes(1)
-    expect(screen.getByLabelText('密码').getAttribute('type')).toBe('password')
-    fireEvent.click(screen.getByRole('button', { name: '暂时跳过' }))
     expect(screen.queryByRole('dialog', { name: '登录或注册' })).toBeNull()
+    expect(actions.getPublicConfig).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'ZeroWall 云账户' }))
+    expect(await screen.findByRole('dialog', { name: '登录或注册' })).toBeTruthy()
   })
 
   it('does not block the first-run login surface on a slow public configuration request', async () => {
     const actions = props()
     actions.getPublicConfig.mockReturnValue(new Promise(() => {}))
     render(<AiCloudAccountButton {...actions} />)
-    expect(await screen.findByRole('dialog', { name: '登录或注册' })).toBeTruthy()
+    expect(screen.queryByRole('dialog', { name: '登录或注册' })).toBeNull()
     expect(actions.getAccount).toHaveBeenCalledOnce()
   })
 
@@ -61,6 +60,8 @@ describe('AI Cloud account panel', () => {
     const actions = props()
     actions.getAccount.mockRejectedValue(new Error('connection is starting'))
     render(<AiCloudAccountButton {...actions} />)
+    expect(screen.queryByRole('dialog', { name: '登录或注册' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'ZeroWall 云账户' }))
     expect(await screen.findByRole('dialog', { name: '登录或注册' })).toBeTruthy()
     expect(screen.getByRole('alert').textContent).toContain('connection is starting')
   })
@@ -69,6 +70,7 @@ describe('AI Cloud account panel', () => {
     const actions = props()
     actions.login.mockResolvedValue({ status: 'signedIn', email: 'user@example.com', balanceFreshness: 'current', lowBalance: false, models: [{ providerId: 'zerowall-ai-cloud-1', groupId: '1', groupName: '科研', modelId: 'model-a', baseUrl: 'https://code.aicodeme.xyz/v1' }] })
     render(<AiCloudAccountButton {...actions} />)
+    fireEvent.click(screen.getByRole('button', { name: 'ZeroWall 云账户' }))
     await screen.findByRole('dialog', { name: '登录或注册' })
     fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'user@example.com' } })
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'not-persisted' } })
@@ -100,6 +102,7 @@ describe('AI Cloud account panel', () => {
     const actions = props()
     actions.selectGateway.mockResolvedValue({ status: 'signedOut', balanceFreshness: 'current', lowBalance: false, gatewayBaseUrl: 'https://code.aicodeme.cn', models: [] })
     render(<AiCloudAccountButton {...actions} />)
+    fireEvent.click(screen.getByRole('button', { name: 'ZeroWall 云账户' }))
     const selector = await screen.findByLabelText<HTMLSelectElement>('服务节点')
     expect(selector.value).toBe('https://hkcode.aicodeme.xyz')
     fireEvent.change(selector, { target: { value: 'https://code.aicodeme.cn' } })
@@ -121,6 +124,7 @@ describe('AI Cloud account panel', () => {
     fireEvent.click(screen.getByRole('button', { name: '退出登录' }))
 
     await waitFor(() => expect(actions.logout).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: 'ZeroWall 云账户' }))
     expect(await screen.findByRole('dialog', { name: '登录或注册' })).toBeTruthy()
   })
 
@@ -178,6 +182,7 @@ describe('AI Cloud account panel', () => {
   it('closes the top-level panel on the first immediate Escape press', async () => {
     render(<AiCloudAccountButton {...props()} />)
     const trigger = screen.getByRole('button', { name: 'ZeroWall 云账户' })
+    fireEvent.click(trigger)
     await screen.findByRole('dialog', { name: '登录或注册' })
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: '登录或注册' })).toBeNull()

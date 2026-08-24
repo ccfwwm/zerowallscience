@@ -16,6 +16,8 @@ export interface AiCloudManagedModel {
   groupName: string
   modelId: string
   baseUrl: string
+  /** Capability exposed by the managed group. Image routes never enter chat. */
+  capability?: 'chat' | 'image-generation'
 }
 
 export interface AiCloudAccountSnapshot {

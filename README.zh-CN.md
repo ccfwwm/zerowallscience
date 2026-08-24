@@ -1,4 +1,4 @@
-# ZeroWall Science 4.1.3
+# ZeroWall Science 4.2.0
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
@@ -56,7 +56,7 @@ pnpm package:dir
 涉及 Agent 组合的修改还必须运行：
 
 ```powershell
-pnpm test:dsh:rc1
+pnpm test:dsh:rc2
 ```
 
 自动化测试不依赖真实 SSH、WSL、GPU、API Key 或网络访问。

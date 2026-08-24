@@ -15,7 +15,7 @@ for (const path of await manifests(source)) {
 packages.sort((left, right) => left.name.localeCompare(right.name))
 const output = resolve(root, '.build/dsh/package-inventory.json')
 await mkdir(dirname(output), { recursive: true })
-await writeFile(output, `${JSON.stringify({ dsh: '0.1.1-rc.1', packages }, null, 2)}\n`)
+await writeFile(output, `${JSON.stringify({ dsh: '0.1.1-rc.2', packages }, null, 2)}\n`)
 console.log(`Recorded ${packages.length} DSH packages.`)
 
 async function manifests(directory) {

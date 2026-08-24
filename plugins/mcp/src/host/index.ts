@@ -14,56 +14,14 @@ import type {
 } from '@zerowallscience/research-store/types'
 import type {} from 'zod'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
+import type { CreateMcpServerRequest, McpRuntimeState, McpServerDto, UpdateMcpServerRequest } from '../shared/types.js'
 
-export type McpRuntimeState = 'disabled' | 'blocked' | 'active' | 'error'
+export type { CreateMcpServerRequest, McpRuntimeState, McpServerDto, UpdateMcpServerChanges, UpdateMcpServerRequest } from '../shared/types.js'
 
 // Credential vault keys are restricted to the ZeroWall domain and lowercase
 // POSIX-style segments. Keep the SciMaster key under the MCP namespace.
 export const SCIMASTER_API_KEY_CREDENTIAL = 'zerowall.mcp.scimaster_api_key'
 export const SCIMASTER_API_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/home'
-
-export interface McpServerDto extends McpServerRecord {
-  runtimeState: McpRuntimeState
-  runtimeError: string
-  missingEnvironmentVariables: string[]
-}
-
-export interface CreateMcpServerRequest {
-  name: string
-  serverName: string
-  transport: McpTransport
-  enabled?: boolean
-  command?: string
-  args?: string[]
-  cwd?: string
-  envRefs?: Record<string, string>
-  url?: string
-  headerRefs?: Record<string, string>
-  toolCallTimeoutMs?: number
-  failOnStartupError?: boolean
-  reconnect?: Partial<McpReconnectPolicy>
-}
-
-export interface UpdateMcpServerChanges {
-  name?: string
-  serverName?: string
-  transport?: McpTransport
-  enabled?: boolean
-  command?: string
-  args?: string[]
-  cwd?: string
-  envRefs?: Record<string, string>
-  url?: string
-  headerRefs?: Record<string, string>
-  toolCallTimeoutMs?: number
-  failOnStartupError?: boolean
-  reconnect?: Partial<McpReconnectPolicy>
-}
-
-export interface UpdateMcpServerRequest {
-  id: string
-  changes: UpdateMcpServerChanges
-}
 
 type RuntimeMcpConfig = {
   serverName: string

@@ -1,9 +1,10 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import { MessageImage, type MessageImageLabels } from '@deepseek-ai/dsh-client-ui-attachment/client'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
+import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { AlertTriangle, ExternalLink, ImageIcon, LoaderCircle } from 'lucide-react'
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import css from './ImageToolView.module.css'
 
 interface ImageMeta {
@@ -11,15 +12,6 @@ interface ImageMeta {
   model: string
   image?: ImageAttachmentRef
   previewWarning?: string
-}
-
-const LABELS: MessageImageLabels = {
-  image: 'Generated image',
-  open: 'Open full-size image',
-  openNamed: label => `Open ${label}`,
-  loading: 'Loading image...',
-  loadFailed: 'Preview failed. Retry',
-  lightbox: { dialog: 'Image preview', close: 'Close image preview' },
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -63,6 +55,69 @@ function resultText(block: ToolCallViewProps['block']): string | undefined {
   return text || undefined
 }
 
+function GeneratedImagePreview({ attachment, load }: {
+  attachment: ImageAttachmentRef
+  load: (attachment: ImageAttachmentRef) => Promise<string>
+}) {
+  const [src, setSrc] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const close = useCallback(() => { setOpen(false) }, [])
+  const label = attachment.name ?? 'Generated image'
+  const fit = useMemo(() => {
+    const natural = attachment.width / attachment.height
+    const ratio = Math.min(4, Math.max(0.25, natural))
+    const box = ratio >= 1 ? { width: 240, height: 240 / ratio } : { width: 240 * ratio, height: 240 }
+    const scale = Math.min(1, attachment.width / box.width, attachment.height / box.height)
+    return {
+      width: Math.max(1, Math.round(box.width * scale)),
+      height: Math.max(1, Math.round(box.height * scale)),
+      objectPosition: natural < 0.25 ? 'center top' : natural > 4 ? 'left center' : 'center',
+    }
+  }, [attachment.height, attachment.width])
+
+  useEffect(() => {
+    let live = true
+    setFailed(false)
+    setSrc(null)
+    void load(attachment)
+      .then(url => { if (live) setSrc(url) })
+      .catch(() => { if (live) setFailed(true) })
+    return () => { live = false }
+  }, [attachment, attempt, load])
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }
+    window.addEventListener('keydown', onKeyDown)
+    return () => { window.removeEventListener('keydown', onKeyDown) }
+  }, [close, open])
+
+  if (failed) {
+    return <button type="button" className={css.previewError} onClick={() => setAttempt(value => value + 1)}>Preview failed. Retry</button>
+  }
+  return (
+    <>
+      <button
+        type="button"
+        className={css.previewFrame}
+        style={{ width: fit.width, height: fit.height }}
+        title="Open full-size image"
+        aria-label={`Open ${label}`}
+        onClick={() => { if (src !== null) setOpen(true) }}
+      >
+        {src === null
+          ? <span className={css.previewLoading}>Loading image...</span>
+          : <img src={src} alt={label} style={{ objectPosition: fit.objectPosition }} />}
+      </button>
+      <Modal open={open && src !== null} onClose={close} title="Image preview" closeLabel="Close image preview" className={css.lightboxDialog}>
+        {src !== null ? <img className={css.lightboxImage} src={src} alt={label} /> : null}
+      </Modal>
+    </>
+  )
+}
+
 export function ImageToolRow({ conversation, ...props }: ToolCallViewProps & { conversation: IConversation }) {
   const { block, toolName, openFile, sessionId } = props
   const settled = 'kind' in block
@@ -97,11 +152,9 @@ export function ImageToolRow({ conversation, ...props }: ToolCallViewProps & { c
 
       {meta?.image !== undefined ? (
         <div className={css.preview}>
-          <MessageImage
+          <GeneratedImagePreview
             attachment={meta.image}
             load={attachment => conversation.resolveImage(sessionId, attachment)}
-            variant="single"
-            labels={LABELS}
           />
         </div>
       ) : null}

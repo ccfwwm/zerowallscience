@@ -274,18 +274,33 @@ export class WechatBackend {
 
   /** 启动 iLink 通道。首次启动不发起网络登录，扫码页面打开后才开始。 */
   async start(): Promise<void> {
-    if (!this.config.enabled) return
-    migrateLegacyStateFile(this.stateFile)
-    this.overrides = loadState(this.stateFile)
+    if (!this.config.enabled || this.started) return
+    try {
+      migrateLegacyStateFile(this.stateFile)
+      this.overrides = loadState(this.stateFile)
 
-    this.disposers.push(
-      this.ctx.on('session/event', (session: Session, event: SessionEvent) => {
-        void this.onSessionEvent(session, event)
-      }),
-    )
+      this.disposers.push(
+        this.ctx.on('session/event', (session: Session, event: SessionEvent) => {
+          void this.onSessionEvent(session, event)
+        }),
+      )
 
-    if (this.config.puppet !== 'ilink') throw new Error('ZeroWall Desktop only packages the iLink channel.')
-    await this.startIlink()
+      if (this.config.puppet !== 'ilink') throw new Error('ZeroWall Desktop only packages the iLink channel.')
+      await this.startIlink()
+    } catch (error) {
+      this.started = false
+      for (const disposer of this.disposers.splice(0)) disposer()
+      this.ilinkChannel?.stop()
+      this.ilinkChannel = undefined
+      this.qrState = { kind: 'failed', message: '微信后端启动失败，请重试。' }
+      throw error
+    }
+  }
+
+  /** Dispose a failed or stopped backend, then construct the iLink channel again. */
+  async retryStart(): Promise<void> {
+    await this.dispose()
+    await this.start()
   }
 
   // ── iLink 官方通道（clawbot） ────────────────────────────────

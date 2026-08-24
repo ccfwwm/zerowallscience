@@ -6,10 +6,8 @@ import {
   type PiAiAdapterOptions,
   type PiAiProviderProfile,
   type ResolvedPiAiProviderProfile,
-  authContextFrom,
-  credentialStoreFrom,
-  resolveProfiles,
 } from '@deepseek-ai/dsh-llm-pi-ai'
+import { resolveProfiles } from '@deepseek-ai/dsh-llm-pi-ai/src/config.ts'
 import type { AccountSecretStore } from '@zerowallscience/plugin-account'
 import type { AiCloudAccountSnapshot, AiCloudManagedModel } from '@zerowallscience/plugin-account/types'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
@@ -49,17 +47,28 @@ export class AiCloudLlmController {
         }
         return key.trim()
       },
-      // Managed routes authenticate from the broker above, so this pair only
-      // covers what the per-request key does not. It still has to read through
-      // `ctx`: pi-ai's own default store is empty at every boot, which would
-      // report a route unconfigured no matter how often the human signed in.
-      auth: { credentials: credentialStoreFrom(this.ctx), authContext: authContextFrom(this.ctx) },
+      // Managed routes are hand-declared API-key routes. Their only credential
+      // source is the broker above; provider-native login and ambient discovery
+      // must not bypass the account boundary.
+      auth: {
+        credentials: {
+          read: async () => undefined,
+          list: async () => [],
+          modify: async () => { throw new Error('ZeroWall AI Cloud routes do not support provider-native login.') },
+          delete: async () => {},
+        },
+        authContext: {
+          env: async () => undefined,
+          fileExists: async () => false,
+        },
+      },
       resolveAttachments: () => this.ctx.get('attachments'),
     })
   }
 
   async update(snapshot: AiCloudAccountSnapshot): Promise<void> {
-    const next = snapshot.status === 'signedIn' ? managedProfiles(snapshot.models) : new Map<string, ResolvedPiAiProviderProfile>()
+    const chatModels = snapshot.models.filter(model => model.capability !== 'image-generation')
+    const next = snapshot.status === 'signedIn' ? managedProfiles(chatModels) : new Map<string, ResolvedPiAiProviderProfile>()
     this.profiles = next
     const routes = [...next.keys()]
     if (this.registration === undefined) {
@@ -68,20 +77,34 @@ export class AiCloudLlmController {
     } else {
       this.registration.replace(routes)
     }
-    await this.selectManagedDefault(snapshot.models, routes)
+    await this.selectManagedDefault(chatModels, routes)
   }
 
   private async selectManagedDefault(models: readonly AiCloudManagedModel[], routes: readonly string[]): Promise<void> {
-    if (models.length === 0) return
     const defaults = this.ctx.get('agentDefaultModel')
     if (defaults === undefined) return
     const current = defaults.currentSelection()
+    if (models.length === 0) {
+      if (current.provider.startsWith(ROUTE_PREFIX)) {
+        await defaults.saveSelection({ provider: 'opencode-zen', model: 'big-pickle' })
+      }
+      return
+    }
     if (routes.includes(current.provider)) {
       // rc8 no longer exposes a provider availability probe. The account
       // snapshot is the authoritative catalog for managed routes, so retain
       // a route only when its provider and model are still advertised.
       const stillAdvertised = models.some(model => model.providerId === current.provider && model.modelId === current.model)
       if (stillAdvertised || !current.provider.startsWith(ROUTE_PREFIX)) return
+    }
+    if (current.provider.startsWith(ROUTE_PREFIX) && !routes.includes(current.provider)) {
+      const replacement = models.find(model => routes.includes(model.providerId))
+      if (replacement !== undefined) {
+        await defaults.saveSelection({ provider: replacement.providerId, model: replacement.modelId })
+        return
+      }
+      await defaults.saveSelection({ provider: 'opencode-zen', model: 'big-pickle' })
+      return
     }
     const preferred = [...models]
       .filter(model => /deepseek/i.test(model.modelId))

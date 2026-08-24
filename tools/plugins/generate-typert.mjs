@@ -14,7 +14,7 @@ for (const entry of await readdir(pluginsRoot, { withFileTypes: true })) {
     await removeTypertArtifacts(packageRoot)
     continue
   }
-  const artifacts = new WorkspaceTypertGenerator(packageRoot).generate()
+  const artifacts = new WorkspaceTypertGenerator(root).generate([manifest.name], ['host'])
   const host = artifacts.find(artifact => artifact.face === 'host')
   if (host?.remote === undefined) throw new Error(`${manifest.name} exports ./remote but generated no Remote contribution.`)
   await mkdir(resolve(packageRoot, 'lib'), { recursive: true })

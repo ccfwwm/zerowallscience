@@ -12,8 +12,9 @@ import type {} from 'zod'
 import { readFile, stat } from 'node:fs/promises'
 import { relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { ScientificPreviewPayload } from '../shared/types.js'
 
-export interface ScientificPreviewPayload { uri: string; mediaType: string; byteSize: number; base64: string }
+export type { ScientificPreviewPayload } from '../shared/types.js'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { zerowallResearch: ZeroWallResearchService }

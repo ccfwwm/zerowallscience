@@ -3,12 +3,10 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { spawn } from 'node:child_process'
 import { ResearchStore } from '@zerowallscience/research-store'
 import type { CreateExecutionContextInput, ExecutionContextRecord, UpdateExecutionContextInput } from '@zerowallscience/research-store/types'
+import type { ExecutionCapabilities, ExecutionCommandRequest, ExecutionCommandResult, ExecutionProbe } from '../shared/types.js'
 import type {} from 'zod'
 
-export interface ExecutionCapabilities { platform: NodeJS.Platform; local: true; wsl: boolean; ssh: true }
-export interface ExecutionProbe { ok: boolean; contextId?: string; platform: string; message: string; details: Record<string, string> }
-export interface ExecutionCommandRequest { projectId: string; contextId?: string; command: string; workingDirectory?: string; timeoutMs?: number }
-export interface ExecutionCommandResult { contextId?: string; exitCode: number | null; signal: string | null; stdout: string; stderr: string; durationMs: number; timedOut: boolean }
+export type { ExecutionCapabilities, ExecutionCommandRequest, ExecutionCommandResult, ExecutionProbe } from '../shared/types.js'
 
 declare module '@deepseek-ai/cordis' { interface Context { zerowallExecution: ZeroWallExecutionService } }
 

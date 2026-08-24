@@ -31,7 +31,15 @@ export class CredentialVault {
     assertCredentialKey(key)
     const encoded = (await this.load()).entries[key]
     if (encoded === undefined) return undefined
-    return this.encryption.decrypt(Buffer.from(encoded, 'base64'))
+    try {
+      return this.encryption.decrypt(Buffer.from(encoded, 'base64'))
+    } catch {
+      // OS credential encryption can become unavailable after a Windows
+      // profile change. The ciphertext is unrecoverable, but unrelated
+      // credentials must remain usable.
+      await this.mutate((document) => { delete document.entries[key] })
+      return undefined
+    }
   }
 
   async set(key: string, value: string): Promise<void> {

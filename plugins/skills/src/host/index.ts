@@ -8,37 +8,11 @@ import { apply as applySkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from 'zod'
+import type { CopyBundledSkillInput, CreateSkillInput, ImportSkillInput, SkillSourceSnapshot, ZeroWallSkillDetail, ZeroWallSkillSummary } from '../shared/types.js'
+
+export type { CopyBundledSkillInput, CreateSkillInput, ImportSkillInput, SkillSourceSnapshot, ZeroWallSkillDetail, ZeroWallSkillSummary } from '../shared/types.js'
 
 export const inject = ['skills', 'systemPrompt']
-
-export interface ZeroWallSkillSummary {
-  name: string
-  description: string
-  whenToUse?: string
-  source: string
-  provider: string
-  modelInvocable: boolean
-  userInvocable: boolean
-}
-
-export interface ZeroWallSkillDetail extends ZeroWallSkillSummary {
-  content: string
-}
-
-export interface SkillSourceSnapshot {
-  enabled: string[]
-  disabled: string[]
-}
-
-export interface CreateSkillInput {
-  name: string
-  description: string
-  whenToUse?: string
-  content: string
-}
-
-export interface ImportSkillInput { sourcePath: string }
-export interface CopyBundledSkillInput { name: string }
 
 declare module '@deepseek-ai/cordis' {
   interface Context { zerowallCapabilities: ZeroWallCapabilitiesService }
@@ -65,9 +39,8 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
         providerName: 'zerowall-user-skills',
         includeDefaultRoots: false,
         customSkillDirs: [userSkillsDir],
-        // DSH resolves lower ranks first within one layer. Keep editable user
-        // Skills ahead of the read-only bundled catalog for same-name overrides.
-        customSkillRank: 100,
+        // DSH assigns custom roots rank 300 and bundled roots rank 600, so an
+        // editable user Skill wins a same-name bundled catalog entry.
         watch: true,
       })
     }

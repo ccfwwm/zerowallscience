@@ -167,6 +167,20 @@ export function apply(ctx: Context, config: WechatConfig): void {
         jsonReply(res, 200, { ok: true })
       },
     } satisfies WebRoute), 'dsh-weixin-clawbot: /wechat/logout route')
+
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: '/wechat/retry',
+      handler: async (_req: IncomingMessage, res: ServerResponse) => {
+        try {
+          await backend.retryStart()
+          jsonReply(res, 200, { ok: true })
+        } catch (error) {
+          ctx.logger.error(`dsh-weixin-clawbot: 重试启动失败: ${String(error)}`)
+          jsonReply(res, 503, { ok: false, message: '微信后端启动失败，请稍后重试。' })
+        }
+      },
+    } satisfies WebRoute), 'dsh-weixin-clawbot: /wechat/retry route')
   })
 
   // workspaceRegistry 可选注入：注册表上线时把工作区列表接进后端；

@@ -10,6 +10,9 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { FileAttachmentRef, PreparedFile, UploadedFileReadResult } from '../shared/types.js'
+
+export type { FileAttachmentRef, PreparedFile, UploadedFileReadResult } from '../shared/types.js'
 
 export const name = 'zerowall-files'
 export const inject = ['tools']
@@ -30,33 +33,6 @@ const MIME_BY_EXT: Record<string, string> = {
 // entry is a complete published build, so resolve the latter explicitly.
 const { XMLParser } = createRequire(import.meta.url)('fast-xml-parser') as typeof import('fast-xml-parser')
 const xml = new XMLParser({ ignoreAttributes: false, removeNSPrefix: true, textNodeName: '#text' })
-
-export interface FileAttachmentRef {
-  attachmentId: string
-  name: string
-  mediaType: string
-  bytes: number
-  sha256: string
-  parser: string
-  status: 'parsed' | 'needs_vision' | 'stored'
-  textChars: number
-  pageCount?: number
-  sheetCount?: number
-}
-
-export interface PreparedFile extends FileAttachmentRef {
-  preview: string
-  warning?: string
-}
-
-export interface UploadedFileReadResult {
-  attachmentId: string
-  name: string
-  offset: number
-  nextOffset: number
-  hasMore: boolean
-  text: string
-}
 
 interface StoredFile extends FileAttachmentRef { textPath: string; sourcePath: string }
 interface ParsedDocument { text: string; parser: string; status: PreparedFile['status']; pageCount?: number; sheetCount?: number; warning?: string }

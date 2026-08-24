@@ -1,4 +1,4 @@
-# ZeroWall Science 4.1.3
+# ZeroWall Science 4.2.0
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
@@ -56,7 +56,7 @@ pnpm package:dir
 Agent composition changes must also pass:
 
 ```powershell
-pnpm test:dsh:rc1
+pnpm test:dsh:rc2
 ```
 
 Automated tests do not require real SSH, WSL, GPU, API keys, or network access.
