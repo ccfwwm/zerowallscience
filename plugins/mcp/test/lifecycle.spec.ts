@@ -115,6 +115,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await ctx.plugin(ZeroWallMcpService)
       const servers = await ctx.zerowallMcp.list()
       expect(servers).toHaveLength(3)
+      expect(servers.map(server => server.name)).toEqual(['Sci', 'Bio Tools', 'Ketcher Chemistry'])
       expect(servers.find(server => server.serverName === 'zerowall_filesystem')).toBeUndefined()
       expect(servers.find(server => server.serverName === 'zerowall_managed_bio_tools')).toMatchObject({ runtimeState: 'blocked' })
       expect(servers.find(server => server.serverName === 'zerowall_managed_ketcher')).toMatchObject({ runtimeState: 'blocked' })

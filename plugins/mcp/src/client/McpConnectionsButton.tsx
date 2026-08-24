@@ -105,7 +105,7 @@ export function McpConnectionsButton(props: Props) {
   const [deleteTarget, setDeleteTarget] = useState<McpServerView>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const [environment, setEnvironment] = useState<{ phase: string; version?: string; progress?: number; message?: string; python?: { ready: boolean; version?: string; message?: string } }>()
+  const [environment, setEnvironment] = useState<{ phase: string; environmentVersion?: string; contentRevision?: number; currentSlot?: 'a' | 'b' | 'manual'; updated?: boolean; rollbackAvailable?: boolean; version?: string; progress?: number; message?: string; python?: { ready: boolean; version?: string; sitePackages?: string; message?: string } }>()
   const [sciMasterConfigured, setSciMasterConfigured] = useState(false)
   const [sciMasterKey, setSciMasterKey] = useState('')
   const [sciMasterBusy, setSciMasterBusy] = useState(false)
@@ -308,8 +308,9 @@ export function McpConnectionsButton(props: Props) {
         </div>
       </header>
       {environment !== undefined && environment.phase !== 'idle' && <div className={environment.phase === 'failed' ? css.error : css.warning} role="status">
-        <strong>{props.t('mcp.environment')}: </strong>{environment.message ?? environment.phase}{environment.version ? ` (${environment.version})` : ''}{typeof environment.progress === 'number' ? ` ${Math.round(environment.progress)}%` : ''}
-        {environment.python !== undefined && <div>Python: {environment.python.ready ? `ready${environment.python.version === undefined ? '' : ` (${environment.python.version})`}` : environment.python.message ?? 'unavailable'}</div>}
+        <strong>{props.t('mcp.environment')}: </strong>{environment.phase === 'checking' ? props.t('mcp.environmentChecking') : environment.phase === 'ready' || environment.phase === 'manual' ? (environment.environmentVersion === undefined ? environment.phase : props.t('mcp.environmentVersion', { version: environment.environmentVersion, revision: environment.contentRevision ?? 1 })) : environment.message ?? environment.phase}{typeof environment.progress === 'number' && environment.phase !== 'ready' && environment.phase !== 'manual' ? ` ${Math.round(environment.progress)}%` : ''}
+        {environment.updated === true && <span className={css.syncBadge}>{props.t('mcp.environmentUpdated')}</span>}
+        {environment.python !== undefined && <div>{props.t('mcp.pythonEnvironment')}: {environment.python.ready ? `ready${environment.python.version === undefined ? '' : ` (${environment.python.version})`}` : environment.python.message ?? 'unavailable'}</div>}
         {(environment.phase === 'failed' || environment.phase === 'unavailable') && <><button type="button" onClick={() => void retryEnvironment()}>{props.t('mcp.environmentRetry')}</button><button type="button" onClick={() => void selectEnvironment()}>{props.t('mcp.environmentManual')}</button></>}
       </div>}
       <div className={css.workspace}>
@@ -335,14 +336,15 @@ export function McpConnectionsButton(props: Props) {
           {selected?.runtimeError && <p className={css.error} role="alert">{selected.runtimeError}</p>}
           {(selected?.missingEnvironmentVariables.length ?? 0) > 0 && <p className={css.warning}>{props.t('mcp.missing', { names: selected?.missingEnvironmentVariables.join(', ') ?? '' })}</p>}
           {error && <p className={css.error} role="alert">{error}</p>}
-          {selected?.serverName === 'zerowall_managed_scimaster' && <section className={css.form} aria-label={props.t('mcp.sciMasterSettings')}>
-            <div className={css.settingRow}><strong>{props.t('mcp.sciMasterApiKey')}</strong><span>{sciMasterConfigured ? props.t('mcp.sciMasterConfigured') : props.t('mcp.sciMasterMissing')}</span></div>
-            <div className={css.settingRow}>
+          {selected?.serverName === 'zerowall_managed_scimaster' && <section className={css.sciMasterCard} aria-label={props.t('mcp.sciMasterSettings')}>
+            <div className={css.sciMasterHeading}><strong>{props.t('mcp.sciMasterApiKey')}</strong><span className={sciMasterConfigured ? css.configured : css.missing}>{sciMasterConfigured ? props.t('mcp.sciMasterConfigured') : props.t('mcp.sciMasterMissing')}</span></div>
+            <p className={css.sciMasterHelp}>{props.t('mcp.sciMasterApiKeyHelp')}</p>
+            <div className={css.sciMasterActions}>
               <input type="password" value={sciMasterKey} onChange={event => setSciMasterKey(event.target.value)} placeholder={props.t('mcp.sciMasterApiKeyPlaceholder')} autoComplete="off" />
               <button type="button" className={css.saveButton} onClick={() => void saveSciMasterKey()} disabled={sciMasterBusy || sciMasterKey.trim() === ''}>{props.t('mcp.sciMasterSave')}</button>
               {sciMasterConfigured && <button type="button" onClick={() => void clearSciMaster()} disabled={sciMasterBusy}>{props.t('mcp.sciMasterClear')}</button>}
             </div>
-            <a href="https://scimaster.bohrium.com/vibe-write/home" target="_blank" rel="noreferrer">{props.t('mcp.sciMasterGetKey')}</a>
+            <a className={css.sciMasterGuide} href="https://scimaster.bohrium.com/vibe-write/home" target="_blank" rel="noreferrer">{props.t('mcp.sciMasterApiKeyGuide')}</a>
           </section>}
           <div className={css.form}>
             <div className={css.twoColumns}>

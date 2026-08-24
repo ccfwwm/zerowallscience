@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-reviewer",
-  "version": "4.1.13",
+  "version": "4.1.14",
   "description": "ZeroWall Science reviewer domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

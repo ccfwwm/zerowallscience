@@ -1,11 +1,14 @@
 import { createHash, verify } from 'node:crypto'
-import { access, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 export interface McpEnvironmentManifest {
   schema: 2
   environmentId: string
-  version: string
+  environmentVersion?: string
+  /** @deprecated desktop releases used this field for the MCP version. */
+  version?: string
+  contentRevision?: number
   platform: 'win32'
   architecture: 'x64'
   archiveUrl: string
@@ -28,7 +31,8 @@ export function validateMcpEnvironmentManifest(value: unknown): McpEnvironmentMa
   if (value === null || typeof value !== 'object') throw new Error('MCP environment manifest must be an object.')
   const item = value as Record<string, unknown>
   if (item.schema !== 2 || item.platform !== 'win32' || item.architecture !== 'x64') throw new Error('MCP environment manifest is not for Windows x64.')
-  for (const key of ['environmentId', 'version', 'archiveUrl', 'archiveSha256']) if (typeof item[key] !== 'string' || item[key] === '') throw new Error(`MCP environment manifest field ${key} is required.`)
+  for (const key of ['environmentId', 'archiveUrl', 'archiveSha256']) if (typeof item[key] !== 'string' || item[key] === '') throw new Error(`MCP environment manifest field ${key} is required.`)
+  if ((typeof item.environmentVersion !== 'string' || item.environmentVersion === '') && (typeof item.version !== 'string' || item.version === '')) throw new Error('MCP environment manifest field environmentVersion is required.')
   if (!/^https:\/\//u.test(String(item.archiveUrl))) throw new Error('MCP environment archive URL must use HTTPS.')
   if (!/^[a-f0-9]{64}$/u.test(String(item.archiveSha256))) throw new Error('MCP environment archive SHA-256 is invalid.')
   const python = item.python as Record<string, unknown> | undefined
@@ -56,17 +60,22 @@ export function sha256(bytes: Uint8Array): string { return createHash('sha256').
 export interface McpEnvironmentStore {
   root: string
   currentPath?: string
+  slotsPath(environmentSlot: 'a' | 'b'): string
+  activePath?: string
+  /** @deprecated compatibility helper for older integration callers. */
   versionPath(version: string): string
 }
 
 export function createMcpEnvironmentStore(userData: string): McpEnvironmentStore {
   const root = resolve(userData, 'mcp-environments')
-  return { root, currentPath: join(root, 'current.json'), versionPath: version => join(root, 'versions', version) }
+  return { root, currentPath: join(root, 'current.json'), activePath: join(root, 'current.json'), slotsPath: slot => join(root, 'slots', slot), versionPath: version => join(root, 'versions', version) }
 }
 
 export async function installVerifiedArchive(store: McpEnvironmentStore, manifest: McpEnvironmentManifest, archive: Uint8Array, extract: (archive: Uint8Array, target: string) => Promise<void>): Promise<string> {
   if (archive.byteLength !== manifest.archiveSize || sha256(archive) !== manifest.archiveSha256) throw new Error('MCP environment archive hash or size does not match its manifest.')
-  const target = store.versionPath(manifest.version)
+  const current = store.currentPath === undefined ? undefined : await readFile(store.currentPath, 'utf8').then(value => JSON.parse(value) as { slot?: unknown; health?: unknown }).catch(() => undefined)
+  const targetSlot: 'a' | 'b' = current?.slot === 'a' ? 'b' : 'a'
+  const target = store.slotsPath(targetSlot)
   const temporary = `${target}.tmp-${process.pid}-${Date.now()}`
   await rm(temporary, { recursive: true, force: true })
   await mkdir(temporary, { recursive: true })
@@ -76,7 +85,7 @@ export async function installVerifiedArchive(store: McpEnvironmentStore, manifes
     await mkdir(resolve(target, '..'), { recursive: true })
     await rm(target, { recursive: true, force: true })
     await rename(temporary, target)
-    await writeFile(store.currentPath!, `${JSON.stringify({ version: manifest.version, installedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8')
+    await writeFile(store.currentPath!, `${JSON.stringify({ environmentVersion: manifest.environmentVersion ?? manifest.version, contentRevision: manifest.contentRevision ?? 1, slot: targetSlot, root: target, health: 'ready', manifest, installedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8')
     return target
   } catch (error) {
     await rm(temporary, { recursive: true, force: true })
@@ -85,5 +94,11 @@ export async function installVerifiedArchive(store: McpEnvironmentStore, manifes
 }
 
 export async function environmentIsReady(store: McpEnvironmentStore, manifest: McpEnvironmentManifest): Promise<boolean> {
-  try { await stat(join(store.versionPath(manifest.version), manifest.python.relativeExecutable)); return true } catch { return false }
+  try {
+    const current = store.currentPath === undefined ? undefined : JSON.parse(await readFile(store.currentPath, 'utf8')) as { root?: string; health?: string }
+    if (current?.health !== 'ready' || typeof current.root !== 'string') return false
+    await stat(join(current.root, manifest.python.relativeExecutable)); return true
+  } catch { return false }
 }
+
+export function mcpEnvironmentVersion(manifest: McpEnvironmentManifest): string { return manifest.environmentVersion ?? manifest.version ?? 'legacy' }

@@ -7,12 +7,15 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
 
 export type ReviewerMode = 'inherit' | 'on' | 'off'
 export type ReviewerStatus = 'passed' | 'failed' | 'unreviewable' | 'error'
+export type ReviewerEvidenceStatus = 'verified' | 'auto-repaired' | 'unverified' | 'legacy'
 export type ReviewerFindingStatus = 'open' | 'resolved' | 'unaddressed'
 
 export interface ReviewerFinding {
   messageIndex: number
   claim: string
   evidence: string
+  reportedEvidence?: string
+  evidenceStatus?: ReviewerEvidenceStatus
   fix: string
   verdict: 'warn' | 'fail' | 'inconclusive'
   severity: 'low' | 'medium' | 'high'
@@ -29,7 +32,11 @@ export interface ReviewerReportData {
   reviewerBackend: string
   reviewStatus: ReviewerStatus
   evidenceCoverage: number
+  citationCoverage?: number
+  hasUnverifiedEvidence?: boolean
+  summaryEvidenceStatus?: ReviewerEvidenceStatus
   coverageGaps: readonly string[]
+  coverageGapDetails?: readonly { code: string; messageIndex?: number; seq?: number; detail?: string }[]
   correction?: 'none' | 'requested' | 'completed'
   reReviewed?: boolean
 }

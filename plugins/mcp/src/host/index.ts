@@ -122,7 +122,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   @Remote('list')
   list(): Promise<McpServerDto[]> {
-    return this.exclusive(async () => this.projects().listMcpServers().map(record => this.dto(record)))
+    return this.exclusive(async () => this.projects().listMcpServers().sort(compareMcpServers).map(record => this.dto(record)))
   }
 
   @Remote('create')
@@ -228,7 +228,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     const record = managedEnvironmentRecord()
     const signature = record === undefined
       ? 'missing'
-      : `${record.health ?? 'unknown'}:${record.version ?? 'unknown'}:${record.root ?? ''}`
+      : `${record.health ?? 'unknown'}:${record.environmentVersion ?? record.version ?? 'unknown'}:${record.contentRevision ?? ''}:${record.archiveSha256?.slice(0, 12) ?? ''}:${record.root ?? ''}`
     if (signature === this.environmentSignature) return
     this.environmentSignature = signature
     // Never tear down a healthy client because an in-progress download or a
@@ -262,17 +262,26 @@ export class ZeroWallMcpService extends TypertRemoteService {
       }
     }
     const bundled = projects.listMcpServers()
+    const displayNames: Record<string, string> = {
+      zerowall_managed_scimaster: 'Sci',
+      zerowall_managed_bio_tools: 'Bio Tools',
+      zerowall_managed_ketcher: 'Ketcher Chemistry',
+    }
+    for (const server of bundled) {
+      const desired = displayNames[server.serverName]
+      if (desired !== undefined && server.name !== desired) projects.updateMcpServer(server.id, { name: desired })
+    }
     if (!bundled.some(server => server.serverName === 'zerowall_managed_bio_tools')) {
-      projects.createMcpServer({ name: 'Claude Science Bio Tools', serverName: 'zerowall_managed_bio_tools', transport: 'stdio', enabled: true, command: 'zerowall-managed:bio-tools', cwd: '', failOnStartupError: false })
+      projects.createMcpServer({ name: 'Bio Tools', serverName: 'zerowall_managed_bio_tools', transport: 'stdio', enabled: true, command: 'zerowall-managed:bio-tools', cwd: '', failOnStartupError: false })
     }
     if (!bundled.some(server => server.serverName === 'zerowall_managed_ketcher')) {
-      projects.createMcpServer({ name: 'Claude Science Ketcher Chemistry', serverName: 'zerowall_managed_ketcher', transport: 'stdio', enabled: true, command: 'zerowall-managed:ketcher', cwd: '', failOnStartupError: false })
+      projects.createMcpServer({ name: 'Ketcher Chemistry', serverName: 'zerowall_managed_ketcher', transport: 'stdio', enabled: true, command: 'zerowall-managed:ketcher', cwd: '', failOnStartupError: false })
     }
     if (!bundled.some(server => server.serverName === 'zerowall_managed_scimaster')) {
-      projects.createMcpServer({ name: 'SciMaster', serverName: 'zerowall_managed_scimaster', transport: 'stdio', enabled: true, command: 'zerowall-managed:scimaster', cwd: '', failOnStartupError: false })
+      projects.createMcpServer({ name: 'Sci', serverName: 'zerowall_managed_scimaster', transport: 'stdio', enabled: true, command: 'zerowall-managed:scimaster', cwd: '', failOnStartupError: false })
     }
     await mkdir(dirname(marker), { recursive: true })
-    await writeFile(marker, '{"version":2}\n', 'utf8')
+    await writeFile(marker, '{"version":3}\n', 'utf8')
   }
 
   private projects() {
@@ -289,13 +298,13 @@ export class ZeroWallMcpService extends TypertRemoteService {
   }
 
   private async reconcile(record: McpServerRecord): Promise<void> {
-    await this.disposeOne(record.id)
     if (!record.enabled) {
+      await this.disposeOne(record.id)
       this.statuses.set(record.id, { state: 'disabled', error: '', missingEnvironmentVariables: [] })
       return
     }
     if (isManagedMcp(record.serverName) && !managedEnvironmentReady()) {
-      this.statuses.set(record.id, { state: 'blocked', error: 'The Claude Science MCP environment is not ready. Retry initialization or select a user-managed environment in Settings.', missingEnvironmentVariables: [] })
+      if (!this.fibers.has(record.id)) this.statuses.set(record.id, { state: 'blocked', error: 'The Claude Science MCP environment is not ready. Retry initialization or select a user-managed environment in Settings.', missingEnvironmentVariables: [] })
       return
     }
     let sciMasterApiKey: string | undefined
@@ -306,12 +315,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
         sciMasterApiKey = undefined
       }
       if (!sciMasterApiKey?.trim()) {
+        await this.disposeOne(record.id)
         this.statuses.set(record.id, { state: 'blocked', error: 'SciMaster 需要配置 API Key。请在设置中保存 Key 后重试。', missingEnvironmentVariables: [] })
         return
       }
     }
     const resolved = resolveMcpConfig(record, process.env)
     if (resolved.config === undefined) {
+      await this.disposeOne(record.id)
       this.statuses.set(record.id, {
         state: 'blocked',
         error: 'Required environment variables are not available to the Host.',
@@ -322,11 +333,17 @@ export class ZeroWallMcpService extends TypertRemoteService {
     try {
       const config = resolved.config as McpClient.Config
       if (sciMasterApiKey !== undefined && config.transport === 'stdio') config.env.ZEROWALL_SCIMASTER_API_KEY = sciMasterApiKey
+      const previous = this.fibers.get(record.id)
       const fiber = this.ctx.plugin(McpClient, config)
       await fiber
       this.fibers.set(record.id, fiber)
+      if (previous !== undefined && previous !== fiber) await previous.dispose()
       this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
     } catch (error) {
+      if (this.fibers.has(record.id)) {
+        this.ctx.logger.warn(`zerowall-mcp: retained healthy ${record.serverName} connection after refresh failure: ${redactError(error)}`)
+        return
+      }
       this.statuses.set(record.id, {
         state: 'error',
         error: redactError(error),
@@ -408,7 +425,7 @@ export function resolveStdioLaunch(record: Pick<McpServerRecord, 'command' | 'ar
 
 function isManagedMcp(serverName: string): boolean { return serverName === 'zerowall_managed_bio_tools' || serverName === 'zerowall_managed_ketcher' || serverName === 'zerowall_managed_scimaster' }
 
-function managedEnvironmentRecord(): { root?: string; health?: string; version?: string; mode?: string } | undefined {
+function managedEnvironmentRecord(): { root?: string; health?: string; version?: string; environmentVersion?: string; contentRevision?: number; archiveSha256?: string; mode?: string } | undefined {
   const root = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
   if (!root) return undefined
   try { return JSON.parse(readFileSync(join(root, 'current.json'), 'utf8')) as { root?: string; health?: string; version?: string; mode?: string } } catch { return undefined }
@@ -423,6 +440,18 @@ function managedEnvironmentReady(): boolean {
     && existsSync(join(root, 'ketcher-chemistry', 'server.js'))
     && existsSync(join(root, 'sci', 'dist', 'mcp.cjs'))
     && existsSync(join(root, 'sci', 'zerowall-mcp-launcher.cjs'))
+}
+
+const MANAGED_ORDER: Record<string, number> = {
+  zerowall_managed_scimaster: 0,
+  zerowall_managed_bio_tools: 1,
+  zerowall_managed_ketcher: 2,
+}
+
+function compareMcpServers(left: McpServerRecord, right: McpServerRecord): number {
+  const leftOrder = MANAGED_ORDER[left.serverName] ?? 100
+  const rightOrder = MANAGED_ORDER[right.serverName] ?? 100
+  return leftOrder - rightOrder || left.name.localeCompare(right.name)
 }
 
 function resolveManagedLaunch(command: string): { command: string; args: string[]; cwd: string } | undefined {

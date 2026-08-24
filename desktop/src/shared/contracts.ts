@@ -14,9 +14,15 @@ export interface DesktopInfo {
   architecture: string
 }
 
-export type McpEnvironmentPhase = 'idle' | 'downloading' | 'verifying' | 'installing' | 'ready' | 'failed' | 'manual' | 'unavailable'
+export type McpEnvironmentPhase = 'idle' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'ready' | 'failed' | 'manual' | 'unavailable'
 export interface McpEnvironmentStatus {
   phase: McpEnvironmentPhase
+  environmentVersion?: string
+  contentRevision?: number
+  currentSlot?: 'a' | 'b' | 'manual'
+  updated?: boolean
+  rollbackAvailable?: boolean
+  /** @deprecated kept for older renderer consumers. */
   version?: string
   progress?: number
   message?: string

@@ -10276,9 +10276,6 @@ importers:
       '@zerowallscience/plugin-projects':
         specifier: workspace:^
         version: link:../projects
-      '@zerowallscience/plugin-secrets':
-        specifier: workspace:^
-        version: link:../secrets
       '@zerowallscience/research-store':
         specifier: workspace:^
         version: link:../../store

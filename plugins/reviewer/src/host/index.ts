@@ -21,6 +21,15 @@ sessionEventTypes.add('zerowall/reviewer/report')
 
 export type ReviewerMode = 'inherit' | 'on' | 'off'
 export type ReviewStatus = 'passed' | 'failed' | 'unreviewable' | 'error'
+export type EvidenceStatus = 'verified' | 'auto-repaired' | 'unverified' | 'legacy'
+export type ReviewerCoverageGapCode = 'tool-empty' | 'tool-truncated' | 'transcript-truncated' | 'finding-citation-unverified' | 'summary-citation-unverified'
+
+export interface ReviewerCoverageGap {
+  code: ReviewerCoverageGapCode
+  messageIndex?: number
+  seq?: number
+  detail?: string
+}
 
 export interface ReviewerSettings {
   autoReview: boolean
@@ -34,6 +43,8 @@ export interface ReviewFinding {
   messageIndex: number
   claim: string
   evidence: string
+  reportedEvidence?: string
+  evidenceStatus?: EvidenceStatus
   fix: string
   verdict: 'warn' | 'fail' | 'inconclusive'
   severity: 'low' | 'medium' | 'high'
@@ -50,7 +61,11 @@ export interface ReviewReport {
   reviewerBackend: string
   reviewStatus: ReviewStatus
   evidenceCoverage: number
+  citationCoverage?: number
+  hasUnverifiedEvidence?: boolean
+  summaryEvidenceStatus?: 'verified' | 'unverified' | 'legacy'
   coverageGaps: string[]
+  coverageGapDetails?: ReviewerCoverageGap[]
   correction?: 'none' | 'requested' | 'completed'
   reReviewed?: boolean
 }
@@ -67,12 +82,24 @@ const TOTAL_CAP = 80_000
 const MAX_FINDINGS = 8
 const REVIEW_TIMEOUT_MS = 60_000
 const ACTIVE_REVIEWER_PARENTS = new Map<string, string | undefined>()
-const REVIEWER_PERSONA = `You are ZeroWall Science's independent Reviewer. Trace the supplied transcript only. Do not recompute or use outside knowledge. Every finding must cite a [msg:N ...] block and quote the relevant claim and evidence. Return only the requested structured object. Do not report correct work.`
+const REVIEWER_PERSONA = `You are ZeroWall Science's independent Reviewer. Trace the supplied transcript only. Do not recompute or use outside knowledge. Every finding must cite a [msg:N ...] block and copy evidence verbatim from that block. Do not paraphrase evidence, add markdown wrappers, or invent text. If a concern cannot be supported by an exact transcript quote, still return the finding with the best reported evidence and let the host mark it unverified. Any factual statement in summary must be supported by summaryEvidence. Return only the requested structured object. Do not report correct work.`
 const REVIEW_SCHEMA: ObjectJsonSchema = {
   type: 'object',
   additionalProperties: false,
   properties: {
     summary: { type: 'string' },
+    summaryEvidence: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          messageIndex: { type: 'integer' },
+          evidence: { type: 'string' },
+        },
+        required: ['messageIndex', 'evidence'],
+      },
+    },
     findings: {
       type: 'array',
       items: {
@@ -149,21 +176,46 @@ export function serializeTranscript(events: readonly SessionEvent[]): string {
   return `${kept.length < blocks.length ? '[…earlier transcript truncated…]\n\n' : ''}${kept.join('\n\n')}`
 }
 
-export function assessEvidence(events: readonly SessionEvent[]): { coverage: number; gaps: string[] } {
+interface EvidenceAssessment {
+  coverage: number
+  gaps: string[]
+  details?: ReviewerCoverageGap[]
+}
+
+function assessEvidenceDetailed(events: readonly SessionEvent[]): EvidenceAssessment {
   const toolResults = events.filter(event => event.type === 'tool/result')
   const gaps: string[] = []
+  const details: ReviewerCoverageGap[] = []
   let complete = 0
   for (const event of toolResults) {
     const text = eventText(event).trim()
-    if (text.length === 0) gaps.push(`tool result at seq ${event.seq} has no inspectable output`)
-    else if (text.length > PER_TOOL_CAP) gaps.push(`tool result at seq ${event.seq} exceeded ${PER_TOOL_CAP} characters and was truncated`)
+    if (text.length === 0) {
+      gaps.push(`tool result at seq ${event.seq} has no inspectable output`)
+      details.push({ code: 'tool-empty', seq: event.seq })
+    } else if (text.length > PER_TOOL_CAP) {
+      gaps.push(`tool result at seq ${event.seq} exceeded ${PER_TOOL_CAP} characters and was truncated`)
+      details.push({ code: 'tool-truncated', seq: event.seq })
+    }
     else complete += 1
   }
   if (serializeTranscript(events).startsWith('[…earlier transcript truncated…]')) {
     gaps.push(`transcript exceeded ${TOTAL_CAP} characters and older evidence was truncated`)
+    details.push({ code: 'transcript-truncated' })
   }
-  if (toolResults.length === 0) return { coverage: gaps.length === 0 ? 100 : 0, gaps: gaps.slice(0, 12) }
-  return { coverage: Math.floor(complete * 100 / toolResults.length), gaps: gaps.slice(0, 12) }
+  const unique = new Map<string, { text: string; detail?: ReviewerCoverageGap }>()
+  for (const [index, text] of gaps.entries()) {
+    const detail = details[index]
+    unique.set(`${detail?.code ?? 'unknown'}:${detail?.seq ?? ''}:${detail?.messageIndex ?? ''}:${text}`, detail === undefined ? { text } : { text, detail })
+  }
+  const entries = [...unique.values()].slice(0, 12)
+  const entryDetails = entries.flatMap(entry => entry.detail === undefined ? [] : [entry.detail])
+  if (toolResults.length === 0) return { coverage: gaps.length === 0 ? 100 : 0, gaps: entries.map(entry => entry.text), details: entryDetails }
+  return { coverage: Math.floor(complete * 100 / toolResults.length), gaps: entries.map(entry => entry.text), details: entryDetails }
+}
+
+export function assessEvidence(events: readonly SessionEvent[]): { coverage: number; gaps: string[] } {
+  const { coverage, gaps } = assessEvidenceDetailed(events)
+  return { coverage, gaps }
 }
 
 export function shouldAutoReview(events: readonly SessionEvent[], currentTurn: number): boolean {
@@ -173,17 +225,103 @@ export function shouldAutoReview(events: readonly SessionEvent[], currentTurn: n
   return hasTool || prose >= 600
 }
 
-function transcriptBlocks(transcript: string): Map<number, string> {
-  const blocks = new Map<number, string>()
-  const matches = [...transcript.matchAll(/^\[msg:(\d+) [^\]]+\]\n([\s\S]*?)(?=\n\n\[msg:|$)/gmu)]
-  for (const match of matches) blocks.set(Number(match[1]), match[2] ?? '')
-  return blocks
+interface TranscriptEvidenceBlock {
+  messageIndex: number
+  text: string
+}
+
+function transcriptBlocks(transcript: string): TranscriptEvidenceBlock[] {
+  return [...transcript.matchAll(/^\[msg:(\d+) [^\]]+\]\n([\s\S]*?)(?=\n\n\[msg:|$)/gmu)].map(match => ({
+    messageIndex: Number(match[1]),
+    text: match[2] ?? '',
+  }))
+}
+
+function evidenceText(value: string): string {
+  let result = value.normalize('NFKC').replace(/\u00a0/gu, ' ')
+  result = result.replace(/^\s*[>`]\s?/gmu, '').trim()
+  if ((result.startsWith('"') && result.endsWith('"')) || (result.startsWith('`') && result.endsWith('`'))) result = result.slice(1, -1).trim()
+  return result.replace(/\s+/gu, ' ')
+}
+
+function evidenceTokens(value: string): string[] {
+  return evidenceText(value).match(/[\p{L}\p{N}_-]+/gu)?.map(token => token.toLocaleLowerCase()) ?? []
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+}
+
+function findNormalizedQuote(block: TranscriptEvidenceBlock, reported: string): string | undefined {
+  const candidate = evidenceText(reported)
+  if (candidate === '') return undefined
+  if (block.text.includes(reported.trim())) return reported.trim()
+  const rawTokens = candidate.split(' ').filter(Boolean)
+  if (rawTokens.length === 0) return undefined
+  const pattern = rawTokens.map(escapeRegExp).join('\\s+')
+  const match = new RegExp(pattern, 'u').exec(block.text.normalize('NFKC'))
+  if (match === null) return undefined
+  const rawMatch = new RegExp(pattern, 'u').exec(block.text)
+  return rawMatch?.[0]
+}
+
+function findTokenQuote(block: TranscriptEvidenceBlock, reported: string): string | undefined {
+  const wanted = evidenceTokens(reported)
+  if (wanted.length < 3 || evidenceText(reported).length < 8) return undefined
+  const rawMatches = [...block.text.matchAll(/[\p{L}\p{N}_-]+/gu)]
+  const actual = rawMatches.map(match => match[0].normalize('NFKC').toLocaleLowerCase())
+  let best: { start: number; end: number; length: number } | undefined
+  let ties = 0
+  for (let start = 0; start < actual.length; start += 1) {
+    for (let wantedStart = 0; wantedStart < wanted.length; wantedStart += 1) {
+      let length = 0
+      while (start + length < actual.length && wantedStart + length < wanted.length && actual[start + length] === wanted[wantedStart + length]) length += 1
+      if (length < 3 || length < Math.ceil(wanted.length * 0.7)) continue
+      if (best === undefined || length > best.length) {
+        best = { start, end: start + length - 1, length }
+        ties = 1
+      } else if (length === best.length) ties += 1
+    }
+  }
+  if (best === undefined || ties !== 1) return undefined
+  const start = rawMatches[best.start]
+  const end = rawMatches[best.end]
+  if (start === undefined || end === undefined) return undefined
+  return block.text.slice(start.index, end.index + end[0].length)
+}
+
+function resolveEvidence(blocks: readonly TranscriptEvidenceBlock[], messageIndex: number, reported: string): { text: string; status: EvidenceStatus; messageIndex: number } {
+  const cited = blocks.find(block => block.messageIndex === messageIndex)
+  if (cited !== undefined) {
+    if (cited.text.includes(reported.trim())) return { text: reported.trim(), status: 'verified', messageIndex: cited.messageIndex }
+    const normalized = findNormalizedQuote(cited, reported)
+    if (normalized !== undefined) return { text: normalized, status: 'auto-repaired', messageIndex: cited.messageIndex }
+    const token = findTokenQuote(cited, reported)
+    if (token !== undefined) return { text: token, status: 'auto-repaired', messageIndex: cited.messageIndex }
+  }
+  const matches = blocks.flatMap(block => {
+    const normalized = findNormalizedQuote(block, reported) ?? findTokenQuote(block, reported)
+    return normalized === undefined ? [] : [{ block, text: normalized }]
+  })
+  const match = matches[0]
+  if (matches.length === 1 && match !== undefined) return { text: match.text, status: 'auto-repaired', messageIndex: match.block.messageIndex }
+  return { text: reported.trim(), status: 'unverified', messageIndex }
+}
+
+function uniqueGaps(gaps: readonly ReviewerCoverageGap[]): ReviewerCoverageGap[] {
+  const seen = new Set<string>()
+  return gaps.filter(gap => {
+    const key = `${gap.code}:${gap.messageIndex ?? ''}:${gap.seq ?? ''}:${gap.detail ?? ''}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 export function normalizeReport(
   raw: unknown,
   model: string,
-  evidence: { coverage: number; gaps: string[] },
+  evidence: EvidenceAssessment,
   turn: number,
   transcript: string,
   effort?: string,
@@ -192,6 +330,7 @@ export function normalizeReport(
   const rawFindings = Array.isArray(value.findings) ? value.findings : []
   const citedBlocks = transcriptBlocks(transcript)
   const coverageGaps = [...evidence.gaps]
+  const gapDetails = [...(evidence.details ?? [])]
   const findings: ReviewFinding[] = rawFindings.slice(0, MAX_FINDINGS).flatMap(item => {
     if (item === null || typeof item !== 'object') return []
     const row = item as Record<string, unknown>
@@ -199,13 +338,29 @@ export function normalizeReport(
     const verdict = row.verdict === 'fail' || row.verdict === 'inconclusive' ? row.verdict : 'warn'
     const severity = row.severity === 'high' || row.severity === 'medium' ? row.severity : 'low'
     const messageIndex = Number.isSafeInteger(row.messageIndex) ? row.messageIndex as number : -1
-    const cited = citedBlocks.get(messageIndex)
-    if (cited === undefined || !cited.includes(row.evidence.trim())) {
+    const resolved = resolveEvidence(citedBlocks, messageIndex, row.evidence)
+    if (resolved.status === 'unverified') {
       coverageGaps.push(`finding for msg:${messageIndex} did not quote evidence from its cited transcript block`)
-      return []
+      gapDetails.push({ code: 'finding-citation-unverified', messageIndex })
     }
-    return [{ messageIndex, claim: row.claim, evidence: row.evidence, fix: row.fix, verdict, severity, status: 'open' }]
+    return [{ messageIndex: resolved.messageIndex, claim: row.claim, evidence: resolved.text, reportedEvidence: row.evidence, evidenceStatus: resolved.status, fix: row.fix, verdict: resolved.status === 'unverified' ? 'inconclusive' : verdict, severity, status: 'open' }]
   })
+  const verifiedFindings = findings.filter(finding => finding.evidenceStatus === 'verified' || finding.evidenceStatus === 'auto-repaired')
+  const unverifiedFindings = findings.filter(finding => finding.evidenceStatus === 'unverified')
+  const rawSummaryEvidence = Array.isArray(value.summaryEvidence) ? value.summaryEvidence : undefined
+  let summaryEvidenceStatus: ReviewReport['summaryEvidenceStatus'] = rawSummaryEvidence === undefined ? 'legacy' : 'verified'
+  if (rawSummaryEvidence !== undefined && rawSummaryEvidence.some(item => {
+    if (item === null || typeof item !== 'object') return true
+    const row = item as Record<string, unknown>
+    const index = Number.isSafeInteger(row.messageIndex) ? row.messageIndex as number : -1
+    return typeof row.evidence !== 'string' || resolveEvidence(citedBlocks, index, row.evidence).status === 'unverified'
+  })) {
+    summaryEvidenceStatus = 'unverified'
+    coverageGaps.push('review summary did not quote evidence from its cited transcript block')
+    gapDetails.push({ code: 'summary-citation-unverified' })
+  }
+  const dedupedDetails = uniqueGaps(gapDetails)
+  const dedupedGaps = [...new Set(coverageGaps)].slice(0, 12)
   return {
     id: crypto.randomUUID(),
     turn,
@@ -214,9 +369,13 @@ export function normalizeReport(
     reviewerModel: model,
     ...(effort === undefined ? {} : { reviewerEffort: effort }),
     reviewerBackend: 'spawn',
-    reviewStatus: findings.length ? 'failed' : coverageGaps.length ? 'unreviewable' : 'passed',
+    reviewStatus: verifiedFindings.length ? 'failed' : findings.length || dedupedGaps.length ? 'unreviewable' : 'passed',
     evidenceCoverage: evidence.coverage,
-    coverageGaps: coverageGaps.slice(0, 12),
+    citationCoverage: findings.length === 0 ? 100 : Math.floor(verifiedFindings.length * 100 / findings.length),
+    hasUnverifiedEvidence: unverifiedFindings.length > 0 || summaryEvidenceStatus === 'unverified',
+    summaryEvidenceStatus,
+    coverageGaps: dedupedGaps,
+    coverageGapDetails: dedupedDetails,
     correction: 'none',
     reReviewed: false,
   }
@@ -266,7 +425,7 @@ async function runReview(ctx: Context, agent: Agent, events: readonly SessionEve
       throw new Error(`Reviewer model is unavailable: ${model.label}`)
     }
   }
-  const evidence = assessEvidence(events)
+  const evidence = assessEvidenceDetailed(events)
   const transcript = serializeTranscript(events)
   const prompt = `${REVIEWER_PERSONA}\n\nTranscript:\n${transcript}\n\nAssess every claim against cited tool evidence. Use messageIndex values from the transcript.`
   const timeout = AbortSignal.timeout(REVIEW_TIMEOUT_MS)
@@ -311,6 +470,13 @@ function correctionPrompt(report: ReviewReport): string {
   return `Independent review found issues in your latest answer. Correct the answer once, using tools again if needed. Preserve supported conclusions and explicitly state corrections.\n\n${report.findings.map((finding, index) => `${index + 1}. Claim: ${finding.claim}\nEvidence: ${finding.evidence}\nRequired fix: ${finding.fix}`).join('\n\n')}`
 }
 
+export function canAutoCorrect(report: ReviewReport): boolean {
+  return report.reviewStatus === 'failed'
+    && report.findings.length > 0
+    && report.hasUnverifiedEvidence !== true
+    && report.findings.every(finding => finding.evidenceStatus === 'verified' || finding.evidenceStatus === 'auto-repaired')
+}
+
 export function apply(ctx: Context): void {
   const scope = ctx.settings.register(REVIEWER_SETTINGS_NS, ReviewerSettingsSchema)
   // Remove legacy fixed-model fields once. They are no longer part of the
@@ -333,17 +499,20 @@ export function apply(ctx: Context): void {
     if (events.length === 0) return undefined
     try {
       let report = await runReview(ctx, agent, events, turn, signal)
-      if (allowCorrection && report.reviewStatus === 'failed' && report.findings.length > 0) {
+      if (allowCorrection && canAutoCorrect(report)) {
         report.correction = 'requested'
         appendReport(agent.session, report)
         agent.steer(createUserMessage({ content: [{ type: 'text', text: correctionPrompt(report) }], source: { kind: 'plugin', plugin: name } }))
         return report
       }
+      if (allowCorrection && report.reviewStatus === 'failed' && report.hasUnverifiedEvidence === true) {
+        report.coverageGaps = [...new Set([...report.coverageGaps, '自动纠正已跳过：存在未验证证据'])].slice(0, 12)
+      }
       appendReport(agent.session, report)
       return report
     } catch (error) {
       const report: ReviewReport = {
-        id: crypto.randomUUID(), turn, summary: error instanceof Error ? error.message : String(error), findings: [], reviewerModel: 'session', reviewerBackend: 'spawn', reviewStatus: 'error', evidenceCoverage: 0, coverageGaps: [], correction: 'none', reReviewed: false,
+        id: crypto.randomUUID(), turn, summary: error instanceof Error ? error.message : String(error), findings: [], reviewerModel: 'session', reviewerBackend: 'spawn', reviewStatus: 'error', evidenceCoverage: 0, citationCoverage: 0, hasUnverifiedEvidence: false, summaryEvidenceStatus: 'legacy', coverageGaps: [], coverageGapDetails: [], correction: 'none', reReviewed: false,
       }
       appendReport(agent.session, report)
       ctx.logger.warn(`Reviewer failed for ${String(agent.id)}: ${report.summary}`)
@@ -367,7 +536,11 @@ export function apply(ctx: Context): void {
               ...(followUp.reviewerEffort === undefined ? {} : { reviewerEffort: followUp.reviewerEffort }),
               reviewStatus: followUp.reviewStatus,
               evidenceCoverage: followUp.evidenceCoverage,
+              ...(followUp.citationCoverage === undefined ? {} : { citationCoverage: followUp.citationCoverage }),
+              ...(followUp.hasUnverifiedEvidence === undefined ? {} : { hasUnverifiedEvidence: followUp.hasUnverifiedEvidence }),
+              ...(followUp.summaryEvidenceStatus === undefined ? {} : { summaryEvidenceStatus: followUp.summaryEvidenceStatus }),
               coverageGaps: followUp.coverageGaps,
+              ...(followUp.coverageGapDetails === undefined ? {} : { coverageGapDetails: followUp.coverageGapDetails }),
               correction: 'completed',
               reReviewed: true,
             }

@@ -8,9 +8,12 @@ import type { McpEnvironmentStatus } from '../shared/contracts.js'
 
 export interface McpEnvironmentManifest {
   schema: 2
+  /** Stable MCP runtime identity, independent of the desktop app version. */
+  environmentVersion?: string
+  /** @deprecated old releases used the desktop app version here. */
+  version?: string
   contentRevision?: number
   environmentId: 'claude-science-mcp'
-  version: string
   platform: 'win32'
   architecture: 'x64'
   archiveUrl: string
@@ -62,8 +65,8 @@ export class McpEnvironmentController {
     const manifest = await this.readInstalledManifest(selected)
     await this.verifyHealth(selected, manifest)
     await mkdir(this.options.root, { recursive: true })
-    await this.writeCurrent({ mode: 'manual', version: manifest.version, root: selected, health: 'ready', installedAt: new Date().toISOString() })
-    return this.set({ phase: 'manual', version: manifest.version, message: selected, python: pythonStatus(manifest) })
+    await this.writeCurrent({ mode: 'manual', environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), root: selected, slot: 'manual', health: 'ready', manifest, installedAt: new Date().toISOString() })
+    return this.set(environmentStatus('manual', manifest, selected, 'manual', false, false))
   }
 
   private async install(): Promise<McpEnvironmentStatus> {
@@ -71,25 +74,29 @@ export class McpEnvironmentController {
       if (process.platform !== 'win32' || process.arch !== 'x64') return this.set({ phase: 'unavailable', message: 'Managed scientific MCP environments are currently available on Windows x64 only.' })
       if (this.options.publicKey.trim() === '') throw new Error('The MCP environment verification key is not configured.')
       await this.cleanupTemporaryInstallations()
-      this.set({ phase: 'downloading', progress: 0, message: '正在获取科研 MCP 环境清单' })
+      this.set({ phase: 'checking', progress: 0, message: '正在检查科研 MCP 环境' })
       const fetcher = this.options.fetcher ?? fetch
       const manifestResponse = await fetcher(this.options.manifestUrl, { cache: 'no-store' })
       if (!manifestResponse.ok) throw new Error(`MCP environment manifest returned HTTP ${manifestResponse.status}.`)
       const manifest = validateManifest(await manifestResponse.json())
       if (!verifyManifestWithKeyring(manifest, this.options.publicKey, this.options.publicKeys)) throw new Error('MCP environment manifest signature is invalid.')
+      await this.migrateLegacyCurrent(manifest)
       const installed = await this.installedRoot(manifest)
-      if (installed !== undefined) return this.set({ phase: 'ready', version: manifest.version, progress: 100, message: installed, python: pythonStatus(manifest) })
-      this.set({ phase: 'downloading', version: manifest.version, progress: 5, message: '正在下载科研 MCP 环境' })
+      if (installed !== undefined) return this.set(environmentStatus('ready', manifest, installed.root, installed.slot, false, installed.rollbackAvailable))
+      this.set({ phase: 'downloading', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), progress: 5, message: '正在同步科研 MCP 环境' })
       const archiveResponse = await fetcher(manifest.archiveUrl, { cache: 'no-store' })
       if (!archiveResponse.ok) throw new Error(`MCP environment archive returned HTTP ${archiveResponse.status}.`)
       const archive = Buffer.from(await archiveResponse.arrayBuffer())
-      this.set({ phase: 'verifying', version: manifest.version, progress: 70, message: '正在验证科研 MCP 环境' })
+      this.set({ phase: 'verifying', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), progress: 70, message: '正在验证科研 MCP 环境' })
       if (archive.byteLength !== manifest.archiveSize || sha256(archive) !== manifest.archiveSha256) throw new Error('MCP environment archive hash or size is invalid.')
-      const target = join(this.options.root, 'versions', environmentDirectoryName(manifest))
+      const current = await readCurrent(this.options.root)
+      const currentSlot = current?.slot === 'a' || current?.slot === 'b' ? current.slot : undefined
+      const targetSlot: 'a' | 'b' = currentSlot === 'a' ? 'b' : 'a'
+      const target = join(this.options.root, 'slots', targetSlot)
       const temporary = `${target}.tmp-${process.pid}-${Date.now()}`
       await rm(temporary, { recursive: true, force: true })
       await mkdir(temporary, { recursive: true })
-      this.set({ phase: 'installing', version: manifest.version, progress: 80, message: '正在安装科研 MCP 环境' })
+      this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: targetSlot, progress: 80, message: '正在安装科研 MCP 环境' })
       try {
         await extractZip(archive, temporary)
         await this.verifyHealth(temporary, manifest)
@@ -102,45 +109,67 @@ export class McpEnvironmentController {
         throw error
       }
       await mkdir(this.options.root, { recursive: true })
-      await this.writeCurrent({ mode: 'managed', version: manifest.version, root: target, manifest, health: 'ready', installedAt: new Date().toISOString() })
-      return this.set({ phase: 'ready', version: manifest.version, progress: 100, message: target, python: pythonStatus(manifest) })
+      if (current !== undefined && current.root && current.health === 'ready' && (current.slot === 'a' || current.slot === 'b')) {
+        await this.writeCurrent({ ...current, root: current.root, slot: current.slot, rollbackAvailable: true, rollbackAt: new Date().toISOString() }, 'rollback.json')
+      }
+      await this.writeCurrent({ mode: 'managed', environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), archiveSha256: manifest.archiveSha256, root: target, slot: targetSlot, manifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: current?.health === 'ready' && current.slot !== 'manual' })
+      return this.set(environmentStatus('ready', manifest, target, targetSlot, true, current?.health === 'ready' && current.slot !== 'manual'))
     } catch (error) {
       const retained = await this.currentHealthyRoot()
-      if (retained !== undefined) return this.set({ phase: 'ready', version: retained.version, progress: 100, message: retained.root })
+      if (retained !== undefined) return this.set(environmentStatus('ready', retained.manifest, retained.root, retained.slot, false, retained.rollbackAvailable))
       return this.set({ phase: 'failed', message: sanitizeError(error) })
     }
   }
 
   private async cleanupTemporaryInstallations(): Promise<void> {
-    const versions = join(this.options.root, 'versions')
-    let entries
-    try { entries = await readdir(versions, { withFileTypes: true }) } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
-      throw error
+    for (const directory of [join(this.options.root, 'slots'), join(this.options.root, 'versions')]) {
+      let entries
+      try { entries = await readdir(directory, { withFileTypes: true }) } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
+        throw error
+      }
+      await Promise.all(entries.filter(entry => entry.isDirectory() && entry.name.includes('.tmp-')).map(entry => rm(join(directory, entry.name), { recursive: true, force: true })))
     }
-    await Promise.all(entries.filter(entry => entry.isDirectory() && entry.name.includes('.tmp-')).map(entry => rm(join(versions, entry.name), { recursive: true, force: true })))
   }
 
-  private async currentHealthyRoot(): Promise<{ root: string; version: string } | undefined> {
+  private async currentHealthyRoot(): Promise<{ root: string; slot: 'a' | 'b' | 'manual'; manifest: McpEnvironmentManifest; rollbackAvailable: boolean } | undefined> {
     try {
-      const record = JSON.parse(await readFile(join(this.options.root, 'current.json'), 'utf8')) as { version?: unknown; root?: unknown; health?: unknown }
-      if (typeof record.version !== 'string' || typeof record.root !== 'string' || record.health !== 'ready') return undefined
-      const manifest = await this.readInstalledManifest(record.root, record.version)
+      const record = await readCurrent(this.options.root)
+      if (typeof record?.root !== 'string' || record.health !== 'ready') return undefined
+      const manifest = await this.readInstalledManifest(record.root)
       await this.verifyHealth(record.root, manifest)
-      return { root: record.root, version: record.version }
+      const slot = record.slot === 'a' || record.slot === 'b' ? record.slot : 'manual'
+      return { root: record.root, slot, manifest, rollbackAvailable: record.rollbackAvailable === true }
     } catch { return undefined }
   }
 
-  private async installedRoot(manifest: McpEnvironmentManifest): Promise<string | undefined> {
+  private async installedRoot(manifest: McpEnvironmentManifest): Promise<{ root: string; slot: 'a' | 'b' | 'manual'; rollbackAvailable: boolean } | undefined> {
     try {
-      const record = JSON.parse(await readFile(join(this.options.root, 'current.json'), 'utf8')) as { version?: unknown; root?: unknown; health?: unknown }
-      if (record.version !== manifest.version || typeof record.root !== 'string') return undefined
-      if (record.health !== 'ready') return undefined
-      const installed = await this.readInstalledManifest(record.root, manifest.version)
-      if (contentRevision(installed) !== contentRevision(manifest) || installed.archiveSha256 !== manifest.archiveSha256) return undefined
+      const record = await readCurrent(this.options.root)
+      if (typeof record?.root !== 'string' || record.health !== 'ready') return undefined
+      const installed = await this.readInstalledManifest(record.root)
+      if (environmentVersion(installed) !== environmentVersion(manifest) || contentRevision(installed) !== contentRevision(manifest) || installed.archiveSha256 !== manifest.archiveSha256) return undefined
       await this.verifyHealth(record.root, installed)
-      return record.root
+      const slot = record.slot === 'a' || record.slot === 'b' ? record.slot : 'manual'
+      return { root: record.root, slot, rollbackAvailable: record.rollbackAvailable === true }
     } catch { return undefined }
+  }
+
+  private async migrateLegacyCurrent(manifest: McpEnvironmentManifest): Promise<void> {
+    const record = await readCurrent(this.options.root)
+    if (record === undefined || typeof record.root !== 'string' || record.slot === 'a' || record.slot === 'b' || record.slot === 'manual') return
+    const legacyRoot = resolve(record.root)
+    try {
+      const installed = await this.readInstalledManifest(legacyRoot)
+      await this.verifyHealth(legacyRoot, installed)
+      const target = join(this.options.root, 'slots', 'a')
+      await mkdir(dirname(target), { recursive: true })
+      if (!(await pathExists(target))) await rename(legacyRoot, target)
+      await this.writeCurrent({ ...record, mode: 'managed', root: target, slot: 'a', environmentVersion: environmentVersion(installed), contentRevision: contentRevision(installed), archiveSha256: installed.archiveSha256, manifest: installed, health: 'ready', rollbackAvailable: false })
+      await rm(join(this.options.root, 'versions'), { recursive: true, force: true })
+    } catch {
+      // Leave the legacy directory untouched; the normal installer will create a fresh slot.
+    }
   }
 
   private async readInstalledManifest(root: string, expectedVersion?: string): Promise<McpEnvironmentManifest> {
@@ -150,7 +179,7 @@ export class McpEnvironmentController {
     const embedded = await readFile(join(root, 'manifest.json'), 'utf8').then(value => JSON.parse(value) as unknown, () => undefined)
     for (const candidate of [record.manifest, embedded]) if (candidate !== undefined) {
       const manifest = validateManifest(candidate)
-      if ((expectedVersion === undefined || manifest.version === expectedVersion) && verifyManifestWithKeyring(manifest, this.options.publicKey, this.options.publicKeys)) return manifest
+      if ((expectedVersion === undefined || environmentVersion(manifest) === expectedVersion || manifest.version === expectedVersion) && verifyManifestWithKeyring(manifest, this.options.publicKey, this.options.publicKeys)) return manifest
     }
     throw new Error('The selected MCP environment has no signed schema 2 manifest. Select a managed environment installed by ZeroWall Science.')
   }
@@ -162,9 +191,9 @@ export class McpEnvironmentController {
 
   private set(status: McpEnvironmentStatus): McpEnvironmentStatus { this.status = status; this.options.publish(this.current()); return this.current() }
 
-  private async writeCurrent(record: Record<string, unknown>): Promise<void> {
+  private async writeCurrent(record: Record<string, unknown>, fileName = 'current.json'): Promise<void> {
     await mkdir(this.options.root, { recursive: true })
-    const current = join(this.options.root, 'current.json')
+    const current = join(this.options.root, fileName)
     const temporary = `${current}.tmp-${process.pid}-${Date.now()}`
     await writeFile(temporary, `${JSON.stringify(record, null, 2)}\n`, 'utf8')
     await rename(temporary, current)
@@ -175,7 +204,8 @@ export function validateManifest(value: unknown): McpEnvironmentManifest {
   if (value === null || typeof value !== 'object') throw new Error('MCP environment manifest must be an object.')
   const item = value as Record<string, unknown>
   if (item.schema !== 2 || item.environmentId !== 'claude-science-mcp' || item.platform !== 'win32' || item.architecture !== 'x64') throw new Error('MCP environment manifest identity or target is invalid.')
-  for (const key of ['version', 'archiveUrl', 'archiveSha256']) if (typeof item[key] !== 'string' || item[key] === '') throw new Error(`MCP environment manifest field ${key} is required.`)
+  if ((typeof item.environmentVersion !== 'string' || item.environmentVersion.trim() === '') && (typeof item.version !== 'string' || item.version.trim() === '')) throw new Error('MCP environment manifest field environmentVersion is required.')
+  for (const key of ['archiveUrl', 'archiveSha256']) if (typeof item[key] !== 'string' || item[key] === '') throw new Error(`MCP environment manifest field ${key} is required.`)
   if (!String(item.archiveUrl).startsWith('https://')) throw new Error('MCP environment archive URL must use HTTPS.')
   if (!/^[a-f0-9]{64}$/u.test(String(item.archiveSha256)) || !Number.isSafeInteger(item.archiveSize) || Number(item.archiveSize) <= 0) throw new Error('MCP environment archive metadata is invalid.')
   const signature = item.signature as Record<string, unknown> | undefined
@@ -206,14 +236,40 @@ export function verifyManifestWithKeyring(manifest: McpEnvironmentManifest, curr
   return key !== undefined && verifyManifest(manifest, key)
 }
 
+function environmentVersion(manifest: McpEnvironmentManifest): string {
+  return manifest.environmentVersion ?? manifest.version ?? 'legacy'
+}
+
+function environmentStatus(phase: McpEnvironmentStatus['phase'], manifest: McpEnvironmentManifest, root: string, slot: 'a' | 'b' | 'manual', updated: boolean, rollbackAvailable: boolean): McpEnvironmentStatus {
+  return { phase, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: slot, updated, rollbackAvailable, version: environmentVersion(manifest), progress: phase === 'ready' || phase === 'manual' ? 100 : undefined, message: root, python: pythonStatus(manifest) }
+}
+
 function pythonStatus(manifest: McpEnvironmentManifest): NonNullable<McpEnvironmentStatus['python']> {
   return { ready: true, version: manifest.python.version, sitePackages: manifest.python.relativeSitePackages }
 }
 
 function contentRevision(manifest: McpEnvironmentManifest): number { return manifest.contentRevision ?? 1 }
 
-function environmentDirectoryName(manifest: McpEnvironmentManifest): string {
-  return `${manifest.version}-${manifest.archiveSha256.slice(0, 12)}`
+interface CurrentEnvironmentRecord {
+  mode?: string
+  environmentVersion?: string
+  version?: string
+  contentRevision?: number
+  archiveSha256?: string
+  root?: string
+  slot?: 'a' | 'b' | 'manual'
+  health?: string
+  manifest?: unknown
+  rollbackAvailable?: boolean
+  installedAt?: string
+}
+
+async function readCurrent(root: string): Promise<CurrentEnvironmentRecord | undefined> {
+  try { return JSON.parse(await readFile(join(root, 'current.json'), 'utf8')) as CurrentEnvironmentRecord } catch { return undefined }
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try { await access(path); return true } catch { return false }
 }
 
 async function extractZip(archive: Uint8Array, target: string): Promise<void> {

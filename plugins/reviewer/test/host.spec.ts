@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CallId, createAssistantMessage, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { assessEvidence, normalizeReport, serializeTranscript, shouldAutoReview } from '../src/host/index.js'
+import { assessEvidence, canAutoCorrect, normalizeReport, serializeTranscript, shouldAutoReview } from '../src/host/index.js'
 import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session'
 
 function event<T extends SessionEvent['type']>(
@@ -62,15 +62,68 @@ describe('Reviewer transcript and trigger policy', () => {
     expect(assessEvidence([empty])).toEqual({ coverage: 0, gaps: ['tool result at seq 0 has no inspectable output'] })
   })
 
-  it('rejects findings that do not quote their cited transcript block', () => {
+  it('keeps findings whose cited evidence cannot be verified', () => {
     const transcript = '[msg:0 ASSISTANT]\nThe result is 5.'
     const report = normalizeReport({
       summary: 'reviewed',
       findings: [{ messageIndex: 0, claim: 'wrong', evidence: 'not present', fix: 'correct it', verdict: 'fail', severity: 'high' }],
     }, 'mock/model', { coverage: 100, gaps: [] }, 1, transcript)
-    expect(report.findings).toHaveLength(0)
+    expect(report.findings).toHaveLength(1)
+    expect(report.findings[0]?.evidenceStatus).toBe('unverified')
+    expect(report.findings[0]?.verdict).toBe('inconclusive')
     expect(report.reviewStatus).toBe('unreviewable')
     expect(report.coverageGaps[0]).toContain('did not quote')
+  })
+
+  it('normalizes copied evidence and keeps the transcript source text', () => {
+    const transcript = '[msg:0 ASSISTANT]\n> The result is 5.\nThe value is stable.'
+    const report = normalizeReport({
+      summary: 'reviewed',
+      findings: [{ messageIndex: 0, claim: 'wrong', evidence: '"The   result is 5."', fix: 'correct it', verdict: 'fail', severity: 'high' }],
+    }, 'mock/model', { coverage: 100, gaps: [] }, 1, transcript)
+    expect(report.findings[0]).toMatchObject({ evidence: 'The result is 5.', evidenceStatus: 'auto-repaired', messageIndex: 0 })
+    expect(report.citationCoverage).toBe(100)
+  })
+
+  it('repairs a wrong message index only when the quote is unique', () => {
+    const transcript = '[msg:0 ASSISTANT]\nFirst claim.\n\n[msg:1 ASSISTANT]\nUnique evidence appears here.'
+    const report = normalizeReport({ summary: 'reviewed', findings: [{ messageIndex: 99, claim: 'claim', evidence: 'Unique evidence appears here.', fix: 'fix', verdict: 'fail', severity: 'medium' }] }, 'mock/model', { coverage: 100, gaps: [] }, 1, transcript)
+    expect(report.findings[0]).toMatchObject({ messageIndex: 1, evidenceStatus: 'auto-repaired' })
+  })
+
+  it('deduplicates invalid citation gaps and blocks correction', () => {
+    const transcript = '[msg:0 ASSISTANT]\nThe result is 5.'
+    const report = normalizeReport({ summary: 'reviewed', findings: [
+      { messageIndex: 0, claim: 'wrong one', evidence: 'missing', fix: 'fix', verdict: 'fail', severity: 'high' },
+      { messageIndex: 0, claim: 'wrong two', evidence: 'missing', fix: 'fix', verdict: 'fail', severity: 'high' },
+    ] }, 'mock/model', { coverage: 100, gaps: [] }, 1, transcript)
+    expect(report.findings).toHaveLength(2)
+    expect(report.coverageGaps.filter(gap => gap.includes('msg:0'))).toHaveLength(1)
+    expect(report.citationCoverage).toBe(0)
+    expect(canAutoCorrect(report)).toBe(false)
+  })
+
+  it('allows correction only for fully verified findings', () => {
+    const report = normalizeReport({ summary: 'reviewed', findings: [{ messageIndex: 0, claim: 'wrong', evidence: 'The result is 5.', fix: 'fix', verdict: 'fail', severity: 'high' }] }, 'mock/model', { coverage: 100, gaps: [] }, 1, '[msg:0 ASSISTANT]\nThe result is 5.')
+    expect(report.reviewStatus).toBe('failed')
+    expect(report.hasUnverifiedEvidence).toBe(false)
+    expect(canAutoCorrect(report)).toBe(true)
+  })
+
+  it('reports failed with an explicit unverified flag when verified and unverified findings coexist', () => {
+    const report = normalizeReport({ summary: 'reviewed', findings: [
+      { messageIndex: 0, claim: 'verified', evidence: 'The result is 5.', fix: 'fix', verdict: 'fail', severity: 'high' },
+      { messageIndex: 0, claim: 'unverified', evidence: 'not present', fix: 'fix', verdict: 'warn', severity: 'low' },
+    ] }, 'mock/model', { coverage: 100, gaps: [] }, 1, '[msg:0 ASSISTANT]\nThe result is 5.')
+    expect(report.reviewStatus).toBe('failed')
+    expect(report.hasUnverifiedEvidence).toBe(true)
+    expect(canAutoCorrect(report)).toBe(false)
+  })
+
+  it('keeps legacy reports compatible when detailed evidence fields are absent', () => {
+    const report = normalizeReport({ summary: 'legacy', findings: [] }, 'mock/model', { coverage: 100, gaps: [] }, 1, '')
+    expect(report.summaryEvidenceStatus).toBe('legacy')
+    expect(report.citationCoverage).toBe(100)
   })
 
   it('keeps reviewer custom events in the persistence allow-list', () => {

@@ -1,7 +1,7 @@
 export type DesktopUpdatePhase = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'upToDate' | 'error' | 'unavailable'
 export interface DesktopUpdateStatus { phase: DesktopUpdatePhase; currentVersion: string; version?: string; percent?: number; message?: string; notes?: string[] }
 export type McpEnvironmentPhase = 'idle' | 'downloading' | 'verifying' | 'installing' | 'ready' | 'failed' | 'manual' | 'unavailable'
-export interface McpEnvironmentStatus { phase: McpEnvironmentPhase; version?: string; progress?: number; message?: string }
+export interface McpEnvironmentStatus { phase: McpEnvironmentPhase; environmentVersion?: string; contentRevision?: number; currentSlot?: 'a' | 'b' | 'manual'; updated?: boolean; rollbackAvailable?: boolean; /** @deprecated */ version?: string; progress?: number; message?: string; python?: { ready: boolean; version?: string; sitePackages?: string; message?: string } }
 export interface ZeroWallDesktopApi {
   info(): Promise<{ version: string; platform: string; architecture: string }>
   chooseDirectory(): Promise<string | null>

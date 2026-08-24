@@ -29,8 +29,8 @@ describe('MCP environment contract', () => {
       const store = createMcpEnvironmentStore(root)
       const manifest = validateMcpEnvironmentManifest(base)
       await expect(installVerifiedArchive(store, manifest, Buffer.from('wrong'), async () => undefined)).rejects.toThrow(/hash or size/)
-      await expect(installVerifiedArchive(store, manifest, archive, async (_bytes, target) => { await mkdir(join(target, 'bio-tools/python'), { recursive: true }); await writeFile(join(target, 'bio-tools/python/python.exe'), 'fake') })).resolves.toContain(manifest.version)
-      expect(await readFile(join(store.versionPath(manifest.version), manifest.python.relativeExecutable), 'utf8')).toBe('fake')
+      await expect(installVerifiedArchive(store, manifest, archive, async (_bytes, target) => { await mkdir(join(target, 'bio-tools/python'), { recursive: true }); await writeFile(join(target, 'bio-tools/python/python.exe'), 'fake') })).resolves.toContain('slots')
+      expect(await readFile(join(store.slotsPath('a'), manifest.python.relativeExecutable), 'utf8')).toBe('fake')
     } finally { await rm(root, { recursive: true, force: true }) }
   })
 })

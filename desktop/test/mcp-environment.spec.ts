@@ -1,17 +1,27 @@
-import { generateKeyPairSync, sign } from 'node:crypto'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { createHash, generateKeyPairSync, sign } from 'node:crypto'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import JSZip from 'jszip'
 import { canonicalManifest, McpEnvironmentController, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
 
 const roots: string[] = []
 const keys = generateKeyPairSync('ed25519')
+const testArchive = await new JSZip()
+  .file('bio-tools/python/python.exe', '')
+  .file('bio-tools/python/Lib/site-packages/.keep', '')
+  .file('bio-tools/run_server.py', '')
+  .file('ketcher-chemistry/server.js', '')
+  .file('sci/dist/cli.mjs', '')
+  .file('sci/dist/mcp.cjs', '')
+  .file('skills/example/SKILL.md', '')
+  .generateAsync({ type: 'nodebuffer' })
 
-function signedManifest(version = '4.1.9', keyId = 'stable-1'): McpEnvironmentManifest {
+function signedManifest(version = '4.1.9', keyId = 'stable-1', environmentVersion = '1.0.0', contentRevision = 1): McpEnvironmentManifest {
   const manifest: McpEnvironmentManifest = {
-    schema: 2, environmentId: 'claude-science-mcp', version, platform: 'win32', architecture: 'x64',
-    archiveUrl: `https://example.test/${version}.zip`, archiveSha256: 'a'.repeat(64), archiveSize: 1,
+    schema: 2, environmentId: 'claude-science-mcp', environmentVersion, contentRevision, version, platform: 'win32', architecture: 'x64',
+    archiveUrl: `https://example.test/${version}.zip`, archiveSha256: createHash('sha256').update(testArchive).digest('hex'), archiveSize: testArchive.byteLength,
     python: { version: '3.12', relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/Lib/site-packages', modules: ['mcp', 'numpy', 'pandas', 'httpx'], supportsZeroWallTool: true },
     pythonHealth: { imports: [], bioServer: 'bio-tools/run_server.py mcp_bio', ketcherServer: 'ketcher-chemistry/server.js' },
     skillsRoot: 'skills', sci: { version: '0.3.15', nodeMinimum: '20.3.0', cli: 'sci/dist/cli.mjs', mcp: 'sci/dist/mcp.cjs' },
@@ -64,6 +74,35 @@ describe('MCP environment upgrades', () => {
       root, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
       fetcher: async () => new Response(JSON.stringify(invalid), { status: 200 }), healthCheck: async () => undefined, publish: () => undefined,
     })
-    await expect(controller.initialize()).resolves.toMatchObject({ phase: 'ready', version: '4.1.9', message: installed })
+    await expect(controller.initialize()).resolves.toMatchObject({ phase: 'ready', environmentVersion: '1.0.0', message: installed })
+  })
+
+  it('reuses one healthy environment when only the desktop application version changes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-mcp-root-')); roots.push(root)
+    const installed = join(root, 'slots', 'a')
+    const installedManifest = signedManifest('4.1.13', 'stable-1', '1.0.0', 1)
+    await environment(installed, installedManifest)
+    await writeFile(join(root, 'current.json'), JSON.stringify({ environmentVersion: '1.0.0', contentRevision: 1, slot: 'a', root: installed, health: 'ready', manifest: installedManifest }))
+    const onlineManifest = signedManifest('4.1.14', 'stable-1', '1.0.0', 1)
+    const controller = new McpEnvironmentController({
+      root, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      fetcher: async url => String(url).endsWith('latest.json') ? new Response(JSON.stringify(onlineManifest), { status: 200 }) : new Response(new Blob([new Uint8Array(testArchive)]), { status: 200 }), healthCheck: async () => undefined, publish: () => undefined,
+    })
+    await expect(controller.initialize()).resolves.toMatchObject({ phase: 'ready', environmentVersion: '1.0.0', currentSlot: 'a', updated: false })
+    expect(JSON.parse(await readFile(join(root, 'current.json'), 'utf8'))).toMatchObject({ root: installed, slot: 'a' })
+  })
+
+  it('updates the inactive slot when MCP content revision changes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-mcp-root-')); roots.push(root)
+    const installed = join(root, 'slots', 'a')
+    const installedManifest = signedManifest('4.1.13', 'stable-1', '1.0.0', 1)
+    await environment(installed, installedManifest)
+    await writeFile(join(root, 'current.json'), JSON.stringify({ environmentVersion: '1.0.0', contentRevision: 1, slot: 'a', root: installed, health: 'ready', manifest: installedManifest }))
+    const onlineManifest = signedManifest('4.1.14', 'stable-1', '1.0.0', 2)
+    const controller = new McpEnvironmentController({
+      root, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      fetcher: async url => String(url).endsWith('latest.json') ? new Response(JSON.stringify(onlineManifest), { status: 200 }) : new Response(new Blob([new Uint8Array(testArchive)]), { status: 200 }), healthCheck: async () => undefined, publish: () => undefined,
+    })
+    await expect(controller.initialize()).resolves.toMatchObject({ phase: 'ready', currentSlot: 'b', updated: true, rollbackAvailable: true })
   })
 })
