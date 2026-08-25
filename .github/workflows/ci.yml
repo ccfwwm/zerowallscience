@@ -1,4 +1,4 @@
-name: ZeroWall Science 4.1 CI
+name: ZeroWall Science CI
 
 on:
   push:
@@ -59,7 +59,7 @@ jobs:
           node-version: 24.9.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm dsh:verify-rc1
+      - run: pnpm dsh:verify
       - run: pnpm dsh:build:host
       - run: pnpm dsh:build:client
       - run: pnpm dsh:build:web
