@@ -17,6 +17,7 @@
     { "path": "./store" },
     { "path": "./desktop" },
     { "path": "./plugins/account/tsconfig.host.json" },
+    { "path": "./plugins/environment/tsconfig.host.json" },
     { "path": "./plugins/execution/tsconfig.host.json" },
     { "path": "./plugins/files/tsconfig.host.json" },
     { "path": "./plugins/mcp/tsconfig.host.json" },

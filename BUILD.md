@@ -1,4 +1,6 @@
-# ZeroWall Science 4.3 构建与发布
+# ZeroWall Science 4.3.2 构建与发布
+
+4.3.2 默认嵌入固定版本 Dream Skin（ivory 首次主题），修复“环境配置”页面的独立加载与远程契约，并统一 ZeroWall 顶部和 footer 视觉。默认 Stable Windows x64 包为本地构建产物；本版本不自动上传七牛云，也不执行 Git 发布。
 
 ## 固定基线
 

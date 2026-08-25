@@ -41,6 +41,9 @@ const requiredArchivePaths = [
   'node_modules/dsh-better-sidebar/lib/client-terminal.js',
   'node_modules/dsh-better-sidebar/lib/client-mermaid.js',
   'node_modules/dsh-better-sidebar/package.json',
+  'node_modules/dsh-dream-skin/lib/index.js',
+  'node_modules/dsh-dream-skin/lib/client.js',
+  'node_modules/dsh-dream-skin/package.json',
   'node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js',
   'node_modules/@deepseek-ai/dsh-subagent-claude-code/lib/index.js',
   'node_modules/@deepseek-ai/dsh-subagent-codex/lib/index.js',
@@ -113,6 +116,14 @@ function verifyArchivePolicy() {
     || /^node_modules\/dsh-better-sidebar\/scripts\//iu.test(path)
   ))
   if (forbiddenBetterSidebarFiles.length > 0) throw new Error(`Better-sidebar documentation/install files found in ASAR:\n${forbiddenBetterSidebarFiles.join('\n')}`)
+  const dreamSkinPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-dream-skin/package.json'))
+  if (dreamSkinPackages.length !== 1) throw new Error(`dsh-dream-skin must be packaged exactly once; found ${dreamSkinPackages.length}.`)
+  const dreamSkinManifest = JSON.parse(readArchiveFile('node_modules/dsh-dream-skin/package.json').toString('utf8'))
+  if (dreamSkinManifest.version !== '0.4.14') throw new Error(`Packaged dsh-dream-skin must be 0.4.14; found ${dreamSkinManifest.version}.`)
+  const forbiddenDreamSkinFiles = archiveFiles.filter(path => path.startsWith('node_modules/dsh-dream-skin/') && (
+    /^node_modules\/dsh-dream-skin\/(?:README|LICENSE|scripts|src|test|tests)\b/iu.test(path)
+  ))
+  if (forbiddenDreamSkinFiles.length > 0) throw new Error(`Dream Skin source/documentation files found in ASAR:\n${forbiddenDreamSkinFiles.join('\n')}`)
   for (const name of [...pluginNames.map(value => `plugin-${value}`), 'research-store']) {
     const packagePaths = archiveFiles.filter(path => path.endsWith(`@zerowallscience/${name}/package.json`))
     if (packagePaths.length !== 1) throw new Error(`@zerowallscience/${name} must be packaged exactly once; found ${packagePaths.length}.`)

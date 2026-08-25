@@ -102,6 +102,10 @@
     watch: true
 
 - insert:
+    # Theme is loaded before ZeroWall branding and the right/bottom workbench.
+    - id: dream-skin
+      name: 'dsh-dream-skin'
+
     # Generic right/bottom workbench; DSH's native left session sidebar remains.
     - id: better-sidebar
       name: 'dsh-better-sidebar'
@@ -111,6 +115,8 @@
 
     - id: zerowall-secrets
       name: '@zerowallscience/plugin-secrets'
+    - id: zerowall-environment
+      name: '@zerowallscience/plugin-environment'
 
     - id: zerowall-desktop-compat
       name: '@zerowallscience/plugin-desktop-compat'

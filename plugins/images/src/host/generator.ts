@@ -5,9 +5,9 @@ import type { ImageAttachmentRef, ImageMediaType, SaveImageAttachment } from '@d
 import sharp from 'sharp'
 import type { AccountSecretStore } from '@zerowallscience/plugin-account'
 import type { AiCloudAccountSnapshot, AiCloudManagedModel } from '@zerowallscience/plugin-account/types'
+import type { ImageModelSelection } from '@zerowallscience/plugin-environment/types'
 
 const KEY_PREFIX = 'zerowall.ai-cloud.group.'
-const DEFAULT_MODEL = 'gpt-image-2'
 const MAX_INPUT_IMAGES = 16
 const MAX_INPUT_IMAGE_BYTES = 50 * 1024 * 1024
 const MAX_OUTPUT_IMAGE_BYTES = 64 * 1024 * 1024
@@ -64,6 +64,7 @@ export interface AiCloudImageGeneratorOptions {
   account: AccountReader
   fetch?: typeof fetch
   attachments?: () => ImageAttachmentWriter | undefined
+  imageModel?: () => Promise<ImageModelSelection | undefined>
 }
 
 interface InspectedImage {
@@ -158,15 +159,19 @@ export class AiCloudImageGenerator {
   }
 
   private async resolveModel(requested: string | undefined): Promise<AiCloudManagedModel> {
-    const modelId = requested?.trim() || DEFAULT_MODEL
     const snapshot = this.snapshot ?? await this.options.account.current()
     this.snapshot = snapshot
-    return selectImageModel(snapshot, modelId)
+    const configured = requested?.trim() ? undefined : await this.options.imageModel?.()
+    const imageModels = snapshot.models.filter(model => model.capability === 'image-generation' && isImageGenerationGroup(model.groupName))
+    if (requested?.trim()) return selectImageModel(snapshot, requested.trim())
+    if (configured?.modelId) return selectImageModel(snapshot, configured.modelId, configured)
+    if (imageModels.length === 1) return imageModels[0]!
+    throw new Error('当前账户没有可用的生图模型（no configured gpt-image-2），请在“环境配置”中选择生图模型。')
   }
 
   private async credential(model: AiCloudManagedModel): Promise<string> {
     const key = await this.options.secrets.get(`${KEY_PREFIX}${model.groupId}`)
-    if (!key?.trim()) throw new Error('The configured gpt-image-2 group has no credential. Refresh AI Cloud models and try again.')
+    if (!key?.trim()) throw new Error(`生图模型 ${model.modelId} 所属分组没有配置凭据，请刷新账户模型列表后重试。`)
     return key.trim()
   }
 
@@ -222,16 +227,17 @@ function nonEmptyPrompt(raw: string): string {
   return prompt
 }
 
-function selectImageModel(snapshot: AiCloudAccountSnapshot, requested: string): AiCloudManagedModel {
+function selectImageModel(snapshot: AiCloudAccountSnapshot, requested: string, configured?: ImageModelSelection): AiCloudManagedModel {
   if (snapshot.status !== 'signedIn') throw new Error('Sign in to ZeroWall AI Cloud before generating or editing images.')
   const candidates = snapshot.models.filter(candidate =>
     candidate.capability === 'image-generation'
     && isImageGenerationGroup(candidate.groupName)
-    && candidate.modelId === requested,
+    && candidate.modelId === requested
+    && (configured === undefined || (candidate.providerId === configured.providerId && candidate.groupId === configured.groupId)),
   )
   if (candidates.length > 1) throw new Error(`The AI Cloud image model ${requested} is ambiguous across the 生图 groups. Refresh the account model list.`)
   const model = candidates[0]
-  if (model === undefined) throw new Error(`The current AI Cloud account has no configured ${requested} model. Refresh the account model list.`)
+  if (model === undefined) throw new Error(`当前 AI Cloud 账户没有配置生图模型 ${requested}，请刷新账户模型列表。`)
   return model
 }
 

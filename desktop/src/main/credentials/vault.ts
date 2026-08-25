@@ -12,7 +12,7 @@ interface CredentialDocument {
   entries: Record<string, string>
 }
 
-export const CREDENTIAL_KEY = /^zerowall\.(?:ai-cloud|mcp|ssh|wechat)\.[a-z0-9][a-z0-9._-]{0,127}$/
+export const CREDENTIAL_KEY = /^zerowall\.(?:ai-cloud|environment|mcp|ssh|wechat)\.[a-z0-9][a-z0-9._-]{0,127}$/
 
 export function assertCredentialKey(key: string): void {
   if (!CREDENTIAL_KEY.test(key)) throw new Error('Credential key is outside the ZeroWall namespace.')

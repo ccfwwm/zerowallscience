@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-images",
-  "version": "4.3.0",
+  "version": "4.3.2",
   "description": "ZeroWall Science images domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -104,9 +104,11 @@
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "dsh-better-sidebar": "0.16.0",
+    "dsh-dream-skin": "0.4.14",
     "@zerowallscience/plugin-account": "workspace:^",
     "@zerowallscience/plugin-secrets": "workspace:^",
     "@zerowallscience/plugin-base": "workspace:^",
+    "@zerowallscience/plugin-environment": "workspace:^",
     "sharp": "^0.35.3",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0"

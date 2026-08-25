@@ -171,7 +171,7 @@ function createWindow(): BrowserWindow {
     show: false,
     title: identity.productName,
     icon: desktopIconPath(),
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#17181a' : '#f6f7f8',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#17181a' : '#f7f4ed',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

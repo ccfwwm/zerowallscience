@@ -17,6 +17,11 @@ const clientInject = [
   '@deepseek-ai/dsh-client-ui-tool',
 ]
 
+const externalClientDependencies = {
+  'dsh-better-sidebar': '0.16.0',
+  'dsh-dream-skin': '0.4.14',
+}
+
 const dshDependencies = {
   '@deepseek-ai/cordis': 'workspace:^',
   '@deepseek-ai/schemastery': 'workspace:^',
@@ -60,6 +65,7 @@ const npmDependencies = {
   mcp: { '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   skills: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   reviewer: { 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },
+  environment: { 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },
   research: { '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   execution: { '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   runs: { '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
@@ -78,6 +84,7 @@ const plugins = [
   { id: 'base', client: true, clientExternal: [], capabilities: ['ui.locale', 'ui.update'], permissions: [], requiredServices: [], optionalServices: ['updater'] },
   { id: 'desktop-compat', capabilities: ['desktop.profiles', 'desktop.plugins'], permissions: [], requiredServices: [], optionalServices: ['desktopProfiles', 'desktopPnpm'] },
   { id: 'secrets', capabilities: ['credentials.read', 'credentials.write'], permissions: ['credentials'], requiredServices: [], optionalServices: ['credentialBroker'] },
+  { id: 'environment', client: true, remote: true, capabilities: ['environment-config'], permissions: ['credentials', 'processes'], dependencies: ['secrets', 'base'] },
   { id: 'projects', client: true, remote: true, capabilities: ['projects', 'workspaces'], permissions: ['files'] },
   { id: 'account', client: true, remote: true, capabilities: ['account'], permissions: ['credentials', 'network'], dependencies: ['secrets', 'base'] },
   { id: 'ai-cloud', client: true, capabilities: ['llm.cloud'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'] },
@@ -87,7 +94,7 @@ const plugins = [
     client: true,
     capabilities: ['images', 'image-generation'],
     permissions: ['files', 'network'],
-    dependencies: ['account', 'secrets', 'base'],
+    dependencies: ['account', 'secrets', 'base', 'environment'],
   },
   { id: 'mcp', client: true, remote: true, capabilities: ['mcp'], permissions: ['files', 'network'], dependencies: ['projects', 'base'] },
   { id: 'skills', client: true, remote: true, capabilities: ['skills'], permissions: ['files'], dependencies: ['base'] },
@@ -184,7 +191,7 @@ for (const plugin of plugins) {
     ],
     dependencies: {
       ...dshDependencies,
-      ...(plugin.client ? { 'dsh-better-sidebar': '0.16.0' } : {}),
+      ...(plugin.client ? externalClientDependencies : {}),
       ...Object.fromEntries((plugin.dependencies ?? []).map(id => [`@zerowallscience/plugin-${id}`, 'workspace:^'])),
       ...(plugin.id === 'base'
         ? Object.fromEntries(plugins.filter(candidate => candidate.remote).map(candidate => [`@zerowallscience/plugin-${candidate.id}`, 'workspace:^']))

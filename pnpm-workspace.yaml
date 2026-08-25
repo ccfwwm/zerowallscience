@@ -47,3 +47,4 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - dsh-better-sidebar@0.16.0
+  - dsh-dream-skin@0.4.14

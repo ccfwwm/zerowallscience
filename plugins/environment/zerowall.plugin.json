@@ -1,0 +1,29 @@
+{
+  "name": "@zerowallscience/plugin-environment",
+  "version": "4.3.2",
+  "dsh": {
+    "min": "0.1.1-rc.2",
+    "max": "0.1.1-rc.2"
+  },
+  "host": "./lib/index.js",
+  "client": "./lib/client.js",
+  "requiredServices": [],
+  "optionalServices": [],
+  "capabilities": [
+    "environment-config"
+  ],
+  "permissions": [
+    "credentials",
+    "processes"
+  ],
+  "network": false,
+  "files": false,
+  "credentials": true,
+  "approvals": false,
+  "profiles": [
+    "development",
+    "preview",
+    "stable"
+  ],
+  "migrationVersion": 1
+}

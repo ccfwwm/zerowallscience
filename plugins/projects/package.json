@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-projects",
-  "version": "4.3.0",
+  "version": "4.3.2",
   "description": "ZeroWall Science projects domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -115,6 +115,7 @@
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "dsh-better-sidebar": "0.16.0",
+    "dsh-dream-skin": "0.4.14",
     "@zerowallscience/research-store": "workspace:^",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0",

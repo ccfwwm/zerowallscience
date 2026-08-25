@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-files",
-  "version": "4.3.0",
+  "version": "4.3.2",
   "description": "ZeroWall Science files domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -115,6 +115,7 @@
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "dsh-better-sidebar": "0.16.0",
+    "dsh-dream-skin": "0.4.14",
     "jszip": "3.10.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",

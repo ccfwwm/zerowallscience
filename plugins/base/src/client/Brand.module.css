@@ -7,7 +7,7 @@
 }
 
 .name {
-  color: var(--color-text-primary, #101828);
+  color: var(--dsw-alias-label-primary, var(--color-text-primary, #101828));
   font-size: 18px;
   font-weight: 650;
   letter-spacing: 0;
@@ -18,13 +18,13 @@
   display: inline-flex;
   align-items: baseline;
   gap: 7px;
-  color: var(--color-text-secondary, #667085);
+  color: var(--dsw-alias-label-secondary, var(--color-text-secondary, #667085));
   font-size: 12px;
   letter-spacing: 0;
   white-space: nowrap;
 }
 
 .version > :first-child {
-  color: var(--color-text-primary, #344054);
+  color: var(--dsw-alias-label-primary, var(--color-text-primary, #344054));
   font-weight: 600;
 }

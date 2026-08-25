@@ -13,6 +13,7 @@ const zerowallPackageRoots = [
 ]
 const desktopRuntimeSeeds = [
   'dsh-better-sidebar',
+  'dsh-dream-skin',
   '@deepseek-ai/dsh-subagent-claude-code',
   '@deepseek-ai/dsh-subagent-codex',
   '@earendil-works/pi-ai',
@@ -143,6 +144,12 @@ async function copyRuntimePackage(package_, targetRoot) {
     // The package publishes source/docs/install helpers alongside its browser
     // chunks. Only the compiled runtime belongs in the production ASAR.
     await copyEntry(sourceRoot, targetRoot, 'lib')
+    return
+  }
+
+  if (manifest.name === 'dsh-dream-skin') {
+    await copyEntry(sourceRoot, targetRoot, 'lib')
+    await copyEntry(sourceRoot, targetRoot, 'cordis.patch.yml')
     return
   }
 

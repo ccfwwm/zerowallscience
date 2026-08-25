@@ -23,6 +23,18 @@ test('better-sidebar is a single pinned default workbench in every profile', asy
   }
 })
 
+test('Dream Skin is a single pinned theme layer loaded before ZeroWall UI', async () => {
+  const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
+  assert.equal(desktop.dependencies['dsh-dream-skin'], '0.4.14')
+  const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
+  assert.equal((patch.match(/\bid: dream-skin\b/gu) ?? []).length, 1)
+  assert.ok(patch.indexOf('id: dream-skin') < patch.indexOf('id: better-sidebar'))
+  for (const profile of ['development', 'preview', 'stable']) {
+    const source = await readFile(resolve(root, `profiles/generated/${profile}.yml`), 'utf8')
+    assert.equal((source.match(/'dsh-dream-skin'/gu) ?? []).length, 1, `${profile} must mount Dream Skin once`)
+  }
+})
+
 test('ZeroWall domain clients do not duplicate better-sidebar tabs', async () => {
   const clients = ['account', 'ai-cloud', 'execution', 'images', 'mcp', 'presentations', 'projects', 'publications', 'research', 'reviewer', 'runs', 'skills', 'web-search', 'wechat']
   for (const name of clients) {

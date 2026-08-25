@@ -1,6 +1,6 @@
 {
   "name": "zerowallscience",
-  "version": "4.3.0",
+  "version": "4.3.2",
   "description": "ZeroWall Science local-first scientific research workbench.",
   "private": true,
   "type": "module",
@@ -44,6 +44,7 @@
     "verify:package": "node desktop/scripts/verify-packaged-runtime.mjs",
     "smoke:electron": "pnpm --filter @zerowallscience/desktop run test:e2e",
     "smoke:host": "node tools/packaging/smoke-host.mjs",
+    "smoke:directory-picker": "node tools/packaging/smoke-directory-picker.mjs",
     "smoke:update": "node tools/release/smoke-update.mjs",
     "release:metadata": "node tools/release/generate-windows-metadata.mjs",
     "release:verify-local": "node tools/release/smoke-update.mjs",

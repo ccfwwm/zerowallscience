@@ -20,6 +20,7 @@ sessionEventTypes.add('zerowall/reviewer/mode')
 sessionEventTypes.add('zerowall/reviewer/report')
 
 export type ReviewerMode = 'inherit' | 'on' | 'off'
+export type ReviewerModelMode = 'follow-session' | 'fixed'
 export type ReviewStatus = 'passed' | 'failed' | 'unreviewable' | 'error'
 export type EvidenceStatus = 'verified' | 'auto-repaired' | 'unverified' | 'legacy'
 export type ReviewerCoverageGapCode = 'tool-empty' | 'tool-truncated' | 'transcript-truncated' | 'finding-citation-unverified' | 'summary-citation-unverified'
@@ -34,11 +35,19 @@ export interface ReviewerCoverageGap {
 export interface ReviewerSettings {
   autoReview: boolean
   autoReviewConfigured: boolean
+  modelMode: ReviewerModelMode
+  provider: string
+  model: string
+  reasoningEffort: string
 }
 
 export const ReviewerSettingsSchema: z<ReviewerSettings> = z.object({
   autoReview: z.boolean().default(false),
   autoReviewConfigured: z.boolean().default(false),
+  modelMode: z.union(['follow-session', 'fixed'] as const).default('follow-session'),
+  provider: z.string().default(''),
+  model: z.string().default(''),
+  reasoningEffort: z.string().default(''),
 })
 
 export interface ReviewFinding {
@@ -397,7 +406,16 @@ function currentTurnEvents(session: Session, turn: number): SessionEvent[] {
   return session.events.filter(event => 'turn' in event.data && (event.data as { turn?: number }).turn === turn)
 }
 
-function currentModel(agent: Agent, events: readonly SessionEvent[]): { options?: AgentOptions; label: string; effort?: string } {
+function currentModel(agent: Agent, events: readonly SessionEvent[], settings: ReviewerSettings): { options?: AgentOptions; label: string; effort?: string } {
+  if (settings.modelMode === 'fixed') {
+    if (settings.provider.trim() && settings.model.trim()) {
+      return {
+        options: { provider: settings.provider.trim(), model: settings.model.trim() },
+        label: `${settings.provider.trim()}/${settings.model.trim()}`,
+        ...(settings.reasoningEffort.trim() ? { effort: settings.reasoningEffort.trim() } : {}),
+      }
+    }
+  }
   const header = [...events, ...agent.session.events].reverse().find(event => event.type === 'request/header')
   if (header?.type === 'request/header') {
     const config = header.data.header.config
@@ -410,7 +428,7 @@ function currentModel(agent: Agent, events: readonly SessionEvent[]): { options?
     const source = assistant.data.message.source
     return { options: { provider: source.provider, model: source.model }, label: `${source.provider}/${source.model}` }
   }
-  throw new Error('Reviewer could not resolve the model from the current session.')
+  throw new Error('Reviewer 无法从当前会话解析模型，请先配置模型或选择跟随会话。')
 }
 
 function reviewerModelCandidate(entry: LlmModelInfo): boolean {
@@ -420,11 +438,17 @@ function reviewerModelCandidate(entry: LlmModelInfo): boolean {
 
 async function runReview(ctx: Context, agent: Agent, events: readonly SessionEvent[], turn: number, signal: AbortSignal): Promise<ReviewReport> {
   const settings = ctx.settings.get(REVIEWER_SETTINGS_NS) as ReviewerSettings
-  const model = currentModel(agent, events)
+  let model = currentModel(agent, events, settings)
   if (model.options?.provider && model.options.model) {
-    const models = await ctx.llm.listModels(model.options.provider)
-    if (!models.some((entry: LlmModelInfo) => entry.id === model.options?.model && reviewerModelCandidate(entry))) {
-      throw new Error(`Reviewer model is unavailable: ${model.label}`)
+    try {
+      const models = await ctx.llm.listModels(model.options.provider)
+      if (!models.some((entry: LlmModelInfo) => entry.id === model.options?.model && reviewerModelCandidate(entry))) {
+        if (settings.modelMode !== 'fixed') throw new Error(`Reviewer model is unavailable: ${model.label}`)
+        model = currentModel(agent, events, { ...settings, modelMode: 'follow-session' })
+      }
+    } catch (error) {
+      if (settings.modelMode !== 'fixed') throw error
+      model = currentModel(agent, events, { ...settings, modelMode: 'follow-session' })
     }
   }
   const evidence = assessEvidenceDetailed(events)
@@ -485,7 +509,7 @@ export function apply(ctx: Context): void {
   // implicit value to opt-in once while preserving later explicit choices.
   const legacy = scope.get()
   if (legacy.autoReviewConfigured !== true) {
-    void scope.replace({ autoReview: false, autoReviewConfigured: true }).catch((error: unknown) => {
+    void scope.replace({ ...legacy, autoReviewConfigured: true }).catch((error: unknown) => {
       ctx.logger.warn(`Reviewer settings migration failed: ${error instanceof Error ? error.message : String(error)}`)
     })
   }

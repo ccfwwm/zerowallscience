@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-base",
-  "version": "4.3.0",
+  "version": "4.3.2",
   "description": "ZeroWall Science base domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -37,6 +37,7 @@
         "@deepseek-ai/dsh-client-ui-tool"
       ],
       "external": [
+        "@zerowallscience/plugin-environment",
         "@zerowallscience/plugin-projects",
         "@zerowallscience/plugin-account",
         "@zerowallscience/plugin-files",
@@ -116,6 +117,8 @@
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "dsh-better-sidebar": "0.16.0",
+    "dsh-dream-skin": "0.4.14",
+    "@zerowallscience/plugin-environment": "workspace:^",
     "@zerowallscience/plugin-projects": "workspace:^",
     "@zerowallscience/plugin-account": "workspace:^",
     "@zerowallscience/plugin-files": "workspace:^",

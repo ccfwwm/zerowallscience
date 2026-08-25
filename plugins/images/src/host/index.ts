@@ -8,7 +8,7 @@ import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
 
 export * from './generator.js'
 export const name = 'zerowall-image-generation'
-export const inject = ['tools']
+export const inject = ['tools', 'zerowallEnvironment']
 
 const IMAGE_OUTPUT_SCHEMA = {
   type: 'object' as const,
@@ -62,21 +62,23 @@ function presentationMeta(value: GenerateImageResult): JsonValue {
 export function apply(ctx: Context): void {
   const secrets = new SecretBrokerClient()
   const account = new AiCloudClient({ secrets })
+  const environment = ctx.get('zerowallEnvironment') as { readImageModelSelection(): Promise<import('@zerowallscience/plugin-environment/types').ImageModelSelection | undefined> }
   const generator = new AiCloudImageGenerator({
     secrets,
     account,
     attachments: () => ctx.get('attachments'),
+    imageModel: () => environment.readImageModelSelection(),
   })
   ctx.on('zerowall/account-updated', snapshot => generator.update(snapshot))
   void account.current().then(snapshot => generator.update(snapshot)).catch(() => undefined)
 
   ctx.tools.register(defineTool({
     name: 'generate_image',
-    description: 'Generate a new PNG with the configured ZeroWall AI Cloud gpt-image-2 model. Use edit_image instead when the user wants to modify an existing image.',
+      description: '使用环境配置中选择的生图模型生成 PNG。需要修改已有图片时请使用 edit_image。',
     parameters: {
       prompt: { type: 'string', required: true, description: 'Detailed image-generation prompt.' },
       output_path: { type: 'string', required: true, description: 'New PNG path inside the current session working directory.' },
-      model: { type: 'string', description: 'Configured image model id. Defaults to gpt-image-2.' },
+        model: { type: 'string', description: '可选的生图模型 ID；未填写时使用环境配置或账户目录中的唯一可用模型。' },
       size: { type: 'string', enum: ['auto', '1024x1024', '1536x1024', '1024x1536'] },
       quality: { type: 'string', enum: ['auto', 'low', 'medium', 'high'] },
       overwrite: { type: 'boolean', description: 'Replace an existing output file. Defaults to false.' },
@@ -109,13 +111,13 @@ export function apply(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'edit_image',
-    description: 'Edit one or more existing PNG, JPEG, or WebP images with gpt-image-2 while following the requested changes and preserving referenced content where instructed.',
+    description: '使用环境配置中选择的生图模型编辑 PNG、JPEG 或 WebP 图片，并按请求保留被引用内容。',
     parameters: {
       prompt: { type: 'string', required: true, description: 'Detailed edit instruction, including what must remain unchanged.' },
       input_paths: { type: 'array', required: true, items: { type: 'string' }, description: 'One to sixteen source image paths inside the session working directory.' },
       mask_path: { type: 'string', description: 'Optional independent alpha mask matching the first input image format and dimensions. Omit this field entirely for whole-image edits; never send an empty string or repeat input_paths[0] as the mask.' },
       output_path: { type: 'string', required: true, description: 'PNG output path inside the current session working directory.' },
-      model: { type: 'string', description: 'Configured image model id. Defaults to gpt-image-2.' },
+        model: { type: 'string', description: '可选的生图模型 ID；未填写时使用环境配置或账户目录中的唯一可用模型。' },
       size: { type: 'string', enum: ['auto', '1024x1024', '1536x1024', '1024x1536'] },
       quality: { type: 'string', enum: ['auto', 'low', 'medium', 'high'] },
       overwrite: { type: 'boolean', description: 'Replace an existing output file, including a source image. Defaults to false.' },

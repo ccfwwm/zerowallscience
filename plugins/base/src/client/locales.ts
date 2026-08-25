@@ -4,6 +4,7 @@ import { NS } from '../shared/client-helpers.js'
 
 /** Simplified Chinese is the product default and the key-set source of truth. */
 export const zh = {
+  'github.project': 'GitHub 项目',
   'common.close': '关闭',
   'common.refresh': '刷新',
   'common.save': '保存',
@@ -333,6 +334,7 @@ export type ZeroWallKey = keyof typeof zh
 
 /** English dictionary, kept key-identical to the Chinese source of truth. */
 export const en: Record<ZeroWallKey, string> = {
+  'github.project': 'GitHub project',
   'common.close': 'Close',
   'common.refresh': 'Refresh',
   'common.save': 'Save',

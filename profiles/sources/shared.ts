@@ -1,8 +1,10 @@
 export const bundledPlugins = [
   'dsh-better-sidebar',
+  'dsh-dream-skin',
   '@zerowallscience/plugin-base',
   '@zerowallscience/plugin-opencode',
   '@zerowallscience/plugin-secrets',
+  '@zerowallscience/plugin-environment',
   '@zerowallscience/plugin-desktop-compat',
   '@zerowallscience/plugin-projects',
   '@zerowallscience/plugin-account',

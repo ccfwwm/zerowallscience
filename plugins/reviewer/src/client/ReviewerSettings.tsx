@@ -6,6 +6,10 @@ import css from './ReviewerSettings.module.css'
 export interface ReviewerSettingsValue {
   autoReview: boolean
   autoReviewConfigured?: boolean
+  modelMode?: 'follow-session' | 'fixed'
+  provider?: string
+  model?: string
+  reasoningEffort?: string
 }
 
 export interface ReviewerSettingsInjected {
