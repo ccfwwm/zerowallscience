@@ -12,6 +12,7 @@ const zerowallPackageRoots = [
   ...await pluginRoots(resolve(root, 'plugins')),
 ]
 const desktopRuntimeSeeds = [
+  'dsh-better-sidebar',
   '@deepseek-ai/dsh-subagent-claude-code',
   '@deepseek-ai/dsh-subagent-codex',
   '@earendil-works/pi-ai',
@@ -135,6 +136,13 @@ async function copyRuntimePackage(package_, targetRoot) {
     await copyEntry(sourceRoot, targetRoot, 'lib')
     await copyEntry(sourceRoot, targetRoot, 'prebuilds/win32-x64')
     await copyEntry(sourceRoot, targetRoot, 'LICENSE')
+    return
+  }
+
+  if (manifest.name === 'dsh-better-sidebar') {
+    // The package publishes source/docs/install helpers alongside its browser
+    // chunks. Only the compiled runtime belongs in the production ASAR.
+    await copyEntry(sourceRoot, targetRoot, 'lib')
     return
   }
 

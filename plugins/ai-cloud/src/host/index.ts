@@ -228,9 +228,10 @@ function managedReasoning(modelId: string): Pick<NonNullable<PiAiProviderProfile
 }
 
 function managedInput(modelId: string): Pick<NonNullable<PiAiProviderProfile['models']>[number], 'input'> | Record<string, never> {
-  // Managed DeepSeek routes default to text-only. Every other AI Cloud model
-  // defaults to multimodal; custom provider profiles remain user-editable.
-  if (/deepseek/iu.test(modelId)) return { input: ['text'] }
+  // Managed routes are verified by the Host's active visual probe. Model
+  // names are not capability evidence: gateways may expose vision variants
+  // under vendor-specific or compatibility aliases.
+  void modelId
   return { input: ['text', 'image'] }
 }
 

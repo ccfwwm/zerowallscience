@@ -23,9 +23,8 @@ function BrandName() {
 
 function ProductVersion() {
   return (
-    <span className={css.version} aria-label={`ZeroWall Science ${process.env.ZEROWALL_VERSION}`}>
+    <span className={css.version} aria-label="ZeroWall Science">
       <span>ZeroWall Science</span>
-      <span>v{process.env.ZEROWALL_VERSION}</span>
     </span>
   )
 }

@@ -44,3 +44,6 @@ allowBuilds:
   '@google/genai': false
   protobufjs: false
   node-addon-require-builtin: false
+
+minimumReleaseAgeExclude:
+  - dsh-better-sidebar@0.16.0

@@ -175,7 +175,15 @@ export class AiCloudClient {
     const keys = existingKeys(keysReply.body)
     const models: AiCloudManagedModel[] = []
     const groupIds: string[] = []
+    const previousModels = new Map<string, AiCloudManagedModel[]>()
+    for (const model of session.models) {
+      const entries = previousModels.get(model.groupId) ?? []
+      entries.push(model)
+      previousModels.set(model.groupId, entries)
+    }
     for (const group of groups) {
+      const groupId = String(group.id)
+      groupIds.push(groupId)
       let apiKey = keys.find((candidate) => candidate.groupId === group.id)?.key
       if (apiKey === undefined) {
         const created = await this.request(session.baseUrl, '/keys', {
@@ -183,27 +191,33 @@ export class AiCloudClient {
         })
         apiKey = createdKey(created.body)
       }
-      const modelReply = await this.rawRequest(`${session.baseUrl}/v1/models`, { token: apiKey })
-      const groupId = String(group.id)
+      // Save a newly-created key before catalog I/O. A transient catalog
+      // timeout must not make the next sync create another key for the same group.
       await this.secrets.set(`${KEY_PREFIX}${groupId}`, apiKey)
-      groupIds.push(groupId)
-      for (const modelId of modelIds(modelReply)) {
-        models.push({
-          // pi-ai owns one streaming implementation per provider route. A
-          // managed group can expose OpenAI, Anthropic, and compatibility
-          // models together, so make the route protocol-homogeneous instead
-          // of letting its first model decide every request's wire format.
-          providerId: managedProviderId(groupId, modelId),
-          groupId,
-          groupName: group.name,
-          modelId,
-          // OpenAI-compatible transports append their resource path to a
-          // `/v1` base URL, while the Anthropic SDK appends `/v1/messages`
-          // itself. Keeping the protocol-specific base here avoids the
-          // erroneous `/v1/v1/messages` URL for Claude routes.
-          baseUrl: modelBaseUrl(session.baseUrl, modelId),
-          ...(isImageGenerationGroup(group.name) ? { capability: 'image-generation' as const } : {}),
-        })
+      try {
+        const modelReply = await this.rawRequest(`${session.baseUrl}/v1/models`, { token: apiKey })
+        for (const modelId of modelIds(modelReply)) {
+          models.push({
+            // pi-ai owns one streaming implementation per provider route. A
+            // managed group can expose OpenAI, Anthropic, and compatibility
+            // models together, so make the route protocol-homogeneous instead
+            // of letting its first model decide every request's wire format.
+            providerId: managedProviderId(groupId, modelId),
+            groupId,
+            groupName: group.name,
+            modelId,
+            // OpenAI-compatible transports append their resource path to a
+            // `/v1` base URL, while the Anthropic SDK appends `/v1/messages`
+            // itself. Keeping the protocol-specific base here avoids the
+            // erroneous `/v1/v1/messages` URL for Claude routes.
+            baseUrl: modelBaseUrl(session.baseUrl, modelId),
+            ...(isImageGenerationGroup(group.name) ? { capability: 'image-generation' as const } : {}),
+          })
+        }
+      } catch {
+        // A group catalog is independent. Retain its last known-good entries
+        // and keep syncing all other groups when this endpoint times out.
+        models.push(...(previousModels.get(groupId) ?? []))
       }
     }
     const updated = { ...session, models, groupIds }

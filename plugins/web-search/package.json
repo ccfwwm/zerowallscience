@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-web-search",
-  "version": "4.2.2",
+  "version": "4.3.0",
   "description": "ZeroWall Science web-search domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -10,6 +10,10 @@
       "types": "./src/host/index.ts",
       "default": "./lib/index.js"
     },
+    "./client": {
+      "types": "./src/client/index.ts",
+      "default": "./lib/client.js"
+    },
     "./types": "./src/shared/types.ts",
     "./manifest": "./zerowall.plugin.json",
     "./package.json": "./package.json"
@@ -17,6 +21,21 @@
   "dsh": {
     "bundle": {
       "patch": "dsh.bundle.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "betterSidebar",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-attachment",
+        "@deepseek-ai/dsh-client-ui-tool"
+      ],
+      "platform": "web"
     }
   },
   "zerowall": {
@@ -42,7 +61,7 @@
   },
   "scripts": {
     "bundle": "tsdown",
-    "typecheck": "tsc -p tsconfig.host.json --noEmit",
+    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "vitest run --config ../../vitest.plugins.config.ts"
   },
   "license": "AGPL-3.0-only",
@@ -83,6 +102,7 @@
     "@deepseek-ai/dsh-client-ui-attachment": "workspace:^",
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
+    "dsh-better-sidebar": "0.16.0",
     "@zerowallscience/plugin-account": "workspace:^",
     "@zerowallscience/plugin-secrets": "workspace:^",
     "zod": "^4.4.3",

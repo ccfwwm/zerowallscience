@@ -72,6 +72,7 @@ External packages that a workspace package resolves at runtime. The tier covers 
 
 | Package | License |
 | --- | --- |
+| [`dsh-better-sidebar`](https://github.com/omdsh-dev/DSH-better-sidebar) | MIT |
 | [`@agentclientprotocol/sdk`](https://github.com/agentclientprotocol/typescript-sdk) | Apache-2.0 |
 | [`@anthropic-ai/claude-agent-sdk`](https://github.com/anthropics/claude-agent-sdk-typescript) | SEE LICENSE IN README.md |
 | [`@anthropic-ai/sdk`](https://github.com/anthropics/anthropic-sdk-typescript) | MIT |
@@ -133,6 +134,14 @@ External packages that a workspace package resolves at runtime. The tier covers 
 | [`yaml`](https://github.com/eemeli/yaml) | ISC |
 | [`zod`](https://github.com/colinhacks/zod) | MIT |
 | [`zustand`](https://github.com/pmndrs/zustand) | MIT |
+
+`dsh-better-sidebar@0.16.0` is pinned to the npm release built from the upstream
+`v0.16.0` tag at commit
+`e18528b716bfbbda9dfb1509b390e2cdb2deaaad`. Its bundled CodeMirror language
+packages, `dompurify`, `mermaid`, `node-pty`, `react-icons`, `rxjs`, and `ws`
+remain independently licensed dependencies recorded in `pnpm-lock.yaml`.
+The Windows package audit requires the browser chunks and manifest in `app.asar`
+and the `node-pty` Windows x64 native module in `app.asar.unpacked`.
 
 pnpm applies local patches to the following packages at install time, so shipped artifacts carry modified copies; each patch file is the complete record of the modification:
 

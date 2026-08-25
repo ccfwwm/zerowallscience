@@ -1,0 +1,75 @@
+.viewer {
+  display: grid;
+  min-height: 100%;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+}
+
+.header {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+}
+
+.header div {
+  display: grid;
+  min-width: 0;
+}
+
+.header strong,
+.header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header span {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.header button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.header button:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.warning {
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--dsw-alias-state-warn-secondary);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.preview {
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  color: var(--dsw-alias-label-primary);
+  font: 13px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.state {
+  padding: 18px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+}

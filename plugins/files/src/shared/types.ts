@@ -24,3 +24,20 @@ export interface UploadedFileReadResult {
   hasMore: boolean
   text: string
 }
+
+export interface MaterializedUploadedFile {
+  attachmentId: string
+  name: string
+  path: string
+  bytes: number
+  sha256: string
+}
+
+export interface UploadedFileBytes {
+  attachmentId: string
+  name: string
+  mediaType: string
+  bytes: number
+  sha256: string
+  data: string
+}

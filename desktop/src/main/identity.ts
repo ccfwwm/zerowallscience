@@ -10,13 +10,13 @@ export function resolveDesktopIdentity(channel: unknown): DesktopIdentity {
   if (channel === 'stable') {
     return {
       channel: 'stable',
-      productName: 'ZeroWallScience',
+      productName: 'ZeroWall Science',
       userDataDirectory: 'zerowall-science',
     }
   }
   return {
     channel: 'preview',
-    productName: 'ZeroWallScience Preview',
+    productName: 'ZeroWall Science',
     userDataDirectory: 'zerowall-science-preview',
   }
 }

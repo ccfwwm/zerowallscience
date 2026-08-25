@@ -1,6 +1,8 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import {
   CallId,
+  createUserMessage,
   LlmAdapter,
   LlmError,
   type GenerateOptions,
@@ -10,7 +12,7 @@ import {
 } from '@deepseek-ai/dsh-llm'
 
 export const name = 'llm-opencode'
-export const inject = ['llm']
+export const inject = ['llm', 'attachments']
 export const PROVIDER = 'opencode-zen'
 export const PUBLIC_BASE_URL = 'https://opencode.ai/zen/v1'
 
@@ -34,12 +36,36 @@ function textOf(content: readonly { type: string; text?: string }[]): string {
   return content.filter(block => block.type === 'text').map(block => block.text ?? '').join('')
 }
 
-function serializeMessages(messages: GenerateOptions['messages']): Array<Record<string, unknown>> {
+async function userContent(
+  content: GenerateOptions['messages'][number]['content'],
+  attachments: AttachmentStore | undefined,
+  signal?: AbortSignal,
+): Promise<string | Array<Record<string, unknown>>> {
+  if (!content.some(block => block.type === 'image')) return textOf(content)
+  if (attachments === undefined) throw new LlmError('OpenCode image input requires the durable attachment service.', 'UNSUPPORTED_CONTENT')
+  const result: Array<Record<string, unknown>> = []
+  for (const block of content) {
+    if (block.type === 'text') {
+      if (block.text !== '') result.push({ type: 'text', text: block.text })
+      continue
+    }
+    if (block.type !== 'image') continue
+    const stored = await attachments.readImage(block.attachment as ImageAttachmentRef, signal)
+    result.push({
+      type: 'image_url',
+      image_url: { url: `data:${stored.ref.mediaType};base64,${Buffer.from(stored.data).toString('base64')}` },
+    })
+  }
+  return result
+}
+
+async function serializeMessages(
+  messages: GenerateOptions['messages'],
+  attachments: AttachmentStore | undefined,
+  signal?: AbortSignal,
+): Promise<Array<Record<string, unknown>>> {
   const result: Array<Record<string, unknown>> = []
   for (const message of messages) {
-    if (message.content.some(block => block.type === 'image')) {
-      throw new LlmError('OpenCode Zen currently supports text input only.', 'UNSUPPORTED_CONTENT')
-    }
     if (message.role === 'assistant') {
       const toolCalls = message.content.filter(block => block.type === 'tool-call').map(block => ({
         id: block.id,
@@ -50,16 +76,17 @@ function serializeMessages(messages: GenerateOptions['messages']): Array<Record<
       continue
     }
     const toolResults = message.content.filter(block => block.type === 'tool-result')
-    if (toolResults.length === 0 || textOf(message.content).length > 0) result.push({ role: message.role, content: textOf(message.content) })
+    const content = await userContent(message.content, attachments, signal)
+    if (toolResults.length === 0 || (typeof content === 'string' ? content.length > 0 : content.length > 0)) result.push({ role: message.role, content })
     for (const block of toolResults) result.push({ role: 'tool', tool_call_id: block.toolCallId, content: textOf(block.content) || '(no output)' })
   }
   return result
 }
 
-function serializeRequest(options: GenerateOptions): Record<string, unknown> {
+async function serializeRequest(options: GenerateOptions, attachments?: AttachmentStore): Promise<Record<string, unknown>> {
   const messages: Array<Record<string, unknown>> = []
   if (options.system !== undefined) messages.push({ role: 'system', content: options.system })
-  messages.push(...serializeMessages(options.messages))
+  messages.push(...await serializeMessages(options.messages, attachments, options.signal))
   const tools = options.tools?.map(tool => ({ type: 'function', function: tool }))
   return {
     model: options.model,
@@ -172,26 +199,66 @@ async function* translate(body: ReadableStream<Uint8Array>): AsyncIterable<Strea
 }
 
 export class OpenCodeAdapter extends LlmAdapter {
-  constructor(private readonly options: () => { baseURL: string; models: readonly OpenCodeCatalogModel[]; maxTokens: number; defaultContextWindow: number; apiKey: string | undefined }) { super() }
+  constructor(
+    private readonly options: () => { baseURL: string; models: readonly OpenCodeCatalogModel[]; maxTokens: number; defaultContextWindow: number; apiKey: string | undefined },
+    private readonly attachments?: AttachmentStore,
+  ) { super() }
   providerInfo(provider: string) { return { id: provider, name: 'OpenCode Zen' } }
   listModels(provider: string): Promise<readonly LlmModelInfo[]> {
-    return Promise.resolve(this.options().models.map(model => ({ provider, id: model.id, name: model.name, ...(model.description === undefined ? {} : { description: model.description }), inputModalities: ['text'] as const })))
+    return Promise.resolve(this.options().models.map(model => ({ provider, id: model.id, name: model.name, ...(model.description === undefined ? {} : { description: model.description }) })))
   }
   resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
     const config = this.options(); const found = config.models.find(item => item.id === model)
-    return Promise.resolve({ provider, id: model, name: found?.name ?? model, ...(found?.description === undefined ? {} : { description: found.description }), inputModalities: ['text'], context: { contextWindow: found?.contextWindow ?? config.defaultContextWindow }, defaultMaxTokens: found?.maxTokens ?? config.maxTokens })
+    return Promise.resolve({ provider, id: model, name: found?.name ?? model, ...(found?.description === undefined ? {} : { description: found.description }), context: { contextWindow: found?.contextWindow ?? config.defaultContextWindow }, defaultMaxTokens: found?.maxTokens ?? config.maxTokens })
   }
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     const config = this.options()
     const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'text/event-stream', 'User-Agent': 'opencode/1.0.0', 'HTTP-Referer': 'https://opencode.ai/', 'X-Title': 'opencode', 'X-Source': 'opencode' }
     if (config.apiKey !== undefined && config.apiKey.trim() !== '') headers.authorization = `Bearer ${config.apiKey.trim()}`
     let response: Response
-    try { response = await fetch(`${config.baseURL.replace(/\/+$/u, '')}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(serializeRequest(options)), ...(options.signal === undefined ? {} : { signal: options.signal }) }) }
+    try { response = await fetch(`${config.baseURL.replace(/\/+$/u, '')}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(await serializeRequest(options, this.attachments)), ...(options.signal === undefined ? {} : { signal: options.signal }) }) }
     catch (error) { if (options.signal?.aborted) throw new LlmError('OpenCode request aborted by caller.', 'ABORTED', { cause: error }); throw new LlmError('OpenCode request failed.', 'TRANSPORT', { cause: error }) }
-    if (!response.ok) throw new LlmError(`OpenCode API error (HTTP ${response.status}).`, response.status === 401 || response.status === 403 ? 'AUTH' : response.status === 429 ? 'RATE_LIMIT' : `HTTP_${response.status}`, { status: response.status })
+    if (!response.ok) {
+      const detail = (await response.text().catch(() => '')).replace(/\s+/gu, ' ').trim().slice(0, 500)
+      throw new LlmError(`OpenCode API error (HTTP ${response.status})${detail === '' ? '.' : `: ${detail}`}`, response.status === 401 || response.status === 403 ? 'AUTH' : response.status === 429 ? 'RATE_LIMIT' : `HTTP_${response.status}`, { status: response.status })
+    }
     if (!response.body) throw new LlmError('OpenCode API returned no response body.', 'EMPTY_RESPONSE')
     yield* translate(response.body)
   }
+
+  override async probeVision(provider: string, model: string, signal?: AbortSignal) {
+    if (this.attachments === undefined) return { status: 'unknown' as const }
+    const image = await this.attachments.saveImage({
+      mediaType: 'image/png',
+      name: 'zerowall-vision-probe.png',
+      data: Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')),
+    })
+    try {
+      for await (const chunk of this.stream({
+        provider,
+        model,
+        maxTokens: 4,
+        messages: [createUserMessage({ content: [
+          { type: 'text', text: 'Describe the image in one word.' },
+          { type: 'image', attachment: image },
+        ], source: { kind: 'user' } })],
+        ...(signal === undefined ? {} : { signal }),
+      })) {
+        if (chunk.type !== 'finish') continue
+        if (chunk.reason.kind !== 'error' && chunk.reason.kind !== 'aborted') return { status: 'supported' as const, protocol: 'openai-completions' }
+        const message = chunk.reason.kind === 'error' ? chunk.reason.failure.message : 'request aborted'
+        return { status: explicitlyRejectsVision(message) ? 'unsupported' as const : 'unknown' as const, protocol: 'openai-completions', message }
+      }
+      return { status: 'unknown' as const, protocol: 'openai-completions', message: 'model did not finish' }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { status: explicitlyRejectsVision(message) ? 'unsupported' as const : 'unknown' as const, protocol: 'openai-completions', message }
+    }
+  }
+}
+
+function explicitlyRejectsVision(message: string): boolean {
+  return /(?:image|vision|multimodal).{0,80}(?:not supported|unsupported|not allowed|text.?only)|(?:not supported|unsupported).{0,80}(?:image|vision|multimodal)/iu.test(message)
 }
 
 async function syncModels(baseURL: string, current: readonly OpenCodeCatalogModel[], logger: Context['logger']): Promise<OpenCodeCatalogModel[]> {
@@ -213,7 +280,7 @@ function isFreeModel(id: string): boolean {
 export function apply(ctx: Context): void {
   let models: OpenCodeCatalogModel[] = [...DEFAULT_MODELS]
   const options = () => ({ baseURL: PUBLIC_BASE_URL, models, maxTokens: DEFAULT_MAX_TOKENS, defaultContextWindow: DEFAULT_CONTEXT_WINDOW, apiKey: process.env.OPENCODE_API_KEY })
-  const adapter = new OpenCodeAdapter(options)
+  const adapter = new OpenCodeAdapter(options, ctx.attachments)
   ctx.llm.registerAdapter([PROVIDER], adapter)
   void syncModels(PUBLIC_BASE_URL, models, ctx.logger).then(next => { if (next.length === 0) return; models = next; ctx.emit('llm/adapters-updated') })
 }

@@ -23,7 +23,13 @@ const common = {
   files: [
     'out/**/*',
     'package.json',
+    // Exclude the workspace's pnpm-linked installation first; the explicit
+    // curated runtime mapping below is added afterwards and therefore remains
+    // included in the ASAR.
     '!node_modules/**/*',
+    // The runtime closure is the only production dependency tree copied into
+    // the ASAR. Keep the standard node_modules name because Node's ESM resolver
+    // requires that package boundary for bare package imports.
     { from: '../.build/runtime/node_modules', to: 'node_modules', filter: ['**/*'] },
     {
       from: 'build',

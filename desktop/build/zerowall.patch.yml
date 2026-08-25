@@ -102,6 +102,10 @@
     watch: true
 
 - insert:
+    # Generic right/bottom workbench; DSH's native left session sidebar remains.
+    - id: better-sidebar
+      name: 'dsh-better-sidebar'
+
     - id: zerowall-base
       name: '@zerowallscience/plugin-base'
 

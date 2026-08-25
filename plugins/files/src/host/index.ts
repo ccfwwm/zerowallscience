@@ -10,12 +10,13 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { FileAttachmentRef, PreparedFile, UploadedFileReadResult } from '../shared/types.js'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import type { FileAttachmentRef, MaterializedUploadedFile, PreparedFile, UploadedFileBytes, UploadedFileReadResult } from '../shared/types.js'
 
-export type { FileAttachmentRef, PreparedFile, UploadedFileReadResult } from '../shared/types.js'
+export type { FileAttachmentRef, MaterializedUploadedFile, PreparedFile, UploadedFileBytes, UploadedFileReadResult } from '../shared/types.js'
 
 export const name = 'zerowall-files'
-export const inject = ['tools']
+export const inject = ['tools', 'sessions']
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024
 const MAX_TOTAL_PREVIEW = 120_000
@@ -34,7 +35,7 @@ const MIME_BY_EXT: Record<string, string> = {
 const { XMLParser } = createRequire(import.meta.url)('fast-xml-parser') as typeof import('fast-xml-parser')
 const xml = new XMLParser({ ignoreAttributes: false, removeNSPrefix: true, textNodeName: '#text' })
 
-interface StoredFile extends FileAttachmentRef { textPath: string; sourcePath: string }
+interface StoredFile extends FileAttachmentRef { textPath: string; sourcePath: string; sessionIds: string[]; warning?: string }
 interface ParsedDocument { text: string; parser: string; status: PreparedFile['status']; pageCount?: number; sheetCount?: number; warning?: string }
 
 function rootPath(): string { return resolve(process.env.DSH_HOME?.trim() || join(homedir(), '.dsh'), 'attachments', 'files', 'v1') }
@@ -112,7 +113,7 @@ function textContent(data: Uint8Array): string | undefined {
   return text.replace(/\r\n/g, '\n')
 }
 
-export async function prepareUploadedFile(input: { name: string; mediaType?: string; data: string }): Promise<PreparedFile> {
+export async function prepareUploadedFile(input: { name: string; mediaType?: string; data: string; sessionId?: string }): Promise<PreparedFile> {
   const name = cleanName(input.name)
   const bytes = decode(input.data)
   if (bytes.byteLength === 0) throw new Error('Uploaded file is empty.')
@@ -126,7 +127,14 @@ export async function prepareUploadedFile(input: { name: string; mediaType?: str
     return { text: '', parser: 'raw', status: 'stored' as const, warning: `The specialized parser failed; the Agent can inspect the original in its workspace: ${error instanceof Error ? error.message : String(error)}` }
   })
   const text = parsed.text.slice(0, MAX_TOTAL_PREVIEW)
-  const ref: StoredFile = { attachmentId: `file-sha256:${sha256}`, name, mediaType, bytes: bytes.byteLength, sha256, parser: parsed.parser, status: parsed.status, textChars: parsed.text.length, ...(parsed.pageCount === undefined ? {} : { pageCount: parsed.pageCount }), ...(parsed.sheetCount === undefined ? {} : { sheetCount: parsed.sheetCount }), textPath: paths.text, sourcePath: paths.source }
+  const sessionId = input.sessionId?.trim()
+  if (input.sessionId !== undefined && sessionId === '') throw new Error('Uploaded file session is invalid.')
+  const existing = await readFile(paths.meta, 'utf8').then(raw => JSON.parse(raw) as Partial<StoredFile>).catch(() => undefined)
+  const sessionIds = [...new Set([
+    ...(Array.isArray(existing?.sessionIds) ? existing.sessionIds.filter(value => typeof value === 'string' && value !== '') : []),
+    ...(sessionId === undefined ? [] : [sessionId]),
+  ])]
+  const ref: StoredFile = { attachmentId: `file-sha256:${sha256}`, name, mediaType, bytes: bytes.byteLength, sha256, parser: parsed.parser, status: parsed.status, textChars: parsed.text.length, ...(parsed.pageCount === undefined ? {} : { pageCount: parsed.pageCount }), ...(parsed.sheetCount === undefined ? {} : { sheetCount: parsed.sheetCount }), ...(parsed.warning === undefined ? {} : { warning: parsed.warning }), textPath: paths.text, sourcePath: paths.source, sessionIds }
   await mkdir(resolve(paths.source, '..'), { recursive: true })
   await writeFile(paths.source, bytes, { flag: 'wx' }).catch(error => { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error })
   await atomicText(paths.text, parsed.text)
@@ -181,7 +189,7 @@ export async function materializeUploadedFile(id: string, cwd: string): Promise<
 }
 
 export class ZeroWallFilesService extends TypertRemoteService {
-  static inject = ['tools']
+  static inject = ['tools', 'sessions']
 
   constructor(ctx: Context) { super(ctx, 'zerowallFiles')
     ctx.tools.register(defineTool({
@@ -209,8 +217,56 @@ export class ZeroWallFilesService extends TypertRemoteService {
       },
     }))
   }
-  @Remote('prepare') prepare(input: { name: string; mediaType?: string; data: string }): Promise<PreparedFile> { return prepareUploadedFile(input) }
-  @Remote('read') read(input: { attachmentId: string; offset?: number; maxChars?: number }): Promise<UploadedFileReadResult> { return readUploadedFile(input.attachmentId, input.offset, input.maxChars) }
+  @Remote('prepare') prepare(input: { sessionId: string; name: string; mediaType?: string; data: string }): Promise<PreparedFile> { return prepareUploadedFile(input) }
+  @Remote('inspect') async inspect(input: { sessionId: string; attachmentId: string }): Promise<PreparedFile> {
+    const ref = await readStored(input.attachmentId)
+    if (!ref.sessionIds.includes(input.sessionId)) throw new Error('Uploaded file is not authorized for this session.')
+    const preview = (await readFile(ref.textPath, 'utf8')).slice(0, PREVIEW_CHARS)
+    return {
+      attachmentId: ref.attachmentId,
+      name: ref.name,
+      mediaType: ref.mediaType,
+      bytes: ref.bytes,
+      sha256: ref.sha256,
+      parser: ref.parser,
+      status: ref.status,
+      textChars: ref.textChars,
+      ...(ref.pageCount === undefined ? {} : { pageCount: ref.pageCount }),
+      ...(ref.sheetCount === undefined ? {} : { sheetCount: ref.sheetCount }),
+      ...(ref.warning === undefined ? {} : { warning: ref.warning }),
+      preview,
+    }
+  }
+  @Remote('read') async read(input: { sessionId: string; attachmentId: string; offset?: number; maxChars?: number }): Promise<UploadedFileReadResult> {
+    await this.authorized(input.sessionId, input.attachmentId)
+    return readUploadedFile(input.attachmentId, input.offset, input.maxChars)
+  }
+  @Remote('materialize') async materialize(input: { sessionId: string; attachmentId: string }): Promise<MaterializedUploadedFile> {
+    await this.authorized(input.sessionId, input.attachmentId)
+    const cwd = this.ctx.sessions.get(SessionId(input.sessionId))?.header.cwd
+    if (cwd === undefined) throw new Error('This session has no workspace directory.')
+    return materializeUploadedFile(input.attachmentId, cwd)
+  }
+  @Remote('download') async download(input: { sessionId: string; attachmentId: string }): Promise<UploadedFileBytes> {
+    const ref = await this.authorized(input.sessionId, input.attachmentId)
+    const data = await readFile(ref.sourcePath)
+    if (data.byteLength !== ref.bytes || digest(data) !== ref.sha256) throw new Error('Stored file bytes failed integrity validation.')
+    return {
+      attachmentId: ref.attachmentId,
+      name: ref.name,
+      mediaType: ref.mediaType,
+      bytes: ref.bytes,
+      sha256: ref.sha256,
+      data: data.toString('base64'),
+    }
+  }
+
+  private async authorized(sessionId: string, attachmentId: string): Promise<StoredFile> {
+    if (this.ctx.sessions.get(SessionId(sessionId)) === undefined) throw new Error('Uploaded file session is not active.')
+    const ref = await readStored(attachmentId)
+    if (!ref.sessionIds.includes(sessionId)) throw new Error('Uploaded file is not authorized for this session.')
+    return ref
+  }
 }
 
 declare module '@deepseek-ai/cordis' { interface Context { zerowallFiles: ZeroWallFilesService } }

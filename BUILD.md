@@ -1,4 +1,4 @@
-# ZeroWall Science 4.1 构建与发布
+# ZeroWall Science 4.3 构建与发布
 
 ## 固定基线
 
@@ -39,7 +39,7 @@ pnpm package:dir
 
 `package:dir` 生成 Preview 的解包目录并执行真实 Host 启动、运行时闭包、Skills、许可证和回环 HTTP 检查。Windows 安装包使用 `pnpm package:win`；Stable 使用 `pnpm package:stable:win`。
 
-完整验证只覆盖 4.1 的 Node/Electron/DSH 构建图，不调用 Rust、Cargo、Tauri 或 Leptos 工具链。Agent 组合修改还需运行 `pnpm test:dsh:rc2`。
+完整验证覆盖 4.3 的 Node/Electron/DSH 构建图和默认 better-sidebar 工作台，不调用 Rust、Cargo、Tauri 或 Leptos 工具链。Agent 组合修改还需运行 `pnpm test:dsh:rc2`。
 
 ## macOS
 

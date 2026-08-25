@@ -34,6 +34,13 @@ const requiredArchivePaths = [
   'runtime/runtime-esm-register.mjs',
   'runtime/runtime-esm-loader.mjs',
   'node_modules/@deepseek-ai/dsh/lib/bin.js',
+  'node_modules/dsh-better-sidebar/lib/index.js',
+  'node_modules/dsh-better-sidebar/lib/client.js',
+  'node_modules/dsh-better-sidebar/lib/client-registry.js',
+  'node_modules/dsh-better-sidebar/lib/client-editor.js',
+  'node_modules/dsh-better-sidebar/lib/client-terminal.js',
+  'node_modules/dsh-better-sidebar/lib/client-mermaid.js',
+  'node_modules/dsh-better-sidebar/package.json',
   'node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js',
   'node_modules/@deepseek-ai/dsh-subagent-claude-code/lib/index.js',
   'node_modules/@deepseek-ai/dsh-subagent-codex/lib/index.js',
@@ -96,6 +103,16 @@ function verifyArchivePolicy() {
     'base', 'opencode', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp',
     'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat',
   ]
+  const betterSidebarPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-better-sidebar/package.json'))
+  if (betterSidebarPackages.length !== 1) throw new Error(`dsh-better-sidebar must be packaged exactly once; found ${betterSidebarPackages.length}.`)
+  const betterSidebarManifest = JSON.parse(readArchiveFile('node_modules/dsh-better-sidebar/package.json').toString('utf8'))
+  if (betterSidebarManifest.version !== '0.16.0') throw new Error(`Packaged dsh-better-sidebar must be 0.16.0; found ${betterSidebarManifest.version}.`)
+  const forbiddenBetterSidebarFiles = archiveFiles.filter(path => path.startsWith('node_modules/dsh-better-sidebar/') && (
+    /^node_modules\/dsh-better-sidebar\/README(?:_[^/]+)?\.md$/iu.test(path)
+    || /^node_modules\/dsh-better-sidebar\/LICENSE$/iu.test(path)
+    || /^node_modules\/dsh-better-sidebar\/scripts\//iu.test(path)
+  ))
+  if (forbiddenBetterSidebarFiles.length > 0) throw new Error(`Better-sidebar documentation/install files found in ASAR:\n${forbiddenBetterSidebarFiles.join('\n')}`)
   for (const name of [...pluginNames.map(value => `plugin-${value}`), 'research-store']) {
     const packagePaths = archiveFiles.filter(path => path.endsWith(`@zerowallscience/${name}/package.json`))
     if (packagePaths.length !== 1) throw new Error(`@zerowallscience/${name} must be packaged exactly once; found ${packagePaths.length}.`)
@@ -151,10 +168,11 @@ async function verifySizePolicy() {
   // 3.0.8 bundles the local PDF.js, OOXML, and XLSX parsers so installed
   // runtime remains self-contained on clean machines. Keep a bounded gate,
   // but account for those offline parser assets.
-  // The stable profile now ships the opt-in Claude Code bridge and its signed
-  // Windows SDK runtime. Keep a hard ceiling, but account for that provider's
-  // ~250 MiB native payload instead of failing every release at 600 MiB.
-  if (installedBytes > 900 * MIB) throw new Error(`Installed output ${(installedBytes / MIB).toFixed(1)} MiB exceeds the 900 MiB gate.`)
+  // Stable ships the Claude Code bridge, its signed Windows SDK runtime, and
+  // the better-sidebar editor/terminal/browser chunks. Keep a hard ceiling
+  // for the complete self-contained app, while retaining the 240 MiB installer
+  // gate below for the user-facing artifact.
+  if (installedBytes > 1_100 * MIB) throw new Error(`Installed output ${(installedBytes / MIB).toFixed(1)} MiB exceeds the 1,100 MiB gate.`)
 
   const installers = (await readdir(resolve(packageRoot, 'dist'), { withFileTypes: true }))
     .filter(entry => entry.isFile() && entry.name.includes(`-${packagedManifest.version}-`) && entry.name.endsWith('.exe') && !entry.name.toLowerCase().includes('uninstall'))

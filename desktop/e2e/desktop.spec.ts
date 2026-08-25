@@ -13,6 +13,8 @@ let application: ChildProcessWithoutNullStreams
 let browser: Browser
 let page: Page
 let root: string
+let applicationOutput = ''
+const rendererOutput: string[] = []
 
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'zerowall-electron-e2e-')); roots.push(root)
@@ -28,12 +30,30 @@ beforeAll(async () => {
     },
     stdio: 'pipe',
   })
+  const captureApplicationOutput = (chunk: Buffer): void => {
+    applicationOutput = `${applicationOutput}${chunk.toString()}`.slice(-40_000)
+  }
+  application.stdout.on('data', captureApplicationOutput)
+  application.stderr.on('data', captureApplicationOutput)
   const endpoint = await waitForDevToolsEndpoint(application, 150_000)
   browser = await chromium.connectOverCDP(endpoint)
   const context = browser.contexts()[0]
   if (!context) throw new Error('Electron did not expose a browser context')
   page = await waitForMainPage(context, application, 150_000)
-  await page.getByText('ZeroWall Science', { exact: true }).first().waitFor({ state: 'visible', timeout: 150_000 })
+  page.on('console', message => rendererOutput.push(`[console:${message.type()}] ${message.text()}`))
+  page.on('pageerror', error => rendererOutput.push(`[pageerror] ${error.stack ?? error.message}`))
+  try {
+    await page.getByText('ZeroWall Science', { exact: true }).first().waitFor({ state: 'visible', timeout: 150_000 })
+  } catch (error) {
+    const body = await page.locator('body').innerText().catch(() => '(body unavailable)')
+    throw new Error([
+      error instanceof Error ? error.message : String(error),
+      `Renderer URL: ${page.url()}`,
+      `Renderer body:\n${body.slice(0, 20_000)}`,
+      `Renderer diagnostics:\n${rendererOutput.slice(-100).join('\n')}`,
+      `Electron diagnostics:\n${applicationOutput}`,
+    ].join('\n\n'))
+  }
   await expect.poll(() => page.getByRole('dialog', { name: '登录或注册' }).count()).toBe(0)
 })
 

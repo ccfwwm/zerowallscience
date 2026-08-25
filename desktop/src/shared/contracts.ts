@@ -14,6 +14,12 @@ export interface DesktopInfo {
   architecture: string
 }
 
+export interface DesktopClipboardFile {
+  name: string
+  mediaType: string
+  data: string
+}
+
 export type McpEnvironmentPhase = 'idle' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'ready' | 'failed' | 'manual' | 'unavailable'
 export interface McpEnvironmentStatus {
   phase: McpEnvironmentPhase

@@ -1,4 +1,5 @@
 export const bundledPlugins = [
+  'dsh-better-sidebar',
   '@zerowallscience/plugin-base',
   '@zerowallscience/plugin-opencode',
   '@zerowallscience/plugin-secrets',

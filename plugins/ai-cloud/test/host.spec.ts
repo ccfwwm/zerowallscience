@@ -113,7 +113,7 @@ describe('ZeroWall AI Cloud LLM routes', () => {
     })
 
     await expect(ctx.llm.resolveModelInfo('zerowall-ai-cloud-2', 'deepseek-v4-pro')).resolves.toMatchObject({
-      inputModalities: ['text'],
+      inputModalities: ['text', 'image'],
       reasoning: {
         efforts: [
           { id: 'off', name: 'Off' },

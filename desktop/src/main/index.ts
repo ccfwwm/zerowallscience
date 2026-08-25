@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, Tray, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, Tray, type OpenDialogOptions } from 'electron'
 import updaterPackage from 'electron-updater'
 import { HarnessRuntime, type HarnessChildProcess } from './runtime/harness-runtime.js'
 import { attachCredentialBroker } from './credentials/broker.js'
@@ -15,7 +16,7 @@ import { stopBeforeExit } from './shutdown.js'
 import { McpEnvironmentController, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
 import { DesktopUpdateController, isUpdateCheckDue, UPDATE_CHECK_INTERVAL_MS } from './updater.js'
-import type { DesktopInfo, RuntimeSnapshot } from '../shared/contracts.js'
+import type { DesktopClipboardFile, DesktopInfo, RuntimeSnapshot } from '../shared/contracts.js'
 
 const { autoUpdater } = updaterPackage
 // Update pointers are mutable objects on the CDN; always revalidate them.
@@ -247,6 +248,7 @@ app.whenReady().then(async () => {
   const userData = app.getPath('userData')
   await migrateLegacyUserData()
   const mcpEnvironmentRoot = join(userData, 'mcp-environments')
+  await mkdir(mcpEnvironmentRoot, { recursive: true })
   process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = mcpEnvironmentRoot
   if (!safeStorage.isEncryptionAvailable()) {
     throw new Error('Operating-system credential encryption is unavailable. ZeroWallScience will not store account secrets without it.')
@@ -307,6 +309,23 @@ app.whenReady().then(async () => {
       ? await dialog.showOpenDialog(mainWindow, options)
       : await dialog.showOpenDialog(options)
     return result.canceled ? null : result.filePaths[0] ?? null
+  })
+  ipcMain.handle('desktop:clipboard-copy-file', async (_event, input: DesktopClipboardFile) => {
+    if (process.platform !== 'win32') return false
+    if (typeof input?.name !== 'string' || typeof input?.mediaType !== 'string' || typeof input?.data !== 'string') return false
+    const data = Buffer.from(input.data, 'base64')
+    if (data.byteLength === 0 || data.byteLength > 50 * 1024 * 1024 || data.toString('base64') !== input.data) return false
+    const name = input.name.slice(Math.max(input.name.lastIndexOf('/'), input.name.lastIndexOf('\\')) + 1)
+      .replace(/[\u0000-\u001f<>:"/\\|?*]/gu, '_').trim().slice(0, 180) || 'attachment'
+    const directory = join(app.getPath('temp'), 'ZeroWall Science Clipboard', randomUUID())
+    await mkdir(directory, { recursive: true })
+    const path = join(directory, name)
+    await writeFile(path, data, { flag: 'wx' })
+    clipboard.clear()
+    clipboard.writeText(path)
+    clipboard.writeBuffer('FileNameW', Buffer.from(`${path}\0`, 'ucs2'))
+    clipboard.writeBuffer('Preferred DropEffect', Buffer.from([5, 0, 0, 0]))
+    return true
   })
   ipcMain.handle('desktop:get-update-status', () => updates.current())
   ipcMain.handle('desktop:check-for-updates', () => updates.check())

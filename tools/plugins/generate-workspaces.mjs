@@ -5,6 +5,7 @@ const root = resolve(import.meta.dirname, '../..')
 const rootPackage = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const version = String(rootPackage.version)
 const clientInject = [
+  'betterSidebar',
   '@deepseek-ai/dsh-client-runtime',
   '@deepseek-ai/dsh-api-remotes',
   '@deepseek-ai/dsh-client-locale',
@@ -54,7 +55,7 @@ const npmDependencies = {
   base: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0' },
   projects: { '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   account: { qrcode: '^1.5.4', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
-  files: { jszip: '3.10.1', 'pdf-lib': '^1.17.1', 'pdfjs-dist': '^4.10.38', xlsx: '^0.18.5', 'fast-xml-parser': '^5.11.0', zod: '^4.4.3' },
+  files: { jszip: '3.10.1', 'pdf-lib': '^1.17.1', 'pdfjs-dist': '^4.10.38', xlsx: '^0.18.5', 'fast-xml-parser': '^5.11.0', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
   images: { sharp: '^0.35.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
   mcp: { '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   skills: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
@@ -79,8 +80,8 @@ const plugins = [
   { id: 'secrets', capabilities: ['credentials.read', 'credentials.write'], permissions: ['credentials'], requiredServices: [], optionalServices: ['credentialBroker'] },
   { id: 'projects', client: true, remote: true, capabilities: ['projects', 'workspaces'], permissions: ['files'] },
   { id: 'account', client: true, remote: true, capabilities: ['account'], permissions: ['credentials', 'network'], dependencies: ['secrets', 'base'] },
-  { id: 'ai-cloud', capabilities: ['llm.cloud'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'] },
-  { id: 'files', remote: true, capabilities: ['files', 'data-assets'], permissions: ['files'] },
+  { id: 'ai-cloud', client: true, capabilities: ['llm.cloud'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'] },
+  { id: 'files', client: true, remote: true, capabilities: ['files', 'data-assets'], permissions: ['files'] },
   {
     id: 'images',
     client: true,
@@ -92,12 +93,12 @@ const plugins = [
   { id: 'skills', client: true, remote: true, capabilities: ['skills'], permissions: ['files'], dependencies: ['base'] },
   { id: 'reviewer', client: true, capabilities: ['reviewer'], permissions: ['approvals'], dependencies: ['base'] },
   { id: 'research', client: true, remote: true, capabilities: ['research', 'data-assets', 'artifacts'], permissions: ['files'], dependencies: ['projects', 'base'] },
-  { id: 'execution', remote: true, capabilities: ['execution-contexts'], permissions: ['processes', 'files'] },
+  { id: 'execution', client: true, remote: true, capabilities: ['execution-contexts'], permissions: ['processes', 'files'] },
   { id: 'python', capabilities: ['python'], permissions: ['processes', 'files'], dependencies: [] },
-  { id: 'runs', remote: true, capabilities: ['runs'], permissions: ['processes', 'files'], dependencies: ['execution'] },
-  { id: 'publications', remote: true, capabilities: ['papers', 'publications'], permissions: ['files'], dependencies: ['runs'] },
-  { id: 'presentations', remote: true, capabilities: ['presentations'], permissions: ['files', 'processes'] },
-  { id: 'web-search', capabilities: ['web-search'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'] },
+  { id: 'runs', client: true, remote: true, capabilities: ['runs'], permissions: ['processes', 'files'], dependencies: ['execution'] },
+  { id: 'publications', client: true, remote: true, capabilities: ['papers', 'publications'], permissions: ['files'], dependencies: ['runs'] },
+  { id: 'presentations', client: true, remote: true, capabilities: ['presentations'], permissions: ['files', 'processes'] },
+  { id: 'web-search', client: true, capabilities: ['web-search'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'] },
   { id: 'wechat', client: true, capabilities: ['remote.wechat'], permissions: ['credentials', 'network', 'files', 'approvals'], dependencies: ['secrets', 'projects', 'files', 'base'], requiredServices: ['agents', 'sessions', 'agentDefaultModel'], optionalServices: ['webServer', 'workspaceRegistry', 'agentPresets'] },
 ]
 
@@ -183,6 +184,7 @@ for (const plugin of plugins) {
     ],
     dependencies: {
       ...dshDependencies,
+      ...(plugin.client ? { 'dsh-better-sidebar': '0.16.0' } : {}),
       ...Object.fromEntries((plugin.dependencies ?? []).map(id => [`@zerowallscience/plugin-${id}`, 'workspace:^'])),
       ...(plugin.id === 'base'
         ? Object.fromEntries(plugins.filter(candidate => candidate.remote).map(candidate => [`@zerowallscience/plugin-${candidate.id}`, 'workspace:^']))

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OpenCodeAdapter } from '../src/host/index.ts'
+import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -45,5 +46,37 @@ describe('OpenCodeAdapter', () => {
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit
     const body = JSON.parse(String(init.body)) as { tools?: Array<{ function?: { name?: string } }> }
     expect(body.tools?.[0]?.function?.name).toBe('generate_image')
+  })
+
+  it('sends durable images as OpenAI-compatible image_url content', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      'data: {"choices":[{"delta":{"content":"white"}}]}\n\n'
+      + 'data: {"choices":[{"finish_reason":"stop","delta":{}}]}\n\n'
+      + 'data: [DONE]\n\n',
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    ))
+    const ref = { attachmentId: `sha256:${'c'.repeat(64)}`, mediaType: 'image/png' as const, bytes: 1, width: 1, height: 1 }
+    const attachments = {
+      readImage: vi.fn(async () => ({ ref, data: Uint8Array.of(255) })),
+    } as unknown as AttachmentStore
+    const adapter = new OpenCodeAdapter(
+      () => ({ baseURL: 'https://opencode.test/v1', models: [], maxTokens: 128, defaultContextWindow: 1024, apiKey: undefined }),
+      attachments,
+    )
+    const chunks = []
+    for await (const chunk of adapter.stream({
+      provider: 'opencode-zen',
+      model: 'vision-free',
+      messages: [{ id: 'u1', role: 'user', source: { kind: 'user' }, content: [
+        { type: 'text', text: 'look' },
+        { type: 'image', attachment: ref },
+      ] }],
+    })) chunks.push(chunk)
+    expect(chunks.at(-1)).toEqual({ type: 'finish', reason: { kind: 'stop' } })
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as any
+    expect(body.messages[0].content).toEqual([
+      { type: 'text', text: 'look' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,/w==' } },
+    ])
   })
 })

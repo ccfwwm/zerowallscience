@@ -12,6 +12,26 @@ test('stable profile pins rc2 and includes the bundled WeChat plugin', async () 
   assert.match(profile, /'@zerowallscience\/plugin-wechat'/)
 })
 
+test('better-sidebar is a single pinned default workbench in every profile', async () => {
+  const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
+  assert.equal(desktop.dependencies['dsh-better-sidebar'], '0.16.0')
+  const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
+  assert.equal((patch.match(/\bid: better-sidebar\b/gu) ?? []).length, 1)
+  for (const profile of ['development', 'preview', 'stable']) {
+    const source = await readFile(resolve(root, `profiles/generated/${profile}.yml`), 'utf8')
+    assert.equal((source.match(/'dsh-better-sidebar'/gu) ?? []).length, 1, `${profile} must mount better-sidebar once`)
+  }
+})
+
+test('ZeroWall domain clients do not duplicate better-sidebar tabs', async () => {
+  const clients = ['account', 'ai-cloud', 'execution', 'images', 'mcp', 'presentations', 'projects', 'publications', 'research', 'reviewer', 'runs', 'skills', 'web-search', 'wechat']
+  for (const name of clients) {
+    const source = await readFile(resolve(root, `plugins/${name}/src/client/index.ts`), 'utf8')
+    assert.doesNotMatch(source, /registerDomainSidebarTab/u, `${name} must not register a duplicate domain tab`)
+    assert.doesNotMatch(source, new RegExp(`id:\\s*'zerowall:${name}'`, 'u'), `${name} must not expose the removed domain tab`)
+  }
+})
+
 test('desktop patch keeps the structured question composer enabled', async () => {
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
   assert.match(patch, /- id: ui-user-questions\s+disabled: false/u)
@@ -74,7 +94,8 @@ test('the plugin template and final repository ownership directories exist', asy
   await Promise.all(required.map(path => access(resolve(root, path))))
 })
 
-test('DSH adaptations live in source, not in patch files', async () => {
+test('DSH build adaptations are not stored as patch files', async () => {
   await assert.rejects(access(resolve(root, 'patches/dsh')))
   await assert.rejects(access(resolve(root, 'dsh/patches')))
+  await access(resolve(root, 'tools/dsh/build-zerowall.mjs'))
 })

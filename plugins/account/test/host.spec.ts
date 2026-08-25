@@ -86,6 +86,48 @@ describe('AI Cloud account client', () => {
     expect(secrets.values.size).toBe(0)
   })
 
+  it('keeps last-known models for one timed-out group while refreshing the remaining catalog', async () => {
+    const secrets = new MemorySecrets()
+    let refresh = false
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = String(input)
+      const authorization = new Headers(init?.headers).get('authorization')
+      if (url.endsWith('/auth/login')) return json({ data: { access_token: 'session-token' } })
+      if (url.endsWith('/auth/me')) return json({ data: { balance: 1, currency: 'CNY' } })
+      if (url.endsWith('/groups/available')) return json({ data: [
+        { id: 1, name: 'Fast', enabled: true }, { id: 2, name: 'Slow', enabled: true },
+      ] })
+      if (url.includes('/keys?')) return json({ data: { items: [
+        { group_id: 1, key: 'group-one' }, { group_id: 2, key: 'group-two' },
+      ] } })
+      if (url.endsWith('/v1/models') && authorization === 'Bearer group-one') {
+        return json({ data: [{ id: refresh ? 'fresh-model' : 'first-model' }] })
+      }
+      if (url.endsWith('/v1/models') && authorization === 'Bearer group-two') {
+        if (refresh) throw new Error('signal timed out')
+        return json({ data: [{ id: 'retained-model' }] })
+      }
+      throw new Error(`unexpected request ${url}`)
+    }
+    const client = new AiCloudClient({ secrets, fetch: fetcher, bases: ['https://code.aicodeme.xyz'] })
+
+    await expect(client.login({ email: 'researcher@example.com', password: 'test-password' })).resolves.toMatchObject({
+      models: [
+        expect.objectContaining({ groupId: '1', modelId: 'first-model' }),
+        expect.objectContaining({ groupId: '2', modelId: 'retained-model' }),
+      ],
+    })
+    refresh = true
+
+    await expect(client.discoverModels()).resolves.toMatchObject({
+      models: [
+        expect.objectContaining({ groupId: '1', modelId: 'fresh-model' }),
+        expect.objectContaining({ groupId: '2', modelId: 'retained-model' }),
+      ],
+    })
+    expect(await secrets.get('zerowall.ai-cloud.group.2')).toBe('group-two')
+  })
+
   it('restores a saved login on startup and automatically discovers models', async () => {
     const secrets = new MemorySecrets()
     secrets.values.set('zerowall.ai-cloud.login', JSON.stringify({
