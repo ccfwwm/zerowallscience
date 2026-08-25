@@ -30,6 +30,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm typecheck
+      - run: pnpm dsh:build:client
       - run: pnpm plugins:typert
       - run: pnpm --workspace-concurrency=1 --filter @zerowallscience/plugin-* run bundle
       - run: node tools/plugins/inline-css.mjs
