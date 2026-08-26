@@ -134,6 +134,7 @@ describe('ZeroWall AI Cloud LLM routes', () => {
       models: [
         { providerId: 'zerowall-ai-cloud-2', groupId: '2', groupName: 'Research', modelId: 'gpt-5.6-sol', baseUrl: 'https://code.aicodeme.xyz/v1' },
         { providerId: 'zerowall-ai-cloud-2', groupId: '2', groupName: 'Research', modelId: 'gpt-5.6-terra', baseUrl: 'https://code.aicodeme.xyz/v1' },
+        { providerId: 'zerowall-ai-cloud-2-messages', groupId: '2', groupName: 'Research', modelId: 'claude-sonnet-5', baseUrl: 'https://code.aicodeme.xyz' },
         { providerId: 'zerowall-ai-cloud-2', groupId: '2', groupName: 'Research', modelId: 'plain-chat', baseUrl: 'https://code.aicodeme.xyz/v1' },
       ],
     })
@@ -152,6 +153,15 @@ describe('ZeroWall AI Cloud LLM routes', () => {
         { id: 'medium', name: 'Medium' },
         { id: 'high', name: 'High' },
         { id: 'xhigh', name: 'Xhigh' },
+        { id: 'max', name: 'Max' },
+      ] },
+    })
+    await expect(ctx.llm.resolveModelInfo('zerowall-ai-cloud-2-messages', 'claude-sonnet-5')).resolves.toMatchObject({
+      reasoning: { efforts: [
+        { id: 'off', name: 'Off' },
+        { id: 'low', name: 'Low' },
+        { id: 'medium', name: 'Medium' },
+        { id: 'high', name: 'High' },
         { id: 'max', name: 'Max' },
       ] },
     })
