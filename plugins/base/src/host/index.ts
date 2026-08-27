@@ -10,7 +10,7 @@ export function apply(ctx: Context): void {
     ctx.systemPrompt.section({
       name: 'zerowall:windows-workflow',
       order: 92,
-      text: 'Windows workspace guidance: use glob, grep, and read for file discovery; do not use shell find, cat, or POSIX paths. Use PowerShell cmdlets for shell work. Inspect the workspace structure first, then search a narrow workspace-relative path in small batches. Always provide glob.path when possible and avoid scanning node_modules, dist, build, target, caches, and other generated directories.',
+      text: 'Default runtime environment: Windows 10/11. Execute commands with pwsh (PowerShell), use Windows paths, and read environment variables with $env:NAME. Do not choose Bash as the default, and do not use POSIX paths or Bash commands such as find or cat. Use glob, grep, and read for file discovery; inspect the workspace structure first, then search a narrow workspace-relative path in small batches. Always provide glob.path when possible and avoid scanning node_modules, dist, build, target, caches, and other generated directories. Use Bash only when the active runtime is explicitly Linux or macOS.',
     })
   }
   const iconPath = process.env.ZEROWALL_BRAND_ICON

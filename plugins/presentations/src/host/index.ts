@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
+import { readFile, realpath, stat } from 'node:fs/promises'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { apply as applyPptRuntime, inject as pptRuntimeInject } from '@zerowallscience/dsh-ppt-runtime'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
@@ -9,17 +9,18 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { ResearchStore } from '@zerowallscience/research-store'
 import type { CreatePresentationInput, PresentationRecord, ProjectRecord, UpdatePresentationChanges } from '@zerowallscience/research-store/types'
 import type { ZeroWallImageGenerationService } from '@zerowallscience/plugin-images'
-import { PresentationWorker } from './worker.js'
+import type { PresentationSlidePreview } from '@zerowallscience/plugin-presentations/types'
+import { PresentationWorker, type PresentationProgress } from './worker.js'
 import { writePresentation } from './export.js'
 import type {} from 'zod'
-import { basename, isAbsolute, relative, resolve } from 'node:path'
+import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 
 declare module '@deepseek-ai/cordis' { interface Context { zerowallPresentation: ZeroWallPresentationService } }
 export class ZeroWallPresentationService extends TypertRemoteService {
   static inject = ['tools', 'sessions', 'zerowallImageGeneration']
   private readonly store: ResearchStore
   private readonly worker: PresentationWorker
-  constructor(ctx: Context) { super(ctx, 'zerowallPresentation'); const path = process.env.ZEROWALL_RESEARCH_DB?.trim(); if (!path) throw new Error('ZEROWALL_RESEARCH_DB is required.'); this.store = new ResearchStore(path); this.worker = new PresentationWorker(this.store, ctx.get('zerowallImageGeneration') as ZeroWallImageGenerationService); this.worker.recover(); ctx.tools.register(defineTool({
+  constructor(ctx: Context) { super(ctx, 'zerowallPresentation'); const path = process.env.ZEROWALL_RESEARCH_DB?.trim(); if (!path) throw new Error('ZEROWALL_RESEARCH_DB is required.'); this.store = new ResearchStore(path); this.worker = new PresentationWorker(this.store, ctx.get('zerowallImageGeneration') as ZeroWallImageGenerationService, 25, { visualConcurrency: 10, onProgress: event => this.progressEvent(event) }); this.worker.recover(); ctx.tools.register(defineTool({
     name: 'create_presentation',
     description: 'Create and start a presentation with the ZeroWall Science PPT workflow. This is the default tool for PPT, slides, decks, research reports, thesis defenses, and project presentations. It automatically associates the active session workspace with a research project.',
       parameters: {
@@ -120,8 +121,20 @@ export class ZeroWallPresentationService extends TypertRemoteService {
   @Remote('pause') pause(id: string): PresentationRecord { return this.worker.pause(id) }
   @Remote('resume') resume(id: string): PresentationRecord { const record = this.worker.resume(id); this.openEvent(record); return record }
   @Remote('cancel') cancel(id: string): PresentationRecord { return this.worker.cancel(id) }
+  @Remote('previewSlide') previewSlide(input: { presentationId: string; slideId: string }): Promise<PresentationSlidePreview> {
+    return readPresentationSlidePreview(this.store, input.presentationId, input.slideId)
+  }
+  @Remote('retrySlide') retrySlide(input: { presentationId: string; slideId: string }): Promise<PresentationRecord> {
+    const presentation = this.requirePresentationProject(input.presentationId)
+    const slide = presentation.slides.find(item => item.id === input.slideId)
+    if (!slide) throw new Error(`Slide was not found: ${input.slideId}`)
+    return this.worker.retrySlide(input.presentationId, input.slideId)
+  }
   openEvent(record: PresentationRecord, sessionId?: string): void {
     ;(this.ctx as unknown as { emit(event: string, ...args: unknown[]): void }).emit('zerowall/presentation-open', [{ presentationId: record.id, projectId: record.projectId, title: record.title, ...(sessionId ? { sessionId } : {}) }])
+  }
+  private progressEvent(event: PresentationProgress): void {
+    ;(this.ctx as unknown as { emit(event: string, ...args: unknown[]): void }).emit('zerowall/presentation-progress', [event])
   }
   private requireProject(projectId: string): void {
     if (this.store.getProject(projectId) === undefined) throw new Error(`Project was not found: ${projectId}`)
@@ -154,10 +167,56 @@ export class ZeroWallPresentationService extends TypertRemoteService {
   }
 }
 
+export async function readPresentationSlidePreview(store: ResearchStore, presentationId: string, slideId: string): Promise<PresentationSlidePreview> {
+  const presentation = store.getPresentation(presentationId)
+  if (presentation === undefined) throw new Error(`Presentation was not found: ${presentationId}`)
+  const project = store.getProject(presentation.projectId)
+  if (project === undefined) throw new Error(`Project was not found: ${presentation.projectId}`)
+  const slideIndex = presentation.slides.findIndex(slide => slide.id === slideId)
+  if (slideIndex < 0) throw new Error(`Slide was not found: ${slideId}`)
+  const slide = presentation.slides[slideIndex]!
+  const generatedPath = join(project.rootPath, '.zerowall', 'artifacts', 'presentations', presentation.id, 'visuals', `slide-${String(slideIndex + 1).padStart(2, '0')}.png`)
+  const candidates = [slide.visualUri, slide.visual?.generatedUri]
+    .map(value => value === undefined ? undefined : localFilePath(value))
+    .filter((value): value is string => value !== undefined)
+  candidates.push(generatedPath)
+  const projectRoot = await realpath(resolve(project.rootPath))
+  for (const candidate of [...new Set(candidates.map(value => resolve(value)))]) {
+    try {
+      const target = await realpath(candidate)
+      if (!isWithin(target, projectRoot)) continue
+      const info = await stat(target)
+      if (!info.isFile() || info.size > 64 * 1024 * 1024) continue
+      const mediaType = previewMediaType(target)
+      if (mediaType === undefined) continue
+      return { uri: pathToFileURL(target).href, mediaType, byteSize: info.size, base64: (await readFile(target)).toString('base64') }
+    } catch {
+      // A stale URI must not prevent the stable slide-NN path fallback.
+    }
+  }
+  throw new Error('The slide preview image is missing or unavailable.')
+}
+
 function filePath(uri: string): string {
   const parsed = new URL(uri)
   if (parsed.protocol !== 'file:') throw new Error('Presentation export URI must use the file: protocol.')
   return fileURLToPath(parsed)
+}
+
+function localFilePath(value: string): string | undefined {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'file:' ? fileURLToPath(parsed) : undefined
+  } catch {
+    return isAbsolute(value) ? value : undefined
+  }
+}
+
+function previewMediaType(path: string): PresentationSlidePreview['mediaType'] | undefined {
+  const types: Readonly<Record<string, PresentationSlidePreview['mediaType']>> = {
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif',
+  }
+  return types[extname(path).toLocaleLowerCase()]
 }
 
 function isWithin(path: string, root: string): boolean {

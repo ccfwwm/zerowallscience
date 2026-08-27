@@ -1511,8 +1511,28 @@ function presentationSlides(value: unknown): PresentationRecord['slides'] {
       ...(slide.visualPrompt === undefined ? {} : { visualPrompt: nonEmptyString(slide.visualPrompt, 'Presentation slide visualPrompt') }),
       ...(slide.referenceUris === undefined ? {} : { referenceUris: stringArray(slide.referenceUris, 'Presentation slide referenceUris') }),
       ...(visual === undefined ? {} : { visual }),
+      visualStatus: presentationVisualStatus(slide.visualStatus, visual !== undefined || slide.visualUri !== undefined),
+      ...(slide.visualError === undefined ? {} : { visualError: stringValue(slide.visualError, 'Presentation slide visualError') }),
+      visualAttempt: presentationVisualAttempt(slide.visualAttempt),
+      ...(slide.visualUpdatedAt === undefined ? {} : { visualUpdatedAt: nonEmptyString(slide.visualUpdatedAt, 'Presentation slide visualUpdatedAt') }),
     }
   })
+}
+
+function presentationVisualStatus(value: unknown, hasVisual: boolean): NonNullable<PresentationRecord['slides'][number]['visualStatus']> {
+  if (value === undefined) return hasVisual ? 'ready' : 'pending'
+  if (value !== 'pending' && value !== 'generating' && value !== 'ready' && value !== 'failed') {
+    throw new Error('Unsupported presentation slide visualStatus.')
+  }
+  return value
+}
+
+function presentationVisualAttempt(value: unknown): number {
+  if (value === undefined) return 0
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error('Presentation slide visualAttempt must be a non-negative integer.')
+  }
+  return value
 }
 
 function presentationSlideVisual(value: unknown): NonNullable<PresentationRecord['slides'][number]['visual']> {
@@ -1533,8 +1553,17 @@ function presentationSlideVisual(value: unknown): NonNullable<PresentationRecord
     referenceUris: stringArray(visual.referenceUris, 'Presentation visual referenceUris'),
     generatedUri: nonEmptyString(visual.generatedUri, 'Presentation visual generatedUri'),
     checksum: nonEmptyString(visual.checksum, 'Presentation visual checksum'),
+    ...(visual.requestedQuality === undefined ? {} : { requestedQuality: presentationImageQuality(visual.requestedQuality, 'requestedQuality') }),
+    ...(visual.actualQuality === undefined ? {} : { actualQuality: presentationImageQuality(visual.actualQuality, 'actualQuality') }),
     ...(attachment === undefined ? {} : { attachment: { attachmentId: nonEmptyString(attachment.attachmentId, 'Presentation visual attachmentId'), mediaType: attachmentMediaType as 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif', bytes: Number(attachment.bytes), width: Number(attachment.width), height: Number(attachment.height), ...(attachment.name === undefined ? {} : { name: String(attachment.name) }) } }),
   }
+}
+
+function presentationImageQuality(value: unknown, label: string): 'auto' | 'low' | 'medium' | 'high' {
+  if (value !== 'auto' && value !== 'low' && value !== 'medium' && value !== 'high') {
+    throw new Error(`Unsupported presentation visual ${label}.`)
+  }
+  return value
 }
 
 function presentationArtifacts(value: unknown): PresentationRecord['artifacts'] {

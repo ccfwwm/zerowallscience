@@ -259,10 +259,12 @@ describe('ResearchStore', () => {
     expect(store.resumePresentation(generating.id).status).toBe('designing')
     store.updatePresentation(generating.id, { status: 'generating', slides: [{
       id: 'slide-1', title: 'Finding', body: 'Evidence', assetUris: ['file:///figure.png'],
+      visualStatus: 'ready', visualAttempt: 2, visualUpdatedAt: '2026-08-28T00:00:00.000Z',
       visual: {
         model: { providerId: 'provider-1', groupId: 'group-1', modelId: 'gpt-image-2' },
         promptStrategy: 'zerowall-full-slide-image', visualSource: 'generated', referenceUris: [],
         generatedUri: 'file:///slide-1.png', checksum: 'sha256:slide-1',
+        requestedQuality: 'medium', actualQuality: 'medium',
         attachment: { attachmentId: 'sha256:preview-1', mediaType: 'image/jpeg', bytes: 123, width: 1536, height: 1024, name: 'slide-1.png' },
       },
     }] })
@@ -280,11 +282,21 @@ describe('ResearchStore', () => {
     const reopened = new ResearchStore(path)
     expect(reopened.listPublications(project.id)[0]).toMatchObject({ status: 'ready', exportUri: 'file:///publication.zip' })
     expect(reopened.listPresentations(project.id)[0]).toMatchObject({
-      status: 'ready', slides: [{ id: 'slide-1', visual: { attachment: { mediaType: 'image/jpeg' } } }],
+      status: 'ready', slides: [{ id: 'slide-1', visualStatus: 'ready', visualAttempt: 2, visualUpdatedAt: '2026-08-28T00:00:00.000Z', visual: { requestedQuality: 'medium', actualQuality: 'medium', attachment: { mediaType: 'image/jpeg' } } }],
       artifacts: [{ kind: 'preview', checksum: 'sha256:preview' }],
       quality: { structural: 'passed', overall: 'unverified', warnings: ['Model review is pending.'] },
     })
     reopened.close()
+  })
+
+  it('rejects invalid persisted presentation visual state', () => {
+    const store = new ResearchStore(databasePath())
+    const project = store.createProject({ name: 'Slides', rootPath: 'C:/science/slides' })
+    const presentation = store.createPresentation({ projectId: project.id, title: 'Invalid state' })
+    const base = { id: 'slide-1', title: 'Slide', body: '', assetUris: [] }
+    expect(() => store.updatePresentation(presentation.id, { slides: [{ ...base, visualStatus: 'unknown' }] as never })).toThrow('visualStatus')
+    expect(() => store.updatePresentation(presentation.id, { slides: [{ ...base, visualAttempt: -1 }] as never })).toThrow('non-negative integer')
+    store.close()
   })
 
   it('exports a deterministic audit report with evidence warnings', () => {

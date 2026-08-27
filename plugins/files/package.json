@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-files",
-  "version": "4.3.5",
+  "version": "4.3.6",
   "description": "ZeroWall Science files domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

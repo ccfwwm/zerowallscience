@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { join, relative, resolve } from 'node:path'
@@ -7,6 +7,25 @@ import { ResearchStore } from '@zerowallscience/research-store'
 import type { PresentationArtifact, PresentationGeneration, PresentationRecord, PresentationRevision } from '@zerowallscience/research-store/types'
 import type { GenerateImageResult, ZeroWallImageGenerationService } from '@zerowallscience/plugin-images'
 import { writePresentation } from './export.js'
+
+export interface PresentationProgress {
+  presentationId: string
+  generationId: string
+  slideId?: string
+  slideIndex?: number
+  status: 'generating' | 'ready' | 'failed' | 'assembling' | 'complete'
+  visualAttempt?: number
+  visualError?: string
+  visualUri?: string
+  attachment?: NonNullable<PresentationRecord['slides'][number]['visual']>['attachment']
+  quality?: 'auto' | 'low' | 'medium' | 'high'
+  updatedAt: string
+}
+
+interface PresentationWorkerOptions {
+  visualConcurrency?: number
+  onProgress?: (event: PresentationProgress) => void
+}
 
 /** Runs one persisted presentation generation without creating duplicate decks. */
 export class PresentationWorker {
@@ -16,9 +35,13 @@ export class PresentationWorker {
   private readonly images: ZeroWallImageGenerationService
   private readonly stageDelayMs: number
   private readonly legacyMode: boolean
-  constructor(private readonly store: ResearchStore, imagesOrDelay: ZeroWallImageGenerationService | number, stageDelayMs = 25) {
+  private readonly visualConcurrency: number
+  private readonly onProgress: ((event: PresentationProgress) => void) | undefined
+  constructor(private readonly store: ResearchStore, imagesOrDelay: ZeroWallImageGenerationService | number, stageDelayMs = 25, options: PresentationWorkerOptions = {}) {
     this.legacyMode = typeof imagesOrDelay === 'number'
     if (typeof imagesOrDelay === 'number') { this.stageDelayMs = imagesOrDelay; this.images = legacyImageService() } else { this.stageDelayMs = stageDelayMs; this.images = imagesOrDelay }
+    this.visualConcurrency = Math.max(1, Math.min(10, Math.trunc(options.visualConcurrency ?? 10)))
+    this.onProgress = options.onProgress
   }
 
   recover(): PresentationRecord[] {
@@ -79,6 +102,46 @@ export class PresentationWorker {
     return this.store.updatePresentation(id, { status: 'cancelled', ...(current.generation ? { generation: { ...current.generation, stage: 'cancelled', updatedAt: now, finishedAt: now } } : {}) })
   }
 
+  /** Re-run only one page and rebuild exports when every page is ready. */
+  async retrySlide(id: string, slideId: string): Promise<PresentationRecord> {
+    const current = this.required(id)
+    const index = current.slides.findIndex(slide => slide.id === slideId)
+    if (index < 0) throw new Error(`Slide was not found: ${slideId}`)
+    this.clear(id)
+    this.controllers.get(id)?.abort(new Error('superseded'))
+    const controller = new AbortController()
+    this.controllers.set(id, controller)
+    const now = new Date().toISOString()
+    const generation: PresentationGeneration = {
+      id: randomUUID(),
+      revision: (current.generation?.revision ?? latestRevision(current.revisions)) + 1,
+      stage: 'visual',
+      progress: 0.2,
+      startedAt: now,
+      updatedAt: now,
+    }
+    this.save(id, { status: 'generating', error: '', generation })
+    try {
+      try {
+        await this.generateOne(id, generation.id, index, current.slides[index]!, controller.signal)
+      } catch (error) {
+        if (isAbort(error)) throw error
+        this.markSlideFailed(id, generation.id, slideId, index, error)
+        this.failGeneration(id, generation.id, error instanceof Error ? error.message : String(error))
+        return this.required(id)
+      }
+      const latest = this.required(id)
+      if (latest.generation?.id !== generation.id) return latest
+      if (latest.slides.every(slide => slide.visualStatus === 'ready')) await this.assemble(id, generation.id, controller.signal)
+      else this.failGeneration(id, generation.id, '仍有页面生成失败，请继续重试失败页面。')
+    } catch (error) {
+      if (!isAbort(error)) this.failGeneration(id, generation.id, error instanceof Error ? error.message : String(error))
+    } finally {
+      if (this.controllers.get(id) === controller) this.controllers.delete(id)
+    }
+    return this.required(id)
+  }
+
   dispose(): void { for (const id of this.pending.keys()) this.clear(id); for (const controller of this.controllers.values()) controller.abort(); this.controllers.clear() }
 
   private schedule(id: string): void { this.clear(id); const timer = setTimeout(() => { void this.advance(id) }, this.stageDelayMs); timer.unref(); this.pending.set(id, timer) }
@@ -95,9 +158,26 @@ export class PresentationWorker {
         this.save(id, { status: 'designing', outline, generation: step(generation, 'designing', 0.12) }); this.schedule(id); return
       }
       if (generation.stage === 'designing') {
-        const slides = current.outline.map(section => ({ id: randomUUID(), title: section.title, body: section.points.map(point => `- ${point}`).join('\n'), assetUris: [], ...(section.referenceUris === undefined ? {} : { referenceUris: section.referenceUris }), visualPrompt: slidePrompt(current.title, section.title, section.points) }))
+        const now = new Date().toISOString()
+        const slides = current.outline.map((section, index) => {
+          const previous = current.slides[index]
+          return {
+            id: previous?.id ?? randomUUID(),
+            title: section.title,
+            body: section.points.map(point => `- ${point}`).join('\n'),
+            assetUris: [],
+            ...(section.referenceUris === undefined ? {} : { referenceUris: section.referenceUris }),
+            visualPrompt: slidePrompt(current.title, section.title, section.points),
+            ...(previous?.visualUri === undefined ? {} : { visualUri: previous.visualUri }),
+            ...(previous?.visual === undefined ? {} : { visual: previous.visual }),
+            visualStatus: 'pending' as const,
+            visualAttempt: previous?.visualAttempt ?? 0,
+            visualUpdatedAt: now,
+          }
+        })
         this.save(id, { status: 'generating', generation: step(generation, 'visual', 0.2) }); await this.generateVisuals(id, slides, signal); return
       }
+      if (generation.stage === 'visual') { await this.generateVisuals(id, current.slides, signal); return }
       const project = this.store.getProject(current.projectId)
       if (!project) throw new Error('Presentation project was not found.')
       if (generation.stage === 'pptx' || generation.stage === 'rendering') throw new Error('Presentation temporary generation state cannot be resumed; regenerate the same presentation.')
@@ -110,67 +190,156 @@ export class PresentationWorker {
   }
 
   private async generateVisuals(id: string, slides: PresentationRecord['slides'], signal?: AbortSignal): Promise<void> {
-    const current = this.required(id); const generation = current.generation; const project = this.store.getProject(current.projectId)
-    if (!generation || !project) throw new Error('Presentation generation context is unavailable.')
-    const model = await this.images.resolveModel('gpt-image-2')
-    const outDir = join(project.rootPath, '.zerowall', 'artifacts', 'presentations', current.id, 'visuals')
-    const stagingDir = join(outDir, `.staging-${generation.id}`)
-    await mkdir(stagingDir, { recursive: true })
-    const generated: PresentationRecord['slides'] = []
-    try {
-      for (const [index, slide] of slides.entries()) {
-        signal?.throwIfAborted()
-        const name = slideFileName(index)
-        const stagedPath = join(stagingDir, name)
-        const stablePath = join(outDir, name)
-        const references = (slide.referenceUris ?? []).map(localPath).filter((value): value is string => value !== undefined && isWithin(project.rootPath, value))
-        const prompt = slide.visualPrompt ?? slidePrompt(current.title, slide.title, slide.body.split('\n'))
-        const result: GenerateImageResult = references.length > 0
-          ? await this.images.edit({ prompt, inputPaths: references.map(path => relative(project.rootPath, path)), outputPath: relative(project.rootPath, stagedPath), size: '1536x1024', overwrite: true }, project.rootPath, signal)
-          : await this.images.generate({ prompt, outputPath: relative(project.rootPath, stagedPath), size: '1536x1024', overwrite: true }, project.rootPath, signal)
-        const checksum = createHash('sha256').update(await readFile(stagedPath)).digest('hex')
-        generated.push({ ...slide, visualUri: fileUri(stablePath), visual: { model: { providerId: result.providerId ?? model.providerId, groupId: result.groupId ?? model.groupId, modelId: result.model }, promptStrategy: 'zerowall-full-slide-image', visualSource: references.length > 0 ? 'reference-edit' : 'generated', referenceUris: slide.referenceUris ?? [], generatedUri: fileUri(stablePath), checksum, ...(result.image === undefined ? {} : { attachment: result.image }) } })
-        const latest = this.required(id); if (latest.generation) this.save(id, { generation: step(latest.generation, 'visual', 0.2 + (0.6 * (index + 1) / slides.length)) })
+    const generation = this.required(id).generation
+    if (!generation) throw new Error('Presentation generation context is unavailable.')
+    this.save(id, { slides })
+    let cursor = 0
+    const run = async (): Promise<void> => {
+      while (true) {
+        const index = cursor++
+        if (index >= slides.length) return
+        try {
+          await this.generateOne(id, generation.id, index, slides[index]!, signal)
+        } catch (error) {
+          if (isAbort(error)) throw error
+          this.markSlideFailed(id, generation.id, slides[index]!.id, index, error)
+        }
       }
-      const latest = this.required(id)
-      const pptxPath = presentationPath(latest, project.rootPath, 'pptx')
-      const pdfPath = presentationPath(latest, project.rootPath, 'pdf')
-      const pptxTemporary = generationTemporary(pptxPath, generation.id, 'pptx')
-      const pdfTemporary = generationTemporary(pdfPath, generation.id, 'pdf')
-      const stagedSlides = generated.map((slide, index) => {
-        const stagedUri = fileUri(join(stagingDir, slideFileName(index)))
-        return { ...slide, visualUri: stagedUri, ...(slide.visual === undefined ? {} : { visual: { ...slide.visual, generatedUri: stagedUri } }) }
+    }
+    await Promise.all(Array.from({ length: Math.min(this.visualConcurrency, slides.length) }, () => run()))
+    const latest = this.required(id)
+    if (latest.generation?.id !== generation.id) return
+    if (latest.slides.some(slide => slide.visualStatus === 'failed')) {
+      const errors = latest.slides.filter(slide => slide.visualStatus === 'failed').map(slide => slide.visualError).filter((value): value is string => Boolean(value))
+      this.failGeneration(id, generation.id, `部分幻灯片视觉生成失败，请重试失败页面。${errors.length > 0 ? ` ${errors.join('; ')}` : ''}`)
+      return
+    }
+    await this.assemble(id, generation.id, signal)
+  }
+
+  private async generateOne(id: string, generationId: string, index: number, slide: PresentationRecord['slides'][number], signal?: AbortSignal): Promise<void> {
+    const current = this.assertGeneration(id, generationId)
+    const project = this.store.getProject(current.projectId)
+    if (!project) throw new Error('Presentation project was not found.')
+    const attempt = (slide.visualAttempt ?? 0) + 1
+    const startedAt = new Date().toISOString()
+    this.replaceSlide(id, generationId, slide.id, value => {
+      const { visualError: _visualError, ...rest } = value
+      return { ...rest, visualStatus: 'generating', visualAttempt: attempt, visualUpdatedAt: startedAt }
+    })
+    this.progress({ presentationId: id, generationId, slideId: slide.id, slideIndex: index, status: 'generating', visualAttempt: attempt, updatedAt: startedAt })
+    const model = await this.images.resolveModel('gpt-image-2')
+    const quality = await this.images.resolveQuality?.() ?? 'auto'
+    const outDir = join(project.rootPath, '.zerowall', 'artifacts', 'presentations', id, 'visuals')
+    await mkdir(outDir, { recursive: true })
+    const stablePath = join(outDir, slideFileName(index))
+    const temporaryPath = join(outDir, `.${slideFileName(index)}.${generationId}.tmp.png`)
+    try {
+      signal?.throwIfAborted()
+      const references = (slide.referenceUris ?? []).map(localPath).filter((value): value is string => value !== undefined && isWithin(project.rootPath, value))
+      const prompt = slide.visualPrompt ?? slidePrompt(current.title, slide.title, slide.body.split('\n'))
+      const result: GenerateImageResult = references.length > 0
+        ? await this.images.edit({ prompt, inputPaths: references.map(path => relative(project.rootPath, path)), outputPath: relative(project.rootPath, temporaryPath), size: '1536x1024', quality, overwrite: true }, project.rootPath, signal)
+        : await this.images.generate({ prompt, outputPath: relative(project.rootPath, temporaryPath), size: '1536x1024', quality, overwrite: true }, project.rootPath, signal)
+      const checksum = createHash('sha256').update(await readFile(temporaryPath)).digest('hex')
+      this.assertGeneration(id, generationId)
+      await rename(temporaryPath, stablePath)
+      const updatedAt = new Date().toISOString()
+      const next = this.replaceSlide(id, generationId, slide.id, value => {
+        const { visualError: _visualError, ...rest } = value
+        return {
+          ...rest,
+          visualStatus: 'ready',
+          visualAttempt: attempt,
+          visualUpdatedAt: updatedAt,
+          visualUri: fileUri(stablePath),
+          visual: {
+          model: { providerId: result.providerId ?? model.providerId, groupId: result.groupId ?? model.groupId, modelId: result.model },
+          promptStrategy: 'zerowall-full-slide-image',
+          visualSource: references.length > 0 ? 'reference-edit' : 'generated',
+          referenceUris: slide.referenceUris ?? [],
+          generatedUri: fileUri(stablePath),
+          checksum,
+          requestedQuality: result.requestedQuality ?? quality,
+          actualQuality: result.actualQuality ?? result.quality,
+          ...(result.image === undefined ? {} : { attachment: result.image }),
+          },
+        }
       })
-      const stagedPresentation = { ...latest, slides: stagedSlides }
-      this.save(id, { generation: step(this.required(id).generation ?? generation, 'pptx', 0.82) })
-      await mkdir(resolve(pptxPath, '..'), { recursive: true })
-      await writePresentation(stagedPresentation, 'pptx', fileUri(pptxTemporary))
-      this.save(id, { generation: step(this.required(id).generation ?? generation, 'rendering', 0.88) })
-      await writePresentation(stagedPresentation, 'pdf', fileUri(pdfTemporary))
-      await commitGeneration(
-        outDir,
-        stagingDir,
-        generated.length,
-        [
-          { path: pptxPath, temporary: pptxTemporary },
-          { path: pdfPath, temporary: pdfTemporary },
-        ],
-        generation.id,
-      )
-      const artifacts = replaceArtifact(
-        replaceArtifact(latest.artifacts, artifact('pptx', pptxPath, 'application/vnd.openxmlformats-officedocument.presentationml.presentation')),
-        artifact('pdf', pdfPath, 'application/pdf'),
-      )
-      const preview = generated[0]?.visualUri
-      const checksum = generated[0]?.visual?.checksum
-      const previewArtifact = this.legacyMode || preview === undefined ? undefined : { kind: 'preview' as const, uri: preview, mediaType: 'image/png', ...(checksum === undefined ? {} : { checksum }) }
-      this.save(id, { slides: generated, artifacts: previewArtifact === undefined ? artifacts : replaceArtifact(artifacts, previewArtifact), generation: step(this.required(id).generation ?? generation, 'quality', 0.94) })
-      this.schedule(id)
-    } catch (error) {
-      await rm(stagingDir, { recursive: true, force: true })
-      throw error
+      this.progress({ presentationId: id, generationId, slideId: slide.id, slideIndex: index, status: 'ready', visualAttempt: attempt, ...(next.visualUri === undefined ? {} : { visualUri: next.visualUri }), ...(next.visual?.attachment === undefined ? {} : { attachment: next.visual.attachment }), ...(next.visual?.requestedQuality === undefined ? {} : { quality: next.visual.requestedQuality }), updatedAt })
+    } finally {
+      await rm(temporaryPath, { force: true })
     }
   }
+
+  private async assemble(id: string, generationId: string, signal?: AbortSignal): Promise<void> {
+    const current = this.assertGeneration(id, generationId)
+    const project = this.store.getProject(current.projectId)
+    if (!project) throw new Error('Presentation project was not found.')
+    if (!current.slides.every(slide => slide.visualStatus === 'ready' && slide.visualUri)) return
+    const pptxPath = presentationPath(current, project.rootPath, 'pptx')
+    const pdfPath = presentationPath(current, project.rootPath, 'pdf')
+    const pptxTemporary = generationTemporary(pptxPath, generationId, 'pptx')
+    const pdfTemporary = generationTemporary(pdfPath, generationId, 'pdf')
+    const updatedAt = new Date().toISOString()
+    this.save(id, { status: 'generating', generation: step(current.generation!, 'pptx', 0.82) })
+    this.progress({ presentationId: id, generationId, status: 'assembling', updatedAt })
+    try {
+      signal?.throwIfAborted()
+      await mkdir(resolve(pptxPath, '..'), { recursive: true })
+      await writePresentation(this.assertGeneration(id, generationId), 'pptx', fileUri(pptxTemporary))
+      this.save(id, { generation: step(this.assertGeneration(id, generationId).generation!, 'rendering', 0.9) })
+      await writePresentation(this.assertGeneration(id, generationId), 'pdf', fileUri(pdfTemporary))
+      signal?.throwIfAborted()
+      this.assertGeneration(id, generationId)
+      await commitArtifacts([{ path: pptxPath, temporary: pptxTemporary }, { path: pdfPath, temporary: pdfTemporary }], generationId)
+      const latest = this.assertGeneration(id, generationId)
+      let artifacts = replaceArtifact(replaceArtifact(latest.artifacts, artifact('pptx', pptxPath, 'application/vnd.openxmlformats-officedocument.presentationml.presentation')), artifact('pdf', pdfPath, 'application/pdf'))
+      const first = latest.slides[0]
+      if (!this.legacyMode && first?.visualUri) artifacts = replaceArtifact(artifacts, { kind: 'preview', uri: first.visualUri, mediaType: 'image/png', ...(first.visual?.checksum ? { checksum: first.visual.checksum } : {}) })
+      const finished = finish(latest.generation!)
+      this.save(id, { status: 'ready', error: '', artifacts, generation: finished, quality: { structural: 'passed', render: 'unverified', automaticVisual: 'unverified', modelVisual: 'unverified', overall: 'unverified', warnings: ['已生成逐页视觉图片；未检测到本机 PPT 渲染器，渲染质量待人工确认。'] } })
+      this.progress({ presentationId: id, generationId, status: 'complete', updatedAt: finished.updatedAt })
+    } finally {
+      await Promise.all([rm(pptxTemporary, { force: true }), rm(pdfTemporary, { force: true })])
+    }
+  }
+
+  private replaceSlide(id: string, generationId: string, slideId: string, update: (slide: PresentationRecord['slides'][number]) => PresentationRecord['slides'][number]): PresentationRecord['slides'][number] {
+    const current = this.assertGeneration(id, generationId)
+    let nextSlide: PresentationRecord['slides'][number] | undefined
+    const slides = current.slides.map(slide => {
+      if (slide.id !== slideId) return slide
+      nextSlide = update(slide)
+      return nextSlide
+    })
+    if (!nextSlide) throw new Error(`Slide was not found: ${slideId}`)
+    const complete = slides.filter(slide => slide.visualStatus === 'ready' || slide.visualStatus === 'failed').length
+    this.save(id, { slides, generation: { ...current.generation!, progress: 0.2 + (0.6 * complete / Math.max(1, slides.length)), updatedAt: new Date().toISOString() } })
+    return nextSlide
+  }
+
+  private markSlideFailed(id: string, generationId: string, slideId: string, index: number, error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error)
+    const updatedAt = new Date().toISOString()
+    const next = this.replaceSlide(id, generationId, slideId, slide => ({ ...slide, visualStatus: 'failed', visualError: message, visualUpdatedAt: updatedAt }))
+    this.progress({ presentationId: id, generationId, slideId, slideIndex: index, status: 'failed', ...(next.visualAttempt === undefined ? {} : { visualAttempt: next.visualAttempt }), visualError: message, ...(next.visualUri === undefined ? {} : { visualUri: next.visualUri }), ...(next.visual?.attachment === undefined ? {} : { attachment: next.visual.attachment }), ...(next.visual?.requestedQuality === undefined ? {} : { quality: next.visual.requestedQuality }), updatedAt })
+  }
+
+  private failGeneration(id: string, generationId: string, message: string): void {
+    const current = this.required(id)
+    if (current.generation?.id !== generationId) return
+    const now = new Date().toISOString()
+    this.save(id, { status: 'failed', error: message, generation: { ...current.generation, stage: 'failed', error: message, updatedAt: now, finishedAt: now } })
+  }
+
+  private assertGeneration(id: string, generationId: string): PresentationRecord {
+    const current = this.required(id)
+    if (current.generation?.id !== generationId) throw new DOMException('Generation was superseded.', 'AbortError')
+    return current
+  }
+
+  private progress(event: PresentationProgress): void { this.onProgress?.(event) }
 
   private save(id: string, changes: Parameters<ResearchStore['updatePresentation']>[1]): PresentationRecord { return this.store.updatePresentation(id, changes) }
   private clear(id: string): void { const timer = this.pending.get(id); if (timer) clearTimeout(timer); this.pending.delete(id) }
@@ -181,49 +350,24 @@ function slideFileName(index: number): string { return `slide-${String(index + 1
 function generationTemporary(path: string, generationId: string, format: 'pptx' | 'pdf'): string { return `${path}.${generationId}.tmp.${format}` }
 function presentationPath(presentation: PresentationRecord, root: string, format: 'pptx' | 'pdf'): string { return existingArtifactPath(presentation, format) ?? join(root, '.zerowall', 'artifacts', 'presentations', presentation.id, `${slug(presentation.title)}.${format}`) }
 
-async function commitGeneration(outDir: string, stagingDir: string, count: number, artifacts: Array<{ path: string; temporary: string }>, generationId: string): Promise<void> {
-  const existing = await readdir(outDir, { withFileTypes: true })
-  const stableNames = existing.filter(item => item.isFile() && /^slide-\d+\.png$/u.test(item.name)).map(item => item.name)
-  const nextNames = Array.from({ length: count }, (_, index) => slideFileName(index))
-  const backupDir = join(outDir, `.backup-${generationId}`)
-  await mkdir(backupDir, { recursive: true })
-  const committedImages: string[] = []
-  const artifactBackups: Array<{ path: string; backup: string; existed: boolean }> = []
-  const committedArtifacts: string[] = []
+async function commitArtifacts(artifacts: Array<{ path: string; temporary: string }>, generationId: string): Promise<void> {
+  const backups: Array<{ path: string; backup: string; existed: boolean }> = []
+  const committed: string[] = []
   try {
-    for (const name of stableNames) await rename(join(outDir, name), join(backupDir, name))
     for (const artifact of artifacts) {
       const backup = `${artifact.path}.${generationId}.backup`
       let existed = true
       try { await rename(artifact.path, backup) } catch (error) { if (!isMissing(error)) throw error; existed = false }
-      artifactBackups.push({ path: artifact.path, backup, existed })
+      backups.push({ path: artifact.path, backup, existed })
     }
-    for (const name of nextNames) { await rename(join(stagingDir, name), join(outDir, name)); committedImages.push(name) }
-    for (const artifact of artifacts) { await rename(artifact.temporary, artifact.path); committedArtifacts.push(artifact.path) }
-    await rm(backupDir, { recursive: true, force: true })
-    for (const artifact of artifactBackups) if (artifact.existed) await rm(artifact.backup, { force: true })
-    await rm(stagingDir, { recursive: true, force: true })
-    await removeLegacyVisuals(outDir)
+    for (const artifact of artifacts) { await rename(artifact.temporary, artifact.path); committed.push(artifact.path) }
+    for (const backup of backups) if (backup.existed) await rm(backup.backup, { force: true })
   } catch (error) {
-    for (const name of committedImages) await rm(join(outDir, name), { force: true })
-    for (const path of committedArtifacts) await rm(path, { force: true })
-    for (const name of stableNames) {
-      try { await rename(join(backupDir, name), join(outDir, name)) } catch { /* best-effort rollback */ }
+    for (const path of committed) await rm(path, { force: true })
+    for (const backup of backups) if (backup.existed) {
+      try { await rename(backup.backup, backup.path) } catch { /* best-effort rollback */ }
     }
-    for (const artifact of artifactBackups) if (artifact.existed) {
-      try { await rename(artifact.backup, artifact.path) } catch { /* best-effort rollback */ }
-    }
-    await rm(stagingDir, { recursive: true, force: true })
-    await rm(backupDir, { recursive: true, force: true })
     throw error
-  } finally {
-    for (const artifact of artifacts) await rm(artifact.temporary, { force: true })
-  }
-}
-
-async function removeLegacyVisuals(outDir: string): Promise<void> {
-  for (const item of await readdir(outDir, { withFileTypes: true })) {
-    if (item.isFile() && /^[0-9a-f-]{36}-\d+(?:\.raw)?\.png$/iu.test(item.name)) await rm(join(outDir, item.name), { force: true })
   }
 }
 
@@ -255,6 +399,6 @@ function slug(value: string): string { return value.trim().replace(/[^\p{L}\p{N}
 function isAbort(error: unknown): boolean { return error instanceof Error && (error.name === 'AbortError' || error.message === 'paused' || error.message === 'cancelled') }
 function legacyImageService(): ZeroWallImageGenerationService {
   const write = async (input: { outputPath: string; size?: string }, cwd: string): Promise<GenerateImageResult> => { const path = resolve(cwd, input.outputPath); await mkdir(resolve(path, '..'), { recursive: true }); await writeFile(path, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')); return { path, model: 'legacy-test', providerId: 'test', groupId: 'test', bytes: 68, requestedSize: (input.size as GenerateImageResult['requestedSize']) ?? 'auto', actualWidth: 1, actualHeight: 1, quality: 'medium', requestedQuality: 'medium', actualQuality: 'medium' } }
-  return { resolveModel: async () => ({ providerId: 'test', groupId: 'test', modelId: 'gpt-image-2' }), generate: write as ZeroWallImageGenerationService['generate'], edit: write as ZeroWallImageGenerationService['edit'] }
+  return { resolveModel: async () => ({ providerId: 'test', groupId: 'test', modelId: 'gpt-image-2' }), resolveQuality: async () => 'auto', generate: write as ZeroWallImageGenerationService['generate'], edit: write as ZeroWallImageGenerationService['edit'] }
 }
 function defaultOutline(title: string): PresentationRecord['outline'] { return [{ title, points: ['研究主题与核心问题', '本次汇报的目标与范围'] }, { title: '研究背景与问题', points: ['研究背景', '核心问题', '研究意义'] }, { title: '研究目标与方法', points: ['研究目标', '技术路线', '实验设计'] }, { title: '数据与证据', points: ['数据来源', '关键指标', '实验结果'] }, { title: '主要发现', points: ['核心发现', '对照分析', '结果解释'] }, { title: '结论与下一步', points: ['主要结论', '局限性', '后续工作'] }] }

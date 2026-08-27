@@ -24,6 +24,7 @@ export interface ResolvedImageModel {
 
 export interface ZeroWallImageGenerationService {
   resolveModel(model?: string): Promise<ResolvedImageModel>
+  resolveQuality?(quality?: import('@zerowallscience/plugin-environment/types').ImageGenerationQuality): Promise<import('@zerowallscience/plugin-environment/types').ImageGenerationQuality>
   generate(input: Parameters<AiCloudImageGenerator['generate']>[0], cwd: string, signal?: AbortSignal): Promise<GenerateImageResult>
   edit(input: Parameters<AiCloudImageGenerator['edit']>[0], cwd: string, signal?: AbortSignal): Promise<GenerateImageResult>
 }
@@ -135,7 +136,7 @@ export function apply(ctx: Context): void {
     account,
     attachments: () => ctx.get('attachments'),
     imageModel: () => environment.readImageModelSelection(),
-    imageQuality: async () => environment.getImageQuality?.() ?? 'medium',
+    imageQuality: async () => environment.getImageQuality?.() ?? 'auto',
   })
   ctx.on('zerowall/account-updated', snapshot => generator.update(snapshot))
   void account.current().then(snapshot => generator.update(snapshot)).catch(() => undefined)
@@ -144,6 +145,7 @@ export function apply(ctx: Context): void {
       const resolved = await generator.resolveModel(model)
       return { providerId: resolved.providerId, groupId: resolved.groupId, modelId: resolved.modelId }
     },
+    resolveQuality: quality => generator.resolveQuality(quality),
     generate: (input, cwd, signal) => generator.generate(input, cwd, signal),
     edit: (input, cwd, signal) => generator.edit(input, cwd, signal),
   }

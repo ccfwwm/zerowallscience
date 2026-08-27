@@ -44,13 +44,14 @@ function signedIn() {
   }
 }
 
-function generator(fetcher: typeof fetch, attachment?: ImageAttachmentRef | Error) {
+function generator(fetcher: typeof fetch, attachment?: ImageAttachmentRef | Error, imageQuality?: () => Promise<'auto' | 'low' | 'medium' | 'high' | undefined>) {
   const secrets = new MemorySecrets()
   secrets.values.set('zerowall.ai-cloud.group.7', 'host-only-secret')
   return new AiCloudImageGenerator({
     secrets,
     account: { current: async () => signedIn() },
     fetch: fetcher,
+    ...(imageQuality === undefined ? {} : { imageQuality }),
     ...(attachment === undefined ? {} : {
       attachments: () => ({
         saveImage: async () => {
@@ -69,6 +70,31 @@ function imageResponse(data: Uint8Array, extra: Record<string, unknown> = {}): R
 }
 
 describe('AI Cloud image generation and editing', () => {
+  it('resolves environment quality for generate and edit, while explicit quality wins', async () => {
+    const workspace = await root()
+    const png = await raster()
+    await writeFile(join(workspace, 'source.png'), png)
+    const bodies: Array<string | FormData> = []
+    const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      bodies.push(init?.body as string | FormData)
+      return imageResponse(png)
+    })
+    const service = generator(fetcher as typeof fetch, undefined, async () => 'medium')
+    await service.generate({ prompt: 'configured', outputPath: 'configured.png' }, workspace)
+    await service.edit({ prompt: 'configured edit', inputPaths: ['source.png'], outputPath: 'configured-edit.png' }, workspace)
+    await service.generate({ prompt: 'explicit', outputPath: 'explicit.png', quality: 'auto' }, workspace)
+    expect(JSON.parse(String(bodies[0]))).toMatchObject({ quality: 'medium' })
+    expect((bodies[1] as FormData).get('quality')).toBe('medium')
+    expect(JSON.parse(String(bodies[2]))).toMatchObject({ quality: 'auto' })
+  })
+
+  it('falls back to auto when environment quality is missing', async () => {
+    const service = generator(vi.fn() as typeof fetch, undefined, async () => undefined)
+    await expect(service.resolveQuality()).resolves.toBe('auto')
+    const unavailable = generator(vi.fn() as typeof fetch, undefined, async () => { throw new Error('environment unavailable') })
+    await expect(unavailable.resolveQuality()).resolves.toBe('auto')
+  })
+
   it('uses the configured gpt-image-2 Image API and persists preview metadata', async () => {
     const workspace = await root()
     const png = await raster()
@@ -85,12 +111,12 @@ describe('AI Cloud image generation and editing', () => {
 
     const result = await service.generate({ prompt: 'A scientific cover', outputPath: 'art/cover.png' }, workspace)
 
-    expect(result).toMatchObject({ model: 'gpt-image-2', quality: 'medium', revisedPrompt: 'refined', image: { attachmentId: ref.attachmentId } })
+    expect(result).toMatchObject({ model: 'gpt-image-2', quality: 'auto', revisedPrompt: 'refined', image: { attachmentId: ref.attachmentId } })
     expect((await sharp(await readFile(result.path)).metadata()).format).toBe('png')
     expect(fetcher).toHaveBeenCalledTimes(1)
     expect(fetcher.mock.calls[0]?.[0]).toBe('https://code.aicodeme.xyz/v1/images/generations')
     const request = fetcher.mock.calls[0]?.[1] as RequestInit
-    expect(JSON.parse(String(request.body))).toMatchObject({ model: 'gpt-image-2', prompt: 'A scientific cover', size: 'auto', quality: 'medium', output_format: 'png' })
+    expect(JSON.parse(String(request.body))).toMatchObject({ model: 'gpt-image-2', prompt: 'A scientific cover', size: 'auto', quality: 'auto', output_format: 'png' })
     expect(String(request.body)).not.toContain('messages')
     expect(JSON.stringify(result)).not.toContain('host-only-secret')
   })

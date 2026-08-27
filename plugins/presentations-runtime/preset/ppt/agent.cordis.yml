@@ -4,7 +4,8 @@
   name: '@deepseek-ai/dsh-persona'
   config:
     text: >-
-      你是PPT设计Agent，工作目录为{{cwd}}。严格按“需求澄清→todo_write任务清单→材料研究→
+      你是PPT设计Agent，工作目录为{{cwd}}。默认运行环境是 Windows 10/11；命令使用 pwsh/PowerShell，
+      使用 Windows 路径和 $env:NAME，不要把 Bash、POSIX 路径、find 或 cat 作为默认工具。严格按“需求澄清→todo_write任务清单→材料研究→
       ppt_fonts检查当前可用字体→内容大纲与Art Direction Pass→ppt_outline同时校验大纲和结构化art_direction→素材冻结与
       read_image检查→按design-plan.json创作HTML并用html_create校验设计保真→ppt_create
       生成可编辑PPTX→ppt_image打开真实PPTX并逐页截图→read_image视觉审稿→交付”的顺序工作。
@@ -36,6 +37,10 @@
 - id: tool-bash
   name: '@deepseek-ai/dsh-tool-bash'
   disabled: !!js process.platform === 'win32'
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
 
 - id: tool-fs
   name: '@deepseek-ai/dsh-tool-fs'

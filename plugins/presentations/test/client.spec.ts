@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ensurePresentationProject, openPresentationWorkbench } from '../src/client/plugin.js'
+import { ensurePresentationProject, openPresentationWorkbench, resolvePresentationSlideImage } from '../src/client/plugin.js'
 
 describe('presentation workbench routing', () => {
   it('opens a session-scoped tab for the selected presentation', () => {
@@ -25,5 +25,14 @@ describe('presentation workbench routing', () => {
     const resolved = await ensurePresentationProject({ ensureProjectForSession }, [], undefined, 'session-1')
     expect(ensureProjectForSession).toHaveBeenCalledWith('session-1')
     expect(resolved).toBe(project)
+  })
+
+  it('falls back to the persisted slide file when the conversation attachment is unavailable', async () => {
+    const resolveImage = vi.fn().mockRejectedValue(new Error('attachment is outside this session'))
+    const previewSlide = vi.fn().mockResolvedValue({ ok: true, value: { uri: 'file:///slide-01.png', mediaType: 'image/png', byteSize: 1, base64: 'AA==' } })
+    const slide = { id: 'slide-1', title: 'Slide', body: '', assetUris: [], visual: { attachment: { attachmentId: 'sha256:image', mediaType: 'image/png', bytes: 1, width: 1, height: 1 } } }
+    await expect(resolvePresentationSlideImage({ conversation: { resolveImage } } as never, { previewSlide } as never, 'ppt-1', 'session-1', slide as never)).resolves.toBe('data:image/png;base64,AA==')
+    expect(resolveImage).toHaveBeenCalledOnce()
+    expect(previewSlide).toHaveBeenCalledWith({ presentationId: 'ppt-1', slideId: 'slide-1' })
   })
 })

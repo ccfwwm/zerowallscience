@@ -157,6 +157,10 @@ export interface PresentationRecord {
     visualPrompt?: string
     referenceUris?: string[]
     visual?: PresentationSlideVisual
+    visualStatus?: 'pending' | 'generating' | 'ready' | 'failed'
+    visualError?: string
+    visualAttempt?: number
+    visualUpdatedAt?: string
   }>
   exportUris: Record<string, string>
   artifacts: PresentationArtifact[]
@@ -188,6 +192,8 @@ export interface PresentationSlideVisual {
   referenceUris: string[]
   generatedUri: string
   checksum: string
+  requestedQuality?: 'auto' | 'low' | 'medium' | 'high'
+  actualQuality?: 'auto' | 'low' | 'medium' | 'high'
   attachment?: {
     attachmentId: string
     mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'

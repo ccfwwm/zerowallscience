@@ -11,7 +11,9 @@ const KEY_PREFIX = 'zerowall.ai-cloud.group.'
 const MAX_INPUT_IMAGES = 16
 const MAX_INPUT_IMAGE_BYTES = 50 * 1024 * 1024
 const MAX_OUTPUT_IMAGE_BYTES = 64 * 1024 * 1024
-const DEFAULT_IMAGE_QUALITY: ImageGenerationQuality = 'medium'
+// `auto` is the transport fallback when no environment settings service is
+// available. The normal ZeroWall environment schema supplies `medium`.
+const DEFAULT_IMAGE_QUALITY: ImageGenerationQuality = 'auto'
 
 const IMAGE_MEDIA_TYPES: Readonly<Record<string, ImageMediaType>> = {
   '.png': 'image/png',
@@ -101,6 +103,20 @@ export class AiCloudImageGenerator {
   }
 
   update(snapshot: AiCloudAccountSnapshot): void { this.snapshot = snapshot }
+
+  /** Resolve the exact quality value that must be sent to the image API. */
+  async resolveQuality(explicit?: ImageGenerationQuality): Promise<ImageGenerationQuality> {
+    if (explicit !== undefined) {
+      if (!isImageQuality(explicit)) throw new Error('quality must be auto, low, medium, or high')
+      return explicit
+    }
+    try {
+      const configured = await this.options.imageQuality?.()
+      return isImageQuality(configured) ? configured : DEFAULT_IMAGE_QUALITY
+    } catch {
+      return DEFAULT_IMAGE_QUALITY
+    }
+  }
 
   async generate(input: GenerateImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
     const prompt = nonEmptyPrompt(input.prompt)
@@ -199,15 +215,6 @@ export class AiCloudImageGenerator {
     const fallback = imageModels.find(model => model.modelId === 'gpt-image-2')
     if (fallback) return fallback
     throw new Error('当前账户没有可用的 gpt-image-2（no configured gpt-image-2），请在“环境配置”中选择生图模型。')
-  }
-
-  private async resolveQuality(explicit?: ImageGenerationQuality): Promise<ImageGenerationQuality> {
-    if (explicit !== undefined) {
-      if (!isImageQuality(explicit)) throw new Error('quality must be auto, low, medium, or high')
-      return explicit
-    }
-    const configured = await this.options.imageQuality?.()
-    return isImageQuality(configured) ? configured : DEFAULT_IMAGE_QUALITY
   }
 
   private async credential(model: AiCloudManagedModel): Promise<string> {

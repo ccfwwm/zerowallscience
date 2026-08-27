@@ -24,7 +24,7 @@ description: Generate or edit PNG images with ZeroWall's built-in generate_image
    - `output_path`：当前项目内的相对或绝对 PNG 路径。
    - `model`：用户未指定时省略，让工具精确选择 `gpt-image-2`。
    - `size`：用户未指定时省略，Host 使用官方 `auto`；指定时使用 `WIDTHxHEIGHT`。
-   - `quality`：用户未指定时省略，由环境配置决定（当前默认 `medium`）；不要自动传 `high`。
+   - `quality`：用户未指定时不要自行填写；工具会先读取环境配置并明确把最终值发送给 API。正常环境默认是 `medium`，没有环境配置时发送 `auto`。用户明确指定时才传 `low`、`medium`、`high` 或 `auto`。
    - `overwrite`：只有用户明确要求替换已有图时才设为 `true`。
    - `input_attachment_ids`：优先传当前会话附件 ID；`input_paths` 仅在用户明确指定工作区路径时使用，按源图优先级排列，主图放第一张。
 - `mask_path`：仅 `edit_image` 可选；必须是独立于 `input_paths[0]` 的 alpha 蒙版，且与主图尺寸、格式一致。整图编辑时省略此字段，禁止传空字符串，也绝不能把主图路径重复填入 `mask_path`；工具会将这种模型回显视为未提供蒙版。
