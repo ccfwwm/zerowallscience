@@ -51,7 +51,7 @@ describe('presentation generation', () => {
       worker.generate(presentation.id)
       const first = await waitReady(store, presentation.id)
       expect(first.slides).toHaveLength(6)
-      expect(first.artifacts.map(item => item.kind).sort()).toEqual(['pdf', 'pptx'])
+      expect(first.artifacts.map(item => item.kind).sort()).toEqual(['pptx'])
       const firstUris = first.artifacts.map(item => item.uri).sort()
       for (const uri of firstUris) expect(existsSync(filePath(uri))).toBe(true)
       const firstSlideUris = first.slides.map(slide => slide.visualUri)
@@ -87,7 +87,7 @@ describe('presentation generation', () => {
       worker.generate(presentation.id)
       const first = await waitReady(store, presentation.id)
       const slideUris = first.slides.map(slide => slide.visualUri ?? '')
-      const artifactUris = first.artifacts.filter(item => item.kind === 'pptx' || item.kind === 'pdf').map(item => item.uri).sort()
+      const artifactUris = first.artifacts.filter(item => item.kind === 'pptx').map(item => item.uri).sort()
       const before = new Map([...slideUris, ...artifactUris].map(uri => [uri, readFileSync(filePath(uri))]))
 
       fail = true
@@ -95,7 +95,7 @@ describe('presentation generation', () => {
       const failed = await waitFailed(store, presentation.id)
       expect(failed.error).toContain('injected visual failure')
       expect(failed.slides.map(slide => slide.visualUri)).toEqual(slideUris)
-      expect(failed.artifacts.filter(item => item.kind === 'pptx' || item.kind === 'pdf').map(item => item.uri).sort()).toEqual(artifactUris)
+      expect(failed.artifacts.filter(item => item.kind === 'pptx').map(item => item.uri).sort()).toEqual(artifactUris)
       for (const [uri, bytes] of before) expect(readFileSync(filePath(uri))).toEqual(bytes)
     } finally {
       worker.dispose()
@@ -152,6 +152,34 @@ describe('presentation generation', () => {
       expect(retried.status).toBe('ready')
       expect(paths).toEqual([expect.stringContaining('slide-01.png')])
       expect(retried.slides[0]?.visualAttempt).toBe(2)
+    } finally {
+      worker.dispose()
+      store.close()
+    }
+  }, 15_000)
+
+  it('patches and regenerates only the requested slide', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-ppt-page-update-'))
+    roots.push(root)
+    const store = new ResearchStore(join(root, 'research.db'))
+    const project = store.createProject({ name: 'Test', rootPath: root })
+    const outline = Array.from({ length: 3 }, (_, index) => ({ title: `Slide ${index + 1}`, points: [`Point ${index + 1}`] }))
+    const presentation = store.createPresentation({ projectId: project.id, title: '单页修改', outline })
+    const paths: string[] = []
+    const worker = new PresentationWorker(store, imageService(input => { paths.push(input.outputPath) }), 1)
+    try {
+      worker.generate(presentation.id)
+      const first = await waitReady(store, presentation.id)
+      const untouched = first.slides.filter((_, index) => index !== 1).map(slide => ({ id: slide.id, checksum: slide.visual?.checksum, uri: slide.visualUri }))
+      paths.length = 0
+      const updated = await worker.updateSlide(presentation.id, first.slides[1]!.id, { title: '新标题', body: '- 新内容', notes: '演讲备注', visualPrompt: '仅更新第二页' })
+      expect(updated.status).toBe('ready')
+      expect(paths).toEqual([expect.stringContaining('slide-02.png')])
+      expect(updated.slides[1]).toMatchObject({ title: '新标题', body: '- 新内容', notes: '演讲备注', visualPrompt: '仅更新第二页' })
+      expect(updated.outline[1]).toMatchObject({ title: '新标题', points: ['新内容'] })
+      expect(updated.slides.filter((_, index) => index !== 1).map(slide => ({ id: slide.id, checksum: slide.visual?.checksum, uri: slide.visualUri }))).toEqual(untouched)
+      expect(updated.artifacts.map(item => item.kind)).toContain('pptx')
+      expect(updated.artifacts.map(item => item.kind)).not.toContain('pdf')
     } finally {
       worker.dispose()
       store.close()

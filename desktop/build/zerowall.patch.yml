@@ -110,6 +110,10 @@
     - id: better-sidebar
       name: 'dsh-better-sidebar'
 
+    # Office viewers extend Better Sidebar and must mount after its service.
+    - id: better-sidebar-office
+      name: '@huanlin/dsh-plugin-better-sidebar-plugin-office'
+
     - id: zerowall-base
       name: '@zerowallscience/plugin-base'
 

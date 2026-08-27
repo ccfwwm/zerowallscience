@@ -33,7 +33,7 @@ describe('Publication and presentation workers', () => {
     store.close()
   })
 
-  it('persists generation stages, pause/resume, recovery, and real PPTX/PDF files', async () => {
+  it('persists generation stages, pause/resume, recovery, a real PPTX, and historical PDF metadata', async () => {
     vi.useFakeTimers()
     const { root, store, project } = fixture()
     const presentation = store.createPresentation({ projectId: project.id, title: '科研结果', outline: [{ title: '主要发现', points: ['证据一', 'Evidence two'] }], style: { accent: '315B7D' } })
@@ -63,11 +63,13 @@ describe('Publication and presentation workers', () => {
     })
 
     const ready = store.getPresentation(presentation.id)!
-    const pptxPath = join(root, 'results.pptx'); const pdfPath = join(root, 'results.pdf')
-    await writePresentation(ready, 'pptx', fileUri(pptxPath))
-    await writePresentation(ready, 'pdf', fileUri(pdfPath))
+    const pptxPath = join(root, 'results.pptx')
+    await writePresentation(ready, fileUri(pptxPath))
     expect(readFileSync(pptxPath).subarray(0, 2).toString()).toBe('PK')
-    expect(readFileSync(pdfPath).subarray(0, 4).toString()).toBe('%PDF')
+    const withHistoricalPdf = store.updatePresentation(ready.id, {
+      artifacts: [...ready.artifacts, { kind: 'pdf', uri: fileUri(join(root, 'historical.pdf')), mediaType: 'application/pdf' }],
+    })
+    expect(withHistoricalPdf.artifacts.some(artifact => artifact.kind === 'pdf')).toBe(true)
     recovered.dispose(); store.close()
   }, 20_000)
 })

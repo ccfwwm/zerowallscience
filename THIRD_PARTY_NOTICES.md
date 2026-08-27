@@ -17,6 +17,10 @@ versioned dependency inventory.
 | `@zerowallscience/plugin-image-dup` | [`PetCT/dsh-Bio-image-dup-check`](https://github.com/PetCT/dsh-Bio-image-dup-check) | `7051eb55f611a46db3d9cfa1768e56c7d1a91553` | MIT |
 | `@zerowallscience/dsh-ppt-runtime` | [`yejiming/dsh-ppt`](https://github.com/yejiming/dsh-ppt) | `538f23c834056e2b3ab7314524d4b31416803a6b` | MIT |
 
+ZeroWall Science also bundles `@huanlin/dsh-plugin-better-sidebar-plugin-office@0.1.2`
+from [`HuanLinOTO/dsh-plugin-better-sidebar-plugin-office`](https://github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office)
+under AGPL-3.0. It provides the in-application DOCX, XLSX, and PPTX viewers.
+
 The image duplicate detector is a first-party Host/Client rewrite that retains
 algorithm provenance while replacing the upstream dynamic-loader, arbitrary
 path, Data URL, and in-memory report boundaries. The PPT runtime is shipped as

@@ -9,7 +9,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { ResearchStore } from '@zerowallscience/research-store'
 import type { CreatePresentationInput, PresentationRecord, ProjectRecord, UpdatePresentationChanges } from '@zerowallscience/research-store/types'
 import type { ZeroWallImageGenerationService } from '@zerowallscience/plugin-images'
-import type { PresentationSlidePreview } from '@zerowallscience/plugin-presentations/types'
+import type { PresentationSlidePatch, PresentationSlidePreview } from '@zerowallscience/plugin-presentations/types'
 import { PresentationWorker, type PresentationProgress } from './worker.js'
 import { writePresentation } from './export.js'
 import type {} from 'zod'
@@ -56,12 +56,17 @@ export class ZeroWallPresentationService extends TypertRemoteService {
       description: 'Update the existing ZeroWall presentation in place. Use this when the user asks to revise the currently open deck; never create a second same-named file.',
       parameters: {
         presentation_id: { type: 'string', description: 'Existing presentation id from the ZeroWall PPT card.' },
-        title: { type: 'string', description: 'Optional replacement title.' },
+        slide_id: { type: 'string', description: 'Target slide id. Use this for normal page revisions so other pages remain unchanged.' },
+        page: { type: 'object', additionalProperties: false, properties: { title: { type: 'string' }, body: { type: 'string' }, notes: { type: 'string' }, visual_prompt: { type: 'string' } }, description: 'Fields to replace on one slide.' },
+        regenerate_all: { type: 'boolean', description: 'Must be true only when the user explicitly requests a complete deck regeneration.' },
+        title: { type: 'string', description: 'Optional replacement deck title for a complete regeneration.' },
         sections: { type: 'array', items: { type: 'object', additionalProperties: true, properties: { title: { type: 'string' }, points: { type: 'array', items: { type: 'string' } } } }, description: 'Optional replacement slide sections.' },
       },
       output: {
         schema: { type: 'object', additionalProperties: true },
-        render: (_args, value) => [{ type: 'text', text: `已更新演示文稿“${String(value.title ?? '')}”，正在重新生成同一文件。` }],
+        render: (_args, value) => [{ type: 'text', text: value.slideId
+          ? `已更新演示文稿“${String(value.title ?? '')}”的指定页，正在替换该页图片。`
+          : `已确认重新生成整套演示文稿“${String(value.title ?? '')}”。` }],
         presentationMeta: (_args, value) => value,
       },
       async execute(args) {
@@ -69,6 +74,22 @@ export class ZeroWallPresentationService extends TypertRemoteService {
         if (!id) throw new Error('presentation_id is required.')
         const service = ctx.get('zerowallPresentation') as ZeroWallPresentationService
         const current = serviceRecord(id)
+        const slideId = typeof args.slide_id === 'string' ? args.slide_id.trim() : ''
+        if (slideId) {
+          if (Array.isArray(args.sections) || args.regenerate_all === true) throw new Error('slide_id cannot be combined with sections or regenerate_all.')
+          const page = typeof args.page === 'object' && args.page !== null ? args.page as Record<string, unknown> : undefined
+          if (!page) throw new Error('page is required when slide_id is provided.')
+          const patch: PresentationSlidePatch = {
+            ...(typeof page.title === 'string' ? { title: page.title.trim() } : {}),
+            ...(typeof page.body === 'string' ? { body: page.body.trim() } : {}),
+            ...(typeof page.notes === 'string' ? { notes: page.notes.trim() } : {}),
+            ...(typeof page.visual_prompt === 'string' ? { visualPrompt: page.visual_prompt.trim() } : {}),
+          }
+          if (Object.keys(patch).length === 0) throw new Error('At least one page field is required.')
+          const updated = await service.updateSlide({ id, slideId, patch })
+          return JSON.parse(JSON.stringify({ presentationId: updated.id, generationId: updated.generation?.id, slideId, title: updated.title, status: updated.status, projectId: updated.projectId, openWorkbench: true })) as JsonValue as Record<string, JsonValue>
+        }
+        if (args.regenerate_all !== true) throw new Error('Normal revisions require slide_id. Set regenerate_all=true only after the user explicitly requests a complete deck regeneration.')
         const sections = Array.isArray(args.sections) ? args.sections.filter(value => typeof value === 'object' && value !== null).map(value => {
           const item = value as { title?: unknown; points?: unknown }
           return { title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : current.title, points: Array.isArray(item.points) ? item.points.filter(point => typeof point === 'string').map(point => point.trim()).filter(Boolean) : [] }
@@ -122,7 +143,12 @@ export class ZeroWallPresentationService extends TypertRemoteService {
   @Remote('resume') resume(id: string): PresentationRecord { const record = this.worker.resume(id); this.openEvent(record); return record }
   @Remote('cancel') cancel(id: string): PresentationRecord { return this.worker.cancel(id) }
   @Remote('previewSlide') previewSlide(input: { presentationId: string; slideId: string }): Promise<PresentationSlidePreview> {
+    this.requirePresentationProject(input.presentationId)
     return readPresentationSlidePreview(this.store, input.presentationId, input.slideId)
+  }
+  @Remote('updateSlide') updateSlide(input: { id: string; slideId: string; patch: PresentationSlidePatch }): Promise<PresentationRecord> {
+    this.requirePresentationProject(input.id)
+    return this.worker.updateSlide(input.id, input.slideId, input.patch)
   }
   @Remote('retrySlide') retrySlide(input: { presentationId: string; slideId: string }): Promise<PresentationRecord> {
     const presentation = this.requirePresentationProject(input.presentationId)
@@ -145,23 +171,21 @@ export class ZeroWallPresentationService extends TypertRemoteService {
     this.requireProject(presentation.projectId)
     return presentation
   }
-  @Remote('export') async export(input: { id: string; format: 'pptx' | 'pdf'; uri: string }): Promise<PresentationRecord> {
+  @Remote('export') async export(input: { id: string; uri: string }): Promise<PresentationRecord> {
     const presentation = this.store.getPresentation(input.id)
     if (presentation === undefined) throw new Error(`Presentation was not found: ${input.id}`)
     if (presentation.status !== 'ready') throw new Error('Only a ready presentation can be exported.')
-    await writePresentation(presentation, input.format, input.uri)
+    await writePresentation(presentation, input.uri)
     const bytes = await readFile(filePath(input.uri))
-    const kind = input.format
+    const kind = 'pptx'
     const artifact = {
       kind,
       uri: input.uri,
-      mediaType: input.format === 'pptx'
-        ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-        : 'application/pdf',
+      mediaType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       checksum: createHash('sha256').update(bytes).digest('hex'),
     } as const
     return this.store.updatePresentation(input.id, {
-      exportUris: { ...presentation.exportUris, [input.format]: input.uri },
+      exportUris: { ...presentation.exportUris, pptx: input.uri },
       artifacts: [...presentation.artifacts.filter(existing => existing.kind !== kind), artifact],
     })
   }
@@ -189,7 +213,7 @@ export async function readPresentationSlidePreview(store: ResearchStore, present
       if (!info.isFile() || info.size > 64 * 1024 * 1024) continue
       const mediaType = previewMediaType(target)
       if (mediaType === undefined) continue
-      return { uri: pathToFileURL(target).href, mediaType, byteSize: info.size, base64: (await readFile(target)).toString('base64') }
+      return { presentationId, slideId, slideIndex, name: basename(target), uri: pathToFileURL(target).href, mediaType, byteSize: info.size, base64: (await readFile(target)).toString('base64') }
     } catch {
       // A stale URI must not prevent the stable slide-NN path fallback.
     }

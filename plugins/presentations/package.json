@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-presentations",
-  "version": "4.3.6",
+  "version": "4.3.7",
   "description": "ZeroWall Science presentations domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -122,8 +122,6 @@
     "dsh-dream-skin": "0.4.14",
     "@zerowallscience/research-store": "workspace:^",
     "@zerowallscience/dsh-ppt-runtime": "workspace:^",
-    "@pdf-lib/fontkit": "1.1.1",
-    "pdf-lib": "1.17.1",
     "pptxgenjs": "4.0.1",
     "zod": "^4.4.3",
     "lucide-react": "^0.468.0",

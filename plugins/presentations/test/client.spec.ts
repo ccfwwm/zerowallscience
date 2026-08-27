@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ensurePresentationProject, openPresentationWorkbench, resolvePresentationSlideImage } from '../src/client/plugin.js'
+import { addPresentationSlideToDraft, ensurePresentationProject, openPresentationWorkbench, resolvePresentationSlideImage } from '../src/client/plugin.js'
 
 describe('presentation workbench routing', () => {
   it('opens a session-scoped tab for the selected presentation', () => {
@@ -27,12 +27,23 @@ describe('presentation workbench routing', () => {
     expect(resolved).toBe(project)
   })
 
-  it('falls back to the persisted slide file when the conversation attachment is unavailable', async () => {
-    const resolveImage = vi.fn().mockRejectedValue(new Error('attachment is outside this session'))
-    const previewSlide = vi.fn().mockResolvedValue({ ok: true, value: { uri: 'file:///slide-01.png', mediaType: 'image/png', byteSize: 1, base64: 'AA==' } })
+  it('loads presentation previews without crossing the current session attachment scope', async () => {
+    const resolveImage = vi.fn()
+    const previewSlide = vi.fn().mockResolvedValue({ ok: true, value: { presentationId: 'ppt-1', slideId: 'slide-1', slideIndex: 0, name: 'slide-01.png', uri: 'file:///slide-01.png', mediaType: 'image/png', byteSize: 1, base64: 'AA==' } })
     const slide = { id: 'slide-1', title: 'Slide', body: '', assetUris: [], visual: { attachment: { attachmentId: 'sha256:image', mediaType: 'image/png', bytes: 1, width: 1, height: 1 } } }
     await expect(resolvePresentationSlideImage({ conversation: { resolveImage } } as never, { previewSlide } as never, 'ppt-1', 'session-1', slide as never)).resolves.toBe('data:image/png;base64,AA==')
-    expect(resolveImage).toHaveBeenCalledOnce()
+    expect(resolveImage).not.toHaveBeenCalled()
     expect(previewSlide).toHaveBeenCalledWith({ presentationId: 'ppt-1', slideId: 'slide-1' })
+  })
+
+  it('creates a new current-session draft image from presentation preview bytes', async () => {
+    const addImageBytesToDraft = vi.fn().mockResolvedValue(undefined)
+    const previewSlide = vi.fn().mockResolvedValue({ ok: true, value: { presentationId: 'ppt-1', slideId: 'slide-4', slideIndex: 3, name: 'slide-04.png', uri: 'file:///slide-04.png', mediaType: 'image/png', byteSize: 3, base64: 'AQID' } })
+    const slide = { id: 'slide-4', title: 'Slide', body: '', assetUris: [] }
+    await addPresentationSlideToDraft({ conversation: { addImageBytesToDraft } } as never, { previewSlide } as never, 'session-1', 'ppt-1', slide as never, 3)
+    expect(addImageBytesToDraft).toHaveBeenCalledWith('session-1', {
+      data: Uint8Array.of(1, 2, 3), mediaType: 'image/png', name: 'slide-04.png',
+      contextText: 'PPT 页面引用：presentationId=ppt-1, slideId=slide-4, page=4',
+    })
   })
 })

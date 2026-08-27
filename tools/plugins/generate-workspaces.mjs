@@ -79,7 +79,7 @@ const npmDependencies = {
   execution: { '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   runs: { '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   publications: { '@zerowallscience/research-store': 'workspace:^', jszip: '3.10.1', zod: '^4.4.3' },
-  presentations: { '@zerowallscience/research-store': 'workspace:^', '@zerowallscience/dsh-ppt-runtime': 'workspace:^', '@pdf-lib/fontkit': '1.1.1', 'pdf-lib': '1.17.1', pptxgenjs: '4.0.1', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
+  presentations: { '@zerowallscience/research-store': 'workspace:^', '@zerowallscience/dsh-ppt-runtime': 'workspace:^', pptxgenjs: '4.0.1', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
   'web-search': {
     zod: '^4.4.3',
     '@deepseek-ai/dsh-web': 'workspace:^',

@@ -25,10 +25,22 @@
 .header > div:first-child { display: grid; min-width: 0; }
 .header span { font-size: 11px; color: #68727e; }
 .header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.toolbar { display: flex; align-items: center; gap: 5px; }
-.toolbar button, .artifacts button { display: inline-flex; min-width: 30px; height: 30px; padding: 0 7px; align-items: center; justify-content: center; gap: 5px; border: 1px solid #d6dce3; border-radius: 5px; background: #fff; color: #25313d; font-size: 11px; }
+.toolbar { position:relative; display: flex; align-items: center; gap: 6px; }
+.toolbar button, .toolbar summary { display: inline-flex; min-width: 36px; height: 36px; padding: 0 9px; align-items: center; justify-content: center; gap: 6px; border: 1px solid #c8d1db; border-radius: 5px; background: #fff; color: #1e2d3b; font-size: 12px; font-weight:600; cursor:pointer; }
+.toolbar button:hover, .toolbar summary:hover { border-color:#8fa0b1; background:#f2f5f7; }
+.toolbar button:focus-visible, .toolbar summary:focus-visible, .slidePreview footer button:focus-visible, .currentArtifact button:focus-visible { outline:2px solid #17765f; outline-offset:2px; }
+.toolbar button:disabled { cursor:not-allowed; opacity:.5; }
+.toolbar .primaryCommand { border-color:#17765f; background:#17765f; color:#fff; }
+.toolbar .primaryCommand:hover { border-color:#0f604c; background:#0f604c; }
+.moreMenu { position:relative; }
+.moreMenu summary { list-style:none; }
+.moreMenu summary::-webkit-details-marker { display:none; }
+.moreMenu > div { position:absolute; z-index:5; top:42px; right:0; width:170px; padding:5px; border:1px solid #c8d1db; border-radius:6px; background:#fff; box-shadow:0 8px 24px #1d293526; }
+.moreMenu > div button { width:100%; justify-content:flex-start; border:0; color:#8f2824; }
 .stage { display: grid; gap: 3px; min-width: 0; }
 .stage small { color: #68727e; font-size: 11px; }
+.statusRow { display:flex; align-items:center; gap:6px; }
+.qualityBadge { padding:4px 7px; border:1px solid currentColor; border-radius:4px; background:#fff; font-size:11px; font-weight:600; }
 .progressTrack { width: min(360px, 55vw); height: 5px; margin-top: 3px; overflow: hidden; border-radius: 5px; background: #e4e9ee; }
 .progressTrack span { display:block; height:100%; border-radius:inherit; background:#17765f; transition:width .25s ease; }
 .status { padding: 4px 7px; border-radius: 4px; background: #e8edf2; font-weight: 600; text-transform: capitalize; }
@@ -50,8 +62,13 @@
 .visualState button { justify-self:center; min-height:32px; border:1px solid #b84a43; border-radius:4px; background:#fff; color:#9b302b; }
 .slidePreview footer { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:8px; color:#59636e; font-size:11px; }
 .slidePreview footer code { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.slidePreview footer div { display:flex; gap:4px; }
-.slidePreview footer button { display:grid; width:30px; height:30px; place-items:center; border:1px solid #cfd6de; border-radius:4px; background:#fff; color:#25313d; }
+.slideActions { display:flex; gap:6px; }
+.slidePreview footer button { display:grid; width:36px; height:36px; place-items:center; border:1px solid #bfcad5; border-radius:5px; background:#fff; color:#1f3141; cursor:pointer; transition:background-color .12s ease,border-color .12s ease,color .12s ease; }
+.slidePreview footer button:hover { border-color:#8295a7; background:#eef3f6; }
+.slidePreview footer .actionPrimary { border-color:#17765f; background:#17765f; color:#fff; }
+.slidePreview footer .actionPrimary:hover { border-color:#0f604c; background:#0f604c; }
+.slidePreview footer .actionEmphasis { border-color:#9b6a13; background:#fff8e8; color:#7a5009; }
+.slidePreview footer .actionEmphasis:hover { border-color:#7a5009; background:#fceecb; }
 .slidePreview footer button:disabled { opacity:.45; }
 .preview h2 { margin: 8px 0 24px; font-size: 25px; }
 .preview p { white-space: pre-wrap; line-height: 1.6; }
@@ -66,11 +83,12 @@
 .currentArtifact { display:grid; gap:6px; padding:9px; border:1px solid #b9d9ce; border-radius:5px; background:#f2faf7; }
 .currentArtifact strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .currentArtifact code { overflow-wrap:anywhere; color:#53636c; font-size:10px; line-height:1.4; }
-.currentArtifact button { display:inline-flex; width:max-content; align-items:center; gap:5px; padding:6px 8px; border:1px solid #17765f; border-radius:4px; background:#17765f; color:#fff; font-size:11px; }
-.artifacts { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid #edf0f2; font-size: 12px; }
-.artifacts > span { display:grid; min-width:0; gap:2px; overflow:hidden; }
-.artifacts > span small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#68727e; font-size:10px; }
-.artifacts > div { display:flex; flex:0 0 auto; gap:4px; }
+.fileActions { display:flex; flex-wrap:wrap; gap:6px; }
+.currentArtifact button { display:inline-flex; min-height:34px; width:max-content; align-items:center; gap:6px; padding:6px 9px; border:1px solid #17765f; border-radius:4px; background:#17765f; color:#fff; font-size:12px; font-weight:600; cursor:pointer; }
+.currentArtifact button + button { border-color:#aab6c2; background:#fff; color:#253545; }
+.currentArtifact button:hover { filter:brightness(.94); }
+.spin { animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
 .continue { display: flex; width: 100%; align-items: center; justify-content: center; gap: 6px; margin-top: 16px; padding: 8px; border: 0; border-radius: 5px; background: #17765f; color: #fff; }
-@media (max-width: 820px) { .columns { grid-template-columns: 112px 1fr; }.details { grid-column: 1 / -1; border-top: 1px solid #d9dee5; border-left: 0; }.preview { padding: 12px; } }
+@media (max-width: 820px) { .columns { grid-template-columns: 112px 1fr; }.details { grid-column: 1 / -1; border-top: 1px solid #d9dee5; border-left: 0; }.preview { padding: 12px; }.slidePreview footer { grid-template-columns:1fr auto; }.slidePreview footer code { grid-column:1 / -1; grid-row:2; }.slideActions { grid-column:2; grid-row:1 / span 2; flex-wrap:wrap; justify-content:flex-end; max-width:120px; } }
 @media (max-width: 760px) { .introGrid { grid-template-columns:1fr; } .newForm { grid-template-columns:1fr; align-items:stretch; } }

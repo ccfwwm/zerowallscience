@@ -3,7 +3,7 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { TabComponentProps, SessionScope } from 'dsh-better-sidebar/client/service'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
-import { AlertTriangle, Ban, Copy, ExternalLink, ImagePlus, Pause, Play, Plus, Presentation, RefreshCw, RotateCw, Trash2 } from 'lucide-react'
+import { Ban, Copy, ExternalLink, FolderOpen, ImagePlus, LoaderCircle, MoreHorizontal, Pause, Play, Plus, Presentation, RefreshCw, RotateCw, Trash2 } from 'lucide-react'
 import type { CreatePresentationInput, PresentationRecord, UpdatePresentationChanges } from '@zerowallscience/research-store/types'
 import type { PresentationSlidePreview } from '@zerowallscience/plugin-presentations/types'
 import styles from './workbench.module.css'
@@ -45,10 +45,7 @@ function statusLabel(value: string): string {
   return ({ draft: '草稿', outlining: '整理大纲', designing: '设计页面', generating: '生成内容', ready: '已完成', failed: '生成失败', paused: '已暂停', cancelled: '已取消' } as Record<string, string>)[value] ?? value
 }
 function stageLabel(value: string): string {
-  return ({ outlining: '整理大纲', designing: '规划视觉', visual: '逐页生成视觉', html: '生成 HTML', pptx: '组装 PPTX', rendering: '生成 PDF', quality: '质量检查', ready: '已完成', failed: '失败', paused: '已暂停', cancelled: '已取消' } as Record<string, string>)[value] ?? value
-}
-function artifactLabel(value: string): string {
-  return ({ pptx: 'PowerPoint 文件', pdf: 'PDF 文件', html: 'HTML 预览', preview: '预览图', outline: '大纲', 'quality-report': '质量报告', 'visual-review': '视觉审阅' } as Record<string, string>)[value] ?? value
+  return ({ outlining: '整理大纲', designing: '规划视觉', visual: '逐页生成视觉', html: '生成 HTML', pptx: '组装 PPTX', rendering: '组装 PPTX', quality: '质量检查', ready: '已完成', failed: '失败', paused: '已暂停', cancelled: '已取消' } as Record<string, string>)[value] ?? value
 }
 function localArtifactPath(uri: string): string | undefined {
   try {
@@ -97,17 +94,32 @@ async function openLinkedConversation(ctx: ClientContext, scope: SessionScope, t
   return String(sessionId)
 }
 
-export async function resolvePresentationSlideImage(ctx: ClientContext, remote: Pick<PresentationRemote, 'previewSlide'>, presentationId: string, sessionId: string, slide: PresentationRecord['slides'][number]): Promise<string> {
-  const attachment = slide.visual?.attachment
-  if (attachment) {
-    try {
-      return await ctx.conversation.resolveImage(sessionId, { ...attachment, attachmentId: attachment.attachmentId as never })
-    } catch {
-      // Presentation attachments can predate the current conversation scope.
-    }
-  }
+export async function resolvePresentationSlideImage(_ctx: ClientContext, remote: Pick<PresentationRemote, 'previewSlide'>, presentationId: string, _sessionId: string, slide: PresentationRecord['slides'][number]): Promise<string> {
   const preview = unwrap(await remote.previewSlide({ presentationId, slideId: slide.id }))
   return `data:${preview.mediaType};base64,${preview.base64}`
+}
+
+function base64Bytes(value: string): Uint8Array {
+  const decoded = atob(value)
+  const bytes = new Uint8Array(decoded.length)
+  for (let index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index)
+  return bytes
+}
+
+export async function addPresentationSlideToDraft(ctx: ClientContext, remote: Pick<PresentationRemote, 'previewSlide'>, sessionId: string, presentationId: string, slide: PresentationRecord['slides'][number], slideIndex: number): Promise<void> {
+  const preview = unwrap(await remote.previewSlide({ presentationId, slideId: slide.id }))
+  await ctx.conversation.addImageBytesToDraft(sessionId as never, {
+    data: base64Bytes(preview.base64),
+    mediaType: preview.mediaType,
+    name: preview.name,
+    contextText: `PPT 页面引用：presentationId=${presentationId}, slideId=${slide.id}, page=${slideIndex + 1}`,
+  })
+}
+
+function parentPath(path: string): string {
+  const normalized = path.replace(/[\\/]+$/u, '')
+  const separator = Math.max(normalized.lastIndexOf('\\'), normalized.lastIndexOf('/'))
+  return separator > 0 ? normalized.slice(0, separator) : normalized
 }
 
 function useSlideImage(ctx: ClientContext, remote: Pick<PresentationRemote, 'previewSlide'>, presentationId: string, sessionId: string, slide: PresentationRecord['slides'][number] | undefined, reload: number): { url?: string; failed: boolean; markFailed(): void } {
@@ -212,19 +224,72 @@ function PresentationWorkbench({ ctx, remote, scope, tab }: TabComponentProps & 
   const slide = presentation?.slides[selectedSlide]
   const visual = useSlideImage(ctx, remote, presentation?.id ?? '', scope.sessionId, slide, slide ? reloadImages[slide.id] ?? 0 : 0)
   const addToConversation = async () => {
-    const attachment = slide?.visual?.attachment
-    if (!attachment) throw new Error('当前页面没有可加入对话的持久图片。')
-    await ctx.conversation.addAttachmentImageToDraft(scope.sessionId, { ...attachment, attachmentId: attachment.attachmentId as never })
+    if (!presentation || !slide) throw new Error('当前页面没有可加入对话的图片。')
+    await addPresentationSlideToDraft(ctx, remote, scope.sessionId, presentation.id, slide, selectedSlide)
+  }
+  const regenerateAll = async () => {
+    if (!presentation || !window.confirm('确定重新生成整套演示文稿吗？这会重新生成所有页面的内容和图片。')) return
+    await act(id => remote.generate(id))
   }
   const copySlideReference = async () => {
     if (!presentation || !slide) return
     await navigator.clipboard.writeText(JSON.stringify({ presentationId: presentation.id, slideId: slide.id, page: selectedSlide + 1, image: slide.visualUri ?? slide.visual?.attachment?.attachmentId }, null, 2))
   }
+  const pptxArtifact = presentation ? currentArtifact(presentation, 'pptx') : undefined
+  const pptxPath = pptxArtifact ? localArtifactPath(pptxArtifact.uri) ?? pptxArtifact.uri : undefined
   return <section className={styles.workbench} aria-busy={busy}>
-    <header className={styles.header}><div><span>演示文稿工作台</span><strong>{presentation?.title ?? '当前项目演示文稿'}</strong></div><div className={styles.toolbar}><button type="button" title="刷新" onClick={() => void refresh()}><RefreshCw size={16} /></button></div></header>
+    <header className={styles.header}>
+      <div><span>演示文稿工作台</span><strong>{presentation?.title ?? '当前项目演示文稿'}</strong></div>
+      <div className={styles.toolbar}><button type="button" title="刷新" aria-label="刷新演示文稿" onClick={() => void refresh()} disabled={busy}><RefreshCw size={18} /></button></div>
+    </header>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {!presentation && <div className={styles.state}><div className={styles.intro}><h2>从研究材料生成可编辑演示文稿</h2><p>手工选择研究项目并填写标题，或使用当前工作区自动关联。点击后立即进入 ZeroWall PPT 生成流程。</p></div><div className={styles.introGrid}><div className={styles.introCard}><strong>1 · 选择项目</strong><span>选择已有研究项目，或自动关联当前工作区。</span></div><div className={styles.introCard}><strong>2 · 填写标题并生成</strong><span>输入标题后点击“创建并开始”。</span></div><div className={styles.introCard}><strong>3 · 审阅导出</strong><span>检查缩略图、质量状态，再打开或导出产物。</span></div></div><div className={styles.newForm}><label className={styles.formField}><span>研究项目</span><select aria-label="研究项目" value={projectId ?? ''} onChange={event => { setProjectId(event.target.value || undefined); setPresentation(undefined); setItems([]) }}><option value="">当前工作区（自动关联）</option>{projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className={styles.formField}><span>演示文稿标题</span><input aria-label="演示文稿标题" value={title} onChange={event => setTitle(event.target.value)} placeholder="例如：2026 年度研究进展汇报" /></label><button type="button" disabled={!title.trim() || busy} onClick={() => void create()}><Plus size={15} />{busy ? '正在创建…' : '创建并开始'}</button></div>{!projectId && <div className={styles.hint}>当前选择“自动关联”：创建时会复用当前工作区对应的研究项目；若不存在，则自动建立项目。</div>}<h3>历史演示文稿</h3>{items.length === 0 ? <p>{projectId ? '当前项目暂无演示文稿。创建后可在此继续生成、暂停或导出。' : '选择已有项目可查看历史演示文稿；选择当前工作区后可直接创建。'}</p> : <ul>{items.map(item => <li key={item.id}><div className={styles.historyRow}><button type="button" className={styles.historyOpen} onClick={() => openPresentationWorkbench(ctx.betterSidebar, { presentationId: item.id, sessionId: scope.sessionId, projectId: item.projectId, cwd: scope.cwd, title: item.title })}><strong>{item.title}</strong><span>{statusLabel(item.status)} · {new Date(item.updatedAt).toLocaleString()}</span><small>{item.id}</small></button><button type="button" className={styles.historyDelete} title="删除历史演示文稿" aria-label={`删除${item.title}`} onClick={() => void remove(item)} disabled={busy}><Trash2 size={14} /></button></div></li>)}</ul>}</div>}
-    {presentation && <><div className={styles.header}><div className={styles.stage}><span className={styles.status}>{statusLabel(presentation.status)}</span>{presentation.generation && <><small>{stageLabel(presentation.generation.stage)} · 第 {presentation.generation.revision} 次生成 · 最后更新 {new Date(presentation.generation.updatedAt).toLocaleTimeString()}</small><div className={styles.progressTrack} aria-label="生成进度"><span style={{ width: `${Math.round(presentation.generation.progress * 100)}%` }} /></div></>}</div><div className={styles.toolbar}><button type="button" title="刷新状态" onClick={() => void refresh()}><RefreshCw size={16} /><span>刷新</span></button>{['draft', 'failed', 'ready'].includes(presentation.status) && <button type="button" title="开始生成或重新生成" onClick={() => void act(id => remote.generate(id))}><Play size={16} /><span>{presentation.status === 'ready' ? '重新生成' : '开始生成'}</span></button>}{['outlining', 'designing', 'generating'].includes(presentation.status) && <button type="button" title="暂停生成" onClick={() => void act(id => remote.pause(id))}><Pause size={16} /><span>暂停</span></button>}{presentation.status === 'paused' && <button type="button" title="继续生成" onClick={() => void act(id => remote.resume(id))}><RotateCw size={16} /><span>继续</span></button>}{!['ready', 'cancelled'].includes(presentation.status) && <button type="button" title="取消生成" onClick={() => void act(id => remote.cancel(id))}><Ban size={16} /><span>取消</span></button>}</div></div><div className={styles.columns}><nav className={styles.slides} aria-label="页面缩略图"><h3>页面 ({presentation.slides.length})</h3>{presentation.slides.map((item, index) => <SlideThumbnail ctx={ctx} remote={remote} presentationId={presentation.id} sessionId={scope.sessionId} slide={item} index={index} selected={selectedSlide === index} reload={reloadImages[item.id] ?? 0} key={item.id} onSelect={() => setSelectedSlide(index)} onRetry={() => void retrySlide(item.id)} />)}{presentation.slides.length === 0 && <p>生成完成后将在这里显示页面。</p>}</nav><main className={styles.preview}>{slide ? <article className={styles.slidePreview}>{visual.url && !visual.failed ? <img src={visual.url} alt={slide.title} onError={visual.markFailed} /> : <div className={styles.visualState}>{slide.visualStatus === 'generating' ? '正在生成此页图片…' : slide.visualStatus === 'failed' ? <><strong>此页图片生成失败</strong><span>{slide.visualError}</span><button type="button" onClick={() => void retrySlide(slide.id)}>重试此页</button></> : visual.failed ? '图片加载失败，请重新加载。' : '此页尚无图片'}</div>}<footer><span>第 {selectedSlide + 1} 页，共 {presentation.slides.length} 页</span><code>{slide.id}</code><div><button type="button" title="加入当前对话输入框" onClick={() => void addToConversation().catch(cause => setError(cause instanceof Error ? cause.message : String(cause)))} disabled={!slide.visual?.attachment}><ImagePlus size={14} /></button><button type="button" title="复制图片路径" onClick={() => void navigator.clipboard.writeText(localArtifactPath(slide.visualUri ?? '') ?? slide.visualUri ?? '')} disabled={!slide.visualUri}><Copy size={14} /></button><button type="button" title="复制图片引用" onClick={() => void copySlideReference()}><Copy size={14} /></button><button type="button" title="重新加载图片" onClick={() => setReloadImages(value => ({ ...value, [slide.id]: (value[slide.id] ?? 0) + 1 }))}><RefreshCw size={14} /></button></div></footer></article> : <div className={styles.empty}>{presentation.status === 'ready' ? '没有可预览的页面' : '正在生成页面预览…'}</div>}</main><aside className={styles.details}><h3>质量门禁</h3>{presentation.quality ? <><strong className={styles[presentation.quality.overall]}>{presentation.quality.overall === 'unverified' ? '待人工确认' : presentation.quality.overall === 'passed' ? '通过' : '未通过'}</strong>{presentation.quality.warnings.map(warning => <p className={styles.warning} key={warning}><AlertTriangle size={14} />{warning}</p>)}</> : <p>生成完成后检查</p>}<h3>当前 PPTX 文件</h3>{currentArtifact(presentation, 'pptx') ? <div className={styles.currentArtifact}><strong>{artifactName(currentArtifact(presentation, 'pptx')!.uri)}</strong><code>{localArtifactPath(currentArtifact(presentation, 'pptx')!.uri) ?? currentArtifact(presentation, 'pptx')!.uri}</code><button type="button" title="打开当前 PPTX" onClick={() => openArtifact(ctx, scope, currentArtifact(presentation, 'pptx')!.uri, '当前 PPTX')}><ExternalLink size={14} />打开 PPTX</button></div> : <p className={styles.muted}>生成完成后，当前 PPTX 会出现在这里。</p>}<h3>全部产物</h3>{presentation.artifacts.length === 0 && <p className={styles.muted}>生成完成后，PPTX、PDF 和预览会出现在这里。</p>}{presentation.artifacts.map(artifact => <div className={styles.artifacts} key={artifact.kind + ':' + artifact.uri}><span><strong>{artifactLabel(artifact.kind)}</strong><small>{artifactName(artifact.uri)}</small></span><div><button type="button" title="复制路径" aria-label="复制路径" onClick={() => void navigator.clipboard.writeText(localArtifactPath(artifact.uri) ?? artifact.uri)}><Copy size={14} /></button><button type="button" title="打开产物" aria-label={`打开${artifactLabel(artifact.kind)}`} onClick={() => openArtifact(ctx, scope, artifact.uri, artifactLabel(artifact.kind))}><ExternalLink size={14} /></button></div></div>)}</aside></div></>}
+    {presentation && <>
+      <div className={styles.header}>
+        <div className={styles.stage}>
+          <div className={styles.statusRow}>
+            <span className={styles.status}>{statusLabel(presentation.status)}</span>
+            {presentation.quality && <span className={`${styles.qualityBadge} ${styles[presentation.quality.overall]}`} title={presentation.quality.warnings.join('\n')}>质量：{presentation.quality.overall === 'unverified' ? '待确认' : presentation.quality.overall === 'passed' ? '通过' : '未通过'}</span>}
+          </div>
+          {presentation.generation && <><small>{stageLabel(presentation.generation.stage)} · 第 {presentation.generation.revision} 次生成 · 最后更新 {new Date(presentation.generation.updatedAt).toLocaleTimeString()}</small><div className={styles.progressTrack} aria-label="生成进度"><span style={{ width: `${Math.round(presentation.generation.progress * 100)}%` }} /></div></>}
+        </div>
+        <div className={styles.toolbar}>
+          <button type="button" title="刷新状态" onClick={() => void refresh()} disabled={busy}><RefreshCw size={18} /><span>刷新</span></button>
+          {presentation.status === 'draft' && <button type="button" className={styles.primaryCommand} title="开始生成" onClick={() => void act(id => remote.generate(id))} disabled={busy}><Play size={18} /><span>开始生成</span></button>}
+          {['ready', 'failed'].includes(presentation.status) && slide && <button type="button" className={styles.primaryCommand} title="只重新生成当前页" onClick={() => void retrySlide(slide.id)} disabled={busy}>{busy ? <LoaderCircle className={styles.spin} size={18} /> : <RotateCw size={18} />}<span>重新生成当前页</span></button>}
+          {['outlining', 'designing', 'generating'].includes(presentation.status) && <button type="button" title="暂停生成" onClick={() => void act(id => remote.pause(id))} disabled={busy}><Pause size={18} /><span>暂停</span></button>}
+          {presentation.status === 'paused' && <button type="button" title="继续生成" onClick={() => void act(id => remote.resume(id))} disabled={busy}><RotateCw size={18} /><span>继续</span></button>}
+          {!['ready', 'cancelled'].includes(presentation.status) && <button type="button" title="取消生成" onClick={() => void act(id => remote.cancel(id))} disabled={busy}><Ban size={18} /><span>取消</span></button>}
+          {presentation.slides.length > 0 && !['outlining', 'designing', 'generating'].includes(presentation.status) && <details className={styles.moreMenu}><summary title="更多生成操作" aria-label="更多生成操作"><MoreHorizontal size={18} /></summary><div><button type="button" onClick={() => void regenerateAll()} disabled={busy}>重新生成整套</button></div></details>}
+        </div>
+      </div>
+      <div className={styles.columns}>
+        <nav className={styles.slides} aria-label="页面缩略图"><h3>页面 ({presentation.slides.length})</h3>{presentation.slides.map((item, index) => <SlideThumbnail ctx={ctx} remote={remote} presentationId={presentation.id} sessionId={scope.sessionId} slide={item} index={index} selected={selectedSlide === index} reload={reloadImages[item.id] ?? 0} key={item.id} onSelect={() => setSelectedSlide(index)} onRetry={() => void retrySlide(item.id)} />)}{presentation.slides.length === 0 && <p>生成完成后将在这里显示页面。</p>}</nav>
+        <main className={styles.preview}>
+          {slide ? <article className={styles.slidePreview}>
+            {visual.url && !visual.failed ? <img src={visual.url} alt={slide.title} onError={visual.markFailed} /> : <div className={styles.visualState}>{slide.visualStatus === 'generating' ? '正在生成此页图片…' : slide.visualStatus === 'failed' ? <><strong>此页图片生成失败</strong><span>{slide.visualError}</span><button type="button" onClick={() => void retrySlide(slide.id)}>重试此页</button></> : visual.failed ? '图片加载失败，请重新加载。' : '此页尚无图片'}</div>}
+            <footer><span>第 {selectedSlide + 1} 页，共 {presentation.slides.length} 页</span><code>{slide.id}</code><div className={styles.slideActions}>
+              <button type="button" className={styles.actionPrimary} title="加入当前对话输入框" aria-label="加入当前对话输入框" onClick={() => void addToConversation().catch(cause => setError(cause instanceof Error ? cause.message : String(cause)))} disabled={busy || (!slide.visualUri && slide.visualStatus !== 'ready')}><ImagePlus size={18} /></button>
+              <button type="button" className={styles.actionEmphasis} title="只重新生成当前页" aria-label="重新生成当前页" onClick={() => void retrySlide(slide.id)} disabled={busy}>{busy ? <LoaderCircle className={styles.spin} size={18} /> : <RotateCw size={18} />}</button>
+              <button type="button" title="复制图片路径" aria-label="复制图片路径" onClick={() => void navigator.clipboard.writeText(localArtifactPath(slide.visualUri ?? '') ?? slide.visualUri ?? '')} disabled={!slide.visualUri}><Copy size={18} /></button>
+              <button type="button" title="复制页面引用" aria-label="复制页面引用" onClick={() => void copySlideReference()}><Copy size={18} /></button>
+              <button type="button" title="重新加载图片" aria-label="重新加载图片" onClick={() => setReloadImages(value => ({ ...value, [slide.id]: (value[slide.id] ?? 0) + 1 }))}><RefreshCw size={18} /></button>
+            </div></footer>
+          </article> : <div className={styles.empty}>{presentation.status === 'ready' ? '没有可预览的页面' : '正在生成页面预览…'}</div>}
+        </main>
+        <aside className={styles.details}>
+          <h3>当前 PPTX 文件</h3>
+          {pptxArtifact && pptxPath ? <div className={styles.currentArtifact}>
+            <strong>{artifactName(pptxArtifact.uri)}</strong>
+            <code>{pptxPath}</code>
+            <div className={styles.fileActions}>
+              <button type="button" title="在 ZeroWall Science 中打开 PPTX" onClick={() => openArtifact(ctx, scope, pptxArtifact.uri, artifactName(pptxArtifact.uri))}><ExternalLink size={16} />打开 PPTX</button>
+              <button type="button" title="在文件资源管理器中打开所在文件夹" onClick={() => void ctx.workspaces.openPath(parentPath(pptxPath)).catch(cause => setError(cause instanceof Error ? cause.message : String(cause)))}><FolderOpen size={16} />打开所在文件夹</button>
+            </div>
+          </div> : <p className={styles.muted}>生成完成后，当前 PPTX 会出现在这里。</p>}
+        </aside>
+      </div>
+    </>}
   </section>
 }
 function openArtifact(ctx: ClientContext, scope: TabComponentProps['scope'], uri: string, title: string): void {

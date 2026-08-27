@@ -1,5 +1,6 @@
 export const bundledPlugins = [
   'dsh-better-sidebar',
+  '@huanlin/dsh-plugin-better-sidebar-plugin-office',
   'dsh-dream-skin',
   '@zerowallscience/plugin-base',
   '@zerowallscience/plugin-opencode',

@@ -5,9 +5,9 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
+import { locatePackagedApp } from '../scripts/packaged-app.mjs'
 
 const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const executable = join(desktopRoot, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron')
 const roots: string[] = []
 let application: ChildProcessWithoutNullStreams
 let browser: Browser
@@ -18,9 +18,10 @@ const rendererOutput: string[] = []
 
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'zerowall-electron-e2e-')); roots.push(root)
+  const packaged = await locatePackagedApp(desktopRoot)
   const environment = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined))
-  application = spawn(executable, ['--remote-debugging-port=0', `--user-data-dir=${join(root, 'chromium')}`, desktopRoot], {
-    cwd: desktopRoot,
+  application = spawn(packaged.executablePath, ['--remote-debugging-port=0', `--user-data-dir=${join(root, 'chromium')}`], {
+    cwd: packaged.root,
     env: {
       ...environment,
       APPDATA: join(root, 'appdata'),
@@ -29,6 +30,7 @@ beforeAll(async () => {
       ELECTRON_DISABLE_SECURITY_WARNINGS: 'false',
     },
     stdio: 'pipe',
+    windowsHide: true,
   })
   const captureApplicationOutput = (chunk: Buffer): void => {
     applicationOutput = `${applicationOutput}${chunk.toString()}`.slice(-40_000)
@@ -54,7 +56,8 @@ beforeAll(async () => {
       `Electron diagnostics:\n${applicationOutput}`,
     ].join('\n\n'))
   }
-  await expect.poll(() => page.getByRole('dialog', { name: '登录或注册' }).count()).toBe(0)
+  await completeFirstRunOnboarding(page)
+  await page.getByRole('dialog', { name: '登录或注册' }).waitFor({ state: 'hidden', timeout: 30_000 })
 })
 
 afterAll(async () => {
@@ -65,6 +68,11 @@ afterAll(async () => {
 
 afterEach(async () => {
   await page.setViewportSize({ width: 1280, height: 900 })
+  const settings = page.getByRole('dialog', { name: /^(设置|Settings)$/ })
+  if (await settings.isVisible().catch(() => false)) {
+    await settings.getByRole('button', { name: /^(关闭|Close)$/ }).click()
+    await settings.waitFor({ state: 'hidden', timeout: 30_000 })
+  }
   for (let depth = 0; depth < 4; depth += 1) {
     const visibleDialogs = page.locator('[role="dialog"]:visible')
     if (await visibleDialogs.count() === 0) break
@@ -84,6 +92,11 @@ describe('ZeroWall Science Electron', () => {
     expect(await page.getByRole('button', { name: '科研项目' }).count()).toBe(0)
     expect(await page.getByRole('button', { name: '科研工作台' }).count()).toBe(0)
     expect(await page.getByRole('button', { name: 'MCP 连接' }).count()).toBe(0)
+    const bootEntries = await page.evaluate(() => {
+      const boot = (window as unknown as { __DSH_BOOT__?: { entries?: Array<{ id: string }> } }).__DSH_BOOT__
+      return Array.isArray(boot?.entries) ? boot.entries.map(entry => entry.id) : []
+    })
+    expect(bootEntries).toContain('@huanlin/dsh-plugin-better-sidebar-plugin-office')
   })
 
   it('defaults to Chinese and switches between Chinese and English in Settings', async () => {
@@ -105,8 +118,7 @@ describe('ZeroWall Science Electron', () => {
   it('integrates plugins, Skills, and MCP under Settings capabilities', async () => {
     await page.getByRole('button', { name: '设置' }).click()
     const settings = page.getByRole('dialog', { name: '设置' })
-    await settings.getByRole('button', { name: '能力与扩展' }).click()
-    await settings.getByText(/Skill 用于描述科研流程/).waitFor({ state: 'visible' })
+    await settings.getByRole('button', { name: '插件' }).click()
     expect(await settings.getByRole('tab', { name: '插件配置' }).count()).toBe(1)
     await settings.getByRole('tab', { name: 'Skills' }).click()
     await settings.getByText(/科研 Skills/).waitFor({ state: 'visible' })
@@ -125,8 +137,9 @@ describe('ZeroWall Science Electron', () => {
     await settings.getByRole('tab', { name: '插件列表' }).click()
     const optionalPlugin = settings.locator('[data-plugin-control="user-toggleable"]').first()
     await optionalPlugin.waitFor({ state: 'visible' })
+    await optionalPlugin.getByRole('button').first().click()
+    await optionalPlugin.locator('[data-loader-entry]').waitFor({ state: 'visible' })
     await optionalPlugin.getByRole('button', { name: /启用插件|停用插件/ }).waitFor({ state: 'visible' })
-    expect(await settings.getByText('随 Agent 启用', { exact: true }).count()).toBeGreaterThan(0)
     await settings.getByRole('button', { name: '关闭' }).click()
     await expect.poll(() => page.getByRole('dialog', { name: '设置' }).count()).toBe(0)
   })
@@ -145,6 +158,22 @@ describe('ZeroWall Science Electron', () => {
       .map(element => element.textContent?.trim().slice(0, 80) ?? element.tagName))).toEqual([])
   })
 })
+
+async function completeFirstRunOnboarding(page: Page): Promise<void> {
+  const notice = page.getByRole('dialog', { name: '内测声明' })
+  await notice.waitFor({ state: 'visible', timeout: 30_000 })
+  await notice.getByRole('button', { name: '继续' }).click()
+  await notice.waitFor({ state: 'hidden', timeout: 30_000 })
+
+  const credential = page.getByRole('dialog', { name: '添加一个 API Key 开始使用' })
+  try {
+    await credential.waitFor({ state: 'visible', timeout: 30_000 })
+  } catch {
+    return
+  }
+  await credential.getByRole('button', { name: '稍后配置' }).click()
+  await credential.waitFor({ state: 'hidden', timeout: 30_000 })
+}
 
 async function waitForDevToolsEndpoint(child: ChildProcessWithoutNullStreams, timeoutMs: number): Promise<string> {
   return await new Promise<string>((resolveEndpoint, rejectEndpoint) => {

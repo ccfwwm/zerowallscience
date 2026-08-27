@@ -6,6 +6,7 @@ import { join, relative, resolve } from 'node:path'
 import { ResearchStore } from '@zerowallscience/research-store'
 import type { PresentationArtifact, PresentationGeneration, PresentationRecord, PresentationRevision } from '@zerowallscience/research-store/types'
 import type { GenerateImageResult, ZeroWallImageGenerationService } from '@zerowallscience/plugin-images'
+import type { PresentationSlidePatch } from '@zerowallscience/plugin-presentations/types'
 import { writePresentation } from './export.js'
 
 export interface PresentationProgress {
@@ -140,6 +141,20 @@ export class PresentationWorker {
       if (this.controllers.get(id) === controller) this.controllers.delete(id)
     }
     return this.required(id)
+  }
+
+  /** Persist one page patch, regenerate only that page, and rebuild the current PPTX. */
+  async updateSlide(id: string, slideId: string, patch: PresentationSlidePatch): Promise<PresentationRecord> {
+    const current = this.required(id)
+    const index = current.slides.findIndex(slide => slide.id === slideId)
+    if (index < 0) throw new Error(`Slide was not found: ${slideId}`)
+    const slides = current.slides.map((slide, slideIndex) => slideIndex === index ? applySlidePatch(slide, patch) : slide)
+    const updatedSlide = slides[index]!
+    const outline = current.outline.map((section, sectionIndex) => sectionIndex === index
+      ? { ...section, title: updatedSlide.title, points: bodyPoints(updatedSlide.body) }
+      : section)
+    this.save(id, { slides, outline })
+    return this.retrySlide(id, slideId)
   }
 
   dispose(): void { for (const id of this.pending.keys()) this.clear(id); for (const controller of this.controllers.values()) controller.abort(); this.controllers.clear() }
@@ -278,30 +293,26 @@ export class PresentationWorker {
     if (!project) throw new Error('Presentation project was not found.')
     if (!current.slides.every(slide => slide.visualStatus === 'ready' && slide.visualUri)) return
     const pptxPath = presentationPath(current, project.rootPath, 'pptx')
-    const pdfPath = presentationPath(current, project.rootPath, 'pdf')
     const pptxTemporary = generationTemporary(pptxPath, generationId, 'pptx')
-    const pdfTemporary = generationTemporary(pdfPath, generationId, 'pdf')
     const updatedAt = new Date().toISOString()
     this.save(id, { status: 'generating', generation: step(current.generation!, 'pptx', 0.82) })
     this.progress({ presentationId: id, generationId, status: 'assembling', updatedAt })
     try {
       signal?.throwIfAborted()
       await mkdir(resolve(pptxPath, '..'), { recursive: true })
-      await writePresentation(this.assertGeneration(id, generationId), 'pptx', fileUri(pptxTemporary))
-      this.save(id, { generation: step(this.assertGeneration(id, generationId).generation!, 'rendering', 0.9) })
-      await writePresentation(this.assertGeneration(id, generationId), 'pdf', fileUri(pdfTemporary))
+      await writePresentation(this.assertGeneration(id, generationId), fileUri(pptxTemporary))
       signal?.throwIfAborted()
       this.assertGeneration(id, generationId)
-      await commitArtifacts([{ path: pptxPath, temporary: pptxTemporary }, { path: pdfPath, temporary: pdfTemporary }], generationId)
+      await commitArtifacts([{ path: pptxPath, temporary: pptxTemporary }], generationId)
       const latest = this.assertGeneration(id, generationId)
-      let artifacts = replaceArtifact(replaceArtifact(latest.artifacts, artifact('pptx', pptxPath, 'application/vnd.openxmlformats-officedocument.presentationml.presentation')), artifact('pdf', pdfPath, 'application/pdf'))
+      let artifacts = replaceArtifact(latest.artifacts, artifact('pptx', pptxPath, 'application/vnd.openxmlformats-officedocument.presentationml.presentation'))
       const first = latest.slides[0]
       if (!this.legacyMode && first?.visualUri) artifacts = replaceArtifact(artifacts, { kind: 'preview', uri: first.visualUri, mediaType: 'image/png', ...(first.visual?.checksum ? { checksum: first.visual.checksum } : {}) })
       const finished = finish(latest.generation!)
       this.save(id, { status: 'ready', error: '', artifacts, generation: finished, quality: { structural: 'passed', render: 'unverified', automaticVisual: 'unverified', modelVisual: 'unverified', overall: 'unverified', warnings: ['已生成逐页视觉图片；未检测到本机 PPT 渲染器，渲染质量待人工确认。'] } })
       this.progress({ presentationId: id, generationId, status: 'complete', updatedAt: finished.updatedAt })
     } finally {
-      await Promise.all([rm(pptxTemporary, { force: true }), rm(pdfTemporary, { force: true })])
+      await rm(pptxTemporary, { force: true })
     }
   }
 
@@ -347,8 +358,8 @@ export class PresentationWorker {
 }
 
 function slideFileName(index: number): string { return `slide-${String(index + 1).padStart(2, '0')}.png` }
-function generationTemporary(path: string, generationId: string, format: 'pptx' | 'pdf'): string { return `${path}.${generationId}.tmp.${format}` }
-function presentationPath(presentation: PresentationRecord, root: string, format: 'pptx' | 'pdf'): string { return existingArtifactPath(presentation, format) ?? join(root, '.zerowall', 'artifacts', 'presentations', presentation.id, `${slug(presentation.title)}.${format}`) }
+function generationTemporary(path: string, generationId: string, format: 'pptx'): string { return `${path}.${generationId}.tmp.${format}` }
+function presentationPath(presentation: PresentationRecord, root: string, format: 'pptx'): string { return existingArtifactPath(presentation, format) ?? join(root, '.zerowall', 'artifacts', 'presentations', presentation.id, `${slug(presentation.title)}.${format}`) }
 
 async function commitArtifacts(artifacts: Array<{ path: string; temporary: string }>, generationId: string): Promise<void> {
   const backups: Array<{ path: string; backup: string; existed: boolean }> = []
@@ -376,10 +387,8 @@ async function cleanupGenerationFiles(store: ResearchStore, presentation: Presen
   const project = store.getProject(presentation.projectId)
   if (!generation || !project) return
   const pptxPath = presentationPath(presentation, project.rootPath, 'pptx')
-  const pdfPath = presentationPath(presentation, project.rootPath, 'pdf')
   await Promise.all([
     rm(generationTemporary(pptxPath, generation.id, 'pptx'), { force: true }),
-    rm(generationTemporary(pdfPath, generation.id, 'pdf'), { force: true }),
     rm(join(project.rootPath, '.zerowall', 'artifacts', 'presentations', presentation.id, 'visuals', `.staging-${generation.id}`), { recursive: true, force: true }),
   ])
 }
@@ -397,6 +406,13 @@ function localPath(uri: string): string | undefined { try { const parsed = new U
 function isWithin(root: string, target: string): boolean { const inside = relative(resolve(root), resolve(target)); return inside === '' || (!inside.startsWith('..') && !inside.startsWith('/') && !inside.startsWith('\\') && !/^[A-Za-z]:/u.test(inside)) }
 function slug(value: string): string { return value.trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/gu, '').slice(0, 80) || 'presentation' }
 function isAbort(error: unknown): boolean { return error instanceof Error && (error.name === 'AbortError' || error.message === 'paused' || error.message === 'cancelled') }
+function applySlidePatch(slide: PresentationRecord['slides'][number], patch: PresentationSlidePatch): PresentationRecord['slides'][number] {
+  const next = { ...slide, ...(patch.title === undefined ? {} : { title: patch.title }), ...(patch.body === undefined ? {} : { body: patch.body }) }
+  if (patch.notes !== undefined) { if (patch.notes) next.notes = patch.notes; else delete next.notes }
+  if (patch.visualPrompt !== undefined) { if (patch.visualPrompt) next.visualPrompt = patch.visualPrompt; else delete next.visualPrompt }
+  return next
+}
+function bodyPoints(body: string): string[] { return body.split(/\r?\n/u).map(line => line.replace(/^\s*[-*•]\s*/u, '').trim()).filter(Boolean) }
 function legacyImageService(): ZeroWallImageGenerationService {
   const write = async (input: { outputPath: string; size?: string }, cwd: string): Promise<GenerateImageResult> => { const path = resolve(cwd, input.outputPath); await mkdir(resolve(path, '..'), { recursive: true }); await writeFile(path, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')); return { path, model: 'legacy-test', providerId: 'test', groupId: 'test', bytes: 68, requestedSize: (input.size as GenerateImageResult['requestedSize']) ?? 'auto', actualWidth: 1, actualHeight: 1, quality: 'medium', requestedQuality: 'medium', actualQuality: 'medium' } }
   return { resolveModel: async () => ({ providerId: 'test', groupId: 'test', modelId: 'gpt-image-2' }), resolveQuality: async () => 'auto', generate: write as ZeroWallImageGenerationService['generate'], edit: write as ZeroWallImageGenerationService['edit'] }

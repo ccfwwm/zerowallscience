@@ -19,6 +19,7 @@ const zerowallPackageRoots = [
 ]
 const desktopRuntimeSeeds = [
   'dsh-better-sidebar',
+  '@huanlin/dsh-plugin-better-sidebar-plugin-office',
   'dsh-dream-skin',
   '@deepseek-ai/dsh-subagent-claude-code',
   '@deepseek-ai/dsh-subagent-codex',
@@ -29,6 +30,18 @@ const desktopRuntimeSeeds = [
   'pdf-lib',
   'pptxgenjs',
 ]
+const bundledRuntimeDependencies = new Map([
+  [
+    '@huanlin/dsh-plugin-better-sidebar-plugin-office',
+    new Set([
+      '@aiden0z/pptx-renderer',
+      '@univerjs/preset-sheets-core',
+      '@univerjs/presets',
+      'docx-preview',
+      'xlsx',
+    ]),
+  ],
+])
 const forbiddenDirectories = new Set([
   '.github', '.idea', '.vscode', '__tests__', 'benchmark', 'benchmarks', 'coverage',
   'docs', 'example', 'examples', 'spec', 'test', 'tests',
@@ -97,7 +110,9 @@ while (queue.length > 0) {
   await copyRuntimePackage(resolvedPackage, targetRoot)
   copiedTargets.set(targetKey, identity)
   if (topLevelIdentity === undefined) topLevelPackages.set(request.name, identity)
+  const bundledDependencies = bundledRuntimeDependencies.get(resolvedPackage.manifest.name) ?? new Set()
   for (const name of Object.keys(resolvedPackage.manifest.dependencies ?? {}).sort()) {
+    if (bundledDependencies.has(name)) continue
     queue.push({ name, parentRoot: resolvedPackage.sourceRoot, targetParentRoot: targetRoot, optional: false })
   }
   for (const name of Object.keys(resolvedPackage.manifest.optionalDependencies ?? {}).sort()) {

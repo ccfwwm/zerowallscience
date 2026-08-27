@@ -3,10 +3,11 @@ import { randomUUID } from 'node:crypto'
 import { access, mkdtemp, readFile, readdir, stat } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { basename, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { extractFile, listPackage } from '@electron/asar'
 import { chromium } from 'playwright'
+import { locatePackagedApp } from './packaged-app.mjs'
 
 const MIB = 1024 * 1024
 const packageRoot = resolve(import.meta.dirname, '..')
@@ -18,7 +19,7 @@ if (process.argv.includes('--audit-source')) {
   process.exit(0)
 }
 
-const packaged = await locatePackagedApp()
+const packaged = await locatePackagedApp(packageRoot)
 const asarPath = resolve(packaged.resourcesRoot, 'app.asar')
 await access(asarPath)
 
@@ -135,8 +136,8 @@ function verifyArchivePolicy() {
   const presentationsInject = [...presentationsClient.matchAll(/const inject = \[[\s\S]*?\];/gu)]
     .map(match => [...match[0].matchAll(/["']([^"']+)["']/gu)].map(value => value[1]))
     .find(names => names.includes('betterSidebar') && names.includes('remote.zerowallPresentation'))
-  if (!presentationsClient.includes('.conversation.resolveImage(')) {
-    throw new Error('Packaged presentations client is missing its expected conversation image bridge.')
+  if (!presentationsClient.includes('.conversation.addImageBytesToDraft(')) {
+    throw new Error('Packaged presentations client is missing its session-owned draft image bridge.')
   }
   if (presentationsInject === undefined || !presentationsInject.includes('conversation')) {
     throw new Error('Packaged presentations client accesses conversation without declaring it in the client inject list.')
@@ -147,6 +148,27 @@ function verifyArchivePolicy() {
     || /^node_modules\/dsh-better-sidebar\/scripts\//iu.test(path)
   ))
   if (forbiddenBetterSidebarFiles.length > 0) throw new Error(`Better-sidebar documentation/install files found in ASAR:\n${forbiddenBetterSidebarFiles.join('\n')}`)
+  const officePackages = archiveFiles.filter(path => path.endsWith('node_modules/@huanlin/dsh-plugin-better-sidebar-plugin-office/package.json'))
+  if (officePackages.length !== 1) throw new Error(`Better-sidebar Office plugin must be packaged exactly once; found ${officePackages.length}.`)
+  const officeManifest = JSON.parse(readArchiveFile('node_modules/@huanlin/dsh-plugin-better-sidebar-plugin-office/package.json').toString('utf8'))
+  if (officeManifest.version !== '0.1.2') throw new Error(`Packaged Better-sidebar Office plugin must be 0.1.2; found ${officeManifest.version}.`)
+  const officeClient = readArchiveFile('node_modules/@huanlin/dsh-plugin-better-sidebar-plugin-office/lib/client.js').toString('utf8')
+  for (const marker of ['registerFileViewer', '.docx', '.xlsx', '.pptx']) {
+    if (!officeClient.includes(marker)) throw new Error(`Packaged Better-sidebar Office plugin is missing viewer marker: ${marker}`)
+  }
+  const duplicatedOfficeDependencies = [
+    'node_modules/@aiden0z/pptx-renderer/',
+    'node_modules/@univerjs/preset-sheets-core/',
+    'node_modules/@univerjs/presets/',
+    'node_modules/docx-preview/',
+  ].filter(prefix => archiveFiles.some(path => path.startsWith(prefix)))
+  const nestedOfficeDependencies = archiveFiles.filter(path => path.startsWith(
+    'node_modules/@huanlin/dsh-plugin-better-sidebar-plugin-office/node_modules/',
+  ))
+  duplicatedOfficeDependencies.push(...nestedOfficeDependencies)
+  if (duplicatedOfficeDependencies.length > 0) {
+    throw new Error(`Office dependencies bundled in client.js must not be copied into ASAR again:\n${duplicatedOfficeDependencies.join('\n')}`)
+  }
   const dreamSkinPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-dream-skin/package.json'))
   if (dreamSkinPackages.length !== 1) throw new Error(`dsh-dream-skin must be packaged exactly once; found ${dreamSkinPackages.length}.`)
   const dreamSkinManifest = JSON.parse(readArchiveFile('node_modules/dsh-dream-skin/package.json').toString('utf8'))
@@ -188,7 +210,14 @@ function verifyQuestionComposerBundle() {
 function hasForbiddenRuntimeDirectory(path) {
   const forbidden = new Set(['test', 'tests', '__tests__', 'example', 'examples', 'docs'])
   const segments = path.split('/')
-  return segments.some(segment => forbidden.has(segment.toLowerCase()))
+  return segments.some((segment, index) => {
+    const lower = segment.toLowerCase()
+    const isUniverDocsPackage = lower === 'docs'
+      && index === 2
+      && segments[0]?.toLowerCase() === 'node_modules'
+      && segments[1]?.toLowerCase() === '@univerjs'
+    return forbidden.has(lower) && !isUniverDocsPackage
+  })
 }
 
 async function verifyExternalPolicy() {
@@ -790,9 +819,14 @@ async function verifySourceRuntimePolicy() {
   if (forbiddenWechat.length > 0) throw new Error(`WeChat plugin must be iLink-only; found ${forbiddenWechat.join(', ')}.`)
   await access(resolve(repositoryRoot, 'plugins', 'wechat', 'src', 'host', 'ilink.ts'))
   const stableProfile = await readFile(resolve(repositoryRoot, 'profiles', 'generated', 'stable.yml'), 'utf8')
-  if (!stableProfile.includes("'@zerowallscience/plugin-wechat'")
+  const desktopPatch = await readFile(resolve(repositoryRoot, 'desktop', 'build', 'zerowall.patch.yml'), 'utf8')
+  if (!stableProfile.includes("'@huanlin/dsh-plugin-better-sidebar-plugin-office'")
+    || !stableProfile.includes("'@zerowallscience/plugin-wechat'")
     || !/wechat:[\s\S]*enabled:\s*true[\s\S]*autoConnect:\s*false[\s\S]*channel:\s*ilink/u.test(stableProfile)) {
-    throw new Error('Stable profile must enable WeChat while keeping first-start autoConnect disabled.')
+    throw new Error('Stable profile must include the Office viewer and enable WeChat while keeping first-start autoConnect disabled.')
+  }
+  if (!desktopPatch.includes("name: '@huanlin/dsh-plugin-better-sidebar-plugin-office'")) {
+    throw new Error('Packaged Electron patch must mount the Better-sidebar Office viewer.')
   }
 }
 
@@ -801,28 +835,4 @@ async function pluginManifestPaths() {
   return (await readdir(root, { withFileTypes: true }))
     .filter(entry => entry.isDirectory())
     .map(entry => resolve(root, entry.name, 'package.json'))
-}
-
-async function locatePackagedApp() {
-  const outputRoot = resolve(packageRoot, 'dist')
-  if (process.platform === 'win32') {
-    const root = resolve(outputRoot, 'win-unpacked')
-    const executable = (await readdir(root, { withFileTypes: true }))
-      .find(entry => entry.isFile() && entry.name.endsWith('.exe') && !entry.name.toLowerCase().includes('uninstall'))
-    if (executable === undefined) throw new Error(`No packaged Electron executable found under ${root}.`)
-    return { root, resourcesRoot: resolve(root, 'resources'), executablePath: resolve(root, executable.name) }
-  }
-
-  const outputs = (await readdir(outputRoot, { withFileTypes: true })).filter(entry => entry.isDirectory() && entry.name.startsWith('mac'))
-  const preferredNames = process.arch === 'arm64' ? ['mac-arm64', 'mac'] : ['mac', 'mac-x64']
-  const output = preferredNames.map(name => outputs.find(entry => entry.name === name)).find(entry => entry !== undefined)
-  if (output === undefined) throw new Error(`No macOS unpacked output found under ${outputRoot}.`)
-  const app = (await readdir(resolve(outputRoot, output.name), { withFileTypes: true })).find(entry => entry.isDirectory() && entry.name.endsWith('.app'))
-  if (app === undefined) throw new Error(`No macOS application bundle found under ${resolve(outputRoot, output.name)}.`)
-  const root = resolve(outputRoot, output.name, app.name, 'Contents')
-  return {
-    root,
-    resourcesRoot: resolve(root, 'Resources'),
-    executablePath: resolve(root, 'MacOS', basename(app.name, '.app')),
-  }
 }

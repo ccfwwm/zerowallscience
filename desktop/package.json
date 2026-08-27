@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "4.3.6",
+  "version": "4.3.7",
   "description": "ZeroWall Science 4.3 local-first scientific research workbench with the DSH better-sidebar workbench.",
   "private": true,
   "type": "module",
@@ -11,7 +11,9 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --exclude e2e/**",
-    "test:e2e": "vitest run --config e2e/vitest.config.ts",
+    "test:e2e": "pnpm run test:e2e:packaged",
+    "test:e2e:packaged": "vitest run --config e2e/vitest.config.ts e2e/desktop.spec.ts",
+    "test:e2e:source": "vitest run --config e2e/vitest.config.ts e2e/desktop-source.spec.ts",
     "package:dir": "electron-builder --config build/electron-builder.preview.cjs --dir --publish never && node scripts/verify-packaged-runtime.mjs",
     "package:win": "node scripts/verify-target.mjs win32 x64 && electron-builder --config build/electron-builder.preview.cjs --win --x64 --publish never && node scripts/verify-packaged-runtime.mjs",
     "package:mac:x64": "node scripts/verify-target.mjs darwin x64 && electron-builder --config build/electron-builder.preview.cjs --mac --x64 --publish never && node scripts/verify-packaged-runtime.mjs",
@@ -21,6 +23,7 @@
     "package:stable:mac:arm64": "node scripts/verify-target.mjs darwin arm64 && electron-builder --config build/electron-builder.stable.cjs --mac --arm64 --publish never && node scripts/verify-packaged-runtime.mjs"
   },
   "dependencies": {
+    "@huanlin/dsh-plugin-better-sidebar-plugin-office": "0.1.2",
     "dsh-better-sidebar": "0.16.1",
     "dsh-dream-skin": "0.4.14",
     "@zerowallscience/dsh-ppt-runtime": "workspace:^",
