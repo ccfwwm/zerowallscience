@@ -9,7 +9,10 @@ export interface ImageModelSelection {
   modelId: string
 }
 
+export type ImageGenerationQuality = 'auto' | 'low' | 'medium' | 'high'
+
 export interface EnvironmentSettingsValue {
   variables: { name: string }[]
   imageModel: ImageModelSelection
+  imageQuality: ImageGenerationQuality
 }

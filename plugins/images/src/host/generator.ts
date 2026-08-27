@@ -5,12 +5,13 @@ import type { ImageAttachmentRef, ImageMediaType, SaveImageAttachment } from '@d
 import sharp from 'sharp'
 import type { AccountSecretStore } from '@zerowallscience/plugin-account'
 import type { AiCloudAccountSnapshot, AiCloudManagedModel } from '@zerowallscience/plugin-account/types'
-import type { ImageModelSelection } from '@zerowallscience/plugin-environment/types'
+import type { ImageGenerationQuality, ImageModelSelection } from '@zerowallscience/plugin-environment/types'
 
 const KEY_PREFIX = 'zerowall.ai-cloud.group.'
 const MAX_INPUT_IMAGES = 16
 const MAX_INPUT_IMAGE_BYTES = 50 * 1024 * 1024
 const MAX_OUTPUT_IMAGE_BYTES = 64 * 1024 * 1024
+const DEFAULT_IMAGE_QUALITY: ImageGenerationQuality = 'medium'
 
 const IMAGE_MEDIA_TYPES: Readonly<Record<string, ImageMediaType>> = {
   '.png': 'image/png',
@@ -29,8 +30,8 @@ export interface GenerateImageInput {
   prompt: string
   outputPath: string
   model?: string
-  size?: 'auto' | '1024x1024' | '1536x1024' | '1024x1536'
-  quality?: 'auto' | 'low' | 'medium' | 'high'
+  size?: ImageSize
+  quality?: ImageGenerationQuality
   overwrite?: boolean
 }
 
@@ -41,7 +42,7 @@ export interface EditImageInput extends GenerateImageInput {
 
 export interface ImageAttachmentValue {
   attachmentId: string
-  mediaType: 'image/png'
+  mediaType: ImageMediaType
   bytes: number
   width: number
   height: number
@@ -51,9 +52,21 @@ export interface ImageAttachmentValue {
 export interface GenerateImageResult {
   path: string
   model: string
+  providerId: string
+  groupId: string
   bytes: number
+  requestedSize: ImageSize
+  actualWidth: number
+  actualHeight: number
+  quality: ImageGenerationQuality
+  /** The quality requested at the API boundary (kept separate for audits). */
+  requestedQuality: ImageGenerationQuality
+  /** The quality reported by the provider, or the requested value when absent. */
+  actualQuality: ImageGenerationQuality
   revisedPrompt?: string
   image?: ImageAttachmentValue
+  /** Stable attachment name used by cross-plugin consumers. */
+  attachment?: ImageAttachmentValue
   previewWarning?: string
 }
 
@@ -65,7 +78,10 @@ export interface AiCloudImageGeneratorOptions {
   fetch?: typeof fetch
   attachments?: () => ImageAttachmentWriter | undefined
   imageModel?: () => Promise<ImageModelSelection | undefined>
+  imageQuality?: () => Promise<ImageGenerationQuality | undefined>
 }
+
+export type ImageSize = 'auto' | `${number}x${number}`
 
 interface InspectedImage {
   path: string
@@ -88,6 +104,8 @@ export class AiCloudImageGenerator {
 
   async generate(input: GenerateImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
     const prompt = nonEmptyPrompt(input.prompt)
+    const size = validateImageSize(input.size)
+    const quality = await this.resolveQuality(input.quality)
     const workspace = await workspaceRoot(cwd)
     const target = await safeOutputPath(workspace, input.outputPath, input.overwrite ?? false)
     const model = await this.resolveModel(input.model)
@@ -100,17 +118,19 @@ export class AiCloudImageGenerator {
       body: JSON.stringify({
         model: model.modelId,
         prompt,
-        size: input.size ?? 'auto',
-        quality: input.quality ?? 'auto',
+        size,
+        quality,
         output_format: 'png',
       }),
       ...(signal === undefined ? {} : { signal }),
     }, 'generation')
-    return await this.finishResponse(response, workspace, target, model.modelId, input.overwrite ?? false, signal)
+    return await this.finishResponse(response, workspace, target, model, size, quality, input.overwrite ?? false, signal)
   }
 
   async edit(input: EditImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
     const prompt = nonEmptyPrompt(input.prompt)
+    const size = validateImageSize(input.size)
+    const quality = await this.resolveQuality(input.quality)
     if (!Array.isArray(input.inputPaths) || input.inputPaths.length === 0) {
       throw new Error('input_paths must contain at least one image')
     }
@@ -139,8 +159,8 @@ export class AiCloudImageGenerator {
     const form = new FormData()
     form.set('model', model.modelId)
     form.set('prompt', prompt)
-    form.set('size', input.size ?? 'auto')
-    form.set('quality', input.quality ?? 'auto')
+    form.set('size', size)
+    form.set('quality', quality)
     form.set('output_format', 'png')
     for (const image of images) {
       form.append('image[]', new Blob([Buffer.from(image.data)], { type: image.mediaType }), basename(image.path))
@@ -155,18 +175,39 @@ export class AiCloudImageGenerator {
       body: form,
       ...(signal === undefined ? {} : { signal }),
     }, 'edit')
-    return await this.finishResponse(response, workspace, target, model.modelId, input.overwrite ?? false, signal)
+    return await this.finishResponse(response, workspace, target, model, size, quality, input.overwrite ?? false, signal)
   }
 
-  private async resolveModel(requested: string | undefined): Promise<AiCloudManagedModel> {
+  async resolveModel(requested?: string): Promise<AiCloudManagedModel> {
     const snapshot = this.snapshot ?? await this.options.account.current()
     this.snapshot = snapshot
-    const configured = requested?.trim() ? undefined : await this.options.imageModel?.()
-    const imageModels = snapshot.models.filter(model => model.capability === 'image-generation' && isImageGenerationGroup(model.groupName))
-    if (requested?.trim()) return selectImageModel(snapshot, requested.trim())
-    if (configured?.modelId) return selectImageModel(snapshot, configured.modelId, configured)
-    if (imageModels.length === 1) return imageModels[0]!
-    throw new Error('当前账户没有可用的生图模型（no configured gpt-image-2），请在“环境配置”中选择生图模型。')
+    const configured = await this.options.imageModel?.()
+    if (snapshot.status !== 'signedIn') throw new Error('请先登录 ZeroWall AI Cloud，再生成演示文稿视觉。')
+    const imageModels = stableImageModels(snapshot.models)
+    const selected = configured?.modelId
+      ? imageModels.find(candidate => candidate.modelId === configured.modelId
+        && candidate.providerId === configured.providerId && candidate.groupId === configured.groupId)
+      : undefined
+    const requestedId = requested?.trim()
+    if (requestedId) {
+      if (selected?.modelId === requestedId) return selected
+      const candidate = imageModels.find(model => model.modelId === requestedId)
+      if (candidate) return candidate
+      throw new Error(`当前账户没有可用的 ${requestedId} 生图模型，请在“环境配置”中刷新或选择生图模型。`)
+    }
+    if (selected) return selected
+    const fallback = imageModels.find(model => model.modelId === 'gpt-image-2')
+    if (fallback) return fallback
+    throw new Error('当前账户没有可用的 gpt-image-2（no configured gpt-image-2），请在“环境配置”中选择生图模型。')
+  }
+
+  private async resolveQuality(explicit?: ImageGenerationQuality): Promise<ImageGenerationQuality> {
+    if (explicit !== undefined) {
+      if (!isImageQuality(explicit)) throw new Error('quality must be auto, low, medium, or high')
+      return explicit
+    }
+    const configured = await this.options.imageQuality?.()
+    return isImageQuality(configured) ? configured : DEFAULT_IMAGE_QUALITY
   }
 
   private async credential(model: AiCloudManagedModel): Promise<string> {
@@ -192,7 +233,9 @@ export class AiCloudImageGenerator {
     response: Response,
     workspace: string,
     target: string,
-    model: string,
+    model: AiCloudManagedModel,
+    requestedSize: ImageSize,
+    quality: ImageGenerationQuality,
     overwrite: boolean,
     signal?: AbortSignal,
   ): Promise<GenerateImageResult> {
@@ -200,12 +243,24 @@ export class AiCloudImageGenerator {
     signal?.throwIfAborted()
     const decoded = await decodeImagePayload(await response.json() as unknown, this.fetcher, signal)
     const png = await normalizePng(decoded.bytes, signal)
+    const metadata = await sharp(png, { failOn: 'error' }).metadata()
+    if (!Number.isInteger(metadata.width) || !Number.isInteger(metadata.height)) {
+      throw new Error('Generated image has no readable dimensions.')
+    }
     await atomicWrite(workspace, target, png, overwrite)
 
     const base: GenerateImageResult = {
       path: target,
-      model,
+      model: model.modelId,
+      providerId: model.providerId,
+      groupId: model.groupId,
       bytes: png.byteLength,
+      requestedSize,
+      actualWidth: metadata.width,
+      actualHeight: metadata.height,
+      quality,
+      requestedQuality: quality,
+      actualQuality: decoded.actualQuality ?? quality,
       ...(decoded.revisedPrompt === undefined ? {} : { revisedPrompt: decoded.revisedPrompt }),
     }
     const attachments = this.options.attachments?.()
@@ -214,7 +269,8 @@ export class AiCloudImageGenerator {
     }
     try {
       const ref = await attachments.saveImage({ data: png, mediaType: 'image/png', name: basename(target) })
-      return { ...base, image: attachmentValue(ref) }
+      const attachment = attachmentValue(ref)
+      return { ...base, image: attachment, attachment }
     } catch (error) {
       return { ...base, previewWarning: `Image was saved, but its conversation preview could not be stored: ${errorMessage(error)}` }
     }
@@ -225,6 +281,39 @@ function nonEmptyPrompt(raw: string): string {
   const prompt = raw.trim()
   if (!prompt) throw new Error('prompt must be a non-empty string')
   return prompt
+}
+
+export function validateImageSize(raw: string | undefined): ImageSize {
+  const value = raw?.trim() || 'auto'
+  if (value === 'auto') return value
+  const match = /^(\d+)x(\d+)$/u.exec(value)
+  if (match === null) throw new Error('size must be auto or a positive WIDTHxHEIGHT value, for example 2048x2048')
+  const width = Number(match[1])
+  const height = Number(match[2])
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
+    throw new Error('size must use positive integer dimensions, for example 2048x2048')
+  }
+  if (width % 16 !== 0 || height % 16 !== 0) {
+    throw new Error('size width and height must be multiples of 16')
+  }
+  const ratio = width / height
+  if (ratio < 1 / 3 || ratio > 3) {
+    throw new Error('size aspect ratio must be between 1:3 and 3:1')
+  }
+  // OpenAI permits up to 3840x2160 for landscape and the transposed
+  // dimensions for portrait. Keep both axes bounded while allowing square
+  // and custom 16:9/9:16 requests.
+  const landscape = width >= height
+  const maxWidth = landscape ? 3840 : 2160
+  const maxHeight = landscape ? 2160 : 3840
+  if (width > maxWidth || height > maxHeight) {
+    throw new Error(`size exceeds the supported maximum of ${maxWidth}x${maxHeight}`)
+  }
+  return value as ImageSize
+}
+
+function isImageQuality(value: unknown): value is ImageGenerationQuality {
+  return value === 'auto' || value === 'low' || value === 'medium' || value === 'high'
 }
 
 function selectImageModel(snapshot: AiCloudAccountSnapshot, requested: string, configured?: ImageModelSelection): AiCloudManagedModel {
@@ -239,6 +328,15 @@ function selectImageModel(snapshot: AiCloudAccountSnapshot, requested: string, c
   const model = candidates[0]
   if (model === undefined) throw new Error(`当前 AI Cloud 账户没有配置生图模型 ${requested}，请刷新账户模型列表。`)
   return model
+}
+
+function stableImageModels(models: AiCloudManagedModel[]): AiCloudManagedModel[] {
+  return models
+    .filter(model => model.capability === 'image-generation' && isImageGenerationGroup(model.groupName))
+    .sort((left, right) => left.groupName.localeCompare(right.groupName, 'zh-CN')
+      || left.groupId.localeCompare(right.groupId, undefined, { numeric: true })
+      || left.providerId.localeCompare(right.providerId)
+      || left.modelId.localeCompare(right.modelId))
 }
 
 function isImageGenerationGroup(name: string): boolean {
@@ -356,12 +454,13 @@ async function decodeImagePayload(
   payload: unknown,
   fetcher: typeof fetch,
   signal?: AbortSignal,
-): Promise<{ bytes: Uint8Array; revisedPrompt?: string }> {
+): Promise<{ bytes: Uint8Array; revisedPrompt?: string; actualQuality?: ImageGenerationQuality }> {
   if (!isRecord(payload) || !Array.isArray(payload.data) || !isRecord(payload.data[0])) throw new Error('Image request returned no image.')
   const item = payload.data[0]
   const revisedPrompt = typeof item.revised_prompt === 'string' && item.revised_prompt.trim() ? item.revised_prompt : undefined
+  const actualQuality = isImageQuality(item.quality) ? item.quality : isImageQuality(item.actual_quality) ? item.actual_quality : undefined
   if (typeof item.b64_json === 'string' && item.b64_json.length > 0) {
-    return { bytes: Buffer.from(item.b64_json, 'base64'), ...(revisedPrompt === undefined ? {} : { revisedPrompt }) }
+    return { bytes: Buffer.from(item.b64_json, 'base64'), ...(revisedPrompt === undefined ? {} : { revisedPrompt }), ...(actualQuality === undefined ? {} : { actualQuality }) }
   }
   if (typeof item.url === 'string') {
     const url = new URL(item.url)
@@ -376,7 +475,7 @@ async function decodeImagePayload(
     if (!response.ok) throw new Error(`Generated image download failed (HTTP ${response.status}).`)
     const length = Number(response.headers.get('content-length'))
     if (Number.isFinite(length) && length > MAX_OUTPUT_IMAGE_BYTES) throw new Error('Generated image exceeds the 64 MiB safety limit.')
-    return { bytes: new Uint8Array(await response.arrayBuffer()), ...(revisedPrompt === undefined ? {} : { revisedPrompt }) }
+    return { bytes: new Uint8Array(await response.arrayBuffer()), ...(revisedPrompt === undefined ? {} : { revisedPrompt }), ...(actualQuality === undefined ? {} : { actualQuality }) }
   }
   throw new Error('Image request returned neither image bytes nor a download URL.')
 }
@@ -417,7 +516,6 @@ async function atomicWrite(root: string, target: string, data: Uint8Array, overw
 }
 
 function attachmentValue(ref: ImageAttachmentRef): ImageAttachmentValue {
-  if (ref.mediaType !== 'image/png') throw new Error('Attachment storage returned non-PNG metadata for a PNG output.')
   return {
     attachmentId: String(ref.attachmentId),
     mediaType: ref.mediaType,

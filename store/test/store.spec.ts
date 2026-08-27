@@ -17,12 +17,12 @@ describe('ResearchStore', () => {
   it('applies migrations idempotently and persists projects across restart', () => {
     const path = databasePath()
     const first = new ResearchStore(path)
-    expect(first.schemaVersion()).toBe(5)
+    expect(first.schemaVersion()).toBe(7)
     const created = first.createProject({ name: 'Genome Study', rootPath: 'C:/science/genome' })
     first.close()
 
     const reopened = new ResearchStore(path)
-    expect(reopened.schemaVersion()).toBe(5)
+    expect(reopened.schemaVersion()).toBe(7)
     expect(reopened.listProjects()).toEqual([created])
     reopened.close()
   })
@@ -257,14 +257,33 @@ describe('ResearchStore', () => {
     const generating = store.updatePresentation(designing.id, { status: 'generating' })
     expect(store.pausePresentation(generating.id).status).toBe('paused')
     expect(store.resumePresentation(generating.id).status).toBe('designing')
-    store.updatePresentation(generating.id, { status: 'generating', slides: [{ id: 'slide-1', title: 'Finding', body: 'Evidence', assetUris: ['file:///figure.png'] }] })
-    const ready = store.updatePresentation(generating.id, { status: 'ready' })
+    store.updatePresentation(generating.id, { status: 'generating', slides: [{
+      id: 'slide-1', title: 'Finding', body: 'Evidence', assetUris: ['file:///figure.png'],
+      visual: {
+        model: { providerId: 'provider-1', groupId: 'group-1', modelId: 'gpt-image-2' },
+        promptStrategy: 'zerowall-full-slide-image', visualSource: 'generated', referenceUris: [],
+        generatedUri: 'file:///slide-1.png', checksum: 'sha256:slide-1',
+        attachment: { attachmentId: 'sha256:preview-1', mediaType: 'image/jpeg', bytes: 123, width: 1536, height: 1024, name: 'slide-1.png' },
+      },
+    }] })
+    const ready = store.updatePresentation(generating.id, {
+      status: 'ready',
+      artifacts: [{ kind: 'preview', uri: 'file:///results-preview.png', mediaType: 'image/png', checksum: 'sha256:preview' }],
+      quality: {
+        structural: 'passed', render: 'passed', automaticVisual: 'unverified',
+        modelVisual: 'unverified', overall: 'unverified', warnings: ['Model review is pending.'],
+      },
+    })
     expect(store.exportPresentation(ready.id, 'pptx', 'file:///results.pptx').exportUris.pptx).toBe('file:///results.pptx')
     store.close()
 
     const reopened = new ResearchStore(path)
     expect(reopened.listPublications(project.id)[0]).toMatchObject({ status: 'ready', exportUri: 'file:///publication.zip' })
-    expect(reopened.listPresentations(project.id)[0]).toMatchObject({ status: 'ready', slides: [{ id: 'slide-1' }] })
+    expect(reopened.listPresentations(project.id)[0]).toMatchObject({
+      status: 'ready', slides: [{ id: 'slide-1', visual: { attachment: { mediaType: 'image/jpeg' } } }],
+      artifacts: [{ kind: 'preview', checksum: 'sha256:preview' }],
+      quality: { structural: 'passed', overall: 'unverified', warnings: ['Model review is pending.'] },
+    })
     reopened.close()
   })
 

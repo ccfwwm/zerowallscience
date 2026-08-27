@@ -45,9 +45,20 @@ const allowedLocalAdaptations = new Set([
   'packages/host/apiproxy/tests/fetch-carrier.spec.ts',
   'packages/host/apiproxy/tests/rpc-schemas.spec.ts',
   'packages/host/directory-picker-native/src/win32-dialog-host.ts',
+  'packages/host/directory-picker-native/src/native-picker.ts',
+  'packages/host/directory-picker-native/src/win32-dialog.ts',
   'packages/llm/llm-pi-ai/src/adapter.ts',
+  'packages/llm/llm-pi-ai/src/replay.ts',
+  'packages/llm/llm-pi-ai/tests/convert.spec.ts',
   'packages/llm/llm/src/index.ts',
   'packages/boot/app-boot/src/profile.ts',
+  'packages/client/web/package.json',
+  'packages/client/web/src/platform.ts',
+  'packages/client/web/src/seed.ts',
+  // ZeroWall shell adapters normalize duplicate sandbox requests at the
+  // tool boundary when the active mode already matches the requested mode.
+  'packages/shell/tool-bash/src/index.ts',
+  'packages/shell/tool-pwsh/src/index.ts',
 ])
 
 function run(file, args, options = {}) {
@@ -205,7 +216,10 @@ function applyCachedModelProbeStatus(groups: ModelProviderGroup[]): ModelProvide
 
 async function adaptPackagedDialogWorkerPath() {
   const original = await readFile(dialogHost, 'utf8')
-  if (original.includes('unpackedWorkerPath')) return original
+  // Newer ZeroWall-adapted DSH sources resolve the worker path directly from
+  // app.asar to app.asar.unpacked. Keep the build idempotent when that source
+  // is already present instead of requiring the old replacement marker.
+  if (original.includes('app.asar.unpacked')) return original
   const from = "    return spawn(process.execPath, [fileURLToPath(new URL('./worker.cjs', import.meta.url))], { env, stdio, windowsHide: true })"
   const to = "    const workerPath = fileURLToPath(new URL('./worker.cjs', import.meta.url))\n    // The worker is intentionally unpacked because koffi/native dialog code\n    // cannot execute from app.asar. Resolve the physical sibling when the\n    // host module itself is loaded from the archive.\n    const unpackedWorkerPath = workerPath.replace(/([\\\\/])app\\.asar([\\\\/])/iu, '$1app.asar.unpacked$2')\n    return spawn(process.execPath, [unpackedWorkerPath], { env, stdio, windowsHide: true })"
   if (!original.includes(from)) throw new Error('DSH rc2 dialog worker source no longer matches the ZeroWall packaged-path adaptation.')

@@ -351,9 +351,16 @@ function PreviewSurface({ payload, t }: { payload: ScientificPreviewPayload; t: 
             else { element.replaceChildren(); const empty = document.createElement('p'); empty.textContent = t('research.preview.noSheets'); element.appendChild(empty) }
           }
         } else {
-          const module = await dynamicImport('/zerowall-preview-runtime/pptx-preview.mjs') as { PptxViewer: { open(input: Uint8Array, element: HTMLElement, options: Record<string, unknown>): Promise<{ destroy(): void }> }; RECOMMENDED_ZIP_LIMITS: unknown }
-          const viewer = await module.PptxViewer.open(bytes(), element, { zipLimits: module.RECOMMENDED_ZIP_LIMITS, lazySlides: true, lazyMedia: true, scrollContainer: element, pdfjs: { moduleUrl: '/zerowall-preview-runtime/pdf.min.mjs', workerUrl: '/zerowall-preview-runtime/pdf.worker.min.mjs' } })
-          destroy = () => viewer.destroy()
+          // PPTX previews are owned by the ZeroWall presentation workbench,
+          // which renders the persisted per-slide PNGs. Keeping a second
+          // OOXML viewer here produced a different source of truth and could
+          // show stale decks from the generic research artifact list.
+          if (!disposed) {
+            element.replaceChildren()
+            const note = document.createElement('p')
+            note.textContent = '请在“演示文稿”工作台查看逐页预览；此处仅提供 PPTX 文件打开。'
+            element.appendChild(note)
+          }
         }
       } catch (reason) { if (!disposed) element.textContent = message(reason) }
     })()

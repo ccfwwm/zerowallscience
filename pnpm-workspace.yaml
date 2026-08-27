@@ -46,5 +46,5 @@ allowBuilds:
   node-addon-require-builtin: false
 
 minimumReleaseAgeExclude:
-  - dsh-better-sidebar@0.16.0
+  - dsh-better-sidebar@0.16.1
   - dsh-dream-skin@0.4.14

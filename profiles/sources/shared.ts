@@ -11,6 +11,7 @@ export const bundledPlugins = [
   '@zerowallscience/plugin-ai-cloud',
   '@zerowallscience/plugin-files',
   '@zerowallscience/plugin-images',
+  '@zerowallscience/plugin-image-dup',
   '@zerowallscience/plugin-mcp',
   '@zerowallscience/plugin-skills',
   '@zerowallscience/plugin-reviewer',

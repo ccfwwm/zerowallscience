@@ -250,8 +250,14 @@ app.whenReady().then(async () => {
   const mcpEnvironmentRoot = join(userData, 'mcp-environments')
   await mkdir(mcpEnvironmentRoot, { recursive: true })
   process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = mcpEnvironmentRoot
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error('Operating-system credential encryption is unavailable. ZeroWallScience will not store account secrets without it.')
+  // Do not block the entire desktop when the OS credential provider is not
+  // available (for example, a packaged smoke run in a headless profile).
+  // CredentialVault still receives the safeStorage callbacks and will fail
+  // closed when a caller attempts to persist a secret; the UI and offline
+  // runtime can continue to start and report that limitation explicitly.
+  const encryptionAvailable = safeStorage.isEncryptionAvailable()
+  if (!encryptionAvailable) {
+    console.warn('Operating-system credential encryption is unavailable; secret persistence is disabled until it becomes available.')
   }
   const credentialVault = new CredentialVault(join(userData, 'credentials', 'vault.json'), {
     encrypt: (value) => safeStorage.encryptString(value),

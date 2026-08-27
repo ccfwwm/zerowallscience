@@ -1,0 +1,35 @@
+{
+  "name": "@zerowallscience/plugin-image-dup",
+  "version": "4.3.5",
+  "dsh": {
+    "min": "0.1.1-rc.2",
+    "max": "0.1.1-rc.2"
+  },
+  "host": "./lib/index.js",
+  "client": "./lib/client.js",
+  "requiredServices": [],
+  "optionalServices": [
+    "zerowallFiles",
+    "zerowallProjects",
+    "zerowallResearch"
+  ],
+  "capabilities": [
+    "image-duplicate-detection",
+    "artifacts"
+  ],
+  "permissions": [
+    "files",
+    "processes",
+    "attachments"
+  ],
+  "network": false,
+  "files": true,
+  "credentials": false,
+  "approvals": false,
+  "profiles": [
+    "development",
+    "preview",
+    "stable"
+  ],
+  "migrationVersion": 1
+}

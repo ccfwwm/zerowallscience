@@ -10,6 +10,20 @@ Git submodule. Its exact fork and upstream revisions are recorded in
 `dsh/lock/upstream.json`. Package-manager lockfiles provide the complete
 versioned dependency inventory.
 
+## ZeroWall scientific capability adaptations
+
+| Internal package | Upstream | Fixed revision | License |
+| --- | --- | --- | --- |
+| `@zerowallscience/plugin-image-dup` | [`PetCT/dsh-Bio-image-dup-check`](https://github.com/PetCT/dsh-Bio-image-dup-check) | `7051eb55f611a46db3d9cfa1768e56c7d1a91553` | MIT |
+| `@zerowallscience/dsh-ppt-runtime` | [`yejiming/dsh-ppt`](https://github.com/yejiming/dsh-ppt) | `538f23c834056e2b3ab7314524d4b31416803a6b` | MIT |
+
+The image duplicate detector is a first-party Host/Client rewrite that retains
+algorithm provenance while replacing the upstream dynamic-loader, arbitrary
+path, Data URL, and in-memory report boundaries. The PPT runtime is shipped as
+a pinned internal library used only by `plugin-presentations`; it is not a
+second independently loaded product plugin. The corresponding license copies
+and provenance files are retained in those package directories.
+
 ## DeepSeek Harness
 
 MIT License
@@ -135,9 +149,8 @@ External packages that a workspace package resolves at runtime. The tier covers 
 | [`zod`](https://github.com/colinhacks/zod) | MIT |
 | [`zustand`](https://github.com/pmndrs/zustand) | MIT |
 
-`dsh-better-sidebar@0.16.0` is pinned to the npm release built from the upstream
-`v0.16.0` tag at commit
-`e18528b716bfbbda9dfb1509b390e2cdb2deaaad`. Its bundled CodeMirror language
+`dsh-better-sidebar@0.16.1` is pinned to the npm release built from the upstream
+`v0.16.1` tag. Its bundled CodeMirror language
 packages, `dompurify`, `mermaid`, `node-pty`, `react-icons`, `rxjs`, and `ws`
 remain independently licensed dependencies recorded in `pnpm-lock.yaml`.
 The Windows package audit requires the browser chunks and manifest in `app.asar`

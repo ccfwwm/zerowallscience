@@ -1,5 +1,6 @@
 import { cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, extname, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
+import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const dshRoot = resolve(root, 'dsh/source')
@@ -7,6 +8,11 @@ const closurePath = resolve(root, '.build/dsh/runtime-closure.json')
 const outputRoot = resolve(root, '.build/runtime/node_modules')
 const expectedOutputParent = resolve(root, '.build/runtime')
 const desktopModules = resolve(root, 'desktop/node_modules')
+// pnpm keeps transitive packages (for example Jimp's gifwrap decoder) under
+// the workspace virtual store rather than linking every package into the
+// desktop workspace. Resolve that tree as a final local source so runtime
+// closure dependencies are not silently omitted from the packaged ASAR.
+const workspaceModules = resolve(root, 'node_modules')
 const zerowallPackageRoots = [
   resolve(root, 'store'),
   ...await pluginRoots(resolve(root, 'plugins')),
@@ -25,7 +31,7 @@ const desktopRuntimeSeeds = [
 ]
 const forbiddenDirectories = new Set([
   '.github', '.idea', '.vscode', '__tests__', 'benchmark', 'benchmarks', 'coverage',
-  'docs', 'example', 'examples', 'spec', 'src', 'test', 'tests',
+  'docs', 'example', 'examples', 'spec', 'test', 'tests',
 ])
 const forbiddenExtensions = new Set(['.cts', '.map', '.mts', '.pdb', '.ts', '.tsx'])
 
@@ -116,6 +122,7 @@ async function resolvePackage(name, parentRoot) {
     }
   }
   candidates.push(resolve(desktopModules, ...name.split('/'), 'package.json'))
+  candidates.push(resolve(workspaceModules, ...name.split('/'), 'package.json'))
   for (const candidate of candidates) {
     try {
       const manifestPath = await realpath(candidate)
@@ -144,6 +151,9 @@ async function copyRuntimePackage(package_, targetRoot) {
     // The package publishes source/docs/install helpers alongside its browser
     // chunks. Only the compiled runtime belongs in the production ASAR.
     await copyEntry(sourceRoot, targetRoot, 'lib')
+    const clientPath = resolve(targetRoot, 'lib/client.js')
+    const clientSource = await readFile(clientPath, 'utf8')
+    await writeFile(clientPath, adaptBetterSidebarClient(clientSource))
     return
   }
 
@@ -210,11 +220,10 @@ function includeRuntimeFile(sourceRoot, candidate) {
   const path = relative(sourceRoot, candidate).replaceAll('\\', '/')
   if (path === '') return true
   const segments = path.toLowerCase().split('/')
-  // Packages such as OpenTelemetry publish compiled CommonJS under
-  // `build/src`. Only the package-root source tree is disposable; filtering
-  // every nested `src` directory removes a package's actual runtime entry.
-  if (segments.some((segment, index) => segment === 'node_modules'
-    || (forbiddenDirectories.has(segment) && !(segment === 'src' && index > 0 && segments[index - 1] === 'build')))) return false
+  // npm packages frequently publish executable JavaScript under `src`, even
+  // when `main` itself lives at the package root. Keep every src directory;
+  // guessing whether it is development-only creates incomplete runtimes.
+  if (segments.some(segment => segment === 'node_modules' || forbiddenDirectories.has(segment))) return false
   const lower = path.toLowerCase()
   if (lower.endsWith('.d.ts') || lower.endsWith('.tsbuildinfo') || forbiddenExtensions.has(extname(lower))) return false
   if (/\.(?:spec|test)\.[cm]?js$/.test(lower)) return false

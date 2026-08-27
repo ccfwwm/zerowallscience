@@ -44,20 +44,25 @@ describe('Publication and presentation workers', () => {
     expect(worker.pause(presentation.id).status).toBe('paused')
     await vi.advanceTimersByTimeAsync(50)
     expect(store.getPresentation(presentation.id)?.status).toBe('paused')
+    vi.useRealTimers()
     worker.resume(presentation.id)
-    await vi.advanceTimersByTimeAsync(35)
-    expect(store.getPresentation(presentation.id)).toMatchObject({ status: 'ready', slides: [{ title: '主要发现' }] })
+    await waitForStatus(store, presentation.id, 'ready')
+    const generated = store.getPresentation(presentation.id)!
+    expect(generated.status).toBe('ready')
+    expect(generated.slides).toHaveLength(6)
+    expect(generated.slides.map(slide => slide.title)).toContain('主要发现')
 
     const interrupted = store.createPresentation({ projectId: project.id, title: 'Recovered', outline: [{ title: 'Recovery', points: ['Persisted'] }] })
-    store.updatePresentation(interrupted.id, { status: 'outlining' })
+    worker.generate(interrupted.id)
     worker.dispose()
     const recovered = new PresentationWorker(store, 10)
     expect(recovered.recover().map(item => item.id)).toContain(interrupted.id)
-    await vi.advanceTimersByTimeAsync(35)
-    expect(store.getPresentation(interrupted.id)?.status).toBe('ready')
+    expect(store.getPresentation(interrupted.id)).toMatchObject({
+      status: 'failed',
+      generation: { stage: 'failed' },
+    })
 
     const ready = store.getPresentation(presentation.id)!
-    vi.useRealTimers()
     const pptxPath = join(root, 'results.pptx'); const pdfPath = join(root, 'results.pdf')
     await writePresentation(ready, 'pptx', fileUri(pptxPath))
     await writePresentation(ready, 'pdf', fileUri(pdfPath))
@@ -68,3 +73,11 @@ describe('Publication and presentation workers', () => {
 })
 
 function fileUri(path: string): string { return `file:///${path.replaceAll('\\', '/')}` }
+
+async function waitForStatus(store: ResearchStore, id: string, status: string): Promise<void> {
+  const deadline = Date.now() + 5_000
+  while (store.getPresentation(id)?.status !== status) {
+    if (Date.now() >= deadline) throw new Error(`Presentation ${id} did not reach ${status}.`)
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+}

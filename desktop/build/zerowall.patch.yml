@@ -145,6 +145,9 @@
     - id: zerowall-files
       name: '@zerowallscience/plugin-files'
 
+    - id: zerowall-image-dup
+      name: '@zerowallscience/plugin-image-dup'
+
     - id: zerowall-reviewer
       name: '@zerowallscience/plugin-reviewer'
 

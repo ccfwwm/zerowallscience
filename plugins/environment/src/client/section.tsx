@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
-import type { EnvironmentVariableInfo, ImageModelSelection } from '../shared/types.js'
+import type { EnvironmentVariableInfo, ImageGenerationQuality, ImageModelSelection } from '../shared/types.js'
 import css from './section.module.css'
 
 interface Props extends PropsRuntime<'settings.section'> {
@@ -32,6 +32,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const [error, setError] = useState('')
   const [status, setStatus] = useState<Record<string, LoadState>>({ account: 'loading', catalog: 'loading', variables: 'loading', image: 'loading', mcp: 'loading' })
   const [image, setImage] = useState<ImageModelSelection>({ providerId: '', groupId: '', modelId: '' })
+  const [imageQuality, setImageQuality] = useState<ImageGenerationQuality>('medium')
 
   useEffect(() => {
     setReviewerValue(reviewerScope.getSnapshot().value ?? defaultReviewer)
@@ -68,6 +69,12 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       if (environmentRemote?.getImageModelSelection === undefined) throw new Error('生图配置服务不可用')
       const value = await unwrap(environmentRemote.getImageModelSelection()) as ImageModelSelection | undefined
       if (!cancelled && value) setImage(value)
+    })
+    void load('imageQuality', async () => {
+      const value = environmentRemote?.getImageQuality === undefined
+        ? 'medium'
+        : await unwrap(environmentRemote.getImageQuality())
+      if (!cancelled && ['auto', 'low', 'medium', 'high'].includes(value)) setImageQuality(value)
     })
     void load('mcp', async () => {
       if (mcpRemote?.getSciMasterCredentialStatus === undefined) throw new Error('MCP 服务不可用')
@@ -137,6 +144,12 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     setImage(value)
     void run(async () => { await unwrap(environmentRemote.setImageModelSelection(value)) })
   }
+  const saveImageQuality = (value: ImageGenerationQuality) => {
+    setImageQuality(value)
+    void run(async () => {
+      if (environmentRemote?.setImageQuality !== undefined) await unwrap(environmentRemote.setImageQuality(value))
+    })
+  }
   const statusText = (key: string, ready = '已加载') => status[key] === 'loading' ? '正在加载…' : status[key] === 'error' || status[key] === 'unavailable' ? '服务暂不可用' : ready
 
   return <section className={css.root}>
@@ -167,6 +180,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       <article className={css.card}>
         <div className={css.cardHeader}><div><h3>生图模型</h3><p>只显示账户模型目录中明确支持生图的候选项。</p></div><span className={css.status}>{statusText('account', '候选模型已同步')}</span></div>
         <label className={css.field}><span>当前生图模型</span><select className={css.control} value={imageModelIsKnown ? imageModelValue : ''} disabled={busy || status.account !== 'ready'} onChange={event => { const [providerId = '', groupId = '', modelId = ''] = event.target.value.split(VALUE_SEPARATOR); saveImageSelection({ providerId, groupId, modelId }) }}><option value="">自动选择</option>{!imageModelIsKnown && imageModelValue ? <option value={imageModelValue}>{image.providerId} / {image.modelId}（当前配置）</option> : null}{imageGroups.map(group => <optgroup key={`${group.providerId}${VALUE_SEPARATOR}${group.groupId}`} label={group.label}>{group.models.map((model: any) => <option key={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}`} value={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}`}>{model.modelId}{model.name && model.name !== model.modelId ? ` · ${model.name}` : ''}</option>)}</optgroup>)}</select></label>
+        <label className={css.field}><span>默认质量</span><select className={css.control} value={imageQuality} disabled={busy} onChange={event => saveImageQuality(event.target.value as ImageGenerationQuality)}><option value="auto">自动</option><option value="low">低</option><option value="medium">中（推荐）</option><option value="high">高</option></select><small>未在工具中指定 quality 时使用；默认是 medium。</small></label>
       </article>
 
       <article className={`${css.card} ${css.variablesCard}`}>

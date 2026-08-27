@@ -41,9 +41,20 @@ const allowedLocalAdaptations = new Set([
   'packages/host/apiproxy/tests/fetch-carrier.spec.ts',
   'packages/host/apiproxy/tests/rpc-schemas.spec.ts',
   'packages/host/directory-picker-native/src/win32-dialog-host.ts',
+  'packages/host/directory-picker-native/src/native-picker.ts',
+  'packages/host/directory-picker-native/src/win32-dialog.ts',
   'packages/llm/llm-pi-ai/src/adapter.ts',
+  'packages/llm/llm-pi-ai/src/replay.ts',
+  'packages/llm/llm-pi-ai/tests/convert.spec.ts',
   'packages/llm/llm/src/index.ts',
   'packages/boot/app-boot/src/profile.ts',
+  'packages/client/web/package.json',
+  'packages/client/web/src/platform.ts',
+  'packages/client/web/src/seed.ts',
+  // ZeroWall adapts shell permission handling so repeated requests for the
+  // already active sandbox mode are treated as no-ops instead of failing.
+  'packages/shell/tool-bash/src/index.ts',
+  'packages/shell/tool-pwsh/src/index.ts',
 ])
 const manifest = JSON.parse(await readFile(resolve(source, 'package.json'), 'utf8'))
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' }).trim()

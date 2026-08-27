@@ -1,4 +1,0 @@
-interface:
-  display_name: "学术 PPT 工作台"
-  short_description: "从科研材料生成可编辑、可追溯并经过核对的学术演示文稿"
-  default_prompt: "使用 $academic-ppt-studio 将这些材料整理为可编辑、可追溯的学术 PPT。"

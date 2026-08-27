@@ -1,6 +1,6 @@
-# ZeroWall Science 4.3.3 构建与发布
+# ZeroWall Science 4.3.4 构建与发布
 
-4.3.3 修复“环境配置”远程请求异步解包导致的空白页，恢复 Reviewer 和对话模型的推理强度，并将 sidebar footer 入口统一为左对齐。默认 Stable Windows x64 包为本地构建产物；本版本不自动上传七牛云，也不执行 Git 发布。
+4.3.4 集成科研图片查重工作台和对话入口，并扩展演示文稿产物工作台、持久化 artifacts 和质量状态。默认 Stable Windows x64 包为本地构建产物；本版本不自动上传七牛云，也不执行 Git 发布。
 
 ## 固定基线
 

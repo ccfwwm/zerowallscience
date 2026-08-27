@@ -53,6 +53,7 @@ describe('environment settings client', () => {
     expect(screen.getByText('生图模型')).toBeTruthy()
     expect(screen.getByText('自定义变量')).toBeTruthy()
     await waitFor(() => expect(screen.getByText('SCI_TOKEN')).toBeTruthy())
-    expect(screen.getByRole('option', { name: '高' })).toBeTruthy()
+    expect(screen.getAllByRole('option', { name: '高' }).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByRole('option', { name: '中（推荐）' })).toBeTruthy()
   })
 })

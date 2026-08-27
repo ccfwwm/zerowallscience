@@ -14,7 +14,7 @@ test('stable profile pins rc2 and includes the bundled WeChat plugin', async () 
 
 test('better-sidebar is a single pinned default workbench in every profile', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-better-sidebar'], '0.16.0')
+  assert.equal(desktop.dependencies['dsh-better-sidebar'], '0.16.1')
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
   assert.equal((patch.match(/\bid: better-sidebar\b/gu) ?? []).length, 1)
   for (const profile of ['development', 'preview', 'stable']) {
@@ -41,6 +41,13 @@ test('ZeroWall domain clients do not duplicate better-sidebar tabs', async () =>
     const source = await readFile(resolve(root, `plugins/${name}/src/client/index.ts`), 'utf8')
     assert.doesNotMatch(source, /registerDomainSidebarTab/u, `${name} must not register a duplicate domain tab`)
     assert.doesNotMatch(source, new RegExp(`id:\\s*'zerowall:${name}'`, 'u'), `${name} must not expose the removed domain tab`)
+  }
+})
+
+test('domain clients declare conversation when they access the composer service', async () => {
+  for (const name of ['images', 'presentations']) {
+    const manifest = JSON.parse(await readFile(resolve(root, `plugins/${name}/package.json`), 'utf8'))
+    assert.ok(manifest.dsh.client.inject.includes('conversation'), `${name} client must inject conversation`)
   }
 })
 

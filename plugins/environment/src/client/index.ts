@@ -4,7 +4,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { ImageModelSelection, EnvironmentVariableInfo } from '../shared/types.js'
 import { EnvironmentSection } from './section.js'
-import { unwrapRemoteResult } from '@zerowallscience/plugin-base/client'
+import { unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 
 export const inject = [
   'slots', 'locale', 'remote', 'connection', 'settingsScope',

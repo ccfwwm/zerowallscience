@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-projects",
-  "version": "4.3.3",
+  "version": "4.3.5",
   "description": "ZeroWall Science projects domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -33,6 +33,8 @@
     "client": {
       "inject": [
         "betterSidebar",
+        "slots",
+        "conversation",
         "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-api-remotes",
         "@deepseek-ai/dsh-client-locale",
@@ -114,7 +116,7 @@
     "@deepseek-ai/dsh-client-ui-attachment": "workspace:^",
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
-    "dsh-better-sidebar": "0.16.0",
+    "dsh-better-sidebar": "0.16.1",
     "dsh-dream-skin": "0.4.14",
     "@zerowallscience/research-store": "workspace:^",
     "lucide-react": "^0.468.0",

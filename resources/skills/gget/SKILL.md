@@ -32,7 +32,7 @@ These host rules override upstream examples when they differ:
 - Treat network calls, cloud jobs, experiment submissions, writes, deletion, and physical equipment actions as approval-gated. Default to read-only inspection, validation, or dry-run planning until the user explicitly requests execution.
 - Do not install runtimes or dependencies automatically. When Python, R, Node, CUDA, MATLAB, containers, or a third-party CLI is unavailable, report `missing_runtime` with the exact requirement.
 - Use `pathlib`, project-relative paths, and platform temporary directories. Gate Unix-only commands behind an explicit WSL/SSH execution context.
-- Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `academic-ppt-studio`, `generate_image`, and bundled MCP tools discovered with `search_mcp_tools`.
+- Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `zerowall-ppt`, `generate_image`, and bundled MCP tools discovered with `search_mcp_tools`.
 
 # gget
 

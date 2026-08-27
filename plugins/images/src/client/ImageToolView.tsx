@@ -10,6 +10,12 @@ import css from './ImageToolView.module.css'
 interface ImageMeta {
   path: string
   model: string
+  quality?: 'auto' | 'low' | 'medium' | 'high'
+  requestedSize?: string
+  actualWidth?: number
+  actualHeight?: number
+  requestedQuality?: 'auto' | 'low' | 'medium' | 'high'
+  actualQuality?: 'auto' | 'low' | 'medium' | 'high'
   image?: ImageAttachmentRef
   previewWarning?: string
 }
@@ -20,11 +26,12 @@ function record(value: unknown): Record<string, unknown> | undefined {
 
 function imageRef(value: unknown): ImageAttachmentRef | undefined {
   const item = record(value)
-  if (item === undefined || typeof item.attachmentId !== 'string' || item.mediaType !== 'image/png'
+  if (item === undefined || typeof item.attachmentId !== 'string'
+    || !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(String(item.mediaType))
     || typeof item.bytes !== 'number' || typeof item.width !== 'number' || typeof item.height !== 'number') return undefined
   return {
     attachmentId: item.attachmentId as ImageAttachmentRef['attachmentId'],
-    mediaType: item.mediaType,
+    mediaType: item.mediaType as ImageAttachmentRef['mediaType'],
     bytes: item.bytes,
     width: item.width,
     height: item.height,
@@ -35,10 +42,16 @@ function imageRef(value: unknown): ImageAttachmentRef | undefined {
 export function imageToolMeta(value: unknown): ImageMeta | undefined {
   const meta = record(value)
   if (meta === undefined || typeof meta.path !== 'string' || typeof meta.model !== 'string') return undefined
-  const image = imageRef(meta.image)
+  const image = imageRef(meta.attachment) ?? imageRef(meta.image)
   return {
     path: meta.path,
     model: meta.model,
+    ...(['auto', 'low', 'medium', 'high'].includes(String(meta.quality)) ? { quality: meta.quality as ImageMeta['quality'] } : {}),
+    ...(typeof meta.requestedSize === 'string' ? { requestedSize: meta.requestedSize } : {}),
+    ...(Number.isInteger(meta.actualWidth) ? { actualWidth: Number(meta.actualWidth) } : {}),
+    ...(Number.isInteger(meta.actualHeight) ? { actualHeight: Number(meta.actualHeight) } : {}),
+    ...(['auto', 'low', 'medium', 'high'].includes(String(meta.requestedQuality)) ? { requestedQuality: meta.requestedQuality as ImageMeta['requestedQuality'] } : {}),
+    ...(['auto', 'low', 'medium', 'high'].includes(String(meta.actualQuality)) ? { actualQuality: meta.actualQuality as ImageMeta['actualQuality'] } : {}),
     ...(image === undefined ? {} : { image }),
     ...(typeof meta.previewWarning === 'string' ? { previewWarning: meta.previewWarning } : {}),
   }
@@ -161,7 +174,7 @@ export function ImageToolRow({ conversation, ...props }: ToolCallViewProps & { c
 
       {meta !== undefined ? (
         <div className={css.meta}>
-          <span>{meta.model}</span>
+          <span>{meta.model}{(meta.actualQuality ?? meta.quality) === undefined ? '' : ` · ${meta.actualQuality ?? meta.quality}`}</span>
           <span>{meta.image === undefined ? 'File saved' : `${meta.image.width} x ${meta.image.height}`}</span>
         </div>
       ) : null}

@@ -286,6 +286,20 @@ const MIGRATIONS = [
       ALTER TABLE publications ADD COLUMN reproduced_at TEXT;
     `,
   },
+  {
+    version: 6,
+    sql: `
+      ALTER TABLE presentations ADD COLUMN artifacts_json TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE presentations ADD COLUMN quality_json TEXT;
+    `,
+  },
+  {
+    version: 7,
+    sql: `
+      ALTER TABLE presentations ADD COLUMN generation_json TEXT;
+      ALTER TABLE presentations ADD COLUMN revisions_json TEXT NOT NULL DEFAULT '[]';
+    `,
+  },
 ] as const
 
 export class ResearchStore {
@@ -753,7 +767,7 @@ export class ResearchStore {
     const record: PresentationRecord = {
       id: randomUUID(), projectId: this.requireProject(input.projectId).id, title: nonEmptyString(input.title, 'Presentation title'), status: 'draft',
       outline: presentationOutline(input.outline ?? []), style: jsonObject(input.style ?? {}, 'Presentation style'),
-      assets: presentationAssets(input.assets ?? []), slides: [], exportUris: {}, version: 1, createdAt: now, updatedAt: now,
+      assets: presentationAssets(input.assets ?? []), slides: [], exportUris: {}, artifacts: [], version: 1, createdAt: now, updatedAt: now,
     }
     this.insertPresentation(record)
     return record
@@ -762,6 +776,11 @@ export class ResearchStore {
   listPresentations(projectId: string): PresentationRecord[] {
     this.requireProject(projectId)
     return (this.database.prepare('SELECT * FROM presentations WHERE project_id = ? ORDER BY updated_at DESC, id').all(projectId) as Array<Record<string, unknown>>).map(presentationFromRow)
+  }
+
+  deletePresentation(id: string): void {
+    this.requiredPresentation(id)
+    this.database.prepare('DELETE FROM presentations WHERE id = ?').run(id)
   }
 
   getPresentation(id: string): PresentationRecord | undefined {
@@ -773,18 +792,23 @@ export class ResearchStore {
     const current = this.requiredPresentation(id)
     const status = changes.status ?? current.status
     validatePresentationTransition(current.status, status)
+    const { quality: requestedQuality, ...restChanges } = changes
     const updated: PresentationRecord = {
-      ...current, ...changes, status,
+      ...current, ...restChanges, status,
       ...(changes.title === undefined ? {} : { title: nonEmptyString(changes.title, 'Presentation title') }),
       outline: changes.outline === undefined ? current.outline : presentationOutline(changes.outline),
       style: changes.style === undefined ? current.style : jsonObject(changes.style, 'Presentation style'),
       assets: changes.assets === undefined ? current.assets : presentationAssets(changes.assets),
       slides: changes.slides === undefined ? current.slides : presentationSlides(changes.slides),
       exportUris: changes.exportUris === undefined ? current.exportUris : stringRecord(changes.exportUris, 'Presentation export URIs'),
+      artifacts: changes.artifacts === undefined ? current.artifacts : presentationArtifacts(changes.artifacts),
+      ...(requestedQuality === undefined
+        ? (current.quality === undefined ? {} : { quality: current.quality })
+        : requestedQuality === null ? {} : { quality: presentationQuality(requestedQuality) }),
       version: current.version + 1, updatedAt: new Date().toISOString(),
     }
-    this.database.prepare(`UPDATE presentations SET title=?, status=?, outline_json=?, style_json=?, assets_json=?, slides_json=?, export_uris_json=?, error=?, version=?, updated_at=? WHERE id=?`)
-      .run(updated.title, updated.status, JSON.stringify(updated.outline), JSON.stringify(updated.style), JSON.stringify(updated.assets), JSON.stringify(updated.slides), JSON.stringify(updated.exportUris), updated.error ?? null, updated.version, updated.updatedAt, updated.id)
+    this.database.prepare(`UPDATE presentations SET title=?, status=?, outline_json=?, style_json=?, assets_json=?, slides_json=?, export_uris_json=?, artifacts_json=?, quality_json=?, generation_json=?, revisions_json=?, error=?, version=?, updated_at=? WHERE id=?`)
+      .run(updated.title, updated.status, JSON.stringify(updated.outline), JSON.stringify(updated.style), JSON.stringify(updated.assets), JSON.stringify(updated.slides), JSON.stringify(updated.exportUris), JSON.stringify(updated.artifacts), updated.quality === undefined ? null : JSON.stringify(updated.quality), updated.generation === undefined ? null : JSON.stringify(updated.generation), JSON.stringify(updated.revisions ?? []), updated.error ?? null, updated.version, updated.updatedAt, updated.id)
     return updated
   }
 
@@ -1006,8 +1030,8 @@ export class ResearchStore {
   }
 
   private insertPresentation(record: PresentationRecord): void {
-    this.database.prepare(`INSERT INTO presentations (id, project_id, title, status, outline_json, style_json, assets_json, slides_json, export_uris_json, error, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(record.id, record.projectId, record.title, record.status, JSON.stringify(record.outline), JSON.stringify(record.style), JSON.stringify(record.assets), JSON.stringify(record.slides), JSON.stringify(record.exportUris), record.error ?? null, record.version, record.createdAt, record.updatedAt)
+    this.database.prepare(`INSERT INTO presentations (id, project_id, title, status, outline_json, style_json, assets_json, slides_json, export_uris_json, artifacts_json, quality_json, generation_json, revisions_json, error, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(record.id, record.projectId, record.title, record.status, JSON.stringify(record.outline), JSON.stringify(record.style), JSON.stringify(record.assets), JSON.stringify(record.slides), JSON.stringify(record.exportUris), JSON.stringify(record.artifacts), record.quality === undefined ? null : JSON.stringify(record.quality), record.generation === undefined ? null : JSON.stringify(record.generation), JSON.stringify(record.revisions ?? []), record.error ?? null, record.version, record.createdAt, record.updatedAt)
   }
 
   private requiredPresentation(id: string): PresentationRecord {
@@ -1412,6 +1436,10 @@ function presentationFromRow(row: Record<string, unknown>): PresentationRecord {
     assets: presentationAssets(jsonValue(row.assets_json, 'Presentation assets')),
     slides: presentationSlides(jsonValue(row.slides_json, 'Presentation slides')),
     exportUris: stringRecord(jsonValue(row.export_uris_json, 'Presentation export URIs'), 'Presentation export URIs'),
+    artifacts: presentationArtifacts(row.artifacts_json === undefined || row.artifacts_json === null ? [] : jsonValue(row.artifacts_json, 'Presentation artifacts')),
+    ...(row.quality_json === undefined || row.quality_json === null ? {} : { quality: presentationQuality(jsonValue(row.quality_json, 'Presentation quality')) }),
+    ...(row.generation_json === undefined || row.generation_json === null ? {} : { generation: presentationGeneration(jsonValue(row.generation_json, 'Presentation generation')) }),
+    revisions: presentationRevisions(row.revisions_json === undefined || row.revisions_json === null ? [] : jsonValue(row.revisions_json, 'Presentation revisions')),
     ...(row.error === null ? {} : { error: String(row.error) }), version: Number(row.version), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
   }
 }
@@ -1460,7 +1488,7 @@ function runIoDeclarations(value: unknown, label: string): RunRecord['outputs'] 
 
 function presentationOutline(value: unknown): PresentationRecord['outline'] {
   if (!Array.isArray(value)) throw new Error('Presentation outline must be an array.')
-  return value.map(item => { const entry = record(item, 'Presentation outline item'); return { title: nonEmptyString(entry.title, 'Presentation outline title'), points: stringArray(entry.points, 'Presentation outline points') } })
+  return value.map(item => { const entry = record(item, 'Presentation outline item'); return { title: nonEmptyString(entry.title, 'Presentation outline title'), points: stringArray(entry.points, 'Presentation outline points'), ...(entry.referenceUris === undefined ? {} : { referenceUris: stringArray(entry.referenceUris, 'Presentation outline referenceUris') }) } })
 }
 
 function presentationAssets(value: unknown): PresentationRecord['assets'] {
@@ -1470,7 +1498,88 @@ function presentationAssets(value: unknown): PresentationRecord['assets'] {
 
 function presentationSlides(value: unknown): PresentationRecord['slides'] {
   if (!Array.isArray(value)) throw new Error('Presentation slides must be an array.')
-  return value.map(item => { const slide = record(item, 'Presentation slide'); return { id: nonEmptyString(slide.id, 'Presentation slide id'), title: nonEmptyString(slide.title, 'Presentation slide title'), body: stringValue(slide.body, 'Presentation slide body'), ...(slide.notes === undefined ? {} : { notes: stringValue(slide.notes, 'Presentation slide notes') }), assetUris: stringArray(slide.assetUris, 'Presentation slide assetUris') } })
+  return value.map(item => {
+    const slide = record(item, 'Presentation slide')
+    const visual = slide.visual === undefined ? undefined : presentationSlideVisual(slide.visual)
+    return {
+      id: nonEmptyString(slide.id, 'Presentation slide id'),
+      title: nonEmptyString(slide.title, 'Presentation slide title'),
+      body: stringValue(slide.body, 'Presentation slide body'),
+      ...(slide.notes === undefined ? {} : { notes: stringValue(slide.notes, 'Presentation slide notes') }),
+      assetUris: stringArray(slide.assetUris, 'Presentation slide assetUris'),
+      ...(slide.visualUri === undefined ? {} : { visualUri: nonEmptyString(slide.visualUri, 'Presentation slide visualUri') }),
+      ...(slide.visualPrompt === undefined ? {} : { visualPrompt: nonEmptyString(slide.visualPrompt, 'Presentation slide visualPrompt') }),
+      ...(slide.referenceUris === undefined ? {} : { referenceUris: stringArray(slide.referenceUris, 'Presentation slide referenceUris') }),
+      ...(visual === undefined ? {} : { visual }),
+    }
+  })
+}
+
+function presentationSlideVisual(value: unknown): NonNullable<PresentationRecord['slides'][number]['visual']> {
+  const visual = record(value, 'Presentation slide visual')
+  const model = record(visual.model, 'Presentation slide visual model')
+  const source = visual.visualSource
+  if (source !== 'generated' && source !== 'reference-edit') throw new Error('Unsupported presentation visual source.')
+  if (visual.promptStrategy !== 'zerowall-full-slide-image') throw new Error('Unsupported presentation visual prompt strategy.')
+  const attachment = visual.attachment === undefined ? undefined : record(visual.attachment, 'Presentation slide visual attachment')
+  const attachmentMediaType = attachment === undefined ? undefined : nonEmptyString(attachment.mediaType, 'Presentation visual attachment mediaType')
+  if (attachmentMediaType !== undefined && !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(attachmentMediaType)) {
+    throw new Error('Unsupported presentation visual attachment media type.')
+  }
+  return {
+    model: { providerId: nonEmptyString(model.providerId, 'Presentation visual providerId'), groupId: nonEmptyString(model.groupId, 'Presentation visual groupId'), modelId: nonEmptyString(model.modelId, 'Presentation visual modelId') },
+    promptStrategy: 'zerowall-full-slide-image',
+    visualSource: source,
+    referenceUris: stringArray(visual.referenceUris, 'Presentation visual referenceUris'),
+    generatedUri: nonEmptyString(visual.generatedUri, 'Presentation visual generatedUri'),
+    checksum: nonEmptyString(visual.checksum, 'Presentation visual checksum'),
+    ...(attachment === undefined ? {} : { attachment: { attachmentId: nonEmptyString(attachment.attachmentId, 'Presentation visual attachmentId'), mediaType: attachmentMediaType as 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif', bytes: Number(attachment.bytes), width: Number(attachment.width), height: Number(attachment.height), ...(attachment.name === undefined ? {} : { name: String(attachment.name) }) } }),
+  }
+}
+
+function presentationArtifacts(value: unknown): PresentationRecord['artifacts'] {
+  if (!Array.isArray(value)) throw new Error('Presentation artifacts must be an array.')
+  const kinds = new Set(['outline', 'design-plan', 'html', 'pptx', 'pdf', 'preview', 'quality-report', 'visual-review'])
+  return value.map((item) => {
+    const artifact = record(item, 'Presentation artifact')
+    const kind = nonEmptyString(artifact.kind, 'Presentation artifact kind')
+    if (!kinds.has(kind)) throw new Error(`Unsupported presentation artifact kind: ${kind}`)
+    return {
+      kind: kind as PresentationRecord['artifacts'][number]['kind'],
+      uri: nonEmptyString(artifact.uri, 'Presentation artifact URI'),
+      mediaType: nonEmptyString(artifact.mediaType, 'Presentation artifact media type'),
+      ...(artifact.checksum === undefined ? {} : { checksum: nonEmptyString(artifact.checksum, 'Presentation artifact checksum') }),
+    }
+  })
+}
+
+function presentationQuality(value: unknown): NonNullable<PresentationRecord['quality']> {
+  const quality = record(value, 'Presentation quality')
+  const state = (input: unknown, label: string): 'passed' | 'failed' | 'unverified' => {
+    if (input !== 'passed' && input !== 'failed' && input !== 'unverified') throw new Error(`${label} must be passed, failed, or unverified.`)
+    return input
+  }
+  return {
+    structural: state(quality.structural, 'Presentation structural quality'),
+    render: state(quality.render, 'Presentation render quality'),
+    automaticVisual: state(quality.automaticVisual, 'Presentation automatic visual quality'),
+    modelVisual: state(quality.modelVisual, 'Presentation model visual quality'),
+    overall: state(quality.overall, 'Presentation overall quality'),
+    warnings: stringArray(quality.warnings, 'Presentation quality warnings'),
+  }
+}
+
+function presentationGeneration(value: unknown): NonNullable<PresentationRecord['generation']> {
+  const item = record(value, 'Presentation generation')
+  const stages = new Set(['outlining', 'designing', 'visual', 'html', 'pptx', 'rendering', 'quality', 'ready', 'failed', 'paused', 'cancelled'])
+  const stage = item.stage
+  if (typeof stage !== 'string' || !stages.has(stage)) throw new Error('Unsupported presentation generation stage.')
+  return { id: nonEmptyString(item.id, 'Presentation generation id'), revision: Number(item.revision), stage: stage as NonNullable<PresentationRecord['generation']>['stage'], progress: Math.max(0, Math.min(1, Number(item.progress))), startedAt: nonEmptyString(item.startedAt, 'Presentation generation startedAt'), updatedAt: nonEmptyString(item.updatedAt, 'Presentation generation updatedAt'), ...(item.finishedAt === undefined ? {} : { finishedAt: String(item.finishedAt) }), ...(item.error === undefined ? {} : { error: String(item.error) }), ...(typeof item.resumeStage === 'string' && stages.has(item.resumeStage) ? { resumeStage: item.resumeStage as Exclude<NonNullable<PresentationRecord['generation']>['resumeStage'], undefined> } : {}) }
+}
+
+function presentationRevisions(value: unknown): NonNullable<PresentationRecord['revisions']> {
+  if (!Array.isArray(value)) throw new Error('Presentation revisions must be an array.')
+  return value.map(item => { const revision = record(item, 'Presentation revision'); return { id: nonEmptyString(revision.id, 'Presentation revision id'), revision: Number(revision.revision), createdAt: nonEmptyString(revision.createdAt, 'Presentation revision createdAt'), artifacts: presentationArtifacts(revision.artifacts ?? []), ...(revision.quality === undefined ? {} : { quality: presentationQuality(revision.quality) }) } })
 }
 
 function stringRecord(value: unknown, label: string): Record<string, string> {
@@ -1482,7 +1591,7 @@ function stringRecord(value: unknown, label: string): Record<string, string> {
 const PRESENTATION_TRANSITIONS: Record<PresentationRecord['status'], readonly PresentationRecord['status'][]> = {
   draft: ['draft', 'outlining', 'cancelled'], outlining: ['outlining', 'designing', 'paused', 'failed', 'cancelled'],
   designing: ['designing', 'generating', 'paused', 'failed', 'cancelled'], generating: ['generating', 'paused', 'ready', 'failed', 'cancelled'],
-  paused: ['paused', 'outlining', 'designing', 'generating', 'cancelled'], ready: ['ready', 'generating'], failed: ['failed', 'outlining', 'designing', 'generating', 'cancelled'], cancelled: ['cancelled'],
+  paused: ['paused', 'outlining', 'designing', 'generating', 'cancelled'], ready: ['ready', 'outlining', 'generating'], failed: ['failed', 'outlining', 'designing', 'generating', 'cancelled'], cancelled: ['cancelled'],
 }
 
 function validatePresentationTransition(from: PresentationRecord['status'], to: PresentationRecord['status']): void {

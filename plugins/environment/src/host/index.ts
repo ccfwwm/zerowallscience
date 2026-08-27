@@ -3,7 +3,7 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
-import type { EnvironmentSettingsValue, EnvironmentVariableInfo, ImageModelSelection } from '../shared/types.js'
+import type { EnvironmentSettingsValue, EnvironmentVariableInfo, ImageGenerationQuality, ImageModelSelection } from '../shared/types.js'
 
 export const name = 'zerowall-environment'
 export const ENVIRONMENT_SETTINGS_NS = settingsNamespace('zerowall-environment')
@@ -14,6 +14,7 @@ export const EnvironmentSettingsSchema: z<EnvironmentSettingsValue> = z.object({
     groupId: z.string().default(''),
     modelId: z.string().default(''),
   }).default({ providerId: '', groupId: '', modelId: '' }),
+  imageQuality: z.union(['auto', 'low', 'medium', 'high'] as const).default('medium'),
 })
 
 const VARIABLE_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u
@@ -50,6 +51,15 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
 
   @Remote('getImageModelSelection')
   readImageModelSelection(): Promise<ImageModelSelection | undefined> { return Promise.resolve(this.getImageModelSelection()) }
+
+  @Remote('getImageQuality')
+  getImageQuality(): ImageGenerationQuality { return this.scope.get().imageQuality }
+
+  @Remote('setImageQuality')
+  async setImageQuality(quality: ImageGenerationQuality): Promise<void> {
+    if (!['auto', 'low', 'medium', 'high'].includes(quality)) throw new Error('生图质量必须是 auto、low、medium 或 high。')
+    await this.scope.replace({ ...this.scope.get(), imageQuality: quality })
+  }
 
   @Remote('setImageModelSelection')
   async setImageModelSelection(selection: ImageModelSelection): Promise<void> {

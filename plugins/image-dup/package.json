@@ -1,0 +1,145 @@
+{
+  "name": "@zerowallscience/plugin-image-dup",
+  "version": "4.3.5",
+  "description": "ZeroWall Science image-dup domain plugin.",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./src/host/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/host/index.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./src/client/index.ts",
+      "default": "./lib/client.js"
+    },
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./types": "./src/shared/types.ts",
+    "./manifest": "./zerowall.plugin.json",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "dsh.bundle.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "betterSidebar",
+        "slots",
+        "conversation",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-attachment",
+        "@deepseek-ai/dsh-client-ui-tool"
+      ],
+      "platform": "web"
+    }
+  },
+  "zerowall": {
+    "dsh": {
+      "min": "0.1.1-rc.2",
+      "max": "0.1.1-rc.2"
+    },
+    "requiredServices": [],
+    "optionalServices": [
+      "zerowallFiles",
+      "zerowallProjects",
+      "zerowallResearch"
+    ],
+    "capabilities": [
+      "image-duplicate-detection",
+      "artifacts"
+    ],
+    "permissions": [
+      "files",
+      "processes",
+      "attachments"
+    ],
+    "profiles": [
+      "development",
+      "preview",
+      "stable"
+    ],
+    "migrationVersion": 1
+  },
+  "scripts": {
+    "bundle": "tsdown",
+    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "vitest run --config ../../vitest.plugins.config.ts"
+  },
+  "license": "AGPL-3.0-only",
+  "files": [
+    "lib",
+    "lib/typert.host.js",
+    "lib/typert.host.d.ts",
+    "lib/typert.remote-client.js",
+    "lib/typert.remote-client.d.ts",
+    "dsh.bundle.patch.yml",
+    "zerowall.plugin.json",
+    "runtime",
+    "THIRD_PARTY_LICENSES"
+  ],
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^",
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@deepseek-ai/dsh-agent-default-model": "workspace:^",
+    "@deepseek-ai/dsh-attachment": "workspace:^",
+    "@deepseek-ai/dsh-commands": "workspace:^",
+    "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/dsh-llm-pi-ai": "workspace:^",
+    "@deepseek-ai/dsh-mcp-client": "workspace:^",
+    "@deepseek-ai/dsh-session": "workspace:^",
+    "@deepseek-ai/dsh-session-persistence": "workspace:^",
+    "@deepseek-ai/dsh-settings": "workspace:^",
+    "@deepseek-ai/dsh-skill": "workspace:^",
+    "@deepseek-ai/dsh-skill-filesystem": "workspace:^",
+    "@deepseek-ai/dsh-subagent": "workspace:^",
+    "@deepseek-ai/dsh-tools": "workspace:^",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:^",
+    "@deepseek-ai/dsh-api-remotes": "workspace:^",
+    "@deepseek-ai/dsh-host-webserver": "workspace:^",
+    "@deepseek-ai/dsh-system-prompt": "workspace:^",
+    "@deepseek-ai/dsh-workspace": "workspace:^",
+    "@deepseek-ai/dsh-client-runtime": "workspace:^",
+    "@deepseek-ai/dsh-client-locale": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-slots": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-sidebar": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-settings": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-conversation": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-attachment": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
+    "dsh-better-sidebar": "0.16.1",
+    "dsh-dream-skin": "0.4.14",
+    "@zerowallscience/plugin-files": "workspace:^",
+    "@zerowallscience/plugin-projects": "workspace:^",
+    "@zerowallscience/plugin-research": "workspace:^",
+    "jimp": "^1.6.1",
+    "pdf-lib": "^1.17.1",
+    "sharp": "^0.35.3",
+    "lucide-react": "^0.468.0",
+    "react": "^18.2.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.3"
+  },
+  "devDependencies": {
+    "tsdown": "^0.22.2",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.10"
+  }
+}

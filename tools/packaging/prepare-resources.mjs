@@ -1,5 +1,5 @@
 import { cp, mkdir, readdir, rm, stat } from 'node:fs/promises'
-import { extname, relative, resolve, sep } from 'node:path'
+import { relative, resolve, sep } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
 const sourceRoot = resolve(root, 'resources/skills')
@@ -14,10 +14,20 @@ if (!outputRoot.startsWith(`${expectedParent}${sep}`)) throw new Error(`Refusing
 
 await rm(outputRoot, { recursive: true, force: true })
 await mkdir(outputRoot, { recursive: true })
-await cp(sourceRoot, outputRoot, { recursive: true, filter: includeSkillPath })
-
-const skillEntries = (await readdir(outputRoot, { withFileTypes: true })).filter(entry => entry.isDirectory())
-for (const skill of skillEntries) await stat(resolve(outputRoot, skill.name, 'SKILL.md'))
+const sourceEntries = (await readdir(sourceRoot, { withFileTypes: true })).filter(entry => entry.isDirectory())
+const skillEntries = []
+for (const skill of sourceEntries) {
+  const skillRoot = resolve(sourceRoot, skill.name)
+  try {
+    await stat(resolve(skillRoot, 'SKILL.md'))
+  } catch {
+    // Deleted Skills may retain ignored caches locally. A directory without a
+    // manifest is not a runtime Skill and must never be copied into a package.
+    continue
+  }
+  await cp(skillRoot, resolve(outputRoot, skill.name), { recursive: true, filter: includeSkillPath })
+  skillEntries.push(skill)
+}
 console.log(`Prepared ${skillEntries.length} runtime Skills.`)
 
 function includeSkillPath(candidate) {
@@ -27,13 +37,5 @@ function includeSkillPath(candidate) {
   const segments = lower.split('/')
   if (segments.some(segment => forbiddenDirectories.has(segment))) return false
   if (lower.endsWith('.pyc') || lower.endsWith('.pyo')) return false
-  if (lower.startsWith('gpt-image2-ppt/docs/assets/')) return false
-  if (lower.startsWith('gpt-image2-ppt/examples/editable-pptx/')) return false
-  if (lower.startsWith('gpt-image2-ppt/examples/') && !isRecipeFile(candidate)) return false
   return true
-}
-
-function isRecipeFile(path) {
-  const extension = extname(path).toLowerCase()
-  return extension === '.md' || extension === '.json' || extension === '.txt'
 }

@@ -144,15 +144,81 @@ export interface PresentationRecord {
   projectId: string
   title: string
   status: 'draft' | 'outlining' | 'designing' | 'generating' | 'paused' | 'ready' | 'failed' | 'cancelled'
-  outline: Array<{ title: string; points: string[] }>
+  outline: Array<{ title: string; points: string[]; referenceUris?: string[] }>
   style: JsonObject
   assets: Array<{ uri: string; role: string; source?: string }>
-  slides: Array<{ id: string; title: string; body: string; notes?: string; assetUris: string[] }>
+  slides: Array<{
+    id: string
+    title: string
+    body: string
+    notes?: string
+    assetUris: string[]
+    visualUri?: string
+    visualPrompt?: string
+    referenceUris?: string[]
+    visual?: PresentationSlideVisual
+  }>
   exportUris: Record<string, string>
+  artifacts: PresentationArtifact[]
+  quality?: PresentationQuality
+  generation?: PresentationGeneration
+  revisions?: PresentationRevision[]
   error?: string
   version: number
   createdAt: string
   updatedAt: string
+}
+
+export interface PresentationGeneration {
+  id: string
+  revision: number
+  stage: 'outlining' | 'designing' | 'visual' | 'html' | 'pptx' | 'rendering' | 'quality' | 'ready' | 'failed' | 'paused' | 'cancelled'
+  progress: number
+  startedAt: string
+  updatedAt: string
+  finishedAt?: string
+  error?: string
+  resumeStage?: PresentationGeneration['stage']
+}
+
+export interface PresentationSlideVisual {
+  model: { providerId: string; groupId: string; modelId: string }
+  promptStrategy: 'zerowall-full-slide-image'
+  visualSource: 'generated' | 'reference-edit'
+  referenceUris: string[]
+  generatedUri: string
+  checksum: string
+  attachment?: {
+    attachmentId: string
+    mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+    bytes: number
+    width: number
+    height: number
+    name?: string
+  }
+}
+export interface PresentationRevision {
+  id: string
+  revision: number
+  createdAt: string
+  artifacts: PresentationArtifact[]
+  quality?: PresentationQuality
+}
+
+export interface PresentationArtifact {
+  kind: 'outline' | 'design-plan' | 'html' | 'pptx' | 'pdf' | 'preview' | 'quality-report' | 'visual-review'
+  uri: string
+  mediaType: string
+  checksum?: string
+}
+
+export interface PresentationQuality {
+  structural: 'passed' | 'failed' | 'unverified'
+  render: 'passed' | 'failed' | 'unverified'
+  automaticVisual: 'passed' | 'failed' | 'unverified'
+  modelVisual: 'passed' | 'failed' | 'unverified'
+  overall: 'passed' | 'failed' | 'unverified'
+  warnings: string[]
 }
 
 export interface ResearchProjectSnapshotV1 {
@@ -204,5 +270,9 @@ export interface UpdatePresentationChanges {
   assets?: PresentationRecord['assets']
   slides?: PresentationRecord['slides']
   exportUris?: Record<string, string>
+  artifacts?: PresentationArtifact[]
+  quality?: PresentationQuality | null
   error?: string
+  generation?: PresentationGeneration
+  revisions?: PresentationRevision[]
 }

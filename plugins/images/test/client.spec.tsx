@@ -48,11 +48,12 @@ function conversation(load = vi.fn().mockResolvedValue('data:image/png;base64,iV
 }
 
 describe('image tool view', () => {
-  it('parses only durable PNG attachment metadata', () => {
+  it('parses durable normalized attachment metadata independently of the PNG output file', () => {
     expect(imageToolMeta({ path: 'x.png', model: 'gpt-image-2', image: attachment })).toMatchObject({
       path: 'x.png', model: 'gpt-image-2', image: { width: 8, height: 6 },
     })
-    expect(imageToolMeta({ path: 'x.png', model: 'gpt-image-2', image: { ...attachment, mediaType: 'image/jpeg' } })?.image).toBeUndefined()
+    expect(imageToolMeta({ path: 'x.png', model: 'gpt-image-2', image: { ...attachment, mediaType: 'image/jpeg' } })?.image?.mediaType).toBe('image/jpeg')
+    expect(imageToolMeta({ path: 'x.png', model: 'gpt-image-2', image: { ...attachment, mediaType: 'application/octet-stream' } })?.image).toBeUndefined()
   })
 
   it('shows the generated image without expansion and opens a lightbox that Escape closes', async () => {

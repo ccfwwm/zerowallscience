@@ -59,10 +59,21 @@ const requiredArchivePaths = [
   'node_modules/@zerowallscience/plugin-files/lib/index.js',
   'node_modules/@zerowallscience/plugin-python/lib/index.js',
   'node_modules/@zerowallscience/plugin-images/lib/client.js',
+  'node_modules/@zerowallscience/plugin-image-dup/lib/index.js',
+  'node_modules/@zerowallscience/plugin-image-dup/lib/client.js',
+  'node_modules/@zerowallscience/plugin-image-dup/package.json',
+  'node_modules/@zerowallscience/plugin-presentations/lib/index.js',
+  'node_modules/@zerowallscience/plugin-presentations/lib/client.js',
+  'node_modules/@zerowallscience/dsh-ppt-runtime/lib/index.mjs',
+  'node_modules/@zerowallscience/dsh-ppt-runtime/lib/tools.mjs',
+  'node_modules/@zerowallscience/dsh-ppt-runtime/preset/ppt/preset.yml',
+  'node_modules/@zerowallscience/dsh-ppt-runtime/preset/ppt/agent.cordis.yml',
   'node_modules/@zerowallscience/plugin-wechat/lib/index.js',
   'node_modules/@zerowallscience/plugin-wechat/lib/client.js',
   'node_modules/@zerowallscience/research-store/lib/index.js',
   'node_modules/jszip/lib/index.js',
+  'node_modules/any-base/src/converter.js',
+  'node_modules/gifwrap/src/index.js',
   'node_modules/pdf-lib/es/index.js',
   'node_modules/pptxgenjs/dist/pptxgen.es.js',
 ]
@@ -73,7 +84,7 @@ for (const path of requiredArchivePaths) {
 for (const path of [
   resolve(packaged.resourcesRoot, 'zerowall.patch.yml'),
   resolve(packaged.resourcesRoot, 'skills', 'literature-review', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'academic-ppt-studio', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'skills', 'zerowall-ppt', 'SKILL.md'),
   resolve(packaged.resourcesRoot, 'licenses', 'THIRD_PARTY_NOTICES.md'),
   resolve(packaged.resourcesRoot, 'licenses', 'deepseek-harness.version.json'),
 ]) await access(path)
@@ -103,13 +114,33 @@ function verifyArchivePolicy() {
   if (nativeMismatch.length > 0) throw new Error(`Non-Windows-x64 native files found in ASAR:\n${nativeMismatch.join('\n')}`)
 
   const pluginNames = [
-    'base', 'opencode', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp',
+    'base', 'opencode', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mcp',
     'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat',
   ]
   const betterSidebarPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-better-sidebar/package.json'))
   if (betterSidebarPackages.length !== 1) throw new Error(`dsh-better-sidebar must be packaged exactly once; found ${betterSidebarPackages.length}.`)
   const betterSidebarManifest = JSON.parse(readArchiveFile('node_modules/dsh-better-sidebar/package.json').toString('utf8'))
-  if (betterSidebarManifest.version !== '0.16.0') throw new Error(`Packaged dsh-better-sidebar must be 0.16.0; found ${betterSidebarManifest.version}.`)
+  if (betterSidebarManifest.version !== '0.16.1') throw new Error(`Packaged dsh-better-sidebar must be 0.16.1; found ${betterSidebarManifest.version}.`)
+  const betterSidebarClient = readArchiveFile('node_modules/dsh-better-sidebar/lib/client.js').toString('utf8')
+  const betterSidebarInject = [...betterSidebarClient.matchAll(/const inject = \[[\s\S]*?\];/gu)]
+    .map(match => [...match[0].matchAll(/["']([^"']+)["']/gu)].map(value => value[1]))
+    .find(names => ['slots', 'sessions', 'connection', 'workspaces', 'locale', 'modules'].every(name => names.includes(name)))
+  // dsh-better-sidebar 0.16.1 receives conversation data through the
+  // session-scoped tab API and no longer dereferences ctx.conversation. Older
+  // bundles did, so validate the injection only when that legacy access exists.
+  if (betterSidebarClient.includes('ctx.get("conversation")') && (betterSidebarInject === undefined || !betterSidebarInject.includes('conversation'))) {
+    throw new Error('Packaged dsh-better-sidebar accesses conversation without declaring it in the client inject list.')
+  }
+  const presentationsClient = readArchiveFile('node_modules/@zerowallscience/plugin-presentations/lib/client.js').toString('utf8')
+  const presentationsInject = [...presentationsClient.matchAll(/const inject = \[[\s\S]*?\];/gu)]
+    .map(match => [...match[0].matchAll(/["']([^"']+)["']/gu)].map(value => value[1]))
+    .find(names => names.includes('betterSidebar') && names.includes('remote.zerowallPresentation'))
+  if (!presentationsClient.includes('.conversation.resolveImage(')) {
+    throw new Error('Packaged presentations client is missing its expected conversation image bridge.')
+  }
+  if (presentationsInject === undefined || !presentationsInject.includes('conversation')) {
+    throw new Error('Packaged presentations client accesses conversation without declaring it in the client inject list.')
+  }
   const forbiddenBetterSidebarFiles = archiveFiles.filter(path => path.startsWith('node_modules/dsh-better-sidebar/') && (
     /^node_modules\/dsh-better-sidebar\/README(?:_[^/]+)?\.md$/iu.test(path)
     || /^node_modules\/dsh-better-sidebar\/LICENSE$/iu.test(path)
@@ -121,7 +152,7 @@ function verifyArchivePolicy() {
   const dreamSkinManifest = JSON.parse(readArchiveFile('node_modules/dsh-dream-skin/package.json').toString('utf8'))
   if (dreamSkinManifest.version !== '0.4.14') throw new Error(`Packaged dsh-dream-skin must be 0.4.14; found ${dreamSkinManifest.version}.`)
   const forbiddenDreamSkinFiles = archiveFiles.filter(path => path.startsWith('node_modules/dsh-dream-skin/') && (
-    /^node_modules\/dsh-dream-skin\/(?:README|LICENSE|scripts|src|test|tests)\b/iu.test(path)
+    /^node_modules\/dsh-dream-skin\/(?:README|LICENSE|scripts|test|tests)\b/iu.test(path)
   ))
   if (forbiddenDreamSkinFiles.length > 0) throw new Error(`Dream Skin source/documentation files found in ASAR:\n${forbiddenDreamSkinFiles.join('\n')}`)
   for (const name of [...pluginNames.map(value => `plugin-${value}`), 'research-store']) {
@@ -133,6 +164,14 @@ function verifyArchivePolicy() {
   }
   const forbiddenWechat = archiveFiles.filter(path => /node_modules\/(?:wechaty|wechaty-puppet-|@juzi-bot\/wechaty)/iu.test(path))
   if (forbiddenWechat.length > 0) throw new Error(`Non-iLink WeChat runtime found in ASAR:\n${forbiddenWechat.slice(0, 20).join('\n')}`)
+  const forbiddenCapabilityFiles = archiveFiles.filter(path => (
+    path.startsWith('node_modules/@zerowallscience/plugin-image-dup/')
+    || path.startsWith('node_modules/@zerowallscience/dsh-ppt-runtime/')
+  ) && /(?:^|\/)(?:README(?:_[^/]*)?\.md|tests?|\.env(?:\.[^/]*)?)(?:\/|$)|\.map$/iu.test(path))
+  if (forbiddenCapabilityFiles.length > 0) throw new Error(`Forbidden image-dup/PPT upstream development files found in ASAR:\n${forbiddenCapabilityFiles.join('\n')}`)
+  const hardcodedUserPath = archiveFiles.filter(path => /node_modules\/@zerowallscience\/(?:plugin-image-dup|dsh-ppt-runtime)\/.+\.(?:js|mjs|json|yml)$/iu.test(path))
+    .find(path => /[A-Za-z]:[\\/]Users[\\/][^\\/]+/iu.test(readArchiveFile(path).toString('utf8')))
+  if (hardcodedUserPath !== undefined) throw new Error(`Hard-coded user path found in packaged capability runtime: ${hardcodedUserPath}`)
 
   if (!/^4\.\d+\.\d+$/u.test(packagedManifest.version)) throw new Error(`Packaged desktop version must be a 4.x release; found ${packagedManifest.version}.`)
   const dshManifest = JSON.parse(readArchiveFile('node_modules/@deepseek-ai/dsh/package.json').toString('utf8'))
@@ -147,10 +186,9 @@ function verifyQuestionComposerBundle() {
 }
 
 function hasForbiddenRuntimeDirectory(path) {
-  const forbidden = new Set(['src', 'test', 'tests', '__tests__', 'example', 'examples', 'docs'])
+  const forbidden = new Set(['test', 'tests', '__tests__', 'example', 'examples', 'docs'])
   const segments = path.split('/')
-  return segments.some((segment, index) => forbidden.has(segment.toLowerCase())
-    && !(segment.toLowerCase() === 'src' && segments[index - 1]?.toLowerCase() === 'build'))
+  return segments.some(segment => forbidden.has(segment.toLowerCase()))
 }
 
 async function verifyExternalPolicy() {
@@ -158,10 +196,11 @@ async function verifyExternalPolicy() {
   const forbiddenSkills = externalFiles.filter(path => path.startsWith('skills/') && (
     /(?:^|\/)(?:__pycache__|tests?|outputs?|rendered|screenshots|test-results)(?:\/|$)/i.test(path)
     || /\.pyc$/i.test(path)
-    || path.startsWith('skills/gpt-image2-ppt/docs/assets/')
-    || path.startsWith('skills/gpt-image2-ppt/examples/editable-pptx/')
+    || /(?:^|\/)(?:academic-ppt-studio|gpt-image2-ppt|journal-club-ppt)(?:\/|$)/i.test(path)
   ))
   if (forbiddenSkills.length > 0) throw new Error(`Forbidden runtime Skill artifacts found:\n${forbiddenSkills.slice(0, 50).join('\n')}`)
+  const legacyPptFiles = externalFiles.filter(path => /(?:^|\/)(?:academic-ppt-studio|gpt-image2-ppt|journal-club-ppt)(?:\/|$)/i.test(path))
+  if (legacyPptFiles.length > 0) throw new Error(`Legacy PPT Skills are forbidden in the packaged runtime:\n${legacyPptFiles.slice(0, 50).join('\n')}`)
   if (externalFiles.length > 3_000) throw new Error(`ASAR-external file count ${externalFiles.length} exceeds the 3,000-file gate.`)
 
   const nodeExecutables = (await listDiskFiles(packaged.root)).filter(path => /(?:^|\/)node\.exe$/i.test(path))
@@ -211,6 +250,8 @@ async function verifyImports() {
       '@zerowallscience/plugin-ai-cloud',
       '@zerowallscience/plugin-files',
       '@zerowallscience/plugin-images',
+      '@zerowallscience/plugin-image-dup',
+      '@zerowallscience/plugin-presentations',
       '@zerowallscience/plugin-mcp',
       '@zerowallscience/plugin-skills',
       '@zerowallscience/plugin-wechat',
@@ -391,6 +432,9 @@ function isTransientHostProbeError(error) {
   for (let current = error; current !== undefined && current !== null; current = current.cause) {
     if (current instanceof DOMException && ['AbortError', 'TimeoutError'].includes(current.name)) return true
     if (current instanceof TypeError && current.message === 'fetch failed') return true
+    if (current instanceof Error && /^Packaged Web boot manifest is incomplete\./u.test(current.message)) return true
+    if (current instanceof Error && /^Packaged Host plugin inventory is missing:/u.test(current.message)) return true
+    if (current instanceof Error && /^Packaged Host ZeroWall plugins are not active:/u.test(current.message)) return true
     if (current instanceof Error && /^Packaged Host WebSocket (?:failed to open|timed out): /u.test(current.message)) return true
     if (typeof current === 'object' && ['UND_ERR_SOCKET', 'ECONNRESET', 'ECONNREFUSED'].includes(current.code)) return true
   }
@@ -456,7 +500,7 @@ async function verifyPluginInventory(url) {
   }
   const entries = envelope.result.value.entries
   const expected = [
-    'base', 'opencode', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp',
+    'base', 'opencode', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mcp',
     'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat',
   ].map(name => `@zerowallscience/plugin-${name}`)
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
@@ -488,10 +532,12 @@ async function verifyWebBootManifest(url) {
     '@zerowallscience/plugin-projects',
     '@zerowallscience/plugin-account',
     '@zerowallscience/plugin-images',
+    '@zerowallscience/plugin-image-dup',
     '@zerowallscience/plugin-mcp',
     '@zerowallscience/plugin-skills',
     '@zerowallscience/plugin-reviewer',
     '@zerowallscience/plugin-research',
+    '@zerowallscience/plugin-presentations',
     '@zerowallscience/plugin-wechat',
   ]
   const missing = required.filter(id => !ids.has(id))
@@ -557,8 +603,9 @@ async function verifyDesktopStartup() {
     for (const id of [
       '@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-layout', '@zerowallscience/plugin-base',
       '@zerowallscience/plugin-projects', '@zerowallscience/plugin-account', '@zerowallscience/plugin-images',
+      '@zerowallscience/plugin-image-dup',
       '@zerowallscience/plugin-mcp', '@zerowallscience/plugin-skills', '@zerowallscience/plugin-reviewer',
-      '@zerowallscience/plugin-research', '@zerowallscience/plugin-wechat',
+      '@zerowallscience/plugin-research', '@zerowallscience/plugin-presentations', '@zerowallscience/plugin-wechat',
     ]) {
       if (!ids.includes(id)) throw new Error(`Packaged desktop Web boot is missing ${id}.`)
     }

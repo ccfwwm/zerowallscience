@@ -1,5 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import { SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import {
   type ArtifactRecord, type AuditEventRecord, type CreateArtifactInput, type CreateDataAssetInput,
@@ -65,6 +65,11 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('createEdge') createEdge(input: CreateResearchEdgeInput): ResearchEdgeRecord { return this.store.createResearchEdge(input) }
   @Remote('listEdges') listEdges(projectId: string): ResearchEdgeRecord[] { return this.store.listResearchEdges(projectId) }
   @Remote('listAuditEvents') listAuditEvents(projectId: string): AuditEventRecord[] { return this.store.listAuditEvents(projectId) }
+  projectForSession(input: { sessionId: string }): ProjectRecord | undefined {
+    const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
+    const cwd = session?.header.cwd
+    return cwd === undefined ? undefined : this.store.listProjects().find(item => isWithin(cwd, item.rootPath))
+  }
   @Remote('getAuditReport') getAuditReport(projectId: string): AuditReport { return this.store.getAuditReport(projectId) }
   @Remote('exportAuditReport') exportAuditReport(input: { projectId: string; format: 'json' | 'markdown' }): string { return this.store.exportAuditReport(input.projectId, input.format) }
   @Remote('exportSnapshot') exportSnapshot(projectId: string): ResearchProjectSnapshotV1 { return this.store.exportResearchSnapshot(projectId) }

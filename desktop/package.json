@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "4.3.3",
+  "version": "4.3.5",
   "description": "ZeroWall Science 4.3 local-first scientific research workbench with the DSH better-sidebar workbench.",
   "private": true,
   "type": "module",
@@ -21,8 +21,9 @@
     "package:stable:mac:arm64": "node scripts/verify-target.mjs darwin arm64 && electron-builder --config build/electron-builder.stable.cjs --mac --arm64 --publish never && node scripts/verify-packaged-runtime.mjs"
   },
   "dependencies": {
-    "dsh-better-sidebar": "0.16.0",
+    "dsh-better-sidebar": "0.16.1",
     "dsh-dream-skin": "0.4.14",
+    "@zerowallscience/dsh-ppt-runtime": "workspace:^",
     "@zerowallscience/plugin-account": "workspace:^",
     "@zerowallscience/plugin-ai-cloud": "workspace:^",
     "@zerowallscience/plugin-base": "workspace:^",
@@ -31,6 +32,7 @@
     "@zerowallscience/plugin-environment": "workspace:^",
     "@zerowallscience/plugin-files": "workspace:^",
     "@zerowallscience/plugin-images": "workspace:^",
+    "@zerowallscience/plugin-image-dup": "workspace:^",
     "@zerowallscience/plugin-mcp": "workspace:^",
     "@zerowallscience/plugin-presentations": "workspace:^",
     "@zerowallscience/plugin-projects": "workspace:^",

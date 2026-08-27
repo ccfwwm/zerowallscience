@@ -6,6 +6,14 @@ const rootPackage = JSON.parse(await readFile(resolve(root, 'package.json'), 'ut
 const version = String(rootPackage.version)
 const clientInject = [
   'betterSidebar',
+  // `slots` is the Cordis service used by client plugins to register
+  // sidebar/tool presentations. Keep it in generated manifests so the
+  // Loader creates the client fiber with the same contract exported by the
+  // classic bundle (not only in the hand-maintained source package JSON).
+  'slots',
+  // Domain clients render conversation images and bridge actions back to the
+  // active composer. Keep the service in every generated client contract.
+  'conversation',
   '@deepseek-ai/dsh-client-runtime',
   '@deepseek-ai/dsh-api-remotes',
   '@deepseek-ai/dsh-client-locale',
@@ -18,7 +26,7 @@ const clientInject = [
 ]
 
 const externalClientDependencies = {
-  'dsh-better-sidebar': '0.16.0',
+  'dsh-better-sidebar': '0.16.1',
   'dsh-dream-skin': '0.4.14',
 }
 
@@ -62,6 +70,7 @@ const npmDependencies = {
   account: { qrcode: '^1.5.4', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   files: { jszip: '3.10.1', 'pdf-lib': '^1.17.1', 'pdfjs-dist': '^4.10.38', xlsx: '^0.18.5', 'fast-xml-parser': '^5.11.0', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
   images: { sharp: '^0.35.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
+  'image-dup': { jimp: '^1.6.1', 'pdf-lib': '^1.17.1', sharp: '^0.35.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
   mcp: { '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   skills: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   reviewer: { 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },
@@ -70,7 +79,7 @@ const npmDependencies = {
   execution: { '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   runs: { '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   publications: { '@zerowallscience/research-store': 'workspace:^', jszip: '3.10.1', zod: '^4.4.3' },
-  presentations: { '@zerowallscience/research-store': 'workspace:^', '@pdf-lib/fontkit': '1.1.1', 'pdf-lib': '1.17.1', pptxgenjs: '4.0.1', zod: '^4.4.3' },
+  presentations: { '@zerowallscience/research-store': 'workspace:^', '@zerowallscience/dsh-ppt-runtime': 'workspace:^', '@pdf-lib/fontkit': '1.1.1', 'pdf-lib': '1.17.1', pptxgenjs: '4.0.1', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
   'web-search': {
     zod: '^4.4.3',
     '@deepseek-ai/dsh-web': 'workspace:^',
@@ -96,6 +105,15 @@ const plugins = [
     permissions: ['files', 'network'],
     dependencies: ['account', 'secrets', 'base', 'environment'],
   },
+  {
+    id: 'image-dup',
+    client: true,
+    remote: true,
+    capabilities: ['image-duplicate-detection', 'artifacts'],
+    permissions: ['files', 'processes', 'attachments'],
+    dependencies: ['files', 'projects', 'research'],
+    optionalServices: ['zerowallFiles', 'zerowallProjects', 'zerowallResearch'],
+  },
   { id: 'mcp', client: true, remote: true, capabilities: ['mcp'], permissions: ['files', 'network'], dependencies: ['projects', 'base'] },
   { id: 'skills', client: true, remote: true, capabilities: ['skills'], permissions: ['files'], dependencies: ['base'] },
   { id: 'reviewer', client: true, capabilities: ['reviewer'], permissions: ['approvals'], dependencies: ['base'] },
@@ -104,7 +122,7 @@ const plugins = [
   { id: 'python', capabilities: ['python'], permissions: ['processes', 'files'], dependencies: [] },
   { id: 'runs', client: true, remote: true, capabilities: ['runs'], permissions: ['processes', 'files'], dependencies: ['execution'] },
   { id: 'publications', client: true, remote: true, capabilities: ['papers', 'publications'], permissions: ['files'], dependencies: ['runs'] },
-  { id: 'presentations', client: true, remote: true, capabilities: ['presentations'], permissions: ['files', 'processes'] },
+  { id: 'presentations', client: true, remote: true, capabilities: ['presentations'], permissions: ['files', 'processes', 'network', 'approvals'] },
   { id: 'web-search', client: true, capabilities: ['web-search'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'] },
   { id: 'wechat', client: true, capabilities: ['remote.wechat'], permissions: ['credentials', 'network', 'files', 'approvals'], dependencies: ['secrets', 'projects', 'files', 'base'], requiredServices: ['agents', 'sessions', 'agentDefaultModel'], optionalServices: ['webServer', 'workspaceRegistry', 'agentPresets'] },
 ]
@@ -187,7 +205,10 @@ for (const plugin of plugins) {
       ] : []),
       'dsh.bundle.patch.yml',
       'zerowall.plugin.json',
-      'README.md',
+      // The image-duplicate implementation carries upstream provenance in
+      // THIRD_PARTY_LICENSES; its development README must not enter ASAR.
+      ...(plugin.id === 'image-dup' ? [] : ['README.md']),
+      ...(plugin.id === 'image-dup' ? ['runtime', 'THIRD_PARTY_LICENSES'] : []),
     ],
     dependencies: {
       ...dshDependencies,

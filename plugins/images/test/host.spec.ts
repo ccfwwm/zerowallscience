@@ -85,14 +85,62 @@ describe('AI Cloud image generation and editing', () => {
 
     const result = await service.generate({ prompt: 'A scientific cover', outputPath: 'art/cover.png' }, workspace)
 
-    expect(result).toMatchObject({ model: 'gpt-image-2', revisedPrompt: 'refined', image: { attachmentId: ref.attachmentId } })
+    expect(result).toMatchObject({ model: 'gpt-image-2', quality: 'medium', revisedPrompt: 'refined', image: { attachmentId: ref.attachmentId } })
     expect((await sharp(await readFile(result.path)).metadata()).format).toBe('png')
     expect(fetcher).toHaveBeenCalledTimes(1)
     expect(fetcher.mock.calls[0]?.[0]).toBe('https://code.aicodeme.xyz/v1/images/generations')
     const request = fetcher.mock.calls[0]?.[1] as RequestInit
-    expect(JSON.parse(String(request.body))).toMatchObject({ model: 'gpt-image-2', prompt: 'A scientific cover', output_format: 'png' })
+    expect(JSON.parse(String(request.body))).toMatchObject({ model: 'gpt-image-2', prompt: 'A scientific cover', size: 'auto', quality: 'medium', output_format: 'png' })
     expect(String(request.body)).not.toContain('messages')
     expect(JSON.stringify(result)).not.toContain('host-only-secret')
+  })
+
+  it('accepts the attachment store normalized preview format for a PNG output', async () => {
+    const workspace = await root()
+    const png = await raster()
+    const ref = {
+      attachmentId: `sha256:${'b'.repeat(64)}` as ImageAttachmentRef['attachmentId'],
+      mediaType: 'image/jpeg' as const,
+      bytes: 123,
+      width: 1536,
+      height: 1536,
+      name: 'large.png',
+    }
+    const service = generator(vi.fn(async () => imageResponse(png)) as typeof fetch, ref)
+
+    const result = await service.generate({ prompt: 'A large image', outputPath: 'large.png', size: '2048x2048' }, workspace)
+
+    expect(result.previewWarning).toBeUndefined()
+    expect(result.image).toMatchObject({ attachmentId: ref.attachmentId, mediaType: 'image/jpeg', width: 1536, height: 1536 })
+    expect((await sharp(await readFile(result.path)).metadata()).format).toBe('png')
+  })
+
+  it('accepts custom larger sizes and sends them for generation and edit requests', async () => {
+    const workspace = await root()
+    const png = await raster()
+    const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      if (init?.body instanceof FormData) {
+        expect(init.body.get('size')).toBe('2048x2048')
+        expect(init.body.get('quality')).toBe('high')
+      } else {
+        expect(JSON.parse(String(init?.body))).toMatchObject({ size: '2048x2048', quality: 'low' })
+      }
+      return imageResponse(png)
+    })
+    const service = generator(fetcher as typeof fetch)
+    await service.generate({ prompt: 'large', outputPath: 'large.png', size: '2048x2048', quality: 'low' }, workspace)
+    await writeFile(join(workspace, 'source.png'), png)
+    await service.edit({ prompt: 'large edit', inputPaths: ['source.png'], outputPath: 'edited.png', size: '2048x2048', quality: 'high' }, workspace)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects malformed custom sizes before network access', async () => {
+    const workspace = await root()
+    const fetcher = vi.fn()
+    const service = generator(fetcher as typeof fetch)
+    await expect(service.generate({ prompt: 'bad', outputPath: 'bad.png', size: '2048' as never }, workspace)).rejects.toThrow('WIDTHxHEIGHT')
+    await expect(service.generate({ prompt: 'bad', outputPath: 'bad-2.png', size: '0x2048' as never }, workspace)).rejects.toThrow('positive integer')
+    expect(fetcher).not.toHaveBeenCalled()
   })
 
   it('sends repeated image[] multipart fields without an explicit content-type boundary', async () => {
