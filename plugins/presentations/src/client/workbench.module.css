@@ -32,6 +32,9 @@
 .toolbar button:disabled { cursor:not-allowed; opacity:.5; }
 .toolbar .primaryCommand { border-color:#17765f; background:#17765f; color:#fff; }
 .toolbar .primaryCommand:hover { border-color:#0f604c; background:#0f604c; }
+.toolbar .regenerateCommand { border-color:#245d99; background:#245d99; color:#fff; box-shadow:0 1px 2px #153f6b33; }
+.toolbar .regenerateCommand:hover { border-color:#194b7f; background:#194b7f; }
+.toolbar .regenerateCommand:focus-visible { outline-color:#245d99; }
 .moreMenu { position:relative; }
 .moreMenu summary { list-style:none; }
 .moreMenu summary::-webkit-details-marker { display:none; }
@@ -40,7 +43,6 @@
 .stage { display: grid; gap: 3px; min-width: 0; }
 .stage small { color: #68727e; font-size: 11px; }
 .statusRow { display:flex; align-items:center; gap:6px; }
-.qualityBadge { padding:4px 7px; border:1px solid currentColor; border-radius:4px; background:#fff; font-size:11px; font-weight:600; }
 .progressTrack { width: min(360px, 55vw); height: 5px; margin-top: 3px; overflow: hidden; border-radius: 5px; background: #e4e9ee; }
 .progressTrack span { display:block; height:100%; border-radius:inherit; background:#17765f; transition:width .25s ease; }
 .status { padding: 4px 7px; border-radius: 4px; background: #e8edf2; font-weight: 600; text-transform: capitalize; }
@@ -67,8 +69,9 @@
 .slidePreview footer button:hover { border-color:#8295a7; background:#eef3f6; }
 .slidePreview footer .actionPrimary { border-color:#17765f; background:#17765f; color:#fff; }
 .slidePreview footer .actionPrimary:hover { border-color:#0f604c; background:#0f604c; }
-.slidePreview footer .actionEmphasis { border-color:#9b6a13; background:#fff8e8; color:#7a5009; }
-.slidePreview footer .actionEmphasis:hover { border-color:#7a5009; background:#fceecb; }
+.slidePreview footer .actionRegenerate { border-color:#245d99; background:#245d99; color:#fff; box-shadow:0 1px 2px #153f6b33; }
+.slidePreview footer .actionRegenerate:hover { border-color:#194b7f; background:#194b7f; }
+.slidePreview footer .actionRegenerate:focus-visible { outline-color:#245d99; }
 .slidePreview footer button:disabled { opacity:.45; }
 .preview h2 { margin: 8px 0 24px; font-size: 25px; }
 .preview p { white-space: pre-wrap; line-height: 1.6; }

@@ -276,6 +276,7 @@ describe('ResearchStore', () => {
         modelVisual: 'unverified', overall: 'unverified', warnings: ['Model review is pending.'],
       },
     })
+    expect(store.updatePresentation(ready.id, { quality: null }).quality).toBeUndefined()
     expect(store.exportPresentation(ready.id, 'pptx', 'file:///results.pptx').exportUris.pptx).toBe('file:///results.pptx')
     store.close()
 
@@ -284,8 +285,8 @@ describe('ResearchStore', () => {
     expect(reopened.listPresentations(project.id)[0]).toMatchObject({
       status: 'ready', slides: [{ id: 'slide-1', visualStatus: 'ready', visualAttempt: 2, visualUpdatedAt: '2026-08-28T00:00:00.000Z', visual: { requestedQuality: 'medium', actualQuality: 'medium', attachment: { mediaType: 'image/jpeg' } } }],
       artifacts: [{ kind: 'preview', checksum: 'sha256:preview' }],
-      quality: { structural: 'passed', overall: 'unverified', warnings: ['Model review is pending.'] },
     })
+    expect(reopened.listPresentations(project.id)[0]?.quality).toBeUndefined()
     reopened.close()
   })
 

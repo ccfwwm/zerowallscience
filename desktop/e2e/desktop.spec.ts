@@ -89,6 +89,7 @@ describe('ZeroWall Science Electron', () => {
     expect(await page.getByText(/DeepSeek Harness/i).count()).toBe(0)
     const renderer = await page.evaluate(() => ({ process: typeof process, require: typeof (globalThis as { require?: unknown }).require, desktop: typeof (window as unknown as { zerowallDesktop?: unknown }).zerowallDesktop }))
     expect(renderer).toEqual({ process: 'undefined', require: 'undefined', desktop: 'object' })
+    expect(await page.evaluate(() => typeof (window as unknown as { zerowallDesktop?: { revealPath?: unknown } }).zerowallDesktop?.revealPath)).toBe('function')
     expect(await page.getByRole('button', { name: '科研项目' }).count()).toBe(0)
     expect(await page.getByRole('button', { name: '科研工作台' }).count()).toBe(0)
     expect(await page.getByRole('button', { name: 'MCP 连接' }).count()).toBe(0)

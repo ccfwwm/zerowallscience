@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, Tray, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
 import updaterPackage from 'electron-updater'
 import { HarnessRuntime, type HarnessChildProcess } from './runtime/harness-runtime.js'
 import { attachCredentialBroker } from './credentials/broker.js'
@@ -16,6 +16,7 @@ import { stopBeforeExit } from './shutdown.js'
 import { McpEnvironmentController, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
 import { DesktopUpdateController, isUpdateCheckDue, UPDATE_CHECK_INTERVAL_MS } from './updater.js'
+import { resolveRevealPath } from './reveal-path.js'
 import type { DesktopClipboardFile, DesktopInfo, RuntimeSnapshot } from '../shared/contracts.js'
 
 const { autoUpdater } = updaterPackage
@@ -315,6 +316,10 @@ app.whenReady().then(async () => {
       ? await dialog.showOpenDialog(mainWindow, options)
       : await dialog.showOpenDialog(options)
     return result.canceled ? null : result.filePaths[0] ?? null
+  })
+  ipcMain.handle('desktop:reveal-path', (_event, path: unknown) => {
+    shell.showItemInFolder(resolveRevealPath(path))
+    return true
   })
   ipcMain.handle('desktop:clipboard-copy-file', async (_event, input: DesktopClipboardFile) => {
     if (process.platform !== 'win32') return false

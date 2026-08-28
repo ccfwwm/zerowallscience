@@ -5,6 +5,7 @@ export interface McpEnvironmentStatus { phase: McpEnvironmentPhase; environmentV
 export interface ZeroWallDesktopApi {
   info(): Promise<{ version: string; platform: string; architecture: string }>
   chooseDirectory(): Promise<string | null>
+  revealPath?(path: string): Promise<boolean>
   copyFile?(input: { name: string; mediaType: string; data: string }): Promise<boolean>
   getUpdateStatus(): Promise<DesktopUpdateStatus>
   checkForUpdates(): Promise<DesktopUpdateStatus>

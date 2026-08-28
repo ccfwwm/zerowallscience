@@ -793,7 +793,7 @@ export class ResearchStore {
     const status = changes.status ?? current.status
     validatePresentationTransition(current.status, status)
     const { quality: requestedQuality, ...restChanges } = changes
-    const updated: PresentationRecord = {
+    const base: PresentationRecord = {
       ...current, ...restChanges, status,
       ...(changes.title === undefined ? {} : { title: nonEmptyString(changes.title, 'Presentation title') }),
       outline: changes.outline === undefined ? current.outline : presentationOutline(changes.outline),
@@ -802,11 +802,16 @@ export class ResearchStore {
       slides: changes.slides === undefined ? current.slides : presentationSlides(changes.slides),
       exportUris: changes.exportUris === undefined ? current.exportUris : stringRecord(changes.exportUris, 'Presentation export URIs'),
       artifacts: changes.artifacts === undefined ? current.artifacts : presentationArtifacts(changes.artifacts),
-      ...(requestedQuality === undefined
-        ? (current.quality === undefined ? {} : { quality: current.quality })
-        : requestedQuality === null ? {} : { quality: presentationQuality(requestedQuality) }),
       version: current.version + 1, updatedAt: new Date().toISOString(),
     }
+    const updated: PresentationRecord = requestedQuality === null
+      ? (({ quality: _quality, ...withoutQuality }) => withoutQuality)(base)
+      : {
+          ...base,
+          ...(requestedQuality === undefined
+            ? (current.quality === undefined ? {} : { quality: current.quality })
+            : { quality: presentationQuality(requestedQuality) }),
+        }
     this.database.prepare(`UPDATE presentations SET title=?, status=?, outline_json=?, style_json=?, assets_json=?, slides_json=?, export_uris_json=?, artifacts_json=?, quality_json=?, generation_json=?, revisions_json=?, error=?, version=?, updated_at=? WHERE id=?`)
       .run(updated.title, updated.status, JSON.stringify(updated.outline), JSON.stringify(updated.style), JSON.stringify(updated.assets), JSON.stringify(updated.slides), JSON.stringify(updated.exportUris), JSON.stringify(updated.artifacts), updated.quality === undefined ? null : JSON.stringify(updated.quality), updated.generation === undefined ? null : JSON.stringify(updated.generation), JSON.stringify(updated.revisions ?? []), updated.error ?? null, updated.version, updated.updatedAt, updated.id)
     return updated

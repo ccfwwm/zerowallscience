@@ -18,6 +18,7 @@ describe('presentation generation', () => {
     const project = store.createProject({ name: 'Test', rootPath: root })
     const outline = Array.from({ length: 10 }, (_, index) => ({ title: `Slide ${index + 1}`, points: ['Point'] }))
     const presentation = store.createPresentation({ projectId: project.id, title: '并发测试', outline })
+    store.updatePresentation(presentation.id, { quality: { structural: 'passed', render: 'unverified', automaticVisual: 'unverified', modelVisual: 'unverified', overall: 'unverified', warnings: ['旧的人工确认提示'] } })
     let active = 0
     let maximum = 0
     const qualities: unknown[] = []
@@ -31,9 +32,10 @@ describe('presentation generation', () => {
     const worker = new PresentationWorker(store, service, 1)
     try {
       worker.generate(presentation.id)
-      await waitReady(store, presentation.id)
+      const ready = await waitReady(store, presentation.id)
       expect(maximum).toBe(10)
       expect(qualities).toEqual(Array(10).fill('high'))
+      expect(ready.quality).toBeUndefined()
     } finally {
       worker.dispose()
       store.close()

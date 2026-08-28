@@ -45,7 +45,7 @@ function statusLabel(value: string): string {
   return ({ draft: '草稿', outlining: '整理大纲', designing: '设计页面', generating: '生成内容', ready: '已完成', failed: '生成失败', paused: '已暂停', cancelled: '已取消' } as Record<string, string>)[value] ?? value
 }
 function stageLabel(value: string): string {
-  return ({ outlining: '整理大纲', designing: '规划视觉', visual: '逐页生成视觉', html: '生成 HTML', pptx: '组装 PPTX', rendering: '组装 PPTX', quality: '质量检查', ready: '已完成', failed: '失败', paused: '已暂停', cancelled: '已取消' } as Record<string, string>)[value] ?? value
+  return ({ outlining: '整理大纲', designing: '规划视觉', visual: '逐页生成视觉', html: '生成 HTML', pptx: '组装 PPTX', rendering: '组装 PPTX', quality: '完成生成', ready: '已完成', failed: '失败', paused: '已暂停', cancelled: '已取消' } as Record<string, string>)[value] ?? value
 }
 function localArtifactPath(uri: string): string | undefined {
   try {
@@ -114,12 +114,6 @@ export async function addPresentationSlideToDraft(ctx: ClientContext, remote: Pi
     name: preview.name,
     contextText: `PPT 页面引用：presentationId=${presentationId}, slideId=${slide.id}, page=${slideIndex + 1}`,
   })
-}
-
-function parentPath(path: string): string {
-  const normalized = path.replace(/[\\/]+$/u, '')
-  const separator = Math.max(normalized.lastIndexOf('\\'), normalized.lastIndexOf('/'))
-  return separator > 0 ? normalized.slice(0, separator) : normalized
 }
 
 function useSlideImage(ctx: ClientContext, remote: Pick<PresentationRemote, 'previewSlide'>, presentationId: string, sessionId: string, slide: PresentationRecord['slides'][number] | undefined, reload: number): { url?: string; failed: boolean; markFailed(): void } {
@@ -231,6 +225,11 @@ function PresentationWorkbench({ ctx, remote, scope, tab }: TabComponentProps & 
     if (!presentation || !window.confirm('确定重新生成整套演示文稿吗？这会重新生成所有页面的内容和图片。')) return
     await act(id => remote.generate(id))
   }
+  const revealPptx = async (path: string) => {
+    const revealPath = window.zerowallDesktop?.revealPath
+    if (!revealPath) throw new Error('当前桌面运行时不支持打开系统文件资源管理器。')
+    await revealPath(path)
+  }
   const copySlideReference = async () => {
     if (!presentation || !slide) return
     await navigator.clipboard.writeText(JSON.stringify({ presentationId: presentation.id, slideId: slide.id, page: selectedSlide + 1, image: slide.visualUri ?? slide.visual?.attachment?.attachmentId }, null, 2))
@@ -243,20 +242,19 @@ function PresentationWorkbench({ ctx, remote, scope, tab }: TabComponentProps & 
       <div className={styles.toolbar}><button type="button" title="刷新" aria-label="刷新演示文稿" onClick={() => void refresh()} disabled={busy}><RefreshCw size={18} /></button></div>
     </header>
     {error && <p className={styles.error} role="alert">{error}</p>}
-    {!presentation && <div className={styles.state}><div className={styles.intro}><h2>从研究材料生成可编辑演示文稿</h2><p>手工选择研究项目并填写标题，或使用当前工作区自动关联。点击后立即进入 ZeroWall PPT 生成流程。</p></div><div className={styles.introGrid}><div className={styles.introCard}><strong>1 · 选择项目</strong><span>选择已有研究项目，或自动关联当前工作区。</span></div><div className={styles.introCard}><strong>2 · 填写标题并生成</strong><span>输入标题后点击“创建并开始”。</span></div><div className={styles.introCard}><strong>3 · 审阅导出</strong><span>检查缩略图、质量状态，再打开或导出产物。</span></div></div><div className={styles.newForm}><label className={styles.formField}><span>研究项目</span><select aria-label="研究项目" value={projectId ?? ''} onChange={event => { setProjectId(event.target.value || undefined); setPresentation(undefined); setItems([]) }}><option value="">当前工作区（自动关联）</option>{projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className={styles.formField}><span>演示文稿标题</span><input aria-label="演示文稿标题" value={title} onChange={event => setTitle(event.target.value)} placeholder="例如：2026 年度研究进展汇报" /></label><button type="button" disabled={!title.trim() || busy} onClick={() => void create()}><Plus size={15} />{busy ? '正在创建…' : '创建并开始'}</button></div>{!projectId && <div className={styles.hint}>当前选择“自动关联”：创建时会复用当前工作区对应的研究项目；若不存在，则自动建立项目。</div>}<h3>历史演示文稿</h3>{items.length === 0 ? <p>{projectId ? '当前项目暂无演示文稿。创建后可在此继续生成、暂停或导出。' : '选择已有项目可查看历史演示文稿；选择当前工作区后可直接创建。'}</p> : <ul>{items.map(item => <li key={item.id}><div className={styles.historyRow}><button type="button" className={styles.historyOpen} onClick={() => openPresentationWorkbench(ctx.betterSidebar, { presentationId: item.id, sessionId: scope.sessionId, projectId: item.projectId, cwd: scope.cwd, title: item.title })}><strong>{item.title}</strong><span>{statusLabel(item.status)} · {new Date(item.updatedAt).toLocaleString()}</span><small>{item.id}</small></button><button type="button" className={styles.historyDelete} title="删除历史演示文稿" aria-label={`删除${item.title}`} onClick={() => void remove(item)} disabled={busy}><Trash2 size={14} /></button></div></li>)}</ul>}</div>}
+    {!presentation && <div className={styles.state}><div className={styles.intro}><h2>从研究材料生成可编辑演示文稿</h2><p>手工选择研究项目并填写标题，或使用当前工作区自动关联。点击后立即进入 ZeroWall PPT 生成流程。</p></div><div className={styles.introGrid}><div className={styles.introCard}><strong>1 · 选择项目</strong><span>选择已有研究项目，或自动关联当前工作区。</span></div><div className={styles.introCard}><strong>2 · 填写标题并生成</strong><span>输入标题后点击“创建并开始”。</span></div><div className={styles.introCard}><strong>3 · 审阅导出</strong><span>检查逐页缩略图，再打开或导出 PPTX。</span></div></div><div className={styles.newForm}><label className={styles.formField}><span>研究项目</span><select aria-label="研究项目" value={projectId ?? ''} onChange={event => { setProjectId(event.target.value || undefined); setPresentation(undefined); setItems([]) }}><option value="">当前工作区（自动关联）</option>{projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className={styles.formField}><span>演示文稿标题</span><input aria-label="演示文稿标题" value={title} onChange={event => setTitle(event.target.value)} placeholder="例如：2026 年度研究进展汇报" /></label><button type="button" disabled={!title.trim() || busy} onClick={() => void create()}><Plus size={15} />{busy ? '正在创建…' : '创建并开始'}</button></div>{!projectId && <div className={styles.hint}>当前选择“自动关联”：创建时会复用当前工作区对应的研究项目；若不存在，则自动建立项目。</div>}<h3>历史演示文稿</h3>{items.length === 0 ? <p>{projectId ? '当前项目暂无演示文稿。创建后可在此继续生成、暂停或导出。' : '选择已有项目可查看历史演示文稿；选择当前工作区后可直接创建。'}</p> : <ul>{items.map(item => <li key={item.id}><div className={styles.historyRow}><button type="button" className={styles.historyOpen} onClick={() => openPresentationWorkbench(ctx.betterSidebar, { presentationId: item.id, sessionId: scope.sessionId, projectId: item.projectId, cwd: scope.cwd, title: item.title })}><strong>{item.title}</strong><span>{statusLabel(item.status)} · {new Date(item.updatedAt).toLocaleString()}</span><small>{item.id}</small></button><button type="button" className={styles.historyDelete} title="删除历史演示文稿" aria-label={`删除${item.title}`} onClick={() => void remove(item)} disabled={busy}><Trash2 size={14} /></button></div></li>)}</ul>}</div>}
     {presentation && <>
       <div className={styles.header}>
         <div className={styles.stage}>
           <div className={styles.statusRow}>
             <span className={styles.status}>{statusLabel(presentation.status)}</span>
-            {presentation.quality && <span className={`${styles.qualityBadge} ${styles[presentation.quality.overall]}`} title={presentation.quality.warnings.join('\n')}>质量：{presentation.quality.overall === 'unverified' ? '待确认' : presentation.quality.overall === 'passed' ? '通过' : '未通过'}</span>}
           </div>
           {presentation.generation && <><small>{stageLabel(presentation.generation.stage)} · 第 {presentation.generation.revision} 次生成 · 最后更新 {new Date(presentation.generation.updatedAt).toLocaleTimeString()}</small><div className={styles.progressTrack} aria-label="生成进度"><span style={{ width: `${Math.round(presentation.generation.progress * 100)}%` }} /></div></>}
         </div>
         <div className={styles.toolbar}>
           <button type="button" title="刷新状态" onClick={() => void refresh()} disabled={busy}><RefreshCw size={18} /><span>刷新</span></button>
           {presentation.status === 'draft' && <button type="button" className={styles.primaryCommand} title="开始生成" onClick={() => void act(id => remote.generate(id))} disabled={busy}><Play size={18} /><span>开始生成</span></button>}
-          {['ready', 'failed'].includes(presentation.status) && slide && <button type="button" className={styles.primaryCommand} title="只重新生成当前页" onClick={() => void retrySlide(slide.id)} disabled={busy}>{busy ? <LoaderCircle className={styles.spin} size={18} /> : <RotateCw size={18} />}<span>重新生成当前页</span></button>}
+          {['ready', 'failed'].includes(presentation.status) && slide && <button type="button" className={styles.regenerateCommand} title="只重新生成当前页" onClick={() => void retrySlide(slide.id)} disabled={busy}>{busy ? <LoaderCircle className={styles.spin} size={18} /> : <RotateCw size={18} />}<span>重新生成当前页</span></button>}
           {['outlining', 'designing', 'generating'].includes(presentation.status) && <button type="button" title="暂停生成" onClick={() => void act(id => remote.pause(id))} disabled={busy}><Pause size={18} /><span>暂停</span></button>}
           {presentation.status === 'paused' && <button type="button" title="继续生成" onClick={() => void act(id => remote.resume(id))} disabled={busy}><RotateCw size={18} /><span>继续</span></button>}
           {!['ready', 'cancelled'].includes(presentation.status) && <button type="button" title="取消生成" onClick={() => void act(id => remote.cancel(id))} disabled={busy}><Ban size={18} /><span>取消</span></button>}
@@ -270,7 +268,7 @@ function PresentationWorkbench({ ctx, remote, scope, tab }: TabComponentProps & 
             {visual.url && !visual.failed ? <img src={visual.url} alt={slide.title} onError={visual.markFailed} /> : <div className={styles.visualState}>{slide.visualStatus === 'generating' ? '正在生成此页图片…' : slide.visualStatus === 'failed' ? <><strong>此页图片生成失败</strong><span>{slide.visualError}</span><button type="button" onClick={() => void retrySlide(slide.id)}>重试此页</button></> : visual.failed ? '图片加载失败，请重新加载。' : '此页尚无图片'}</div>}
             <footer><span>第 {selectedSlide + 1} 页，共 {presentation.slides.length} 页</span><code>{slide.id}</code><div className={styles.slideActions}>
               <button type="button" className={styles.actionPrimary} title="加入当前对话输入框" aria-label="加入当前对话输入框" onClick={() => void addToConversation().catch(cause => setError(cause instanceof Error ? cause.message : String(cause)))} disabled={busy || (!slide.visualUri && slide.visualStatus !== 'ready')}><ImagePlus size={18} /></button>
-              <button type="button" className={styles.actionEmphasis} title="只重新生成当前页" aria-label="重新生成当前页" onClick={() => void retrySlide(slide.id)} disabled={busy}>{busy ? <LoaderCircle className={styles.spin} size={18} /> : <RotateCw size={18} />}</button>
+              <button type="button" className={styles.actionRegenerate} title="只重新生成当前页" aria-label="重新生成当前页" onClick={() => void retrySlide(slide.id)} disabled={busy}>{busy ? <LoaderCircle className={styles.spin} size={18} /> : <RotateCw size={18} />}</button>
               <button type="button" title="复制图片路径" aria-label="复制图片路径" onClick={() => void navigator.clipboard.writeText(localArtifactPath(slide.visualUri ?? '') ?? slide.visualUri ?? '')} disabled={!slide.visualUri}><Copy size={18} /></button>
               <button type="button" title="复制页面引用" aria-label="复制页面引用" onClick={() => void copySlideReference()}><Copy size={18} /></button>
               <button type="button" title="重新加载图片" aria-label="重新加载图片" onClick={() => setReloadImages(value => ({ ...value, [slide.id]: (value[slide.id] ?? 0) + 1 }))}><RefreshCw size={18} /></button>
@@ -284,7 +282,7 @@ function PresentationWorkbench({ ctx, remote, scope, tab }: TabComponentProps & 
             <code>{pptxPath}</code>
             <div className={styles.fileActions}>
               <button type="button" title="在 ZeroWall Science 中打开 PPTX" onClick={() => openArtifact(ctx, scope, pptxArtifact.uri, artifactName(pptxArtifact.uri))}><ExternalLink size={16} />打开 PPTX</button>
-              <button type="button" title="在文件资源管理器中打开所在文件夹" onClick={() => void ctx.workspaces.openPath(parentPath(pptxPath)).catch(cause => setError(cause instanceof Error ? cause.message : String(cause)))}><FolderOpen size={16} />打开所在文件夹</button>
+              <button type="button" title="在 Windows 文件资源管理器中定位 PPTX" onClick={() => void revealPptx(pptxPath).catch(cause => setError(cause instanceof Error ? cause.message : String(cause)))}><FolderOpen size={16} />打开所在文件夹</button>
             </div>
           </div> : <p className={styles.muted}>生成完成后，当前 PPTX 会出现在这里。</p>}
         </aside>

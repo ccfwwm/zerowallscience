@@ -196,7 +196,7 @@ export class PresentationWorker {
       const project = this.store.getProject(current.projectId)
       if (!project) throw new Error('Presentation project was not found.')
       if (generation.stage === 'pptx' || generation.stage === 'rendering') throw new Error('Presentation temporary generation state cannot be resumed; regenerate the same presentation.')
-      if (generation.stage === 'quality') this.save(id, { status: 'ready', generation: finish(generation), quality: { structural: 'passed', render: 'unverified', automaticVisual: 'unverified', modelVisual: 'unverified', overall: 'unverified', warnings: ['已生成逐页视觉图片；未检测到本机 PPT 渲染器，渲染质量待人工确认。'] } })
+      if (generation.stage === 'quality') this.save(id, { status: 'ready', generation: finish(generation), quality: null })
     } catch (error) {
       const latest = this.required(id)
       if (isAbort(error) || latest.status === 'paused' || latest.status === 'cancelled') return
@@ -309,7 +309,7 @@ export class PresentationWorker {
       const first = latest.slides[0]
       if (!this.legacyMode && first?.visualUri) artifacts = replaceArtifact(artifacts, { kind: 'preview', uri: first.visualUri, mediaType: 'image/png', ...(first.visual?.checksum ? { checksum: first.visual.checksum } : {}) })
       const finished = finish(latest.generation!)
-      this.save(id, { status: 'ready', error: '', artifacts, generation: finished, quality: { structural: 'passed', render: 'unverified', automaticVisual: 'unverified', modelVisual: 'unverified', overall: 'unverified', warnings: ['已生成逐页视觉图片；未检测到本机 PPT 渲染器，渲染质量待人工确认。'] } })
+      this.save(id, { status: 'ready', error: '', artifacts, generation: finished, quality: null })
       this.progress({ presentationId: id, generationId, status: 'complete', updatedAt: finished.updatedAt })
     } finally {
       await rm(pptxTemporary, { force: true })
