@@ -1,4 +1,3 @@
-[submodule "dsh/source"]
-	path = dsh/source
+[submodule "deepseek-harness"]
+	path = deepseek-harness
 	url = https://github.com/ccfwwm/deepseek-harness.git
-	branch = zerowall-rc2
