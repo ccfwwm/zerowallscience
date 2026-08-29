@@ -18,19 +18,26 @@ describe('Harness runtime boundary', () => {
     const options = buildHarnessSpawnOptions('C:/workspace', {
       dshEntryPath: 'C:/app/resources/app.asar/node_modules/@deepseek-ai/dsh/lib/bin.js',
       runtimeModulesPath: 'C:/app/resources/app.asar/node_modules',
+      userDataPath: 'C:/data',
       dshHome: 'C:/data/harness',
       userSkillsPath: 'C:/data/harness/zerowall-skills/enabled',
       researchDbPath: 'C:/data/research/zerowall-research.sqlite',
       bundledSkillsPath: 'C:/app/resources/skills',
+      mcpEnvironmentRoot: 'C:/data/mcp-environments',
       runAsNode: true,
-    }, { ELECTRON_RUN_AS_NODE: '1', Path: 'C:/Windows' })
+      runtimeAnchorPath: 'C:/app/resources/app.asar/node_modules/@deepseek-ai/dsh/package.json',
+    }, { ELECTRON_RUN_AS_NODE: '1', Path: 'C:/Windows', ZEROWALL_DISABLE_DEFAULT_MCP: '1', OPENCODE_API_KEY: 'test-key-reference' })
     expect(options.env?.ELECTRON_RUN_AS_NODE).toBe('1')
     expect(options.env?.NODE_PATH).toBe('C:/app/resources/app.asar/node_modules')
-    expect(options.env?.ZEROWALL_RUNTIME_ANCHOR).toContain('app.asar/node_modules/@deepseek-ai/dsh/lib/bin.js')
+    expect(options.env?.ZEROWALL_RUNTIME_ANCHOR).toContain('app.asar/node_modules/@deepseek-ai/dsh/package.json')
     expect(options.env?.DSH_HOME).toBe('C:/data/harness')
+    expect(options.env?.ZEROWALL_USER_DATA_DIR).toBe('C:/data')
     expect(options.env?.DSH_BUNDLED_SKILL_DIR).toBe('C:/app/resources/skills')
     expect(options.env?.ZEROWALL_USER_SKILLS).toBe('C:/data/harness/zerowall-skills/enabled')
     expect(options.env?.ZEROWALL_RESEARCH_DB).toBe('C:/data/research/zerowall-research.sqlite')
+    expect(options.env?.ZEROWALL_MCP_ENVIRONMENT_ROOT).toBe('C:/data/mcp-environments')
+    expect(options.env?.ZEROWALL_DISABLE_DEFAULT_MCP).toBe('1')
+    expect(options.env?.OPENCODE_API_KEY).toBe('test-key-reference')
     expect(options.env?.ZEROWALL_BUNDLED_SKILLS).toBe('C:/app/resources/skills')
     expect(options.env?.ZEROWALL_MCP_BUNDLED_SKILLS).toBe('C:/app/resources/skills')
     expect(options.env?.ZEROWALL_MCP_USER_SKILLS).toBe('C:/data/harness/zerowall-skills/enabled')
@@ -59,9 +66,11 @@ describe('Harness runtime boundary', () => {
     const runtime = new HarnessRuntime({
       ...files,
       dshHome: join(root, 'harness'),
+      userDataPath: root,
       userSkillsPath: join(root, 'harness', 'zerowall-skills', 'enabled'),
       researchDbPath: join(root, 'research', 'zerowall-research.sqlite'),
       bundledSkillsPath: root,
+      mcpEnvironmentRoot: join(root, 'mcp-environments'),
       logPath: join(root, 'logs', 'harness.log'),
       launchProcess: (_executable, _args, options) => {
         spawnCwd = options.cwd?.toString()
@@ -112,9 +121,11 @@ describe('Harness runtime boundary', () => {
     const runtime = new HarnessRuntime({
       ...files,
       dshHome: join(root, 'harness'),
+      userDataPath: root,
       userSkillsPath: join(root, 'harness', 'zerowall-skills', 'enabled'),
       researchDbPath: join(root, 'research', 'zerowall-research.sqlite'),
       bundledSkillsPath: root,
+      mcpEnvironmentRoot: join(root, 'mcp-environments'),
       logPath: join(root, 'logs', 'harness.log'),
       launchProcess: () => {
         markLaunched?.()

@@ -1,32 +1,32 @@
 version: 1
 id: zerowall-development
 channel: development
-dsh: 0.1.1-rc.2
+dsh: 0.1.2-alpha.1
 plugins:
+  - 'dsh-dream-skin'
   - 'dsh-better-sidebar'
   - '@huanlin/dsh-plugin-better-sidebar-plugin-office'
-  - 'dsh-dream-skin'
   - '@zerowallscience/plugin-base'
-  - '@zerowallscience/plugin-opencode'
   - '@zerowallscience/plugin-secrets'
   - '@zerowallscience/plugin-environment'
   - '@zerowallscience/plugin-desktop-compat'
   - '@zerowallscience/plugin-projects'
+  - '@zerowallscience/plugin-mcp'
   - '@zerowallscience/plugin-account'
   - '@zerowallscience/plugin-ai-cloud'
+  - '@zerowallscience/plugin-opencode'
+  - '@zerowallscience/plugin-web-search'
   - '@zerowallscience/plugin-files'
   - '@zerowallscience/plugin-images'
   - '@zerowallscience/plugin-image-dup'
-  - '@zerowallscience/plugin-mcp'
-  - '@zerowallscience/plugin-skills'
-  - '@zerowallscience/plugin-reviewer'
   - '@zerowallscience/plugin-research'
   - '@zerowallscience/plugin-execution'
   - '@zerowallscience/plugin-python'
   - '@zerowallscience/plugin-runs'
   - '@zerowallscience/plugin-publications'
   - '@zerowallscience/plugin-presentations'
-  - '@zerowallscience/plugin-web-search'
+  - '@zerowallscience/plugin-skills'
+  - '@zerowallscience/plugin-reviewer'
   - '@zerowallscience/plugin-wechat'
 wechat:
   enabled: true

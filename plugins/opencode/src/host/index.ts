@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import {
-  CallId,
+  ToolCallId,
   createUserMessage,
   LlmAdapter,
   LlmError,
@@ -150,7 +150,7 @@ async function* translate(body: ReadableStream<Uint8Array>): AsyncIterable<Strea
           index: block.index,
           block: {
             type: 'tool-call',
-            id: CallId(block.id),
+            id: ToolCallId(block.id),
             name: block.name ?? '',
             arguments: block.arguments,
           },
@@ -187,7 +187,7 @@ async function* translate(body: ReadableStream<Uint8Array>): AsyncIterable<Strea
       yield {
         type: 'tool-call-delta',
         index: block.index,
-        id: CallId(block.id),
+        id: ToolCallId(block.id),
         ...(block.name === undefined ? {} : { name: block.name }),
         argumentsDelta: fragment,
       }

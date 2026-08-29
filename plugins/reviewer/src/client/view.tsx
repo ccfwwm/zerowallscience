@@ -1,15 +1,15 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { reviewerModeDefinition, reviewerReportDefinition } from './definition.js'
 import { ReviewerCard } from './ReviewerCard.tsx'
 import { ReviewerModeAction } from './ReviewerModeAction.tsx'
 import { ReviewerSettings, type ReviewerSettingsValue } from './ReviewerSettings.tsx'
 import { NS } from '@zerowallscience/plugin-base/client-helpers'
 
-export const inject = ['slots', 'conversationEvents', 'settingsScope']
+export const inject = ['slots', 'uiConversation', 'settingsScope']
 
 export function apply(ctx: ClientContext): void {
-  ctx.conversationEvents.register(reviewerReportDefinition)
-  ctx.conversationEvents.register(reviewerModeDefinition)
+  ctx.uiConversation.events.register(reviewerReportDefinition)
+  ctx.uiConversation.events.register(reviewerModeDefinition)
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
     name: 'conversation.chat.node', key: 'zerowall-reviewer-report', locale: NS,
   }, ReviewerCard))

@@ -11,18 +11,33 @@ const clientInject = [
   // Loader creates the client fiber with the same contract exported by the
   // classic bundle (not only in the hand-maintained source package JSON).
   'slots',
+  // Alpha.1 exposes conversation event/view registries through the
+  // uiConversation assembly service (the old conversationEvents root service
+  // no longer exists).
+  'uiConversation',
+  // Settings panels bind their namespace through the shared settings scope.
+  'settingsScope',
   // Domain clients render conversation images and bridge actions back to the
   // active composer. Keep the service in every generated client contract.
   'conversation',
-  '@deepseek-ai/dsh-client-runtime',
+  '@deepseek-ai/dsh-api-gateway',
   '@deepseek-ai/dsh-api-remotes',
+  '@deepseek-ai/dsh-api-session-controller',
+  '@deepseek-ai/dsh-api-settings-controller',
+  '@deepseek-ai/dsh-api-workspace-controller',
+  '@deepseek-ai/dsh-client-connection',
   '@deepseek-ai/dsh-client-locale',
+  '@deepseek-ai/dsh-client-store',
+  '@deepseek-ai/dsh-client-ui-chat',
+  '@deepseek-ai/dsh-client-ui-layout',
+  '@deepseek-ai/dsh-client-ui-session',
   '@deepseek-ai/dsh-client-ui-slots',
   '@deepseek-ai/dsh-client-ui-sidebar',
   '@deepseek-ai/dsh-client-ui-settings',
   '@deepseek-ai/dsh-client-ui-conversation',
   '@deepseek-ai/dsh-client-ui-attachment',
   '@deepseek-ai/dsh-client-ui-tool',
+  '@deepseek-ai/dsh-client-ui-workspace',
 ]
 
 const externalClientDependencies = {
@@ -48,12 +63,20 @@ const dshDependencies = {
   '@deepseek-ai/dsh-subagent': 'workspace:^',
   '@deepseek-ai/dsh-tools': 'workspace:^',
   '@deepseek-ai/dsh-typert-protocol': 'workspace:^',
+  '@deepseek-ai/dsh-api-gateway': 'workspace:^',
   '@deepseek-ai/dsh-api-remotes': 'workspace:^',
+  '@deepseek-ai/dsh-api-session-controller': 'workspace:^',
+  '@deepseek-ai/dsh-api-settings-controller': 'workspace:^',
+  '@deepseek-ai/dsh-api-workspace-controller': 'workspace:^',
   '@deepseek-ai/dsh-host-webserver': 'workspace:^',
   '@deepseek-ai/dsh-system-prompt': 'workspace:^',
   '@deepseek-ai/dsh-workspace': 'workspace:^',
-  '@deepseek-ai/dsh-client-runtime': 'workspace:^',
+  '@deepseek-ai/dsh-client-connection': 'workspace:^',
   '@deepseek-ai/dsh-client-locale': 'workspace:^',
+  '@deepseek-ai/dsh-client-store': 'workspace:^',
+  '@deepseek-ai/dsh-client-ui-chat': 'workspace:^',
+  '@deepseek-ai/dsh-client-ui-layout': 'workspace:^',
+  '@deepseek-ai/dsh-client-ui-session': 'workspace:^',
   '@deepseek-ai/dsh-client-ui-slots': 'workspace:^',
   '@deepseek-ai/dsh-client-ui-sidebar': 'workspace:^',
   '@deepseek-ai/dsh-client-ui-settings': 'workspace:^',
@@ -61,6 +84,7 @@ const dshDependencies = {
   '@deepseek-ai/dsh-client-ui-attachment': 'workspace:^',
   '@deepseek-ai/dsh-client-ui-tool': 'workspace:^',
   '@deepseek-ai/dsh-client-ui-primitives': 'workspace:^',
+  '@deepseek-ai/dsh-client-ui-workspace': 'workspace:^',
 }
 
 const npmDependencies = {
@@ -90,20 +114,23 @@ const npmDependencies = {
 
 const plugins = [
   { id: 'opencode', capabilities: ['llm.free', 'llm.discovery'], permissions: ['network'] },
-  { id: 'base', client: true, clientExternal: [], capabilities: ['ui.locale', 'ui.update'], permissions: [], requiredServices: [], optionalServices: ['updater'] },
+  // These services are accessed directly by plugin-base during activation.
+  // Keep the generated manifest in sync so Loader injects them before apply.
+  { id: 'base', client: true, clientExternal: [], capabilities: ['ui.locale', 'ui.update'], permissions: [], requiredServices: ['webServer', 'systemPrompt'], optionalServices: ['updater'] },
   { id: 'desktop-compat', capabilities: ['desktop.profiles', 'desktop.plugins'], permissions: [], requiredServices: [], optionalServices: ['desktopProfiles', 'desktopPnpm'] },
   { id: 'secrets', capabilities: ['credentials.read', 'credentials.write'], permissions: ['credentials'], requiredServices: [], optionalServices: ['credentialBroker'] },
-  { id: 'environment', client: true, remote: true, capabilities: ['environment-config'], permissions: ['credentials', 'processes'], dependencies: ['secrets', 'base'] },
+  { id: 'environment', client: true, remote: true, capabilities: ['environment-config'], permissions: ['credentials', 'processes'], dependencies: ['secrets', 'base'], requiredServices: ['settings'] },
   { id: 'projects', client: true, remote: true, capabilities: ['projects', 'workspaces'], permissions: ['files'] },
   { id: 'account', client: true, remote: true, capabilities: ['account'], permissions: ['credentials', 'network'], dependencies: ['secrets', 'base'] },
-  { id: 'ai-cloud', client: true, capabilities: ['llm.cloud'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'] },
-  { id: 'files', client: true, remote: true, capabilities: ['files', 'data-assets'], permissions: ['files'] },
+  { id: 'ai-cloud', client: true, capabilities: ['llm.cloud'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'], requiredServices: ['llm', 'zerowallAccount'] },
+  { id: 'files', client: true, remote: true, capabilities: ['files', 'data-assets'], permissions: ['files'], requiredServices: ['tools', 'sessions'] },
   {
     id: 'images',
     client: true,
     capabilities: ['images', 'image-generation'],
     permissions: ['files', 'network'],
     dependencies: ['account', 'secrets', 'base', 'environment'],
+    requiredServices: ['tools', 'zerowallEnvironment', 'attachments'],
   },
   {
     id: 'image-dup',
@@ -112,18 +139,19 @@ const plugins = [
     capabilities: ['image-duplicate-detection', 'artifacts'],
     permissions: ['files', 'processes', 'attachments'],
     dependencies: ['files', 'projects', 'research'],
-    optionalServices: ['zerowallFiles', 'zerowallProjects', 'zerowallResearch'],
+    requiredServices: ['tools', 'sessions', 'zerowallFiles', 'zerowallResearch'],
+    optionalServices: ['zerowallProjects'],
   },
-  { id: 'mcp', client: true, remote: true, capabilities: ['mcp'], permissions: ['files', 'network'], dependencies: ['projects', 'base'] },
-  { id: 'skills', client: true, remote: true, capabilities: ['skills'], permissions: ['files'], dependencies: ['base'] },
-  { id: 'reviewer', client: true, capabilities: ['reviewer'], permissions: ['approvals'], dependencies: ['base'] },
+  { id: 'mcp', client: true, remote: true, capabilities: ['mcp'], permissions: ['files', 'network'], dependencies: ['projects', 'base'], requiredServices: ['zerowallProjects', 'tools'] },
+  { id: 'skills', client: true, remote: true, capabilities: ['skills'], permissions: ['files'], dependencies: ['base'], requiredServices: ['skills', 'systemPrompt'] },
+  { id: 'reviewer', client: true, capabilities: ['reviewer'], permissions: ['approvals'], dependencies: ['base'], requiredServices: ['settings', 'subagents', 'commands', 'llm'] },
   { id: 'research', client: true, remote: true, capabilities: ['research', 'data-assets', 'artifacts'], permissions: ['files'], dependencies: ['projects', 'base'] },
   { id: 'execution', client: true, remote: true, capabilities: ['execution-contexts'], permissions: ['processes', 'files'] },
-  { id: 'python', capabilities: ['python'], permissions: ['processes', 'files'], dependencies: [] },
+  { id: 'python', capabilities: ['python'], permissions: ['processes', 'files'], dependencies: [], requiredServices: ['tools'] },
   { id: 'runs', client: true, remote: true, capabilities: ['runs'], permissions: ['processes', 'files'], dependencies: ['execution'] },
   { id: 'publications', client: true, remote: true, capabilities: ['papers', 'publications'], permissions: ['files'], dependencies: ['runs'] },
-  { id: 'presentations', client: true, remote: true, capabilities: ['presentations'], permissions: ['files', 'processes', 'network', 'approvals'] },
-  { id: 'web-search', client: true, capabilities: ['web-search'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'] },
+  { id: 'presentations', client: true, remote: true, capabilities: ['presentations'], permissions: ['files', 'processes', 'network', 'approvals'], requiredServices: ['tools', 'sessions', 'zerowallImageGeneration'] },
+  { id: 'web-search', client: true, capabilities: ['web-search'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'], requiredServices: ['agents', 'web'] },
   { id: 'wechat', client: true, capabilities: ['remote.wechat'], permissions: ['credentials', 'network', 'files', 'approvals'], dependencies: ['secrets', 'projects', 'files', 'base'], requiredServices: ['agents', 'sessions', 'agentDefaultModel'], optionalServices: ['webServer', 'workspaceRegistry', 'agentPresets'] },
 ]
 
@@ -157,7 +185,7 @@ for (const plugin of plugins) {
       ...(plugin.client ? { './client': { types: './src/client/index.ts', default: './lib/client.js' } } : {}),
       ...(plugin.id === 'base' ? { './client-helpers': './src/shared/client-helpers.ts' } : {}),
       ...(plugin.remote ? {
-        // DSH rc2 Typert composition discovers remote contracts through these
+        // DSH alpha Typert composition discovers remote contracts through these
         // generated faces. Without the exports the generator intentionally
         // skips typert.host/remote artifacts and the Web client waits forever
         // for remote.* services even though the Host plugin itself starts.
@@ -179,7 +207,7 @@ for (const plugin of plugins) {
       } : {}),
     },
     zerowall: {
-      dsh: { min: '0.1.1-rc.2', max: '0.1.1-rc.2' },
+      dsh: { min: '0.1.2-alpha.1', max: '0.1.2-alpha.1' },
       requiredServices: plugin.requiredServices ?? [],
       optionalServices: plugin.optionalServices ?? [],
       capabilities: plugin.capabilities,

@@ -1,10 +1,10 @@
 {
-  "extends": "./dsh/source/tsconfig.base.json",
+  "extends": "./deepseek-harness/tsconfig.base.json",
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@deepseek-ai/cordis": ["dsh/source/vendor/cordis/src/index.ts"],
-      "@deepseek-ai/dsh-typert-protocol": ["dsh/source/packages/typert/protocol/src/index.ts"],
+      "@deepseek-ai/cordis": ["deepseek-harness/vendor/cordis/src/index.ts"],
+      "@deepseek-ai/dsh-typert-protocol": ["deepseek-harness/packages/typert/protocol/src/index.ts"],
       "@zerowallscience/research-store": ["store/src/index.ts"],
       "@zerowallscience/research-store/types": ["store/src/index.ts"],
       "@zerowallscience/plugin-*/types": ["plugins/*/src/shared/types.ts"],
@@ -13,7 +13,7 @@
   },
   "files": [],
   "references": [
-    { "path": "./dsh/source/packages/typert/protocol" },
+    { "path": "./deepseek-harness/packages/typert/protocol" },
     { "path": "./store" },
     { "path": "./desktop" },
     { "path": "./plugins/account/tsconfig.host.json" },

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { TabComponentProps, SessionScope } from 'dsh-better-sidebar/client/service'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'

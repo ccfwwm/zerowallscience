@@ -1,4 +1,4 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { SkillsSettingsTab } from './SkillsSettingsTab.tsx'
 import { NS, unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 

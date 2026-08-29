@@ -1,5 +1,6 @@
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
+import { homedir } from 'node:os'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
@@ -70,10 +71,13 @@ export class ZeroWallImageDupService extends TypertRemoteService {
     }))
   }
 
-  private session(sessionId: string): { cwd: string } {
+  private session(sessionId: string): { cwd?: string } {
     const value = this.ctx.sessions.get(SessionId(sessionId))
-    if (value === undefined || !value.header.cwd) throw new Error('This session has no workspace directory.')
-    return { cwd: resolve(value.header.cwd) }
+    if (value === undefined) throw new Error(`Session not found: ${sessionId}`)
+    return value.header.cwd ? { cwd: resolve(value.header.cwd) } : {}
+  }
+  private artifactCwd(cwd: string | undefined): string {
+    return resolve(cwd ?? process.env.DSH_HOME?.trim() ?? join(homedir(), '.dsh'), 'attachments', 'reports')
   }
   private projectForSession(sessionId: string): string | undefined {
     const research = this.ctx.get('zerowallResearch') as { projectForSession?: (input: { sessionId: string }) => { id: string } | undefined } | undefined
@@ -100,7 +104,7 @@ export class ZeroWallImageDupService extends TypertRemoteService {
     record.job.updatedAt = new Date().toISOString(); return record.job
   }
   @Remote('scanWorkspace') async scanWorkspace(input: { sessionId: string; relativeDirectory?: string; directoryPath?: string; directoryGrant?: string; options?: ImageDupOptions }): Promise<ImageDupJob> {
-    const { cwd } = this.session(input.sessionId)
+    const { cwd: sessionCwd } = this.session(input.sessionId)
     const requested = input.directoryPath?.trim()
     let directory: string
     if (requested) {
@@ -113,11 +117,12 @@ export class ZeroWallImageDupService extends TypertRemoteService {
     } else {
       const rel = input.relativeDirectory?.trim() || '.'
       if (isAbsolute(rel)) throw new Error('Workspace directory must be relative.')
-      directory = resolve(cwd, rel)
-      if (!containment(cwd, directory)) throw new Error('Workspace directory escapes the session workspace.')
+      if (sessionCwd === undefined) throw new Error('This session has no workspace directory.')
+      directory = resolve(sessionCwd, rel)
+      if (!containment(sessionCwd, directory)) throw new Error('Workspace directory escapes the session workspace.')
     }
     const scanOptions = options(input.options)
-    const record = this.create(input.sessionId, 'workspace', cwd, directory)
+    const record = this.create(input.sessionId, 'workspace', directory, directory)
     return this.run(record, async signal => normalizeWorkerReport(await runImageDupWorker({ dir: directory, threshold: scanOptions.threshold, thumb: 0, limit: scanOptions.limit, recursive: scanOptions.recursive, copyMove: scanOptions.copyMove, crossImage: scanOptions.crossImage }, signal)))
   }
   @Remote('grantDirectory') grantDirectory(input: { sessionId: string; path: string }): { grant: string; path: string; expiresAt: string } {
@@ -133,7 +138,7 @@ export class ZeroWallImageDupService extends TypertRemoteService {
     for (const attachmentId of input.attachmentIds.slice(0, 300)) { const result = await service.materialize({ sessionId: input.sessionId, attachmentId }); paths.push(result.path) }
     const scanOptions = options(input.options)
     const sourceFiles = Object.fromEntries(paths.map(path => [path.split(/[\\/]/u).pop() ?? path, path]))
-    const record = this.create(input.sessionId, 'attachments', cwd)
+    const record = this.create(input.sessionId, 'attachments', this.artifactCwd(cwd))
     record.sourceFiles = sourceFiles
     record.job.sourceFiles = sourceFiles
     return this.run(record, async signal => normalizeWorkerReport(await runImageDupWorker({ paths, threshold: scanOptions.threshold, thumb: 0, limit: scanOptions.limit, copyMove: scanOptions.copyMove, crossImage: scanOptions.crossImage }, signal)))
@@ -144,7 +149,7 @@ export class ZeroWallImageDupService extends TypertRemoteService {
     if (!service) throw new Error('zerowallFiles service is unavailable.')
     const attachment = await service.materialize({ sessionId: input.sessionId, attachmentId: input.attachmentId })
     const scanOptions = options(input.options)
-    const record = this.create(input.sessionId, 'pdf', cwd)
+    const record = this.create(input.sessionId, 'pdf', this.artifactCwd(cwd))
     return this.run(record, async signal => normalizeWorkerReport(await runImageDupWorker({ pdf: {
       pdfPath: attachment.path, threshold: scanOptions.threshold, thumb: 160,
       onlyPainted: input.options?.onlyPainted !== false, crossPageOnly: input.options?.crossPageOnly === true,
@@ -156,7 +161,12 @@ export class ZeroWallImageDupService extends TypertRemoteService {
   @Remote('cancel') cancel(input: { sessionId: string; jobId: string }): void { const record = jobs.get(input.jobId); if (!record || record.job.sessionId !== input.sessionId) throw new Error('Image duplicate job not found.'); if (record.job.status === 'queued' || record.job.status === 'running') { record.job.status = 'cancelled'; record.job.updatedAt = new Date().toISOString(); record.controller.abort(new Error('用户已取消图片查重任务。')) } }
   @Remote('exportReport') async exportReport(input: { sessionId: string; jobId: string; format: 'html' | 'md' | 'json' }): Promise<ReportArtifact> {
     const record = jobs.get(input.jobId); if (!record || record.job.sessionId !== input.sessionId || record.report === undefined) throw new Error('Image duplicate report not found.')
-    const body = reportArtifact(record.report, input.format); const ext = input.format === 'json' ? 'json' : input.format === 'md' ? 'md' : 'html'; const path = join(record.cwd, '.zerowall', 'artifacts', `${record.job.jobId}.${ext}`); await atomic(path, body)
+    const body = reportArtifact(record.report, input.format); const ext = input.format === 'json' ? 'json' : input.format === 'md' ? 'md' : 'html'
+    const fallbackRoot = resolve(process.env.DSH_HOME?.trim() ?? join(homedir(), '.dsh'), 'attachments', 'reports')
+    const path = resolve(record.cwd) === fallbackRoot
+      ? join(record.cwd, `${record.job.jobId}.${ext}`)
+      : join(record.cwd, '.zerowall', 'artifacts', `${record.job.jobId}.${ext}`)
+    await atomic(path, body)
     const artifact: ReportArtifact = { uri: pathToFileURL(path).href, name: `${record.job.jobId}.${ext}`, mediaType: input.format === 'html' ? 'text/html' : input.format === 'md' ? 'text/markdown' : 'application/json', checksum: reportChecksum(body), bytes: Buffer.byteLength(body), data: Buffer.from(body, 'utf8').toString('base64') }; record.job.artifact = artifact; return artifact
   }
 }

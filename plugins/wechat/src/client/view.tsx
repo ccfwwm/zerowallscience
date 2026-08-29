@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 // 引入 ui-sidebar 的 SlotMap 声明合并与 footer action owner props 类型。
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -547,9 +547,9 @@ function WechatFooterAction(props: SidebarFooterActionOwnerProps): JSX.Element {
   const [open, setOpen] = useState(false)
   const { payload, error, refresh } = useQrPoll(open)
   const status = statusOf(payload, error)
-  const connected = payload?.state.kind === 'logged-in'
-  // 入口角标：已连接=绿，连接失败（后端不可达/轮询错误）=红，等待态不显示
-  const badgeTone = status.dot === 'done' ? 'ok' : status.dot === 'error' ? 'error' : null
+  // 入口角标：只有已登录且后端健康才显示绿点；未登录、等待、重连和
+  // 错误都显示红点，避免把尚未完成配对误报为在线。
+  const badgeTone = status.dot === 'done' ? 'ok' : 'error'
 
   return (
     <>
@@ -563,12 +563,10 @@ function WechatFooterAction(props: SidebarFooterActionOwnerProps): JSX.Element {
         >
           <PhoneGlyph />
           {props.wide && <span>微信</span>}
-          {badgeTone !== null && (
-            <span
-              className={`dsh-weixin-clawbot-badge${badgeTone === 'error' ? ' dsh-weixin-clawbot-badge-error' : ''}`}
-              aria-hidden="true"
-            />
-          )}
+          <span
+            className={`dsh-weixin-clawbot-badge${badgeTone === 'error' ? ' dsh-weixin-clawbot-badge-error' : ''}`}
+            aria-hidden="true"
+          />
         </button>
       </Tooltip>
       <WechatDialog

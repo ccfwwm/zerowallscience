@@ -1,8 +1,8 @@
+import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {
-  ChatConversationViewNode,
   ConversationNodeContext,
   ConversationNodeDefinition,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
 
 export type ReviewerMode = 'inherit' | 'on' | 'off'

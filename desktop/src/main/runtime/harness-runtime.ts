@@ -13,12 +13,16 @@ export interface HarnessRuntimeOptions {
   nodeEntryPath: string
   nodeResolverPath?: string
   runtimeModulesPath?: string
+  /** Package/file used as the bare-module resolution anchor for the runtime closure. */
+  runtimeAnchorPath?: string
   runAsNode: boolean
   dshPatchPath: string
+  userDataPath: string
   dshHome: string
   userSkillsPath: string
   researchDbPath: string
   bundledSkillsPath: string
+  mcpEnvironmentRoot: string
   brandIconPath?: string
   logPath: string
   /** Stable port record preserves the renderer origin across restarts. */
@@ -44,7 +48,7 @@ export function buildHarnessArguments(port: number, patchPath: string): string[]
 
 export function buildHarnessSpawnOptions(
   launchDirectory: string,
-  options: Pick<HarnessRuntimeOptions, 'dshEntryPath' | 'dshHome' | 'userSkillsPath' | 'researchDbPath' | 'bundledSkillsPath' | 'brandIconPath' | 'runAsNode' | 'runtimeModulesPath'>,
+  options: Pick<HarnessRuntimeOptions, 'dshEntryPath' | 'userDataPath' | 'dshHome' | 'userSkillsPath' | 'researchDbPath' | 'bundledSkillsPath' | 'mcpEnvironmentRoot' | 'brandIconPath' | 'runAsNode' | 'runtimeModulesPath' | 'nodeResolverPath' | 'runtimeAnchorPath'>,
   environment: NodeJS.ProcessEnv = process.env,
 ): SpawnOptions {
   const { ELECTRON_RUN_AS_NODE: _electron, ...parentEnvironment } = environment
@@ -53,9 +57,11 @@ export function buildHarnessSpawnOptions(
     env: {
       ...parentEnvironment,
       DSH_HOME: options.dshHome,
+      ZEROWALL_USER_DATA_DIR: options.userDataPath,
       ZEROWALL_USER_SKILLS: options.userSkillsPath,
       DSH_BUNDLED_SKILL_DIR: options.bundledSkillsPath,
       ZEROWALL_RESEARCH_DB: options.researchDbPath,
+      ZEROWALL_MCP_ENVIRONMENT_ROOT: options.mcpEnvironmentRoot,
       ZEROWALL_BUNDLED_SKILLS: options.bundledSkillsPath,
       // Managed MCP processes inherit these explicit mounts. They are roots,
       // never development-machine paths, and user skills may shadow bundled
@@ -70,10 +76,12 @@ export function buildHarnessSpawnOptions(
       ...(options.brandIconPath === undefined ? {} : { ZEROWALL_BRAND_ICON: options.brandIconPath }),
       DSH_TELEMETRY_DISABLED: '1',
       NO_COLOR: '1',
+      ...(options.runtimeModulesPath ? { NODE_PATH: options.runtimeModulesPath } : {}),
       ...(options.runAsNode ? {
         ELECTRON_RUN_AS_NODE: '1',
-        ...(options.runtimeModulesPath ? { NODE_PATH: options.runtimeModulesPath } : {}),
-        ZEROWALL_RUNTIME_ANCHOR: pathToFileURL(options.dshEntryPath).href,
+      } : {}),
+      ...(options.runtimeAnchorPath || options.nodeResolverPath ? {
+        ZEROWALL_RUNTIME_ANCHOR: pathToFileURL(options.runtimeAnchorPath ?? options.dshEntryPath).href,
       } : {}),
     },
     stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
@@ -88,6 +96,7 @@ export class HarnessRuntime {
   private message = 'Harness is not running.'
   private launchDirectory?: string
   private url?: string
+  private authenticatedUrl?: string
   private readonly logLines: string[] = []
 
   constructor(private readonly options: HarnessRuntimeOptions) {}
@@ -100,6 +109,7 @@ export class HarnessRuntime {
     await this.stop()
     this.launchDirectory = launchDirectory
     this.url = undefined
+    this.authenticatedUrl = undefined
 
     await mkdir(dirname(this.options.logPath), { recursive: true })
     this.logStream = createWriteStream(this.options.logPath, { flags: 'a' })
@@ -174,7 +184,10 @@ export class HarnessRuntime {
       this.fail('Harness did not become ready before the startup deadline.')
       return
     }
-    this.url = url
+    // DSH alpha.1 protects the embedded web server with a per-run token.
+    // Prefer the authenticated URL emitted by `dsh web`; the bare loopback
+    // URL intentionally returns 401 and renders as a blank Electron window.
+    this.url = this.authenticatedUrl ?? url
     this.writeLog(`[desktop] ready ${url}`)
     this.setState('ready', 'ZeroWall Science is ready.')
   }
@@ -223,7 +236,19 @@ export class HarnessRuntime {
   }
 
   private writeChunk(source: string, chunk: Buffer): void {
-    for (const line of chunk.toString('utf8').split(/\r?\n/)) if (line.length > 0) this.writeLog(`[${source}] ${line}`)
+    for (const line of chunk.toString('utf8').split(/\r?\n/)) {
+      if (line.length === 0) continue
+      this.writeLog(`[${source}] ${line}`)
+      const match = /dsh web:\s+(https?:\/\/\S+)/u.exec(line)
+      if (match?.[1] === undefined || !match[1].includes('?token=')) continue
+      this.authenticatedUrl = match[1].replace(/[\])}>,.;]+$/u, '')
+      // stdout can arrive just after the HTTP readiness probe. Reload the
+      // already-created Electron window with the authenticated URL.
+      if (this.phase === 'ready' && this.url !== this.authenticatedUrl) {
+        this.url = this.authenticatedUrl
+        this.options.onChanged(this.snapshot())
+      }
+    }
   }
 
   private writeLog(line: string): void {

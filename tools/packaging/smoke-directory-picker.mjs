@@ -7,7 +7,7 @@ const unpacked = resolve(root, 'desktop/dist/win-unpacked')
 const executable = resolve(unpacked, 'ZeroWallScience.exe')
 const worker = resolve(unpacked, 'resources/app.asar.unpacked/node_modules/@deepseek-ai/dsh-host-directory-picker-native/lib/worker.cjs')
 const nodePath = resolve(unpacked, 'resources/app.asar/node_modules')
-const dialogBindings = resolve(root, 'dsh/source/packages/host/directory-picker-native/lib/types/win32-dialog-bindings.js')
+const dialogBindings = resolve(root, 'deepseek-harness/packages/host/directory-picker-native/lib/types/win32-dialog-bindings.js')
 const timeoutMs = Number(process.env.PICKER_TEST_TIMEOUT_MS ?? 120_000)
 
 const child = spawn(executable, [worker], {

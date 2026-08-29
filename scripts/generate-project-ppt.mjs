@@ -1,5 +1,5 @@
 // ZeroWall Science 项目汇报 PPT 生成脚本
-// 基于 workspace 真实勘察（README / BUILD.md / docs/dsh-architecture.md / package.json /
+// 基于 workspace 真实勘察（README / BUILD.md / docs/architecture.zh-CN.md / package.json /
 // pnpm-workspace.yaml / git log / plugins 清单）生成 16:9 成品 PPTX。
 // 渲染引擎：项目内置 pptxgenjs 4.0.1（.build/runtime/node_modules/pptxgenjs）
 import { createRequire } from 'node:module'

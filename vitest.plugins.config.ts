@@ -19,7 +19,7 @@ export default defineConfig({
   },
   plugins: [
     tsconfigPaths({ projects: [resolve(root, 'tsconfig.plugins.json')] }),
-    tsconfigPaths({ projects: [resolve(root, 'dsh/source/tsconfig.base.json')] }),
+    tsconfigPaths({ projects: [resolve(root, 'deepseek-harness/tsconfig.base.json')] }),
   ],
   test: {
     environment: 'node',

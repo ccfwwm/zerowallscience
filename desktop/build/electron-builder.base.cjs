@@ -43,7 +43,7 @@ const common = {
     { from: '../.build/resources/skills', to: 'skills', filter: ['**/*'] },
     { from: '../profiles/generated', to: 'profiles', filter: ['*.yml'] },
     { from: '../THIRD_PARTY_NOTICES.md', to: 'licenses/THIRD_PARTY_NOTICES.md' },
-    { from: '../dsh/lock/upstream.json', to: 'licenses/deepseek-harness.version.json' },
+    { from: '../config/deepseek-harness/upstream.json', to: 'licenses/deepseek-harness.version.json' },
     { from: '../resources/brand/app-icons/icon.png', to: 'icon.png' },
     { from: '../resources/brand/zerowall/zerowall-icon.png', to: 'zerowall-icon.png' },
   ],

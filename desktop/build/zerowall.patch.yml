@@ -143,17 +143,14 @@
     - id: zerowall-web-search
       name: '@zerowallscience/plugin-web-search'
 
-    - id: zerowall-image-generation
-      name: '@zerowallscience/plugin-images'
-
     - id: zerowall-files
       name: '@zerowallscience/plugin-files'
 
+    - id: zerowall-image-generation
+      name: '@zerowallscience/plugin-images'
+
     - id: zerowall-image-dup
       name: '@zerowallscience/plugin-image-dup'
-
-    - id: zerowall-reviewer
-      name: '@zerowallscience/plugin-reviewer'
 
     - id: zerowall-research
       name: '@zerowallscience/plugin-research'
@@ -175,6 +172,9 @@
 
     - id: zerowall-skills-plugin
       name: '@zerowallscience/plugin-skills'
+
+    - id: zerowall-reviewer
+      name: '@zerowallscience/plugin-reviewer'
 
     - id: zerowall-wechat
       name: '@zerowallscience/plugin-wechat'

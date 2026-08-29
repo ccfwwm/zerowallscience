@@ -62,7 +62,7 @@ The implementation is organized into five cooperating planes.
 | Plane | Owned concerns | Source ownership |
 | --- | --- | --- |
 | Desktop security shell | Electron lifecycle, trusted origin, update flow, native dialogs, clipboard integration, vault | `desktop/src/main`, `desktop/src/preload` |
-| Agent and UI kernel | Sessions, tools, Skills, MCP, approvals, goals, subagents, workflows, React shell | `dsh/source` |
+| Agent and UI kernel | Sessions, tools, Skills, MCP, approvals, goals, subagents, workflows, React shell | `deepseek-harness` |
 | Scientific domain services | Projects, execution, Runs, files, research, review, images, publication, presentation | `plugins/*` |
 | Research data foundation | SQLite schema, migrations, domain validation, graph edges, audit chain, snapshots | `store/src` |
 | Compute and artifact plane | Local/WSL/SSH processes, project files, logs, generated images, PPTX and exports | project roots, user-data roots, remote hosts |

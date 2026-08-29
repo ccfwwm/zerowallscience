@@ -114,7 +114,7 @@ A typical project can move through the following governed path:
 desktop/       Electron main process, preload, runtime supervision, security, updater and packaging
 plugins/       22 first-party ZeroWall domain plugin packages plus a separate presentation runtime
 store/         SQLite research domain, migrations, audit chain, snapshots and project bundles
-dsh/source/    Pinned DSH fork providing Agent, session, tool, Skills, MCP and React UI kernels
+deepseek-harness/    Pinned DSH fork providing Agent, session, tool, Skills, MCP and React UI kernels
 resources/     Bundled scientific Skills, runtimes, environments, brand assets and licenses
 tools/         Plugin generation, DSH verification, packaging, release and security automation
 tests/         Contract, security, integration, packaging and end-to-end checks
@@ -156,7 +156,7 @@ pnpm package:dir
 Changes to the shipped DSH/Agent composition must also pass:
 
 ```powershell
-pnpm test:dsh:rc2
+pnpm test:dsh:alpha1
 ```
 
 The automated suite is intentionally designed to run without real SSH hosts, WSL distributions, GPUs, API keys, or network access.

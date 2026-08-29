@@ -1,4 +1,4 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { UpdateButton } from './UpdateButton.tsx'
 import type {} from './desktop-api.js'
 import { en, NS, zh, type ZeroWallKey } from './locales.js'

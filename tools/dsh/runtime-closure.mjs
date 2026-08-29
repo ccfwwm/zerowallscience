@@ -3,9 +3,10 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
-const dshRoot = resolve(root, 'dsh/source')
+const dshRoot = resolve(root, 'deepseek-harness')
 const outputPath = resolve(root, '.build/dsh/runtime-closure.json')
 const check = process.argv.includes('--check')
+const upstream = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
 
 const manifests = new Map()
 for (const path of await findPackageManifests(dshRoot)) {
@@ -13,7 +14,15 @@ for (const path of await findPackageManifests(dshRoot)) {
   if (typeof manifest.name === 'string') manifests.set(manifest.name, manifest)
 }
 
-const queue = ['@deepseek-ai/dsh']
+// The shipped agent preset is a second runtime root: its rows are loaded from
+// YAML and therefore are not necessarily reachable from @deepseek-ai/dsh's
+// package dependency graph.
+const presetText = await readFile(resolve(dshRoot, 'packages/preset/agent-presets/presets/standard/agent.cordis.yml'), 'utf8')
+const presetRoots = [...presetText.matchAll(/^\s+name:\s+['"]([^'"]+)['"]\s*$/gmu)].map(match => match[1])
+const patchText = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
+const patchRoots = [...patchText.matchAll(/^\s+name:\s+['"]([^'"]+)['"]\s*$/gmu)].map(match => match[1])
+const queue = [...new Set(['@deepseek-ai/dsh', ...presetRoots, ...patchRoots])]
+  .filter(name => manifests.has(name))
 const closure = new Set()
 for (let index = 0; index < queue.length; index += 1) {
   const name = queue[index]
@@ -37,7 +46,7 @@ for (let index = 0; index < queue.length; index += 1) {
 }
 
 const generated = `${JSON.stringify({
-  dshVersion: '0.1.1-rc.2',
+  dshVersion: upstream.version,
   packages: [...closure].sort(),
 }, null, 2)}\n`
 

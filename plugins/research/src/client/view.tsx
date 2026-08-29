@@ -1,4 +1,4 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 
 // Research remains available through Host/remote services. The legacy footer
 // workbench is intentionally hidden from the compact desktop shell.

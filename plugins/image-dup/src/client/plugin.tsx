@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { TabComponentProps, SessionScope } from 'dsh-better-sidebar/client/service'
-import type { IWorkspaces } from '@deepseek-ai/dsh-client-runtime/client'
+import type { IWorkspaces } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { UiWorkspace } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { DirectoryListing } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import type { ImageDupJob, ImageDupOptions, PdfDupOptions, ReportArtifact } from '../shared/types.js'
@@ -39,7 +40,7 @@ export function openImageDupWorkbench(service: { openTab(seed: { type: string; i
   service.openTab({ type: 'zerowall:image-dup', id: detail.jobId ? `zerowall:image-dup:${detail.jobId}` : 'zerowall:image-dup', title: detail.title ?? '科研图片查重', meta: { ...(detail.jobId ? { jobId: detail.jobId } : {}), ...(detail.projectId ? { projectId: detail.projectId } : {}) } }, { sessionId: detail.sessionId, ...(detail.cwd ? { cwd: detail.cwd } : {}) })
 }
 
-function Workbench({ remote, workspaces, ...props }: TabComponentProps & { remote: ImageDupRemote; workspaces: IWorkspaces }) {
+function Workbench({ remote, workspaces, uiWorkspace, ...props }: TabComponentProps & { remote: ImageDupRemote; workspaces: IWorkspaces; uiWorkspace: UiWorkspace }) {
   const selectedJobId = jobIdOf(props.tab.meta)
   const [jobs, setJobs] = useState<ImageDupJob[]>([])
   const [job, setJob] = useState<ImageDupJob | undefined>()
@@ -76,14 +77,14 @@ function Workbench({ remote, workspaces, ...props }: TabComponentProps & { remot
       // COM worker cannot make the image workbench unusable. Browser/remote
       // clients continue to use the composed workspace picker.
       const desktopPick = typeof window === 'undefined' ? undefined : window.zerowallDesktop?.chooseDirectory
-      const value = desktopPick === undefined ? await workspaces.pickDirectory() : await desktopPick()
+      const value = desktopPick === undefined ? await uiWorkspace.pickDirectory() : await desktopPick()
       if (value) { setSelectedDirectory(value); const grant = unwrap(await remote.grantDirectory({ sessionId: props.scope.sessionId, path: value })); setDirectoryGrant(grant.grant) }
     } catch (cause) {
       setBrowserError(cause instanceof Error ? cause.message : String(cause))
-      try { setBrowser(await workspaces.listDirectory()) } catch (browseCause) { setError(`${cause instanceof Error ? cause.message : String(cause)}；应用内目录浏览也不可用：${browseCause instanceof Error ? browseCause.message : String(browseCause)}`) }
+      try { setBrowser(await uiWorkspace.listDirectory()) } catch (browseCause) { setError(`${cause instanceof Error ? cause.message : String(cause)}；应用内目录浏览也不可用：${browseCause instanceof Error ? browseCause.message : String(browseCause)}`) }
     }
   }
-  const openBrowser = async (path?: string) => { try { setBrowserError(undefined); setBrowser(await workspaces.listDirectory(path)) } catch (cause) { setBrowserError(cause instanceof Error ? cause.message : String(cause)) } }
+  const openBrowser = async (path?: string) => { try { setBrowserError(undefined); setBrowser(await uiWorkspace.listDirectory(path)) } catch (cause) { setBrowserError(cause instanceof Error ? cause.message : String(cause)) } }
   const scan = async () => {
     setBusy(true); setError(undefined)
     try {
@@ -125,10 +126,10 @@ function Workbench({ remote, workspaces, ...props }: TabComponentProps & { remot
   </section>
 }
 
-export const inject = ['betterSidebar', 'slots', 'workspaces', 'remote', 'remote.zerowallImageDup']
+export const inject = ['betterSidebar', 'slots', 'workspaces', 'uiWorkspace', 'remote', 'remote.zerowallImageDup']
 export function apply(ctx: ClientContext): void {
   const remote = (ctx.remote as { zerowallImageDup: ImageDupRemote }).zerowallImageDup
-  ctx.effect(() => ctx.betterSidebar.registerTab({ id: 'zerowall:image-dup', title: '科研图片查重', order: 40, icon: size => <FileImage size={size} />, dedupeKey: tab => jobIdOf(tab.meta), component: props => <Workbench {...props} remote={remote} workspaces={ctx.workspaces} /> }), 'zerowall: image duplicate workbench')
+  ctx.effect(() => ctx.betterSidebar.registerTab({ id: 'zerowall:image-dup', title: '科研图片查重', order: 40, icon: size => <FileImage size={size} />, dedupeKey: tab => jobIdOf(tab.meta), component: props => <Workbench {...props} remote={remote} workspaces={ctx.workspaces} uiWorkspace={ctx.uiWorkspace} /> }), 'zerowall: image duplicate workbench')
   ctx.effect(() => { const open = (event: Event) => { const detail = (event as CustomEvent<ImageDupOpenDetail>).detail; if (detail?.sessionId) openImageDupWorkbench(ctx.betterSidebar, detail) }; window.addEventListener('zerowall:image-dup-open', open); return () => window.removeEventListener('zerowall:image-dup-open', open) }, 'zerowall: image duplicate open event')
   ctx.slots.inject('tool.call.toolview', function* () {
     yield ctx.slots.register({ name: 'tool.call.toolview', key: 'check_image_duplicates' }, (props: ToolCallViewProps) => {

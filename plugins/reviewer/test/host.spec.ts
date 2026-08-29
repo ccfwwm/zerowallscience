@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CallId, createAssistantMessage, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, createAssistantMessage, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { assessEvidence, canAutoCorrect, normalizeReport, serializeTranscript, shouldAutoReview } from '../src/host/index.js'
 import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session'
@@ -14,7 +14,7 @@ function event<T extends SessionEvent['type']>(
 
 describe('Reviewer transcript and trigger policy', () => {
   it('pairs tool arguments and results under one traceable message index', () => {
-    const callId = CallId('call-1')
+    const callId = ToolCallId('call-1')
     const events: SessionEvent[] = [
       event('turn/start', 0, { turn: 1 }),
       event('user/message', 1, createUserMessage({ content: [{ type: 'text', text: 'Compute x.' }], source: { kind: 'user' } })),
@@ -30,7 +30,7 @@ describe('Reviewer transcript and trigger policy', () => {
   })
 
   it('truncates individual tool output and keeps the recent transcript tail', () => {
-    const callId = CallId('call-large')
+    const callId = ToolCallId('call-large')
     const events: SessionEvent[] = []
     for (let turn = 1; turn <= 30; turn += 1) {
       events.push(event('tool/call', events.length, { turn, step: 1, callId, name: 'dump', arguments: '{}' }))
@@ -51,13 +51,13 @@ describe('Reviewer transcript and trigger policy', () => {
   })
 
   it('triggers automatically when the turn has a tool result', () => {
-    const callId = CallId('call-tool')
+    const callId = ToolCallId('call-tool')
     const result = event('tool/result', 0, { turn: 3, step: 1, message: createToolResultMessage({ callId, content: [{ type: 'text', text: 'done' }], isError: false }) })
     expect(shouldAutoReview([result], 3)).toBe(true)
   })
 
   it('marks empty tool results as evidence gaps instead of full coverage', () => {
-    const callId = CallId('call-empty')
+    const callId = ToolCallId('call-empty')
     const empty = event('tool/result', 0, { turn: 1, step: 1, message: createToolResultMessage({ callId, content: [], isError: false }) })
     expect(assessEvidence([empty])).toEqual({ coverage: 0, gaps: ['工具结果（序号 0）没有可检查的输出'] })
   })

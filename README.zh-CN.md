@@ -114,7 +114,7 @@ DSH Host 绑定 `127.0.0.1`。首次启动会选择有效端口并保存，使 R
 desktop/       Electron 主进程、preload、运行时监管、安全、更新和打包
 plugins/       22 个 ZeroWall 一方领域插件包及独立的内部演示运行时
 store/         SQLite 科研领域、迁移、审计链、快照与项目包
-dsh/source/    固定 DSH fork，提供 Agent、会话、工具、Skills、MCP 与 React UI 内核
+deepseek-harness/    固定 DSH fork，提供 Agent、会话、工具、Skills、MCP 与 React UI 内核
 resources/     内置科研 Skills、运行时、环境、品牌资源和许可证
 tools/         插件生成、DSH 验证、打包、发布和安全自动化
 tests/         契约、安全、集成、打包和端到端检查
@@ -156,7 +156,7 @@ pnpm package:dir
 涉及已交付 DSH/Agent 组合的修改还必须通过：
 
 ```powershell
-pnpm test:dsh:rc2
+pnpm test:dsh:alpha1
 ```
 
 自动化测试特意设计为不依赖真实 SSH 主机、WSL 发行版、GPU、API Key 或网络连接。

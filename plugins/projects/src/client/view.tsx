@@ -1,4 +1,4 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ProjectView } from './ProjectWorkbenchButton.js'
 // Resolve the shared helper from source during the workspace build.  The
 // packaged client bundle must contain this tiny helper rather than emitting a

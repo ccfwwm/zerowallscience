@@ -5,10 +5,10 @@ import { resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
 
-test('stable profile pins rc2 and includes the bundled WeChat plugin', async () => {
+test('stable profile pins alpha.1 and includes the bundled WeChat plugin', async () => {
   const profile = await readFile(resolve(root, 'profiles/generated/stable.yml'), 'utf8')
   assert.match(profile, /channel: stable/)
-  assert.match(profile, /dsh: 0\.1\.1-rc\.2/)
+  assert.match(profile, /dsh: 0\.1\.2-alpha\.1/)
   assert.match(profile, /'@zerowallscience\/plugin-wechat'/)
 })
 
@@ -16,7 +16,7 @@ test('better-sidebar is a single pinned default workbench in every profile', asy
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
   assert.equal(desktop.dependencies['dsh-better-sidebar'], '0.16.1')
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
-  assert.equal((patch.match(/\bid: better-sidebar\b/gu) ?? []).length, 1)
+  assert.equal((patch.match(/^\s*- id: better-sidebar\s*$/gmu) ?? []).length, 1)
   for (const profile of ['development', 'preview', 'stable']) {
     const source = await readFile(resolve(root, `profiles/generated/${profile}.yml`), 'utf8')
     assert.equal((source.match(/'dsh-better-sidebar'/gu) ?? []).length, 1, `${profile} must mount better-sidebar once`)
@@ -73,13 +73,13 @@ test('desktop image limits fit inside the buffered client connection carrier', a
     `base64 image envelope requires ${requiredBodyBytes} bytes but carrier allows ${maxRequestBodyBytes}`)
 })
 
-test('all ZeroWall plugins expose a manifest and rc2 range', async () => {
-  const names = ['base', 'opencode', 'desktop-compat', 'secrets', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'runs', 'publications', 'presentations', 'web-search', 'wechat']
+test('all ZeroWall plugins expose a manifest and alpha.1 range', async () => {
+  const names = ['base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat']
   for (const name of names) {
     const manifest = JSON.parse(await readFile(resolve(root, `plugins/${name}/zerowall.plugin.json`), 'utf8'))
     assert.match(manifest.name, /^@zerowallscience\/plugin-/)
-    assert.equal(manifest.dsh.min, '0.1.1-rc.2')
-    assert.equal(manifest.dsh.max, '0.1.1-rc.2')
+    assert.equal(manifest.dsh.min, '0.1.2-alpha.1')
+    assert.equal(manifest.dsh.max, '0.1.2-alpha.1')
   }
 })
 

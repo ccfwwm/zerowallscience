@@ -25,11 +25,11 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
     process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
     const fixtureServer = fileURLToPath(new URL(
-      '../../../dsh/source/packages/mcp/mcp-client/tests/fixture-server.ts',
+      '../../../deepseek-harness/packages/mcp/mcp-client/tests/fixture-server.ts',
       import.meta.url,
     ))
     const fixtureDirectory = fileURLToPath(new URL(
-      '../../../dsh/source/packages/mcp/mcp-client/',
+      '../../../deepseek-harness/packages/mcp/mcp-client/',
       import.meta.url,
     ))
 

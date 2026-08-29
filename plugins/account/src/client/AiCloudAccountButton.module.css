@@ -1,4 +1,7 @@
 .trigger { width: 100%; min-width: 32px; height: 32px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px; border: 0; border-radius: 7px; color: var(--dsw-alias-label-secondary, #687078); background: transparent; cursor: pointer; font: inherit; text-align: left; }
+.triggerIcon { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.statusDot { position: absolute; right: -2px; bottom: -1px; width: 7px; height: 7px; border: 2px solid var(--dsw-alias-bg-layer-1, #fff); border-radius: 50%; background: #c43c3c; }
+.trigger[data-status='ok'] .statusDot { background: #27845a; }
 .trigger:hover, .iconButton:hover { color: var(--dsw-alias-label-primary, #202428); background: var(--dsw-alias-interactive-bg-hover, rgba(24,32,40,.08)); }
 .backdrop { position: fixed; inset: 0; z-index: 1020; display: grid; place-items: center; padding: 20px; background: rgba(14,18,22,.42); }
 .panel { width: min(880px, 100%); max-height: min(820px, calc(100vh - 40px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 8px; color: var(--dsw-alias-label-primary, #202428); background: var(--dsw-alias-bg-layer-1, #fff); box-shadow: 0 24px 70px rgba(8,14,20,.24); }
@@ -13,6 +16,9 @@
 .auth { box-sizing: border-box; width: min(456px, 100%); margin: 0 auto; padding: 26px 18px 30px; display: grid; gap: 14px; }
 .auth label, .rechargeCard label { display: grid; gap: 5px; color: var(--dsw-alias-label-secondary, #687078); font-size: 12px; }
 .authLead, .savedHint { margin: 0; color: var(--dsw-alias-label-secondary, #687078); font-size: 12px; line-height: 1.6; }
+.capabilities { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid rgba(49,91,125,.22); border-radius: 8px; background: linear-gradient(135deg, rgba(49,91,125,.10), rgba(39,132,90,.06)); }
+.capabilities strong { font-size: 13px; line-height: 1.5; }
+.capabilities span { color: var(--dsw-alias-label-secondary, #687078); font-size: 11px; line-height: 1.5; }
 .savedHint { padding-left: 18px; position: relative; }
 .savedHint::before { content: ''; position: absolute; left: 3px; top: 7px; width: 7px; height: 7px; border-radius: 50%; background: #27845a; }
 .auth input, .rechargeCard input { box-sizing: border-box; width: 100%; height: 38px; padding: 0 10px; border: 1px solid var(--dsw-alias-border-l2, #cfd5d9); border-radius: 6px; color: inherit; background: inherit; font: 14px/1.4 inherit; }
@@ -31,6 +37,8 @@
 .accountCard { padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 20px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 7px; background: var(--dsw-alias-bg-layer-2, #f7f8f9); }
 .accountCard > div { display: grid; gap: 3px; }
 .identity small { display: inline-flex; align-items: center; gap: 5px; color: #27845a; }
+.usageLink { margin: 10px 0 0 auto; display: inline-flex; align-items: center; gap: 5px; color: #315b7d; font-size: 12px; font-weight: 650; text-decoration: none; }
+.usageLink:hover { text-decoration: underline; }
 .accountCard span, .accountCard small, .sectionHeading p, .ordersHeader p, .orderRow small { color: var(--dsw-alias-label-secondary, #687078); font-size: 11px; }
 .accountCard strong { overflow-wrap: anywhere; font-size: 14px; }
 .modelSync { margin-top: 12px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 7px; background: var(--dsw-alias-bg-layer-2, #f7f8f9); }

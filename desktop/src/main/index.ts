@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { cp, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
 import updaterPackage from 'electron-updater'
@@ -20,6 +20,10 @@ import { resolveRevealPath } from './reveal-path.js'
 import type { DesktopClipboardFile, DesktopInfo, RuntimeSnapshot } from '../shared/contracts.js'
 
 const { autoUpdater } = updaterPackage
+/** Stable updates are served from the Qiniu-backed generic feed. Keeping this
+ * explicit also makes the unpacked `win-unpacked` build testable, because
+ * electron-builder only emits app-update.yml for installer targets. */
+export const STABLE_UPDATE_FEED_URL = 'https://zerowall.chengxunkeji.cn/stable/'
 // Update pointers are mutable objects on the CDN; always revalidate them.
 autoUpdater.requestHeaders = { 'Cache-Control': 'no-cache' }
 const MCP_ENVIRONMENT_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAu8wAGfgRWqQBdIGcbkwPlBq01SjgEMybgNh3xVv0ej4=\n-----END PUBLIC KEY-----`
@@ -143,7 +147,7 @@ function attachDesktopBridge(child: HarnessChildProcess): void {
 
 function dshEntryPath(): string {
   if (app.isPackaged) return join(app.getAppPath(), 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-  return join(findWorkspaceRoot(), 'dsh', 'source', 'apps', 'cli', 'lib', 'bin.js')
+  return join(findWorkspaceRoot(), 'deepseek-harness', 'apps', 'cli', 'lib', 'bin.js')
 }
 
 function nodeExecutablePath(): string {
@@ -156,11 +160,16 @@ function nodeEntryPath(): string {
 }
 
 function nodeResolverPath(): string | undefined {
-  return app.isPackaged ? join(app.getAppPath(), 'runtime', 'runtime-esm-register.mjs') : undefined
+  return app.isPackaged ? join(app.getAppPath(), 'runtime', 'runtime-esm-register.mjs') : resourcePath('runtime-esm-register.mjs')
 }
 
 function runtimeModulesPath(): string | undefined {
-  return app.isPackaged ? join(app.getAppPath(), 'node_modules') : undefined
+  return app.isPackaged ? join(app.getAppPath(), 'node_modules') : join(findWorkspaceRoot(), '.build', 'runtime', 'node_modules')
+}
+
+function runtimeAnchorPath(): string {
+  if (app.isPackaged) return dshEntryPath()
+  return join(runtimeModulesPath() as string, '@deepseek-ai', 'dsh', 'package.json')
 }
 
 function createWindow(): BrowserWindow {
@@ -270,12 +279,18 @@ app.whenReady().then(async () => {
     nodeEntryPath: nodeEntryPath(),
     nodeResolverPath: nodeResolverPath(),
     runtimeModulesPath: runtimeModulesPath(),
-    runAsNode: app.isPackaged,
+    runtimeAnchorPath: runtimeAnchorPath(),
+    // Source Electron's test launcher may not provide npm_node_execpath;
+    // in that case process.execPath is Electron itself and must be switched
+    // into its Node-compatible mode for the embedded Harness child.
+    runAsNode: app.isPackaged || nodeExecutablePath() === process.execPath,
     dshPatchPath: resourcePath('zerowall.patch.yml'),
+    userDataPath: userData,
     dshHome: join(userData, 'harness'),
     userSkillsPath: join(userData, 'harness', 'zerowall-skills', 'enabled'),
     researchDbPath: join(userData, 'research', 'zerowall-research.sqlite'),
     bundledSkillsPath: bundledSkillsPath(),
+    mcpEnvironmentRoot,
     brandIconPath: brandIconPath(),
     logPath: join(app.getPath('logs'), 'harness.log'),
     portPath: join(userData, 'harness', 'endpoint-port.txt'),
@@ -283,7 +298,7 @@ app.whenReady().then(async () => {
     onChildStarted: (child) => { attachCredentialBroker(child, credentialVault); attachDesktopBridge(child) },
     onChanged: (snapshot) => {
       if (snapshot.phase === 'ready') void showHarness(snapshot)
-      if (snapshot.phase === 'failed' && !quitting) dialog.showErrorBox('ZeroWallScience could not start', snapshot.message)
+      if (snapshot.phase === 'failed' && !quitting) dialog.showErrorBox(`${identity.productName} could not start`, snapshot.message)
     },
   })
   runtime = harnessRuntime
@@ -309,6 +324,13 @@ app.whenReady().then(async () => {
     },
   })
 
+  // The stable channel is the only user-facing update channel. Configure it
+  // before the first scheduled/manual check so both installer and unpacked
+  // desktop builds use the same Qiniu metadata path.
+  if (app.isPackaged && identity.channel === 'stable') {
+    autoUpdater.setFeedURL({ provider: 'generic', url: STABLE_UPDATE_FEED_URL })
+  }
+
   ipcMain.handle('desktop:info', (): DesktopInfo => ({ version: app.getVersion(), platform: process.platform, architecture: process.arch }))
   ipcMain.handle('desktop:choose-directory', async () => {
     const options: OpenDialogOptions = { properties: ['openDirectory', 'createDirectory'] }
@@ -320,6 +342,17 @@ app.whenReady().then(async () => {
   ipcMain.handle('desktop:reveal-path', (_event, path: unknown) => {
     shell.showItemInFolder(resolveRevealPath(path))
     return true
+  })
+  ipcMain.handle('desktop:open-folder', async (_event, value: unknown) => {
+    if (typeof value !== 'string' || !isAbsolute(value)) return false
+    try {
+      const canonical = await realpath(value)
+      if (!(await stat(canonical)).isDirectory()) return false
+      const error = await shell.openPath(canonical)
+      return error === ''
+    } catch {
+      return false
+    }
   })
   ipcMain.handle('desktop:clipboard-copy-file', async (_event, input: DesktopClipboardFile) => {
     if (process.platform !== 'win32') return false

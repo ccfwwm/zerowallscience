@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 export function findDesktopWorkspaceRoot(startPath: string): string {
   let cursor = resolve(startPath)
   for (let depth = 0; depth < 8; depth += 1) {
-    if (existsSync(join(cursor, 'dsh', 'source', 'apps', 'cli', 'lib', 'bin.js'))) return cursor
+    if (existsSync(join(cursor, 'deepseek-harness', 'apps', 'cli', 'lib', 'bin.js'))) return cursor
     cursor = resolve(cursor, '..')
   }
   return resolve(startPath)

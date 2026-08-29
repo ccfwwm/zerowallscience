@@ -156,9 +156,13 @@ export async function readUploadedFile(id: string, offset = 0, maxChars = MAX_RE
   return { attachmentId: ref.attachmentId, name: ref.name, offset: safeOffset, nextOffset: safeOffset + text.length, hasMore: safeOffset + text.length < full.length, text }
 }
 
-export async function materializeUploadedFile(id: string, cwd: string): Promise<{ attachmentId: string; name: string; path: string; bytes: number; sha256: string }> {
+export async function materializeUploadedFile(id: string, cwd?: string): Promise<{ attachmentId: string; name: string; path: string; bytes: number; sha256: string }> {
   const ref = await readStored(id)
-  const workspace = await realpath(resolve(cwd))
+  const workspaceRoot = cwd === undefined
+    ? resolve(process.env.DSH_HOME?.trim() || join(homedir(), '.dsh'), 'attachments', 'materialized')
+    : resolve(cwd)
+  await mkdir(workspaceRoot, { recursive: true })
+  const workspace = await realpath(workspaceRoot)
   let directory = workspace
   for (const segment of ['.zerowall', 'uploads', ref.sha256]) {
     const candidate = join(directory, segment)
@@ -243,9 +247,8 @@ export class ZeroWallFilesService extends TypertRemoteService {
   }
   @Remote('materialize') async materialize(input: { sessionId: string; attachmentId: string }): Promise<MaterializedUploadedFile> {
     await this.authorized(input.sessionId, input.attachmentId)
-    const cwd = this.ctx.sessions.get(SessionId(input.sessionId))?.header.cwd
-    if (cwd === undefined) throw new Error('This session has no workspace directory.')
-    return materializeUploadedFile(input.attachmentId, cwd)
+      const cwd = this.ctx.sessions.get(SessionId(input.sessionId))?.header.cwd
+      return materializeUploadedFile(input.attachmentId, cwd)
   }
   @Remote('download') async download(input: { sessionId: string; attachmentId: string }): Promise<UploadedFileBytes> {
     const ref = await this.authorized(input.sessionId, input.attachmentId)

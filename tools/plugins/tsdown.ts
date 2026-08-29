@@ -1,6 +1,6 @@
 import { defineConfig } from 'tsdown'
 import { readFileSync } from 'node:fs'
-import { typertPlugin } from '../../dsh/source/packages/typert/generator/lib/types/tsdown-plugin.js'
+import { typertPlugin } from '../../deepseek-harness/packages/typert/generator/lib/types/tsdown-plugin.js'
 
 const zerowallVersion = String(JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version)
 

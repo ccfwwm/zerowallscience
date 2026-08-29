@@ -236,10 +236,13 @@ export function AiCloudAccountButton(props: Props) {
     () => paymentLabel(displayPaymentType(activeOrder?.paymentType || paymentType), props.t),
     [activeOrder?.paymentType, paymentType, props.t],
   )
+  const usageUrl = signedIn ? usagePageUrl(account?.gatewayBaseUrl) : undefined
+  const statusTone = signedIn ? 'ok' : 'error'
+  const accountStatusText = signedIn ? props.t('account.status.connected') : props.t('account.status.signedOut')
 
   return <>
-    <button className={css.trigger} type="button" onClick={() => { setOpen(true); void refresh() }} title={props.t('account.trigger')} aria-label={props.t('account.trigger')}>
-      <Cloud size={18} aria-hidden="true" />{props.wide && <span>{props.t('account.nav')}</span>}
+    <button className={css.trigger} type="button" onClick={() => { setOpen(true); void refresh() }} title={`${props.t('account.trigger')} · ${accountStatusText}`} aria-label={props.t('account.trigger')} data-status={statusTone}>
+      <span className={css.triggerIcon}><Cloud size={18} aria-hidden="true" /><i className={css.statusDot} aria-hidden="true" /></span>{props.wide && <span>{props.t('account.nav')}</span>}
     </button>
     {open && createPortal(<div className={css.backdrop} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false) }}>
       <section className={css.panel} role="dialog" aria-modal="true" aria-labelledby="zerowall-account-title">
@@ -250,6 +253,10 @@ export function AiCloudAccountButton(props: Props) {
         {error && <p className={css.error} role="alert">{error}</p>}
         {!signedIn ? <div className={css.auth}>
           {account?.status === 'authExpired' && <p className={css.notice}>{props.t('account.authExpired')}</p>}
+          <section className={css.capabilities} aria-label={props.t('account.capabilities')}>
+            <strong>{props.t('account.capabilities')}</strong>
+            <span>{props.t('account.capabilitiesNote')}</span>
+          </section>
           <p className={css.authLead}>{props.t('account.authLead')}</p>
           <GatewaySelector gateways={gateways} selected={account?.gatewayBaseUrl} disabled={busy} onChange={switchGateway} t={props.t} />
           <div className={css.segmented} role="group" aria-label={props.t('account.actions')}>
@@ -271,6 +278,7 @@ export function AiCloudAccountButton(props: Props) {
             <div className={css.balance}><span>{props.t('account.balance')}</span><strong>{formatBalance(account)}</strong></div>
             <button className={css.logoutButton} type="button" onClick={() => void logout()} disabled={busy}><LogOut size={16} />{props.t('account.logout')}</button>
           </div>
+          {usageUrl !== undefined && <a className={css.usageLink} href={usageUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} />{props.t('account.usageDetails')}</a>}
           <section className={css.modelSync} aria-live="polite">
             <div><h3>{props.t('account.modelsTitle')}</h3><p>{props.t('account.modelsDescription')}</p></div>
             <button className={css.secondary} type="button" onClick={() => void syncModels()} disabled={busy || syncingModels}>
@@ -345,6 +353,14 @@ function withSelection(raw: string, amount: string, paymentType: string): string
 }
 function formatBalance(account: AiCloudAccountView): string { return account.balance === undefined ? '--' : `${account.balance.toFixed(2)} ${account.currency ?? 'CNY'}` }
 function formatDate(value?: string): string { if (!value) return ''; const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleString() }
+function usagePageUrl(baseUrl?: string): string | undefined {
+  const raw = (baseUrl ?? 'https://hkcode.aicodeme.xyz').replace(/\/$/u, '')
+  try {
+    const url = new URL(raw)
+    if (url.protocol !== 'https:' || !['hkcode.aicodeme.xyz', 'code.aicodeme.xyz', 'code.aicodeme.cn'].includes(url.hostname)) return undefined
+    return `${url.origin}/usage`
+  } catch { return undefined }
+}
 function message(reason: unknown): string {
   const raw = reason instanceof Error ? reason.message : String(reason)
   return raw.replace(/^zerowall\.[\w.]+ failed:\s*(?:internal:\s*)?/i, '').trim()

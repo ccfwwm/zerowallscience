@@ -6,13 +6,14 @@ import stable from '../../profiles/sources/stable.ts'
 
 const root = resolve(import.meta.dirname, '../..')
 const check = process.argv.includes('--check')
+const upstream = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/upstream.json'), 'utf8')) as { version: string }
 
 for (const source of [development, preview, stable]) {
   const output = [
     'version: 1',
     `id: zerowall-${source.id}`,
     `channel: ${source.channel}`,
-    'dsh: 0.1.1-rc.2',
+    `dsh: ${upstream.version}`,
     'plugins:',
     ...source.plugins.map(name => `  - '${name}'`),
     'wechat:',

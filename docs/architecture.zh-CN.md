@@ -62,7 +62,7 @@ ZeroWall Science 是面向 Agent 辅助科研的本地优先控制平面。它�
 | 平面 | 所有职责 | 源码归属 |
 | --- | --- | --- |
 | 桌面安全外壳 | Electron 生命周期、可信来源、更新、原生对话框、剪贴板、凭据保险库 | `desktop/src/main`、`desktop/src/preload` |
-| Agent 与 UI 内核 | 会话、工具、Skills、MCP、审批、Goal、子 Agent、Workflow、React 外壳 | `dsh/source` |
+| Agent 与 UI 内核 | 会话、工具、Skills、MCP、审批、Goal、子 Agent、Workflow、React 外壳 | `deepseek-harness` |
 | 科研领域服务 | 项目、执行、Run、文件、科研、审阅、图像、发表、演示 | `plugins/*` |
 | 科研数据基础 | SQLite schema、迁移、领域校验、图谱边、审计链、快照 | `store/src` |
 | 计算与产物平面 | Local/WSL/SSH 进程、项目文件、日志、生成图片、PPTX 与导出 | 项目根目录、用户数据根目录、远程主机 |

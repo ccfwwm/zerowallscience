@@ -3,15 +3,13 @@ import { basename, resolve } from 'node:path'
 
 /** Locate the unpacked executable produced by Electron Builder. */
 export async function locatePackagedApp(packageRoot) {
-  const outputRoot = resolve(packageRoot, 'dist')
+  // Verification can target an isolated builder output while a previous
+  // package is still held open by the OS or an external scanner.
+  const outputRoot = resolve(packageRoot, process.env.ZEROWALL_PACKAGED_OUTPUT ?? 'dist')
   if (process.platform === 'win32') {
     const root = resolve(outputRoot, 'win-unpacked')
     const executablePath = resolve(root, 'ZeroWallScience.exe')
-    try {
-      await access(executablePath)
-    } catch {
-      throw new Error(`Packaged ZeroWall Science executable was not found: ${executablePath}`)
-    }
+    try { await access(executablePath) } catch { throw new Error(`Stable ZeroWall Science executable was not found: ${executablePath}`) }
     return { root, resourcesRoot: resolve(root, 'resources'), executablePath }
   }
 

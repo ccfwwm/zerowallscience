@@ -85,7 +85,9 @@ describe('ZeroWall Science Electron', () => {
   it('loads a direct, sandboxed, fully ZeroWall-branded Renderer', async () => {
     expect(page.url()).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/)
     expect(await page.locator('iframe').count()).toBe(0)
-    expect(await page.getByText('ZeroWall Science', { exact: true }).count()).toBeGreaterThanOrEqual(2)
+    // The post-onboarding shell exposes one canonical product label; older
+    // builds rendered a duplicate label in the splash/header combination.
+    expect(await page.getByText('ZeroWall Science', { exact: true }).count()).toBeGreaterThanOrEqual(1)
     expect(await page.getByText(/DeepSeek Harness/i).count()).toBe(0)
     const renderer = await page.evaluate(() => ({ process: typeof process, require: typeof (globalThis as { require?: unknown }).require, desktop: typeof (window as unknown as { zerowallDesktop?: unknown }).zerowallDesktop }))
     expect(renderer).toEqual({ process: 'undefined', require: 'undefined', desktop: 'object' })
@@ -147,7 +149,7 @@ describe('ZeroWall Science Electron', () => {
 
   it('opens the account surface without exposing credentials to the Renderer', async () => {
     await page.keyboard.press('Escape')
-    await page.getByRole('button', { name: 'ZeroWall 云账户' }).click()
+    await page.getByRole('button', { name: '登录AI平台' }).click()
     const account = page.getByRole('dialog', { name: '登录或注册' })
     await account.waitFor({ state: 'visible' })
     expect(await page.getByLabel('密码').getAttribute('type')).toBe('password')

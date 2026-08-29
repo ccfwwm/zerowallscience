@@ -1,0 +1,516 @@
+diff --git a/lib/client-editor.js b/lib/client-editor.js
+index 8afe15ae00a41f7ece391d0458bc2cfe288cf9eb..282365cbc0210e0e2187409a7850558f2d1e8c18 100644
+--- a/lib/client-editor.js
++++ b/lib/client-editor.js
+@@ -44454,8 +44454,7 @@ globalThis.__dshChunks__["editor"] = (require) => {
+ 	* external and the loader resolves them here). A superset is safe: the
+ 	* require only answers what the chunk actually asks for. The shell's static
+ 	* module table seeds React, Cordis, and the UI libraries (primitives/slots);
+-	* `dsh-client-runtime/client` normalizes onto the runtime package row
+-	* (stripClientSuffix). dsh-client-web-react / dsh-client-schema-form were
++	* DSH client packages normalize onto their package rows. dsh-client-web-react / dsh-client-schema-form were
+ 	* dropped in DSH 0.1.0-rc.8 (no rc.8 publish, nothing requires them) — the
+ 	* chunks never asked for them, so they no longer belong here.
+ 	*/
+@@ -44466,8 +44465,7 @@ globalThis.__dshChunks__["editor"] = (require) => {
+ 		"react-dom/client",
+ 		"cordis",
+ 		"@deepseek-ai/dsh-client-ui-slots",
+-		"@deepseek-ai/dsh-client-ui-primitives",
+-		"@deepseek-ai/dsh-client-runtime/client"
++		"@deepseek-ai/dsh-client-ui-primitives"
+ 	];
+ 	/** Chunk script endpoint served by the plugin host half (src/bundle-route.ts). */
+ 	const CHUNK_URL = (name) => `/sidebar/bundle/${name}.js`;
+diff --git a/lib/client-registry.js b/lib/client-registry.js
+index 233bf0938de790c77bf0f79c6726aa0961a577f0..8a092d8737bbe295736f4e418cfe8e86994657d3 100644
+--- a/lib/client-registry.js
++++ b/lib/client-registry.js
+@@ -1697,8 +1697,7 @@ window.__ModuleLoader__.load({
+ 		* external and the loader resolves them here). A superset is safe: the
+ 		* require only answers what the chunk actually asks for. The shell's static
+ 		* module table seeds React, Cordis, and the UI libraries (primitives/slots);
+-		* `dsh-client-runtime/client` normalizes onto the runtime package row
+-		* (stripClientSuffix). dsh-client-web-react / dsh-client-schema-form were
++		* DSH client packages normalize onto their package rows. dsh-client-web-react / dsh-client-schema-form were
+ 		* dropped in DSH 0.1.0-rc.8 (no rc.8 publish, nothing requires them) — the
+ 		* chunks never asked for them, so they no longer belong here.
+ 		*/
+@@ -1709,8 +1708,7 @@ window.__ModuleLoader__.load({
+ 			"react-dom/client",
+ 			"cordis",
+ 			"@deepseek-ai/dsh-client-ui-slots",
+-			"@deepseek-ai/dsh-client-ui-primitives",
+-			"@deepseek-ai/dsh-client-runtime/client"
++			"@deepseek-ai/dsh-client-ui-primitives"
+ 		];
+ 		/** Chunk script endpoint served by the plugin host half (src/bundle-route.ts). */
+ 		const CHUNK_URL = (name) => `/sidebar/bundle/${name}.js`;
+@@ -16003,13 +16001,6 @@ Mode: this is a continuable side conversation. Your answers stay in this side th
+ 		* at session/end-seed, boundary row dropped, chunk streaming accumulated)
+ 		* — see sidechat-transcript.ts.
+ 		*/
+-		/** Tail-page size for one transcript poll (events per page). Small on
+-		*  purpose: streaming polls ride the tail and merge by seq. */
+-		const PAGE_MESSAGES = 8;
+-		/** First-attach walk page size: cold reads re-expand chunk-rows into one
+-		*  event per streamed delta, so a single answer can be hundreds of events —
+-		*  the walk must page big or earlier tool/call rows fall out of the window. */
+-		const WALK_PAGE_EVENTS = 200;
+ 		/** Poll cadence while the selected thread is running and the tab visible. */
+ 		const POLL_MS = 2e3;
+ 		/** Textarea auto-grow ceiling (px) — the composer scrolls beyond it. */
+@@ -16044,6 +16035,33 @@ Mode: this is a continuable side conversation. Your answers stay in this side th
+ 			for (const entry of incoming) bySeq.set(entry.event.seq, entry);
+ 			return [...bySeq.values()].sort((a, b) => a.event.seq - b.event.seq);
+ 		}
++		/** Expand alpha.1 compact history rows into the sidebar transcript event shape. */
++		function expandSessionEntries(entries) {
++			const expanded = [];
++			for (const entry of entries) {
++				if (entry.type === "event") {
++					expanded.push({ event: entry.event });
++					continue;
++				}
++				const row = entry.event;
++				const data = row.data;
++				const values = row.type === "chunkrow/tool-call-chunks" ? data.args : data.texts;
++				if (!Array.isArray(values)) continue;
++				let time = row.time;
++				for (let index = 0; index < values.length; index += 1) {
++					if (index > 0) time += data.dt[index - 1] ?? 0;
++					const chunk = row.type === "chunkrow/text-chunks" ? { type: "text-delta", index: data.index, text: values[index] } : row.type === "chunkrow/reasoning-chunks" ? { type: "reasoning-delta", index: data.index, text: values[index] } : {
++						type: "tool-call-delta",
++						index: data.index,
++						id: data.id,
++						...data.name === void 0 ? {} : { name: data.name },
++						argumentsDelta: values[index]
++					};
++					expanded.push({ event: { type: "assistant/chunk", seq: row.seq + index, time, data: { turn: data.turn, step: data.step, chunk } } });
++				}
++			}
++			return expanded;
++		}
+ 		/** The display title of a thread: the durable label minus the 'Side: '
+ 		*  prefix, with the fresh-thread placeholder localized. */
+ 		function threadDisplayTitle(title) {
+@@ -16214,38 +16232,28 @@ Mode: this is a continuable side conversation. Your answers stay in this side th
+ 				tab.title,
+ 				ctx
+ 			]);
+-			/** One transcript pull: the first read walks back to the seed boundary
+-			*  (big pages — chunk deltas re-expand on cold reads), later reads fetch
+-			*  one tail page and merge (seq-deduped). */
++			/** Read through alpha.1's session binding and its reconnect-safe event source. */
+ 			const fetchThread = (0, react.useCallback)(async (childId) => {
+ 				controllerRef.current?.abort();
+ 				const controller = new AbortController();
+ 				controllerRef.current = controller;
+ 				const cache = cacheRef.current;
+ 				try {
++					const binding = ctx.sessions.binding?.(childId);
++					if (binding === void 0) return;
++					while (binding.eventSource.getSnapshot().hasMore) {
++						controller.signal.throwIfAborted();
++						await binding.session.loadOlder();
++					}
++					const entries = expandSessionEntries(binding.eventSource.getSnapshot().entries);
+ 					if (cache.seedBoundary === null) {
+-						const walk = await collectOwnEvents(async (beforeSeq) => {
+-							const response = await ctx.connection.api.sessions.history({
+-								sessionId: childId,
+-								maxMessages: WALK_PAGE_EVENTS,
+-								...beforeSeq === void 0 ? {} : { beforeSeq }
+-							}, controller.signal);
+-							if (!response.result.ok) throw new Error("history walk failed");
+-							return response.result.value.events;
+-						});
++						const walk = await collectOwnEvents(async (beforeSeq) => beforeSeq === void 0 ? entries : []);
+ 						cache.seedBoundary = walk.seedBoundary;
+ 						cache.entries = mergeBySeq(cache.entries, walk.entries);
+-					} else {
+-						const response = await ctx.connection.api.sessions.history({
+-							sessionId: childId,
+-							maxMessages: PAGE_MESSAGES
+-						}, controller.signal);
+-						if (!response.result.ok) return;
+-						cache.entries = mergeBySeq(cache.entries, response.result.value.events);
+-					}
++					} else cache.entries = mergeBySeq(cache.entries, entries.filter((entry) => entry.event.seq > cache.seedBoundary));
+ 					setRevision((value) => value + 1);
+ 				} catch {}
+-			}, [ctx]);
++			}, [ctx]); 
+ 			/** The thread header badge pull (live state + preset/model identity). */
+ 			const fetchInfo = (0, react.useCallback)(async (childId) => {
+ 				try {
+diff --git a/lib/client.js b/lib/client.js
+index 6cf688cbba1345a61e6db0738638ae215ad1d2e0..c40044cd0cc03f828a49d5ea48390996f84f353c 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -1697,8 +1697,7 @@ window.__ModuleLoader__.load({
+ 		* external and the loader resolves them here). A superset is safe: the
+ 		* require only answers what the chunk actually asks for. The shell's static
+ 		* module table seeds React, Cordis, and the UI libraries (primitives/slots);
+-		* `dsh-client-runtime/client` normalizes onto the runtime package row
+-		* (stripClientSuffix). dsh-client-web-react / dsh-client-schema-form were
++		* DSH client packages normalize onto their package rows. dsh-client-web-react / dsh-client-schema-form were
+ 		* dropped in DSH 0.1.0-rc.8 (no rc.8 publish, nothing requires them) — the
+ 		* chunks never asked for them, so they no longer belong here.
+ 		*/
+@@ -1709,8 +1708,7 @@ window.__ModuleLoader__.load({
+ 			"react-dom/client",
+ 			"cordis",
+ 			"@deepseek-ai/dsh-client-ui-slots",
+-			"@deepseek-ai/dsh-client-ui-primitives",
+-			"@deepseek-ai/dsh-client-runtime/client"
++			"@deepseek-ai/dsh-client-ui-primitives"
+ 		];
+ 		/** Chunk script endpoint served by the plugin host half (src/bundle-route.ts). */
+ 		const CHUNK_URL = (name) => `/sidebar/bundle/${name}.js`;
+@@ -16003,13 +16001,6 @@ Mode: this is a continuable side conversation. Your answers stay in this side th
+ 		* at session/end-seed, boundary row dropped, chunk streaming accumulated)
+ 		* — see sidechat-transcript.ts.
+ 		*/
+-		/** Tail-page size for one transcript poll (events per page). Small on
+-		*  purpose: streaming polls ride the tail and merge by seq. */
+-		const PAGE_MESSAGES = 8;
+-		/** First-attach walk page size: cold reads re-expand chunk-rows into one
+-		*  event per streamed delta, so a single answer can be hundreds of events —
+-		*  the walk must page big or earlier tool/call rows fall out of the window. */
+-		const WALK_PAGE_EVENTS = 200;
+ 		/** Poll cadence while the selected thread is running and the tab visible. */
+ 		const POLL_MS = 2e3;
+ 		/** Textarea auto-grow ceiling (px) — the composer scrolls beyond it. */
+@@ -16044,6 +16035,33 @@ Mode: this is a continuable side conversation. Your answers stay in this side th
+ 			for (const entry of incoming) bySeq.set(entry.event.seq, entry);
+ 			return [...bySeq.values()].sort((a, b) => a.event.seq - b.event.seq);
+ 		}
++		/** Expand alpha.1 compact history rows into the sidebar transcript event shape. */
++		function expandSessionEntries(entries) {
++			const expanded = [];
++			for (const entry of entries) {
++				if (entry.type === "event") {
++					expanded.push({ event: entry.event });
++					continue;
++				}
++				const row = entry.event;
++				const data = row.data;
++				const values = row.type === "chunkrow/tool-call-chunks" ? data.args : data.texts;
++				if (!Array.isArray(values)) continue;
++				let time = row.time;
++				for (let index = 0; index < values.length; index += 1) {
++					if (index > 0) time += data.dt[index - 1] ?? 0;
++					const chunk = row.type === "chunkrow/text-chunks" ? { type: "text-delta", index: data.index, text: values[index] } : row.type === "chunkrow/reasoning-chunks" ? { type: "reasoning-delta", index: data.index, text: values[index] } : {
++						type: "tool-call-delta",
++						index: data.index,
++						id: data.id,
++						...data.name === void 0 ? {} : { name: data.name },
++						argumentsDelta: values[index]
++					};
++					expanded.push({ event: { type: "assistant/chunk", seq: row.seq + index, time, data: { turn: data.turn, step: data.step, chunk } } });
++				}
++			}
++			return expanded;
++		}
+ 		/** The display title of a thread: the durable label minus the 'Side: '
+ 		*  prefix, with the fresh-thread placeholder localized. */
+ 		function threadDisplayTitle(title) {
+@@ -16214,35 +16232,25 @@ Mode: this is a continuable side conversation. Your answers stay in this side th
+ 				tab.title,
+ 				ctx
+ 			]);
+-			/** One transcript pull: the first read walks back to the seed boundary
+-			*  (big pages — chunk deltas re-expand on cold reads), later reads fetch
+-			*  one tail page and merge (seq-deduped). */
++			/** Read through alpha.1's session binding and its reconnect-safe event source. */
+ 			const fetchThread = (0, react.useCallback)(async (childId) => {
+ 				controllerRef.current?.abort();
+ 				const controller = new AbortController();
+ 				controllerRef.current = controller;
+ 				const cache = cacheRef.current;
+ 				try {
++					const binding = ctx.sessions.binding?.(childId);
++					if (binding === void 0) return;
++					while (binding.eventSource.getSnapshot().hasMore) {
++						controller.signal.throwIfAborted();
++						await binding.session.loadOlder();
++					}
++					const entries = expandSessionEntries(binding.eventSource.getSnapshot().entries);
+ 					if (cache.seedBoundary === null) {
+-						const walk = await collectOwnEvents(async (beforeSeq) => {
+-							const response = await ctx.connection.api.sessions.history({
+-								sessionId: childId,
+-								maxMessages: WALK_PAGE_EVENTS,
+-								...beforeSeq === void 0 ? {} : { beforeSeq }
+-							}, controller.signal);
+-							if (!response.result.ok) throw new Error("history walk failed");
+-							return response.result.value.events;
+-						});
++						const walk = await collectOwnEvents(async (beforeSeq) => beforeSeq === void 0 ? entries : []);
+ 						cache.seedBoundary = walk.seedBoundary;
+ 						cache.entries = mergeBySeq(cache.entries, walk.entries);
+-					} else {
+-						const response = await ctx.connection.api.sessions.history({
+-							sessionId: childId,
+-							maxMessages: PAGE_MESSAGES
+-						}, controller.signal);
+-						if (!response.result.ok) return;
+-						cache.entries = mergeBySeq(cache.entries, response.result.value.events);
+-					}
++					} else cache.entries = mergeBySeq(cache.entries, entries.filter((entry) => entry.event.seq > cache.seedBoundary));
+ 					setRevision((value) => value + 1);
+ 				} catch {}
+ 			}, [ctx]);
+diff --git a/lib/types/client/chunk-loader.d.ts b/lib/types/client/chunk-loader.d.ts
+index ac54aab163c72247afb52e962e386c0c8449fcd2..e8b7b3761740beaef27e2e74c2ca120de7d043c3 100644
+--- a/lib/types/client/chunk-loader.d.ts
++++ b/lib/types/client/chunk-loader.d.ts
+@@ -58,8 +58,7 @@ export type ChunkExports = Record<string, unknown>;
+  * external and the loader resolves them here). A superset is safe: the
+  * require only answers what the chunk actually asks for. The shell's static
+  * module table seeds React, Cordis, and the UI libraries (primitives/slots);
+- * `dsh-client-runtime/client` normalizes onto the runtime package row
+- * (stripClientSuffix). dsh-client-web-react / dsh-client-schema-form were
++ * DSH client packages normalize onto their package rows. dsh-client-web-react / dsh-client-schema-form were
+  * dropped in DSH 0.1.0-rc.8 (no rc.8 publish, nothing requires them) — the
+  * chunks never asked for them, so they no longer belong here.
+  */
+diff --git a/package.json b/package.json
+index aad5c0cb9160e635cd58fd82385260712ee6e3be..8643b2e44ade5eb3464ae92e658c5c2d08224956 100644
+--- a/package.json
++++ b/package.json
+@@ -45,7 +45,7 @@
+     },
+     "client": {
+       "inject": [
+-        "@deepseek-ai/dsh-client-runtime",
++        "@deepseek-ai/dsh-api-session-controller",
+         "@deepseek-ai/dsh-client-locale",
+         "@deepseek-ai/dsh-client-ui-slots",
+         "@deepseek-ai/dsh-client-ui-conversation",
+@@ -74,20 +74,20 @@
+   "license": "MIT",
+   "peerDependencies": {
+     "@deepseek-ai/cordis": "^4.0.1",
+-    "@deepseek-ai/dsh-agent": "^0.1.0-rc.8",
+-    "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.8",
+-    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.8",
+-    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.8",
+-    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.0-rc.8",
+-    "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.8",
+-    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.8",
+-    "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.8",
+-    "@deepseek-ai/dsh-invariants": "^0.1.0-rc.8",
+-    "@deepseek-ai/dsh-llm": "^0.1.0-rc.8",
+-    "@deepseek-ai/dsh-session": "^0.1.0-rc.8",
+-    "@deepseek-ai/dsh-settings": "^0.1.0-rc.8",
+-    "@deepseek-ai/dsh-subagent": "^0.1.0-rc.8",
+-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.8",
++    "@deepseek-ai/dsh-agent": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-api-session-controller": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-client-locale": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-client-ui-settings": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-client-ui-slots": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-host-webserver": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-invariants": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-llm": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-session": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-settings": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-subagent": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-tools": "^0.1.2-alpha.1",
+     "@huanlin/dsh-plugin-better-locale": "^0.1.0",
+     "react": "^18.2.0",
+     "react-dom": "^18.2.0"
+@@ -133,7 +133,7 @@
+     "@cordisjs/plugin-loader": "^1.0.0-rc.5",
+     "@deepseek-ai/dsh-agent": "0.1.1-rc.1",
+     "@deepseek-ai/dsh-client-locale": "0.1.1-rc.1",
+-    "@deepseek-ai/dsh-client-runtime": "0.1.1-rc.1",
++    "@deepseek-ai/dsh-api-session-controller": "^0.1.2-alpha.1",
+     "@deepseek-ai/dsh-client-ui-conversation": "0.1.1-rc.1",
+     "@deepseek-ai/dsh-client-ui-primitives": "0.1.1-rc.1",
+     "@deepseek-ai/dsh-client-ui-settings": "0.1.1-rc.1",
+diff --git a/src/client/SideChatView.tsx b/src/client/SideChatView.tsx
+index 775d3962eb28b374e26fd9801b7d46013b3ac5d9..0f17a7ab53ca8b174794f9466cfed42de49043bc 100644
+--- a/src/client/SideChatView.tsx
++++ b/src/client/SideChatView.tsx
+@@ -51,13 +51,6 @@ import type { SessionScope } from './api.ts'
+ import type { SidebarTab } from './state.ts'
+ import css from './SideChatView.module.css'
+ 
+-/** Tail-page size for one transcript poll (events per page). Small on
+- *  purpose: streaming polls ride the tail and merge by seq. */
+-const PAGE_MESSAGES = 8
+-/** First-attach walk page size: cold reads re-expand chunk-rows into one
+- *  event per streamed delta, so a single answer can be hundreds of events —
+- *  the walk must page big or earlier tool/call rows fall out of the window. */
+-const WALK_PAGE_EVENTS = 200
+ /** Poll cadence while the selected thread is running and the tab visible. */
+ const POLL_MS = 2000
+ /** Textarea auto-grow ceiling (px) — the composer scrolls beyond it. */
+@@ -117,6 +110,59 @@ function mergeBySeq(
+   return [...bySeq.values()].sort((a, b) => a.event.seq - b.event.seq)
+ }
+ 
++/** Expand alpha.1's compact history rows into the event shape used by the
++ * sidebar transcript. Live rows are already scalar; cold text, reasoning,
++ * and tool-call delta runs are reconstructed losslessly from their anchors. */
++function expandSessionEntries(entries: readonly {
++  type: 'event' | 'chunks'
++  event: { type: string; seq: number; time: number; data: Record<string, unknown> }
++}[]): SidebarHistoryEntry[] {
++  const expanded: SidebarHistoryEntry[] = []
++  for (const entry of entries) {
++    if (entry.type === 'event') {
++      expanded.push({ event: entry.event })
++      continue
++    }
++    const row = entry.event
++    const data = row.data as {
++      turn: number
++      step: number
++      index: number
++      dt: number[]
++      texts?: string[]
++      args?: string[]
++      id?: string
++      name?: string
++    }
++    const values = row.type === 'chunkrow/tool-call-chunks' ? data.args : data.texts
++    if (!Array.isArray(values)) continue
++    let time = row.time
++    for (let index = 0; index < values.length; index += 1) {
++      if (index > 0) time += data.dt[index - 1] ?? 0
++      const chunk = row.type === 'chunkrow/text-chunks'
++        ? { type: 'text-delta', index: data.index, text: values[index] }
++        : row.type === 'chunkrow/reasoning-chunks'
++          ? { type: 'reasoning-delta', index: data.index, text: values[index] }
++          : {
++              type: 'tool-call-delta',
++              index: data.index,
++              id: data.id,
++              ...(data.name === undefined ? {} : { name: data.name }),
++              argumentsDelta: values[index],
++            }
++      expanded.push({
++        event: {
++          type: 'assistant/chunk',
++          seq: row.seq + index,
++          time,
++          data: { turn: data.turn, step: data.step, chunk },
++        },
++      })
++    }
++  }
++  return expanded
++}
++
+ /** The display title of a thread: the durable label minus the 'Side: '
+  *  prefix, with the fresh-thread placeholder localized. */
+ function threadDisplayTitle(title: string): string {
+@@ -326,37 +372,28 @@ export function SideChatView(props: {
+     }
+   }, [summary, tab.id, tab.title, ctx])
+ 
+-  /** One transcript pull: the first read walks back to the seed boundary
+-   *  (big pages — chunk deltas re-expand on cold reads), later reads fetch
+-   *  one tail page and merge (seq-deduped). */
++  /** One transcript pull through alpha.1's session binding. The binding owns
++   * history pagination and reconnect replay, so presentation code never
++   * reaches into the removed connection.api transport. */
+   const fetchThread = useCallback(async (childId: string): Promise<void> => {
+     controllerRef.current?.abort()
+     const controller = new AbortController()
+     controllerRef.current = controller
+     const cache = cacheRef.current
+     try {
++      const binding = ctx.sessions.binding?.(childId)
++      if (binding === undefined) return
++      while (binding.eventSource.getSnapshot().hasMore) {
++        controller.signal.throwIfAborted()
++        await binding.session.loadOlder()
++      }
++      const entries = expandSessionEntries(binding.eventSource.getSnapshot().entries)
+       if (cache.seedBoundary === null) {
+-        const walk = await collectOwnEvents(async (beforeSeq) => {
+-          const response = await ctx.connection.api.sessions.history(
+-            {
+-              sessionId: childId,
+-              maxMessages: WALK_PAGE_EVENTS,
+-              ...(beforeSeq === undefined ? {} : { beforeSeq }),
+-            },
+-            controller.signal,
+-          )
+-          if (!response.result.ok) throw new Error('history walk failed')
+-          return response.result.value.events
+-        })
++        const walk = await collectOwnEvents(async beforeSeq => beforeSeq === undefined ? entries : [])
+         cache.seedBoundary = walk.seedBoundary
+         cache.entries = mergeBySeq(cache.entries, walk.entries)
+       } else {
+-        const response = await ctx.connection.api.sessions.history(
+-          { sessionId: childId, maxMessages: PAGE_MESSAGES },
+-          controller.signal,
+-        )
+-        if (!response.result.ok) return
+-        cache.entries = mergeBySeq(cache.entries, response.result.value.events)
++        cache.entries = mergeBySeq(cache.entries, entries.filter(entry => entry.event.seq > cache.seedBoundary!))
+       }
+       setRevision(value => value + 1)
+     } catch {
+diff --git a/src/client/chunk-loader.ts b/src/client/chunk-loader.ts
+index 30f0a9afa1297470ae7ed106137f1ee2a03e6152..a5fee0d36b2d9580a19ab4bd1a867a0251cf951a 100644
+--- a/src/client/chunk-loader.ts
++++ b/src/client/chunk-loader.ts
+@@ -63,8 +63,8 @@ type ChunkFactory = (require: (spec: string) => unknown) => ChunkExports
+  * external and the loader resolves them here). A superset is safe: the
+  * require only answers what the chunk actually asks for. The shell's static
+  * module table seeds React, Cordis, and the UI libraries (primitives/slots);
+- * `dsh-client-runtime/client` normalizes onto the runtime package row
+- * (stripClientSuffix). dsh-client-web-react / dsh-client-schema-form were
++ * DSH client packages normalize onto their package rows (stripClientSuffix).
++ * dsh-client-web-react / dsh-client-schema-form were
+  * dropped in DSH 0.1.0-rc.8 (no rc.8 publish, nothing requires them) — the
+  * chunks never asked for them, so they no longer belong here.
+  */
+@@ -76,7 +76,6 @@ export const CHUNK_EXTERNALS: readonly string[] = [
+   'cordis',
+   '@deepseek-ai/dsh-client-ui-slots',
+   '@deepseek-ai/dsh-client-ui-primitives',
+-  '@deepseek-ai/dsh-client-runtime/client',
+ ]
+ 
+ /** Chunk script endpoint served by the plugin host half (src/bundle-route.ts). */
+diff --git a/src/context-types.ts b/src/context-types.ts
+index a62333bcea3ea2ee6e0f405b80c5428b9f3a0395..d615405d94877dc5069e0e37a68f609640c2ee85 100644
+--- a/src/context-types.ts
++++ b/src/context-types.ts
+@@ -377,6 +377,16 @@ export interface SidebarSessionsService {
+   binding?(id: string): {
+     session: {
+       rename(title: string): Promise<unknown>
++      loadOlder(): Promise<void>
++    }
++    eventSource: {
++      getSnapshot(): {
++        entries: readonly {
++          type: 'event' | 'chunks'
++          event: { type: string; seq: number; time: number; data: Record<string, unknown> }
++        }[]
++        hasMore: boolean
++      }
+     }
+   } | undefined
+   /**
+@@ -527,8 +537,6 @@ export interface SidebarContextShape {
+   webServer: SidebarWebServer
+   /** The session store (host `.get`) and the client list feed (`.list`) faces. */
+   sessions: SidebarSessionStore & SidebarSessionsService
+-  /** The wire handle the Side Chat transcript polls through. */
+-  connection: SidebarConnectionHandle
+   /** The web runtime trust list (bind-derived). */
+   webRuntime: SidebarWebRuntime
+   /** The client slot registry (register/inject). */

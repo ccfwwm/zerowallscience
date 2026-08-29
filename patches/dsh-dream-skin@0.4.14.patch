@@ -1,0 +1,97 @@
+diff --git a/lib/client.js b/lib/client.js
+index 8d16f55ba9c5d8ec21bac0c4d301973205cab6d7..0206ea7e93976f0a8c1571a3695cc3adec390bc5 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -23,7 +23,7 @@ window.__ModuleLoader__.load({
+ 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+ 		let react_jsx_runtime = require("react/jsx-runtime");
+ 		let _react = require("react");
+-		let _runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
++		let _client_store = require("@deepseek-ai/dsh-client-store");
+ 
+ 		//#region dsh-dream-skin: constants & presets
+ 		/** The settings row's locale namespace. */
+@@ -1339,7 +1339,7 @@ window.__ModuleLoader__.load({
+ 		 * component reads via props.useStore.
+ 		 */
+ 		function createSkinStore() {
+-			return (0, _runtime_client.defineStore)({
++			return (0, _client_store.defineStore)({
+ 				init: () => ({
+ 					skin: "system",
+ 					revision: -1
+@@ -1356,7 +1356,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** Wallpaper row store: url + opacity + blur, written only by this plugin. */
+ 		function createWallpaperStore() {
+-			return (0, _runtime_client.defineStore)({
++			return (0, _client_store.defineStore)({
+ 				init: () => ({
+ 					url: null,
+ 					opacity: DEFAULT_WALLPAPER_OPACITY,
+@@ -2392,7 +2392,7 @@ window.__ModuleLoader__.load({
+ 		//#region dsh-dream-skin: P0 stores + module hooks
+ 		/** Accent row slot store. */
+ 		function createAccentStore() {
+-			return (0, _runtime_client.defineStore)({
++			return (0, _client_store.defineStore)({
+ 				init: () => ({ accent: DEFAULT_ACCENT, base: DEFAULT_ACCENT, revision: -1 }),
+ 				actions: {
+ 					sync: (d, accent, base, revision) => {
+@@ -2407,7 +2407,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** Pack library row slot store (ids + names + favorites + active + suggestion). */
+ 		function createPackStore() {
+-			return (0, _runtime_client.defineStore)({
++			return (0, _client_store.defineStore)({
+ 				init: () => ({ ids: [], names: {}, favorites: [], active: null, suggestion: null, revision: -1 }),
+ 				actions: {
+ 					sync: (d, ids, names, favorites, active, suggestion, revision) => {
+@@ -2517,7 +2517,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** Advanced wallpaper row store: kind + url + gradient + autodim. */
+ 		function createAdvancedWallpaperStore() {
+-			return (0, _runtime_client.defineStore)({
++			return (0, _client_store.defineStore)({
+ 				init: () => ({ kind: "image", url: null, gradient: null, autodim: false, revision: -1 }),
+ 				actions: {
+ 					sync: (d, kind, url, gradient, autodim, revision) => {
+@@ -2534,7 +2534,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** Popup-opacity row store: the current fill weight (0..1) + revision. */
+ 		function createModalOpacityStore() {
+-			return (0, _runtime_client.defineStore)({
++			return (0, _client_store.defineStore)({
+ 				init: () => ({ opacity: DEFAULT_MODAL_OPACITY, revision: -1 }),
+ 				actions: {
+ 					sync: (d, opacity, revision) => {
+diff --git a/package.json b/package.json
+index cebe2c11194d3a3965134bee48a7523e2e1bbb04..e90e02146dfe7444bb49217d6c5c9962fd795121 100644
+--- a/package.json
++++ b/package.json
+@@ -62,7 +62,7 @@
+     },
+     "client": {
+       "inject": [
+-        "@deepseek-ai/dsh-client-runtime",
++        "@deepseek-ai/dsh-client-store",
+         "@deepseek-ai/dsh-client-locale",
+         "@deepseek-ai/dsh-client-ui-theme",
+         "@deepseek-ai/dsh-client-ui-settings",
+@@ -74,11 +74,11 @@
+   },
+   "peerDependencies": {
+     "@deepseek-ai/cordis": "^4.0.1",
+-    "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.6",
+-    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
+-    "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.6",
+-    "@deepseek-ai/dsh-client-ui-settings-general": "^0.1.0-rc.6",
+-    "@deepseek-ai/dsh-client-ui-theme": "^0.1.0-rc.6",
++    "@deepseek-ai/dsh-client-locale": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-client-store": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-client-ui-settings": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-client-ui-settings-general": "^0.1.2-alpha.1",
++    "@deepseek-ai/dsh-client-ui-theme": "^0.1.2-alpha.1",
+     "react": "^18.2.0"
+   },
+   "devDependencies": {

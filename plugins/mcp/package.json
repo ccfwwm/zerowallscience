@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-mcp",
-  "version": "4.3.8",
+  "version": "4.3.9",
   "description": "ZeroWall Science mcp domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -34,26 +34,40 @@
       "inject": [
         "betterSidebar",
         "slots",
+        "uiConversation",
+        "settingsScope",
         "conversation",
-        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-api-gateway",
         "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-api-settings-controller",
+        "@deepseek-ai/dsh-api-workspace-controller",
+        "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-store",
+        "@deepseek-ai/dsh-client-ui-chat",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-session",
         "@deepseek-ai/dsh-client-ui-slots",
         "@deepseek-ai/dsh-client-ui-sidebar",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-attachment",
-        "@deepseek-ai/dsh-client-ui-tool"
+        "@deepseek-ai/dsh-client-ui-tool",
+        "@deepseek-ai/dsh-client-ui-workspace"
       ],
       "platform": "web"
     }
   },
   "zerowall": {
     "dsh": {
-      "min": "0.1.1-rc.2",
-      "max": "0.1.1-rc.2"
+      "min": "0.1.2-alpha.1",
+      "max": "0.1.2-alpha.1"
     },
-    "requiredServices": [],
+    "requiredServices": [
+      "zerowallProjects",
+      "tools"
+    ],
     "optionalServices": [],
     "capabilities": [
       "mcp"
@@ -103,12 +117,20 @@
     "@deepseek-ai/dsh-subagent": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^",
     "@deepseek-ai/dsh-typert-protocol": "workspace:^",
+    "@deepseek-ai/dsh-api-gateway": "workspace:^",
     "@deepseek-ai/dsh-api-remotes": "workspace:^",
+    "@deepseek-ai/dsh-api-session-controller": "workspace:^",
+    "@deepseek-ai/dsh-api-settings-controller": "workspace:^",
+    "@deepseek-ai/dsh-api-workspace-controller": "workspace:^",
     "@deepseek-ai/dsh-host-webserver": "workspace:^",
     "@deepseek-ai/dsh-system-prompt": "workspace:^",
     "@deepseek-ai/dsh-workspace": "workspace:^",
-    "@deepseek-ai/dsh-client-runtime": "workspace:^",
+    "@deepseek-ai/dsh-client-connection": "workspace:^",
     "@deepseek-ai/dsh-client-locale": "workspace:^",
+    "@deepseek-ai/dsh-client-store": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-chat": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-layout": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-session": "workspace:^",
     "@deepseek-ai/dsh-client-ui-slots": "workspace:^",
     "@deepseek-ai/dsh-client-ui-sidebar": "workspace:^",
     "@deepseek-ai/dsh-client-ui-settings": "workspace:^",
@@ -116,6 +138,7 @@
     "@deepseek-ai/dsh-client-ui-attachment": "workspace:^",
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
     "dsh-better-sidebar": "0.16.1",
     "dsh-dream-skin": "0.4.14",
     "@zerowallscience/plugin-projects": "workspace:^",

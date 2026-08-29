@@ -8,6 +8,7 @@
     "baseUrl": ".",
     "ignoreDeprecations": "6.0",
     "paths": {
+      "@deepseek-ai/dsh-typert-protocol": ["deepseek-harness/packages/typert/protocol/src/index.ts"],
       "@zerowallscience/research-store": ["store/src/index.ts"],
       "@zerowallscience/research-store/types": ["store/src/index.ts"],
       "@zerowallscience/plugin-*/types": ["plugins/*/src/shared/types.ts"],

@@ -3,7 +3,7 @@ import { basename, dirname, extname, join, relative, resolve, sep } from 'node:p
 import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
-const dshRoot = resolve(root, 'dsh/source')
+const dshRoot = resolve(root, 'deepseek-harness')
 const closurePath = resolve(root, '.build/dsh/runtime-closure.json')
 const outputRoot = resolve(root, '.build/runtime/node_modules')
 const expectedOutputParent = resolve(root, '.build/runtime')
@@ -18,6 +18,10 @@ const zerowallPackageRoots = [
   ...await pluginRoots(resolve(root, 'plugins')),
 ]
 const desktopRuntimeSeeds = [
+  // The packaged Web Host resolves its SPA entry through this package's
+  // manifest at runtime; it is not reachable from the DSH library dependency
+  // graph because it is an application entry rather than a library import.
+  '@deepseek-ai/dsh-web-frontend',
   'dsh-better-sidebar',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
   'dsh-dream-skin',

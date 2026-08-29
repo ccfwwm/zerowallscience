@@ -1,5 +1,5 @@
 {
-  "extends": "../dsh/source/tsconfig.base.json",
+  "extends": "../deepseek-harness/tsconfig.base.json",
   "compilerOptions": { "rootDir": "src", "outDir": "lib/types" },
   "include": ["src"]
 }
