@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/ccfwwm/deepseek-harness.git",
-  "commit": "5ca3e024e3c020b9db4099c650c6e33196feb1fc",
+  "commit": "e04138f249ea386c2d44437c56577e3d1ded6860",
   "branch": "zerowall-dsh-alpha1",
   "upstreamRepository": "https://github.com/deepseek-ai/deepseek-harness.git",
   "upstreamCommit": "cd5ef8148158c3a752a658978873241fdf8e2bbc",

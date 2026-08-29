@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { cp, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
 import updaterPackage from 'electron-updater'
@@ -354,6 +354,17 @@ app.whenReady().then(async () => {
       return false
     }
   })
+  ipcMain.handle('desktop:open-pptx', async (_event, value: unknown) => {
+    if (typeof value !== 'string' || !isAbsolute(value) || extname(value).toLocaleLowerCase() !== '.pptx') return false
+    try {
+      const canonical = await realpath(value)
+      const info = await stat(canonical)
+      if (!info.isFile() || info.size === 0 || info.size > 500 * 1024 * 1024) return false
+      const normalized = canonical.replaceAll('\\', '/').toLocaleLowerCase()
+      if (!normalized.includes('/.zerowall/')) return false
+      return (await shell.openPath(canonical)) === ''
+    } catch { return false }
+  })
   ipcMain.handle('desktop:clipboard-copy-file', async (_event, input: DesktopClipboardFile) => {
     if (process.platform !== 'win32') return false
     if (typeof input?.name !== 'string' || typeof input?.mediaType !== 'string' || typeof input?.data !== 'string') return false
@@ -370,6 +381,20 @@ app.whenReady().then(async () => {
     clipboard.writeBuffer('FileNameW', Buffer.from(`${path}\0`, 'ucs2'))
     clipboard.writeBuffer('Preferred DropEffect', Buffer.from([5, 0, 0, 0]))
     return true
+  })
+  ipcMain.handle('desktop:clipboard-copy-text', (_event, value: unknown) => {
+    if (typeof value !== 'string' || value.length > 2_000_000) return false
+    clipboard.writeText(value)
+    return true
+  })
+  ipcMain.handle('desktop:clipboard-copy-image', (_event, input: { data?: unknown }) => {
+    if (typeof input?.data !== 'string' || input.data.length === 0 || input.data.length > 70_000_000) return false
+    try {
+      const image = nativeImage.createFromBuffer(Buffer.from(input.data, 'base64'))
+      if (image.isEmpty()) return false
+      clipboard.writeImage(image)
+      return true
+    } catch { return false }
   })
   ipcMain.handle('desktop:get-update-status', () => updates.current())
   ipcMain.handle('desktop:check-for-updates', () => updates.check())

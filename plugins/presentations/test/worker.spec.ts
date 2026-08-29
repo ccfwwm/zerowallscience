@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -182,6 +183,50 @@ describe('presentation generation', () => {
       expect(updated.slides.filter((_, index) => index !== 1).map(slide => ({ id: slide.id, checksum: slide.visual?.checksum, uri: slide.visualUri }))).toEqual(untouched)
       expect(updated.artifacts.map(item => item.kind)).toContain('pptx')
       expect(updated.artifacts.map(item => item.kind)).not.toContain('pdf')
+    } finally {
+      worker.dispose()
+      store.close()
+    }
+  }, 15_000)
+
+  it('rebuilds an image source into an editable PPTX with manifests', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-ppt-image-rebuild-'))
+    roots.push(root)
+    const store = new ResearchStore(join(root, 'research.db'))
+    const project = store.createProject({ name: 'Test', rootPath: root })
+    const imagePath = join(root, 'reference.png')
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
+    await writeFile(imagePath, png)
+    const presentation = store.createPresentation({ projectId: project.id, title: '图片重建', outline: [{ title: '第 1 页', points: [] }] })
+    const worker = new PresentationWorker(store, 1)
+    try {
+      const rebuilt = await worker.rebuildEditable(presentation.id, undefined, '保持布局', 2, [{ path: imagePath, kind: 'image', checksum: createHash('sha256').update(png).digest('hex'), page: 1 }])
+      expect(rebuilt.sourceMode).toBe('image-rebuild')
+      expect(rebuilt.slides[0]?.editableStatus).toBe('ready')
+      expect(rebuilt.artifacts.map(item => item.kind)).toEqual(expect.arrayContaining(['editable-pptx', 'scene-map', 'editable-manifest']))
+      expect(existsSync(filePath(rebuilt.artifacts.find(item => item.kind === 'editable-pptx')!.uri))).toBe(true)
+    } finally {
+      worker.dispose()
+      store.close()
+    }
+  }, 15_000)
+
+  it('rebuilds only the referenced page as editable and preserves other pages', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-ppt-image-rebuild-single-'))
+    roots.push(root)
+    const store = new ResearchStore(join(root, 'research.db'))
+    const project = store.createProject({ name: 'Test', rootPath: root })
+    const presentation = store.createPresentation({ projectId: project.id, title: '单页可编辑重建', outline: [{ title: '一', points: ['a'] }, { title: '二', points: ['b'] }] })
+    const worker = new PresentationWorker(store, 1)
+    try {
+      worker.generate(presentation.id)
+      const first = await waitReady(store, presentation.id)
+      const untouched = { id: first.slides[1]!.id, visualUri: first.slides[1]!.visualUri, visual: { checksum: first.slides[1]!.visual?.checksum } }
+      const rebuilt = await worker.rebuildEditable(presentation.id, [first.slides[0]!.id], '仅转换引用页', 1)
+      expect(rebuilt.status).toBe('ready')
+      expect(rebuilt.slides[0]?.editableStatus).toBe('ready')
+      expect(rebuilt.slides[1]).toMatchObject(untouched)
+      expect(rebuilt.slides[1]?.editableStatus).toBeUndefined()
     } finally {
       worker.dispose()
       store.close()

@@ -1,0 +1,3 @@
+display_name: "ZeroWall Science · Rebuild Image in PowerPoint"
+short_description: "将图片页面逐对象重建为可编辑 PowerPoint"
+default_prompt: "Use $zerowall-ppt-rebuild-image to reconstruct the supplied image pages as editable PowerPoint slides inside the current ZeroWall presentation."

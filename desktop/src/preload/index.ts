@@ -1,12 +1,15 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DesktopClipboardFile, DesktopInfo, DesktopUpdateStatus, McpEnvironmentStatus } from '../shared/contracts.js'
+import type { DesktopClipboardFile, DesktopClipboardImage, DesktopInfo, DesktopUpdateStatus, McpEnvironmentStatus } from '../shared/contracts.js'
 
 contextBridge.exposeInMainWorld('zerowallDesktop', {
   info: async (): Promise<DesktopInfo> => await ipcRenderer.invoke('desktop:info') as DesktopInfo,
   chooseDirectory: async (): Promise<string | null> => await ipcRenderer.invoke('desktop:choose-directory') as string | null,
   revealPath: async (path: string): Promise<boolean> => await ipcRenderer.invoke('desktop:reveal-path', path) as boolean,
   openFolder: async (path: string): Promise<boolean> => await ipcRenderer.invoke('desktop:open-folder', path) as boolean,
+  openPptx: async (path: string): Promise<boolean> => await ipcRenderer.invoke('desktop:open-pptx', path) as boolean,
   copyFile: async (input: DesktopClipboardFile): Promise<boolean> => await ipcRenderer.invoke('desktop:clipboard-copy-file', input) as boolean,
+  copyText: async (text: string): Promise<boolean> => await ipcRenderer.invoke('desktop:clipboard-copy-text', text) as boolean,
+  copyImage: async (input: DesktopClipboardImage): Promise<boolean> => await ipcRenderer.invoke('desktop:clipboard-copy-image', input) as boolean,
   getUpdateStatus: async (): Promise<DesktopUpdateStatus> => await ipcRenderer.invoke('desktop:get-update-status') as DesktopUpdateStatus,
   checkForUpdates: async (): Promise<DesktopUpdateStatus> => await ipcRenderer.invoke('desktop:check-for-updates') as DesktopUpdateStatus,
   downloadUpdate: async (): Promise<DesktopUpdateStatus> => await ipcRenderer.invoke('desktop:download-update') as DesktopUpdateStatus,

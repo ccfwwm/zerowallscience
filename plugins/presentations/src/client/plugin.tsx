@@ -21,6 +21,7 @@ interface PresentationRemote {
   previewSlide(input: { presentationId: string; slideId: string }): Promise<RemoteResult<PresentationSlidePreview>>
   retrySlide(input: { presentationId: string; slideId: string }): Promise<RemoteResult<PresentationRecord>>
   delete(id: string): Promise<RemoteResult<void>>
+  rebuildEditable(input: { presentationId?: string; sourcePresentationId?: string; sourceSlideIds?: string[]; instruction?: string; concurrency?: number }): Promise<RemoteResult<PresentationRecord>>
 }
 interface ProjectView { id: string; name: string; rootPath: string }
 interface ProjectRemote { list(): Promise<RemoteResult<ProjectView[]>> }
@@ -230,11 +231,25 @@ function PresentationWorkbench({ ctx, remote, scope, tab }: TabComponentProps & 
     if (!revealPath) throw new Error('当前桌面运行时不支持打开系统文件资源管理器。')
     await revealPath(path)
   }
+  const rebuildEditable = async (slideOnly = false) => {
+    if (!presentation) return
+    setBusy(true); setError(undefined)
+    try {
+      const next = unwrap(await remote.rebuildEditable({ presentationId: presentation.id, ...(slideOnly && slide ? { sourceSlideIds: [slide.id] } : {}), concurrency: 4 }))
+      setPresentation(next)
+      await refresh()
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) } finally { setBusy(false) }
+  }
+  const openPptx = async (path: string) => {
+    const opener = window.zerowallDesktop?.openPptx
+    if (!opener) { await revealPptx(path); return }
+    if (!await opener(path)) throw new Error('无法打开 PPTX 文件。')
+  }
   const copySlideReference = async () => {
     if (!presentation || !slide) return
     await navigator.clipboard.writeText(JSON.stringify({ presentationId: presentation.id, slideId: slide.id, page: selectedSlide + 1, image: slide.visualUri ?? slide.visual?.attachment?.attachmentId }, null, 2))
   }
-  const pptxArtifact = presentation ? currentArtifact(presentation, 'pptx') : undefined
+  const pptxArtifact = presentation ? currentArtifact(presentation, 'editable-pptx') ?? currentArtifact(presentation, 'pptx') : undefined
   const pptxPath = pptxArtifact ? localArtifactPath(pptxArtifact.uri) ?? pptxArtifact.uri : undefined
   return <section className={styles.workbench} aria-busy={busy}>
     <header className={styles.header}>
@@ -250,11 +265,13 @@ function PresentationWorkbench({ ctx, remote, scope, tab }: TabComponentProps & 
             <span className={styles.status}>{statusLabel(presentation.status)}</span>
           </div>
           {presentation.generation && <><small>{stageLabel(presentation.generation.stage)} · 第 {presentation.generation.revision} 次生成 · 最后更新 {new Date(presentation.generation.updatedAt).toLocaleTimeString()}</small><div className={styles.progressTrack} aria-label="生成进度"><span style={{ width: `${Math.round(presentation.generation.progress * 100)}%` }} /></div></>}
+          {presentation.rebuildJob && <><small>可编辑转换：{presentation.rebuildJob.stage} · {Math.round(presentation.rebuildJob.progress * 100)}% · 并发 {presentation.rebuildJob.concurrency}</small><div className={styles.progressTrack} aria-label="可编辑转换进度"><span style={{ width: `${Math.round(presentation.rebuildJob.progress * 100)}%`, background: '#0f766e' }} /></div></>}
         </div>
         <div className={styles.toolbar}>
           <button type="button" title="刷新状态" onClick={() => void refresh()} disabled={busy}><RefreshCw size={18} /><span>刷新</span></button>
           {presentation.status === 'draft' && <button type="button" className={styles.primaryCommand} title="开始生成" onClick={() => void act(id => remote.generate(id))} disabled={busy}><Play size={18} /><span>开始生成</span></button>}
           {['ready', 'failed'].includes(presentation.status) && slide && <button type="button" className={styles.regenerateCommand} title="只重新生成当前页" onClick={() => void retrySlide(slide.id)} disabled={busy}>{busy ? <LoaderCircle className={styles.spin} size={18} /> : <RotateCw size={18} />}<span>重新生成当前页</span></button>}
+          <button type="button" className={styles.editableCommand} title="将整套演示文稿转换为可编辑 PPTX（全部页面）" aria-label="将整套演示文稿转换为可编辑 PPTX（全部页面）" onClick={() => void rebuildEditable(false)} disabled={busy || presentation.slides.length === 0 || ['outlining', 'designing', 'generating'].includes(presentation.status)}><Presentation size={18} /><span>全部转换为可编辑 PPTX</span></button>
           {['outlining', 'designing', 'generating'].includes(presentation.status) && <button type="button" title="暂停生成" onClick={() => void act(id => remote.pause(id))} disabled={busy}><Pause size={18} /><span>暂停</span></button>}
           {presentation.status === 'paused' && <button type="button" title="继续生成" onClick={() => void act(id => remote.resume(id))} disabled={busy}><RotateCw size={18} /><span>继续</span></button>}
           {!['ready', 'cancelled'].includes(presentation.status) && <button type="button" title="取消生成" onClick={() => void act(id => remote.cancel(id))} disabled={busy}><Ban size={18} /><span>取消</span></button>}
@@ -268,11 +285,18 @@ function PresentationWorkbench({ ctx, remote, scope, tab }: TabComponentProps & 
             {visual.url && !visual.failed ? <img src={visual.url} alt={slide.title} onError={visual.markFailed} /> : <div className={styles.visualState}>{slide.visualStatus === 'generating' ? '正在生成此页图片…' : slide.visualStatus === 'failed' ? <><strong>此页图片生成失败</strong><span>{slide.visualError}</span><button type="button" onClick={() => void retrySlide(slide.id)}>重试此页</button></> : visual.failed ? '图片加载失败，请重新加载。' : '此页尚无图片'}</div>}
             <footer><span>第 {selectedSlide + 1} 页，共 {presentation.slides.length} 页</span><code>{slide.id}</code><div className={styles.slideActions}>
               <button type="button" className={styles.actionPrimary} title="加入当前对话输入框" aria-label="加入当前对话输入框" onClick={() => void addToConversation().catch(cause => setError(cause instanceof Error ? cause.message : String(cause)))} disabled={busy || (!slide.visualUri && slide.visualStatus !== 'ready')}><ImagePlus size={18} /></button>
-              <button type="button" className={styles.actionRegenerate} title="只重新生成当前页" aria-label="重新生成当前页" onClick={() => void retrySlide(slide.id)} disabled={busy}>{busy ? <LoaderCircle className={styles.spin} size={18} /> : <RotateCw size={18} />}</button>
+              <button type="button" className={styles.actionRegenerate} title="只重新生成当前页视觉内容" aria-label="重新生成当前页视觉内容" onClick={() => void retrySlide(slide.id)} disabled={busy}><span>{busy ? <LoaderCircle className={styles.spin} size={17} /> : <RotateCw size={17} />}</span><span>重新生成当前页</span></button>
+              <button type="button" className={styles.actionEditable} title={`只将第 ${selectedSlide + 1} 页重新转换为可编辑 PPTX`} aria-label={`只将第 ${selectedSlide + 1} 页重新转换为可编辑 PPTX`} onClick={() => void rebuildEditable(true)} disabled={busy || ['outlining', 'designing', 'generating'].includes(presentation.status)}><Presentation size={17} /><span>仅转换第 {selectedSlide + 1} 页</span></button>
               <button type="button" title="复制图片路径" aria-label="复制图片路径" onClick={() => void navigator.clipboard.writeText(localArtifactPath(slide.visualUri ?? '') ?? slide.visualUri ?? '')} disabled={!slide.visualUri}><Copy size={18} /></button>
               <button type="button" title="复制页面引用" aria-label="复制页面引用" onClick={() => void copySlideReference()}><Copy size={18} /></button>
               <button type="button" title="重新加载图片" aria-label="重新加载图片" onClick={() => setReloadImages(value => ({ ...value, [slide.id]: (value[slide.id] ?? 0) + 1 }))}><RefreshCw size={18} /></button>
             </div></footer>
+            <div className={styles.editableMeta} aria-live="polite">
+              <span>可编辑状态：{slide.editableStatus === 'ready' ? '已转换' : slide.editableStatus === 'processing' ? '转换中' : slide.editableStatus === 'failed' ? '失败' : '未转换'}</span>
+              {slide.nativeObjectCount !== undefined && <span>原生对象 {slide.nativeObjectCount}</span>}
+              {slide.rasterizedObjectCount !== undefined && <span>图片对象 {slide.rasterizedObjectCount}</span>}
+              {slide.rebuildError && <span role="alert">{slide.rebuildError}</span>}
+            </div>
           </article> : <div className={styles.empty}>{presentation.status === 'ready' ? '没有可预览的页面' : '正在生成页面预览…'}</div>}
         </main>
         <aside className={styles.details}>
@@ -281,7 +305,7 @@ function PresentationWorkbench({ ctx, remote, scope, tab }: TabComponentProps & 
             <strong>{artifactName(pptxArtifact.uri)}</strong>
             <code>{pptxPath}</code>
             <div className={styles.fileActions}>
-              <button type="button" title="在 ZeroWall Science 中打开 PPTX" onClick={() => openArtifact(ctx, scope, pptxArtifact.uri, artifactName(pptxArtifact.uri))}><ExternalLink size={16} />打开 PPTX</button>
+              <button type="button" title="在 PowerPoint 中打开 PPTX" onClick={() => void openPptx(pptxPath).catch(cause => setError(cause instanceof Error ? cause.message : String(cause)))}><ExternalLink size={16} />打开 PowerPoint</button>
               <button type="button" title="在 Windows 文件资源管理器中定位 PPTX" onClick={() => void revealPptx(pptxPath).catch(cause => setError(cause instanceof Error ? cause.message : String(cause)))}><FolderOpen size={16} />打开所在文件夹</button>
             </div>
           </div> : <p className={styles.muted}>生成完成后，当前 PPTX 会出现在这里。</p>}
@@ -325,5 +349,7 @@ export function apply(ctx: ClientContext): void {
     }
     yield ctx.slots.register({ name: 'tool.call.toolview', key: 'create_presentation' }, View)
     yield ctx.slots.register({ name: 'tool.call.toolview', key: 'update_presentation' }, View)
+    yield ctx.slots.register({ name: 'tool.call.toolview', key: 'rebuild_presentation' }, View)
+    yield ctx.slots.register({ name: 'tool.call.toolview', key: 'edit_presentation_objects' }, View)
   })
 }

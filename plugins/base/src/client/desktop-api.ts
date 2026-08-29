@@ -7,7 +7,10 @@ export interface ZeroWallDesktopApi {
   chooseDirectory(): Promise<string | null>
   revealPath?(path: string): Promise<boolean>
   openFolder?(path: string): Promise<boolean>
+  openPptx?(path: string): Promise<boolean>
   copyFile?(input: { name: string; mediaType: string; data: string }): Promise<boolean>
+  copyText?(text: string): Promise<boolean>
+  copyImage?(input: { data: string }): Promise<boolean>
   getUpdateStatus(): Promise<DesktopUpdateStatus>
   checkForUpdates(): Promise<DesktopUpdateStatus>
   downloadUpdate(): Promise<DesktopUpdateStatus>

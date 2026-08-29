@@ -161,16 +161,47 @@ export interface PresentationRecord {
     visualError?: string
     visualAttempt?: number
     visualUpdatedAt?: string
+    sourcePage?: PresentationSourceAttachment
+    sceneMapUri?: string
+    editableManifestUri?: string
+    editableStatus?: 'pending' | 'processing' | 'ready' | 'partial' | 'failed'
+    nativeObjectCount?: number
+    rasterizedObjectCount?: number
+    rebuildError?: string
   }>
   exportUris: Record<string, string>
   artifacts: PresentationArtifact[]
   quality?: PresentationQuality
   generation?: PresentationGeneration
   revisions?: PresentationRevision[]
+  sourceMode?: 'generated' | 'image-rebuild' | 'pptx-rebuild' | 'zerowall-visual-rebuild'
+  sourceAttachments?: PresentationSourceAttachment[]
+  rebuildJob?: PresentationRebuildJob
   error?: string
   version: number
   createdAt: string
   updatedAt: string
+}
+
+export interface PresentationSourceAttachment {
+  id: string
+  kind: 'image' | 'pptx-page' | 'zerowall-visual'
+  uri: string
+  checksum: string
+  page?: number
+  name?: string
+}
+
+export interface PresentationRebuildJob {
+  id: string
+  generationId: string
+  stage: 'queued' | 'source-prepared' | 'scene-mapped' | 'assets-prepared' | 'html-generated' | 'pptx-object-generated' | 'rendered' | 'reviewed' | 'ready' | 'partial' | 'failed' | 'cancelled'
+  progress: number
+  concurrency: number
+  startedAt: string
+  updatedAt: string
+  finishedAt?: string
+  error?: string
 }
 
 export interface PresentationGeneration {
@@ -212,7 +243,7 @@ export interface PresentationRevision {
 }
 
 export interface PresentationArtifact {
-  kind: 'outline' | 'design-plan' | 'html' | 'pptx' | 'pdf' | 'preview' | 'quality-report' | 'visual-review'
+  kind: 'outline' | 'design-plan' | 'html' | 'pptx' | 'editable-pptx' | 'pdf' | 'preview' | 'scene-map' | 'editable-manifest' | 'rebuild-preview' | 'rebuild-contact-sheet' | 'rebuild-qa-report' | 'quality-report' | 'visual-review'
   uri: string
   mediaType: string
   checksum?: string
@@ -281,4 +312,7 @@ export interface UpdatePresentationChanges {
   error?: string
   generation?: PresentationGeneration
   revisions?: PresentationRevision[]
+  sourceMode?: PresentationRecord['sourceMode']
+  sourceAttachments?: PresentationSourceAttachment[]
+  rebuildJob?: PresentationRebuildJob
 }

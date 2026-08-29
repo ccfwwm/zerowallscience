@@ -20,6 +20,10 @@ export interface DesktopClipboardFile {
   data: string
 }
 
+export interface DesktopClipboardImage {
+  data: string
+}
+
 export type McpEnvironmentPhase = 'idle' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'ready' | 'failed' | 'manual' | 'unavailable'
 export interface McpEnvironmentStatus {
   phase: McpEnvironmentPhase

@@ -7,7 +7,17 @@ import { ResearchStore } from '@zerowallscience/research-store'
 import type { PresentationArtifact, PresentationGeneration, PresentationRecord, PresentationRevision } from '@zerowallscience/research-store/types'
 import type { GenerateImageResult, ZeroWallImageGenerationService } from '@zerowallscience/plugin-images'
 import type { PresentationSlidePatch } from '@zerowallscience/plugin-presentations/types'
-import { writePresentation } from './export.js'
+import { writeEditablePresentation, writePresentation } from './export.js'
+import type { EditableSlideManifest } from '../shared/types.js'
+
+export interface EditableSourcePage {
+  path: string
+  kind: 'image' | 'pptx-page' | 'zerowall-visual'
+  checksum: string
+  widthPx?: number
+  heightPx?: number
+  page?: number
+}
 
 export interface PresentationProgress {
   presentationId: string
@@ -48,6 +58,11 @@ export class PresentationWorker {
   recover(): PresentationRecord[] {
     const recovered: PresentationRecord[] = []
     for (const project of this.store.listProjects()) for (const presentation of this.store.listPresentations(project.id)) {
+      if (presentation.rebuildJob && !['ready', 'partial', 'failed', 'cancelled'].includes(presentation.rebuildJob.stage)) {
+        const now = new Date().toISOString()
+        recovered.push(this.store.updatePresentation(presentation.id, { status: 'failed', error: '应用重启后可编辑转换未完成，可重新转换。', rebuildJob: { ...presentation.rebuildJob, stage: 'failed', error: '应用重启后可编辑转换未完成。', updatedAt: now, finishedAt: now } }))
+        continue
+      }
       if (presentation.generation && !['ready', 'failed', 'paused', 'cancelled'].includes(presentation.generation.stage)) {
         const now = new Date().toISOString()
         recovered.push(this.store.updatePresentation(presentation.id, { status: 'failed', error: '应用重启后生成未完成，可重新生成。', generation: { ...presentation.generation, stage: 'failed', error: '应用重启后生成未完成。', updatedAt: now, finishedAt: now } }))
@@ -155,6 +170,120 @@ export class PresentationWorker {
       : section)
     this.save(id, { slides, outline })
     return this.retrySlide(id, slideId)
+  }
+
+  /** Rebuild current visual pages into a native-object-first PPTX revision. */
+  async rebuildEditable(id: string, slideIds?: string[], instruction?: string, concurrency = 4, sourcePages?: EditableSourcePage[]): Promise<PresentationRecord> {
+    const current = this.required(id)
+    const project = this.store.getProject(current.projectId)
+    if (!project) throw new Error('Presentation project was not found.')
+    const generationId = randomUUID()
+    const selected = new Set(slideIds && slideIds.length > 0 ? slideIds : sourcePages ? sourcePages.map((_, index) => `slide-${String(index + 1).padStart(2, '0')}`) : current.slides.map(slide => slide.id))
+    const now = new Date().toISOString()
+    const root = join(project.rootPath, '.zerowall', 'artifacts', 'presentations', id, 'rebuild', generationId)
+    const rebuildJob = { id: randomUUID(), generationId, stage: 'queued' as const, progress: 0, concurrency: Math.max(1, Math.min(10, Math.trunc(concurrency))), startedAt: now, updatedAt: now }
+    const sourceSlides: PresentationRecord['slides'] | undefined = sourcePages
+      ? sourcePages.map((source, index) => ({ id: `slide-${String(index + 1).padStart(2, '0')}`, title: `第 ${index + 1} 页`, body: instruction ?? '', assetUris: [], visualUri: fileUri(source.path), visualStatus: 'ready' as const, sourcePage: { id: `source-${String(index + 1).padStart(2, '0')}`, kind: source.kind, uri: fileUri(source.path), checksum: source.checksum, ...(source.page === undefined ? {} : { page: source.page }), name: `source-${String(index + 1).padStart(2, '0')}` } }))
+      : undefined
+    const working = sourceSlides ?? current.slides
+    const sourceMode = sourcePages?.some(page => page.kind === 'pptx-page') ? 'pptx-rebuild' : sourcePages ? 'image-rebuild' : 'zerowall-visual-rebuild'
+    this.save(id, { sourceMode, rebuildJob, status: 'generating', error: '', ...(sourceSlides ? { slides: sourceSlides } : {}) })
+    await mkdir(root, { recursive: true })
+    this.save(id, { rebuildJob: { ...rebuildJob, stage: 'source-prepared', progress: 0.1, updatedAt: new Date().toISOString() } })
+    let cursor = 0
+    const slides = working.map(slide => ({ ...slide }))
+    const run = async (): Promise<void> => {
+      while (true) {
+        const index = cursor++
+        if (index >= slides.length) return
+        const slide = slides[index]!
+        if (!selected.has(slide.id)) continue
+        try {
+          const imagePath = localPath(slide.visualUri ?? '')
+          if (!imagePath) throw new Error(`第 ${index + 1} 页没有可用的视觉图片。`)
+          const manifestPath = join(root, 'slides', slide.id, 'editable-manifest.json')
+          await mkdir(join(root, 'slides', slide.id), { recursive: true })
+          const source = sourcePages?.[index]
+          const sourceBytes = await readFile(imagePath)
+          const sourceChecksum = createHash('sha256').update(sourceBytes).digest('hex')
+          if (source?.checksum && source.checksum !== sourceChecksum) throw new Error(`输入素材校验失败：第 ${index + 1} 页 checksum 不匹配。`)
+          const manifest: EditableSlideManifest = {
+            version: 1,
+            slideId: slide.id,
+            source: { kind: source?.kind ?? 'zerowall-visual', uri: fileUri(imagePath), checksum: sourceChecksum, widthPx: source?.widthPx ?? 1536, heightPx: source?.heightPx ?? 1024, page: source?.page ?? index + 1 },
+            canvas: { widthPt: 960, heightPt: 540 },
+            objects: [
+              { objectId: `${slide.id}.title`, kind: 'text', x: 48, y: 36, w: 480, h: 52, text: slide.title, fontFace: 'Aptos Display', fontSize: 28, color: '#17324D', z: 20 },
+              { objectId: `${slide.id}.body`, kind: 'text', x: 52, y: 110, w: 470, h: 390, text: instruction ? `${slide.body}\n\n${instruction}` : slide.body, fontFace: 'Aptos', fontSize: 18, color: '#30465C', z: 20 },
+              { objectId: `${slide.id}.visual`, kind: 'image', x: 570, y: 48, w: 340, h: 444, imageUri: fileUri(imagePath), rasterReason: '原始页面视觉核心，保留为独立图片素材', z: 10 },
+            ],
+            requiredIds: [`${slide.id}.title`, `${slide.id}.body`, `${slide.id}.visual`], unresolvedAmbiguities: [], authorizedOmissions: [], nativeObjectCount: 2, rasterizedObjectCount: 1,
+          }
+          await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8')
+          slides[index] = { ...slide, editableManifestUri: fileUri(manifestPath), editableStatus: 'ready', nativeObjectCount: 2, rasterizedObjectCount: 1, sceneMapUri: fileUri(manifestPath) }
+        } catch (error) {
+          slides[index] = { ...slide, editableStatus: 'failed', rebuildError: error instanceof Error ? error.message : String(error) }
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(rebuildJob.concurrency, Math.max(1, slides.length)) }, () => run()))
+    const failed = slides.some(slide => selected.has(slide.id) && slide.editableStatus === 'failed')
+    const updated = this.store.updatePresentation(id, { slides, sourceMode, status: failed ? 'failed' : 'generating', error: failed ? '部分页面可编辑转换失败。' : '', rebuildJob: { ...rebuildJob, stage: failed ? 'partial' : 'reviewed', progress: 0.8, updatedAt: new Date().toISOString(), ...(failed ? { error: '部分页面可编辑转换失败。' } : {}) } })
+    if (failed) return updated
+    const pptxPath = presentationPath(updated, project.rootPath, 'pptx')
+    const temporary = generationTemporary(pptxPath, generationId, 'pptx')
+    const counts = await writeEditablePresentation(updated, fileUri(temporary))
+    await commitArtifacts([{ path: pptxPath, temporary }], generationId)
+    const artifact = { kind: 'editable-pptx' as const, uri: fileUri(pptxPath), mediaType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', checksum: createHash('sha256').update(readFileSync(pptxPath)).digest('hex') }
+    const sceneMapPath = join(root, 'scene-map.json')
+    const manifestPath = join(root, 'editable-manifest.json')
+    await writeFile(sceneMapPath, JSON.stringify({ version: 1, presentationId: id, generationId, slides: slides.filter(slide => slide.editableManifestUri).map(slide => ({ slideId: slide.id, sceneMapUri: slide.sceneMapUri, editableManifestUri: slide.editableManifestUri })) }, null, 2), 'utf8')
+    await writeFile(manifestPath, JSON.stringify({ version: 1, presentationId: id, generationId, slides: slides.filter(slide => slide.editableManifestUri).map(slide => ({ slideId: slide.id, manifestUri: slide.editableManifestUri, nativeObjectCount: slide.nativeObjectCount ?? 0, rasterizedObjectCount: slide.rasterizedObjectCount ?? 0 })) }, null, 2), 'utf8')
+    let artifacts = replaceArtifact(updated.artifacts, artifact)
+    artifacts = replaceArtifact(artifacts, { kind: 'scene-map', uri: fileUri(sceneMapPath), mediaType: 'application/json', checksum: createHash('sha256').update(readFileSync(sceneMapPath)).digest('hex') })
+    artifacts = replaceArtifact(artifacts, { kind: 'editable-manifest', uri: fileUri(manifestPath), mediaType: 'application/json', checksum: createHash('sha256').update(readFileSync(manifestPath)).digest('hex') })
+    return this.store.updatePresentation(id, { status: 'ready', artifacts, rebuildJob: { ...rebuildJob, stage: 'ready', progress: 1, updatedAt: new Date().toISOString(), finishedAt: new Date().toISOString() }, slides, style: { ...updated.style, editableNativeObjectCount: counts.nativeObjectCount, editableRasterizedObjectCount: counts.rasterizedObjectCount } })
+  }
+
+  async editEditableObjects(id: string, patches: Array<{ objectId: string; text?: string; fill?: string; line?: string; fontSize?: number; x?: number; y?: number; width?: number; height?: number; visible?: boolean; assetUri?: string }>): Promise<PresentationRecord> {
+    const current = this.required(id)
+    const project = this.store.getProject(current.projectId)
+    if (!project) throw new Error('Presentation project was not found.')
+    if (patches.length === 0) throw new Error('At least one object patch is required.')
+    const generationId = randomUUID()
+    const root = join(project.rootPath, '.zerowall', 'artifacts', 'presentations', id, 'rebuild', generationId)
+    const slides = current.slides.map(slide => ({ ...slide }))
+    for (const patch of patches) {
+      const slide = slides.find(item => item.editableManifestUri && patch.objectId.startsWith(`${item.id}.`))
+      if (!slide?.editableManifestUri) throw new Error(`Editable object was not found: ${patch.objectId}`)
+      const oldPath = localPath(slide.editableManifestUri)
+      if (!oldPath) throw new Error(`Editable manifest is unavailable for slide ${slide.id}.`)
+      const manifest = JSON.parse(await readFile(oldPath, 'utf8')) as EditableSlideManifest
+      const object = manifest.objects.find(item => item.objectId === patch.objectId)
+      if (!object) throw new Error(`Editable object was not found: ${patch.objectId}`)
+      if (patch.text !== undefined) object.text = patch.text
+      if (patch.fill !== undefined) object.fill = patch.fill
+      if (patch.line !== undefined) object.line = patch.line
+      if (patch.fontSize !== undefined) object.fontSize = patch.fontSize
+      if (patch.x !== undefined) object.x = patch.x
+      if (patch.y !== undefined) object.y = patch.y
+      if (patch.width !== undefined) object.w = patch.width
+      if (patch.height !== undefined) object.h = patch.height
+      if (patch.visible !== undefined) object.visible = patch.visible
+      if (patch.assetUri !== undefined) object.imageUri = patch.assetUri
+      const target = join(root, 'slides', slide.id, 'editable-manifest.json')
+      await mkdir(join(root, 'slides', slide.id), { recursive: true })
+      await writeFile(target, JSON.stringify(manifest, null, 2), 'utf8')
+      slides[slides.indexOf(slide)] = { ...slide, editableManifestUri: fileUri(target), sceneMapUri: fileUri(target), editableStatus: 'ready' }
+    }
+    const updated = this.store.updatePresentation(id, { status: 'generating', error: '', slides, rebuildJob: { id: randomUUID(), generationId, stage: 'reviewed', progress: 0.8, concurrency: 1, startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } })
+    const pptxPath = presentationPath(updated, project.rootPath, 'pptx')
+    const temporary = generationTemporary(pptxPath, generationId, 'pptx')
+    const counts = await writeEditablePresentation(updated, fileUri(temporary))
+    await commitArtifacts([{ path: pptxPath, temporary }], generationId)
+    const editable = artifact('editable-pptx', pptxPath, 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
+    const finished = { ...updated.rebuildJob!, stage: 'ready' as const, progress: 1, updatedAt: new Date().toISOString(), finishedAt: new Date().toISOString() }
+    return this.store.updatePresentation(id, { status: 'ready', artifacts: replaceArtifact(updated.artifacts, editable), rebuildJob: finished, style: { ...updated.style, editableNativeObjectCount: counts.nativeObjectCount, editableRasterizedObjectCount: counts.rasterizedObjectCount } })
   }
 
   dispose(): void { for (const id of this.pending.keys()) this.clear(id); for (const controller of this.controllers.values()) controller.abort(); this.controllers.clear() }
@@ -359,7 +488,9 @@ export class PresentationWorker {
 
 function slideFileName(index: number): string { return `slide-${String(index + 1).padStart(2, '0')}.png` }
 function generationTemporary(path: string, generationId: string, format: 'pptx'): string { return `${path}.${generationId}.tmp.${format}` }
-function presentationPath(presentation: PresentationRecord, root: string, format: 'pptx'): string { return existingArtifactPath(presentation, format) ?? join(root, '.zerowall', 'artifacts', 'presentations', presentation.id, `${slug(presentation.title)}.${format}`) }
+function presentationPath(presentation: PresentationRecord, root: string, format: 'pptx'): string {
+  return existingArtifactPath(presentation, format) ?? existingArtifactPath(presentation, 'editable-pptx') ?? join(root, '.zerowall', 'artifacts', 'presentations', presentation.id, `${slug(presentation.title)}.${format}`)
+}
 
 async function commitArtifacts(artifacts: Array<{ path: string; temporary: string }>, generationId: string): Promise<void> {
   const backups: Array<{ path: string; backup: string; existed: boolean }> = []

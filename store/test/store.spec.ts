@@ -17,12 +17,12 @@ describe('ResearchStore', () => {
   it('applies migrations idempotently and persists projects across restart', () => {
     const path = databasePath()
     const first = new ResearchStore(path)
-    expect(first.schemaVersion()).toBe(7)
+    expect(first.schemaVersion()).toBe(8)
     const created = first.createProject({ name: 'Genome Study', rootPath: 'C:/science/genome' })
     first.close()
 
     const reopened = new ResearchStore(path)
-    expect(reopened.schemaVersion()).toBe(7)
+    expect(reopened.schemaVersion()).toBe(8)
     expect(reopened.listProjects()).toEqual([created])
     reopened.close()
   })

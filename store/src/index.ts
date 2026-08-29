@@ -300,6 +300,14 @@ const MIGRATIONS = [
       ALTER TABLE presentations ADD COLUMN revisions_json TEXT NOT NULL DEFAULT '[]';
     `,
   },
+  {
+    version: 8,
+    sql: `
+      ALTER TABLE presentations ADD COLUMN source_mode TEXT;
+      ALTER TABLE presentations ADD COLUMN source_attachments_json TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE presentations ADD COLUMN rebuild_job_json TEXT;
+    `,
+  },
 ] as const
 
 export class ResearchStore {
@@ -792,7 +800,7 @@ export class ResearchStore {
     const current = this.requiredPresentation(id)
     const status = changes.status ?? current.status
     validatePresentationTransition(current.status, status)
-    const { quality: requestedQuality, ...restChanges } = changes
+    const { quality: requestedQuality, sourceMode: requestedSourceMode, sourceAttachments: requestedSourceAttachments, rebuildJob: requestedRebuildJob, ...restChanges } = changes
     const base: PresentationRecord = {
       ...current, ...restChanges, status,
       ...(changes.title === undefined ? {} : { title: nonEmptyString(changes.title, 'Presentation title') }),
@@ -800,6 +808,9 @@ export class ResearchStore {
       style: changes.style === undefined ? current.style : jsonObject(changes.style, 'Presentation style'),
       assets: changes.assets === undefined ? current.assets : presentationAssets(changes.assets),
       slides: changes.slides === undefined ? current.slides : presentationSlides(changes.slides),
+      ...(requestedSourceMode === undefined ? {} : { sourceMode: requestedSourceMode }),
+      ...(requestedSourceAttachments === undefined ? {} : { sourceAttachments: presentationSourceAttachments(requestedSourceAttachments) }),
+      ...(requestedRebuildJob === undefined ? {} : { rebuildJob: presentationRebuildJob(requestedRebuildJob) }),
       exportUris: changes.exportUris === undefined ? current.exportUris : stringRecord(changes.exportUris, 'Presentation export URIs'),
       artifacts: changes.artifacts === undefined ? current.artifacts : presentationArtifacts(changes.artifacts),
       version: current.version + 1, updatedAt: new Date().toISOString(),
@@ -812,8 +823,8 @@ export class ResearchStore {
             ? (current.quality === undefined ? {} : { quality: current.quality })
             : { quality: presentationQuality(requestedQuality) }),
         }
-    this.database.prepare(`UPDATE presentations SET title=?, status=?, outline_json=?, style_json=?, assets_json=?, slides_json=?, export_uris_json=?, artifacts_json=?, quality_json=?, generation_json=?, revisions_json=?, error=?, version=?, updated_at=? WHERE id=?`)
-      .run(updated.title, updated.status, JSON.stringify(updated.outline), JSON.stringify(updated.style), JSON.stringify(updated.assets), JSON.stringify(updated.slides), JSON.stringify(updated.exportUris), JSON.stringify(updated.artifacts), updated.quality === undefined ? null : JSON.stringify(updated.quality), updated.generation === undefined ? null : JSON.stringify(updated.generation), JSON.stringify(updated.revisions ?? []), updated.error ?? null, updated.version, updated.updatedAt, updated.id)
+    this.database.prepare(`UPDATE presentations SET title=?, status=?, outline_json=?, style_json=?, assets_json=?, slides_json=?, export_uris_json=?, artifacts_json=?, quality_json=?, generation_json=?, revisions_json=?, source_mode=?, source_attachments_json=?, rebuild_job_json=?, error=?, version=?, updated_at=? WHERE id=?`)
+      .run(updated.title, updated.status, JSON.stringify(updated.outline), JSON.stringify(updated.style), JSON.stringify(updated.assets), JSON.stringify(updated.slides), JSON.stringify(updated.exportUris), JSON.stringify(updated.artifacts), updated.quality === undefined ? null : JSON.stringify(updated.quality), updated.generation === undefined ? null : JSON.stringify(updated.generation), JSON.stringify(updated.revisions ?? []), updated.sourceMode ?? null, JSON.stringify(updated.sourceAttachments ?? []), updated.rebuildJob === undefined ? null : JSON.stringify(updated.rebuildJob), updated.error ?? null, updated.version, updated.updatedAt, updated.id)
     return updated
   }
 
@@ -1035,8 +1046,8 @@ export class ResearchStore {
   }
 
   private insertPresentation(record: PresentationRecord): void {
-    this.database.prepare(`INSERT INTO presentations (id, project_id, title, status, outline_json, style_json, assets_json, slides_json, export_uris_json, artifacts_json, quality_json, generation_json, revisions_json, error, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(record.id, record.projectId, record.title, record.status, JSON.stringify(record.outline), JSON.stringify(record.style), JSON.stringify(record.assets), JSON.stringify(record.slides), JSON.stringify(record.exportUris), JSON.stringify(record.artifacts), record.quality === undefined ? null : JSON.stringify(record.quality), record.generation === undefined ? null : JSON.stringify(record.generation), JSON.stringify(record.revisions ?? []), record.error ?? null, record.version, record.createdAt, record.updatedAt)
+    this.database.prepare(`INSERT INTO presentations (id, project_id, title, status, outline_json, style_json, assets_json, slides_json, export_uris_json, artifacts_json, quality_json, generation_json, revisions_json, source_mode, source_attachments_json, rebuild_job_json, error, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(record.id, record.projectId, record.title, record.status, JSON.stringify(record.outline), JSON.stringify(record.style), JSON.stringify(record.assets), JSON.stringify(record.slides), JSON.stringify(record.exportUris), JSON.stringify(record.artifacts), record.quality === undefined ? null : JSON.stringify(record.quality), record.generation === undefined ? null : JSON.stringify(record.generation), JSON.stringify(record.revisions ?? []), record.sourceMode ?? null, JSON.stringify(record.sourceAttachments ?? []), record.rebuildJob === undefined ? null : JSON.stringify(record.rebuildJob), record.error ?? null, record.version, record.createdAt, record.updatedAt)
   }
 
   private requiredPresentation(id: string): PresentationRecord {
@@ -1445,6 +1456,9 @@ function presentationFromRow(row: Record<string, unknown>): PresentationRecord {
     ...(row.quality_json === undefined || row.quality_json === null ? {} : { quality: presentationQuality(jsonValue(row.quality_json, 'Presentation quality')) }),
     ...(row.generation_json === undefined || row.generation_json === null ? {} : { generation: presentationGeneration(jsonValue(row.generation_json, 'Presentation generation')) }),
     revisions: presentationRevisions(row.revisions_json === undefined || row.revisions_json === null ? [] : jsonValue(row.revisions_json, 'Presentation revisions')),
+    ...(row.source_mode === undefined || row.source_mode === null ? {} : { sourceMode: presentationSourceMode(row.source_mode) }),
+    sourceAttachments: presentationSourceAttachments(row.source_attachments_json === undefined || row.source_attachments_json === null ? [] : jsonValue(row.source_attachments_json, 'Presentation source attachments')),
+    ...(row.rebuild_job_json === undefined || row.rebuild_job_json === null ? {} : { rebuildJob: presentationRebuildJob(jsonValue(row.rebuild_job_json, 'Presentation rebuild job')) }),
     ...(row.error === null ? {} : { error: String(row.error) }), version: Number(row.version), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
   }
 }
@@ -1496,6 +1510,28 @@ function presentationOutline(value: unknown): PresentationRecord['outline'] {
   return value.map(item => { const entry = record(item, 'Presentation outline item'); return { title: nonEmptyString(entry.title, 'Presentation outline title'), points: stringArray(entry.points, 'Presentation outline points'), ...(entry.referenceUris === undefined ? {} : { referenceUris: stringArray(entry.referenceUris, 'Presentation outline referenceUris') }) } })
 }
 
+function presentationSourceMode(value: unknown): NonNullable<PresentationRecord['sourceMode']> {
+  if (value === 'generated' || value === 'image-rebuild' || value === 'pptx-rebuild' || value === 'zerowall-visual-rebuild') return value
+  throw new Error('Unsupported presentation source mode.')
+}
+
+function presentationSourceAttachments(value: unknown): NonNullable<PresentationRecord['sourceAttachments']> {
+  if (!Array.isArray(value)) throw new Error('Presentation source attachments must be an array.')
+  return value.map((item, index) => {
+    const record = jsonObject(item, `Presentation source attachment ${index}`)
+    const kind = record.kind
+    if (kind !== 'image' && kind !== 'pptx-page' && kind !== 'zerowall-visual') throw new Error('Unsupported presentation source attachment kind.')
+    return { id: nonEmptyString(record.id, 'Presentation source attachment id'), kind, uri: nonEmptyString(record.uri, 'Presentation source attachment URI'), checksum: nonEmptyString(record.checksum, 'Presentation source attachment checksum'), ...(record.page === undefined ? {} : { page: Number(record.page) }), ...(record.name === undefined ? {} : { name: nonEmptyString(record.name, 'Presentation source attachment name') }) }
+  })
+}
+
+function presentationRebuildJob(value: unknown): NonNullable<PresentationRecord['rebuildJob']> {
+  const record = jsonObject(value, 'Presentation rebuild job')
+  const stages = new Set(['queued', 'source-prepared', 'scene-mapped', 'assets-prepared', 'html-generated', 'pptx-object-generated', 'rendered', 'reviewed', 'ready', 'partial', 'failed', 'cancelled'])
+  if (typeof record.stage !== 'string' || !stages.has(record.stage)) throw new Error('Unsupported presentation rebuild job stage.')
+  return { id: nonEmptyString(record.id, 'Presentation rebuild job id'), generationId: nonEmptyString(record.generationId, 'Presentation rebuild generation id'), stage: record.stage as NonNullable<PresentationRecord['rebuildJob']>['stage'], progress: Number(record.progress), concurrency: Number(record.concurrency), startedAt: nonEmptyString(record.startedAt, 'Presentation rebuild startedAt'), updatedAt: nonEmptyString(record.updatedAt, 'Presentation rebuild updatedAt'), ...(record.finishedAt === undefined ? {} : { finishedAt: nonEmptyString(record.finishedAt, 'Presentation rebuild finishedAt') }), ...(record.error === undefined ? {} : { error: String(record.error) }) }
+}
+
 function presentationAssets(value: unknown): PresentationRecord['assets'] {
   if (!Array.isArray(value)) throw new Error('Presentation assets must be an array.')
   return value.map(item => { const asset = record(item, 'Presentation asset'); return { uri: nonEmptyString(asset.uri, 'Presentation asset URI'), role: nonEmptyString(asset.role, 'Presentation asset role'), ...(asset.source === undefined ? {} : { source: nonEmptyString(asset.source, 'Presentation asset source') }) } })
@@ -1520,8 +1556,20 @@ function presentationSlides(value: unknown): PresentationRecord['slides'] {
       ...(slide.visualError === undefined ? {} : { visualError: stringValue(slide.visualError, 'Presentation slide visualError') }),
       visualAttempt: presentationVisualAttempt(slide.visualAttempt),
       ...(slide.visualUpdatedAt === undefined ? {} : { visualUpdatedAt: nonEmptyString(slide.visualUpdatedAt, 'Presentation slide visualUpdatedAt') }),
+      ...(slide.sourcePage === undefined ? {} : { sourcePage: presentationSourceAttachments([slide.sourcePage])[0]! }),
+      ...(slide.sceneMapUri === undefined ? {} : { sceneMapUri: nonEmptyString(slide.sceneMapUri, 'Presentation slide sceneMapUri') }),
+      ...(slide.editableManifestUri === undefined ? {} : { editableManifestUri: nonEmptyString(slide.editableManifestUri, 'Presentation slide editableManifestUri') }),
+      ...(slide.editableStatus === undefined ? {} : { editableStatus: presentationEditableStatus(slide.editableStatus) }),
+      ...(slide.nativeObjectCount === undefined ? {} : { nativeObjectCount: nonNegativeInteger(slide.nativeObjectCount, 'Presentation slide nativeObjectCount') }),
+      ...(slide.rasterizedObjectCount === undefined ? {} : { rasterizedObjectCount: nonNegativeInteger(slide.rasterizedObjectCount, 'Presentation slide rasterizedObjectCount') }),
+      ...(slide.rebuildError === undefined ? {} : { rebuildError: stringValue(slide.rebuildError, 'Presentation slide rebuildError') }),
     }
   })
+}
+
+function presentationEditableStatus(value: unknown): 'pending' | 'processing' | 'ready' | 'partial' | 'failed' {
+  if (value !== 'pending' && value !== 'processing' && value !== 'ready' && value !== 'partial' && value !== 'failed') throw new Error('Unsupported presentation editable status.')
+  return value
 }
 
 function presentationVisualStatus(value: unknown, hasVisual: boolean): NonNullable<PresentationRecord['slides'][number]['visualStatus']> {
@@ -1573,7 +1621,7 @@ function presentationImageQuality(value: unknown, label: string): 'auto' | 'low'
 
 function presentationArtifacts(value: unknown): PresentationRecord['artifacts'] {
   if (!Array.isArray(value)) throw new Error('Presentation artifacts must be an array.')
-  const kinds = new Set(['outline', 'design-plan', 'html', 'pptx', 'pdf', 'preview', 'quality-report', 'visual-review'])
+  const kinds = new Set(['outline', 'design-plan', 'html', 'pptx', 'editable-pptx', 'pdf', 'preview', 'scene-map', 'editable-manifest', 'rebuild-preview', 'rebuild-contact-sheet', 'rebuild-qa-report', 'quality-report', 'visual-review'])
   return value.map((item) => {
     const artifact = record(item, 'Presentation artifact')
     const kind = nonEmptyString(artifact.kind, 'Presentation artifact kind')
@@ -1623,7 +1671,7 @@ function stringRecord(value: unknown, label: string): Record<string, string> {
 }
 
 const PRESENTATION_TRANSITIONS: Record<PresentationRecord['status'], readonly PresentationRecord['status'][]> = {
-  draft: ['draft', 'outlining', 'cancelled'], outlining: ['outlining', 'designing', 'paused', 'failed', 'cancelled'],
+  draft: ['draft', 'outlining', 'generating', 'cancelled'], outlining: ['outlining', 'designing', 'paused', 'failed', 'cancelled'],
   designing: ['designing', 'generating', 'paused', 'failed', 'cancelled'], generating: ['generating', 'paused', 'ready', 'failed', 'cancelled'],
   paused: ['paused', 'outlining', 'designing', 'generating', 'cancelled'], ready: ['ready', 'outlining', 'generating'], failed: ['failed', 'outlining', 'designing', 'generating', 'cancelled'], cancelled: ['cancelled'],
 }
