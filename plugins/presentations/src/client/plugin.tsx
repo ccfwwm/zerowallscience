@@ -200,9 +200,17 @@ function PresentationWorkbench({ ctx, remote, scope, tab }: TabComponentProps & 
       const created = unwrap(await remote.create({ projectId: project.id, title: title.trim() }))
       const started = unwrap(await remote.generate(created.id))
       setPresentation(started); setTitle('')
+      // Open the workbench immediately in the current task. Creating an
+      // optional linked conversation is a convenience and must not prevent
+      // the right-side presentation view from appearing.
+      openPresentationWorkbench(ctx.betterSidebar, { presentationId: started.id, sessionId: scope.sessionId, projectId: project.id, cwd: project.rootPath, title: started.title })
       const linkedScope = { ...scope, cwd: project.rootPath }
-      const linkedSessionId = await openLinkedConversation(ctx, linkedScope, started.title, started.id)
-      openPresentationWorkbench(ctx.betterSidebar, { presentationId: started.id, sessionId: linkedSessionId ?? scope.sessionId, projectId: project.id, cwd: project.rootPath, title: started.title })
+      try {
+        const linkedSessionId = await openLinkedConversation(ctx, linkedScope, started.title, started.id)
+        if (linkedSessionId) openPresentationWorkbench(ctx.betterSidebar, { presentationId: started.id, sessionId: linkedSessionId, projectId: project.id, cwd: project.rootPath, title: started.title })
+      } catch {
+        // The presentation remains open in the originating task.
+      }
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) } finally { setBusy(false) }
   }
   const act = async (operation: (id: string) => Promise<RemoteResult<PresentationRecord>>) => { if (!presentation) return; setBusy(true); try { setPresentation(unwrap(await operation(presentation.id))); await refresh() } catch (cause) { setError(String(cause)) } finally { setBusy(false) } }
@@ -338,7 +346,9 @@ export function apply(ctx: ClientContext): void {
       const settled = props.block.kind === 'tool-result'
       const meta = settled && props.block.meta && typeof props.block.meta === 'object' ? props.block.meta as Record<string, unknown> : undefined
       const presentationId = typeof meta?.presentationId === 'string' ? meta.presentationId : undefined
-      const sessionId = typeof meta?.sessionId === 'string' ? meta.sessionId : props.sessionId
+      const sessionId = typeof meta?.sessionId === 'string'
+        ? meta.sessionId
+        : props.sessionId ?? ctx.betterSidebar.getSnapshot().sessionId
       const title = typeof meta?.title === 'string' ? meta.title : '演示文稿'
       useEffect(() => {
         if (!settled || !presentationId || opened.current || !sessionId) return

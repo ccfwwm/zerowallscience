@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-opencode",
-  "version": "4.3.10",
+  "version": "4.3.11",
   "dsh": {
     "min": "0.1.2-alpha.1",
     "max": "0.1.2-alpha.1"

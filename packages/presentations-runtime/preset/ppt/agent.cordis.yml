@@ -22,6 +22,9 @@
       缺失字体由ppt_outline按macOS、Windows或Linux及字符覆盖确定性替换，必须采用它返回和写入
       outline.json/design-plan.json的最终字体生成HTML。描述字体环境时只能说“插件批准注册表内当前可用”，
       不得把该子集写成“本机只有这些字体”。
+      图片重建不得要求用户把文件重命名为image.png；优先调用rebuild_presentation并传入
+      source_attachment_ids、source_image_path（本机路径/file URI）或source_image_data（Base64/data URL）。
+      如果附件ID未被模型带出，Host会从当前会话的持久事件和待处理队列恢复最近图片。
       ppt_create后无论首次report.json中的回渲状态如何，都必须调用ppt_image，默认backend=auto并设置
       refresh_quality=true；再检查结构、回渲、自动视觉和design_fidelity状态，用read_image查看全部联系表、
       封面、目录、数据图、复杂对比页、结束页及机器告警页，将结论写入visual-review.json。任一Gate

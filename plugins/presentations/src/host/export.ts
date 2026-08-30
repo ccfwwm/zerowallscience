@@ -74,7 +74,9 @@ async function readManifest(uri: string | undefined): Promise<EditableSlideManif
 }
 
 function addEditableObject(slide: PptxGenJS.Slide, object: EditableObject): void {
-  const base = { x: object.x / 96, y: object.y / 96, w: object.w / 96, h: object.h / 96, objectName: object.objectId }
+  // Manifest coordinates are points on a 960x540 canvas; PptxGenJS uses
+  // inches, so 72 points map to one inch on the 13.333x7.5 wide slide.
+  const base = { x: object.x / 72, y: object.y / 72, w: object.w / 72, h: object.h / 72, objectName: object.objectId }
   if (object.kind === 'text') {
     slide.addText(object.text ?? '', { ...base, fontFace: object.fontFace ?? 'Aptos', fontSize: (object.fontSize ?? 18) * 0.75, color: normalizeColor(object.color), margin: 0, fit: 'shrink', bold: (object.fontSize ?? 0) >= 24 })
     return

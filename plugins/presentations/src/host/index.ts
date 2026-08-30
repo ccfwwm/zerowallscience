@@ -13,7 +13,7 @@ import type { PresentationSlidePatch, PresentationSlidePreview } from '@zerowall
 import { PresentationWorker, type EditableSourcePage, type PresentationProgress } from './worker.js'
 import { writePresentation } from './export.js'
 import type {} from 'zod'
-import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 
 declare module '@deepseek-ai/cordis' { interface Context { zerowallPresentation: ZeroWallPresentationService } }
 export class ZeroWallPresentationService extends TypertRemoteService {
@@ -129,6 +129,10 @@ export class ZeroWallPresentationService extends TypertRemoteService {
         presentation_id: { type: 'string', description: 'Existing presentation to rebuild in a new revision.' },
         project_id: { type: 'string', description: 'Project id used when creating a presentation from attachments.' },
         source_attachment_ids: { type: 'array', items: { type: 'string' }, description: 'Authorized uploaded image or PPTX attachment ids.' },
+        source_image_path: { type: 'string', description: 'Local image path or file URI. The file is copied into the project artifact area before rebuilding.' },
+        source_image_data: { type: 'string', description: 'Base64 image bytes or a data:image/*;base64,... URL.' },
+        source_image_name: { type: 'string', description: 'Optional filename used when source_image_data is supplied.' },
+        source_image_media_type: { type: 'string', description: 'Optional image MIME type for source_image_data.' },
         source_presentation_id: { type: 'string', description: 'Existing ZeroWall presentation whose visual pages should be rebuilt.' },
         source_slide_ids: { type: 'array', items: { type: 'string' }, description: 'Optional page ids to rebuild.' },
         instruction: { type: 'string', description: 'Natural-language page editing instruction.' },
@@ -142,15 +146,26 @@ export class ZeroWallPresentationService extends TypertRemoteService {
         const presentationId = typeof args.presentation_id === 'string' && args.presentation_id.trim() ? args.presentation_id.trim() : sourcePresentationId
         const projectId = typeof args.project_id === 'string' && args.project_id.trim() ? args.project_id.trim() : sessionId ? service.ensureProjectForSession(sessionId).id : undefined
         const requestedAttachmentIds = Array.isArray(args.source_attachment_ids) ? args.source_attachment_ids.filter((value): value is string => typeof value === 'string' && value.trim().length > 0) : []
+        const sourceImagePath = typeof args.source_image_path === 'string' && args.source_image_path.trim() ? args.source_image_path.trim() : undefined
+        const sourceImageData = typeof args.source_image_data === 'string' && args.source_image_data.trim() ? args.source_image_data.trim() : undefined
+        const sourceImageName = typeof args.source_image_name === 'string' && args.source_image_name.trim() ? args.source_image_name.trim() : undefined
+        const sourceImageMediaType = typeof args.source_image_media_type === 'string' && args.source_image_media_type.trim() ? args.source_image_media_type.trim() : undefined
         // The composer already admitted the files into the current session.
         // Models often omit opaque ids when invoking a tool after seeing an
         // image, so recover the latest user attachment batch at the tool
         // boundary instead of asking the user to upload the same file again.
-        const attachmentIds = requestedAttachmentIds.length > 0
-          ? requestedAttachmentIds
-          : sessionId === undefined ? [] : latestSessionAttachmentIds(ctx, sessionId)
-        if (!presentationId && attachmentIds.length === 0) throw new Error('presentation_id, source_presentation_id, or source_attachment_ids is required.')
-        const result = await service.rebuildEditable({ ...(presentationId ? { presentationId } : {}), ...(projectId ? { projectId } : {}), ...(sessionId ? { sessionId } : {}), attachmentIds, ...(Array.isArray(args.source_slide_ids) ? { sourceSlideIds: args.source_slide_ids.filter((value): value is string => typeof value === 'string') } : {}), ...(typeof args.instruction === 'string' && args.instruction.trim() ? { instruction: args.instruction.trim() } : {}), concurrency: typeof args.concurrency === 'number' ? args.concurrency : 4 })
+        const validAttachmentIds = requestedAttachmentIds.filter(isRecognizedAttachmentId)
+        // Models sometimes copy the display filename (for example
+        // `image.png`) instead of the opaque attachment reference. Never send
+        // that filename to the file service; recover the authorized image/file
+        // refs from the current user message instead.
+        const recoveredAttachmentIds = sessionId === undefined ? [] : latestSessionAttachmentIds(ctx, sessionId)
+        const attachmentIds = [...new Set([
+          ...validAttachmentIds,
+          ...(validAttachmentIds.length === requestedAttachmentIds.length ? [] : recoveredAttachmentIds),
+        ])]
+        if (!presentationId && attachmentIds.length === 0 && sourceImagePath === undefined && sourceImageData === undefined) throw new Error('presentation_id, source_presentation_id, source_attachment_ids, source_image_path, or source_image_data is required.')
+        const result = await service.rebuildEditable({ ...(presentationId ? { presentationId } : {}), ...(projectId ? { projectId } : {}), ...(sessionId ? { sessionId } : {}), attachmentIds, ...(sourceImagePath ? { imagePath: sourceImagePath } : {}), ...(sourceImageData ? { imageData: sourceImageData } : {}), ...(sourceImageName ? { imageName: sourceImageName } : {}), ...(sourceImageMediaType ? { imageMediaType: sourceImageMediaType } : {}), ...(Array.isArray(args.source_slide_ids) ? { sourceSlideIds: args.source_slide_ids.filter((value): value is string => typeof value === 'string') } : {}), ...(typeof args.instruction === 'string' && args.instruction.trim() ? { instruction: args.instruction.trim() } : {}), concurrency: typeof args.concurrency === 'number' ? args.concurrency : 4 })
         return JSON.parse(JSON.stringify({ presentationId: result.id, projectId: result.projectId, status: result.status, sourceMode: result.sourceMode, rebuildJob: result.rebuildJob, openWorkbench: true })) as JsonValue as Record<string, JsonValue>
       },
     }))
@@ -211,7 +226,7 @@ export class ZeroWallPresentationService extends TypertRemoteService {
     if (!slide) throw new Error(`Slide was not found: ${input.slideId}`)
     return this.worker.retrySlide(input.presentationId, input.slideId)
   }
-  @Remote('rebuildEditable') async rebuildEditable(input: { presentationId?: string; projectId?: string; sessionId?: string; attachmentIds?: string[]; sourcePresentationId?: string; sourceSlideIds?: string[]; instruction?: string; concurrency?: number }): Promise<PresentationRecord> {
+  @Remote('rebuildEditable') async rebuildEditable(input: { presentationId?: string; projectId?: string; sessionId?: string; attachmentIds?: string[]; imagePath?: string; imageData?: string; imageName?: string; imageMediaType?: string; sourcePresentationId?: string; sourceSlideIds?: string[]; instruction?: string; concurrency?: number }): Promise<PresentationRecord> {
     const id = input.presentationId ?? input.sourcePresentationId
     let presentation = id ? this.requirePresentationProject(id) : undefined
     const projectId = presentation?.projectId ?? input.projectId
@@ -219,6 +234,10 @@ export class ZeroWallPresentationService extends TypertRemoteService {
     this.requireProject(projectId)
     const project = this.store.getProject(projectId)!
     const sourcePages: EditableSourcePage[] = []
+    if (input.imagePath !== undefined || input.imageData !== undefined) {
+      if (!projectId) throw new Error('A project is required for image rebuild.')
+      sourcePages.push(await materializeDirectImage(project.rootPath, input.imagePath, input.imageData, input.imageName, input.imageMediaType))
+    }
     if (input.attachmentIds && input.attachmentIds.length > 0) {
       if (!input.sessionId) throw new Error('sessionId is required for attachment rebuild.')
       const files = this.ctx.get('zerowallFiles') as { materialize(input: { sessionId: string; attachmentId: string }): Promise<{ path: string; name: string; sha256: string }> } | undefined
@@ -295,13 +314,19 @@ export class ZeroWallPresentationService extends TypertRemoteService {
   }
 }
 
+function isRecognizedAttachmentId(value: string): boolean {
+  return /^(?:file-sha256|sha256):[a-f0-9]{64}$/u.test(value.trim())
+}
+
 interface SessionAttachmentCandidate { id: string; kind: 'image' | 'file'; ref?: unknown }
 
 /** Recover the most recent user attachment batch when a tool call omitted ids. */
 function latestSessionAttachmentIds(ctx: Context, sessionId: string): string[] {
   const session = ctx.get('sessions')?.get(SessionId(sessionId))
-  if (!session) return []
-  for (const event of [...session.events].reverse()) {
+  const agent = ctx.get('agents')?.get(SessionId(sessionId)) as { inbox?: { nextTurn?: readonly unknown[]; nextStep?: readonly unknown[] } } | undefined
+  const pending = agent?.inbox === undefined ? [] : [...(agent.inbox.nextTurn ?? []), ...(agent.inbox.nextStep ?? [])]
+  if (!session && pending.length === 0) return []
+  for (const event of [...(session?.events ?? [])].reverse()) {
     if (event.type !== 'user/message') continue
     const data = event.data as { source?: { kind?: string }; content?: unknown; message?: { content?: unknown }; inserted?: unknown; meta?: { image?: unknown } }
     if (data.source?.kind !== 'user') continue
@@ -312,6 +337,9 @@ function latestSessionAttachmentIds(ctx: Context, sessionId: string): string[] {
     collectSessionAttachments(data.meta?.image, found)
     if (found.length > 0) return [...new Set(found.map(item => item.id))]
   }
+  const found: SessionAttachmentCandidate[] = []
+  for (const message of pending) collectSessionAttachments(message, found)
+  if (found.length > 0) return [...new Set(found.map(item => item.id))]
   return []
 }
 
@@ -333,8 +361,9 @@ function collectSessionAttachments(value: unknown, output: SessionAttachmentCand
 
 function findSessionImageAttachment(ctx: Context, sessionId: string, attachmentId: string): unknown | undefined {
   const session = ctx.get('sessions')?.get(SessionId(sessionId))
-  if (!session) return undefined
-  for (const event of session.events) {
+  const agent = ctx.get('agents')?.get(SessionId(sessionId)) as { inbox?: { nextTurn?: readonly unknown[]; nextStep?: readonly unknown[] } } | undefined
+  const events = session?.events ?? []
+  for (const event of events) {
     if (event.type !== 'user/message') continue
     const found: SessionAttachmentCandidate[] = []
     const data = event.data as { content?: unknown; message?: { content?: unknown }; inserted?: unknown; meta?: { image?: unknown } }
@@ -345,6 +374,48 @@ function findSessionImageAttachment(ctx: Context, sessionId: string, attachmentI
     const match = found.find(item => item.kind === 'image' && item.id === attachmentId)
     if (match?.ref !== undefined) return match.ref
   }
+  const pending: SessionAttachmentCandidate[] = []
+  for (const message of [...(agent?.inbox?.nextTurn ?? []), ...(agent?.inbox?.nextStep ?? [])]) collectSessionAttachments(message, pending)
+  return pending.find(item => item.kind === 'image' && item.id === attachmentId)?.ref
+}
+
+/** Copy a direct path or decode direct bytes into the project-owned source area. */
+export async function materializeDirectImage(projectRoot: string, imagePath?: string, imageData?: string, imageName?: string, imageMediaType?: string): Promise<EditableSourcePage> {
+  let bytes: Buffer
+  let name = imageName?.trim() || 'source-image.png'
+  if (imagePath !== undefined) {
+    const resolved = imagePath.startsWith('file:') ? fileURLToPath(new URL(imagePath)) : resolve(imagePath)
+    const info = await stat(resolved)
+    if (!info.isFile() || info.size > 64 * 1024 * 1024) throw new Error('source_image_path must point to an image file no larger than 64 MiB.')
+    bytes = await readFile(resolved)
+    name = basename(resolved)
+  } else if (imageData !== undefined) {
+    const match = imageData.match(/^data:(image\/(?:png|jpeg|webp|gif));base64,([\s\S]+)$/iu)
+    const mediaType = (match?.[1] ?? imageMediaType ?? 'image/png').toLowerCase()
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mediaType)) throw new Error(`Unsupported source image media type: ${mediaType}`)
+    const encoded = (match?.[2] ?? imageData).replace(/\s+/gu, '')
+    if (!/^[A-Za-z0-9+/]*={0,2}$/u.test(encoded) || encoded.length % 4 === 1) throw new Error('source_image_data must be valid Base64 image data.')
+    bytes = Buffer.from(encoded, 'base64')
+    if (bytes.length === 0 || bytes.length > 64 * 1024 * 1024) throw new Error('source_image_data must contain non-empty image bytes no larger than 64 MiB.')
+    const extension = mediaType === 'image/jpeg' ? '.jpg' : mediaType === 'image/webp' ? '.webp' : mediaType === 'image/gif' ? '.gif' : '.png'
+    if (!/\.[A-Za-z0-9]+$/u.test(name)) name += extension
+  } else throw new Error('Either source_image_path or source_image_data is required.')
+  const detected = detectImageExtension(bytes)
+  if (detected === undefined) throw new Error('The supplied source is not a supported PNG, JPEG, WebP, or GIF image.')
+  const checksum = createHash('sha256').update(bytes).digest('hex')
+  const extension = detected
+  if (!['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(extension)) throw new Error(`Unsupported source image extension: ${extension}`)
+  const target = join(projectRoot, '.zerowall', 'artifacts', 'presentations', 'rebuild-source', `${checksum}${extension}`)
+  await mkdir(dirname(target), { recursive: true })
+  await writeFile(target, bytes, { flag: 'wx' }).catch(error => { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error })
+  return { path: target, kind: 'image', checksum, page: 1 }
+}
+
+function detectImageExtension(bytes: Uint8Array): '.png' | '.jpg' | '.webp' | '.gif' | undefined {
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return '.png'
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return '.jpg'
+  if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return '.gif'
+  if (bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return '.webp'
   return undefined
 }
 
@@ -358,7 +429,14 @@ async function materializeSessionImage(
   const id = typeof typed.attachmentId === 'string' ? typed.attachmentId : ''
   const name = typeof typed.name === 'string' && typed.name.trim() ? typed.name : `${id || sessionId}.png`
   const hostPath = store?.imageHostPath?.(ref)
-  if (hostPath) return { path: hostPath, name, sha256: createHash('sha256').update(await readFile(hostPath)).digest('hex') }
+  if (hostPath) {
+    try {
+      return { path: hostPath, name, sha256: createHash('sha256').update(await readFile(hostPath)).digest('hex') }
+    } catch {
+      // A stale host path can occur after an attachment-store migration; the
+      // verified read API remains the authoritative fallback.
+    }
+  }
   if (!store?.readImage) throw new Error(`图片附件 ${id} 无法读取。`)
   const stored = await store.readImage(ref)
   const sha256 = createHash('sha256').update(stored.data).digest('hex')

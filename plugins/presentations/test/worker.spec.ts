@@ -7,11 +7,26 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { ResearchStore } from '@zerowallscience/research-store'
 import type { GenerateImageResult, ZeroWallImageGenerationService } from '@zerowallscience/plugin-images'
 import { PresentationWorker } from '../src/host/worker.js'
+import { materializeDirectImage } from '../src/host/index.js'
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
 
 describe('presentation generation', () => {
+  it('materializes direct image paths and base64 data without requiring image.png', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-ppt-direct-image-'))
+    roots.push(root)
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
+    const source = join(root, 'reference.custom')
+    await writeFile(source, png)
+    const fromPath = await materializeDirectImage(root, source)
+    expect(fromPath.kind).toBe('image')
+    expect(fromPath.path).toMatch(/\.png$/u)
+    const fromData = await materializeDirectImage(root, undefined, `data:image/png;base64,${png.toString('base64')}`, 'diagram.bin')
+    expect(fromData.checksum).toBe(fromPath.checksum)
+    expect(existsSync(fromData.path)).toBe(true)
+  })
+
   it('runs ten slide image requests concurrently and sends the resolved quality', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-ppt-concurrency-'))
     roots.push(root)

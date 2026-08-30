@@ -14,6 +14,11 @@ description: "将图片、PPTX 页面或 ZeroWall 视觉页面重建为可编辑
 - ZeroWall 已生成的整页视觉图片；
 - 已有演示文稿中指定的页面。
 
+图片输入不要求文件名为 `image.png`。调用 `rebuild_presentation` 时可以使用
+`source_attachment_ids`、`source_image_path`（本机路径或 `file:` URI）或
+`source_image_data`（Base64 / `data:image/*;base64,...`）。如果模型没有带出附件 ID，
+Host 会从当前会话最近一批持久事件和待处理消息中恢复；只有这些来源都不存在时才应提示用户补充输入。
+
 ## 固定规则
 
 1. 默认使用 `fidelity_profile: reference_lock`，保留可读文字、版式、连线、箭头和视觉关系。

@@ -213,9 +213,12 @@ export class PresentationWorker {
             source: { kind: source?.kind ?? 'zerowall-visual', uri: fileUri(imagePath), checksum: sourceChecksum, widthPx: source?.widthPx ?? 1536, heightPx: source?.heightPx ?? 1024, page: source?.page ?? index + 1 },
             canvas: { widthPt: 960, heightPt: 540 },
             objects: [
-              { objectId: `${slide.id}.title`, kind: 'text', x: 48, y: 36, w: 480, h: 52, text: slide.title, fontFace: 'Aptos Display', fontSize: 28, color: '#17324D', z: 20 },
-              { objectId: `${slide.id}.body`, kind: 'text', x: 52, y: 110, w: 470, h: 390, text: instruction ? `${slide.body}\n\n${instruction}` : slide.body, fontFace: 'Aptos', fontSize: 18, color: '#30465C', z: 20 },
-              { objectId: `${slide.id}.visual`, kind: 'image', x: 570, y: 48, w: 340, h: 444, imageUri: fileUri(imagePath), rasterReason: '原始页面视觉核心，保留为独立图片素材', z: 10 },
+              // Keep the reference page at its measured aspect ratio across the
+              // whole 16:9 canvas. The native text layer remains editable and
+              // can be changed without losing the source visual fidelity.
+              { objectId: `${slide.id}.visual`, kind: 'image', x: 0, y: 0, w: 960, h: 540, imageUri: fileUri(imagePath), rasterReason: '原始页面视觉参考；语义覆盖层保持可编辑', z: 0 },
+              { objectId: `${slide.id}.title`, kind: 'text', x: 48, y: 24, w: 864, h: 48, text: slide.title, fontFace: 'Aptos Display', fontSize: 24, color: '#17324D', z: 20 },
+              { objectId: `${slide.id}.body`, kind: 'text', x: 48, y: 480, w: 864, h: 42, text: instruction ? `${slide.body}\n${instruction}` : slide.body, fontFace: 'Aptos', fontSize: 12, color: '#30465C', z: 20 },
             ],
             requiredIds: [`${slide.id}.title`, `${slide.id}.body`, `${slide.id}.visual`], unresolvedAmbiguities: [], authorizedOmissions: [], nativeObjectCount: 2, rasterizedObjectCount: 1,
           }

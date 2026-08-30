@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-web-search",
-  "version": "4.3.10",
+  "version": "4.3.11",
   "description": "ZeroWall Science web-search domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
