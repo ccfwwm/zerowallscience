@@ -332,10 +332,16 @@ export class ZeroWallMcpService extends TypertRemoteService {
       }
       this.fibers.set(record.id, fiber)
       if (previous !== undefined && previous !== fiber) await previous.dispose()
-      // McpClient publishes active only after transport connection and the
-      // initial tools/list synchronization succeed. Keep its event-owned state;
-      // a Cordis fiber may also resolve while reconnecting when startup errors
-      // are configured as non-fatal.
+      // The fiber resolves after the initial transport handshake and
+      // tools/list synchronization.  The lifecycle event normally arrives on
+      // the same turn, but it can cross a nested Fiber boundary before this
+      // service's listener is attached.  Converge the authoritative Host state
+      // here as well so callers never remain stuck at `starting` when tools are
+      // already registered.  Later lifecycle events still win and can report
+      // reconnect/error transitions.
+      if (current()) {
+        this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
+      }
     } catch (error) {
       if (!current()) return
       if (this.fibers.has(record.id)) {
