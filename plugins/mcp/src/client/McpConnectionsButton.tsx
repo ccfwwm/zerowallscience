@@ -155,10 +155,12 @@ export function McpConnectionsButton(props: Props) {
   }, [getSciMasterCredentialStatus, open, refresh])
 
   useEffect(() => {
-    if (!open || !servers.some(server => server.runtimeState === 'starting')) return
-    const timer = window.setInterval(() => { void refresh() }, 750)
+    if (!open) return
+    // Reconciliation and tools/list finish after the first `list` response;
+    // keep the panel converging regardless of the initial lifecycle state.
+    const timer = window.setInterval(() => { void refresh() }, 1000)
     return () => window.clearInterval(timer)
-  }, [open, refresh, servers])
+  }, [open, refresh])
 
   const saveSciMasterKey = async () => {
     if (sciMasterKey.trim() === '') return
