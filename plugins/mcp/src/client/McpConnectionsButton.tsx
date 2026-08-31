@@ -111,16 +111,20 @@ export function McpConnectionsButton(props: Props) {
   const [sciMasterKey, setSciMasterKey] = useState('')
   const [sciMasterBusy, setSciMasterBusy] = useState(false)
   const importInput = useRef<HTMLInputElement>(null)
+  const refreshVersion = useRef(0)
+  const selectedIdRef = useRef(selectedId)
+  selectedIdRef.current = selectedId
 
   const selected = useMemo(() => servers.find(server => server.id === selectedId), [servers, selectedId])
 
   const refresh = useCallback(async (preferredId?: string) => {
-    setBusy(true)
+    const version = ++refreshVersion.current
     setError(undefined)
     try {
       const next = await listMcpServers()
+      if (version !== refreshVersion.current) return
       setServers(next)
-      const id = preferredId ?? selectedId
+      const id = preferredId ?? selectedIdRef.current
       const current = next.find(server => server.id === id)
       const first = next[0]
       if (current !== undefined) {
@@ -134,11 +138,9 @@ export function McpConnectionsButton(props: Props) {
         setDraft(emptyDraft())
       }
     } catch (reason) {
-      setError(message(reason))
-    } finally {
-      setBusy(false)
+      if (version === refreshVersion.current) setError(message(reason))
     }
-  }, [listMcpServers, selectedId])
+  }, [listMcpServers])
 
   useEffect(() => {
     if (!open) return
