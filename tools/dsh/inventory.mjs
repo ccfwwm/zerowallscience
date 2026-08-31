@@ -16,7 +16,7 @@ const zeroWallOrder = [
   'base', 'secrets', 'environment', 'desktop-compat', 'projects', 'mcp',
   'account', 'ai-cloud', 'opencode', 'web-search',
   'files', 'images', 'image-dup',
-  'research', 'execution', 'python', 'runs',
+  'research', 'mineru', 'execution', 'python', 'runs',
   'publications', 'presentations', 'skills', 'reviewer', 'wechat',
 ]
 const expectedOrder = [

@@ -11,10 +11,7 @@ const file: PreparedFile = {
   mediaType: 'application/pdf',
   bytes: 2048,
   sha256: 'a'.repeat(64),
-  parser: 'pdfjs',
-  status: 'parsed',
-  textChars: 12,
-  preview: 'short summary',
+  storageStatus: 'stored',
 }
 
 function context() {
@@ -24,10 +21,10 @@ function context() {
   const materialize = vi.fn().mockResolvedValue({
     ok: true, value: { path: 'C:/workspace/.zerowall/uploads/paper.pdf' },
   })
-  const download = vi.fn().mockRejectedValue(new Error('clipboard bridge unavailable'))
+  const download = vi.fn().mockResolvedValue({ ok: true, value: { ...file, data: Buffer.from('%PDF-1.7').toString('base64') } })
   const inspect = vi.fn().mockResolvedValue({ ok: true, value: file })
   const ctx = {
-    remote: { zerowallFiles: { materialize, download, inspect } },
+    remote: { zerowallFiles: { materializeOriginal: materialize, downloadOriginal: download, inspectOriginalMetadata: inspect } },
     betterSidebar: {
       registerTab: vi.fn((descriptor: { id: string; component: ComponentType<any> }) => {
         if (descriptor.id === 'zerowall:attachment-viewer') attachmentViewer = descriptor.component
@@ -57,7 +54,7 @@ afterEach(() => {
 })
 
 describe('attachment client actions', () => {
-  it('materializes workspace files and opens them in better-sidebar', async () => {
+  it('opens workspace attachments immediately in the original-byte viewer', async () => {
     const state = context()
     apply(state.ctx)
 
@@ -65,12 +62,14 @@ describe('attachment client actions', () => {
       detail: { file, sessionId: 'session-1', cwd: 'C:/workspace' },
     }))
 
-    await waitFor(() => expect(state.ctx.betterSidebar.openFile).toHaveBeenCalledWith(
-      { sessionId: 'session-1', cwd: 'C:/workspace' },
-      'C:/workspace/.zerowall/uploads/paper.pdf',
-      'paper.pdf',
-    ))
-    expect(state.materialize).toHaveBeenCalledWith({ sessionId: 'session-1', attachmentId: 'attachment-1' })
+    expect(state.ctx.betterSidebar.openTab).toHaveBeenCalledWith({
+      type: 'zerowall:attachment-viewer',
+      id: 'zerowall:attachment-viewer:attachment-1',
+      title: 'paper.pdf',
+      meta: { attachmentId: 'attachment-1', initial: file },
+    }, { sessionId: 'session-1', cwd: 'C:/workspace' })
+    expect(state.materialize).not.toHaveBeenCalled()
+    expect(state.ctx.betterSidebar.openFile).not.toHaveBeenCalled()
     state.disposers.forEach(dispose => dispose())
   })
 
@@ -86,7 +85,7 @@ describe('attachment client actions', () => {
       type: 'zerowall:attachment-viewer',
       id: 'zerowall:attachment-viewer:attachment-1',
       title: 'paper.pdf',
-      meta: { attachmentId: 'attachment-1' },
+      meta: { attachmentId: 'attachment-1', initial: file },
     }, { sessionId: 'session-2' }))
     expect(state.materialize).not.toHaveBeenCalled()
     state.disposers.forEach(dispose => dispose())
@@ -101,7 +100,7 @@ describe('attachment client actions', () => {
     window.dispatchEvent(new CustomEvent('zerowall:attachment-copy', {
       detail: { file, sessionId: 'session-3' },
     }))
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('paper.pdf\nshort summary'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('paper.pdf'))
 
     state.disposers.forEach(dispose => dispose())
     expect(state.unregister).toHaveBeenCalledOnce()
@@ -135,7 +134,7 @@ describe('attachment client actions', () => {
     expect(state.inspect).toHaveBeenCalledWith({ sessionId: 'session-4', attachmentId: 'attachment-1' })
     fireEvent.click(screen.getByTitle('复制文件'))
     await waitFor(() => expect(state.download).toHaveBeenCalledWith({ sessionId: 'session-4', attachmentId: 'attachment-1' }))
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('paper.pdf\nshort summary'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('paper.pdf'))
     state.disposers.forEach(dispose => dispose())
   })
 
@@ -157,7 +156,7 @@ describe('attachment client actions', () => {
     }))
 
     expect((await screen.findByRole('alert')).textContent).toBe(
-      'zerowallFiles.inspect failed: not-found: Uploaded file metadata is missing.',
+      'zerowallFiles.inspectOriginalMetadata failed: not-found: Uploaded file metadata is missing.',
     )
     state.disposers.forEach(dispose => dispose())
   })

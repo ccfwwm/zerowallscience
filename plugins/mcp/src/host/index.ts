@@ -55,6 +55,9 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     zerowallMcp: ZeroWallMcpService
   }
+  interface Events {
+    'mcp-client/status'(serverName: string, state: 'starting' | 'active' | 'error', error?: string): void
+  }
 }
 
 export class ZeroWallMcpService extends TypertRemoteService {
@@ -62,6 +65,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   private readonly fibers = new Map<string, Fiber>()
   private readonly statuses = new Map<string, RuntimeStatus>()
+  private readonly reconcileVersions = new Map<string, number>()
+  private readonly recordsReady: Promise<void>
   private operation: Promise<void> = Promise.resolve()
   private environmentPoller: NodeJS.Timeout | undefined
   private environmentSignature = ''
@@ -69,7 +74,33 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallMcp')
-    this.operation = this.initialize()
+    this.recordsReady = this.seedBundledServers().then(() => {
+      for (const record of this.projects().listMcpServers()) {
+        this.statuses.set(record.id, {
+          state: record.enabled ? 'starting' : 'disabled',
+          error: '',
+          missingEnvironmentVariables: [],
+        })
+      }
+    })
+    this.operation = this.recordsReady.then(() => this.reconcileAll())
+    // dsh-mcp-client publishes lifecycle events on the root context so that
+    // the service can observe clients created in nested Cordis fibers.
+    const applyStatus = (serverName: string, state: 'starting' | 'active' | 'error', error?: string): void => {
+      const record = this.projects().listMcpServers().find(candidate => candidate.serverName === serverName)
+      if (record === undefined || !record.enabled) return
+      this.statuses.set(record.id, {
+        state,
+        error: error === undefined ? '' : redactError(error),
+        missingEnvironmentVariables: [],
+      })
+    }
+    const disposeRootStatusListener = ctx.root.on('mcp-client/status', applyStatus, { global: true })
+    const disposeLocalStatusListener = ctx.on('mcp-client/status', applyStatus, { global: true })
+    ctx.effect(() => () => {
+      disposeRootStatusListener()
+      disposeLocalStatusListener()
+    }, 'zerowall-mcp: lifecycle status listener')
     this.startEnvironmentRefresh()
     ctx.effect(() => () => {
       if (this.environmentPoller !== undefined) clearInterval(this.environmentPoller)
@@ -79,8 +110,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
   }
 
   @Remote('list')
-  list(): Promise<McpServerDto[]> {
-    return this.exclusive(async () => this.projects().listMcpServers().sort(compareMcpServers).map(record => this.dto(record)))
+  async list(): Promise<McpServerDto[]> {
+    await this.recordsReady
+    void this.pollEnvironment()
+    return this.projects().listMcpServers().sort(compareMcpServers).map(record => this.dto(record))
   }
 
   @Remote('create')
@@ -161,12 +194,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   }
 
   private async reconcileAll(): Promise<void> {
-    for (const record of this.projects().listMcpServers()) await this.reconcile(record)
-  }
-
-  private async initialize(): Promise<void> {
-    await this.seedBundledServers()
-    await this.reconcileAll()
+    await Promise.allSettled(this.projects().listMcpServers().map(record => this.reconcile(record)))
   }
 
   /**
@@ -256,13 +284,16 @@ export class ZeroWallMcpService extends TypertRemoteService {
   }
 
   private async reconcile(record: McpServerRecord): Promise<void> {
+    const version = (this.reconcileVersions.get(record.id) ?? 0) + 1
+    this.reconcileVersions.set(record.id, version)
+    const current = (): boolean => this.reconcileVersions.get(record.id) === version
     if (!record.enabled) {
       await this.disposeOne(record.id)
-      this.statuses.set(record.id, { state: 'disabled', error: '', missingEnvironmentVariables: [] })
+      if (current()) this.statuses.set(record.id, { state: 'disabled', error: '', missingEnvironmentVariables: [] })
       return
     }
     if (isManagedMcp(record.serverName) && !managedEnvironmentReady()) {
-      if (!this.fibers.has(record.id)) this.statuses.set(record.id, { state: 'blocked', error: 'The Claude Science MCP environment is not ready. Retry initialization or select a user-managed environment in Settings.', missingEnvironmentVariables: [] })
+      if (current() && !this.fibers.has(record.id)) this.statuses.set(record.id, { state: 'blocked', error: 'The Claude Science MCP environment is not ready. Retry initialization or select a user-managed environment in Settings.', missingEnvironmentVariables: [] })
       return
     }
     let sciMasterApiKey: string | undefined
@@ -274,30 +305,39 @@ export class ZeroWallMcpService extends TypertRemoteService {
       }
       if (!sciMasterApiKey?.trim()) {
         await this.disposeOne(record.id)
-        this.statuses.set(record.id, { state: 'blocked', error: 'SciMaster 需要配置 API Key。请在设置中保存 Key 后重试。', missingEnvironmentVariables: [] })
+        if (current()) this.statuses.set(record.id, { state: 'blocked', error: 'SciMaster 需要配置 API Key。请在设置中保存 Key 后重试。', missingEnvironmentVariables: [] })
         return
       }
     }
     const resolved = resolveMcpConfig(record, process.env)
     if (resolved.config === undefined) {
       await this.disposeOne(record.id)
-      this.statuses.set(record.id, {
+      if (current()) this.statuses.set(record.id, {
         state: 'blocked',
         error: 'Required environment variables are not available to the Host.',
         missingEnvironmentVariables: resolved.missingEnvironmentVariables,
       })
       return
     }
+    if (current()) this.statuses.set(record.id, { state: 'starting', error: '', missingEnvironmentVariables: [] })
     try {
       const config = resolved.config as McpClient.Config
       if (sciMasterApiKey !== undefined && config.transport === 'stdio') config.env.ZEROWALL_SCIMASTER_API_KEY = sciMasterApiKey
       const previous = this.fibers.get(record.id)
       const fiber = this.ctx.plugin(McpClient, config)
       await fiber
+      if (!current()) {
+        await fiber.dispose()
+        return
+      }
       this.fibers.set(record.id, fiber)
       if (previous !== undefined && previous !== fiber) await previous.dispose()
-      this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
+      // McpClient publishes active only after transport connection and the
+      // initial tools/list synchronization succeed. Keep its event-owned state;
+      // a Cordis fiber may also resolve while reconnecting when startup errors
+      // are configured as non-fatal.
     } catch (error) {
+      if (!current()) return
       if (this.fibers.has(record.id)) {
         this.ctx.logger.warn(`zerowall-mcp: retained healthy ${record.serverName} connection after refresh failure: ${redactError(error)}`)
         return
@@ -312,12 +352,22 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   private dto(record: McpServerRecord): McpServerDto {
     const status = this.statuses.get(record.id) ?? { state: 'disabled' as const, error: '', missingEnvironmentVariables: [] }
+    const tools = this.toolNames(record.serverName)
     return {
       ...record,
       runtimeState: status.state,
       runtimeError: status.error,
       missingEnvironmentVariables: [...status.missingEnvironmentVariables],
+      tools,
     }
+  }
+
+  private toolNames(serverName: string): string[] {
+    const prefix = `mcp__${serverName}__`
+    return this.ctx.tools.schemas()
+      .map(schema => schema.name)
+      .filter(name => name.startsWith(prefix))
+      .sort((left, right) => left.localeCompare(right))
   }
 
   private async disposeOne(id: string): Promise<void> {

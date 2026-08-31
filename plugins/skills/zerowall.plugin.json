@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-skills",
-  "version": "4.3.11",
+  "version": "4.3.12",
   "dsh": {
     "min": "0.1.2-alpha.1",
     "max": "0.1.2-alpha.1"

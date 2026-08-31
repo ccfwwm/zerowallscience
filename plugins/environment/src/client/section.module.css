@@ -19,7 +19,10 @@
 .control:focus { outline: 2px solid rgba(49, 91, 125, .22); outline-offset: 1px; border-color: #315b7d; }
 .checkboxField { min-height: 36px; display: flex; align-items: center; gap: 8px; color: var(--dsw-alias-label-primary, #202428); font-size: 13px; }
 .checkboxField input { width: 15px; height: 15px; accent-color: #315b7d; }
-.keyRow, .variableForm { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; }
+.keyRow, .variableForm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.keyRow > .control { flex: 1 1 180px; }
+.keyRow > .primaryButton, .keyRow > .secondaryButton { flex: 0 0 auto; }
+.mineruActionsRow .helpLink { flex: 1 1 220px; margin-top: 0; }
 .variableForm { grid-template-columns: minmax(150px, .7fr) minmax(180px, 1fr) auto; }
 .primaryButton, .secondaryButton { min-height: 36px; padding: 0 12px; border-radius: 6px; cursor: pointer; font: 600 12px/1 inherit; white-space: nowrap; }
 .primaryButton { border: 0; color: #fff; background: #315b7d; }
@@ -33,4 +36,4 @@
 .variableRow span, .muted { color: var(--dsw-alias-label-secondary, #687078); font-size: 11px; }
 .textButton { padding: 4px 0; border: 0; color: #315b7d; background: transparent; cursor: pointer; font: 600 11px/1 inherit; }
 .error { margin: 12px 0 0; padding: 9px 11px; border: 1px solid rgba(188, 54, 54, .2); border-radius: 6px; color: #a12b2b; background: rgba(188, 54, 54, .08); font-size: 12px; overflow-wrap: anywhere; }
-@media (max-width: 680px) { .header { display: grid; gap: 10px; } .securityNote { justify-self: start; } .grid { grid-template-columns: 1fr; } .variablesCard { grid-column: auto; } .formGrid { grid-template-columns: 1fr; } .fullWidth { grid-column: auto; } .keyRow, .variableForm { grid-template-columns: 1fr; } .primaryButton, .secondaryButton { width: 100%; } }
+@media (max-width: 680px) { .header { display: grid; gap: 10px; } .securityNote { justify-self: start; } .grid { grid-template-columns: 1fr; } .variablesCard { grid-column: auto; } .formGrid { grid-template-columns: 1fr; } .fullWidth { grid-column: auto; } .keyRow, .variableForm { display: grid; grid-template-columns: 1fr; } .primaryButton, .secondaryButton { width: 100%; } .keyRow > .control { width: 100%; } .mineruActionsRow .helpLink { margin-top: 2px; } }

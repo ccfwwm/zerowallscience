@@ -133,6 +133,21 @@ export function apply(ctx: Context, config: WechatConfig): void {
 
     webCtx.effect(() => webCtx.webServer.register({
       kind: 'exact',
+      path: '/wechat/qrcode/image',
+      handler: (_req, res) => {
+        const image = backend.qrImage()
+        if (image === undefined) {
+          res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' })
+          res.end('二维码尚未生成')
+          return
+        }
+        res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store', 'content-length': image.byteLength })
+        res.end(image)
+      },
+    } satisfies WebRoute), 'dsh-weixin-clawbot: /wechat/qrcode/image route')
+
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
       path: '/wechat/settings',
       handler: async (req: IncomingMessage, res: ServerResponse) => {
         const body = await readJsonBody(req)

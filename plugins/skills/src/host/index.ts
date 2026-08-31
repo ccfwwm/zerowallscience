@@ -30,6 +30,7 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
         providerName: 'zerowall-scientific',
         includeDefaultRoots: false,
         bundledSkillDir,
+        watch: false,
       })
     }
     const userSkillsDir = userSkillDir()

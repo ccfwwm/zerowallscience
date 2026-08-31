@@ -48,9 +48,12 @@ export function SkillsSettingsTab(props: Props) {
     setBusy(true)
     setError(undefined)
     try {
-      const next = await props.listSkills()
+      const [next, nextSources] = await Promise.all([
+        props.listSkills(),
+        props.listSkillSources?.() ?? Promise.resolve({ enabled: [], disabled: [] }),
+      ])
       setSkills(next)
-      if (props.listSkillSources) setSourcesState(await props.listSkillSources())
+      setSourcesState(nextSources)
       if (selectedName !== undefined && !next.some(skill => skill.name === selectedName)) {
         setSelectedName(undefined)
         setDetail(undefined)

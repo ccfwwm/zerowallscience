@@ -155,6 +155,9 @@
     - id: zerowall-research
       name: '@zerowallscience/plugin-research'
 
+    - id: zerowall-mineru
+      name: '@zerowallscience/plugin-mineru'
+
     - id: zerowall-execution
       name: '@zerowallscience/plugin-execution'
 

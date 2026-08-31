@@ -16,6 +16,7 @@ export const bundledPlugins = [
   '@zerowallscience/plugin-images',
   '@zerowallscience/plugin-image-dup',
   '@zerowallscience/plugin-research',
+  '@zerowallscience/plugin-mineru',
   '@zerowallscience/plugin-execution',
   '@zerowallscience/plugin-python',
   '@zerowallscience/plugin-runs',

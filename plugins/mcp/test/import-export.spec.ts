@@ -6,7 +6,7 @@ const server: McpServerView = {
   command: '', args: [], cwd: '', envRefs: {}, url: 'https://example.test/mcp', headerRefs: { Authorization: 'MCP_AUTH_REF' },
   toolCallTimeoutMs: 60000, failOnStartupError: false,
   reconnect: { enabled: true, initialDelayMs: 500, maxDelayMs: 30000, maxAttempts: 10 },
-  runtimeState: 'active', runtimeError: '', missingEnvironmentVariables: [], createdAt: '2026-01-01', updatedAt: '2026-01-01',
+  runtimeState: 'active', runtimeError: '', missingEnvironmentVariables: [], tools: ['mcp__literature__search'], createdAt: '2026-01-01', updatedAt: '2026-01-01',
 }
 
 describe('MCP JSON import and export', () => {

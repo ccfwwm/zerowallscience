@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { access, cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
 
@@ -178,7 +178,7 @@ async function copyRuntimePackage(package_, targetRoot) {
 
   if (manifest.name === 'dsh-dream-skin') {
     await copyEntry(sourceRoot, targetRoot, 'lib')
-    await copyEntry(sourceRoot, targetRoot, 'cordis.patch.yml')
+    try { await access(resolve(sourceRoot, 'cordis.patch.yml')); await copyEntry(sourceRoot, targetRoot, 'cordis.patch.yml') } catch { /* optional in newer Dream Skin releases */ }
     return
   }
 

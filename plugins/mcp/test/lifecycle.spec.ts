@@ -51,11 +51,14 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
         failOnStartupError: true,
       })
       expect(created.runtimeState, created.runtimeError).toBe('active')
+      expect(created.tools).toEqual(expect.arrayContaining(['mcp__fixture__add', 'mcp__fixture__greet']))
+      expect(created.tools.every(name => name.startsWith('mcp__fixture__'))).toBe(true)
       expect(ctx.tools.get('mcp__fixture__add')).toBeDefined()
       expect(ctx.tools.get('mcp__fixture__greet')).toBeDefined()
 
       const disabled = await ctx.zerowallMcp.update({ id: created.id, changes: { enabled: false } })
       expect(disabled.runtimeState).toBe('disabled')
+      expect(disabled.tools).toEqual([])
       expect(ctx.tools.get('mcp__fixture__add')).toBeUndefined()
       expect(await ctx.zerowallMcp.list()).toHaveLength(1)
     } finally {
@@ -87,7 +90,8 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
-      expect((await ctx.zerowallMcp.list()).every(item => item.runtimeState === 'blocked')).toBe(true)
+      expect((await ctx.zerowallMcp.list()).every(item => item.runtimeState === 'starting' || item.runtimeState === 'blocked')).toBe(true)
+      await expect.poll(async () => (await ctx.zerowallMcp.list()).every(item => item.runtimeState === 'blocked'), { timeout: 10_000, interval: 25 }).toBe(true)
       mkdirSync(environmentStore, { recursive: true })
       writeFileSync(join(environmentStore, 'current.json'), JSON.stringify({ version: '4.1.10', root: installed, health: 'ready' }))
       await expect.poll(async () => Object.fromEntries((await ctx.zerowallMcp.list()).map(item => [item.serverName, item.runtimeState])), { timeout: 10_000, interval: 100 })
@@ -117,9 +121,13 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect(servers).toHaveLength(3)
       expect(servers.map(server => server.name)).toEqual(['Sci', 'Bio Tools', 'Ketcher Chemistry'])
       expect(servers.find(server => server.serverName === 'zerowall_filesystem')).toBeUndefined()
-      expect(servers.find(server => server.serverName === 'zerowall_managed_bio_tools')).toMatchObject({ runtimeState: 'blocked' })
-      expect(servers.find(server => server.serverName === 'zerowall_managed_ketcher')).toMatchObject({ runtimeState: 'blocked' })
-      expect(servers.find(server => server.serverName === 'zerowall_managed_scimaster')).toMatchObject({ runtimeState: 'blocked' })
+      expect(servers.every(server => server.runtimeState === 'starting' || server.runtimeState === 'blocked')).toBe(true)
+      await expect.poll(async () => Object.fromEntries((await ctx.zerowallMcp.list()).map(server => [server.serverName, server.runtimeState])), { timeout: 10_000, interval: 25 })
+        .toMatchObject({
+          zerowall_managed_bio_tools: 'blocked',
+          zerowall_managed_ketcher: 'blocked',
+          zerowall_managed_scimaster: 'blocked',
+        })
     } finally {
       await ctx.fiber.dispose()
     }

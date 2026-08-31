@@ -128,6 +128,7 @@ export class WechatBackend {
         ok: true,
         state: this.qrState,
         url: this.qrState.qrcode,
+        imageUrl: '/wechat/qrcode/image',
         puppet: this.config.puppet,
         settings: this.effectiveSettings(),
         workspaces: this.workspacesProjection(),
@@ -150,6 +151,16 @@ export class WechatBackend {
       settings: this.effectiveSettings(),
       workspaces: this.workspacesProjection(),
     }
+  }
+
+  /** Return the current QR PNG for the same-origin image route. */
+  qrImage(): Buffer | undefined {
+    if (this.qrState.kind !== 'scan' || !this.qrState.png.startsWith('data:image/png;base64,')) return undefined
+    try {
+      const encoded = this.qrState.png.slice('data:image/png;base64,'.length)
+      const image = Buffer.from(encoded, 'base64')
+      return image.byteLength > 0 && image.toString('base64') === encoded ? image : undefined
+    } catch { return undefined }
   }
 
   /** workspaceRegistry 注入/撤销（index.ts 懒注入调用）。 */

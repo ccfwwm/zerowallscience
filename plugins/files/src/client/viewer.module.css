@@ -6,9 +6,30 @@
   color: var(--dsw-alias-label-primary);
 }
 
+.frame {
+  width: 100%;
+  height: 100%;
+  min-height: 480px;
+  border: 0;
+}
+
+.imageWrap {
+  display: grid;
+  min-height: 0;
+  place-items: center;
+  overflow: auto;
+  padding: 16px;
+}
+
+.imageWrap img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 .header {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 32px;
+  grid-template-columns: 28px minmax(0, 1fr) repeat(4, 32px);
   align-items: center;
   gap: 8px;
   padding: 12px;

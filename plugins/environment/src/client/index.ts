@@ -8,7 +8,7 @@ import { unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 
 export const inject = [
   'slots', 'locale', 'remote', 'connection', 'settingsScope',
-  'remote.zerowallEnvironment', 'remote.zerowallAccount', 'remote.zerowallMcp',
+  'remote.zerowallEnvironment', 'remote.zerowallAccount', 'remote.zerowallMcp', 'remote.zerowallMineru',
 ]
 
 export function apply(ctx: ClientContext): void {
@@ -17,6 +17,7 @@ export function apply(ctx: ClientContext): void {
   const environmentRemote = ctx.get('remote.zerowallEnvironment') ?? remote?.zerowallEnvironment
   const accountRemote = ctx.get('remote.zerowallAccount') ?? remote?.zerowallAccount
   const mcpRemote = ctx.get('remote.zerowallMcp') ?? remote?.zerowallMcp
+  const mineruRemote = ctx.get('remote.zerowallMineru') ?? remote?.zerowallMineru
   const reviewerScope = ctx.settingsScope.bind<any>({ namespace: 'zerowall-reviewer' })
   ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'zerowall-environment', order: 25,
@@ -26,6 +27,7 @@ export function apply(ctx: ClientContext): void {
       environmentRemote,
       accountRemote,
       mcpRemote,
+      mineruRemote,
       unwrap: async (value: any) => unwrapRemoteResult('zerowall.environment', await value),
       modelCatalog: async (check = false) => {
         const response = await connection.api.llm.models(check ? { check: true } : {})

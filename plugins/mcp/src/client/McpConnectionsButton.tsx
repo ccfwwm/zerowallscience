@@ -15,7 +15,7 @@ import { NS } from '@zerowallscience/plugin-base/client-helpers'
 import css from './McpConnectionsButton.module.css'
 
 type McpTransport = 'stdio' | 'streamable-http'
-type McpRuntimeState = 'disabled' | 'blocked' | 'active' | 'error'
+type McpRuntimeState = 'disabled' | 'starting' | 'blocked' | 'active' | 'error'
 
 interface ReconnectPolicy {
   enabled: boolean
@@ -42,6 +42,7 @@ export interface McpServerView {
   runtimeState: McpRuntimeState
   runtimeError: string
   missingEnvironmentVariables: string[]
+  tools: string[]
   createdAt: string
   updatedAt: string
 }
@@ -152,6 +153,12 @@ export function McpConnectionsButton(props: Props) {
       if (status.phase === 'ready' || status.phase === 'manual') void refresh()
     })
   }, [getSciMasterCredentialStatus, open, refresh])
+
+  useEffect(() => {
+    if (!open || !servers.some(server => server.runtimeState === 'starting')) return
+    const timer = window.setInterval(() => { void refresh() }, 750)
+    return () => window.clearInterval(timer)
+  }, [open, refresh, servers])
 
   const saveSciMasterKey = async () => {
     if (sciMasterKey.trim() === '') return
@@ -336,6 +343,12 @@ export function McpConnectionsButton(props: Props) {
           {selected?.runtimeError && <p className={css.error} role="alert">{selected.runtimeError}</p>}
           {(selected?.missingEnvironmentVariables.length ?? 0) > 0 && <p className={css.warning}>{props.t('mcp.missing', { names: selected?.missingEnvironmentVariables.join(', ') ?? '' })}</p>}
           {error && <p className={css.error} role="alert">{error}</p>}
+          {selected !== undefined && <section className={css.toolsCard} aria-label={props.t('mcp.availableTools')}>
+            <div className={css.toolsHeading}><strong>{props.t('mcp.availableTools')}</strong><span>{selected.tools.length}</span></div>
+            {selected.tools.length === 0
+              ? <p>{selected.runtimeState === 'active' ? props.t('mcp.noTools') : props.t('mcp.toolsUnavailable')}</p>
+              : <div className={css.toolList}>{selected.tools.map(tool => <code key={tool}>{tool}</code>)}</div>}
+          </section>}
           {selected?.serverName === 'zerowall_managed_scimaster' && <section className={css.sciMasterCard} aria-label={props.t('mcp.sciMasterSettings')}>
             <div className={css.sciMasterHeading}><strong>{props.t('mcp.sciMasterApiKey')}</strong><span className={sciMasterConfigured ? css.configured : css.missing}>{sciMasterConfigured ? props.t('mcp.sciMasterConfigured') : props.t('mcp.sciMasterMissing')}</span></div>
             <p className={css.sciMasterHelp}>{props.t('mcp.sciMasterApiKeyHelp')}</p>
@@ -470,7 +483,7 @@ function inputFromDraft(draft: Draft, t: TranslateNS<typeof NS>): McpServerInput
 }
 
 function statusText(status: McpRuntimeState, t: TranslateNS<typeof NS>): string {
-  return ({ active: t('mcp.status.active'), blocked: t('mcp.status.blocked'), error: t('mcp.status.error'), disabled: t('mcp.status.disabled') })[status]
+  return ({ active: t('mcp.status.active'), starting: t('mcp.status.starting'), blocked: t('mcp.status.blocked'), error: t('mcp.status.error'), disabled: t('mcp.status.disabled') })[status]
 }
 
 function message(reason: unknown): string {

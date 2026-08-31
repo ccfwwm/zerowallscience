@@ -1,0 +1,12 @@
+export declare function isSupportedPlatform(platform?: NodeJS.Platform): boolean;
+export declare function systemFontDirectories(platform?: NodeJS.Platform, home?: string, env?: NodeJS.ProcessEnv): string[];
+export declare function libreOfficeCandidates(platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv): string[];
+export declare function pdfToPpmCandidates(platform?: NodeJS.Platform): string[];
+export declare function appleScriptCandidates(platform?: NodeJS.Platform): string[];
+export declare function screenCaptureCandidates(platform?: NodeJS.Platform): string[];
+export declare function keynoteCandidates(platform?: NodeJS.Platform, home?: string): string[];
+export declare function powerShellCandidates(platform?: NodeJS.Platform): string[];
+export declare function powerPointCandidates(platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv, home?: string): string[];
+export type PptImageBackend = 'keynote' | 'powerpoint' | 'libreoffice';
+export declare function pptImageBackendOrder(platform?: NodeJS.Platform, requested?: 'auto' | PptImageBackend): PptImageBackend[];
+export declare function browserSystemCandidates(platform?: NodeJS.Platform, home?: string, env?: NodeJS.ProcessEnv): string[];

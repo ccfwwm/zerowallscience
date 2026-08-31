@@ -23,9 +23,19 @@ test('better-sidebar is a single pinned default workbench in every profile', asy
   }
 })
 
+test('better-sidebar reloads the visible file tree and rejects stale session responses', async () => {
+  const patch = await readFile(resolve(root, 'patches/dsh-better-sidebar@0.16.1.patch'), 'utf8')
+  assert.match(patch, /const generationRef = .*useRef\)\(0\)/u)
+  assert.match(patch, /generation !== generationRef\.current/u)
+  assert.match(patch, /component: \(\{ ctx, store, scope, tab, visible,/u)
+  assert.match(patch, /visible=\{visible\}/u)
+  assert.match(patch, /diff --git a\/lib\/client\.js b\/lib\/client\.js/u)
+  assert.match(patch, /diff --git a\/lib\/client-registry\.js b\/lib\/client-registry\.js/u)
+})
+
 test('Dream Skin is a single pinned theme layer loaded before ZeroWall UI', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-dream-skin'], '0.4.14')
+  assert.equal(desktop.dependencies['dsh-dream-skin'], '8.30.1')
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
   assert.equal((patch.match(/\bid: dream-skin\b/gu) ?? []).length, 1)
   assert.ok(patch.indexOf('id: dream-skin') < patch.indexOf('id: better-sidebar'))
@@ -74,7 +84,7 @@ test('desktop image limits fit inside the buffered client connection carrier', a
 })
 
 test('all ZeroWall plugins expose a manifest and alpha.1 range', async () => {
-  const names = ['base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat']
+  const names = ['base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'mineru', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat']
   for (const name of names) {
     const manifest = JSON.parse(await readFile(resolve(root, `plugins/${name}/zerowall.plugin.json`), 'utf8'))
     assert.match(manifest.name, /^@zerowallscience\/plugin-/)

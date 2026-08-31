@@ -9,6 +9,7 @@ interface Props extends PropsRuntime<'settings.section'> {
   environmentRemote: any
   accountRemote: any
   mcpRemote: any
+  mineruRemote?: any
   unwrap(value: any): Promise<any>
   modelCatalog(check?: boolean): Promise<{ groups: any[]; failures: any[] }>
 }
@@ -19,7 +20,7 @@ const SCI_MASTER_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/home'
 
 type LoadState = 'loading' | 'ready' | 'unavailable' | 'error'
 
-export function EnvironmentSection({ reviewerScope, environmentRemote, accountRemote, mcpRemote, unwrap, modelCatalog }: Props) {
+export function EnvironmentSection({ reviewerScope, environmentRemote, accountRemote, mcpRemote, mineruRemote, unwrap, modelCatalog }: Props) {
   const [reviewer, setReviewerValue] = useState(() => reviewerScope.getSnapshot().value ?? defaultReviewer)
   const [catalogGroups, setCatalogGroups] = useState<any[]>([])
   const [imageModels, setImageModels] = useState<any[]>([])
@@ -33,6 +34,8 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const [status, setStatus] = useState<Record<string, LoadState>>({ account: 'loading', catalog: 'loading', variables: 'loading', image: 'loading', mcp: 'loading' })
   const [image, setImage] = useState<ImageModelSelection>({ providerId: '', groupId: '', modelId: '' })
   const [imageQuality, setImageQuality] = useState<ImageGenerationQuality>('medium')
+  const [mineru, setMineru] = useState<any>({ apiBaseUrl: 'https://mineru.net', mode: 'auto', modelVersion: 'vlm', language: 'ch', tokenConfigured: false, available: false, registeredTools: [] })
+  const [mineruToken, setMineruToken] = useState('')
 
   useEffect(() => {
     setReviewerValue(reviewerScope.getSnapshot().value ?? defaultReviewer)
@@ -80,6 +83,11 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       if (mcpRemote?.getSciMasterCredentialStatus === undefined) throw new Error('MCP 服务不可用')
       const value = await unwrap(mcpRemote.getSciMasterCredentialStatus()) as any
       if (!cancelled) setSciConfigured(value?.configured === true)
+    })
+    void load('mineru', async () => {
+      if (mineruRemote?.getConfigStatus === undefined) throw new Error('MinerU 服务不可用')
+      const value = await unwrap(mineruRemote.getConfigStatus())
+      if (!cancelled && value) setMineru(value)
     })
     return () => { cancelled = true }
   }, [accountRemote, environmentRemote, mcpRemote, modelCatalog, unwrap])
@@ -150,6 +158,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       if (environmentRemote?.setImageQuality !== undefined) await unwrap(environmentRemote.setImageQuality(value))
     })
   }
+  const saveMineru = async (changes: Record<string, unknown>) => run(async () => { const value = await unwrap(mineruRemote.updateConfig(changes)); setMineru(value) })
   const statusText = (key: string, ready = '已加载') => status[key] === 'loading' ? '正在加载…' : status[key] === 'error' || status[key] === 'unavailable' ? '服务暂不可用' : ready
 
   return <section className={css.root}>
@@ -169,6 +178,24 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
             <label className={css.field}><span>推理强度</span><select className={css.control} value={reviewer.reasoningEffort ?? ''} disabled={busy || reviewerEfforts.length === 0} onChange={event => void setReviewer('reasoningEffort', event.target.value)}><option value="">跟随模型默认{selectedReviewerModel?.reasoning?.defaultEffort ? `（${selectedReviewerModel.reasoning.defaultEffort}）` : ''}</option>{reviewer.reasoningEffort && !reviewerEfforts.some((effort: any) => effort.id === reviewer.reasoningEffort) ? <option value={reviewer.reasoningEffort}>{reviewer.reasoningEffort}（当前配置）</option> : null}{reviewerEfforts.map((effort: any) => <option key={effort.id} value={effort.id}>{effort.name ?? effort.id}</option>)}</select><small>{reviewerEfforts.length === 0 ? '当前模型未声明可选推理强度' : '可按模型目录提供的能力选择'}</small></label>
           </> : null}
         </div>
+      </article>
+
+      <article className={css.card}>
+        <div className={css.cardHeader}><div><h3>MinerU 文档解析</h3><p>Token 仅保存在本机安全存储中；无 Token 时使用本地快速解析，不会远程上传。</p></div><span className={mineru.tokenConfigured && mineru.available ? css.statusGood : css.status}>{statusText('mineru', !mineru.available ? '工具未激活' : mineru.tokenConfigured ? 'Token 已配置' : '本地解析')}</span></div>
+        <div className={`${css.keyRow} ${css.mineruTokenRow}`}><input className={css.control} type="password" placeholder="输入 MinerU Token" value={mineruToken} onChange={event => setMineruToken(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !mineruToken.trim() || mineruRemote?.setToken === undefined} onClick={() => void run(async () => { const value = await unwrap(mineruRemote.setToken(mineruToken)); setMineru(value); setMineruToken('') })}>保存 Token</button><button className={css.secondaryButton} type="button" disabled={busy || !mineru.tokenConfigured || mineruRemote?.clearToken === undefined} onClick={() => void run(async () => setMineru(await unwrap(mineruRemote.clearToken()))) }>清除</button></div>
+        <div className={css.formGrid}>
+          <label className={css.field}><span>API Base URL</span><input className={css.control} value={mineru.apiBaseUrl ?? ''} onChange={event => setMineru((current: any) => ({ ...current, apiBaseUrl: event.target.value }))} onBlur={() => void saveMineru({ apiBaseUrl: mineru.apiBaseUrl })} /></label>
+          <label className={css.field}><span>解析模式</span><select className={css.control} value={mineru.mode ?? 'auto'} onChange={event => void saveMineru({ mode: event.target.value })}><option value="auto">自动</option><option value="precision">Precision</option><option value="agent">Agent</option></select></label>
+          <label className={css.field}><span>模型版本</span><select className={css.control} value={mineru.modelVersion ?? 'vlm'} onChange={event => void saveMineru({ modelVersion: event.target.value })}><option value="vlm">vlm</option><option value="pipeline">pipeline</option><option value="MinerU-HTML">MinerU-HTML</option></select></label>
+          <label className={css.field}><span>语言包</span><input className={css.control} value={mineru.language ?? 'ch'} onChange={event => setMineru((current: any) => ({ ...current, language: event.target.value }))} onBlur={() => void saveMineru({ language: mineru.language })} /></label>
+          <label className={css.checkboxField}><input type="checkbox" checked={mineru.enableTable !== false} disabled={busy} onChange={event => void saveMineru({ enableTable: event.target.checked })} /><span>提取表格</span></label>
+          <label className={css.checkboxField}><input type="checkbox" checked={mineru.enableFormula !== false} disabled={busy} onChange={event => void saveMineru({ enableFormula: event.target.checked })} /><span>提取公式</span></label>
+          <label className={css.checkboxField}><input type="checkbox" checked={mineru.isOcr === true} disabled={busy} onChange={event => void saveMineru({ isOcr: event.target.checked })} /><span>启用 OCR</span></label>
+          <label className={css.field}><span>超时（毫秒）</span><input className={css.control} type="number" min={10000} max={3600000} step={1000} value={mineru.timeoutMs ?? 600000} onChange={event => setMineru((current: any) => ({ ...current, timeoutMs: Number(event.target.value) }))} onBlur={() => void saveMineru({ timeoutMs: mineru.timeoutMs })} /></label>
+          <label className={css.field}><span>轮询间隔（毫秒）</span><input className={css.control} type="number" min={500} max={60000} step={100} value={mineru.pollIntervalMs ?? 3000} onChange={event => setMineru((current: any) => ({ ...current, pollIntervalMs: Number(event.target.value) }))} onBlur={() => void saveMineru({ pollIntervalMs: mineru.pollIntervalMs })} /></label>
+          <label className={css.field}><span>每日额度</span><input className={css.control} type="number" min={1} max={5000} value={mineru.dailyLimit ?? 5000} onChange={event => setMineru((current: any) => ({ ...current, dailyLimit: Number(event.target.value) }))} onBlur={() => void saveMineru({ dailyLimit: mineru.dailyLimit })} /></label>
+        </div>
+        <div className={`${css.keyRow} ${css.mineruActionsRow}`}><button className={css.secondaryButton} type="button" disabled={busy || mineruRemote?.testToken === undefined || !mineru.tokenConfigured} onClick={() => void run(async () => { await unwrap(mineruRemote.testToken()) })}>测试 Token</button><button className={css.secondaryButton} type="button" disabled={busy || mineruRemote?.testAgent === undefined} onClick={() => void run(async () => { await unwrap(mineruRemote.testAgent()) })}>测试 Agent API</button><a className={css.helpLink} href="https://mineru.net/apiManage/token" target="_blank" rel="noreferrer">打开 MinerU 获取 Token ↗</a></div>
       </article>
 
       <article className={css.card}>

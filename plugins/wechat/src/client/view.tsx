@@ -388,7 +388,7 @@ function WechatDialog(props: {
             <>
               <div className="dsh-weixin-clawbot-qr-card">
                 {state.png ? (
-                  <img className="dsh-weixin-clawbot-qr-img" src={state.png} alt="微信登录二维码" />
+                  <img className="dsh-weixin-clawbot-qr-img" src={props.payload?.imageUrl ?? state.png} alt="微信登录二维码" />
                 ) : (
                   <div
                     className="dsh-weixin-clawbot-qr-img"
@@ -420,6 +420,7 @@ function WechatDialog(props: {
                     rel="noopener noreferrer"
                   >
                     <IconRightUpOutline14 size={14} />
+                    <span>打开</span>
                   </a>
                 </div>
               )}

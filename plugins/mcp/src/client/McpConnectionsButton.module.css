@@ -27,8 +27,10 @@
 .serverIcon { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--dsw-alias-border-l2, #d9dee2); border-radius: 6px; background: var(--dsw-alias-bg-layer-1, #fff); }
 .statusDot { width: 8px; height: 8px; border-radius: 50%; background: #8a9299; }
 .statusDot.active { background: #27845a; }
+.statusDot.starting { background: #3179ad; animation: mcpPulse 1.2s ease-in-out infinite; }
 .statusDot.blocked { background: #bd7a16; }
 .statusDot.error { background: #bd3d3d; }
+@keyframes mcpPulse { 50% { opacity: .35; } }
 .editor { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .editorHeading { min-height: 62px; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--dsw-alias-border-l2, #e3e6e8); }
 .editorHeading h3 { margin: 0; font-size: 16px; line-height: 22px; letter-spacing: 0; }
@@ -56,6 +58,12 @@
 .warning { color: #85570f; background: rgba(196,133,28,.10); }
 .syncBadge { display: inline-block; margin-left: 8px; padding: 2px 6px; border-radius: 4px; color: #1f6840; background: rgba(39,132,90,.12); font-size: 11px; font-weight: 650; }
 .sciMasterCard { margin: 16px 18px 0; padding: 14px; display: grid; gap: 10px; border: 1px solid rgba(49,91,125,.24); border-radius: 8px; background: rgba(49,91,125,.045); }
+.toolsCard { margin: 14px 18px 0; padding: 12px 14px; display: grid; gap: 8px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 7px; background: var(--dsw-alias-bg-layer-2, #f7f8f9); }
+.toolsHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.toolsHeading span { min-width: 24px; padding: 2px 7px; border-radius: 10px; color: #315b7d; background: rgba(49,91,125,.1); text-align: center; font-size: 11px; font-weight: 650; }
+.toolsCard p { margin: 0; color: var(--dsw-alias-label-secondary, #687078); font-size: 12px; }
+.toolList { max-height: 116px; overflow: auto; display: flex; flex-wrap: wrap; gap: 6px; }
+.toolList code { max-width: 100%; padding: 4px 7px; overflow: hidden; text-overflow: ellipsis; border: 1px solid rgba(49,91,125,.18); border-radius: 5px; color: #274e6d; background: var(--dsw-alias-bg-layer-1, #fff); font: 11px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .sciMasterHeading { min-width: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
 .sciMasterHeading strong { min-width: 0; }
 .configured { color: #1f6840; font-size: 12px; font-weight: 650; }

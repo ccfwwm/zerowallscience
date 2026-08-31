@@ -14,6 +14,7 @@ export type WechatQrPayload = {
   ok: boolean
   state: WechatQrState
   url?: string
+  imageUrl?: string
   user?: { id: string; name: string }
   puppet: string
   settings: { granularity: WechatGranularity; workspaceScope: WechatWorkspaceScope }

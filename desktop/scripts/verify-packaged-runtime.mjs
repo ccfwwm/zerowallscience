@@ -74,6 +74,10 @@ const requiredArchivePaths = [
   'node_modules/@zerowallscience/plugin-image-dup/lib/index.js',
   'node_modules/@zerowallscience/plugin-image-dup/lib/client.js',
   'node_modules/@zerowallscience/plugin-image-dup/package.json',
+  'node_modules/@zerowallscience/plugin-mineru/lib/index.js',
+  'node_modules/@zerowallscience/plugin-mineru/lib/client.js',
+  'node_modules/@zerowallscience/plugin-mineru/package.json',
+  'node_modules/@zerowallscience/plugin-mineru/zerowall.plugin.json',
   'node_modules/@zerowallscience/plugin-presentations/lib/index.js',
   'node_modules/@zerowallscience/plugin-presentations/lib/client.js',
   'node_modules/@zerowallscience/dsh-ppt-runtime/lib/index.mjs',
@@ -96,6 +100,7 @@ for (const path of requiredArchivePaths) {
 for (const path of [
   resolve(packaged.resourcesRoot, 'zerowall.patch.yml'),
   resolve(packaged.resourcesRoot, 'skills', 'literature-review', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'skills', 'mineru-document-parser', 'SKILL.md'),
   resolve(packaged.resourcesRoot, 'skills', 'zerowall-ppt', 'SKILL.md'),
   resolve(packaged.resourcesRoot, 'licenses', 'THIRD_PARTY_NOTICES.md'),
   resolve(packaged.resourcesRoot, 'licenses', 'deepseek-harness.version.json'),
@@ -126,7 +131,7 @@ function verifyArchivePolicy() {
   if (nativeMismatch.length > 0) throw new Error(`Non-Windows-x64 native files found in ASAR:\n${nativeMismatch.join('\n')}`)
 
   const pluginNames = [
-    'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mcp',
+    'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
     'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat',
   ]
   const betterSidebarPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-better-sidebar/package.json'))
@@ -142,6 +147,9 @@ function verifyArchivePolicy() {
   // bundles did, so validate the injection only when that legacy access exists.
   if (betterSidebarClient.includes('ctx.get("conversation")') && (betterSidebarInject === undefined || !betterSidebarInject.includes('conversation'))) {
     throw new Error('Packaged dsh-better-sidebar accesses conversation without declaring it in the client inject list.')
+  }
+  if (!betterSidebarClient.includes('expandedRef.current')) {
+    throw new Error('Packaged dsh-better-sidebar is missing the stable expanded-directory snapshot used by file-tree refreshes.')
   }
   const presentationsClient = readArchiveFile('node_modules/@zerowallscience/plugin-presentations/lib/client.js').toString('utf8')
   const presentationsInject = [...presentationsClient.matchAll(/const inject = \[[\s\S]*?\];/gu)]
@@ -183,7 +191,7 @@ function verifyArchivePolicy() {
   const dreamSkinPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-dream-skin/package.json'))
   if (dreamSkinPackages.length !== 1) throw new Error(`dsh-dream-skin must be packaged exactly once; found ${dreamSkinPackages.length}.`)
   const dreamSkinManifest = JSON.parse(readArchiveFile('node_modules/dsh-dream-skin/package.json').toString('utf8'))
-  if (dreamSkinManifest.version !== '0.4.14') throw new Error(`Packaged dsh-dream-skin must be 0.4.14; found ${dreamSkinManifest.version}.`)
+  if (dreamSkinManifest.version !== '8.30.1') throw new Error(`Packaged dsh-dream-skin must be 8.30.1; found ${dreamSkinManifest.version}.`)
   const forbiddenDreamSkinFiles = archiveFiles.filter(path => path.startsWith('node_modules/dsh-dream-skin/') && (
     /^node_modules\/dsh-dream-skin\/(?:README|LICENSE|scripts|test|tests)\b/iu.test(path)
   ))
@@ -208,6 +216,30 @@ function verifyArchivePolicy() {
   const hardcodedUserPath = archiveFiles.filter(path => /node_modules\/@zerowallscience\/(?:plugin-image-dup|dsh-ppt-runtime)\/.+\.(?:js|mjs|json|yml)$/iu.test(path))
     .find(path => /[A-Za-z]:[\\/]Users[\\/][^\\/]+/iu.test(readArchiveFile(path).toString('utf8')))
   if (hardcodedUserPath !== undefined) throw new Error(`Hard-coded user path found in packaged capability runtime: ${hardcodedUserPath}`)
+
+  const mineruHost = readArchiveFile('node_modules/@zerowallscience/plugin-mineru/lib/index.js').toString('utf8')
+  for (const tool of ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task']) {
+    if (!mineruHost.includes(tool)) throw new Error(`Packaged MinerU Host is missing required tool registration: ${tool}`)
+  }
+  if (!mineruHost.includes('MinerU Host tool registration failed')) {
+    throw new Error('Packaged MinerU Host is missing its startup tool-registration assertion.')
+  }
+  const filesHost = readArchiveFile('node_modules/@zerowallscience/plugin-files/lib/index.js').toString('utf8')
+  if (!filesHost.includes('extract_uploaded_file')) {
+    throw new Error('Packaged Files Host is missing the on-demand extraction tool.')
+  }
+  const modelSelectionClient = readArchiveFile('node_modules/@deepseek-ai/dsh-client-ui-model-selection/lib/client.js').toString('utf8')
+  if (!modelSelectionClient.includes('selectingKey')) {
+    throw new Error('Packaged model selector is missing row-scoped selection state.')
+  }
+  const sessionControllerHost = readArchiveFile('node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js').toString('utf8')
+  if (!sessionControllerHost.includes('checkAllModels')) {
+    throw new Error('Packaged Session Controller is missing the Host-owned concurrent model probe.')
+  }
+  const llmHost = readArchiveFile('node_modules/@deepseek-ai/dsh-llm/lib/index.js').toString('utf8')
+  if (!llmHost.includes('Use read_uploaded_file or extract_uploaded_file')) {
+    throw new Error('Packaged LLM runtime is missing the on-demand attachment extraction instruction.')
+  }
 
   if (!/^4\.\d+\.\d+$/u.test(packagedManifest.version)) throw new Error(`Packaged desktop version must be a 4.x release; found ${packagedManifest.version}.`)
   const dshManifest = JSON.parse(readArchiveFile('node_modules/@deepseek-ai/dsh/package.json').toString('utf8'))
@@ -289,6 +321,7 @@ async function verifyImports() {
     const expectedInject = new Map([
       ['@zerowallscience/plugin-base', ['webServer']],
       ['@zerowallscience/plugin-files', ['tools']],
+      ['@zerowallscience/plugin-mineru', ['settings', 'tools', 'sessions', 'zerowallFiles', 'zerowallResearch']],
       ['@zerowallscience/plugin-skills', ['skills', 'systemPrompt']],
     ]);
     for (const name of [
@@ -300,6 +333,7 @@ async function verifyImports() {
       '@zerowallscience/plugin-files',
       '@zerowallscience/plugin-images',
       '@zerowallscience/plugin-image-dup',
+      '@zerowallscience/plugin-mineru',
       '@zerowallscience/plugin-presentations',
       '@zerowallscience/plugin-mcp',
       '@zerowallscience/plugin-skills',
@@ -453,6 +487,7 @@ async function verifyHostStartup() {
         try {
           await verifyWebBootManifest(probeUrl)
           await verifyPluginInventory(probeUrl)
+          await verifyMineruStatus(probeUrl)
           await verifyEventWebSockets(probeUrl)
           await verifyPlaintextSessionPersistence(probeUrl, root)
           // DSH binds the loopback server before every asynchronous Loader row
@@ -462,6 +497,7 @@ async function verifyHostStartup() {
           if (child.exitCode !== null) throw new Error(`Packaged Host exited after becoming ready.\n${output.slice(-12_000)}`)
           await verifyWebBootManifest(probeUrl)
           await verifyPluginInventory(probeUrl)
+          await verifyMineruStatus(probeUrl)
           await verifyEventWebSockets(probeUrl)
           return
         } catch (error) {
@@ -492,6 +528,7 @@ function isTransientHostProbeError(error) {
     if (current instanceof Error && /^Packaged Web boot manifest is incomplete\./u.test(current.message)) return true
     if (current instanceof Error && /^Packaged Host plugin inventory is missing:/u.test(current.message)) return true
     if (current instanceof Error && /^Packaged Host ZeroWall plugins are not active:/u.test(current.message)) return true
+    if (current instanceof Error && /^Packaged Host MinerU status is unavailable:/u.test(current.message)) return true
     if (current instanceof Error && /^Packaged Host WebSocket (?:failed to open|timed out): /u.test(current.message)) return true
     if (typeof current === 'object' && ['UND_ERR_SOCKET', 'ECONNRESET', 'ECONNREFUSED'].includes(current.code)) return true
   }
@@ -564,7 +601,7 @@ async function verifyPluginInventory(url) {
   }
   const entries = envelope.result.value.entries
   const expected = [
-    'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mcp',
+    'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
     'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat',
   ].map(name => `@zerowallscience/plugin-${name}`)
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
@@ -572,6 +609,33 @@ async function verifyPluginInventory(url) {
   if (missing.length > 0) throw new Error(`Packaged Host plugin inventory is missing: ${missing.join(', ')}`)
   const inactive = expected.filter(name => byModule.get(name)?.enabled !== true || byModule.get(name)?.fiberPhase !== 'active')
   if (inactive.length > 0) throw new Error(`Packaged Host ZeroWall plugins are not active: ${inactive.map(name => `${name}=${JSON.stringify(byModule.get(name))}`).join('; ')}`)
+}
+
+async function verifyMineruStatus(url) {
+  const rpcId = randomUUID()
+  const response = await fetch(authUrl(new URL(url), '/api/zerowallMineru.getConfigStatus'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      type: 'client-request',
+      rpcId,
+      method: 'zerowallMineru/getConfigStatus',
+      payload: { args: {} },
+    }),
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!response.ok) throw new Error(`Packaged Host MinerU status returned HTTP ${response.status}.`)
+  const envelope = await response.json()
+  const value = envelope?.result?.value
+  if (envelope?.rpcId !== rpcId || envelope?.result?.ok !== true || value?.available !== true) {
+    throw new Error(`Packaged Host MinerU status is unavailable: ${JSON.stringify(envelope)}`)
+  }
+  const expectedTools = ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task']
+  const missingTools = expectedTools.filter(tool => !value.registeredTools?.includes(tool))
+  if (missingTools.length > 0) throw new Error(`Packaged Host MinerU tools are missing: ${missingTools.join(', ')}`)
+  if (value.tokenConfigured !== false || value.api !== 'local') {
+    throw new Error(`Fresh packaged Host must select local extraction without a MinerU Token: ${JSON.stringify(value)}`)
+  }
 }
 
 async function verifyWebBootManifest(url) {
@@ -603,6 +667,7 @@ async function verifyWebBootManifest(url) {
     '@zerowallscience/plugin-account',
     '@zerowallscience/plugin-images',
     '@zerowallscience/plugin-image-dup',
+    '@zerowallscience/plugin-mineru',
     '@zerowallscience/plugin-mcp',
     '@zerowallscience/plugin-skills',
     '@zerowallscience/plugin-reviewer',
@@ -685,6 +750,7 @@ async function verifyDesktopStartup() {
       '@deepseek-ai/dsh-client-ui-layout', '@zerowallscience/plugin-base',
       '@zerowallscience/plugin-projects', '@zerowallscience/plugin-account', '@zerowallscience/plugin-images',
       '@zerowallscience/plugin-image-dup',
+      '@zerowallscience/plugin-mineru',
       '@zerowallscience/plugin-mcp', '@zerowallscience/plugin-skills', '@zerowallscience/plugin-reviewer',
       '@zerowallscience/plugin-research', '@zerowallscience/plugin-presentations', '@zerowallscience/plugin-wechat',
     ]) {

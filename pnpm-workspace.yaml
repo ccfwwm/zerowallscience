@@ -53,9 +53,8 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - '@earendil-works/pi-ai@0.84.2'
   - dsh-better-sidebar@0.16.1
-  - dsh-dream-skin@0.4.14
+  - dsh-dream-skin@8.30.1
 
 patchedDependencies:
   '@huanlin/dsh-plugin-better-sidebar-plugin-office@0.1.2': patches/@huanlin__dsh-plugin-better-sidebar-plugin-office@0.1.2.patch
   dsh-better-sidebar@0.16.1: patches/dsh-better-sidebar@0.16.1.patch
-  dsh-dream-skin@0.4.14: patches/dsh-dream-skin@0.4.14.patch

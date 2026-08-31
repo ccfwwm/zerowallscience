@@ -19,9 +19,9 @@ describe('uploaded file preparation', () => {
     try {
       const data = Buffer.from('alpha\nbeta\ngamma', 'utf8').toString('base64')
       const prepared = await prepareUploadedFile({ name: 'notes.txt', mediaType: 'text/plain', data })
-      expect(prepared).toMatchObject({ name: 'notes.txt', parser: 'text', status: 'parsed', textChars: 16 })
+      expect(prepared).toMatchObject({ name: 'notes.txt', storageStatus: 'stored', bytes: 16 })
       expect(prepared.sha256).toMatch(/^[a-f0-9]{64}$/u)
-      expect(prepared.preview).toBe('alpha\nbeta\ngamma')
+      expect(prepared).not.toHaveProperty('preview')
       const first = await readUploadedFile(prepared.attachmentId, 0, 6)
       expect(first.text).toBe('alpha\n')
       expect(first.hasMore).toBe(true)
@@ -41,9 +41,9 @@ describe('uploaded file preparation', () => {
     process.env.DSH_HOME = root
     try {
     await expect(prepareUploadedFile({ name: 'empty.txt', data: '' })).rejects.toThrow('empty')
-      await expect(prepareUploadedFile({ name: 'broken.json', data: Buffer.from('{').toString('base64') })).resolves.toMatchObject({ parser: 'text-auto', status: 'parsed' })
+      await expect(prepareUploadedFile({ name: 'broken.json', data: Buffer.from('{').toString('base64') })).resolves.toMatchObject({ storageStatus: 'stored' })
       const generic = await prepareUploadedFile({ name: 'sample.custom', data: Buffer.from([0, 1, 2, 255]).toString('base64') })
-      expect(generic).toMatchObject({ parser: 'raw', status: 'stored', preview: '', textChars: 0 })
+      expect(generic).toMatchObject({ storageStatus: 'stored', bytes: 4 })
       const workspace = await mkdtemp(join(tmpdir(), 'zerowall-files-workspace-'))
       roots.push(workspace)
       const materialized = await materializeUploadedFile(generic.attachmentId, workspace)
@@ -55,7 +55,7 @@ describe('uploaded file preparation', () => {
     }
   })
 
-  it('extracts text from a real PDF payload using the bundled PDF.js runtime', async () => {
+  it('stores a PDF immediately and extracts it only on first read', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-files-pdf-'))
     roots.push(root)
     const previous = process.env.DSH_HOME
@@ -69,8 +69,9 @@ describe('uploaded file preparation', () => {
         mediaType: 'application/pdf',
         data: Buffer.from(await document.save()).toString('base64'),
       })
-      expect(prepared).toMatchObject({ parser: 'pdfjs', status: 'parsed', pageCount: 1 })
-      expect(prepared.preview).toContain('PDF upload extraction works')
+      expect(prepared).toMatchObject({ storageStatus: 'stored', mediaType: 'application/pdf' })
+      expect(prepared).not.toHaveProperty('parser')
+      await expect(readUploadedFile(prepared.attachmentId)).resolves.toMatchObject({ text: expect.stringContaining('PDF upload extraction works') })
     } finally {
       if (previous === undefined) delete process.env.DSH_HOME
       else process.env.DSH_HOME = previous

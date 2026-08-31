@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-reviewer",
-  "version": "4.3.11",
+  "version": "4.3.12",
   "description": "ZeroWall Science reviewer domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -129,7 +129,7 @@
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
     "dsh-better-sidebar": "0.16.1",
-    "dsh-dream-skin": "0.4.14",
+    "dsh-dream-skin": "8.30.1",
     "@zerowallscience/plugin-base": "workspace:^",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0",
