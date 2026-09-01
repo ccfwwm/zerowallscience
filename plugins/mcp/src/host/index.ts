@@ -95,7 +95,6 @@ export class ZeroWallMcpService extends TypertRemoteService {
       // A delayed reconnect/start event must not regress a connection that
       // has already completed its initial tools/list synchronization.
       if (state === 'starting' && this.fibers.has(record.id) && this.statuses.get(record.id)?.state === 'active') return
-      if (state === 'error' && this.fibers.has(record.id) && this.registeredTools.has(record.id)) return
       if (state === 'active') this.registeredTools.set(record.id, this.toolNames(record.serverName))
       this.statuses.set(record.id, {
         state,
