@@ -234,7 +234,7 @@ function verifyArchivePolicy() {
   if (hardcodedUserPath !== undefined) throw new Error(`Hard-coded user path found in packaged capability runtime: ${hardcodedUserPath}`)
 
   const mineruHost = readArchiveFile('node_modules/@zerowallscience/plugin-mineru/lib/index.js').toString('utf8')
-  for (const tool of ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task']) {
+  for (const tool of ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task', 'sc_tenifold_knockout_validate', 'sc_tenifold_knockout_plan', 'sc_tenifold_knockout_run', 'sc_tenifold_knockout_status', 'sc_tenifold_knockout_cancel', 'sc_tenifold_knockout_collect', 'sc_tenifold_knockout_review', 'sc_tenifold_knockout_report']) {
     if (!mineruHost.includes(tool)) throw new Error(`Packaged MinerU Host is missing required tool registration: ${tool}`)
   }
   if (!mineruHost.includes('MinerU Host tool registration failed')) {
@@ -646,7 +646,7 @@ async function verifyMineruStatus(url) {
   if (envelope?.rpcId !== rpcId || envelope?.result?.ok !== true || value?.available !== true) {
     throw new Error(`Packaged Host MinerU status is unavailable: ${JSON.stringify(envelope)}`)
   }
-  const expectedTools = ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task']
+  const expectedTools = ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task', 'sc_tenifold_knockout_validate', 'sc_tenifold_knockout_plan', 'sc_tenifold_knockout_run', 'sc_tenifold_knockout_status', 'sc_tenifold_knockout_cancel', 'sc_tenifold_knockout_collect', 'sc_tenifold_knockout_review', 'sc_tenifold_knockout_report']
   const missingTools = expectedTools.filter(tool => !value.registeredTools?.includes(tool))
   if (missingTools.length > 0) throw new Error(`Packaged Host MinerU tools are missing: ${missingTools.join(', ')}`)
   if (value.tokenConfigured !== false || value.api !== 'local') {

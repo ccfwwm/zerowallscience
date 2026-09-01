@@ -147,7 +147,7 @@ const plugins = [
   { id: 'skills', client: true, remote: true, capabilities: ['skills'], permissions: ['files'], dependencies: ['base'], requiredServices: ['skills', 'systemPrompt'] },
   { id: 'reviewer', client: true, capabilities: ['reviewer'], permissions: ['approvals'], dependencies: ['base'], requiredServices: ['settings', 'subagents', 'commands', 'llm'] },
   { id: 'research', client: true, remote: true, capabilities: ['research', 'data-assets', 'artifacts'], permissions: ['files'], dependencies: ['projects', 'base'] },
-  { id: 'mineru', client: true, remote: true, capabilities: ['document-parsing', 'artifacts'], permissions: ['files', 'network', 'attachments', 'credentials'], dependencies: ['secrets', 'files', 'research', 'base'], requiredServices: ['tools', 'sessions', 'zerowallFiles', 'zerowallResearch'], optionalServices: ['webServer'] },
+  { id: 'mineru', client: true, remote: true, capabilities: ['document-parsing', 'artifacts', 'singlecell-analysis', 'analysis-workflow'], permissions: ['files', 'network', 'attachments', 'credentials', 'processes'], dependencies: ['secrets', 'files', 'research', 'base'], requiredServices: ['tools', 'sessions', 'zerowallFiles', 'zerowallResearch'], optionalServices: ['webServer', 'zerowallExecution', 'zerowallRuns'] },
   { id: 'execution', client: true, remote: true, capabilities: ['execution-contexts'], permissions: ['processes', 'files'] },
   { id: 'python', capabilities: ['python'], permissions: ['processes', 'files'], dependencies: [], requiredServices: ['tools'] },
   { id: 'runs', client: true, remote: true, capabilities: ['runs'], permissions: ['processes', 'files'], dependencies: ['execution'] },

@@ -9,6 +9,8 @@ export const inject = ['tools']
 
 interface PythonArgs { code: string; description: string; timeoutMs?: number; workdir?: string }
 interface PythonResult { exitCode: number; timedOut: boolean; stdout: string; stderr: string; python: string }
+interface RArgs { code: string; description: string; timeoutMs?: number; workdir?: string }
+interface RResult { exitCode: number; timedOut: boolean; stdout: string; stderr: string; rscript: string }
 interface CurrentRecord { root?: unknown; health?: unknown; manifest?: Manifest }
 interface Manifest {
   version?: unknown
@@ -18,6 +20,7 @@ interface Manifest {
 const MAX_OUTPUT = 1024 * 1024
 const DEFAULT_TIMEOUT = 30_000
 const MAX_TIMEOUT = 10 * 60_000
+const R_DEFAULT_TIMEOUT = 60_000
 
 function environmentRoot(): string | undefined {
   const value = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
@@ -100,6 +103,37 @@ async function runPython(args: PythonArgs, exec: { signal: AbortSignal; agent?: 
   })
 }
 
+function resolveRscript(): string {
+  const configured = process.env.ZEROWALL_RSCRIPT?.trim()
+  return configured === undefined || configured === '' ? 'Rscript' : configured
+}
+
+async function runR(args: RArgs, exec: { signal: AbortSignal; agent?: { session: { header: { cwd?: string } } } }): Promise<RResult> {
+  const timeoutMs = args.timeoutMs ?? R_DEFAULT_TIMEOUT
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > MAX_TIMEOUT) throw new Error(`Invalid timeoutMs: expected 100-${MAX_TIMEOUT}.`)
+  const sessionCwd = exec.agent?.session.header.cwd
+  if (!sessionCwd) throw new Error('R workdir requires an active session workspace.')
+  const workspaceRoot = resolve(sessionCwd)
+  const workdir = args.workdir === undefined || args.workdir.trim() === '' ? workspaceRoot : resolve(workspaceRoot, args.workdir)
+  const workdirRelative = relative(workspaceRoot, workdir)
+  if (workdirRelative === '..' || workdirRelative.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(workdirRelative)) throw new Error('R workdir must remain inside the current session workspace.')
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  exec.signal.addEventListener('abort', abort, { once: true })
+  const rscript = resolveRscript()
+  return await new Promise<RResult>((resolveResult, reject) => {
+    const child = spawn(rscript, ['--vanilla', '-e', args.code], { cwd: workdir, windowsHide: true, env: { ...process.env, R_DEFAULT_PACKAGES: 'datasets,utils,grDevices,graphics,stats,methods,base' }, stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''; let stderr = ''; let timedOut = false; let settled = false
+    const finish = (fn: () => void) => { if (settled) return; settled = true; clearTimeout(timer); exec.signal.removeEventListener('abort', abort); fn() }
+    const timer = setTimeout(() => { timedOut = true; child.kill() }, timeoutMs)
+    controller.signal.addEventListener('abort', () => { child.kill() }, { once: true })
+    child.stdout.on('data', chunk => { stdout = bounded(stdout + String(chunk)) })
+    child.stderr.on('data', chunk => { stderr = bounded(stderr + String(chunk)) })
+    child.once('error', error => finish(() => reject(error)))
+    child.once('exit', (exitCode, signal) => finish(() => resolveResult({ exitCode: exitCode ?? -1, timedOut, stdout, stderr, rscript })))
+  })
+}
+
 export function apply(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'python',
@@ -124,6 +158,31 @@ export function apply(ctx: Context): void {
       const input = args as PythonArgs
       if (input.code.trim() === '' || input.description.trim() === '') throw new Error('Python code and description are required.')
       return await runPython(input, exec)
+    },
+  }))
+  ctx.tools.register(defineTool({
+    name: 'r',
+    description: 'Execute short R code in the configured ZeroWall R environment. Use for package probes and small analysis steps; use a managed Run or SSH context for long single-cell jobs. The current session workspace is the only allowed working directory.',
+    parameters: {
+      code: { type: 'string', required: true, description: 'R source code to execute.' },
+      description: { type: 'string', required: true, description: 'Short explanation of the computation.' },
+      timeoutMs: { type: 'integer', description: 'Execution timeout in milliseconds, from 100 to 600000.' },
+      workdir: { type: 'string', description: 'Optional relative path inside the session workspace.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          exitCode: { type: 'integer', required: true }, timedOut: { type: 'boolean', required: true },
+          stdout: { type: 'string', required: true }, stderr: { type: 'string', required: true }, rscript: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: `R exit=${String(value.exitCode)}${value.timedOut ? ' (timed out)' : ''}\nstdout:\n${value.stdout}\nstderr:\n${value.stderr}` }],
+    },
+    async execute(args, exec) {
+      const input = args as RArgs
+      if (input.code.trim() === '' || input.description.trim() === '') throw new Error('R code and description are required.')
+      return await runR(input, exec)
     },
   }))
 }

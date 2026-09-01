@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-account",
-  "version": "4.3.15",
+  "version": "4.3.16",
   "dsh": {
     "min": "0.1.2-alpha.1",
     "max": "0.1.2-alpha.1"

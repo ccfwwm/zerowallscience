@@ -35,6 +35,17 @@ describe('MinerU safety and mode selection', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
+  it('keeps local mode when no token value is supplied', async () => {
+    const previous = process.env.MINERU_API_TOKEN
+    process.env.MINERU_API_TOKEN = 'must-not-be-read'
+    try {
+      expect(apiFor('auto', undefined)).toBe('local')
+    } finally {
+      if (previous === undefined) delete process.env.MINERU_API_TOKEN
+      else process.env.MINERU_API_TOKEN = previous
+    }
+  })
+
   it('extracts ordinary result files and preserves bytes', async () => {
     const zip = new JSZip()
     zip.file('full.md', '# result')

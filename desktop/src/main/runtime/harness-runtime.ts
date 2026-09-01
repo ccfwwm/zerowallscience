@@ -174,7 +174,7 @@ export class HarnessRuntime {
     child.once('exit', (code, signal) => {
       if (this.child !== child) return
       this.child = undefined
-      this.fail(`Harness stopped unexpectedly (${signal ?? `exit ${String(code)}`}).`)
+      this.fail(`Harness stopped unexpectedly (${signal ?? `exit ${String(code)}`}). Startup details: ${this.options.logPath}`)
     })
 
     const ready = await waitUntilReady(url, () => this.child === child && child.exitCode === null, process.platform === 'win32' ? 120_000 : 45_000)

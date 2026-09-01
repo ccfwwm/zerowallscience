@@ -1,0 +1,4 @@
+interface:
+  display_name: "scTenifoldKnk Virtual Knockout"
+  short_description: "Auditable single-cell virtual gene knockout workflow"
+  default_prompt: "Use $sc-tenifold-knockout to validate single-cell raw counts, plan a non-tumor virtual knockout, run scTenifoldKnk through the configured R environment, and produce traceable results and review artifacts."

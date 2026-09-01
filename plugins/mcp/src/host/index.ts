@@ -92,8 +92,15 @@ export class ZeroWallMcpService extends TypertRemoteService {
           missingEnvironmentVariables: [],
         })
       }
+    }).catch((error: unknown) => {
+      // Existing user records can outlive several desktop releases. A failed
+      // default migration must remain an MCP-domain error instead of becoming
+      // an unhandled startup rejection that terminates the whole Host.
+      ctx.logger.warn(`zerowall-mcp: default connection migration failed: ${redactError(error)}`)
     })
-    this.operation = this.recordsReady.then(() => this.reconcileAll())
+    this.operation = this.recordsReady.then(() => this.reconcileAll()).catch((error: unknown) => {
+      ctx.logger.warn(`zerowall-mcp: initial connection reconciliation failed: ${redactError(error)}`)
+    })
     // dsh-mcp-client publishes lifecycle events on the root context so that
     // the service can observe clients created in nested Cordis fibers.
     const applyStatus = (serverName: string, state: 'starting' | 'active' | 'error', error?: string): void => {

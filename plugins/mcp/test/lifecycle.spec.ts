@@ -23,6 +23,27 @@ afterEach(() => {
 })
 
 describe('ZeroWall MCP Cordis lifecycle', () => {
+  it('contains a failed default migration instead of terminating Host startup', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-contained-startup-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.DSH_HOME = join(root, 'blocked-harness-home')
+    writeFileSync(process.env.DSH_HOME, 'not a directory')
+
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(ZeroWallMcpService)
+
+      await expect(ctx.zerowallMcp.list()).resolves.toEqual(expect.any(Array))
+      expect(ctx.fiber.state).toBe(2)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('migrates only the retired R Platform endpoint to port 8099', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-r-platform-'))
     roots.push(root)
