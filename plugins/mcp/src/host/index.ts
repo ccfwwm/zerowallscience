@@ -64,6 +64,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
   static inject = ['zerowallProjects', 'tools']
 
   private readonly fibers = new Map<string, Fiber>()
+  /** Tools observed after the corresponding Fiber completed its initial sync. */
+  private readonly registeredTools = new Map<string, string[]>()
   private readonly statuses = new Map<string, RuntimeStatus>()
   private readonly reconcileVersions = new Map<string, number>()
   private readonly recordsReady: Promise<void>
@@ -89,17 +91,23 @@ export class ZeroWallMcpService extends TypertRemoteService {
     const applyStatus = (serverName: string, state: 'starting' | 'active' | 'error', error?: string): void => {
       const record = this.projects().listMcpServers().find(candidate => candidate.serverName === serverName)
       if (record === undefined || !record.enabled) return
+      // dsh-mcp-client broadcasts on both the nested Fiber and root context.
+      // A delayed reconnect/start event must not regress a connection that
+      // has already completed its initial tools/list synchronization.
+      if (state === 'starting' && this.fibers.has(record.id) && this.statuses.get(record.id)?.state === 'active') return
+      if (state === 'error' && this.fibers.has(record.id) && this.registeredTools.has(record.id)) return
+      if (state === 'active') this.registeredTools.set(record.id, this.toolNames(record.serverName))
       this.statuses.set(record.id, {
         state,
         error: error === undefined ? '' : redactError(error),
         missingEnvironmentVariables: [],
       })
     }
+    // The MCP client emits on both paths. Listening at root is sufficient for
+    // clients created in nested Fibers and avoids duplicate/late transitions.
     const disposeRootStatusListener = ctx.root.on('mcp-client/status', applyStatus, { global: true })
-    const disposeLocalStatusListener = ctx.on('mcp-client/status', applyStatus, { global: true })
     ctx.effect(() => () => {
       disposeRootStatusListener()
-      disposeLocalStatusListener()
     }, 'zerowall-mcp: lifecycle status listener')
     this.startEnvironmentRefresh()
     ctx.effect(() => () => {
@@ -331,6 +339,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
         return
       }
       this.fibers.set(record.id, fiber)
+      this.registeredTools.set(record.id, this.toolNames(record.serverName))
       if (previous !== undefined && previous !== fiber) await previous.dispose()
       // The fiber resolves after the initial transport handshake and
       // tools/list synchronization.  The lifecycle event normally arrives on
@@ -358,7 +367,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   private dto(record: McpServerRecord): McpServerDto {
     const status = this.statuses.get(record.id) ?? { state: 'disabled' as const, error: '', missingEnvironmentVariables: [] }
-    const tools = this.toolNames(record.serverName)
+    // Prefer the snapshot captured for this connection generation. Reading the
+    // global registry during a concurrent refresh can otherwise expose a
+    // different server's tools in this DTO.
+    const tools = [...(this.registeredTools.get(record.id) ?? this.toolNames(record.serverName))]
     return {
       ...record,
       runtimeState: status.state,
@@ -380,6 +392,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     const fiber = this.fibers.get(id)
     if (fiber === undefined) return
     this.fibers.delete(id)
+    this.registeredTools.delete(id)
     await fiber.dispose()
   }
 
