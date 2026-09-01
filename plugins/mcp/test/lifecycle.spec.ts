@@ -16,6 +16,7 @@ const roots: string[] = []
 afterEach(() => {
   delete process.env.ZEROWALL_RESEARCH_DB
   delete process.env.ZEROWALL_DISABLE_DEFAULT_MCP
+  delete process.env.R_PLATFORM_MCP_AUTHORIZATION
   delete process.env.DSH_HOME
   delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
   delete process.env.ZEROWALL_MCP_ENVIRONMENT_POLL_MS

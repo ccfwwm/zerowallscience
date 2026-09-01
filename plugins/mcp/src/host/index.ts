@@ -1,10 +1,13 @@
 import type { Context, Fiber } from '@deepseek-ai/cordis'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { lstat, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { homedir } from 'node:os'
+import { ToolCallId, type ContentBlock } from '@deepseek-ai/dsh-llm'
+import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
 import type {
   CreateMcpServerInput,
   McpReconnectPolicy,
@@ -27,6 +30,7 @@ export const RDATALINUX_R_MCP_URL = 'http://103.217.185.141:8099/r-platform/mcp'
 export const RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL = 'zerowall.mcp.rdatalinux_authorization'
 export const RDATALINUX_R_MCP_AUTHORIZATION_ENV = 'R_PLATFORM_MCP_AUTHORIZATION'
 const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 30_000
+const RDATALINUX_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
 
 type RuntimeMcpConfig = {
   serverName: string
@@ -84,6 +88,55 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallMcp')
+    const service = this
+    ctx.tools.register(defineTool({
+      name: 'r_upload_workspace_file',
+      description: 'Upload a file from the current ZeroWall session workspace to an rdatalinux R project without putting base64 in the conversation. local_path must be a regular file inside the session workspace; remote_path is relative to the rdatalinux project. Requires confirm=true.',
+      parameters: {
+        project_id: { type: 'string', required: true },
+        local_path: { type: 'string', required: true },
+        remote_path: { type: 'string', required: true },
+        confirm: { type: 'boolean', required: true },
+      },
+      output: {
+        schema: { type: 'object', additionalProperties: true },
+        render: (_args: unknown, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }],
+      },
+      async execute(args: { project_id: string; local_path: string; remote_path: string; confirm: boolean }, exec: any) {
+        if (args.confirm !== true) throw new Error('Uploading a workspace file requires confirm=true.')
+        const sessionCwd = exec.agent?.session.header.cwd
+        if (typeof sessionCwd !== 'string' || sessionCwd.trim() === '') throw new Error('The current session has no workspace directory.')
+        const workspace = await realpath(resolve(sessionCwd))
+        const requested = String(args.local_path ?? '').trim()
+        if (requested === '' || isAbsolute(requested)) throw new Error('local_path must be a relative path inside the current workspace.')
+        const source = resolve(workspace, requested)
+        const containment = relative(workspace, source)
+        if (containment === '..' || containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(containment)) throw new Error('local_path escapes the current workspace.')
+        const info = await lstat(source)
+        if (!info.isFile() || info.isSymbolicLink()) throw new Error('local_path must be a regular, non-symbolic-link file.')
+        const resolvedSource = await realpath(source)
+        if (resolvedSource !== source) throw new Error('local_path must not resolve through a symbolic link.')
+        const size = (await stat(source)).size
+        if (size < 1 || size > RDATALINUX_UPLOAD_MAX_BYTES) throw new Error('The local file must be between 1 byte and 100 MiB.')
+        const bytes = await readFile(source)
+        const sha256 = createHash('sha256').update(bytes).digest('hex')
+        const remoteName = 'mcp__rdatalinux_r_platform__r_upload_file'
+        if (service.ctx.tools.get(remoteName) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before uploading.')
+        const nested = await service.ctx.tools.execute({
+          signal: exec.signal,
+          callId: ToolCallId(`r-upload-workspace-${Date.now()}`),
+          name: remoteName,
+          arguments: { project_id: args.project_id, path: args.remote_path, data_base64: bytes.toString('base64'), confirm: true },
+          parent: exec.token,
+          agent: exec.agent,
+        })
+        if (nested.isError) {
+          const message = nested.content.map((block: ContentBlock) => block.type === 'text' ? block.text : '').filter(Boolean).join('\n')
+          throw new Error(message || 'rdatalinux R MCP upload failed.')
+        }
+        return { projectId: args.project_id, localPath: requested, remotePath: args.remote_path, name: basename(source), bytes: bytes.length, sha256, remote: nested.value as JsonValue }
+      },
+    }) as any)
     this.recordsReady = this.seedBundledServers().then(() => {
       for (const record of this.projects().listMcpServers()) {
         this.statuses.set(record.id, {
