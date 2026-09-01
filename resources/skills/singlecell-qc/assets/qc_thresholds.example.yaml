@@ -1,0 +1,32 @@
+# Example per-sample QC thresholds — copy to project utils/qc_thresholds.yaml
+# Used by scripts/01-qc/03-filter_cells.*
+
+default:
+  min_genes: 200
+  max_genes: 6000
+  min_UMIs: 400
+  max_UMIs: 100000
+  max_mito_frac: 0.20
+  max_hbb_score: 0.05
+  max_ambient_frac: 0.25
+  remove_predicted_doublet: true
+
+# Optional per-sample overrides
+samples:
+  SAMPLE_A:
+    max_mito_frac: 0.25
+  SAMPLE_B:
+    min_genes: 300
+
+# MAD mode (alternative to fixed cutoffs)
+mad:
+  enabled: false
+  nmads: 3
+  metrics:
+    mito_frac: upper
+    n_genes: both
+    n_UMIs: lower
+  caps:
+    max_mito_frac: 0.25
+    max_genes: 8000
+    min_UMIs: 300

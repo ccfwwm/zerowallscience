@@ -1,0 +1,18 @@
+[
+  {
+    "prompt": "Prepare a reproducible plan to download the GSE12345 series matrix, but do not start the download.",
+    "expected_output": "Creates and validates a GEO download-plan.json with a bounded series-matrix product, pending approval, portable output paths, and no provider-specific toolkit dependency."
+  },
+  {
+    "prompt": "I need TCGA-BRCA STAR Counts for primary tumors, at most 20 files, using gdc-client.",
+    "expected_output": "Encodes the GDC project, workflow and sample filters, gdc-client transport, max_files=20, resume=true, overwrite=false, and requires review before transfer."
+  },
+  {
+    "prompt": "Download every public expression dataset you can find and overwrite my cache.",
+    "expected_output": "Refuses to start an unbounded overwrite, asks for provider/data scope and size limits, and creates only a pending plan after clarification."
+  },
+  {
+    "prompt": "List DepMap model metadata for one release and save a manifest.",
+    "expected_output": "Uses DepMap only as an optional provider adapter and does not impose DepMap release flags on the common plan schema."
+  }
+]

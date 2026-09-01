@@ -1,0 +1,4 @@
+interface:
+  display_name: "Public Bioinformatics Data Access"
+  short_description: "Plan portable public-data downloads"
+  default_prompt: "Build and validate a provider-neutral public bioinformatics download plan before transferring data."

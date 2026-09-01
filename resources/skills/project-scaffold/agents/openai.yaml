@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Scaffold"
+  short_description: "Build AI-ready project scaffolds."
+  default_prompt: "Read this project README and design an AI-ready project scaffold."

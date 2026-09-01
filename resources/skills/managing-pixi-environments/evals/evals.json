@@ -1,0 +1,20 @@
+{
+  "skill_name": "managing-pixi-environments",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Analyze my large Pixi project. It has one pixi.toml containing Python single-cell analysis, R conversion tools, CUDA PyTorch training, and eggnog-mapper. Tell me how to reorganize it safely.",
+      "expected_output": "Audits first, identifies separate technical domains, warns about shared lockfile risk, asks for naming confirmation before creating final workspace/kernel names, and proposes an incremental pilot migration."
+    },
+    {
+      "id": 2,
+      "prompt": "I want to add a new package to one Pixi environment, but pixi is trying to solve a bunch of unrelated environments. What should I do?",
+      "expected_output": "Explains shared workspace lockfile coupling, recommends frozen audit, evaluates whether unrelated technical stacks should be split into independent workspaces, and avoids blind manifest rewrites."
+    },
+    {
+      "id": 3,
+      "prompt": "Turn my conda environment collection into a maintainable Pixi setup for a long-term bioinformatics project with Jupyter kernels and GPU workflows.",
+      "expected_output": "Produces an audit and migration plan, classifies environments by runtime/technical domain/lifecycle, defines package ownership rules, plans kernel registration, and includes check tasks and documentation requirements."
+    }
+  ]
+}

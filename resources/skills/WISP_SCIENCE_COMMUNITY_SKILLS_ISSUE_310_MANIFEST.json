@@ -1,0 +1,252 @@
+{
+  "issue": 310,
+  "skills": [
+    "project-scaffold",
+    "bioinfor-public-data-access",
+    "code-organization",
+    "pixi-environment-builder",
+    "managing-pixi-environments",
+    "bioinfor-literature-search-digest",
+    "bioinfor-figure-export",
+    "sc-upstream",
+    "singlecell-qc",
+    "singlecell-milor"
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 1090,
+      "sha256": "a863fca715c2d044cd20bb695c46844f0037f26bab8a96b4995c36d0348a788e"
+    },
+    {
+      "path": "skills/bioinfor-figure-export/references/figure-intent.md",
+      "bytes": 2238,
+      "sha256": "3e638f6731a45a6f8d6f33d45372818c6cf2ed85d01ca38e8fa524e7ee9e2ab3"
+    },
+    {
+      "path": "skills/bioinfor-figure-export/references/qa-before-save.md",
+      "bytes": 2091,
+      "sha256": "202fbc98f0b1196324d7de956edb876306f4c19c88c1636b1a2308fc7cce9363"
+    },
+    {
+      "path": "skills/bioinfor-figure-export/SKILL.md",
+      "bytes": 12381,
+      "sha256": "fd2117752979f98d21133f76b8d972f316de806b61852cd4a28246a23883c397"
+    },
+    {
+      "path": "skills/bioinfor-literature-search-digest/SKILL.md",
+      "bytes": 3566,
+      "sha256": "d53efd418c3515dba67de03f623673b3d4a7e621beee0e61b0c102ea7f8d676a"
+    },
+    {
+      "path": "skills/bioinfor-public-data-access/agents/openai.yaml",
+      "bytes": 246,
+      "sha256": "9515aaf3532328bfff2fa152b795c76a45e1afc8bebd7793d7608100e66ef706"
+    },
+    {
+      "path": "skills/bioinfor-public-data-access/evals/evals.json",
+      "bytes": 1136,
+      "sha256": "f0a51987f63a97aa65fcf8e876257b2ba7fe87a8bd3c8f3f348761ac4ffa6ee5"
+    },
+    {
+      "path": "skills/bioinfor-public-data-access/kernel.py",
+      "bytes": 2297,
+      "sha256": "1e2665941b284d5217cf8f678637f23026033023ca4d1a994c4d3f2950b48f3d"
+    },
+    {
+      "path": "skills/bioinfor-public-data-access/references/download-plan-schema.md",
+      "bytes": 2212,
+      "sha256": "257988685bf33715368488e1142fc3181943cdcbb0142c62cfbfe89ec68a305b"
+    },
+    {
+      "path": "skills/bioinfor-public-data-access/references/provider-routing.md",
+      "bytes": 2451,
+      "sha256": "a215db031f158ecc77a50501e7b6f6f25efd460f03d654be496285e45acb00f3"
+    },
+    {
+      "path": "skills/bioinfor-public-data-access/scripts/public_data_plan.py",
+      "bytes": 16539,
+      "sha256": "c5a37b07d531b61959a47d59f1c4a23900dc9041a90a74c8335596ee12c7a502"
+    },
+    {
+      "path": "skills/bioinfor-public-data-access/SKILL.md",
+      "bytes": 6027,
+      "sha256": "267633e3f0226cfb2819f80abd80720365069d82c879e1e1b624a2b617dd8e87"
+    },
+    {
+      "path": "skills/code-organization/agents/openai.yaml",
+      "bytes": 204,
+      "sha256": "6c5ed137e062af08a2a78228e0218bb7c72a7917b7a7448eb16c5eea94164467"
+    },
+    {
+      "path": "skills/code-organization/references/output-binding.md",
+      "bytes": 2126,
+      "sha256": "ab3fae672cb6dc7d783316ee8bf485b304a00807efd42a01ff0f14111d3d975b"
+    },
+    {
+      "path": "skills/code-organization/references/script-organization.md",
+      "bytes": 5035,
+      "sha256": "527a5e39d02e9bf6b0dc6b558d8272ebcb6f278bf35286cca2ebcbf6f455d53e"
+    },
+    {
+      "path": "skills/code-organization/references/source-organization.md",
+      "bytes": 1512,
+      "sha256": "573e9a98407c985239a611a7a384d3d13710cd507d2096f729d694b34a108f04"
+    },
+    {
+      "path": "skills/code-organization/references/workflow-lineage.md",
+      "bytes": 1549,
+      "sha256": "981579edf3c732b689ba691f6a619685e9d2d4b7434bd06b13bb342abdbbef2e"
+    },
+    {
+      "path": "skills/code-organization/SKILL.md",
+      "bytes": 8198,
+      "sha256": "17e7705712d612a836feb0b61f4424fe8178a38d625daa7a00f99c8f387aeae4"
+    },
+    {
+      "path": "skills/managing-pixi-environments/evals/evals.json",
+      "bytes": 1401,
+      "sha256": "a5915e1f2353871165c3240abe18b12b64bdcdf0f9319efa47e9cad2dde4e86a"
+    },
+    {
+      "path": "skills/managing-pixi-environments/SKILL.md",
+      "bytes": 13234,
+      "sha256": "409b992f2cc0f60842dc65c44f8e5ea9fd318859654398b0ad55b9c75f8759d4"
+    },
+    {
+      "path": "skills/pixi-environment-builder/SKILL.md",
+      "bytes": 15476,
+      "sha256": "99a979acac2f7988a52a022ec05c919ed3600431a2d101b2c9d7057466461787"
+    },
+    {
+      "path": "skills/project-scaffold/agents/openai.yaml",
+      "bytes": 195,
+      "sha256": "4e2ec5355081f973a2ebb34945cc02f39aa1dbcc24bd453d18d9cd96a65378b2"
+    },
+    {
+      "path": "skills/project-scaffold/references/ai-context-system.md",
+      "bytes": 2648,
+      "sha256": "4e414f667de667d580a5b4234918405b08d4a5a9c835ad7d06c16c62d9db9fd5"
+    },
+    {
+      "path": "skills/project-scaffold/references/environment-entrypoint.md",
+      "bytes": 1512,
+      "sha256": "0afcd4ba505359ca0f40b24a5e8248ce17e55428d3710724992179303d302b46"
+    },
+    {
+      "path": "skills/project-scaffold/references/git-data-boundary.md",
+      "bytes": 1418,
+      "sha256": "58325f807478c0f7651db44a651186dd82bd2bb9be8f6cd3ac2410aff4675634"
+    },
+    {
+      "path": "skills/project-scaffold/references/project-docs.md",
+      "bytes": 1560,
+      "sha256": "07b259d4f7f5ef8b7474f76bf04b836441fc17c0c0cdcd1e3d196fd0d5705ebf"
+    },
+    {
+      "path": "skills/project-scaffold/SKILL.md",
+      "bytes": 4798,
+      "sha256": "59e98594ae279645b1de1ab50579f1cb4bc666f8b43efee0a085ecd108614107"
+    },
+    {
+      "path": "skills/sc-upstream/evals/evals.json",
+      "bytes": 1453,
+      "sha256": "8a9caa1a90a433a260350f34ae6e44387dc684c92561a0b3c7b4c1fefc4b2741"
+    },
+    {
+      "path": "skills/sc-upstream/SKILL.md",
+      "bytes": 10039,
+      "sha256": "d40f72c01c8279e13b1e2ccf6288ca65d56b047da020a0c64eb95d723f9c7547"
+    },
+    {
+      "path": "skills/singlecell-milor/scripts/generate_milor_r_script.py",
+      "bytes": 7301,
+      "sha256": "55b1da79237c2f3a110bdbfc107b0297f2f3a1a16104dd98374260efe6866e07"
+    },
+    {
+      "path": "skills/singlecell-milor/scripts/inspect_h5ad_for_milor.py",
+      "bytes": 5136,
+      "sha256": "f753e61c553b30b0427d031caa0434a06bd4fde9a550d78bb9a412a63deb31b2"
+    },
+    {
+      "path": "skills/singlecell-milor/SKILL.md",
+      "bytes": 4598,
+      "sha256": "8679d1b6ab1efe3dffb4aee4b485e762313c5e55cef579b80a740ff62f6de242"
+    },
+    {
+      "path": "skills/singlecell-milor/templates/milor_readable_template.R",
+      "bytes": 9700,
+      "sha256": "b962e08f58167504ba6dc923a6515cba39f1f7f2acf71fa3f311fe7b63a72c5f"
+    },
+    {
+      "path": "skills/singlecell-qc/assets/gene_sets/chrY_genes_human.txt",
+      "bytes": 98,
+      "sha256": "448dedf0e536d1f7d90a8a539a5abfb379d017fd6bfa8b6c1c58e03e9653f084"
+    },
+    {
+      "path": "skills/singlecell-qc/assets/gene_sets/hbb_genes_human.txt",
+      "bytes": 56,
+      "sha256": "a9ceff45e535b90d03a52782cf7f938dfc578fc51dafd72a18db893c870b2a15"
+    },
+    {
+      "path": "skills/singlecell-qc/assets/gene_sets/hbb_genes_mouse.txt",
+      "bytes": 57,
+      "sha256": "cbd35cb13a15368638d6baa3c8619feddfee7f6e67914cc1ae1c7fa5707e547c"
+    },
+    {
+      "path": "skills/singlecell-qc/assets/qc_thresholds.example.yaml",
+      "bytes": 659,
+      "sha256": "96ee41ce1200cf6e914789480de34d6f5bbf66a7a4f12bcfaa926a165752f3dc"
+    },
+    {
+      "path": "skills/singlecell-qc/references/filtering-strategies.md",
+      "bytes": 4077,
+      "sha256": "878b9e670e4dc6c61e382a6d089405b042eb385db48f192b1f2495d0f4a7a38f"
+    },
+    {
+      "path": "skills/singlecell-qc/references/human-in-the-loop.md",
+      "bytes": 5371,
+      "sha256": "f243a5f70b34b463702038c7f2604ece3998289872064c912a178f812f4ab164"
+    },
+    {
+      "path": "skills/singlecell-qc/references/metrics-catalog.md",
+      "bytes": 2963,
+      "sha256": "2b4297e7e9010ac2f5c7a56000ee0034d8182104ca0c07cc4409e81e1bb2c281"
+    },
+    {
+      "path": "skills/singlecell-qc/references/project-layout.md",
+      "bytes": 2384,
+      "sha256": "61462f3f7731e3823bb14d0d26a009e761b3e85ae7ade056f3375f4791bd8351"
+    },
+    {
+      "path": "skills/singlecell-qc/references/python-scanpy.md",
+      "bytes": 3639,
+      "sha256": "1f4c73f63c5fc069ce955bbda65bdae6d8b9523670185209e036d674b43af63b"
+    },
+    {
+      "path": "skills/singlecell-qc/references/r-seurat.md",
+      "bytes": 4600,
+      "sha256": "211aee5b2d40a0395e217f712aa42dad744fe4d082c263359108a636a6d005bd"
+    },
+    {
+      "path": "skills/singlecell-qc/scripts/calculate_metrics.py",
+      "bytes": 6361,
+      "sha256": "b9b64cf3af3f690b6018376a6b931f4657952b25700c0d0076d95a6279c8daa4"
+    },
+    {
+      "path": "skills/singlecell-qc/scripts/calculate_metrics.R",
+      "bytes": 6149,
+      "sha256": "4b054b1a5bad90881fe48ea63dcf910979de3188a5bb617a77fb60be42edcce2"
+    },
+    {
+      "path": "skills/singlecell-qc/scripts/inspect_qc_metadata.py",
+      "bytes": 2291,
+      "sha256": "70a418789b7d2849b5a76406f5568c6125a324eb1403ea336425148b90d7dda4"
+    },
+    {
+      "path": "skills/singlecell-qc/SKILL.md",
+      "bytes": 6642,
+      "sha256": "f45316fef89750a90b820666dc42274e210676cc8e075440e128f5bf2e6e7029"
+    }
+  ]
+}

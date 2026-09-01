@@ -1,0 +1,23 @@
+{
+  "skill_name": "sc-upstream",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "在 $SC_DATA_ROOT/GSE228491_Wt_mm 里帮我用 scu 写一个只处理 GSM7122676 和 GSM7122677 的上游流程脚本，先不要跑重流程。",
+      "expected_output": "Creates or proposes dataset-local scripts/TOML using pixi run -m $SC_UPSTREAM_ROOT, filters exact target GSMs, includes manifest validation, and avoids running prefetch/fasterq/STARsolo by default.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我这里已经有 raw-data/PRJNA1139854.metadata.tsv 和几个 SRR 的 .sra，想用 sc-upstream 直接跑 rat 的 STARsolo，上游流程应该怎么写？",
+      "expected_output": "Skips fetch/download, uses metadata normalize -> convert fasterq -> prepare-starsolo-manifest -> run starsolo, chooses Rat_2024 and 10x whitelist paths, keeps all outputs under the dataset directory, and requires manifest status/chemistry/sample-count checks.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "scu 生成的 starsolo_manifest.tsv 看起来不对，fasterq 后每个 run 有 4 个 fastq，我要怎么处理？",
+      "expected_output": "Explains technical-read risk from --include-technical, tells the agent to inspect read lengths/roles and repair only metadata/starsolo_manifest.tsv when needed, without changing scu source code or blindly running STARsolo.",
+      "files": []
+    }
+  ]
+}

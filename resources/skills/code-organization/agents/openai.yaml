@@ -1,0 +1,4 @@
+interface:
+  display_name: "Code Organization"
+  short_description: "Organize code and script structure."
+  default_prompt: "Study this codebase and propose a reusable code organization structure."

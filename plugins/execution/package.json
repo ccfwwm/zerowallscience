@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-execution",
-  "version": "4.3.14",
+  "version": "4.3.15",
   "description": "ZeroWall Science execution domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
