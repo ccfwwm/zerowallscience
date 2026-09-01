@@ -24,6 +24,7 @@ export const SCIMASTER_API_KEY_CREDENTIAL = 'zerowall.mcp.scimaster_api_key'
 export const SCIMASTER_API_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/home'
 export const RDATALINUX_R_MCP_LEGACY_URL = 'http://103.217.185.141/r-platform/mcp'
 export const RDATALINUX_R_MCP_URL = 'http://103.217.185.141:8099/r-platform/mcp'
+const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 30_000
 
 type RuntimeMcpConfig = {
   serverName: string
@@ -76,6 +77,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private operation: Promise<void> = Promise.resolve()
   private environmentPoller: NodeJS.Timeout | undefined
   private environmentSignature = ''
+  private environmentRefreshInFlight = false
   private readonly secrets = new SecretBrokerClient()
 
   constructor(ctx: Context) {
@@ -98,7 +100,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       // dsh-mcp-client broadcasts on both the nested Fiber and root context.
       // A delayed reconnect/start event must not regress a connection that
       // has already completed its initial tools/list synchronization.
-      if (state === 'starting' && this.fibers.has(record.id) && this.statuses.get(record.id)?.state === 'active') return
+      if (state === 'starting' && this.fibers.has(record.id) && this.registeredTools.has(record.id)) return
       if (state === 'active') this.registeredTools.set(record.id, this.toolNames(record.serverName))
       this.statuses.set(record.id, {
         state,
@@ -124,7 +126,6 @@ export class ZeroWallMcpService extends TypertRemoteService {
   async list(): Promise<McpServerDto[]> {
     await this.recordsReady
     this.convergeReadyStatuses()
-    void this.pollEnvironment()
     return this.projects().listMcpServers().sort(compareMcpServers).map(record => this.dto(record))
   }
 
@@ -218,26 +219,34 @@ export class ZeroWallMcpService extends TypertRemoteService {
    */
   private startEnvironmentRefresh(): void {
     if (this.environmentPoller !== undefined || process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim() === '') return
-    this.environmentPoller = setInterval(() => { void this.pollEnvironment() }, 500)
-    void this.pollEnvironment()
+    // The initial reconcile already reads current.json. Record that generation
+    // as the baseline instead of immediately starting every MCP server twice.
+    this.environmentSignature = managedEnvironmentSignature()
+    const configuredInterval = Number(process.env.ZEROWALL_MCP_ENVIRONMENT_POLL_MS)
+    const interval = Number.isFinite(configuredInterval) && configuredInterval >= 100 ? configuredInterval : MCP_ENVIRONMENT_POLL_INTERVAL_MS
+    this.environmentPoller = setInterval(() => { void this.pollEnvironment() }, interval)
   }
 
   private async pollEnvironment(): Promise<void> {
+    if (this.environmentRefreshInFlight) return
     const record = managedEnvironmentRecord()
-    const signature = record === undefined
-      ? 'missing'
-      : `${record.health ?? 'unknown'}:${record.environmentVersion ?? record.version ?? 'unknown'}:${record.contentRevision ?? ''}:${record.archiveSha256?.slice(0, 12) ?? ''}:${record.root ?? ''}`
+    const signature = managedEnvironmentSignature(record)
     if (signature === this.environmentSignature) return
     this.environmentSignature = signature
     // Never tear down a healthy client because an in-progress download or a
     // transient current.json gap made the new environment unavailable. A
     // later ready/manual signature performs the safe generation swap.
     if (record?.health !== 'ready' || typeof record.root !== 'string' || record.root.trim() === '') return
-    await this.exclusive(async () => {
-      await this.reconcileAll()
-    }).catch((error) => {
+    this.environmentRefreshInFlight = true
+    try {
+      await this.exclusive(async () => {
+        await this.reconcileAll()
+      })
+    } catch (error) {
       this.ctx.logger.warn(`zerowall-mcp: managed environment refresh failed: ${redactError(error)}`)
-    })
+    } finally {
+      this.environmentRefreshInFlight = false
+    }
   }
 
   private async seedBundledServers(): Promise<void> {
@@ -342,7 +351,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
       })
       return
     }
-    if (current()) this.statuses.set(record.id, { state: 'starting', error: '', missingEnvironmentVariables: [] })
+    // A generation swap is prepared beside the existing Fiber. Keep the
+    // healthy connection usable and visible until its replacement finishes.
+    if (current() && !this.fibers.has(record.id)) this.statuses.set(record.id, { state: 'starting', error: '', missingEnvironmentVariables: [] })
     try {
       const config = resolved.config as McpClient.Config
       if (sciMasterApiKey !== undefined && config.transport === 'stdio') config.env.ZEROWALL_SCIMASTER_API_KEY = sciMasterApiKey
@@ -387,10 +398,13 @@ export class ZeroWallMcpService extends TypertRemoteService {
     // global registry during a concurrent refresh can otherwise expose a
     // different server's tools in this DTO.
     const tools = [...(this.registeredTools.get(record.id) ?? this.toolNames(record.serverName))]
+    const runtimeState = status.state === 'starting' && this.fibers.has(record.id) && this.registeredTools.has(record.id)
+      ? 'active'
+      : status.state
     return {
       ...record,
-      runtimeState: status.state,
-      runtimeError: status.error,
+      runtimeState,
+      runtimeError: runtimeState === 'active' ? '' : status.error,
       missingEnvironmentVariables: [...status.missingEnvironmentVariables],
       tools,
     }
@@ -491,6 +505,12 @@ function managedEnvironmentRecord(): { root?: string; health?: string; version?:
   const root = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
   if (!root) return undefined
   try { return JSON.parse(readFileSync(join(root, 'current.json'), 'utf8')) as { root?: string; health?: string; version?: string; mode?: string } } catch { return undefined }
+}
+
+function managedEnvironmentSignature(record = managedEnvironmentRecord()): string {
+  return record === undefined
+    ? 'missing'
+    : `${record.health ?? 'unknown'}:${record.environmentVersion ?? record.version ?? 'unknown'}:${record.contentRevision ?? ''}:${record.archiveSha256?.slice(0, 12) ?? ''}:${record.root ?? ''}`
 }
 
 function managedEnvironmentReady(): boolean {

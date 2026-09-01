@@ -10,7 +10,7 @@ import JSZip from 'jszip'
 import { basename, extname, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
-import type { MineruApi, MineruArtifact, MineruBatchResult, MineruConfig, MineruConfigStatus, MineruMode, MineruParseResult, MineruRegistrationInput, MineruTaskResult } from '../shared/types.js'
+import type { MineruApi, MineruArtifact, MineruBatchResult, MineruConfig, MineruConfigStatus, MineruConnectionTestResult, MineruMode, MineruParseResult, MineruRegistrationInput, MineruTaskResult } from '../shared/types.js'
 import type { ArtifactRecord } from '@zerowallscience/research-store/types'
 
 export type * from '../shared/types.js'
@@ -92,6 +92,43 @@ export class ZeroWallMineruService extends TypertRemoteService {
   @Remote('updateConfig') async updateConfig(input: Partial<MineruConfig>): Promise<MineruConfigStatus> { const next = validateConfig({ ...this.config(), ...input }); await this.scope.replace(next); return this.getConfigStatus() }
   @Remote('setToken') async setToken(value: string): Promise<MineruConfigStatus> { if (!value.trim()) throw new Error('MinerU Token 不能为空。'); await this.secrets.set(TOKEN_KEY, value.trim()); return this.getConfigStatus() }
   @Remote('clearToken') async clearToken(): Promise<MineruConfigStatus> { await this.secrets.delete(TOKEN_KEY); return this.getConfigStatus() }
+  @Remote('testConnection') async testConnection(): Promise<MineruConnectionTestResult> {
+    const cfg = this.config()
+    const token = await this.token()
+    const api = apiFor(cfg.mode, token)
+    if (api === 'local') return { ok: true, api: 'local', tokenConfigured: false }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 15000)
+    const root = cfg.apiBaseUrl.replace(/\/+$/u, '')
+    try {
+      const response = api === 'precision'
+        ? await fetch(`${root}/api/v4/file-urls/batch`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}`, accept: 'application/json', 'content-type': 'application/json' },
+          // Empty validation input does not allocate a file URL or parse task.
+          body: JSON.stringify({ files: [] }),
+          signal: controller.signal,
+        })
+        : await fetch(`${root}/api/v1/agent/parse/url`, {
+          method: 'POST',
+          headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), accept: 'application/json', 'content-type': 'application/json' },
+          // The endpoint is POST-only. Invalid empty input verifies routing
+          // without submitting a document or allocating a parse task.
+          body: '{}',
+          signal: controller.signal,
+        })
+      if (response.status === 401 || response.status === 403) throw new Error(`MinerU ${api === 'precision' ? 'Token' : 'Agent'} 检测失败：认证未通过。`)
+      if (response.status === 404 || response.status === 405) throw new Error(`MinerU ${api === 'precision' ? 'Precision' : 'Agent'} API 地址不存在（HTTP ${response.status}）。`)
+      if (!response.ok && api === 'precision' && ![400, 422].includes(response.status)) throw new Error(`MinerU Precision API 检测失败（HTTP ${response.status}）。`)
+      if (!response.ok && api === 'agent' && ![400, 422].includes(response.status)) throw new Error(`MinerU Agent API 检测失败（HTTP ${response.status}）。`)
+      return { ok: true, api, tokenConfigured: true }
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') throw new Error('MinerU 连接检测超时，请检查网络或 API Base URL。')
+      throw error
+    } finally {
+      clearTimeout(timer)
+    }
+  }
   @Remote('testToken') async testToken(): Promise<{ ok: true; api: 'precision' }> {
     const token = await this.token(); if (!token) throw new Error('尚未配置 MinerU Token。')
     const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 15000)

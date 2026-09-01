@@ -116,6 +116,7 @@ export function McpConnectionsButton(props: Props) {
   selectedIdRef.current = selectedId
 
   const selected = useMemo(() => servers.find(server => server.id === selectedId), [servers, selectedId])
+  const hasStartingServer = servers.some(server => server.runtimeState === 'starting')
 
   const refresh = useCallback(async (preferredId?: string) => {
     const version = ++refreshVersion.current
@@ -157,12 +158,12 @@ export function McpConnectionsButton(props: Props) {
   }, [getSciMasterCredentialStatus, open, refresh])
 
   useEffect(() => {
-    if (!open) return
-    // Reconciliation and tools/list finish after the first `list` response;
-    // keep the panel converging regardless of the initial lifecycle state.
-    const timer = window.setInterval(() => { void refresh() }, 1000)
+    if (!open || !hasStartingServer) return
+    // Only an actual startup needs convergence polling. Stable connections are
+    // refreshed by explicit actions or environment-generation events.
+    const timer = window.setInterval(() => { void refresh() }, 10_000)
     return () => window.clearInterval(timer)
-  }, [open, refresh])
+  }, [hasStartingServer, open, refresh])
 
   const saveSciMasterKey = async () => {
     if (sciMasterKey.trim() === '') return

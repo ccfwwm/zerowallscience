@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-python",
-  "version": "4.3.13",
+  "version": "4.3.14",
   "description": "ZeroWall Science python domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

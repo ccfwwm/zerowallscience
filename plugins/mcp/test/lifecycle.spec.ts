@@ -18,6 +18,7 @@ afterEach(() => {
   delete process.env.ZEROWALL_DISABLE_DEFAULT_MCP
   delete process.env.DSH_HOME
   delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
+  delete process.env.ZEROWALL_MCP_ENVIRONMENT_POLL_MS
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
@@ -94,6 +95,11 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect(ctx.tools.get('mcp__fixture__add')).toBeDefined()
       expect(ctx.tools.get('mcp__fixture__greet')).toBeDefined()
 
+      ctx.root.emit('mcp-client/status', 'fixture', 'starting')
+      const afterDelayedStarting = (await ctx.zerowallMcp.list()).find(server => server.id === created.id)
+      expect(afterDelayedStarting?.runtimeState).toBe('active')
+      expect(afterDelayedStarting?.tools).toEqual(expect.arrayContaining(['mcp__fixture__add', 'mcp__fixture__greet']))
+
       const disabled = await ctx.zerowallMcp.update({ id: created.id, changes: { enabled: false } })
       expect(disabled.runtimeState).toBe('disabled')
       expect(disabled.tools).toEqual([])
@@ -112,6 +118,9 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
     process.env.DSH_HOME = join(root, 'harness')
     process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = environmentStore
+    // Exercise generation recovery without weakening the production guard
+    // against high-frequency environment polling.
+    process.env.ZEROWALL_MCP_ENVIRONMENT_POLL_MS = '100'
     const server = `const readline=require('node:readline');const lines=readline.createInterface({input:process.stdin});lines.on('line',(line)=>{let req;try{req=JSON.parse(line)}catch{return}if(req.id===undefined)return;if(req.method==='initialize')process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:req.id,result:{protocolVersion:'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}})+'\\n');else if(req.method==='tools/list')process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:req.id,result:{tools:[]}})+'\\n');else process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:req.id,result:{}})+'\\n')});`
     for (const relative of ['bio-tools', 'bio-tools/python', 'ketcher-chemistry', 'sci/dist']) mkdirSync(join(installed, relative), { recursive: true })
     copyFileSync(process.execPath, join(installed, 'bio-tools', 'python', 'python.exe'))

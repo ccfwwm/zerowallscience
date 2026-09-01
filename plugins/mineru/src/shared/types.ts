@@ -30,6 +30,12 @@ export interface MineruConfigStatus extends MineruConfig {
   registeredTools: readonly string[]
 }
 
+export interface MineruConnectionTestResult {
+  ok: true
+  api: MineruApi | 'local'
+  tokenConfigured: boolean
+}
+
 export interface MineruArtifact {
   name: string
   path: string

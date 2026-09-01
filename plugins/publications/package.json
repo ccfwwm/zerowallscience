@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-publications",
-  "version": "4.3.13",
+  "version": "4.3.14",
   "description": "ZeroWall Science publications domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
