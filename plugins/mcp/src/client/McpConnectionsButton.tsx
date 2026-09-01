@@ -72,6 +72,9 @@ interface McpActions {
   getSciMasterCredentialStatus: () => Promise<{ configured: boolean }>
   setSciMasterApiKey: (apiKey: string) => Promise<McpServerView | undefined>
   clearSciMasterApiKey: () => Promise<McpServerView | undefined>
+  getRdatalinuxCredentialStatus: () => Promise<{ configured: boolean; endpoint: string }>
+  setRdatalinuxAuthorization: (value: string) => Promise<McpServerView | undefined>
+  clearRdatalinuxAuthorization: () => Promise<McpServerView | undefined>
 }
 
 interface Draft {
@@ -98,7 +101,7 @@ type Props = Partial<SidebarFooterActionOwnerProps> & McpActions & PropsLocale<t
 const NEW_SERVER = '__new__'
 
 export function McpConnectionsButton(props: Props) {
-  const { wide = false, embedded = false, listMcpServers, createMcpServer, updateMcpServer, removeMcpServer, reloadMcpServer, getSciMasterCredentialStatus, setSciMasterApiKey, clearSciMasterApiKey } = props
+  const { wide = false, embedded = false, listMcpServers, createMcpServer, updateMcpServer, removeMcpServer, reloadMcpServer, getSciMasterCredentialStatus, setSciMasterApiKey, clearSciMasterApiKey, getRdatalinuxCredentialStatus, setRdatalinuxAuthorization, clearRdatalinuxAuthorization } = props
   const [open, setOpen] = useState(embedded)
   const [servers, setServers] = useState<McpServerView[]>([])
   const [selectedId, setSelectedId] = useState(NEW_SERVER)
@@ -110,6 +113,9 @@ export function McpConnectionsButton(props: Props) {
   const [sciMasterConfigured, setSciMasterConfigured] = useState(false)
   const [sciMasterKey, setSciMasterKey] = useState('')
   const [sciMasterBusy, setSciMasterBusy] = useState(false)
+  const [rdatalinuxConfigured, setRdatalinuxConfigured] = useState(false)
+  const [rdatalinuxAuthorization, setRdatalinuxAuthorizationValue] = useState('')
+  const [rdatalinuxBusy, setRdatalinuxBusy] = useState(false)
   const importInput = useRef<HTMLInputElement>(null)
   const refreshVersion = useRef(0)
   const selectedIdRef = useRef(selectedId)
@@ -151,11 +157,27 @@ export function McpConnectionsButton(props: Props) {
       if (status.phase === 'ready' || status.phase === 'manual') void refresh()
     })
     void getSciMasterCredentialStatus().then(status => setSciMasterConfigured(status.configured)).catch(() => setSciMasterConfigured(false))
+    void getRdatalinuxCredentialStatus().then(status => setRdatalinuxConfigured(status.configured)).catch(() => setRdatalinuxConfigured(false))
     return window.zerowallDesktop?.onMcpEnvironmentStatus?.(status => {
       setEnvironment(status)
       if (status.phase === 'ready' || status.phase === 'manual') void refresh()
     })
   }, [getSciMasterCredentialStatus, open, refresh])
+
+  const saveRdatalinuxAuthorization = async () => {
+    if (rdatalinuxAuthorization.trim() === '') return
+    setRdatalinuxBusy(true); setError(undefined)
+    try { await setRdatalinuxAuthorization(rdatalinuxAuthorization); setRdatalinuxAuthorizationValue(''); setRdatalinuxConfigured(true); await refresh() }
+    catch (reason) { setError(message(reason)) }
+    finally { setRdatalinuxBusy(false) }
+  }
+
+  const clearRdatalinux = async () => {
+    setRdatalinuxBusy(true); setError(undefined)
+    try { await clearRdatalinuxAuthorization(); setRdatalinuxConfigured(false); await refresh() }
+    catch (reason) { setError(message(reason)) }
+    finally { setRdatalinuxBusy(false) }
+  }
 
   useEffect(() => {
     if (!open || !hasStartingServer) return
@@ -363,6 +385,15 @@ export function McpConnectionsButton(props: Props) {
               {sciMasterConfigured && <button type="button" onClick={() => void clearSciMaster()} disabled={sciMasterBusy}>{props.t('mcp.sciMasterClear')}</button>}
             </div>
             <a className={css.sciMasterGuide} href="https://scimaster.bohrium.com/vibe-write/home" target="_blank" rel="noreferrer">{props.t('mcp.sciMasterApiKeyGuide')}</a>
+          </section>}
+          {selected?.serverName === 'rdatalinux_r_platform' && <section className={css.sciMasterCard} aria-label="rdatalinux R MCP">
+             <div className={css.sciMasterHeading}><strong>rdatalinux R MCP</strong><span className={rdatalinuxConfigured ? css.configured : css.missing}>{rdatalinuxConfigured ? '已配置' : '未配置'}</span></div>
+             <p className={css.sciMasterHelp}>端点固定为 http://103.217.185.141:8099/r-platform/mcp。Authorization 仅保存到 ZeroWall 凭据保险库。</p>
+             <div className={css.sciMasterActions}>
+               <input type="password" value={rdatalinuxAuthorization} onChange={event => setRdatalinuxAuthorizationValue(event.target.value)} placeholder="Bearer &lt;MCP key&gt;" autoComplete="off" />
+               <button type="button" className={css.saveButton} onClick={() => void saveRdatalinuxAuthorization()} disabled={rdatalinuxBusy || rdatalinuxAuthorization.trim() === ''}>保存</button>
+               {rdatalinuxConfigured && <button type="button" onClick={() => void clearRdatalinux()} disabled={rdatalinuxBusy}>清除</button>}
+             </div>
           </section>}
           <div className={css.form}>
             <div className={css.twoColumns}>

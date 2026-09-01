@@ -24,6 +24,8 @@ export const SCIMASTER_API_KEY_CREDENTIAL = 'zerowall.mcp.scimaster_api_key'
 export const SCIMASTER_API_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/home'
 export const RDATALINUX_R_MCP_LEGACY_URL = 'http://103.217.185.141/r-platform/mcp'
 export const RDATALINUX_R_MCP_URL = 'http://103.217.185.141:8099/r-platform/mcp'
+export const RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL = 'zerowall.mcp.rdatalinux_authorization'
+export const RDATALINUX_R_MCP_AUTHORIZATION_ENV = 'R_PLATFORM_MCP_AUTHORIZATION'
 const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 30_000
 
 type RuntimeMcpConfig = {
@@ -200,6 +202,43 @@ export class ZeroWallMcpService extends TypertRemoteService {
     })
   }
 
+  @Remote('getRdatalinuxCredentialStatus')
+  async getRdatalinuxCredentialStatus(): Promise<{ configured: boolean; endpoint: string }> {
+    try {
+      const value = await this.secrets.get(RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL)
+      return { configured: typeof value === 'string' && value.trim() !== '', endpoint: RDATALINUX_R_MCP_URL }
+    } catch {
+      return { configured: Boolean(process.env[RDATALINUX_R_MCP_AUTHORIZATION_ENV]?.trim()), endpoint: RDATALINUX_R_MCP_URL }
+    }
+  }
+
+  @Remote('setRdatalinuxAuthorization')
+  setRdatalinuxAuthorization(value: string): Promise<McpServerDto | undefined> {
+    return this.exclusive(async () => {
+      const authorization = value.trim()
+      if (!/^Bearer\s+\S+$/iu.test(authorization)) throw new Error('rdatalinux R MCP Authorization 必须是 Bearer <key>。')
+      await this.secrets.set(RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL, authorization)
+      const record = this.projects().listMcpServers().find(item => item.serverName === 'rdatalinux_r_platform')
+      if (record === undefined) return undefined
+      const next = record.transport === 'streamable-http' && record.headerRefs.Authorization !== RDATALINUX_R_MCP_AUTHORIZATION_ENV
+        ? this.projects().updateMcpServer(record.id, { headerRefs: { ...record.headerRefs, Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV } })
+        : record
+      await this.reconcile(next)
+      return this.dto(next)
+    })
+  }
+
+  @Remote('clearRdatalinuxAuthorization')
+  clearRdatalinuxAuthorization(): Promise<McpServerDto | undefined> {
+    return this.exclusive(async () => {
+      await this.secrets.delete(RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL)
+      const record = this.projects().listMcpServers().find(item => item.serverName === 'rdatalinux_r_platform')
+      if (record === undefined) return undefined
+      await this.reconcile(record)
+      return this.dto(record)
+    })
+  }
+
   private exclusive<T>(task: () => Promise<T> | T): Promise<T> {
     const run = this.operation.then(task, task)
     this.operation = run.then(() => undefined, () => undefined)
@@ -278,6 +317,19 @@ export class ZeroWallMcpService extends TypertRemoteService {
         }
       }
     }
+    for (const server of projects.listMcpServers()) {
+      if (server.serverName === 'rdatalinux_r_platform' && server.transport === 'streamable-http' && server.headerRefs.Authorization === undefined) {
+        projects.updateMcpServer(server.id, { headerRefs: { ...server.headerRefs, Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV } })
+      }
+    }
+    if (!projects.listMcpServers().some(server => server.serverName === 'rdatalinux_r_platform')) {
+      projects.createMcpServer({
+        name: 'rdatalinux R', serverName: 'rdatalinux_r_platform', transport: 'streamable-http',
+        enabled: true, url: RDATALINUX_R_MCP_URL,
+        headerRefs: { Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV },
+        failOnStartupError: false,
+      })
+    }
     const bundled = projects.listMcpServers()
     const displayNames: Record<string, string> = {
       zerowall_managed_scimaster: 'Sci',
@@ -298,7 +350,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       projects.createMcpServer({ name: 'Sci', serverName: 'zerowall_managed_scimaster', transport: 'stdio', enabled: true, command: 'zerowall-managed:scimaster', cwd: '', failOnStartupError: false })
     }
     await mkdir(dirname(marker), { recursive: true })
-    await writeFile(marker, '{"version":4}\n', 'utf8')
+    await writeFile(marker, '{"version":5}\n', 'utf8')
   }
 
   private projects() {
@@ -329,6 +381,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       return
     }
     let sciMasterApiKey: string | undefined
+    let rdatalinuxAuthorization: string | undefined
     if (record.serverName === 'zerowall_managed_scimaster') {
       try {
         sciMasterApiKey = await this.secrets.get(SCIMASTER_API_KEY_CREDENTIAL)
@@ -341,7 +394,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
         return
       }
     }
-    const resolved = resolveMcpConfig(record, process.env)
+    if (record.serverName === 'rdatalinux_r_platform') {
+      try { rdatalinuxAuthorization = await this.secrets.get(RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL) } catch { rdatalinuxAuthorization = undefined }
+      if (!rdatalinuxAuthorization?.trim()) rdatalinuxAuthorization = process.env[RDATALINUX_R_MCP_AUTHORIZATION_ENV]
+    }
+    const environment = record.serverName === 'rdatalinux_r_platform' && rdatalinuxAuthorization?.trim()
+      ? { ...process.env, [RDATALINUX_R_MCP_AUTHORIZATION_ENV]: rdatalinuxAuthorization }
+      : process.env
+    const resolved = resolveMcpConfig(record, environment)
     if (resolved.config === undefined) {
       await this.disposeOne(record.id)
       if (current()) this.statuses.set(record.id, {
@@ -389,6 +449,25 @@ export class ZeroWallMcpService extends TypertRemoteService {
         error: redactError(error),
         missingEnvironmentVariables: [],
       })
+    }
+  }
+
+  private async startResolved(record: McpServerRecord, resolvedConfig: RuntimeMcpConfig, version: number, current: () => boolean, sciMasterApiKey?: string): Promise<void> {
+    if (current() && !this.fibers.has(record.id)) this.statuses.set(record.id, { state: 'starting', error: '', missingEnvironmentVariables: [] })
+    try {
+      const config = resolvedConfig as McpClient.Config
+      if (sciMasterApiKey !== undefined && config.transport === 'stdio') config.env.ZEROWALL_SCIMASTER_API_KEY = sciMasterApiKey
+      const previous = this.fibers.get(record.id)
+      const fiber = this.ctx.plugin(McpClient, config)
+      await fiber
+      if (!current()) { await fiber.dispose(); return }
+      this.fibers.set(record.id, fiber); this.registeredTools.set(record.id, this.toolNames(record.serverName)); this.readyVersions.set(record.id, version)
+      if (previous !== undefined && previous !== fiber) await previous.dispose()
+      this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
+    } catch (error) {
+      if (!current()) return
+      if (this.fibers.has(record.id)) { this.ctx.logger.warn(`zerowall-mcp: retained healthy ${record.serverName} connection after refresh failure: ${redactError(error)}`); return }
+      this.statuses.set(record.id, { state: 'error', error: redactError(error), missingEnvironmentVariables: [] })
     }
   }
 

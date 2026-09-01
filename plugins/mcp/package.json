@@ -74,7 +74,8 @@
     ],
     "permissions": [
       "files",
-      "network"
+      "network",
+      "credentials"
     ],
     "profiles": [
       "development",
@@ -143,6 +144,7 @@
     "dsh-dream-skin": "8.30.1",
     "@zerowallscience/plugin-projects": "workspace:^",
     "@zerowallscience/plugin-base": "workspace:^",
+    "@zerowallscience/plugin-secrets": "workspace:^",
     "@zerowallscience/research-store": "workspace:^",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0",

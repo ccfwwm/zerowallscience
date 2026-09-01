@@ -17,11 +17,12 @@
   ],
   "permissions": [
     "files",
-    "network"
+    "network",
+    "credentials"
   ],
   "network": true,
   "files": true,
-  "credentials": false,
+  "credentials": true,
   "approvals": false,
   "profiles": [
     "development",

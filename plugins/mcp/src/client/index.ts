@@ -20,6 +20,9 @@ export function apply(ctx: ClientContext): void {
       getSciMasterCredentialStatus: async () => unwrapRemoteResult('zerowall.mcp.getSciMasterCredentialStatus', await remote.zerowallMcp.getSciMasterCredentialStatus()),
       setSciMasterApiKey: async (apiKey: string) => unwrapRemoteResult('zerowall.mcp.setSciMasterApiKey', await remote.zerowallMcp.setSciMasterApiKey(apiKey)),
       clearSciMasterApiKey: async () => unwrapRemoteResult('zerowall.mcp.clearSciMasterApiKey', await remote.zerowallMcp.clearSciMasterApiKey()),
+      getRdatalinuxCredentialStatus: async () => unwrapRemoteResult('zerowall.mcp.getRdatalinuxCredentialStatus', await remote.zerowallMcp.getRdatalinuxCredentialStatus()),
+      setRdatalinuxAuthorization: async (value: string) => unwrapRemoteResult('zerowall.mcp.setRdatalinuxAuthorization', await remote.zerowallMcp.setRdatalinuxAuthorization(value)),
+      clearRdatalinuxAuthorization: async () => unwrapRemoteResult('zerowall.mcp.clearRdatalinuxAuthorization', await remote.zerowallMcp.clearRdatalinuxAuthorization()),
     }),
   }, McpConnectionsButton))
 }

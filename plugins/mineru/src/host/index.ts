@@ -87,7 +87,11 @@ export class ZeroWallMineruService extends TypertRemoteService {
     }
   }
   private config(): MineruConfig { return validateConfig({ ...DEFAULTS, ...this.scope.get() }) }
-  private async token(): Promise<string | undefined> { const value = await this.secrets.get(TOKEN_KEY); return value?.trim() || undefined }
+  private async token(): Promise<string | undefined> {
+    let value: string | undefined
+    try { value = await this.secrets.get(TOKEN_KEY) } catch { value = undefined }
+    return value?.trim() || process.env.MINERU_API_TOKEN?.trim() || undefined
+  }
   @Remote('getConfigStatus') async getConfigStatus(): Promise<MineruConfigStatus> { const cfg = this.config(); const token = await this.token(); const registeredTools = ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task'].filter(tool => this.hostCtx.tools.get(tool) !== undefined); return { ...cfg, api: apiFor(cfg.mode, token), tokenConfigured: token !== undefined, tokenManagementUrl: TOKEN_MANAGEMENT_URL, available: registeredTools.length === 4, registeredTools } }
   @Remote('updateConfig') async updateConfig(input: Partial<MineruConfig>): Promise<MineruConfigStatus> { const next = validateConfig({ ...this.config(), ...input }); await this.scope.replace(next); return this.getConfigStatus() }
   @Remote('setToken') async setToken(value: string): Promise<MineruConfigStatus> { if (!value.trim()) throw new Error('MinerU Token 不能为空。'); await this.secrets.set(TOKEN_KEY, value.trim()); return this.getConfigStatus() }
