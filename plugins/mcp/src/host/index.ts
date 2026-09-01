@@ -66,6 +66,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private readonly fibers = new Map<string, Fiber>()
   /** Tools observed after the corresponding Fiber completed its initial sync. */
   private readonly registeredTools = new Map<string, string[]>()
+  /** Reconcile version whose initial connection and tools/list have settled. */
+  private readonly readyVersions = new Map<string, number>()
   private readonly statuses = new Map<string, RuntimeStatus>()
   private readonly reconcileVersions = new Map<string, number>()
   private readonly recordsReady: Promise<void>
@@ -119,6 +121,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   @Remote('list')
   async list(): Promise<McpServerDto[]> {
     await this.recordsReady
+    this.convergeReadyStatuses()
     void this.pollEnvironment()
     return this.projects().listMcpServers().sort(compareMcpServers).map(record => this.dto(record))
   }
@@ -293,6 +296,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private async reconcile(record: McpServerRecord): Promise<void> {
     const version = (this.reconcileVersions.get(record.id) ?? 0) + 1
     this.reconcileVersions.set(record.id, version)
+    this.readyVersions.delete(record.id)
     const current = (): boolean => this.reconcileVersions.get(record.id) === version
     if (!record.enabled) {
       await this.disposeOne(record.id)
@@ -339,6 +343,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       }
       this.fibers.set(record.id, fiber)
       this.registeredTools.set(record.id, this.toolNames(record.serverName))
+      this.readyVersions.set(record.id, version)
       if (previous !== undefined && previous !== fiber) await previous.dispose()
       // The fiber resolves after the initial transport handshake and
       // tools/list synchronization.  The lifecycle event normally arrives on
@@ -379,6 +384,24 @@ export class ZeroWallMcpService extends TypertRemoteService {
     }
   }
 
+  /**
+   * Lifecycle events are deliberately best-effort notifications and can cross
+   * Cordis Fiber boundaries. The reconcile operation is authoritative: once
+   * its Fiber resolved, the MCP handshake and tools/list synchronization have
+   * completed. Re-assert that state before projecting a DTO so a late
+   * `starting` event cannot leave the settings UI stuck forever.
+   */
+  private convergeReadyStatuses(): void {
+    for (const record of this.projects().listMcpServers()) {
+      const version = this.readyVersions.get(record.id)
+      if (!record.enabled || version === undefined || this.reconcileVersions.get(record.id) !== version || !this.fibers.has(record.id)) continue
+      const status = this.statuses.get(record.id)
+      if (status?.state === 'starting' || status?.state === undefined) {
+        this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
+      }
+    }
+  }
+
   private toolNames(serverName: string): string[] {
     const prefix = `mcp__${serverName}__`
     return this.ctx.tools.schemas()
@@ -392,6 +415,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     if (fiber === undefined) return
     this.fibers.delete(id)
     this.registeredTools.delete(id)
+    this.readyVersions.delete(id)
     await fiber.dispose()
   }
 
