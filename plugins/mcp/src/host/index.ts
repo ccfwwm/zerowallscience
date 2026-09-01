@@ -22,6 +22,8 @@ export type { CreateMcpServerRequest, McpRuntimeState, McpServerDto, UpdateMcpSe
 // POSIX-style segments. Keep the SciMaster key under the MCP namespace.
 export const SCIMASTER_API_KEY_CREDENTIAL = 'zerowall.mcp.scimaster_api_key'
 export const SCIMASTER_API_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/home'
+export const RDATALINUX_R_MCP_LEGACY_URL = 'http://103.217.185.141/r-platform/mcp'
+export const RDATALINUX_R_MCP_URL = 'http://103.217.185.141:8099/r-platform/mcp'
 
 type RuntimeMcpConfig = {
   serverName: string
@@ -257,6 +259,16 @@ export class ZeroWallMcpService extends TypertRemoteService {
         if (server.serverName === 'zerowall_filesystem') projects.deleteMcpServer(server.id)
       }
     }
+    if (markerVersion < 4) {
+      // The R Platform MCP service moved from the default HTTP port to 8099.
+      // Migrate only the exact retired endpoint so user-managed MCP URLs are
+      // never rewritten as part of bundled-server maintenance.
+      for (const server of projects.listMcpServers()) {
+        if (server.transport === 'streamable-http' && server.url === RDATALINUX_R_MCP_LEGACY_URL) {
+          projects.updateMcpServer(server.id, { url: RDATALINUX_R_MCP_URL })
+        }
+      }
+    }
     const bundled = projects.listMcpServers()
     const displayNames: Record<string, string> = {
       zerowall_managed_scimaster: 'Sci',
@@ -277,7 +289,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       projects.createMcpServer({ name: 'Sci', serverName: 'zerowall_managed_scimaster', transport: 'stdio', enabled: true, command: 'zerowall-managed:scimaster', cwd: '', failOnStartupError: false })
     }
     await mkdir(dirname(marker), { recursive: true })
-    await writeFile(marker, '{"version":3}\n', 'utf8')
+    await writeFile(marker, '{"version":4}\n', 'utf8')
   }
 
   private projects() {
