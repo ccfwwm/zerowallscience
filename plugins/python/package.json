@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-python",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "description": "ZeroWall Science python domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -17,12 +17,14 @@
   "dsh": {
     "bundle": {
       "patch": "dsh.bundle.patch.yml"
-    }
+    },
+    "min": "0.1.2-alpha.5",
+    "max": "0.1.2-alpha.5"
   },
   "zerowall": {
     "dsh": {
-      "min": "0.1.2-alpha.4",
-      "max": "0.1.2-alpha.4"
+      "min": "0.1.2-alpha.5",
+      "max": "0.1.2-alpha.5"
     },
     "requiredServices": [
       "tools"

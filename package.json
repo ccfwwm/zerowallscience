@@ -1,6 +1,6 @@
 {
   "name": "zerowallscience",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "description": "ZeroWall Science local-first scientific research workbench.",
   "private": true,
   "type": "module",
@@ -33,8 +33,8 @@
     "typecheck": "pnpm dsh:verify && pnpm --filter @deepseek-ai/dsh-root run typecheck && pnpm --filter @zerowallscience/research-store run bundle && pnpm plugins:typecheck && pnpm --filter @zerowallscience/desktop run typecheck",
     "test": "node --test tests/contracts/*.test.mjs && node --test tests/security/*.test.mjs && pnpm --filter @zerowallscience/research-store test && pnpm plugins:test && pnpm --filter @zerowallscience/desktop test",
     "test:plugins": "pnpm plugins:test",
-    "test:dsh:alpha4": "pnpm dsh:verify && pnpm --filter @deepseek-ai/dsh-root exec vitest run --config vitest.web.config.ts apps/web/tests/shipped-composition.e2e.ts",
-    "test:dsh:composition": "pnpm test:dsh:alpha4",
+    "test:dsh:alpha5": "pnpm dsh:verify && pnpm --filter @deepseek-ai/dsh-root exec vitest run --config vitest.web.config.ts apps/web/tests/shipped-composition.e2e.ts",
+    "test:dsh:composition": "pnpm test:dsh:alpha5",
     "test:dsh:desktop-compat": "pnpm --filter @zerowallscience/plugin-desktop-compat test",
     "test:wechat": "pnpm --filter @zerowallscience/plugin-wechat test",
     "test:security": "node --test tests/security/*.test.mjs",

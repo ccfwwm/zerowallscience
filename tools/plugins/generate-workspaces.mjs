@@ -213,7 +213,7 @@ for (const plugin of plugins) {
       } : {}),
     },
     zerowall: {
-      dsh: { min: '0.1.2-alpha.4', max: '0.1.2-alpha.4' },
+      dsh: { min: '0.1.2-alpha.5', max: '0.1.2-alpha.5' },
       requiredServices: plugin.requiredServices ?? [],
       optionalServices: plugin.optionalServices ?? [],
       capabilities: plugin.capabilities,

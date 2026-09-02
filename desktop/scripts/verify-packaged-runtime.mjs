@@ -952,8 +952,8 @@ function readArchiveFile(path) {
 
 async function verifySourceRuntimePolicy() {
   const upstream = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'deepseek-harness', 'upstream.json'), 'utf8'))
-  if (upstream.version !== '0.1.2-alpha.4' || upstream.tag !== 'dsh-v0.1.2-alpha.4') {
-    throw new Error(`Pinned DSH must be alpha.4; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
+  if (upstream.version !== '0.1.2-alpha.5' || upstream.tag !== 'dsh-v0.1.2-alpha.5') {
+    throw new Error(`Pinned DSH must be alpha.5; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
   }
   const sourceDsh = JSON.parse(await readFile(resolve(repositoryRoot, 'deepseek-harness', 'package.json'), 'utf8'))
   if (sourceDsh.version !== upstream.version) throw new Error(`DSH source package must be ${upstream.version}; found ${sourceDsh.version}.`)

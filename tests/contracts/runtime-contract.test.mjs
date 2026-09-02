@@ -88,8 +88,8 @@ test('all ZeroWall plugins expose a manifest and alpha.4 range', async () => {
   for (const name of names) {
     const manifest = JSON.parse(await readFile(resolve(root, `plugins/${name}/zerowall.plugin.json`), 'utf8'))
     assert.match(manifest.name, /^@zerowallscience\/plugin-/)
-    assert.equal(manifest.dsh.min, '0.1.2-alpha.4')
-    assert.equal(manifest.dsh.max, '0.1.2-alpha.4')
+    assert.equal(manifest.dsh.min, '0.1.2-alpha.5')
+    assert.equal(manifest.dsh.max, '0.1.2-alpha.5')
   }
 })
 
