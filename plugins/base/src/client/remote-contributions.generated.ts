@@ -11,6 +11,7 @@ import remote8 from '@zerowallscience/plugin-projects/remote'
 import remote9 from '@zerowallscience/plugin-publications/remote'
 import remote10 from '@zerowallscience/plugin-research/remote'
 import remote11 from '@zerowallscience/plugin-runs/remote'
-import remote12 from '@zerowallscience/plugin-skills/remote'
+import remote12 from '@zerowallscience/plugin-singlecell/remote'
+import remote13 from '@zerowallscience/plugin-skills/remote'
 
-export const zerowallRemoteContributions = [remote0, remote1, remote2, remote3, remote4, remote5, remote6, remote7, remote8, remote9, remote10, remote11, remote12] as const
+export const zerowallRemoteContributions = [remote0, remote1, remote2, remote3, remote4, remote5, remote6, remote7, remote8, remote9, remote10, remote11, remote12, remote13] as const

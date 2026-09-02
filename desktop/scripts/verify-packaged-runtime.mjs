@@ -234,11 +234,15 @@ function verifyArchivePolicy() {
   if (hardcodedUserPath !== undefined) throw new Error(`Hard-coded user path found in packaged capability runtime: ${hardcodedUserPath}`)
 
   const mineruHost = readArchiveFile('node_modules/@zerowallscience/plugin-mineru/lib/index.js').toString('utf8')
-  for (const tool of ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task', 'sc_tenifold_knockout_validate', 'sc_tenifold_knockout_plan', 'sc_tenifold_knockout_run', 'sc_tenifold_knockout_status', 'sc_tenifold_knockout_cancel', 'sc_tenifold_knockout_collect', 'sc_tenifold_knockout_review', 'sc_tenifold_knockout_report']) {
+  for (const tool of ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task']) {
     if (!mineruHost.includes(tool)) throw new Error(`Packaged MinerU Host is missing required tool registration: ${tool}`)
   }
   if (!mineruHost.includes('MinerU Host tool registration failed')) {
     throw new Error('Packaged MinerU Host is missing its startup tool-registration assertion.')
+  }
+  const singlecellHost = readArchiveFile('node_modules/@zerowallscience/plugin-singlecell/lib/index.js').toString('utf8')
+  for (const tool of ['sc_tenifold_knockout_validate', 'sc_tenifold_knockout_plan', 'sc_tenifold_knockout_run', 'sc_tenifold_knockout_status', 'sc_tenifold_knockout_cancel', 'sc_tenifold_knockout_collect', 'sc_tenifold_knockout_review', 'sc_tenifold_knockout_report']) {
+    if (!singlecellHost.includes(tool)) throw new Error(`Packaged singlecell Host is missing required tool registration: ${tool}`)
   }
   const filesHost = readArchiveFile('node_modules/@zerowallscience/plugin-files/lib/index.js').toString('utf8')
   if (!filesHost.includes('extract_uploaded_file')) {
@@ -504,6 +508,7 @@ async function verifyHostStartup() {
           await verifyWebBootManifest(probeUrl)
           await verifyPluginInventory(probeUrl)
           await verifyMineruStatus(probeUrl)
+          await verifySinglecellStatus(probeUrl)
           await verifyEventWebSockets(probeUrl)
           await verifyPlaintextSessionPersistence(probeUrl, root)
           // DSH binds the loopback server before every asynchronous Loader row
@@ -514,6 +519,7 @@ async function verifyHostStartup() {
           await verifyWebBootManifest(probeUrl)
           await verifyPluginInventory(probeUrl)
           await verifyMineruStatus(probeUrl)
+          await verifySinglecellStatus(probeUrl)
           await verifyEventWebSockets(probeUrl)
           return
         } catch (error) {
@@ -545,6 +551,7 @@ function isTransientHostProbeError(error) {
     if (current instanceof Error && /^Packaged Host plugin inventory is missing:/u.test(current.message)) return true
     if (current instanceof Error && /^Packaged Host ZeroWall plugins are not active:/u.test(current.message)) return true
     if (current instanceof Error && /^Packaged Host MinerU status is unavailable:/u.test(current.message)) return true
+    if (current instanceof Error && /^Packaged Host singlecell status is unavailable:/u.test(current.message)) return true
     if (current instanceof Error && /^Packaged Host WebSocket (?:failed to open|timed out): /u.test(current.message)) return true
     if (typeof current === 'object' && ['UND_ERR_SOCKET', 'ECONNRESET', 'ECONNREFUSED'].includes(current.code)) return true
   }
@@ -646,11 +653,33 @@ async function verifyMineruStatus(url) {
   if (envelope?.rpcId !== rpcId || envelope?.result?.ok !== true || value?.available !== true) {
     throw new Error(`Packaged Host MinerU status is unavailable: ${JSON.stringify(envelope)}`)
   }
-  const expectedTools = ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task', 'sc_tenifold_knockout_validate', 'sc_tenifold_knockout_plan', 'sc_tenifold_knockout_run', 'sc_tenifold_knockout_status', 'sc_tenifold_knockout_cancel', 'sc_tenifold_knockout_collect', 'sc_tenifold_knockout_review', 'sc_tenifold_knockout_report']
+  const expectedTools = ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task']
   const missingTools = expectedTools.filter(tool => !value.registeredTools?.includes(tool))
   if (missingTools.length > 0) throw new Error(`Packaged Host MinerU tools are missing: ${missingTools.join(', ')}`)
   if (value.tokenConfigured !== false || value.api !== 'local') {
     throw new Error(`Fresh packaged Host must select local extraction without a MinerU Token: ${JSON.stringify(value)}`)
+  }
+}
+
+async function verifySinglecellStatus(url) {
+  const rpcId = randomUUID()
+  const response = await fetch(authUrl(new URL(url), '/api/zerowallSinglecell/searchGenes'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      type: 'client-request', rpcId, method: 'zerowallSinglecell/searchGenes',
+      payload: { args: [{ targetGenes: ['HSPA1A'], maxCandidates: 1 }] },
+    }),
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!response.ok) throw new Error(`Packaged Host singlecell status returned HTTP ${response.status}.`)
+  const envelope = await response.json()
+  const value = envelope?.result?.value
+  if (envelope?.rpcId !== rpcId || envelope?.result?.ok !== true || !Array.isArray(value)) {
+    throw new Error(`Packaged Host singlecell status is unavailable: ${JSON.stringify(envelope)}`)
+  }
+  if (!value.some(candidate => candidate?.symbol === 'HSPA1A')) {
+    throw new Error(`Packaged Host singlecell candidate resolver is unavailable: ${JSON.stringify(value)}`)
   }
 }
 
@@ -684,6 +713,7 @@ async function verifyWebBootManifest(url) {
     '@zerowallscience/plugin-images',
     '@zerowallscience/plugin-image-dup',
     '@zerowallscience/plugin-mineru',
+    '@zerowallscience/plugin-singlecell',
     '@zerowallscience/plugin-mcp',
     '@zerowallscience/plugin-skills',
     '@zerowallscience/plugin-reviewer',

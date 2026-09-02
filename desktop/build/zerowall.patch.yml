@@ -158,6 +158,9 @@
     - id: zerowall-mineru
       name: '@zerowallscience/plugin-mineru'
 
+    - id: zerowall-singlecell
+      name: '@zerowallscience/plugin-singlecell'
+
     - id: zerowall-execution
       name: '@zerowallscience/plugin-execution'
 

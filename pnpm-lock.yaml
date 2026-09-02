@@ -11064,6 +11064,9 @@ importers:
       '@zerowallscience/plugin-runs':
         specifier: workspace:^
         version: link:../runs
+      '@zerowallscience/plugin-singlecell':
+        specifier: workspace:^
+        version: link:../singlecell
       '@zerowallscience/plugin-skills':
         specifier: workspace:^
         version: link:../skills
@@ -12118,6 +12121,9 @@ importers:
       '@zerowallscience/plugin-projects':
         specifier: workspace:^
         version: link:../projects
+      '@zerowallscience/plugin-secrets':
+        specifier: workspace:^
+        version: link:../secrets
       '@zerowallscience/research-store':
         specifier: workspace:^
         version: link:../../store
@@ -13592,6 +13598,163 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../deepseek-harness/vendor/schemastery
         version: link:../../deepseek-harness/vendor/schemastery
+    devDependencies:
+      tsdown:
+        specifier: 0.22.2
+        version: 0.22.2(@tsdown/css@0.22.2)(oxc-resolver@11.24.2)(publint@0.3.23)(tsx@4.23.12)(typescript@6.0.3)
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.8)(jiti@2.7.0)(jsdom@30.0.1(@noble/hashes@2.3.0))(lightningcss@1.33.0)(tsx@4.23.12)(yaml@2.9.0)
+
+  plugins/singlecell:
+    dependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/core/agent
+      '@deepseek-ai/dsh-agent-default-model':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/core/agent-default-model
+      '@deepseek-ai/dsh-api-gateway':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/api/gateway
+      '@deepseek-ai/dsh-api-remotes':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/api/remotes
+      '@deepseek-ai/dsh-api-session-controller':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/api/session-controller
+      '@deepseek-ai/dsh-api-settings-controller':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/api/settings-controller
+      '@deepseek-ai/dsh-api-workspace-controller':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/api/workspace-controller
+      '@deepseek-ai/dsh-attachment':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/attachment/attachment
+      '@deepseek-ai/dsh-client-connection':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/connection
+      '@deepseek-ai/dsh-client-locale':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/locale
+      '@deepseek-ai/dsh-client-store':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/store
+      '@deepseek-ai/dsh-client-ui-attachment':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-attachment
+      '@deepseek-ai/dsh-client-ui-chat':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-chat
+      '@deepseek-ai/dsh-client-ui-conversation':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-conversation
+      '@deepseek-ai/dsh-client-ui-layout':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-layout
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-primitives
+      '@deepseek-ai/dsh-client-ui-session':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-session
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-settings
+      '@deepseek-ai/dsh-client-ui-sidebar':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-sidebar
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-slots
+      '@deepseek-ai/dsh-client-ui-tool':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-tool
+      '@deepseek-ai/dsh-client-ui-workspace':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-workspace
+      '@deepseek-ai/dsh-commands':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/interaction/commands
+      '@deepseek-ai/dsh-host-webserver':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/host/webserver
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/llm/llm
+      '@deepseek-ai/dsh-llm-pi-ai':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/llm/llm-pi-ai
+      '@deepseek-ai/dsh-mcp-client':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/mcp/mcp-client
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/core/session
+      '@deepseek-ai/dsh-session-persistence':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/session/session-persistence
+      '@deepseek-ai/dsh-settings':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/settings/settings
+      '@deepseek-ai/dsh-skill':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/skill/skill
+      '@deepseek-ai/dsh-skill-filesystem':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/skill/skill-filesystem
+      '@deepseek-ai/dsh-subagent':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/subagent/subagent
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/core/system-prompt
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/core/tools
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/typert/protocol
+      '@deepseek-ai/dsh-workspace':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/workspace/workspace
+      '@deepseek-ai/schemastery':
+        specifier: link:../../deepseek-harness/vendor/schemastery
+        version: link:../../deepseek-harness/vendor/schemastery
+      '@zerowallscience/plugin-base':
+        specifier: workspace:^
+        version: link:../base
+      '@zerowallscience/plugin-projects':
+        specifier: workspace:^
+        version: link:../projects
+      '@zerowallscience/plugin-research':
+        specifier: workspace:^
+        version: link:../research
+      '@zerowallscience/plugin-runs':
+        specifier: workspace:^
+        version: link:../runs
+      dsh-better-sidebar:
+        specifier: 0.16.1
+        version: 0.16.1(patch_hash=8b1fda89450c123d34ef70f6a51a39223ba6d028f20df0d0af1beb3e4c463aac)(ffd2a3be6f1e6227e763b8024d058046)
+      dsh-dream-skin:
+        specifier: 8.30.1
+        version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+      lucide-react:
+        specifier: ^0.468.0
+        version: 0.468.0(react@18.2.0)
+      react:
+        specifier: ^18.2.0
+        version: 18.2.0
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       tsdown:
         specifier: 0.22.2

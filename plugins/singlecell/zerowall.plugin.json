@@ -1,0 +1,44 @@
+{
+  "name": "@zerowallscience/plugin-singlecell",
+  "version": "4.3.17",
+  "dsh": {
+    "min": "0.1.2-alpha.1",
+    "max": "0.1.2-alpha.1"
+  },
+  "host": "./lib/index.js",
+  "client": "./lib/client.js",
+  "requiredServices": [
+    "tools",
+    "sessions"
+  ],
+  "optionalServices": [
+    "zerowallFiles",
+    "zerowallProjects",
+    "zerowallResearch",
+    "zerowallRuns",
+    "webServer"
+  ],
+  "capabilities": [
+    "singlecell-analysis",
+    "public-data-acquisition",
+    "scTenifoldKnk",
+    "analysis-workflow"
+  ],
+  "permissions": [
+    "files",
+    "network",
+    "attachments",
+    "processes",
+    "approvals"
+  ],
+  "network": true,
+  "files": true,
+  "credentials": false,
+  "approvals": true,
+  "profiles": [
+    "development",
+    "preview",
+    "stable"
+  ],
+  "migrationVersion": 1
+}

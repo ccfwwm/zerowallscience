@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-base",
-  "version": "4.3.16",
+  "version": "4.3.17",
   "description": "ZeroWall Science base domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -59,6 +59,7 @@
         "@zerowallscience/plugin-skills",
         "@zerowallscience/plugin-research",
         "@zerowallscience/plugin-mineru",
+        "@zerowallscience/plugin-singlecell",
         "@zerowallscience/plugin-execution",
         "@zerowallscience/plugin-runs",
         "@zerowallscience/plugin-publications",
@@ -154,6 +155,7 @@
     "@zerowallscience/plugin-skills": "workspace:^",
     "@zerowallscience/plugin-research": "workspace:^",
     "@zerowallscience/plugin-mineru": "workspace:^",
+    "@zerowallscience/plugin-singlecell": "workspace:^",
     "@zerowallscience/plugin-execution": "workspace:^",
     "@zerowallscience/plugin-runs": "workspace:^",
     "@zerowallscience/plugin-publications": "workspace:^",

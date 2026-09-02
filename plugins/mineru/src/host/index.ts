@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
-import { existsSync, readFileSync } from 'node:fs'
-import { spawn } from 'node:child_process'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
@@ -12,7 +10,7 @@ import JSZip from 'jszip'
 import { basename, extname, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
-import type { MineruApi, MineruArtifact, MineruBatchResult, MineruConfig, MineruConfigStatus, MineruConnectionTestResult, MineruMode, MineruParseResult, MineruRegistrationInput, MineruTaskResult, ScTenifoldExecution, ScTenifoldPlanResult, ScTenifoldProjectConfig, ScTenifoldReviewResult, ScTenifoldRunResult, ScTenifoldRunState, ScTenifoldValidationResult } from '../shared/types.js'
+import type { MineruApi, MineruArtifact, MineruBatchResult, MineruConfig, MineruConfigStatus, MineruConnectionTestResult, MineruMode, MineruParseResult, MineruRegistrationInput, MineruTaskResult } from '../shared/types.js'
 import type { ArtifactRecord } from '@zerowallscience/research-store/types'
 
 export type * from '../shared/types.js'
@@ -22,98 +20,14 @@ export const MINERU_SETTINGS_NS = settingsNamespace('zerowall-mineru')
 export const TOKEN_MANAGEMENT_URL = 'https://mineru.net/apiManage/token'
 const TOKEN_KEY = 'zerowall.environment.mineru_api_token'
 const MINERU_TOOL_NAMES = ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task'] as const
-const SC_TENIFOLD_TOOL_NAMES = ['sc_tenifold_knockout_validate', 'sc_tenifold_knockout_plan', 'sc_tenifold_knockout_run', 'sc_tenifold_knockout_status', 'sc_tenifold_knockout_cancel', 'sc_tenifold_knockout_collect', 'sc_tenifold_knockout_review', 'sc_tenifold_knockout_report'] as const
 const DEFAULTS: MineruConfig = { apiBaseUrl: 'https://mineru.net', tokenCredential: 'MINERU_API_TOKEN', mode: 'auto', modelVersion: 'vlm', language: 'ch', enableTable: true, enableFormula: true, isOcr: false, extraFormats: [], timeoutMs: 600000, pollIntervalMs: 3000, pollJitterMs: 500, submitRatePerMinute: 40, dailyLimit: 5000, inlineMarkdownBytes: 12000, artifactRootName: '.dsh-mineru' }
 const ConfigSchema: z<MineruConfig> = z.object({ apiBaseUrl: z.string().default(DEFAULTS.apiBaseUrl), tokenCredential: z.string().default(DEFAULTS.tokenCredential), mode: z.union(['auto', 'precision', 'agent'] as const).default(DEFAULTS.mode), modelVersion: z.union(['pipeline', 'vlm', 'MinerU-HTML'] as const).default(DEFAULTS.modelVersion), language: z.string().default(DEFAULTS.language), enableTable: z.boolean().default(true), enableFormula: z.boolean().default(true), isOcr: z.boolean().default(false), extraFormats: z.array(z.union(['docx', 'html', 'latex'] as const)).default([]), timeoutMs: z.number().default(DEFAULTS.timeoutMs), pollIntervalMs: z.number().default(DEFAULTS.pollIntervalMs), pollJitterMs: z.number().default(DEFAULTS.pollJitterMs), submitRatePerMinute: z.number().default(DEFAULTS.submitRatePerMinute), dailyLimit: z.number().default(DEFAULTS.dailyLimit), inlineMarkdownBytes: z.number().default(DEFAULTS.inlineMarkdownBytes), artifactRootName: z.string().default(DEFAULTS.artifactRootName) })
 interface RunRecord { result?: MineruParseResult; taskId?: string; cwd: string }
-interface ScWorkflowRecord {
-  result: ScTenifoldRunResult
-  projectRoot: string
-  output: string
-  validation?: ScTenifoldValidationResult
-  child?: ReturnType<typeof spawn>
-}
 const runs = new Map<string, RunRecord>()
-const scRuns = new Map<string, ScWorkflowRecord>()
 function validateConfig(value: MineruConfig): MineruConfig { let url: URL; try { url = new URL(value.apiBaseUrl) } catch { throw new Error('MinerU API Base URL 无效。') } if (!['http:', 'https:'].includes(url.protocol) || value.apiBaseUrl.length > 2048 || url.pathname.toLowerCase().includes('/apimanage/token')) throw new Error('MinerU API Base URL 必须是有效的 http(s) 服务地址，不能填写 Token 管理页面。'); if (!['auto', 'precision', 'agent'].includes(value.mode)) throw new Error('MinerU 模式无效。'); if (!Number.isInteger(value.timeoutMs) || value.timeoutMs < 10000 || value.timeoutMs > 3600000) throw new Error('MinerU 超时必须在 10 秒到 1 小时之间。'); if (!Number.isInteger(value.pollIntervalMs) || value.pollIntervalMs < 500 || value.pollIntervalMs > 60000) throw new Error('MinerU 轮询间隔无效。'); if (!Number.isInteger(value.pollJitterMs) || value.pollJitterMs < 0 || value.pollJitterMs > 60000) throw new Error('MinerU 轮询抖动无效。'); if (!Number.isInteger(value.submitRatePerMinute) || value.submitRatePerMinute < 1 || value.submitRatePerMinute > 50) throw new Error('MinerU 提交限流必须在 1 到 50 次/分钟之间。'); if (!Number.isInteger(value.dailyLimit) || value.dailyLimit < 1 || value.dailyLimit > 5000) throw new Error('MinerU 每日额度必须在 1 到 5000 之间。'); if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(value.tokenCredential)) throw new Error('MinerU Token 引用名无效。'); if (!value.artifactRootName || value.artifactRootName.includes('/') || value.artifactRootName.includes('\\') || value.artifactRootName === '.' || value.artifactRootName === '..') throw new Error('MinerU Artifact 目录名无效。'); return value }
 function cwdFor(ctx: Context, sessionId: string): string { const cwd = ctx.get('sessions')?.get(SessionId(sessionId))?.header.cwd; if (!cwd) throw new Error('当前会话没有工作区。'); return resolve(cwd) }
 function inside(root: string, candidate: string): boolean { const rel = relative(resolve(root), resolve(candidate)); return rel === '' || (!rel.startsWith('..') && !/^(?:[A-Za-z]:[\\/]|[\\/])/u.test(rel)) }
 function apiFor(mode: MineruMode, token?: string): MineruApi | 'local' { if (!token) return 'local'; return mode === 'agent' ? 'agent' : 'precision' }
-function localRscript(): string { return process.env.ZEROWALL_RSCRIPT?.trim() || 'Rscript' }
-function knockoutRunnerPath(): string | undefined {
-  const candidates = [
-    process.env.ZEROWALL_RESOURCES_ROOT?.trim() ? join(process.env.ZEROWALL_RESOURCES_ROOT.trim(), 'skills', 'sc-tenifold-knockout', 'scripts', 'run_scTenifoldKnk.R') : undefined,
-    process.env.ZEROWALL_PACKAGED_RESOURCES?.trim() ? join(process.env.ZEROWALL_PACKAGED_RESOURCES.trim(), 'skills', 'sc-tenifold-knockout', 'scripts', 'run_scTenifoldKnk.R') : undefined,
-    typeof (process as NodeJS.Process & { resourcesPath?: unknown }).resourcesPath === 'string' ? join(String((process as NodeJS.Process & { resourcesPath?: unknown }).resourcesPath), 'skills', 'sc-tenifold-knockout', 'scripts', 'run_scTenifoldKnk.R') : undefined,
-    resolve(process.cwd(), 'resources/skills/sc-tenifold-knockout/scripts/run_scTenifoldKnk.R'),
-    resolve(import.meta.dirname, '../../../resources/skills/sc-tenifold-knockout/scripts/run_scTenifoldKnk.R'),
-  ]
-  return candidates.find(candidate => candidate !== undefined && existsSync(candidate))
-}
-function safeRelative(root: string, value: string): string {
-  const candidate = resolve(root, value)
-  if (!inside(root, candidate)) throw new Error('科研工作流路径必须位于当前会话工作区内。')
-  return candidate
-}
-function csvValidation(path: string, targets: string[], metadataPath?: string): ScTenifoldValidationResult {
-  const ext = extname(path).toLowerCase()
-  if (!['.csv', '.tsv', '.txt'].includes(ext)) return { ok: true, input: path, inputType: ext.slice(1) || 'file', targets, missingTargets: [], rawCounts: 'not_verified', warnings: ['该输入格式需要在选定 R 环境中验证 raw counts。'], errors: [], review: 'requires_human_review' }
-  const text = readFileSync(path, 'utf8')
-  const lines = text.split(/\r?\n/u).filter(Boolean)
-  const delimiter = ext === '.csv' ? ',' : '\t'
-  if (lines.length < 2) return { ok: false, input: path, inputType: ext.slice(1), targets, missingTargets: targets, rawCounts: 'invalid', warnings: [], errors: ['表达矩阵必须包含表头和至少一行基因。'], review: 'blocked' }
-  const header = (lines[0] ?? '').split(delimiter)
-  const genes: string[] = []
-  const missingTargets = new Set(targets)
-  const seenGenes = new Set<string>()
-  for (const line of lines.slice(1)) {
-    const cells = line.split(delimiter)
-    if (cells.length !== header.length) return { ok: false, input: path, inputType: ext.slice(1), genes: genes.length, cells: Math.max(0, header.length - 1), targets, missingTargets: [...missingTargets], rawCounts: 'invalid', warnings: [], errors: ['表达矩阵各行的细胞列数必须一致。'], review: 'blocked' }
-    const gene = (cells[0] ?? '').trim()
-    if (!gene) continue
-    if (seenGenes.has(gene)) return { ok: false, input: path, inputType: ext.slice(1), genes: genes.length, cells: Math.max(0, header.length - 1), targets, missingTargets: [...missingTargets], rawCounts: 'invalid', warnings: [], errors: [`基因标识符重复: ${gene}`], review: 'blocked' }
-    seenGenes.add(gene)
-    genes.push(gene)
-    missingTargets.delete(gene)
-    for (const value of cells.slice(1)) {
-      const n = Number(value)
-      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) return { ok: false, input: path, inputType: ext.slice(1), genes: genes.length, cells: Math.max(0, header.length - 1), targets, missingTargets: [...missingTargets], rawCounts: 'invalid', warnings: [], errors: ['表达矩阵必须是非负整数 raw counts。'], review: 'blocked' }
-    }
-  }
-  const warnings: string[] = []
-  let biologicalReplicates: number | undefined
-  if (metadataPath) {
-    const metadata = readFileSync(metadataPath, 'utf8')
-    const metaLines = metadata.split(/\r?\n/u).filter(Boolean)
-    if (metaLines.length > 1) {
-      const metaHeader = (metaLines[0] ?? '').split(delimiter)
-      const sampleIndex = metaHeader.findIndex((item: string) => item.trim() === 'sample')
-      const conditionIndex = metaHeader.findIndex((item: string) => item.trim() === 'condition')
-      const cellTypeIndex = metaHeader.findIndex((item: string) => ['cell_type', 'celltype', 'cell type'].includes(item.trim().toLowerCase()))
-      biologicalReplicates = sampleIndex >= 0 ? new Set(metaLines.slice(1).map(line => line.split(delimiter)[sampleIndex]).filter(Boolean)).size : undefined
-      if (sampleIndex < 0) warnings.push('metadata 缺少 sample 字段，无法确认生物学重复。')
-      else if ((biologicalReplicates ?? 0) < 2) warnings.push('生物学重复少于 2 个，结果只能作为探索性分析。')
-      if (conditionIndex < 0) warnings.push('metadata 缺少 condition 字段，无法进行对照条件分层。')
-      if (cellTypeIndex < 0) warnings.push('metadata 缺少 cell_type 字段，无法按细胞群分层。')
-    }
-  } else warnings.push('未提供 metadata，无法审核样本、批次和细胞群分层。')
-  const missing = [...missingTargets]
-  if (missing.length) return { ok: false, input: path, inputType: ext.slice(1), genes: genes.length, cells: Math.max(0, header.length - 1), targets, missingTargets: missing, rawCounts: 'verified', ...(biologicalReplicates === undefined ? {} : { biologicalReplicates }), warnings, errors: [`目标基因不存在: ${missing.join(', ')}`], review: 'blocked' }
-  return { ok: true, input: path, inputType: ext.slice(1), genes: genes.length, cells: Math.max(0, header.length - 1), targets, missingTargets: [], rawCounts: 'verified', ...(biologicalReplicates === undefined ? {} : { biologicalReplicates }), warnings, errors: [], review: warnings.length ? 'pass_with_warnings' : 'requires_human_review' }
-}
-function workflowReview(validation: ScTenifoldValidationResult | undefined, runPath?: string): ScTenifoldReviewResult {
-  const data = validation ?? { ok: true, warnings: ['尚未执行输入校验。'], errors: [], review: 'requires_human_review' as const }
-  const computeMessages = runPath && existsSync(join(runPath, 'manifest.json')) ? [] : ['尚未发现 scTenifoldKnk manifest，计算结果需要人工复核。']
-  const gates: ScTenifoldReviewResult['gates'] = {
-    data: { state: data.errors.length ? 'blocked' : data.warnings.length ? 'pass_with_warnings' : 'pass', messages: [...data.errors, ...data.warnings] },
-    compute: { state: computeMessages.length ? 'requires_human_review' : 'pass_with_warnings', messages: computeMessages },
-    biology: { state: 'requires_human_review' as const, messages: ['虚拟敲除仅产生网络扰动假设，需结合 Bio Tools 和实验验证。'] },
-    manuscript: { state: 'requires_human_review' as const, messages: ['文章不得将计算假设表述为真实基因敲除证据。'] },
-  }
-  const states = Object.values(gates).map(gate => gate.state)
-  const state = states.includes('blocked') ? 'blocked' : states.includes('requires_human_review') ? 'requires_human_review' : states.includes('pass_with_warnings') ? 'pass_with_warnings' : 'pass'
-  return { state, gates, warnings: states.includes('pass_with_warnings') ? ['结果包含需要人工复核的警告。'] : [] }
-}
 function json(text: string): unknown { try { return JSON.parse(text) as unknown } catch { return undefined } }
 function sha(data: Uint8Array | string): string { return createHash('sha256').update(data).digest('hex') }
 function mime(path: string): string { return ({ '.md': 'text/markdown', '.json': 'application/json', '.pdf': 'application/pdf', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.html': 'text/html', '.tex': 'application/x-latex' } as Record<string, string>)[extname(path).toLowerCase()] ?? 'application/octet-stream' }
@@ -169,20 +83,8 @@ export class ZeroWallMineruService extends TypertRemoteService {
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => { const data = value as { taskId?: string; state?: string }; return [{ type: 'text', text: `MinerU 任务 ${data.taskId ?? ''}：${data.state ?? 'pending'}` }] } },
       execute: async (args, exec) => this.task({ sessionId: String(exec.agent?.session.id ?? ''), taskId: String(args.taskId), api: String(args.api) as MineruApi, wait: args.wait === true, signal: exec.signal }) as unknown as Record<string, JsonValue>,
     }))
-    const workflowOutput = { schema: { type: 'object', additionalProperties: true }, render: (_args: unknown, value: unknown) => [{ type: 'text', text: JSON.stringify(value) }], presentationMeta: (_args: unknown, value: unknown) => value } as any
-    hostCtx.tools.register((defineTool as any)({ name: 'sc_tenifold_knockout_validate', description: '校验 scTenifoldKnk 输入是否为 raw counts、目标基因和元数据。', parameters: { projectPath: { type: 'string', required: true }, input: { type: 'string', required: true }, targets: { type: 'array', required: true, items: { type: 'string' } }, metadata: { type: 'string' } }, output: workflowOutput, execute: async (args: any, exec: any) => this.scTenifoldValidate({ sessionId: String(exec.agent?.session.id ?? ''), projectPath: String(args.projectPath), input: String(args.input), targets: Array.isArray(args.targets) ? args.targets.map(String) : [], ...(args.metadata ? { metadata: String(args.metadata) } : {}) }) }))
-    hostCtx.tools.register((defineTool as any)({ name: 'sc_tenifold_knockout_plan', description: '创建可复现的 scTenifoldKnk 项目目录、project.yaml 和 plan.json。', parameters: { config: { type: 'object', additionalProperties: true, required: true } }, output: workflowOutput, execute: async (args: any, exec: any) => this.scTenifoldPlan({ sessionId: String(exec.agent?.session.id ?? ''), config: args.config as ScTenifoldProjectConfig }) }))
-    hostCtx.tools.register((defineTool as any)({ name: 'sc_tenifold_knockout_run', description: '运行一次经过校验的 scTenifoldKnk 虚拟敲除；默认 r-mcp，local-r 仅适合小型验证。', parameters: { config: { type: 'object', additionalProperties: true, required: true }, target: { type: 'string' } }, output: workflowOutput, execute: async (args: any, exec: any) => this.scTenifoldRun({ sessionId: String(exec.agent?.session.id ?? ''), config: args.config as ScTenifoldProjectConfig, ...(args.target ? { target: String(args.target) } : {}) }) }))
-    hostCtx.tools.register((defineTool as any)({ name: 'sc_tenifold_knockout_status', description: '查询 scTenifoldKnk 运行状态。', parameters: { runId: { type: 'string', required: true } }, output: workflowOutput, execute: async (args: any) => this.scTenifoldStatus(String(args.runId)) }))
-    hostCtx.tools.register((defineTool as any)({ name: 'sc_tenifold_knockout_cancel', description: '取消本地 scTenifoldKnk 运行。', parameters: { runId: { type: 'string', required: true } }, output: workflowOutput, execute: async (args: any) => this.scTenifoldCancel(String(args.runId)) }))
-    hostCtx.tools.register((defineTool as any)({ name: 'sc_tenifold_knockout_collect', description: '收集 scTenifoldKnk 运行输出文件。', parameters: { runId: { type: 'string', required: true } }, output: workflowOutput, execute: async (args: any) => this.scTenifoldCollect(String(args.runId)) }))
-    hostCtx.tools.register((defineTool as any)({ name: 'sc_tenifold_knockout_review', description: '执行数据、计算、生物学和文稿四级审核门禁。', parameters: { runId: { type: 'string', required: true } }, output: workflowOutput, execute: async (args: any) => this.scTenifoldReview(String(args.runId)) }))
-    hostCtx.tools.register((defineTool as any)({ name: 'sc_tenifold_knockout_report', description: '生成带限制声明的 scTenifoldKnk 审核报告。', parameters: { runId: { type: 'string', required: true } }, output: workflowOutput, execute: async (args: any) => this.scTenifoldReport(String(args.runId)) }))
     for (const tool of MINERU_TOOL_NAMES) {
       if (hostCtx.tools.get(tool) === undefined) throw new Error(`MinerU Host tool registration failed: ${tool}`)
-    }
-    for (const tool of SC_TENIFOLD_TOOL_NAMES) {
-      if (hostCtx.tools.get(tool) === undefined) throw new Error(`scTenifoldKnk workflow tool registration failed: ${tool}`)
     }
   }
   private config(): MineruConfig { return validateConfig({ ...DEFAULTS, ...this.scope.get() }) }
@@ -191,7 +93,7 @@ export class ZeroWallMineruService extends TypertRemoteService {
     try { value = await this.secrets.get(TOKEN_KEY) } catch { value = undefined }
     return value?.trim() || undefined
   }
-  @Remote('getConfigStatus') async getConfigStatus(): Promise<MineruConfigStatus> { const cfg = this.config(); const token = await this.token(); const registeredTools = [...MINERU_TOOL_NAMES, ...SC_TENIFOLD_TOOL_NAMES].filter(tool => this.hostCtx.tools.get(tool) !== undefined); return { ...cfg, api: apiFor(cfg.mode, token), tokenConfigured: token !== undefined, tokenManagementUrl: TOKEN_MANAGEMENT_URL, available: registeredTools.length === MINERU_TOOL_NAMES.length + SC_TENIFOLD_TOOL_NAMES.length, registeredTools } }
+  @Remote('getConfigStatus') async getConfigStatus(): Promise<MineruConfigStatus> { const cfg = this.config(); const token = await this.token(); const registeredTools = MINERU_TOOL_NAMES.filter(tool => this.hostCtx.tools.get(tool) !== undefined); return { ...cfg, api: apiFor(cfg.mode, token), tokenConfigured: token !== undefined, tokenManagementUrl: TOKEN_MANAGEMENT_URL, available: registeredTools.length === MINERU_TOOL_NAMES.length, registeredTools } }
   @Remote('updateConfig') async updateConfig(input: Partial<MineruConfig>): Promise<MineruConfigStatus> { const next = validateConfig({ ...this.config(), ...input }); await this.scope.replace(next); return this.getConfigStatus() }
   @Remote('setToken') async setToken(value: string): Promise<MineruConfigStatus> { if (!value.trim()) throw new Error('MinerU Token 不能为空。'); await this.secrets.set(TOKEN_KEY, value.trim()); return this.getConfigStatus() }
   @Remote('clearToken') async clearToken(): Promise<MineruConfigStatus> { await this.secrets.delete(TOKEN_KEY); return this.getConfigStatus() }
@@ -253,99 +155,6 @@ export class ZeroWallMineruService extends TypertRemoteService {
     } catch (error) { if (error instanceof Error && error.name === 'AbortError') throw new Error('MinerU Agent API 测试超时，请检查网络或 API Base URL。'); throw error }
     finally { clearTimeout(timer) }
   }
-  @Remote('scTenifoldValidate') scTenifoldValidate(input: { sessionId: string; projectPath: string; input: string; targets: string[]; metadata?: string }): ScTenifoldValidationResult {
-    const cwd = cwdFor(this.hostCtx, input.sessionId)
-    const project = safeRelative(cwd, input.projectPath)
-    const matrix = safeRelative(project, input.input)
-    if (!existsSync(matrix)) throw new Error('scTenifoldKnk 输入文件不存在。')
-    const metadata = input.metadata ? safeRelative(project, input.metadata) : undefined
-    return csvValidation(matrix, input.targets.map(String).filter(Boolean), metadata)
-  }
-  @Remote('scTenifoldPlan') async scTenifoldPlan(input: { sessionId: string; config: ScTenifoldProjectConfig }): Promise<ScTenifoldPlanResult> {
-    const cwd = cwdFor(this.hostCtx, input.sessionId)
-    const cfg = input.config
-    const projectPath = safeRelative(cwd, cfg.projectPath)
-    await mkdir(projectPath, { recursive: true })
-    for (const directory of ['data/raw', 'data/metadata', 'data/processed', 'scripts', 'figures', 'tables', 'reports', 'runs', 'protocols', 'environment']) await mkdir(join(projectPath, directory), { recursive: true })
-    const validation = this.scTenifoldValidate({ sessionId: input.sessionId, projectPath: cfg.projectPath, input: cfg.input, targets: cfg.targets, ...(cfg.metadata ? { metadata: cfg.metadata } : {}) })
-    const execution: ScTenifoldExecution = cfg.execution ?? 'r-mcp'
-    const plan = { schema: 1, method: 'scTenifoldKnk', computationalOnly: true, createdAt: new Date().toISOString(), input: cfg.input, metadata: cfg.metadata ?? null, targets: cfg.targets, strata: cfg.strata ?? [], execution, parameters: { nc_nNet: cfg.nc_nNet ?? 10, nc_nCells: cfg.nc_nCells ?? 500, fdr: cfg.fdr ?? 0.05, seeds: cfg.seeds ?? [cfg.seed ?? 123, 456] }, validation, status: validation.errors.length ? 'blocked' : 'requires_human_review' }
-    const encoded = JSON.stringify(plan)
-    const planSha256 = sha(encoded)
-    const planPath = join(projectPath, 'plan.json')
-    const manifestPath = join(projectPath, 'project.yaml')
-    await writeFile(planPath, JSON.stringify({ ...plan, plan_sha256: planSha256 }, null, 2) + '\n', { flag: 'wx' }).catch(error => { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error })
-    const yaml = [`schema: 1`, `species: ${JSON.stringify(cfg.species ?? '')}`, `tissue: ${JSON.stringify(cfg.tissue ?? '')}`, `sample_type: ${JSON.stringify(cfg.sampleType ?? '')}`, `research_question: ${JSON.stringify(cfg.researchQuestion ?? '')}`, `input: ${JSON.stringify(cfg.input)}`, `metadata: ${JSON.stringify(cfg.metadata ?? '')}`, `targets: [${cfg.targets.map(item => JSON.stringify(item)).join(', ')}]`, `execution: ${execution}`, `computational_only: true`, `raw_data_read_only: true`, ''].join('\n')
-    await writeFile(manifestPath, yaml, { flag: 'wx' }).catch(async error => { if ((error as NodeJS.ErrnoException).code === 'EEXIST') return; throw error })
-    return { ok: true, projectPath, planPath, manifestPath, validation, planSha256, execution }
-  }
-  @Remote('scTenifoldRun') async scTenifoldRun(input: { sessionId: string; config: ScTenifoldProjectConfig; target?: string }): Promise<ScTenifoldRunResult> {
-    const cwd = cwdFor(this.hostCtx, input.sessionId)
-    const cfg = input.config
-    const projectPath = safeRelative(cwd, cfg.projectPath)
-    const validation = this.scTenifoldValidate({ sessionId: input.sessionId, projectPath: cfg.projectPath, input: cfg.input, targets: cfg.targets, ...(cfg.metadata ? { metadata: cfg.metadata } : {}) })
-    if (!validation.ok || validation.errors.length) throw new Error(`scTenifoldKnk 输入审核未通过：${[...validation.errors, ...validation.warnings].join(' ')}`)
-    const target = input.target ?? cfg.targets[0]
-    if (!target) throw new Error('至少需要一个目标基因。')
-    const runId = `sc-${Date.now()}-${randomUUID().slice(0, 8)}`
-    const runPath = join(projectPath, 'runs', runId)
-    await mkdir(runPath, { recursive: true })
-    const execution: ScTenifoldExecution = cfg.execution ?? 'r-mcp'
-    const startedAt = new Date().toISOString()
-    const result: ScTenifoldRunResult = { ok: true, runId, projectPath, runPath, state: execution === 'local-r' ? 'queued' : 'planned', execution, target, startedAt, progress: 0 }
-    const research = this.hostCtx.get('zerowallResearch') as { projectForSession(input: { sessionId: string }): { id: string; rootPath: string } | undefined; createRun(input: { projectId: string; name: string; command: string; workingDirectory: string; status?: string; inputs?: Array<{ name: string; uri: string; mediaType?: string }>; outputs?: Array<{ name: string; uri: string; mediaType?: string }> }): { id: string }; updateRun(input: { id: string; changes: { status: string; progress: number; error?: string } }): unknown } | undefined
-    const projectRecord = research?.projectForSession({ sessionId: input.sessionId })
-    if (projectRecord && research !== undefined) {
-      const tracked = research.createRun({ projectId: projectRecord.id, name: `scTenifoldKnk ${target}`, command: `sc_tenifold_knockout_run ${target}`, workingDirectory: projectPath, status: execution === 'local-r' ? 'running' : 'submitted', inputs: [{ name: basename(cfg.input), uri: pathToFileURL(safeRelative(projectPath, cfg.input)).href }], outputs: [{ name: runId, uri: pathToFileURL(runPath).href }] })
-      result.researchRunId = tracked.id
-    }
-    scRuns.set(runId, { result, projectRoot: projectPath, output: runPath, validation })
-    await writeFile(join(runPath, 'input-fingerprint.json'), JSON.stringify({ input: cfg.input, target, createdAt: startedAt, validation }, null, 2) + '\n')
-    if (execution === 'remote-run') {
-      const runs = this.hostCtx.get('zerowallRuns') as { submit(input: { projectId: string; executionContextId?: string; name: string; command: string; workingDirectory: string; timeoutMs?: number; inputs?: Array<{ name: string; uri: string; mediaType?: string }>; outputs?: Array<{ name: string; uri: string; mediaType?: string }> }): { id: string; status?: string; progress?: number } } | undefined
-      if (!runs || !projectRecord) {
-        result.state = 'failed'; result.error = 'remote-run 需要已启用的 ZeroWall Runs 服务以及当前 Session 关联项目。'; result.finishedAt = new Date().toISOString(); await writeFile(join(runPath, 'run-error.txt'), result.error); return result
-      }
-      const remoteInput = cfg.remoteInput?.trim() || cfg.input
-      const remoteOutput = cfg.remoteOutput?.trim() || `runs/${runId}`
-      const command = ['Rscript', '--vanilla', 'run_scTenifoldKnk.R', `--input=${remoteInput}`, `--output=${remoteOutput}`, `--target=${target}`, ...(cfg.metadata ? [`--metadata=${cfg.metadata}`] : []), `--n-net=${cfg.nc_nNet ?? 10}`, `--n-cells=${cfg.nc_nCells ?? 500}`, `--fdr=${cfg.fdr ?? 0.05}`, `--seed=${cfg.seed ?? 123}`].join(' ')
-      const tracked = runs.submit({ projectId: projectRecord.id, ...(cfg.executionContextId ? { executionContextId: cfg.executionContextId } : {}), name: `scTenifoldKnk ${target}`, command, workingDirectory: projectPath, timeoutMs: 30 * 24 * 60 * 60_000, inputs: [{ name: basename(cfg.input), uri: pathToFileURL(safeRelative(projectPath, cfg.input)).href }], outputs: [{ name: runId, uri: pathToFileURL(runPath).href }] })
-      result.researchRunId = tracked.id; result.state = tracked.status === 'failed' ? 'failed' : tracked.status === 'succeeded' ? 'succeeded' : 'running'; result.progress = typeof tracked.progress === 'number' ? Math.round(tracked.progress * 100) : 0
-      return result
-    }
-    if (execution === 'r-mcp') {
-      const available = this.hostCtx.tools.schemas().some(schema => schema.name === 'mcp__rdatalinux_r_platform__r_submit_script')
-      if (!available) {
-        result.state = 'failed'; result.error = '未发现 rdatalinux R MCP 的 r_submit_script 工具；请先连接并同步 R MCP。'; result.finishedAt = new Date().toISOString(); await writeFile(join(runPath, 'run-error.txt'), result.error); return result
-      }
-      result.error = '已生成 R MCP 运行目录；请由 sc-tenifold-knockout Skill 调用 r_submit_script 提交脚本，并使用 runId 追踪结果。'
-      return result
-    }
-    if (execution === 'auto') {
-      result.error = 'auto 模式已完成本地运行目录准备；请由 Skill 根据可用 R MCP/远程执行上下文选择实际执行器。'
-      return result
-    }
-    const script = knockoutRunnerPath()
-    if (!script) { result.state = 'failed'; result.error = 'scTenifoldKnk R runner 未随当前构建提供。'; result.finishedAt = new Date().toISOString(); await writeFile(join(runPath, 'run-error.txt'), result.error); return result }
-    result.state = 'running'; result.progress = 10
-    const inputPath = safeRelative(projectPath, cfg.input)
-    const metadata = cfg.metadata ? safeRelative(projectPath, cfg.metadata) : undefined
-    const args = ['--vanilla', script, `--input=${inputPath}`, `--output=${runPath}`, `--target=${target}`, ...(metadata ? [`--metadata=${metadata}`] : []), `--n-net=${cfg.nc_nNet ?? 10}`, `--n-cells=${cfg.nc_nCells ?? 500}`, `--fdr=${cfg.fdr ?? 0.05}`, `--seed=${cfg.seed ?? 123}`]
-    const child = spawn(localRscript(), args, { cwd: projectPath, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
-    scRuns.get(runId)!.child = child
-    let output = ''; let error = ''
-    child.stdout.on('data', chunk => { output = `${output}${String(chunk)}`.slice(-1024 * 1024) })
-    child.stderr.on('data', chunk => { error = `${error}${String(chunk)}`.slice(-1024 * 1024) })
-    const updateTracked = (state: string, errorText?: string) => { if (result.researchRunId && research !== undefined) { try { research.updateRun({ id: result.researchRunId, changes: { status: state, progress: result.progress, ...(errorText ? { error: errorText } : {}) } }) } catch { /* a run record must not prevent local completion */ } } }
-    child.once('error', err => { result.state = 'failed'; result.progress = 0; result.error = err.message; result.finishedAt = new Date().toISOString(); updateTracked('failed', err.message); void writeFile(join(runPath, 'logs.txt'), error || err.message) })
-    child.once('exit', code => { result.state = code === 0 ? 'succeeded' : result.state === 'cancelled' ? 'cancelled' : 'failed'; result.progress = code === 0 ? 100 : result.progress; if (code === 0) delete result.error; else if (result.state !== 'cancelled') result.error = error.trim() || `R 进程退出码 ${String(code)}`; result.finishedAt = new Date().toISOString(); updateTracked(result.state === 'succeeded' ? 'succeeded' : result.state === 'cancelled' ? 'cancelled' : 'failed', result.error); void writeFile(join(runPath, 'logs.txt'), `${output}\n${error}`) })
-    return result
-  }
-  @Remote('scTenifoldStatus') scTenifoldStatus(runId: string): ScTenifoldRunResult | undefined { return scRuns.get(runId)?.result }
-  @Remote('scTenifoldCancel') scTenifoldCancel(runId: string): ScTenifoldRunResult { const record = scRuns.get(runId); if (!record) throw new Error(`scTenifoldKnk 运行不存在: ${runId}`); if (record.result.state === 'queued' || record.result.state === 'running') { record.result.state = 'cancelled'; record.result.progress = 0; record.result.finishedAt = new Date().toISOString(); record.child?.kill() }; return record.result }
-  @Remote('scTenifoldCollect') async scTenifoldCollect(runId: string): Promise<{ run: ScTenifoldRunResult; files: string[] }> { const record = scRuns.get(runId); if (!record) throw new Error(`scTenifoldKnk 运行不存在: ${runId}`); const files = existsSync(record.output) ? await artifacts(record.output).then(items => items.map(item => item.path)) : []; return { run: record.result, files } }
-  @Remote('scTenifoldReview') scTenifoldReview(runId: string): ScTenifoldReviewResult { const record = scRuns.get(runId); if (!record) throw new Error(`scTenifoldKnk 运行不存在: ${runId}`); return workflowReview(record.validation, record.output) }
-  @Remote('scTenifoldReport') async scTenifoldReport(runId: string): Promise<{ path: string; review: ScTenifoldReviewResult }> { const record = scRuns.get(runId); if (!record) throw new Error(`scTenifoldKnk 运行不存在: ${runId}`); const review = workflowReview(record.validation, record.output); const path = join(record.projectRoot, 'reports', `${runId}-review.md`); await mkdir(resolve(path, '..'), { recursive: true }); await writeFile(path, [`# scTenifoldKnk 运行审核`, ``, `- run: ${runId}`, `- status: ${record.result.state}`, `- review: ${review.state}`, ``, `## 限制`, ``, `该运行仅产生基于 scGRN 的计算假设，不等同于真实基因敲除证据。`, ``, '## 审核门禁', ...Object.entries(review.gates).map(([name, gate]) => `- ${name}: ${gate.state} ${gate.messages.join(' ')}`), ''].join('\n')); return { path, review } }
   async parse(input: { sessionId: string; source: string; mode?: MineruMode; overrides?: Partial<MineruConfig>; signal?: AbortSignal }): Promise<MineruParseResult> { const cwd = cwdFor(this.hostCtx, input.sessionId); const source = input.source.trim(); if (!source) throw new Error('MinerU source 不能为空。'); const cfg = validateConfig({ ...this.config(), ...(input.overrides ?? {}), ...(input.mode ? { mode: input.mode } : {}) }); const isUrl = /^https?:\/\//iu.test(source); let filePath: string | undefined; let sourceName = source; if (isUrl) sourceName = source; else if (/^file-sha256:[a-f0-9]{64}$/u.test(source)) { const files = this.hostCtx.get('zerowallFiles') as { materialize(input: { sessionId: string; attachmentId: string }): Promise<{ path: string; name: string }> } | undefined; if (!files) throw new Error('当前运行时没有文件附件服务。'); const materialized = await files.materialize({ sessionId: input.sessionId, attachmentId: source }); filePath = materialized.path; sourceName = materialized.name } else { filePath = resolve(cwd, source); if (!inside(cwd, filePath) || !(await stat(filePath)).isFile()) throw new Error('MinerU 只能读取当前工作区内的普通文件。'); sourceName = basename(filePath) } const token = await this.token(); const api = apiFor(cfg.mode, token); if (api === 'local') throw new Error('尚未配置 MinerU Token；请调用 extract_uploaded_file 的 local 或 auto 模式使用本地快速解析。'); const started = Date.now(); const remote = await remoteParse(cfg, api, token, filePath, isUrl ? source : undefined, input.signal ?? new AbortController().signal); const result = await writeResult(cfg, input.sessionId, cwd, sourceName, api, remote.taskId, remote.markdown, remote.archive, started); runs.set(remote.taskId ?? result.runDir, { result, ...(remote.taskId ? { taskId: remote.taskId } : {}), cwd }); return result }
   @Remote('getRun') getRun(input: { taskId: string }): MineruParseResult | undefined { return [...runs.values()].find(item => item.taskId === input.taskId)?.result }
   @Remote('listRuns') listRuns(): MineruParseResult[] { return [...runs.values()].flatMap(item => item.result ? [item.result] : []) }
