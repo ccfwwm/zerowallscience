@@ -10203,7 +10203,7 @@ importers:
     dependencies:
       '@huanlin/dsh-plugin-better-sidebar-plugin-office':
         specifier: 0.1.2
-        version: 0.1.2(patch_hash=b050b2472a176a57c59c10717b0434a9b83f06ff8a18adb5726034a101b35b52)(@types/react-dom@18.3.5(@types/react@18.3.31))(@types/react@18.3.31)(dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046))(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(rxjs@7.8.2)
+        version: 0.1.2(patch_hash=b050b2472a176a57c59c10717b0434a9b83f06ff8a18adb5726034a101b35b52)(@types/react-dom@18.3.5(@types/react@18.3.31))(@types/react@18.3.31)(dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046))(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(rxjs@7.8.2)
       '@zerowallscience/dsh-ppt-runtime':
         specifier: workspace:^
         version: link:../packages/presentations-runtime
@@ -10277,8 +10277,8 @@ importers:
         specifier: workspace:^
         version: link:../store
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -10488,8 +10488,8 @@ importers:
         specifier: workspace:^
         version: link:../secrets
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -10645,8 +10645,8 @@ importers:
         specifier: workspace:^
         version: link:../secrets
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -10823,8 +10823,8 @@ importers:
         specifier: workspace:^
         version: link:../skills
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -11104,8 +11104,8 @@ importers:
         specifier: workspace:^
         version: link:../secrets
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -11252,8 +11252,8 @@ importers:
         specifier: workspace:^
         version: link:../../store
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -11391,8 +11391,8 @@ importers:
         specifier: link:../../deepseek-harness/vendor/schemastery
         version: link:../../deepseek-harness/vendor/schemastery
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -11560,8 +11560,8 @@ importers:
         specifier: workspace:^
         version: link:../research
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -11723,8 +11723,8 @@ importers:
         specifier: workspace:^
         version: link:../secrets
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -11880,8 +11880,8 @@ importers:
         specifier: workspace:^
         version: link:../../store
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -12040,8 +12040,8 @@ importers:
         specifier: workspace:^
         version: link:../secrets
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -12324,8 +12324,8 @@ importers:
         specifier: workspace:^
         version: link:../../store
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -12475,8 +12475,8 @@ importers:
         specifier: workspace:^
         version: link:../../store
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -12629,8 +12629,8 @@ importers:
         specifier: workspace:^
         version: link:../../store
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -12910,8 +12910,8 @@ importers:
         specifier: workspace:^
         version: link:../../store
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -13061,8 +13061,8 @@ importers:
         specifier: workspace:^
         version: link:../base
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -13212,8 +13212,8 @@ importers:
         specifier: workspace:^
         version: link:../../store
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -13496,8 +13496,8 @@ importers:
         specifier: workspace:^
         version: link:../runs
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -13644,8 +13644,8 @@ importers:
         specifier: workspace:^
         version: link:../base
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -13804,8 +13804,8 @@ importers:
         specifier: workspace:^
         version: link:../secrets
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -13955,8 +13955,8 @@ importers:
         specifier: workspace:^
         version: link:../secrets
       dsh-better-sidebar:
-        specifier: github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b
-        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+        specifier: github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20
+        version: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       dsh-dream-skin:
         specifier: 8.30.1
         version: 8.30.1(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
@@ -18971,8 +18971,8 @@ packages:
     resolution: {integrity: sha512-ZmdL2rui+eB2YwhsWzjInR8LldtZHGDoQ1ugH85ppHKwpUHL7j7rN0Ti9NCnGiQbhaZ11FpR+7ao1dNsmduNUg==}
     engines: {node: '>=12'}
 
-  dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b:
-    resolution: {gitHosted: true, integrity: sha512-vTReGKRo2j3gE2hpEmSe6YLnB4wLHQMNfDk18EAzJfLRiF/voSRaKEt8cJDOYyQdui/aUDEdYTSWGLJMoWhouQ==, tarball: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b}
+  dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20:
+    resolution: {gitHosted: true, integrity: sha512-IbmBi2WVMtLAgWaFq4Rz5Ca2w18RLV0VQrucRgzK6AQRzd+ZsMnoTZq+Dg14qnx1NwZLeZ0kDdnofmlhkQLiVA==, tarball: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20}
     version: 0.18.1-alpha.0
     engines: {node: '>=20'}
     peerDependencies:
@@ -23548,7 +23548,7 @@ snapshots:
     dependencies:
       hono: 4.13.2
 
-  '@huanlin/dsh-plugin-better-sidebar-plugin-office@0.1.2(patch_hash=b050b2472a176a57c59c10717b0434a9b83f06ff8a18adb5726034a101b35b52)(@types/react-dom@18.3.5(@types/react@18.3.31))(@types/react@18.3.31)(dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046))(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(rxjs@7.8.2)':
+  '@huanlin/dsh-plugin-better-sidebar-plugin-office@0.1.2(patch_hash=b050b2472a176a57c59c10717b0434a9b83f06ff8a18adb5726034a101b35b52)(@types/react-dom@18.3.5(@types/react@18.3.31))(@types/react@18.3.31)(dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046))(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(rxjs@7.8.2)':
     dependencies:
       '@aiden0z/pptx-renderer': 1.2.4
       '@univerjs/preset-sheets-core': 0.25.1(@types/react-dom@18.3.5(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(rxjs@7.8.2)
@@ -23556,7 +23556,7 @@ snapshots:
       docx-preview: 0.4.0
       xlsx: 0.18.5
     optionalDependencies:
-      dsh-better-sidebar: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
+      dsh-better-sidebar: https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046)
       react: 18.2.0
     transitivePeerDependencies:
       - '@types/react'
@@ -28073,7 +28073,7 @@ snapshots:
 
   dotenv@16.4.5: {}
 
-  dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046):
+  dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046):
     dependencies:
       '@codemirror/commands': 6.11.0
       '@codemirror/lang-cpp': 6.0.3

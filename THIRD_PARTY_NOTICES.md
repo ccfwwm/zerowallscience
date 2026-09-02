@@ -154,7 +154,7 @@ External packages that a workspace package resolves at runtime. The tier covers 
 | [`zustand`](https://github.com/pmndrs/zustand) | MIT |
 
 `dsh-better-sidebar@0.18.1-alpha.0` is pinned to the exact GitHub `main`
-snapshot `dd499b2560f1460483d803fbfebc2a3ef13e8d3b`. Its bundled CodeMirror language
+snapshot `efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20`. Its bundled CodeMirror language
 packages, `dompurify`, `mermaid`, `node-pty`, `react-icons`, `rxjs`, and `ws`
 remain independently licensed dependencies recorded in `pnpm-lock.yaml`.
 The Windows package audit requires the browser chunks and manifest in `app.asar`

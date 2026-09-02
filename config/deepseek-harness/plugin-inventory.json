@@ -3,7 +3,7 @@
   "harness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
     "branch": "zerowall-dsh-alpha5",
-    "commit": "081eb48bb18ded14b500262075345620c835de50",
+    "commit": "70a6a8ddde12bff231e338ae9d7549188f392720",
     "upstreamRepository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "upstreamCommit": "db6bdc3576c2d4e7c965e8e3ed0c2a731eed87f5",
     "tag": "dsh-v0.1.2-alpha.5",
@@ -145,7 +145,7 @@
     },
     {
       "package": "dsh-better-sidebar",
-      "version": "github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b",
+      "version": "github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20",
       "owner": "third-party",
       "source": "desktop/package.json",
       "loadOrder": 2,

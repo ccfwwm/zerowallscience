@@ -14,7 +14,7 @@ test('stable profile pins alpha.5 and includes the bundled WeChat plugin', async
 
 test('better-sidebar is a single pinned default workbench in every profile', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-better-sidebar'], 'github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b')
+  assert.equal(desktop.dependencies['dsh-better-sidebar'], 'github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20')
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
   assert.equal((patch.match(/^\s*- id: better-sidebar\s*$/gmu) ?? []).length, 1)
   for (const profile of ['development', 'preview', 'stable']) {
