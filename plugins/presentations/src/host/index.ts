@@ -4,7 +4,8 @@ import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { apply as applyPptRuntime, inject as pptRuntimeInject } from '@zerowallscience/dsh-ppt-runtime'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
+import { defineTool } from '@deepseek-ai/dsh-tools'
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { ResearchStore } from '@zerowallscience/research-store'
 import type { CreatePresentationInput, PresentationRecord, ProjectRecord, UpdatePresentationChanges } from '@zerowallscience/research-store/types'
@@ -326,7 +327,7 @@ function latestSessionAttachmentIds(ctx: Context, sessionId: string): string[] {
   const agent = ctx.get('agents')?.get(SessionId(sessionId)) as { inbox?: { nextTurn?: readonly unknown[]; nextStep?: readonly unknown[] } } | undefined
   const pending = agent?.inbox === undefined ? [] : [...(agent.inbox.nextTurn ?? []), ...(agent.inbox.nextStep ?? [])]
   if (!session && pending.length === 0) return []
-  for (const event of [...(session?.events ?? [])].reverse()) {
+  for (const event of [...(session?.snapshotEvents() ?? [])].reverse()) {
     if (event.type !== 'user/message') continue
     const data = event.data as { source?: { kind?: string }; content?: unknown; message?: { content?: unknown }; inserted?: unknown; meta?: { image?: unknown } }
     if (data.source?.kind !== 'user') continue
@@ -362,7 +363,7 @@ function collectSessionAttachments(value: unknown, output: SessionAttachmentCand
 function findSessionImageAttachment(ctx: Context, sessionId: string, attachmentId: string): unknown | undefined {
   const session = ctx.get('sessions')?.get(SessionId(sessionId))
   const agent = ctx.get('agents')?.get(SessionId(sessionId)) as { inbox?: { nextTurn?: readonly unknown[]; nextStep?: readonly unknown[] } } | undefined
-  const events = session?.events ?? []
+  const events = session?.snapshotEvents() ?? []
   for (const event of events) {
     if (event.type !== 'user/message') continue
     const found: SessionAttachmentCandidate[] = []

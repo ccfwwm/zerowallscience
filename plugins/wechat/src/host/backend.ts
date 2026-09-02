@@ -530,7 +530,7 @@ export class WechatBackend {
       }
       case 'turn/end': {
         if (replyOnOf(this.effectiveSettings().granularity) === 'turn') {
-          const last = session.events.findLast((entry) => entry.type === 'assistant/message')
+          const last = session.snapshotEvents().findLast((entry) => entry.type === 'assistant/message')
           if (last && last.type === 'assistant/message') {
             const text = extractAssistantText(last.data.message)
             if (text.trim()) await this.reply(targetId, text)

@@ -41,7 +41,9 @@ const clientInject = [
 ]
 
 const externalClientDependencies = {
-  'dsh-better-sidebar': '0.16.1',
+  // Pin the exact GitHub main snapshot used for this upgrade. The package's
+  // prepare script builds lib/ from source during pnpm install.
+  'dsh-better-sidebar': 'github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b',
   'dsh-dream-skin': '8.30.1',
 }
 
@@ -211,7 +213,7 @@ for (const plugin of plugins) {
       } : {}),
     },
     zerowall: {
-      dsh: { min: '0.1.2-alpha.1', max: '0.1.2-alpha.1' },
+      dsh: { min: '0.1.2-alpha.4', max: '0.1.2-alpha.4' },
       requiredServices: plugin.requiredServices ?? [],
       optionalServices: plugin.optionalServices ?? [],
       capabilities: plugin.capabilities,

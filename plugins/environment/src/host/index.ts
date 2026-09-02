@@ -1,12 +1,12 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
 import type { EnvironmentSettingsValue, EnvironmentVariableInfo, ImageGenerationQuality, ImageModelSelection } from '../shared/types.js'
 
 export const name = 'zerowall-environment'
-export const ENVIRONMENT_SETTINGS_NS = settingsNamespace('zerowall-environment')
+export const ENVIRONMENT_SETTINGS_NS = 'zerowall-environment' as SettingsNamespace
 export const EnvironmentSettingsSchema: z<EnvironmentSettingsValue> = z.object({
   variables: z.array(z.object({ name: z.string() })).default([]),
   imageModel: z.object({

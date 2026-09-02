@@ -138,6 +138,8 @@ describe('ZeroWall Science Electron', () => {
     await settings.getByRole('button', { name: '导入' }).waitFor({ state: 'visible' })
     await settings.getByRole('button', { name: '导出' }).waitFor({ state: 'visible' })
     await settings.getByRole('tab', { name: '插件列表' }).click()
+    const globalPlugins = settings.getByRole('button', { name: /^(全局插件|Global plugins)/ })
+    if (await globalPlugins.getAttribute('aria-expanded') === 'false') await globalPlugins.click()
     const optionalPlugin = settings.locator('[data-plugin-control="user-toggleable"]').first()
     await optionalPlugin.waitFor({ state: 'visible' })
     await optionalPlugin.getByRole('button').first().click()

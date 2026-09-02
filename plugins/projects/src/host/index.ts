@@ -223,6 +223,7 @@ function toSessionHeader(header: ReturnType<typeof parseSessionArchiveHeader>): 
     version: header.version,
     id: SessionId(header.id),
     createdAt: header.createdAt,
+    isSeeded: header.seedLength !== undefined,
     ...(header.cwd === undefined ? {} : { cwd: header.cwd }),
     ...(header.parentSession === undefined ? {} : { parentSession: SessionId(header.parentSession) }),
     ...(header.seedLength === undefined ? {} : { seedLength: header.seedLength }),

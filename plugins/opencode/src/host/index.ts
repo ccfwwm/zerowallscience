@@ -22,11 +22,12 @@ export interface OpenCodeCatalogModel {
   description?: string
   contextWindow?: number
   maxTokens?: number
+  supportsImages?: boolean
 }
 
 export const DEFAULT_MODELS: OpenCodeCatalogModel[] = [
-  { id: 'big-pickle', name: 'Big Pickle (Free)', description: 'OpenCode Zen free model', contextWindow: 1_000_000, maxTokens: 128_000 },
-  { id: 'x-preview-free', name: 'X Preview Free', description: 'OpenCode Zen free model', contextWindow: 200_000, maxTokens: 128_000 },
+  { id: 'big-pickle', name: 'Big Pickle (Free)', description: 'OpenCode Zen free model', contextWindow: 1_000_000, maxTokens: 128_000, supportsImages: false },
+  { id: 'x-preview-free', name: 'X Preview Free', description: 'OpenCode Zen free model', contextWindow: 200_000, maxTokens: 128_000, supportsImages: false },
 ]
 
 const DEFAULT_CONTEXT_WINDOW = 1_000_000
@@ -108,6 +109,10 @@ function finishReason(value: string | undefined) {
   return { kind: 'error' as const, failure: { message: `model stopped: ${value}`, code: value.toUpperCase() } }
 }
 
+function explicitlyRejectsVision(message: string): boolean {
+  return /(?:image|vision|multimodal).{0,80}(?:not supported|unsupported|not allowed|text.?only)|(?:not supported|unsupported).{0,80}(?:image|vision|multimodal)/iu.test(message)
+}
+
 async function* parseSse(body: ReadableStream<Uint8Array>): AsyncIterable<string> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
@@ -138,11 +143,14 @@ async function* translate(body: ReadableStream<Uint8Array>): AsyncIterable<Strea
   let textIndex: number | undefined
   let nextIndex = 0
   let text = ''
+  let reasoningIndex: number | undefined
+  let reasoning = ''
   const toolBlocks = new Map<number, { index: number; id: string; name?: string; arguments: string }>()
   let finish: ReturnType<typeof finishReason> | undefined
   let usage: { inputTokens: number; outputTokens: number } | undefined
   for await (const payload of parseSse(body)) {
     if (payload === '[DONE]') {
+      if (reasoningIndex !== undefined) yield { type: 'block-end', index: reasoningIndex, block: { type: 'reasoning', text: reasoning } }
       if (textIndex !== undefined) yield { type: 'block-end', index: textIndex, block: { type: 'text', text } }
       for (const block of toolBlocks.values()) {
         yield {
@@ -163,6 +171,11 @@ async function* translate(body: ReadableStream<Uint8Array>): AsyncIterable<Strea
     let chunk: any
     try { chunk = JSON.parse(payload) } catch { throw new LlmError('Malformed OpenCode SSE payload.', 'MALFORMED_RESPONSE') }
     const delta = chunk.choices?.[0]?.delta
+    if (typeof delta?.reasoning_content === 'string' && delta.reasoning_content.length > 0) {
+      if (reasoningIndex === undefined) { reasoningIndex = nextIndex++; yield { type: 'block-start', index: reasoningIndex, blockType: 'reasoning' } }
+      reasoning += delta.reasoning_content
+      yield { type: 'reasoning-delta', index: reasoningIndex, text: delta.reasoning_content }
+    }
     if (typeof delta?.content === 'string' && delta.content.length > 0) {
       if (textIndex === undefined) { textIndex = nextIndex++; yield { type: 'block-start', index: textIndex, blockType: 'text' } }
       text += delta.content
@@ -205,11 +218,11 @@ export class OpenCodeAdapter extends LlmAdapter {
   ) { super() }
   providerInfo(provider: string) { return { id: provider, name: 'OpenCode Zen' } }
   listModels(provider: string): Promise<readonly LlmModelInfo[]> {
-    return Promise.resolve(this.options().models.map(model => ({ provider, id: model.id, name: model.name, ...(model.description === undefined ? {} : { description: model.description }) })))
+    return Promise.resolve(this.options().models.map(model => ({ provider, id: model.id, name: model.name, ...(model.description === undefined ? {} : { description: model.description }), inputModalities: model.supportsImages === true ? ['text', 'image'] as const : ['text'] as const })))
   }
   resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
     const config = this.options(); const found = config.models.find(item => item.id === model)
-    return Promise.resolve({ provider, id: model, name: found?.name ?? model, ...(found?.description === undefined ? {} : { description: found.description }), context: { contextWindow: found?.contextWindow ?? config.defaultContextWindow }, defaultMaxTokens: found?.maxTokens ?? config.maxTokens })
+    return Promise.resolve({ provider, id: model, name: found?.name ?? model, ...(found?.description === undefined ? {} : { description: found.description }), inputModalities: found?.supportsImages === true ? ['text', 'image'] as const : ['text'] as const, context: { contextWindow: found?.contextWindow ?? config.defaultContextWindow }, defaultMaxTokens: found?.maxTokens ?? config.maxTokens })
   }
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     const config = this.options()
@@ -257,19 +270,22 @@ export class OpenCodeAdapter extends LlmAdapter {
   }
 }
 
-function explicitlyRejectsVision(message: string): boolean {
-  return /(?:image|vision|multimodal).{0,80}(?:not supported|unsupported|not allowed|text.?only)|(?:not supported|unsupported).{0,80}(?:image|vision|multimodal)/iu.test(message)
-}
-
 async function syncModels(baseURL: string, current: readonly OpenCodeCatalogModel[], logger: Context['logger']): Promise<OpenCodeCatalogModel[]> {
   try {
     const response = await fetch(`${baseURL}/models`, { headers: { accept: 'application/json', 'User-Agent': 'opencode/1.0.0' }, signal: AbortSignal.timeout(15_000) })
     if (!response.ok) return [...current]
-    const body = await response.json() as { data?: Array<{ id?: string; name?: string }> }
+    const body = await response.json() as { data?: Array<{ id?: string; name?: string; context_length?: number; max_output_tokens?: number; modalities?: string[] }> }
     const ids = (body.data ?? []).map(item => item.id).filter((id): id is string => typeof id === 'string' && id.length > 0 && isFreeModel(id))
     if (ids.length === 0) return [...current]
     const known = new Map(current.map(model => [model.id, model]))
-    return ids.map(id => known.get(id) ?? { id, name: id, contextWindow: DEFAULT_CONTEXT_WINDOW, maxTokens: DEFAULT_MAX_TOKENS })
+    return (body.data ?? []).filter(item => typeof item.id === 'string' && item.id.length > 0 && isFreeModel(item.id)).map(item => {
+      const id = item.id as string
+      const previous = known.get(id)
+      const contextWindow = Number.isSafeInteger(item.context_length) && (item.context_length as number) > 0 ? item.context_length as number : previous?.contextWindow ?? DEFAULT_CONTEXT_WINDOW
+      const maxTokens = Number.isSafeInteger(item.max_output_tokens) && (item.max_output_tokens as number) > 0 ? item.max_output_tokens as number : previous?.maxTokens ?? DEFAULT_MAX_TOKENS
+      const supportsImages = Array.isArray(item.modalities) ? item.modalities.includes('image') : previous?.supportsImages
+      return { id, name: item.name?.trim() || previous?.name || id, contextWindow, maxTokens, ...(supportsImages === undefined ? {} : { supportsImages }) }
+    })
   } catch (error) { logger.warn('llm-opencode: automatic model sync failed; keeping the built-in catalog'); logger.warn(error); return [...current] }
 }
 

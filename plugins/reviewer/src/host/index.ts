@@ -3,7 +3,7 @@ import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, LlmModelInfo } from '@deepseek-ai/dsh-llm'
 import { KNOWN_SESSION_EVENT_TYPES, type Session, type SessionEvent, type SessionEventMap } from '@deepseek-ai/dsh-session'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-subagent'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
@@ -11,7 +11,7 @@ import z from '@deepseek-ai/schemastery'
 
 export const name = 'zerowall-reviewer'
 export const inject = ['settings', 'subagents', 'commands', 'llm']
-export const REVIEWER_SETTINGS_NS = settingsNamespace('zerowall-reviewer')
+export const REVIEWER_SETTINGS_NS = 'zerowall-reviewer' as SettingsNamespace
 
 // Reviewer events are durable plugin-owned session events. Register them with
 // the rc8 persistence allow-list during composition instead of a global patch.
@@ -393,7 +393,7 @@ export function normalizeReport(
 }
 
 function latestMode(session: Session): ReviewerMode {
-  const event = [...session.events].reverse().find(item => item.type === 'zerowall/reviewer/mode')
+  const event = [...session.snapshotEvents()].reverse().find(item => item.type === 'zerowall/reviewer/mode')
   return event?.type === 'zerowall/reviewer/mode' ? event.data.mode : 'inherit'
 }
 
@@ -403,7 +403,7 @@ function effectiveEnabled(session: Session, settings: ReviewerSettings): boolean
 }
 
 function currentTurnEvents(session: Session, turn: number): SessionEvent[] {
-  return session.events.filter(event => 'turn' in event.data && (event.data as { turn?: number }).turn === turn)
+  return session.snapshotEvents().filter(event => 'turn' in event.data && (event.data as { turn?: number }).turn === turn)
 }
 
 function currentModel(agent: Agent, events: readonly SessionEvent[], settings: ReviewerSettings): { options?: AgentOptions; label: string; effort?: string } {
@@ -416,14 +416,14 @@ function currentModel(agent: Agent, events: readonly SessionEvent[], settings: R
       }
     }
   }
-  const header = [...events, ...agent.session.events].reverse().find(event => event.type === 'request/header')
+  const header = [...events, ...agent.session.snapshotEvents()].reverse().find(event => event.type === 'request/header')
   if (header?.type === 'request/header') {
     const config = header.data.header.config
     if (config.provider && config.model) {
       return { options: { provider: config.provider, model: config.model }, label: `${config.provider}/${config.model}`, ...(config.reasoningEffort ? { effort: String(config.reasoningEffort) } : {}) }
     }
   }
-  const assistant = [...events, ...agent.session.events].reverse().find(event => event.type === 'assistant/message')
+  const assistant = [...events, ...agent.session.snapshotEvents()].reverse().find(event => event.type === 'assistant/message')
   if (assistant?.type === 'assistant/message' && assistant.data.message.source?.provider && assistant.data.message.source?.model) {
     const source = assistant.data.message.source
     return { options: { provider: source.provider, model: source.model }, label: `${source.provider}/${source.model}` }
@@ -549,7 +549,7 @@ export function apply(ctx: Context): void {
 
   ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
     if (agent.session.header.parentSession !== undefined || agent.session.header.origin === 'subagent') return
-    const prior = [...agent.session.events].reverse().find(event => event.type === 'zerowall/reviewer/report' && event.data.turn === turn)
+    const prior = [...agent.session.snapshotEvents()].reverse().find(event => event.type === 'zerowall/reviewer/report' && event.data.turn === turn)
     if (prior?.type === 'zerowall/reviewer/report') {
       if (prior.data.reReviewed === true || prior.data.correction !== 'requested') return
       try {
@@ -591,7 +591,7 @@ export function apply(ctx: Context): void {
       return
     }
     const settings = scope.get()
-    if (!effectiveEnabled(agent.session, settings) || !shouldAutoReview(agent.session.events, turn)) return
+    if (!effectiveEnabled(agent.session, settings) || !shouldAutoReview(agent.session.snapshotEvents(), turn)) return
     await review(agent, turn, signal, true)
   })
 
@@ -606,7 +606,7 @@ export function apply(ctx: Context): void {
       return { kind: 'success', text: label }
     }
     if (action === 'now') {
-      const last = [...agent.session.events].reverse().find(event => event.type === 'turn/end' && event.data.reason.kind === 'completed')
+      const last = [...agent.session.snapshotEvents()].reverse().find(event => event.type === 'turn/end' && event.data.reason.kind === 'completed')
       if (last?.type !== 'turn/end') return { kind: 'error', text: '没有可供审核的已完成回答。' }
       const report = await review(agent, last.data.turn, signal, false)
       return { kind: 'success', text: report?.summary ?? '审核未执行。' }

@@ -2,8 +2,8 @@ const REQUIRED_INJECTION = 'conversation'
 const INJECT_ANCHORS = ['slots', 'sessions', 'connection', 'workspaces', 'locale', 'modules']
 
 export function adaptBetterSidebarClient(source) {
-  // 0.16.1 no longer reads the conversation service directly. Older bundles
-  // did, so keep the compatibility injection for those bundles only.
+  // Current Sidebar main no longer reads the conversation service directly.
+  // Older snapshots did, so keep the compatibility injection for those bundles.
   if (!source.includes('ctx.get("conversation")')) return source
 
   const declaration = findClientInjectDeclaration(source)

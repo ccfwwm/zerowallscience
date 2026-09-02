@@ -53,8 +53,8 @@
   },
   "zerowall": {
     "dsh": {
-      "min": "0.1.2-alpha.1",
-      "max": "0.1.2-alpha.1"
+      "min": "0.1.2-alpha.4",
+      "max": "0.1.2-alpha.4"
     },
     "requiredServices": [
       "llm",
@@ -127,7 +127,7 @@
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
-    "dsh-better-sidebar": "0.16.1",
+    "dsh-better-sidebar": "github:omdsh-dev/DSH-better-sidebar#dd499b2560f1460483d803fbfebc2a3ef13e8d3b",
     "dsh-dream-skin": "8.30.1",
     "@zerowallscience/plugin-account": "workspace:^",
     "@zerowallscience/plugin-secrets": "workspace:^"

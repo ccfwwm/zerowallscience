@@ -2,8 +2,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import { defineTool } from '@deepseek-ai/dsh-tools'
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import type { Context } from '@deepseek-ai/cordis'
 import JSZip from 'jszip'
@@ -16,7 +17,7 @@ import type { ArtifactRecord } from '@zerowallscience/research-store/types'
 export type * from '../shared/types.js'
 export const name = 'zerowall-mineru'
 export const inject = ['settings', 'tools', 'sessions', 'zerowallFiles', 'zerowallResearch']
-export const MINERU_SETTINGS_NS = settingsNamespace('zerowall-mineru')
+export const MINERU_SETTINGS_NS = 'zerowall-mineru' as SettingsNamespace
 export const TOKEN_MANAGEMENT_URL = 'https://mineru.net/apiManage/token'
 const TOKEN_KEY = 'zerowall.environment.mineru_api_token'
 const MINERU_TOOL_NAMES = ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task'] as const

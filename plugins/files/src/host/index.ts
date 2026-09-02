@@ -273,7 +273,7 @@ export class ZeroWallFilesService extends TypertRemoteService {
       parameters: { attachment_id: { type: 'string', required: true }, offset: { type: 'integer' }, max_chars: { type: 'integer' } },
       output: { schema: { type: 'object', additionalProperties: false, properties: { attachmentId: { type: 'string', required: true }, name: { type: 'string', required: true }, offset: { type: 'integer', required: true }, nextOffset: { type: 'integer', required: true }, hasMore: { type: 'boolean', required: true }, text: { type: 'string', required: true } } }, render: (_args, value) => [{ type: 'text', text: `[Untrusted file content: ${value.name}]\n${value.text}` }] },
       async execute(args, exec) {
-        const sessionText = JSON.stringify(exec.agent?.session.events ?? [])
+        const sessionText = JSON.stringify(exec.agent?.session.snapshotEvents() ?? [])
         if (!sessionText.includes(args.attachment_id)) throw new Error('Uploaded file is not referenced by the current session.')
         return await readUploadedFile(args.attachment_id, args.offset, args.max_chars)
       },
@@ -285,7 +285,7 @@ export class ZeroWallFilesService extends TypertRemoteService {
       output: { schema: { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', required: true }, state: { type: 'string', required: true }, parser: { type: 'string', required: true }, artifactPath: { type: 'string' }, taskId: { type: 'string' }, textChars: { type: 'integer' }, error: { type: 'string' }, createdAt: { type: 'string', required: true } } }, render: (_args, value) => [{ type: 'text', text: value.state === 'done' ? `${value.kind} extraction completed: ${value.artifactPath ?? ''}` : `${value.kind} extraction failed: ${value.error ?? 'unknown error'}` }] },
       execute: async (args, exec) => {
         const sessionId = String(exec.agent?.session.id ?? '')
-        const sessionText = JSON.stringify(exec.agent?.session.events ?? [])
+        const sessionText = JSON.stringify(exec.agent?.session.snapshotEvents() ?? [])
         if (!sessionId || !sessionText.includes(args.attachment_id)) throw new Error('Uploaded file is not referenced by the current session.')
         return await this.extract({ sessionId, attachmentId: String(args.attachment_id), mode: String(args.mode ?? 'auto') as 'local' | 'auto' | 'mineru' })
       },
@@ -296,7 +296,7 @@ export class ZeroWallFilesService extends TypertRemoteService {
       parameters: { attachment_id: { type: 'string', required: true } },
       output: { schema: { type: 'object', additionalProperties: false, properties: { attachmentId: { type: 'string', required: true }, name: { type: 'string', required: true }, path: { type: 'string', required: true }, bytes: { type: 'integer', required: true }, sha256: { type: 'string', required: true } } }, render: (_args, value) => [{ type: 'text', text: `Uploaded file ${value.name} is available at ${value.path}` }] },
       async execute(args, exec) {
-        const sessionText = JSON.stringify(exec.agent?.session.events ?? [])
+        const sessionText = JSON.stringify(exec.agent?.session.snapshotEvents() ?? [])
         if (!sessionText.includes(args.attachment_id)) throw new Error('Uploaded file is not referenced by the current session.')
         const cwd = exec.agent?.session.header.cwd
         if (!cwd) throw new Error('materialize_uploaded_file requires a session working directory')

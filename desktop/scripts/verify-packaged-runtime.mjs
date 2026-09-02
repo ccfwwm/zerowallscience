@@ -153,12 +153,12 @@ function verifyArchivePolicy() {
   const betterSidebarPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-better-sidebar/package.json'))
   if (betterSidebarPackages.length !== 1) throw new Error(`dsh-better-sidebar must be packaged exactly once; found ${betterSidebarPackages.length}.`)
   const betterSidebarManifest = JSON.parse(readArchiveFile('node_modules/dsh-better-sidebar/package.json').toString('utf8'))
-  if (betterSidebarManifest.version !== '0.16.1') throw new Error(`Packaged dsh-better-sidebar must be 0.16.1; found ${betterSidebarManifest.version}.`)
+  if (betterSidebarManifest.version !== '0.18.1-alpha.0') throw new Error(`Packaged dsh-better-sidebar must be 0.18.1-alpha.0; found ${betterSidebarManifest.version}.`)
   const betterSidebarClient = readArchiveFile('node_modules/dsh-better-sidebar/lib/client.js').toString('utf8')
   const betterSidebarInject = [...betterSidebarClient.matchAll(/const inject = \[[\s\S]*?\];/gu)]
     .map(match => [...match[0].matchAll(/["']([^"']+)["']/gu)].map(value => value[1]))
     .find(names => ['slots', 'sessions', 'connection', 'workspaces', 'locale', 'modules'].every(name => names.includes(name)))
-  // dsh-better-sidebar 0.16.1 receives conversation data through the
+  // dsh-better-sidebar main snapshot receives conversation data through the
   // session-scoped tab API and no longer dereferences ctx.conversation. Older
   // bundles did, so validate the injection only when that legacy access exists.
   if (betterSidebarClient.includes('ctx.get("conversation")') && (betterSidebarInject === undefined || !betterSidebarInject.includes('conversation'))) {
@@ -952,8 +952,8 @@ function readArchiveFile(path) {
 
 async function verifySourceRuntimePolicy() {
   const upstream = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'deepseek-harness', 'upstream.json'), 'utf8'))
-  if (upstream.version !== '0.1.2-alpha.1' || upstream.tag !== 'dsh-v0.1.2-alpha.1') {
-    throw new Error(`Pinned DSH must be alpha.1; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
+  if (upstream.version !== '0.1.2-alpha.4' || upstream.tag !== 'dsh-v0.1.2-alpha.4') {
+    throw new Error(`Pinned DSH must be alpha.4; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
   }
   const sourceDsh = JSON.parse(await readFile(resolve(repositoryRoot, 'deepseek-harness', 'package.json'), 'utf8'))
   if (sourceDsh.version !== upstream.version) throw new Error(`DSH source package must be ${upstream.version}; found ${sourceDsh.version}.`)

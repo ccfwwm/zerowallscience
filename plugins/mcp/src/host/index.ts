@@ -7,7 +7,8 @@ import { lstat, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promi
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { ToolCallId, type ContentBlock } from '@deepseek-ai/dsh-llm'
-import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
+import { defineTool } from '@deepseek-ai/dsh-tools'
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 import type {
   CreateMcpServerInput,
   McpReconnectPolicy,

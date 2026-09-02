@@ -3,7 +3,8 @@ import type {} from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
+import { defineTool } from '@deepseek-ai/dsh-tools'
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 import { validateImageSize, type GenerateImageResult } from './generator.js'
 import { AiCloudClient } from '@zerowallscience/plugin-account'
 import { AiCloudImageGenerator } from './generator.js'
@@ -211,7 +212,7 @@ export function apply(ctx: Context): void {
     async execute(args, exec) {
       const cwd = exec.agent?.session.header.cwd
       if (!cwd) throw new Error('edit_image requires a session working directory')
-      const attachmentPaths = await materializeAttachments(exec.agent?.session.events ?? [], args.input_attachment_ids, cwd, ctx)
+      const attachmentPaths = await materializeAttachments(exec.agent?.session.snapshotEvents() ?? [], args.input_attachment_ids, cwd, ctx)
       try { return await generator.edit({
         prompt: args.prompt,
         inputPaths: [...(args.input_paths ?? []), ...attachmentPaths],
