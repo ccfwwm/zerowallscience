@@ -57,9 +57,7 @@
         "@deepseek-ai/dsh-client-ui-workspace"
       ],
       "platform": "web"
-    },
-    "min": "0.1.2-alpha.5",
-    "max": "0.1.2-alpha.5"
+    }
   },
   "zerowall": {
     "dsh": {

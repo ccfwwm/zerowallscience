@@ -1,13 +1,13 @@
-# ZeroWall Science 4.3.4 构建与发布
+# ZeroWall Science 5.0.1 构建与发布
 
-4.3.4 集成科研图片查重工作台和对话入口，并扩展演示文稿产物工作台、持久化 artifacts 和质量状态。默认 Stable Windows x64 包为本地构建产物；本版本不自动上传七牛云，也不执行 Git 发布。
+5.0.1 升级 DeepSeek Harness alpha.5，并修复普通文件附件、会话标题恢复和品牌标题。默认 Stable Windows x64 包为本地构建产物；本版本不自动上传七牛云，也不执行 Git 发布。
 
 ## 固定基线
 
 - Node.js 24.9.0
 - pnpm 11.7.0
 - Electron 43.4.0
-- DSH 0.1.2-alpha.4，ZeroWall fork 当前基于上游提交 `4e84901e6471b79ec0338099867ebb4606d12bb5`
+- DSH 0.1.2-alpha.5，ZeroWall fork 当前基于上游提交 `db6bdc3576c2d4e7c965e8e3ed0c2a731eed87f5`
 
 首次拉取必须包含子模块，然后使用锁文件安装：
 
@@ -18,7 +18,7 @@ pnpm install --frozen-lockfile
 
 ## 修改 DSH 源码
 
-DSH 适配一律直接修改 `deepseek-harness` 源码，仓库不使用补丁文件。`deepseek-harness` 是指向 ZeroWall fork（分支 `zerowall-dsh-alpha4`）的 submodule，`pnpm dsh:verify` 要求工作区干净、HEAD 与配置一致、且仍派生自上游 alpha.4，因此修改必须先落成提交：
+DSH 适配一律直接修改 `deepseek-harness` 源码，仓库不使用补丁文件。`deepseek-harness` 是指向 ZeroWall fork（分支 `zerowall-dsh-alpha5`）的 submodule，`pnpm dsh:verify` 要求工作区干净、HEAD 与配置一致、且仍派生自上游 alpha.5，因此修改必须先落成提交：
 
 ```bash
 cd deepseek-harness
@@ -40,7 +40,7 @@ pnpm package:dir
 
 `package:dir` 生成 Preview 的解包目录并执行真实 Host 启动、运行时闭包、Skills、许可证和回环 HTTP 检查。Windows 安装包使用 `pnpm package:win`；Stable 使用 `pnpm package:stable:win`。
 
-完整验证覆盖 4.3 的 Node/Electron/DSH 构建图和默认 better-sidebar 工作台，不调用 Rust、Cargo、Tauri 或 Leptos 工具链。Agent 组合修改还需运行 `pnpm test:dsh:alpha4`。
+完整验证覆盖 5.0.1 的 Node/Electron/DSH 构建图和默认 better-sidebar 工作台，不调用 Rust、Cargo、Tauri 或 Leptos 工具链。Agent 组合修改还需运行 `pnpm test:dsh:alpha5`。
 
 ## macOS
 

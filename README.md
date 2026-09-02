@@ -156,7 +156,7 @@ pnpm package:dir
 Changes to the shipped DSH/Agent composition must also pass:
 
 ```powershell
-pnpm test:dsh:alpha4
+pnpm test:dsh:alpha5
 ```
 
 The automated suite is intentionally designed to run without real SSH hosts, WSL distributions, GPUs, API keys, or network access.

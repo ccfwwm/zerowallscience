@@ -13,7 +13,7 @@ overrides:
   '@deepseek-ai/schemastery': link:deepseek-harness/vendor/schemastery
 
 patchedDependencies:
-  '@huanlin/dsh-plugin-better-sidebar-plugin-office@0.1.2': 3547e2bb21b7f43f6f9e401ac0bdedf40adbcb366508f28cd7eb4f0eb583b476
+  '@huanlin/dsh-plugin-better-sidebar-plugin-office@0.1.2': b050b2472a176a57c59c10717b0434a9b83f06ff8a18adb5726034a101b35b52
   dsh-better-sidebar@0.18.1-alpha.0: 9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8
 
 importers:
@@ -10203,7 +10203,7 @@ importers:
     dependencies:
       '@huanlin/dsh-plugin-better-sidebar-plugin-office':
         specifier: 0.1.2
-        version: 0.1.2(patch_hash=3547e2bb21b7f43f6f9e401ac0bdedf40adbcb366508f28cd7eb4f0eb583b476)(@types/react-dom@18.3.5(@types/react@18.3.31))(@types/react@18.3.31)(dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046))(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(rxjs@7.8.2)
+        version: 0.1.2(patch_hash=b050b2472a176a57c59c10717b0434a9b83f06ff8a18adb5726034a101b35b52)(@types/react-dom@18.3.5(@types/react@18.3.31))(@types/react@18.3.31)(dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046))(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(rxjs@7.8.2)
       '@zerowallscience/dsh-ppt-runtime':
         specifier: workspace:^
         version: link:../packages/presentations-runtime
@@ -23548,7 +23548,7 @@ snapshots:
     dependencies:
       hono: 4.13.2
 
-  '@huanlin/dsh-plugin-better-sidebar-plugin-office@0.1.2(patch_hash=3547e2bb21b7f43f6f9e401ac0bdedf40adbcb366508f28cd7eb4f0eb583b476)(@types/react-dom@18.3.5(@types/react@18.3.31))(@types/react@18.3.31)(dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046))(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(rxjs@7.8.2)':
+  '@huanlin/dsh-plugin-better-sidebar-plugin-office@0.1.2(patch_hash=b050b2472a176a57c59c10717b0434a9b83f06ff8a18adb5726034a101b35b52)(@types/react-dom@18.3.5(@types/react@18.3.31))(@types/react@18.3.31)(dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/dd499b2560f1460483d803fbfebc2a3ef13e8d3b(patch_hash=9502ffad8737a9c4e0d24bab865b9fd73da6a2e4d8bdd21a2b077f5bcc34f6f8)(ffd2a3be6f1e6227e763b8024d058046))(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(rxjs@7.8.2)':
     dependencies:
       '@aiden0z/pptx-renderer': 1.2.4
       '@univerjs/preset-sheets-core': 0.25.1(@types/react-dom@18.3.5(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(rxjs@7.8.2)

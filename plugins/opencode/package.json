@@ -17,9 +17,7 @@
   "dsh": {
     "bundle": {
       "patch": "dsh.bundle.patch.yml"
-    },
-    "min": "0.1.2-alpha.5",
-    "max": "0.1.2-alpha.5"
+    }
   },
   "zerowall": {
     "dsh": {

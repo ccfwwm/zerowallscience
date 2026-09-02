@@ -2,8 +2,8 @@
   "name": "@zerowallscience/plugin-example",
   "version": "0.0.0",
   "dsh": {
-    "min": "0.1.2-alpha.4",
-    "max": "0.1.2-alpha.4"
+    "min": "0.1.2-alpha.5",
+    "max": "0.1.2-alpha.5"
   },
   "host": "./lib/index.js",
   "client": "./lib/client.js",
