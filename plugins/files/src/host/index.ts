@@ -351,7 +351,7 @@ export class ZeroWallFilesService extends TypertRemoteService {
     } | undefined
     const configured = mineru === undefined ? false : (await mineru.getConfigStatus()).tokenConfigured === true
     if (!configured) {
-      if (mode === 'mineru') throw new Error('尚未配置 MinerU Token；请选择 local 或 auto 使用本地快速解析。')
+      if (mode === 'mineru') throw new Error('尚未配置 MinerU Token；请选择本地解析，或在环境配置中保存 MinerU Token。')
       return extractLocal(ref)
     }
     const createdAt = new Date().toISOString()
@@ -366,7 +366,10 @@ export class ZeroWallFilesService extends TypertRemoteService {
     } catch (error) {
       const extraction: FileExtraction = { kind: 'mineru', state: 'failed', parser: 'mineru', error: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500), createdAt }
       await saveStored({ ...(await readStored(ref.attachmentId)), mineruExtraction: extraction })
-      if (mode === 'auto') return extractLocal(await this.authorized(input.sessionId, input.attachmentId))
+      // `auto` is deliberately deterministic: once a MinerU token is
+      // configured, MinerU is the selected parser. Do not silently replace a
+      // remote parse failure with local output, otherwise users cannot tell
+      // which parser produced the content and the failure is hidden.
       return extraction
     }
   }
