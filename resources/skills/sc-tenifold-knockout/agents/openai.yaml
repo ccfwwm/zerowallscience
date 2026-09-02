@@ -1,4 +1,4 @@
 interface:
-  display_name: "Automatic Single-Cell Virtual Knockout"
-  short_description: "Discover public single-cell data and run auditable scTenifoldKnk workflows"
-  default_prompt: "Use $sc-tenifold-knockout to discover suitable public single-cell data, validate raw counts, and plan a reproducible virtual knockout."
+  display_name: "单细胞虚拟敲除科研流程"
+  short_description: "自动发现数据并通过远程 R MCP 完成 scTenifoldKnk 分析、图表和报告"
+  default_prompt: "使用 $sc-tenifold-knockout，从目标基因或研究主题开始，自动发现公开单细胞数据，通过远程 R MCP 完成 QC、虚拟敲除、机制解释、图表和中文科研报告。"

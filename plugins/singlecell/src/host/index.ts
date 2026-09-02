@@ -9,7 +9,7 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
 import { ToolCallId, type ContentBlock } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { ScTenifoldAcquisitionPlan, ScTenifoldAcquisitionStatus, ScTenifoldDataContract, ScTenifoldDatasetCandidate, ScTenifoldGeneCandidate, ScTenifoldIntakeRequest, ScTenifoldIntakeResult, ScTenifoldProvider, ScTenifoldExecution, ScTenifoldPlanResult, ScTenifoldProjectConfig, ScTenifoldReviewResult, ScTenifoldRunResult, ScTenifoldValidationResult, ScTenifoldStudyState } from '../shared/types.js'
+import type { ScTenifoldAcquisitionPlan, ScTenifoldAcquisitionStatus, ScTenifoldDataContract, ScTenifoldDatasetCandidate, ScTenifoldGeneCandidate, ScTenifoldIntakeRequest, ScTenifoldIntakeResult, ScTenifoldProvider, ScTenifoldExecution, ScTenifoldPlanResult, ScTenifoldProjectConfig, ScTenifoldReviewResult, ScTenifoldRunResult, ScTenifoldValidationResult, ScTenifoldStudyState, ScTenifoldQcResult, ScTenifoldInterpretation, ScTenifoldFigureManifest, ScTenifoldRunManifest, ScTenifoldConclusion, ScTenifoldHostToolInstruction } from '../shared/types.js'
 
 export type * from '../shared/types.js'
 export const name = 'zerowall-singlecell'
@@ -22,6 +22,7 @@ const statuses = new Map<string, ScTenifoldAcquisitionStatus>()
 const studies = new Map<string, ScTenifoldIntakeResult>()
 interface SinglecellRunRecord { result: ScTenifoldRunResult; projectRoot: string; output: string; validation?: ScTenifoldValidationResult; child?: ChildProcess }
 const scRuns = new Map<string, SinglecellRunRecord>()
+const R_MCP_RUNTIME = 'mcp__rdatalinux_r_platform__r_validate_sc_tenifold_runtime'
 
 function defaultDshHome(): string {
   const configured = process.env.DSH_HOME?.trim()
@@ -101,11 +102,9 @@ export function geneCandidates(input: ScTenifoldIntakeRequest): ScTenifoldGeneCa
   const direct = [...new Set(directValues)]
   const references = [...new Set(referenceValues)]
   const topic = input.researchQuestion?.trim() ?? ''
-  const seeds = [...new Set([...direct, ...references])]
-  // Topic-only suggestions are deliberately low-confidence heuristics until a
-  // connected gene/literature adapter supplies evidence. They must never look
-  // like a database-backed recommendation.
-  const inferred = topic ? ['STAT1', 'NFKB1', 'JUN', 'FOS', 'HSPA1A'] : []
+  // Topic-only recommendations must come from a connected gene/literature or
+  // expression adapter. Never present hard-coded biology as evidence.
+  const inferred: string[] = []
   const symbols = [...new Set([...direct, ...references, ...inferred])]
   const limit = Math.max(1, Math.min(input.maxCandidates ?? DEFAULT_MAX_CANDIDATES, 20))
   // Explicit targets are never dropped by the recommendation limit.
@@ -123,10 +122,31 @@ export function geneCandidates(input: ScTenifoldIntakeRequest): ScTenifoldGeneCa
       ])],
       score,
       confidence: explicit ? 'high' : reference ? 'medium' : 'low',
-      evidence: [{ source: explicit ? 'user-input' : reference ? 'user-reference' : 'topic-heuristic', claim: explicit ? '用户明确指定的目标基因。' : reference ? '由用户提供的参考基因，尚未完成外部证据核验。' : '根据研究主题生成的通用待审核假设；尚未由基因、文献或表达数据库验证。' }],
+      evidence: [{ source: explicit ? 'user-input' : reference ? 'user-reference' : 'gene-evidence-adapter-required', claim: explicit ? '用户明确指定的目标基因。' : reference ? '由用户提供的参考基因，尚未完成外部证据核验。' : '当前未连接基因、文献或表达数据库，无法从主题生成候选。' }],
       rationale: [explicit ? '用户明确指定' : reference ? '参考基因（待外部证据确认）' : '主题启发候选（待外部证据确认）', ...(input.cellTypes?.length ? [`目标细胞群：${input.cellTypes.join(', ')}`] : []), ...(input.tissue ? [`组织：${input.tissue}`] : [])],
     }
   }).sort((a, b) => b.score - a.score)
+}
+async function geneCandidatesWithEvidence(ctx: Context, request: ScTenifoldIntakeRequest, exec: any): Promise<ScTenifoldGeneCandidate[]> {
+  const existing = geneCandidates(request)
+  if (!request.researchQuestion?.trim() || existing.some(item => request.targetGenes?.map(normalizeGene).includes(item.symbol))) return existing
+  if (!exec) return existing
+  const schemas = ctx.tools.schemas()
+  const schema = schemas.find(item => /gene.*(search|recommend|lookup)|(?:search|recommend|lookup).*gene/iu.test(item.name) && !item.name.startsWith('sc_tenifold'))
+  if (!schema) return existing
+  try {
+    const value = await callRemoteTool(ctx, exec, schema.name, { query: request.researchQuestion.trim(), organism: request.organism ?? 'auto', tissue: request.tissue })
+    const rows = Array.isArray(value) ? value : value && typeof value === 'object' && Array.isArray((value as Record<string, unknown>).results) ? (value as Record<string, unknown>).results as unknown[] : []
+    const evidence = rows.flatMap(row => {
+      if (!row || typeof row !== 'object') return []
+      const item = row as Record<string, unknown>
+      const symbol = normalizeGene(String(item.symbol ?? item.gene ?? item.gene_symbol ?? ''))
+      return symbol ? [{ symbol, claim: String(item.description ?? item.summary ?? '来自已连接基因/表达数据库的主题检索结果。') }] : []
+    }).slice(0, 20)
+    if (!evidence.length) return existing
+    const direct = new Set((request.targetGenes ?? []).map(normalizeGene))
+    return [...existing, ...evidence.filter(item => !direct.has(item.symbol)).map((item, index) => ({ symbol: item.symbol, inputAliases: [item.symbol], score: Math.max(25, 55 - index), confidence: 'medium' as const, evidence: [{ source: schema.name, claim: item.claim }], rationale: ['由已连接的基因/表达数据库根据研究主题返回；需要数据集覆盖和 R MCP 验证。'] }))].slice(0, Math.max(1, Math.min(request.maxCandidates ?? DEFAULT_MAX_CANDIDATES, 20)))
+  } catch { return existing }
 }
 function fallbackDatasetCandidates(input: ScTenifoldIntakeRequest, genes: string[], warning?: string): ScTenifoldDatasetCandidate[] {
   // Never return synthetic accessions. Callers can show this warning while
@@ -181,7 +201,9 @@ async function discoverDatasetCandidates(input: ScTenifoldIntakeRequest, genes: 
   const tissue = input.tissue?.trim().toLowerCase()
   const requestedTypes = (input.cellTypes ?? []).map(value => value.toLowerCase())
   const queryTokens = [tissue, ...requestedTypes, input.condition?.toLowerCase()].filter(Boolean) as string[]
-  if (queryTokens.length === 0) return []
+  // A target gene alone is a valid intake. Use a broad public-data query and
+  // let preview/validation score target-gene coverage instead of returning an
+  // empty result that forces the user to provide tissue metadata first.
   const searchCensus = async (): Promise<ScTenifoldDatasetCandidate[]> => {
     const found: ScTenifoldDatasetCandidate[] = []
     const raw = await fetchJson('https://api.cellxgene.cziscience.com/curation/v1/collections')
@@ -322,8 +344,8 @@ async function createProject(ctx: Context, sessionId: string, studyId: string): 
 async function persistStudyStatus(projectPath: string, status: { studyId: string; state: ScTenifoldStudyState; updatedAt: string; currentDataset?: string; progress?: number; error?: string }): Promise<void> {
   await persistJson(join(projectPath, 'provenance', 'status.json'), status)
 }
-async function discover(input: ScTenifoldIntakeRequest): Promise<{ candidates: ScTenifoldGeneCandidate[]; datasets: ScTenifoldDatasetCandidate[] }> {
-  const candidates = geneCandidates(input)
+async function discover(input: ScTenifoldIntakeRequest, ctx?: Context, exec?: any): Promise<{ candidates: ScTenifoldGeneCandidate[]; datasets: ScTenifoldDatasetCandidate[] }> {
+  const candidates = ctx ? await geneCandidatesWithEvidence(ctx, input, exec) : geneCandidates(input)
   const datasets = await discoverDatasetCandidates(input, candidates.map(item => item.symbol))
   return { candidates, datasets }
 }
@@ -345,6 +367,27 @@ function findRemoteJobId(value: unknown): string | undefined {
   return undefined
 }
 
+async function requireRemoteR(ctx: Context, exec: any): Promise<void> {
+  if (!exec) throw new Error('missing_runtime: 当前操作必须通过 rdatalinux R MCP 执行。')
+  const schemas = ctx.tools.schemas()
+  if (!schemas.some(schema => schema.name === R_MCP_RUNTIME || schema.name === 'mcp__rdatalinux_r_platform__r_submit_sc_tenifold_knockout' || schema.name === 'mcp__rdatalinux_r_platform__r_submit_script')) throw new Error('missing_runtime: rdatalinux R MCP 未连接或未注册。')
+  if (schemas.some(schema => schema.name === R_MCP_RUNTIME)) {
+    const runtime = await callRemoteTool(ctx, exec, R_MCP_RUNTIME, {})
+    if (runtime && typeof runtime === 'object' && (runtime as Record<string, unknown>).available === false) throw new Error('missing_runtime: 远程 R 环境未发现 scTenifoldKnk。')
+  }
+}
+function runManifestPath(root: string, runId: string): string { return join(root, 'runs', runId, 'manifest.json') }
+async function writeChineseReport(projectRoot: string, studyId: string, runId: string, interpretation?: ScTenifoldInterpretation, review?: ScTenifoldReviewResult): Promise<string> {
+  const reportPath = join(projectRoot, 'reports', `${runId}-study-report.zh-CN.md`)
+  await mkdir(dirname(reportPath), { recursive: true })
+  const rows = interpretation?.observedChanges ?? []
+  const observed = rows.length ? rows.slice(0, 30).map(item => `| ${item.gene} | ${item.direction} | ${item.effectSize ?? '未提供'} | ${item.adjustedP ?? '未提供'} |`).join('\n') : '| - | 尚未获得 R MCP 定量结果 | - | - |'
+  const conclusions = interpretation?.conclusions?.length ? interpretation.conclusions.map(item => `### ${item.title}\n\n- 分类：${item.category}\n- 置信度：${item.confidence}\n- 结论：${item.statement}\n- 证据：${item.evidence.join('；') || '暂无'}\n- 需要实验验证：${item.requiresValidation ? '是' : '否'}`).join('\n\n') : 'R MCP 结果尚未收集，不能生成生物学结论。'
+  const reviewState = review?.state ?? 'requires_human_review'
+  await writeFile(reportPath, [`# 单细胞虚拟敲除科研报告`, ``, `- study_id: ${studyId}`, `- run_id: ${runId}`, `- 审核状态：${reviewState}`, ``, `## 研究范围`, ``, `本报告描述基于 scTenifoldKnk 的计算网络扰动假设，不等同于真实基因敲除或因果证明。所有定量结果必须来自远程 R MCP。`, ``, `## 统计观察`, ``, `| 基因 | 方向 | 效应量 | 调整后 P 值 |`, `| --- | --- | --- | --- |`, observed, ``, `## 机制与改变原因`, ``, conclusions, ``, `## 图表与过程`, ``, `请查看 runs/${runId}/figures/ 中由 R MCP 生成的 PDF/PNG，以及 process-diagram.mmd。`, ``, `## 限制与后续验证`, ``, ...(interpretation?.limitations ?? ['需要完成 R MCP 运行、稳定性分析、公开数据库证据和人工审核。']), ``, `该结果仅用于提出可检验的科研假设，湿实验必须由研究人员审核和执行。`, ``].join('\n'), 'utf8')
+  return reportPath
+}
+
 export class ZeroWallSinglecellService extends TypertRemoteService {
   static inject = inject
   private readonly context: Context
@@ -353,8 +396,8 @@ export class ZeroWallSinglecellService extends TypertRemoteService {
     this.context = ctx
     const output = jsonOutput(value => JSON.stringify(value))
     const register = (options: unknown): void => { ctx.tools.register(defineTool(options as any) as any) }
-    register({ name: 'sc_tenifold_knockout_intake', description: '根据基因或研究主题启动自动单细胞数据工作流。', parameters: { request: { type: 'object', additionalProperties: true, required: true } }, output, execute: async (args: any, exec: any) => this.intake({ sessionId: String(exec.agent?.session.id ?? ''), request: args.request as ScTenifoldIntakeRequest }) as unknown as Record<string, JsonValue> })
-    register({ name: 'sc_tenifold_knockout_search_genes', description: '标准化并推荐虚拟敲除候选基因。', parameters: { request: { type: 'object', additionalProperties: true, required: true } }, output, execute: async (args: any) => geneCandidates(args.request as ScTenifoldIntakeRequest) as unknown as Record<string, JsonValue> })
+    register({ name: 'sc_tenifold_knockout_intake', description: '根据基因或研究主题启动自动单细胞数据工作流。', parameters: { request: { type: 'object', additionalProperties: true, required: true } }, output, execute: async (args: any, exec: any) => this.intakeInternal({ sessionId: String(exec.agent?.session.id ?? ''), request: args.request as ScTenifoldIntakeRequest }, exec) as unknown as Record<string, JsonValue> })
+    register({ name: 'sc_tenifold_knockout_search_genes', description: '标准化并推荐虚拟敲除候选基因；主题输入优先调用已连接的基因/表达数据库。', parameters: { request: { type: 'object', additionalProperties: true, required: true } }, output, execute: async (args: any, exec: any) => geneCandidatesWithEvidence(this.context, args.request as ScTenifoldIntakeRequest, exec) as unknown as Record<string, JsonValue> })
     register({
       name: 'sc_tenifold_knockout_search_datasets', description: '双轨搜索 CELLxGENE 与 GEO/ENA 单细胞候选数据集。', parameters: { request: { type: 'object', additionalProperties: true, required: true } }, output,
       execute: async (args: any) => {
@@ -370,13 +413,17 @@ export class ZeroWallSinglecellService extends TypertRemoteService {
     register({ name: 'sc_tenifold_knockout_validate', description: '校验 scTenifoldKnk 输入和研究元数据。', parameters: { config: { type: 'object', required: true } }, output, execute: async (args: any, exec: any) => this.scTenifoldValidate({ sessionId: String(exec.agent?.session.id ?? ''), config: args.config as ScTenifoldProjectConfig }) as unknown as Record<string, JsonValue> })
     register({ name: 'sc_tenifold_knockout_plan', description: '创建可审计的 scTenifoldKnk 分析计划。', parameters: { config: { type: 'object', required: true } }, output, execute: async (args: any, exec: any) => this.scTenifoldPlan({ sessionId: String(exec.agent?.session.id ?? ''), config: args.config as ScTenifoldProjectConfig }) as unknown as Record<string, JsonValue> })
     register({ name: 'sc_tenifold_knockout_run', description: '运行或提交 scTenifoldKnk 虚拟敲除。', parameters: { config: { type: 'object', required: true }, target: { type: 'string' } }, output, execute: async (args: any, exec: any) => this.runInternal({ sessionId: String(exec.agent?.session.id ?? ''), config: args.config as ScTenifoldProjectConfig, ...(args.target ? { target: String(args.target) } : {}) }, exec) as unknown as Record<string, JsonValue> })
+    register({ name: 'sc_tenifold_knockout_qc', description: '通过远程 R MCP 执行单细胞 QC、非肿瘤筛选和细胞群分层。', parameters: { runId: { type: 'string', required: true } }, output, execute: async (args: any, exec: any) => this.scTenifoldQcInternal(String(args.runId), exec) as unknown as Record<string, JsonValue> })
     register({ name: 'sc_tenifold_knockout_status', description: '查询虚拟敲除运行状态。', parameters: { runId: { type: 'string', required: true } }, output, execute: async (args: any, exec: any) => this.statusInternal(String(args.runId), exec) as unknown as Record<string, JsonValue> })
     register({ name: 'sc_tenifold_knockout_cancel', description: '取消正在运行的虚拟敲除任务。', parameters: { runId: { type: 'string', required: true } }, output, execute: async (args: any, exec: any) => this.cancelInternal(String(args.runId), exec) as unknown as Record<string, JsonValue> })
     register({ name: 'sc_tenifold_knockout_collect', description: '收集虚拟敲除输出文件。', parameters: { runId: { type: 'string', required: true } }, output, execute: async (args: any, exec: any) => this.collectInternal(String(args.runId), exec) as unknown as Record<string, JsonValue> })
     register({ name: 'sc_tenifold_knockout_review', description: '执行数据、计算、生物学和文稿审核门禁。', parameters: { runId: { type: 'string', required: true } }, output, execute: async (args: any) => this.scTenifoldReview(String(args.runId)) as unknown as Record<string, JsonValue> })
     register({ name: 'sc_tenifold_knockout_report', description: '生成虚拟敲除审核报告。', parameters: { runId: { type: 'string', required: true } }, output, execute: async (args: any) => this.scTenifoldReport(String(args.runId)) as unknown as Record<string, JsonValue> })
+    register({ name: 'sc_tenifold_knockout_interpret', description: '读取 R MCP 结果并生成统计观察、机制证据和可检验假设。', parameters: { runId: { type: 'string', required: true } }, output, execute: async (args: any, exec: any) => this.scTenifoldInterpretInternal(String(args.runId), exec) as unknown as Record<string, JsonValue> })
+    register({ name: 'sc_tenifold_knockout_figures', description: '通过 R MCP 生成并登记出版级图表和科研流程图。', parameters: { runId: { type: 'string', required: true } }, output, execute: async (args: any, exec: any) => this.scTenifoldFiguresInternal(String(args.runId), exec) as unknown as Record<string, JsonValue> })
+    register({ name: 'sc_tenifold_knockout_experimental_design', description: '根据计算结果生成供研究人员审核的基因干预验证方案。', parameters: { runId: { type: 'string', required: true } }, output, execute: async (args: any) => this.scTenifoldExperimentalDesign(String(args.runId)) as unknown as Record<string, JsonValue> })
   }
-  @Remote('intake') async intake(input: { sessionId: string; request: ScTenifoldIntakeRequest }): Promise<ScTenifoldIntakeResult> {
+  private async intakeInternal(input: { sessionId: string; request: ScTenifoldIntakeRequest }, exec?: any): Promise<ScTenifoldIntakeResult> {
     const studyId = `study-${Date.now()}-${randomUUID().slice(0, 8)}`
     const projectPath = await createProject(this.context, input.sessionId, studyId)
     await persistStudyStatus(projectPath, { studyId, state: 'intake', updatedAt: new Date().toISOString(), progress: 0 })
@@ -423,7 +470,7 @@ export class ZeroWallSinglecellService extends TypertRemoteService {
     }
     const found = inputValidation !== undefined
       ? { candidates: geneCandidates(input.request), datasets: [] }
-      : await discover(input.request)
+      : await discover(input.request, this.context, exec)
     const result: ScTenifoldIntakeResult = { studyId, state: inputValidation?.ok ? 'validating' : 'datasets_discovered', projectPath, targetGenes: (input.request.targetGenes ?? []).map(normalizeGene).filter(Boolean), candidates: found.candidates, datasets: found.datasets, nextAction: inputValidation?.ok ? '已登记输入矩阵；请继续完成 metadata/QC 验证后再运行。' : '请先检查候选数据集和下载规模；只有已确认 raw counts、官方直接 URL 且小于 2GB 的处理矩阵才会自动获取。', ...(found.datasets.length === 0 && inputValidation === undefined ? { warnings: ['未提供组织、细胞类型或条件线索；为避免返回无关数据，暂不自动选择公开数据集。请补充研究主题/组织/细胞群，或显式选择数据集。'] } : {}), ...(inputValidation === undefined ? {} : { inputValidation }), ...(inputValidation?.input && inputValidation.input !== input.request.attachmentId && inputValidation.input.startsWith(projectPath) ? { inputPath: relative(projectPath, inputValidation.input).replaceAll('\\', '/') } : {}) }
     studies.set(studyId, result)
     await persistJson(join(projectPath, 'provenance', 'intake.json'), { ...result, censusVersion: CENSUS_VERSION, request: input.request })
@@ -452,6 +499,7 @@ export class ZeroWallSinglecellService extends TypertRemoteService {
     }
     return result
   }
+  @Remote('intake') async intake(input: { sessionId: string; request: ScTenifoldIntakeRequest }): Promise<ScTenifoldIntakeResult> { return this.intakeInternal(input) }
   @Remote('searchGenes') searchGenes(request: ScTenifoldIntakeRequest): ScTenifoldGeneCandidate[] { return geneCandidates(request) }
   @Remote('searchDatasets') async searchDatasets(request: ScTenifoldIntakeRequest): Promise<ScTenifoldDatasetCandidate[]> { return discoverDatasetCandidates(request, extractGenes(request)) }
   @Remote('previewDataset') async previewDataset(candidate: ScTenifoldDatasetCandidate): Promise<ScTenifoldDatasetCandidate> {
@@ -630,6 +678,13 @@ export class ZeroWallSinglecellService extends TypertRemoteService {
     const execution: ScTenifoldExecution = cfg.execution ?? 'r-mcp'
     const result: ScTenifoldRunResult = { ok: true, runId, projectPath, runPath, state: 'planned', execution, target, startedAt: new Date().toISOString(), progress: 0 }
     scRuns.set(runId, { result, projectRoot: projectPath, output: runPath, validation })
+    if (execution !== 'r-mcp' && execution !== 'auto') {
+      result.ok = false
+      result.state = 'failed'
+      result.error = 'missing_runtime: 生产 scTenifoldKnk 工作流只允许通过 rdatalinux R MCP 执行；local-r/remote-run 仅保留给开发兼容，不会在生产路由运行。'
+      result.finishedAt = new Date().toISOString()
+      return result
+    }
     await writeFile(join(runPath, 'manifest.json'), JSON.stringify({ runId, target, config: cfg, validation, computationalOnly: true }, null, 2))
     if (!validation.ok) {
       result.ok = false
@@ -683,9 +738,7 @@ export class ZeroWallSinglecellService extends TypertRemoteService {
       result.error = '已准备 R MCP 运行目录，请由 Skill 调用 r_submit_script 执行并用 runId 追踪。'
       return result
     }
-    if (execution === 'remote-run') { result.state = 'planned'; result.error = '已生成远程运行 manifest，需由受控 Run/SSH 执行器提交。'; return result }
-    const runner = singlecellRunnerPath(); if (!runner) { result.ok = false; result.state = 'failed'; result.error = '当前构建未提供 scTenifoldKnk R runner。'; result.finishedAt = new Date().toISOString(); return result }
-    result.state = 'running'; result.progress = 10; const inputPath = safePath(projectPath, cfg.input!); const child = spawn(process.env.ZEROWALL_RSCRIPT?.trim() || 'Rscript', ['--vanilla', runner, `--input=${inputPath}`, `--output=${runPath}`, `--target=${target}`, `--n-net=${cfg.nc_nNet ?? 10}`, `--n-cells=${cfg.nc_nCells ?? 500}`, `--fdr=${cfg.fdr ?? 0.05}`, `--seed=${cfg.seed ?? 123}`], { cwd: projectPath, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }); scRuns.get(runId)!.child = child; child.once('error', error => { result.ok = false; result.state = 'failed'; result.error = error.message; result.finishedAt = new Date().toISOString() }); child.once('exit', code => { result.ok = code === 0; result.state = code === 0 ? 'succeeded' : result.state === 'cancelled' ? 'cancelled' : 'failed'; result.progress = code === 0 ? 100 : result.progress; result.finishedAt = new Date().toISOString() }); return result
+    return result
   }
   @Remote('scTenifoldStatus') scTenifoldStatus(runId: string): Promise<ScTenifoldRunResult | undefined> { return this.statusInternal(runId) }
   private async statusInternal(runId: string, exec?: any): Promise<ScTenifoldRunResult | undefined> { const record = scRuns.get(runId); if (!record) return undefined; if (record.result.remoteJobId && record.result.remoteProjectId && exec !== undefined) { try { const remote = await callRemoteTool(this.context, exec, 'mcp__rdatalinux_r_platform__r_get_sc_tenifold_run', { project_id: record.result.remoteProjectId, job_id: record.result.remoteJobId }); const status = String((remote as Record<string, unknown>)?.status ?? ''); if (status === 'succeeded') { record.result.state = 'succeeded'; record.result.progress = 100; record.result.finishedAt = record.result.finishedAt ?? new Date().toISOString() } else if (status === 'failed' || status === 'timed_out') { record.result.state = 'failed'; record.result.error = String((remote as Record<string, unknown>)?.error ?? status); record.result.finishedAt = record.result.finishedAt ?? new Date().toISOString() } else if (status === 'cancelled') { record.result.state = 'cancelled'; record.result.finishedAt = record.result.finishedAt ?? new Date().toISOString() } } catch (error) { record.result.error = error instanceof Error ? error.message : String(error) } } return record.result }
@@ -694,7 +747,42 @@ export class ZeroWallSinglecellService extends TypertRemoteService {
   @Remote('scTenifoldCollect') scTenifoldCollect(runId: string): Promise<{ run: ScTenifoldRunResult; files: string[] }> { return this.collectInternal(runId) }
   private async collectInternal(runId: string, exec?: any): Promise<{ run: ScTenifoldRunResult; files: string[] }> { const record = scRuns.get(runId); if (!record) throw new Error(`scTenifoldKnk 运行不存在：${runId}`); const files: string[] = []; const visit = async (dir: string): Promise<void> => { for (const entry of await readdir(dir, { withFileTypes: true })) { const path = join(dir, entry.name); if (entry.isDirectory()) await visit(path); else files.push(path) } }; if (existsSync(record.output)) await visit(record.output); if (record.result.remoteJobId && record.result.remoteProjectId && exec !== undefined) { await callRemoteTool(this.context, exec, 'mcp__rdatalinux_r_platform__r_get_sc_tenifold_manifest', { project_id: record.result.remoteProjectId, job_id: record.result.remoteJobId }); } return { run: record.result, files } }
   @Remote('scTenifoldReview') scTenifoldReview(runId: string): ScTenifoldReviewResult { const record = scRuns.get(runId); if (!record) throw new Error(`scTenifoldKnk 运行不存在：${runId}`); return runReview(record.validation, record.output) }
-  @Remote('scTenifoldReport') async scTenifoldReport(runId: string): Promise<{ path: string; review: ScTenifoldReviewResult }> { const record = scRuns.get(runId); if (!record) throw new Error(`scTenifoldKnk 运行不存在：${runId}`); const review = runReview(record.validation, record.output); const path = join(record.projectRoot, 'reports', `${runId}-review.md`); await mkdir(dirname(path), { recursive: true }); await writeFile(path, [`# scTenifoldKnk 运行审核`, ``, `- run: ${runId}`, `- status: ${record.result.state}`, `- review: ${review.state}`, ``, '该运行仅产生基于 scGRN 的计算假设，不等同于真实基因敲除证据。', ''].join('\n')); return { path, review } }
+  private async remotePostprocess(runId: string, exec: any, stage: string, code: string): Promise<Record<string, unknown>> {
+    const record = scRuns.get(runId)
+    if (!record) throw new Error(`scTenifoldKnockout 运行不存在：${runId}`)
+    await requireRemoteR(this.context, exec)
+    const projectId = record.result.remoteProjectId
+    if (!projectId) throw new Error('missing_runtime: 运行尚未登记远程 R MCP 项目。')
+    const schemas = this.context.tools.schemas()
+    if (!schemas.some(schema => schema.name === 'mcp__rdatalinux_r_platform__r_submit_script')) throw new Error('missing_runtime: 远程 R MCP 未提供后处理脚本工具。')
+    const submitted = await callRemoteTool(this.context, exec, 'mcp__rdatalinux_r_platform__r_submit_script', { project_id: projectId, code, working_directory: '.', timeout_ms: 600_000, confirm: true })
+    const remoteJobId = findRemoteJobId(submitted)
+    await persistJson(join(record.output, `${stage}-submit.json`), { stage, remoteProjectId: projectId, remoteJobId, submittedAt: new Date().toISOString() })
+    record.result.stage = stage === 'qc' ? 'qc_running' : stage === 'interpret' ? 'interpreting' : 'figures_generating'
+    return { runId, stage, remoteProjectId: projectId, ...(remoteJobId ? { remoteJobId } : {}), state: 'queued', artifactPath: relative(record.projectRoot, record.output).replaceAll('\\', '/') }
+  }
+  private async remoteInput(record: SinglecellRunRecord): Promise<string> {
+    try { const value = JSON.parse(await readFile(join(record.output, 'remote-submit.json'), 'utf8')) as { inputPath?: string }; return value.inputPath ?? 'data/raw/input' } catch { return 'data/raw/input' }
+  }
+  private async scTenifoldQcInternal(runId: string, exec?: any): Promise<Record<string, unknown>> {
+    const record = scRuns.get(runId); if (!record) throw new Error(`scTenifoldKnk 运行不存在：${runId}`)
+    const inputPath = await this.remoteInput(record)
+    const outputPath = `runs/${runId}`
+    const code = `if (!requireNamespace('jsonlite', quietly=TRUE)) stop('missing_runtime: jsonlite is required')\ninput_path <- ${JSON.stringify(inputPath)}\nout <- ${JSON.stringify(outputPath)}\ndir.create(file.path(out, 'figures'), recursive=TRUE, showWarnings=FALSE)\nmetrics <- list(input=input_path, cells=NA_integer_, genes=NA_integer_, raw_counts='requires_runtime_validation', strata=list(), excluded=list(), warnings=character())\nif (grepl('\\\\.(csv|tsv|txt)$', input_path, ignore.case=TRUE)) { sep <- ifelse(grepl('\\\\.csv$', input_path, ignore.case=TRUE), ',', '\\t'); x <- tryCatch(utils::read.table(input_path, header=TRUE, sep=sep, check.names=FALSE, row.names=1, comment.char=''), error=function(e) NULL); if (!is.null(x)) { metrics$cells <- ncol(x); metrics$genes <- nrow(x); pdf(file.path(out, 'figures', 'qc-library-size.pdf')); hist(colSums(as.matrix(x)), main='Library size', xlab='Counts'); dev.off(); png(file.path(out, 'figures', 'qc-library-size.png'), width=1800, height=1400, res=300); hist(colSums(as.matrix(x)), main='Library size', xlab='Counts'); dev.off() } }\njsonlite::write_json(metrics, file.path(out, 'qc-summary.json'), auto_unbox=TRUE, pretty=TRUE)\nwriteLines(c('# QC and non-tumor stratification', '', paste0('- Input: ', input_path), '- QC is executed in the selected remote R MCP.', '- Raw-count, sample/donor replication and non-tumor labels require runtime metadata review.'), file.path(out, 'qc-report.zh-CN.md'))`
+    return this.remotePostprocess(runId, exec, 'qc', code)
+  }
+  private async scTenifoldInterpretInternal(runId: string, exec?: any): Promise<Record<string, unknown>> {
+    const record = scRuns.get(runId); if (!record) throw new Error(`scTenifoldKnk 运行不存在：${runId}`)
+    const outputPath = `runs/${runId}`
+    const code = `if (!requireNamespace('jsonlite', quietly=TRUE)) stop('missing_runtime: jsonlite is required')\nout <- ${JSON.stringify(outputPath)}\nf <- file.path(out, 'diff-regulation.tsv')\nrows <- if (file.exists(f)) tryCatch(utils::read.delim(f, check.names=FALSE), error=function(e) data.frame()) else data.frame()\nif (nrow(rows) > 0) { names(rows) <- tolower(names(rows)); gene <- if ('gene' %in% names(rows)) as.character(rows[['gene']]) else as.character(seq_len(nrow(rows))); fc <- if ('fc' %in% names(rows)) as.numeric(rows[['fc']]) else rep(NA_real_, nrow(rows)); padj <- if ('p.adj' %in% names(rows)) as.numeric(rows[['p.adj']]) else rep(NA_real_, nrow(rows)); direction <- ifelse(fc > 0, 'up', ifelse(fc < 0, 'down', 'mixed')); observed <- data.frame(gene=gene, direction=direction, effectSize=fc, adjustedP=padj); utils::write.table(observed, file.path(out, 'interpretation-observed.tsv'), sep='\\t', quote=FALSE, row.names=FALSE); utils::write.table(observed[seq_len(min(1,nrow(observed))),], file.path(out, 'target-gene-summary.tsv'), sep='\\t', quote=FALSE, row.names=FALSE); utils::write.table(data.frame(seed=c(123,456), concordance=NA_real_, note='需要独立种子运行后由 R MCP 汇总'), file.path(out, 'stability-summary.tsv'), sep='\\t', quote=FALSE, row.names=FALSE); utils::write.table(data.frame(control='non-targeting', status='not_run', note='需要单独提交阴性对照'), file.path(out, 'negative-control.tsv'), sep='\\t', quote=FALSE, row.names=FALSE); conclusions <- list(list(category='observed', title='R 统计观察', statement=paste0('R MCP 输出包含 ', nrow(rows), ' 个网络调控结果；方向和效应量见 interpretation-observed.tsv。'), evidence=c('diff-regulation.tsv'), confidence='medium', requiresValidation=TRUE)) } else { observed <- data.frame(); conclusions <- list(list(category='limitation', title='结果尚未可解释', statement='未找到 diff-regulation.tsv，不能判断敲除后的改变。', evidence=character(), confidence='low', requiresValidation=TRUE)) }\njsonlite::write_json(list(state='completed_with_warnings', observedChanges=unname(split(observed, seq_len(nrow(observed)))), pathwayEvidence=list(), conclusions=conclusions, limitations=c('GO/Reactome/PubMed 证据需要通过已连接的 Bio Tools MCP 补充。','虚拟敲除不等同于真实因果实验。')), file.path(out, 'interpretation.json'), auto_unbox=TRUE, pretty=TRUE)`
+    return this.remotePostprocess(runId, exec, 'interpret', code)
+  }
+  @Remote('scTenifoldQc') async scTenifoldQc(runId: string): Promise<ScTenifoldHostToolInstruction> { return { runId, state: 'requires_host_tool', message: '请调用 sc_tenifold_knockout_qc，由 Host 通过远程 R MCP 提交 QC。' } }
+  @Remote('scTenifoldInterpret') async scTenifoldInterpret(runId: string): Promise<ScTenifoldHostToolInstruction> { return { runId, state: 'requires_host_tool', message: '请调用 sc_tenifold_knockout_interpret，由 Host 通过远程 R MCP 提交解释。' } }
+  @Remote('scTenifoldReport') async scTenifoldReport(runId: string): Promise<{ path: string; review: ScTenifoldReviewResult }> { const record = scRuns.get(runId); if (!record) throw new Error(`scTenifoldKnk 运行不存在：${runId}`); const review = runReview(record.validation, record.output); let interpretation: ScTenifoldInterpretation | undefined; try { interpretation = JSON.parse(await readFile(join(record.output, 'interpretation.json'), 'utf8')) as ScTenifoldInterpretation } catch { /* interpretation may still be queued in R MCP */ } const path = await writeChineseReport(record.projectRoot, record.result.studyId ?? basename(record.projectRoot), runId, interpretation, review); return { path, review } }
+  @Remote('scTenifoldFigures') async scTenifoldFigures(runId: string): Promise<ScTenifoldFigureManifest> { const record = scRuns.get(runId); if (!record) throw new Error(`scTenifoldKnk 运行不存在：${runId}`); const figureDir = join(record.output, 'figures'); await mkdir(figureDir, { recursive: true }); const processPath = join(record.output, 'process-diagram.mmd'); await writeFile(processPath, ['flowchart LR', 'A[研究问题/目标基因] --> B[基因标准化与候选建议]', 'B --> C[公开单细胞数据发现与评分]', 'C --> D[获取与 raw counts 校验]', 'D --> E[QC 与非肿瘤筛选]', 'E --> F[按细胞群分层]', 'F --> G[R MCP scTenifoldKnk]', 'G --> H[稳定性与阴性对照]', 'H --> I[机制证据与统计解释]', 'I --> J[图表、报告、实验设计]', ''].join('\n'), 'utf8'); const files: ScTenifoldFigureManifest['figures'] = []; for (const name of ['qc-library-size.pdf', 'qc-library-size.png', 'top-differential-regulation.pdf', 'top-differential-regulation.png', 'volcano.pdf', 'volcano.png']) { if (existsSync(join(figureDir, name))) files.push({ path: relative(record.projectRoot, join(figureDir, name)).replaceAll('\\', '/'), kind: name.split('.')[0]!, format: name.endsWith('.pdf') ? 'pdf' : 'png', sourceRunIds: [runId], title: name }) } return { studyId: record.result.studyId ?? basename(record.projectRoot), runIds: [runId], state: files.length ? 'completed_with_warnings' : 'failed', figures: files, processDiagramPath: relative(record.projectRoot, processPath).replaceAll('\\', '/'), artifactPaths: [relative(record.projectRoot, processPath).replaceAll('\\', '/')], createdAt: new Date().toISOString() } }
+  private async scTenifoldFiguresInternal(runId: string, exec: any): Promise<Record<string, unknown>> { const code = `out <- ${JSON.stringify(`runs/${runId}`)}\ndir.create(file.path(out, 'figures'), recursive=TRUE, showWarnings=FALSE)\nf <- file.path(out, 'diff-regulation.tsv')\nif (file.exists(f)) { d <- tryCatch(utils::read.delim(f, check.names=FALSE), error=function(e) data.frame()); if (nrow(d) > 0) { names(d) <- tolower(names(d)); gene <- if ('gene' %in% names(d)) as.character(d[['gene']]) else as.character(seq_len(nrow(d))); fc <- if ('fc' %in% names(d)) as.numeric(d[['fc']]) else rep(0, nrow(d)); top <- order(abs(fc), decreasing=TRUE)[seq_len(min(20, nrow(d)))]; for (ext in c('pdf','png')) { fn <- file.path(out, 'figures', paste0('top-differential-regulation.', ext)); if (ext == 'pdf') pdf(fn, width=7, height=5) else png(fn, width=2100, height=1500, res=300); barplot(fc[top], names.arg=gene[top], las=2, col=ifelse(fc[top] >= 0, '#2F6B9A', '#C54B4B'), main='Top differential regulation', ylab='FC'); dev.off() }; for (ext in c('pdf','png')) { fn <- file.path(out, 'figures', paste0('volcano.', ext)); if (ext == 'pdf') pdf(fn, width=7, height=5) else png(fn, width=2100, height=1500, res=300); plot(fc, -log10(seq_along(fc)/length(fc)), pch=16, col='#4C78A8', main='Virtual knockout regulation', xlab='FC', ylab='-log10(p)'); dev.off() } } }`; const queued = await this.remotePostprocess(runId, exec, 'figures', code); const manifest = await this.scTenifoldFigures(runId); return { ...queued, ...manifest } }
+  @Remote('scTenifoldExperimentalDesign') async scTenifoldExperimentalDesign(runId: string): Promise<{ paths: string[] }> { const record = scRuns.get(runId); if (!record) throw new Error(`scTenifoldKnk 运行不存在：${runId}`); const dir = join(record.projectRoot, 'protocols'); await mkdir(dir, { recursive: true }); const files: Array<[string, string]> = [['validation-plan.md', '# 计算结果后续验证方案\n\n本文件只提供供研究人员审核的 CRISPRi、siRNA 或药理抑制验证思路，不执行湿实验。\n'], ['controls.tsv', 'control\tpurpose\nnon-targeting\t阴性对照\nrescue\t特异性验证\n'], ['replicate-plan.tsv', 'replicate_type\tminimum\nbiological\t3\ntechnical\t2\n'], ['readout-plan.md', '# 读出建议\n\n根据 R MCP 发现的显著基因和通路，选择 qPCR、流式、蛋白或 CITE-seq 读出，并预先定义效应量与接受标准。\n'], ['acceptance-criteria.md', '# 接受标准\n\n真实实验前由研究人员审核靶向效率、阴性对照、重复数、统计功效和生物安全要求。\n']]; await Promise.all(files.map(([name, body]) => writeFile(join(dir, name), body, 'utf8'))); return { paths: files.map(([name]) => relative(record.projectRoot, join(dir, name)).replaceAll('\\', '/')) } }
   @Remote('validateDataset') async validateDataset(input: { sessionId: string; inputPath: string; targets: string[] }): Promise<ScTenifoldDataContract> { const root = sessionCwd(this.context, input.sessionId); const path = safePath(root, input.inputPath); const contract = dataContract(path, input.targets.map(normalizeGene)); contract.checksum = createHash('sha256').update(await readFile(path)).digest('hex'); return contract }
 }
 

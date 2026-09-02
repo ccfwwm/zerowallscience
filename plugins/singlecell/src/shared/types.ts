@@ -1,7 +1,7 @@
 export type ScTenifoldOrganism = 'human' | 'mouse' | 'auto'
 export type ScTenifoldProvider = 'cellxgene' | 'geo' | 'ena' | 'sra'
 export type ScTenifoldDownloadProduct = 'h5ad' | 'matrix' | 'supplementary' | 'fastq'
-export type ScTenifoldStudyState = 'intake' | 'gene_candidates_ready' | 'datasets_discovered' | 'acquisition_planned' | 'acquiring' | 'acquired' | 'validating' | 'qc_running' | 'ready_for_knockout' | 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'review_required' | 'reported'
+export type ScTenifoldStudyState = 'intake' | 'gene_candidates_ready' | 'datasets_discovered' | 'acquisition_planned' | 'acquiring' | 'acquired' | 'validating' | 'qc_running' | 'stratifying' | 'ready_for_knockout' | 'queued' | 'running' | 'collecting' | 'interpreting' | 'figures_generating' | 'reporting' | 'succeeded' | 'failed' | 'cancelled' | 'review_required' | 'reported'
 
 export interface ScTenifoldIntakeRequest {
   targetGenes?: string[]
@@ -82,6 +82,92 @@ export interface ScTenifoldDataContract {
   checksum?: string
 }
 
+export interface ScTenifoldQcResult {
+  studyId: string
+  state: 'passed' | 'passed_with_warnings' | 'blocked' | 'running' | 'failed'
+  inputPath: string
+  cellsBefore?: number
+  cellsAfter?: number
+  samples?: number
+  donors?: number
+  metrics: Record<string, number | undefined>
+  strata: ScTenifoldStratum[]
+  excluded: Array<{ category: string; count: number; reason: string }>
+  thresholds: Record<string, number | string | boolean>
+  warnings: string[]
+  errors: string[]
+  artifactPaths: string[]
+  checksum?: string
+  createdAt: string
+}
+
+export interface ScTenifoldStratum {
+  cellType: string
+  condition?: string
+  cells: number
+  samples: number
+  donors: number
+  targetExpressionCoverage?: number
+  eligible: boolean
+  warnings: string[]
+}
+
+export interface ScTenifoldRunManifest {
+  schema: 1
+  studyId: string
+  runId: string
+  target: string
+  cellType?: string
+  condition?: string
+  datasetAccession?: string
+  inputPath: string
+  inputChecksum?: string
+  execution: 'r-mcp'
+  remoteProjectId?: string
+  remoteJobId?: string
+  seeds: number[]
+  parameters: Record<string, number | string | boolean | number[] | undefined>
+  outputs: string[]
+  createdAt: string
+}
+
+export interface ScTenifoldConclusion {
+  category: 'observed' | 'mechanism_evidence' | 'hypothesis' | 'limitation'
+  title: string
+  statement: string
+  evidence: string[]
+  confidence: 'high' | 'medium' | 'low'
+  requiresValidation: boolean
+}
+
+export interface ScTenifoldInterpretation {
+  studyId: string
+  runId: string
+  state: 'completed' | 'completed_with_warnings' | 'blocked' | 'failed'
+  observedChanges: Array<{ gene: string; direction: 'up' | 'down' | 'mixed'; effectSize?: number; adjustedP?: number; evidencePath?: string }>
+  pathwayEvidence: Array<{ source: string; term: string; genes: string[]; url?: string; evidence: string }>
+  conclusions: ScTenifoldConclusion[]
+  limitations: string[]
+  artifactPaths: string[]
+  createdAt: string
+}
+
+export interface ScTenifoldFigureManifest {
+  studyId: string
+  runIds: string[]
+  state: 'completed' | 'completed_with_warnings' | 'failed'
+  figures: Array<{ path: string; kind: string; format: 'pdf' | 'png' | 'svg'; sourceRunIds: string[]; title: string }>
+  processDiagramPath?: string
+  artifactPaths: string[]
+  createdAt: string
+}
+
+export interface ScTenifoldHostToolInstruction {
+  runId: string
+  state: 'requires_host_tool'
+  message: string
+}
+
 export type ScTenifoldExecution = 'r-mcp' | 'local-r' | 'remote-run' | 'auto'
 export type ScTenifoldReviewState = 'pass' | 'pass_with_warnings' | 'blocked' | 'requires_human_review'
 export type ScTenifoldRunState = 'planned' | 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
@@ -105,6 +191,11 @@ export interface ScTenifoldProjectConfig {
   nc_nNet?: number
   nc_nCells?: number
   fdr?: number
+  cellTypes?: string[]
+  condition?: string
+  negativeControl?: string
+  subsamples?: number
+  qc?: Record<string, number | string | boolean>
 }
 
 export interface ScTenifoldValidationResult {
@@ -147,6 +238,12 @@ export interface ScTenifoldRunResult {
   researchRunId?: string
   remoteProjectId?: string
   remoteJobId?: string
+  studyId?: string
+  datasetAccession?: string
+  cellType?: string
+  condition?: string
+  inputChecksum?: string
+  stage?: ScTenifoldStudyState
 }
 
 export interface ScTenifoldReviewResult {
