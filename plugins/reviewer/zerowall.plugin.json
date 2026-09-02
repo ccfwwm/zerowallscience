@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-reviewer",
-  "version": "4.3.18",
+  "version": "5.0.0",
   "dsh": {
     "min": "0.1.2-alpha.4",
     "max": "0.1.2-alpha.4"

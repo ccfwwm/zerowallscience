@@ -261,7 +261,7 @@ function verifyArchivePolicy() {
     throw new Error('Packaged LLM runtime is missing the on-demand attachment extraction instruction.')
   }
 
-  if (!/^4\.\d+\.\d+$/u.test(packagedManifest.version)) throw new Error(`Packaged desktop version must be a 4.x release; found ${packagedManifest.version}.`)
+  if (!/^\d+\.\d+\.\d+$/u.test(packagedManifest.version)) throw new Error(`Packaged desktop version must be a semantic release; found ${packagedManifest.version}.`)
   const dshManifest = JSON.parse(readArchiveFile('node_modules/@deepseek-ai/dsh/package.json').toString('utf8'))
   if (dshManifest.version !== pinnedUpstream.version) throw new Error(`Packaged DSH must be ${pinnedUpstream.version}; found ${dshManifest.version}.`)
 }
