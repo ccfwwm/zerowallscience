@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-wechat",
-  "version": "5.0.1",
+  "version": "5.0.2",
   "description": "ZeroWall Science wechat domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

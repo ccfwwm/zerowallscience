@@ -1,6 +1,6 @@
-# ZeroWall Science 5.0.1 构建与发布
+# ZeroWall Science 5.0.2 构建与发布
 
-5.0.1 升级 DeepSeek Harness alpha.5，并修复普通文件附件、会话标题恢复和品牌标题。默认 Stable Windows x64 包为本地构建产物；本版本不自动上传七牛云，也不执行 Git 发布。
+5.0.2 升级 DeepSeek Harness alpha.5，并修复 MinerU full.md 内容注入、原件/解析件 Sidebar 预览、模型状态批次回退和版本徽标。默认 Stable Windows x64 包为本地构建产物；本版本不自动上传七牛云，也不执行 Git 发布。
 
 ## 固定基线
 

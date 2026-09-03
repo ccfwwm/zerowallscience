@@ -42,6 +42,8 @@ export interface FileAttachmentRef extends StoredAttachment {
 
 export interface PreparedFile extends FileAttachmentRef {
   preview?: string
+  /** Complete extracted Markdown/text sent to the model as untrusted data. */
+  content?: string
   warning?: string
 }
 

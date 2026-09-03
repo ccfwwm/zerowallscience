@@ -154,7 +154,7 @@ function AttachmentViewer({ remote, scope, tab, ctx }: TabComponentProps & { rem
         <button type="button" title={meta?.view === 'parsed' ? '在工作区打开解析结果' : '在工作区打开原文件'} onClick={() => { void (meta?.view === 'parsed' ? openParsedInWorkspace() : openInWorkspace()) }}>
           <FolderOpen size={16} />
         </button>
-        {meta?.view !== 'parsed' && <button type="button" title="查看解析结果" onClick={() => openParsedAttachment(ctx, { file, sessionId: scope.sessionId, ...(scope.cwd === undefined ? {} : { cwd: scope.cwd }) })}>
+        {meta?.view !== 'parsed' && <button type="button" title="查看解析结果" onClick={() => { void openParsedAttachment(ctx, remote, { file, sessionId: scope.sessionId, ...(scope.cwd === undefined ? {} : { cwd: scope.cwd }) }) }}>
           <Check size={16} />
         </button>
         }
@@ -174,7 +174,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function openAttachment(ctx: ClientContext, detail: AttachmentActionDetail): void {
+function openAttachmentTab(ctx: ClientContext, detail: AttachmentActionDetail): void {
   const scope = { sessionId: detail.sessionId, ...(detail.cwd === undefined ? {} : { cwd: detail.cwd }) }
   ctx.betterSidebar.openTab({
     type: 'zerowall:attachment-viewer',
@@ -188,7 +188,7 @@ function openAttachment(ctx: ClientContext, detail: AttachmentActionDetail): voi
   }, scope)
 }
 
-function openParsedAttachment(ctx: ClientContext, detail: AttachmentActionDetail): void {
+function openParsedAttachmentTab(ctx: ClientContext, detail: AttachmentActionDetail): void {
   const scope = { sessionId: detail.sessionId, ...(detail.cwd === undefined ? {} : { cwd: detail.cwd }) }
   ctx.betterSidebar.openTab({
     type: 'zerowall:attachment-viewer',
@@ -196,6 +196,37 @@ function openParsedAttachment(ctx: ClientContext, detail: AttachmentActionDetail
     title: `${detail.file.name} · 解析结果`,
     meta: { attachmentId: detail.file.attachmentId, view: 'parsed', initial: detail.file },
   }, scope)
+}
+
+async function openOriginalAttachment(ctx: ClientContext, remote: FilesRemote, detail: AttachmentActionDetail): Promise<void> {
+  try {
+    const response = await remote.materializeOriginal({ sessionId: detail.sessionId, attachmentId: detail.file.attachmentId })
+    const materialized = remoteValue<{ path: string }>('zerowallFiles.materializeOriginal', response)
+    ctx.betterSidebar.openFile({ sessionId: detail.sessionId, ...(detail.cwd === undefined ? {} : { cwd: detail.cwd }) }, materialized.path, detail.file.name)
+  } catch {
+    // Keep a read-only viewer available if a legacy Host cannot materialize.
+    openAttachmentTab(ctx, detail)
+  }
+}
+
+async function openParsedAttachment(ctx: ClientContext, remote: FilesRemote, detail: AttachmentActionDetail): Promise<void> {
+  try {
+    const [mineru, local] = await Promise.all([
+      remote.getExtraction({ sessionId: detail.sessionId, attachmentId: detail.file.attachmentId, kind: 'mineru' }),
+      remote.getExtraction({ sessionId: detail.sessionId, attachmentId: detail.file.attachmentId, kind: 'local' }),
+    ])
+    const kind = mineru.ok && mineru.value?.state === 'done'
+      ? 'mineru'
+      : local.ok && local.value?.state === 'done' ? 'local' : undefined
+    if (kind === undefined) throw new Error('该附件尚无可打开的解析结果。')
+    const response = await remote.materializeExtraction({ sessionId: detail.sessionId, attachmentId: detail.file.attachmentId, kind })
+    const materialized = remoteValue<{ path: string; name: string }>('zerowallFiles.materializeExtraction', response)
+    ctx.betterSidebar.openFile({ sessionId: detail.sessionId, ...(detail.cwd === undefined ? {} : { cwd: detail.cwd }) }, materialized.path, materialized.name)
+  } catch {
+    // Older compositions may not expose materializeExtraction; the parsed
+    // tab remains a compatibility fallback and still shows the artifact.
+    openParsedAttachmentTab(ctx, detail)
+  }
 }
 
 async function copyAttachment(remote: FilesRemote, detail: AttachmentActionDetail): Promise<void> {
@@ -235,7 +266,11 @@ export function apply(ctx: ClientContext): void {
   }), 'zerowall: attachment viewer')
 
   ctx.effect(() => {
-    const open = (event: Event): void => { openAttachment(ctx, (event as CustomEvent<AttachmentActionDetail>).detail) }
+    const open = (event: Event): void => {
+      const detail = (event as CustomEvent<AttachmentActionDetail>).detail
+      if (detail?.view === 'parsed') void openParsedAttachment(ctx, remote, detail)
+      else void openOriginalAttachment(ctx, remote, detail)
+    }
     const copy = (event: Event): void => { void copyAttachment(remote, (event as CustomEvent<AttachmentActionDetail>).detail) }
     window.addEventListener('zerowall:attachment-open', open)
     window.addEventListener('zerowall:attachment-copy', copy)

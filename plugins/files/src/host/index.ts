@@ -324,12 +324,16 @@ export class ZeroWallFilesService extends TypertRemoteService {
       throw new Error(`该附件还没有可用的 ${kind} 解析结果。`)
     }
     const original = await this.inspectOriginalMetadata(input)
+    const content = await readFile(extraction.artifactPath, 'utf8')
     return {
       ...original,
       parser: extraction.parser,
       status: 'parsed',
       ...(extraction.textChars === undefined ? {} : { textChars: extraction.textChars }),
-      preview: (await readFile(extraction.artifactPath, 'utf8')).slice(0, PREVIEW_CHARS),
+      // Keep a bounded preview for cards, while sending the complete
+      // full.md/local artifact through the model-facing `content` field.
+      preview: content.slice(0, PREVIEW_CHARS),
+      content,
     }
   }
 
@@ -396,8 +400,12 @@ export class ZeroWallFilesService extends TypertRemoteService {
     const extraction = await this.getExtraction(input)
     if (extraction?.state !== 'done' || extraction.artifactPath === undefined) throw new Error(`该附件还没有可用的 ${input.kind} 解析结果。`)
     const cwd = this.ctx.sessions.get(SessionId(input.sessionId))?.header.cwd
-    if (!cwd) throw new Error('materializeExtraction requires a session working directory')
-    const workspaceRoot = resolve(cwd, '.zerowall', 'extractions', ref.sha256, input.kind)
+    // Sessions without a workspace still need a Sidebar-readable parsed file.
+    // Keep that fallback outside user workspaces while retaining the same
+    // per-attachment immutable directory layout.
+    const workspaceRoot = cwd === undefined
+      ? resolve(process.env.DSH_HOME?.trim() || join(homedir(), '.dsh'), 'attachments', 'materialized', '.zerowall', 'extractions', ref.sha256, input.kind)
+      : resolve(cwd, '.zerowall', 'extractions', ref.sha256, input.kind)
     await mkdir(workspaceRoot, { recursive: true })
     const name = input.kind === 'local' ? `${ref.name.replace(/\.[^.]+$/u, '')}.local.md` : cleanName(extraction.artifactPath.slice(Math.max(extraction.artifactPath.lastIndexOf('/'), extraction.artifactPath.lastIndexOf('\\')) + 1))
     const source = await readFile(extraction.artifactPath)

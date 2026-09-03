@@ -54,7 +54,7 @@ afterEach(() => {
 })
 
 describe('attachment client actions', () => {
-  it('opens workspace attachments immediately in the original-byte viewer', async () => {
+  it('opens workspace attachments in the original-byte Sidebar viewer', async () => {
     const state = context()
     apply(state.ctx)
 
@@ -62,18 +62,12 @@ describe('attachment client actions', () => {
       detail: { file, sessionId: 'session-1', cwd: 'C:/workspace' },
     }))
 
-    expect(state.ctx.betterSidebar.openTab).toHaveBeenCalledWith({
-      type: 'zerowall:attachment-viewer',
-      id: 'zerowall:attachment-viewer:attachment-1',
-      title: 'paper.pdf',
-      meta: { attachmentId: 'attachment-1', initial: file },
-    }, { sessionId: 'session-1', cwd: 'C:/workspace' })
-    expect(state.materialize).not.toHaveBeenCalled()
-    expect(state.ctx.betterSidebar.openFile).not.toHaveBeenCalled()
+    await waitFor(() => expect(state.materialize).toHaveBeenCalledWith({ sessionId: 'session-1', attachmentId: 'attachment-1' }))
+    expect(state.ctx.betterSidebar.openFile).toHaveBeenCalledWith({ sessionId: 'session-1', cwd: 'C:/workspace' }, 'C:/workspace/.zerowall/uploads/paper.pdf', 'paper.pdf')
     state.disposers.forEach(dispose => dispose())
   })
 
-  it('opens the session-scoped read-only viewer without a workspace', async () => {
+  it('opens the session-scoped original viewer without a workspace', async () => {
     const state = context()
     apply(state.ctx)
 
@@ -81,13 +75,8 @@ describe('attachment client actions', () => {
       detail: { file, sessionId: 'session-2' },
     }))
 
-    await waitFor(() => expect(state.ctx.betterSidebar.openTab).toHaveBeenCalledWith({
-      type: 'zerowall:attachment-viewer',
-      id: 'zerowall:attachment-viewer:attachment-1',
-      title: 'paper.pdf',
-      meta: { attachmentId: 'attachment-1', initial: file },
-    }, { sessionId: 'session-2' }))
-    expect(state.materialize).not.toHaveBeenCalled()
+    await waitFor(() => expect(state.materialize).toHaveBeenCalledWith({ sessionId: 'session-2', attachmentId: 'attachment-1' }))
+    expect(state.ctx.betterSidebar.openFile).toHaveBeenCalledWith({ sessionId: 'session-2' }, 'C:/workspace/.zerowall/uploads/paper.pdf', 'paper.pdf')
     state.disposers.forEach(dispose => dispose())
   })
 
@@ -108,7 +97,7 @@ describe('attachment client actions', () => {
       detail: { file, sessionId: 'session-3' },
     }))
     await Promise.resolve()
-    expect(state.ctx.betterSidebar.openTab).not.toHaveBeenCalled()
+    expect(state.ctx.betterSidebar.openFile).not.toHaveBeenCalled()
   })
 
   it('uses the registering plugin remote when the better-sidebar component scope has no remote inject', async () => {
