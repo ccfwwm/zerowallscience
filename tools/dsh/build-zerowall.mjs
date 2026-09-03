@@ -35,6 +35,6 @@ function runPnpm(args, extraEnv = {}) {
   execFileSync(process.execPath, [pnpmCli, ...args], {
     cwd: source,
     stdio: 'inherit',
-    env: { ...process.env, DSH_CLIENT_VERSION: rootManifest.version, ...extraEnv },
+    env: { ...process.env, ZEROWALL_CLIENT_VERSION: rootManifest.version, ...extraEnv },
   })
 }
