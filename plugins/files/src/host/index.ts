@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
 import { constants } from 'node:fs'
 import { homedir } from 'node:os'
-import { copyFile, lstat, mkdir, readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises'
+import { copyFile, lstat, mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import JSZip from 'jszip'
 import * as XLSX from 'xlsx'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
@@ -400,6 +400,20 @@ export class ZeroWallFilesService extends TypertRemoteService {
     const extraction = await this.getExtraction(input)
     if (extraction?.state !== 'done' || extraction.artifactPath === undefined) throw new Error(`该附件还没有可用的 ${input.kind} 解析结果。`)
     const cwd = this.ctx.sessions.get(SessionId(input.sessionId))?.header.cwd
+    // MinerU writes a complete artifact directory in the workspace. Keep the
+    // authoritative full.md path when it is already inside that workspace so
+    // Sidebar previews retain sibling images, layout.json and source files.
+    // Only detached sessions (or legacy/out-of-workspace local extraction)
+    // need a materialized copy below .zerowall.
+    if (cwd !== undefined && input.kind === 'mineru') {
+      const workspace = await realpath(resolve(cwd))
+      const artifact = await realpath(resolve(extraction.artifactPath))
+      const containment = relative(workspace, artifact)
+      if (containment !== '..' && !containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(containment)) {
+        const info = await stat(artifact)
+        if (info.isFile()) return { attachmentId: ref.attachmentId, name: cleanName(basename(artifact)), path: artifact, bytes: info.size, sha256: digest(await readFile(artifact)) }
+      }
+    }
     // Sessions without a workspace still need a Sidebar-readable parsed file.
     // Keep that fallback outside user workspaces while retaining the same
     // per-attachment immutable directory layout.
