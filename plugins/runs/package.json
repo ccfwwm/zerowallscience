@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-runs",
-  "version": "5.0.3",
+  "version": "5.0.4",
   "description": "ZeroWall Science runs domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

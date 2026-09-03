@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-python",
-  "version": "5.0.3",
+  "version": "5.0.4",
   "dsh": {
     "min": "0.1.2-alpha.5",
     "max": "0.1.2-alpha.5"
