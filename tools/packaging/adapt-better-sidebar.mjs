@@ -2,15 +2,24 @@ const REQUIRED_INJECTION = 'conversation'
 const INJECT_ANCHORS = ['slots', 'sessions', 'connection', 'workspaces', 'locale', 'modules']
 
 export function adaptBetterSidebarClient(source) {
+  // v0.18.0 emits the ModuleLoader registration contract. Its service
+  // lookups are resolved by the module table, so the legacy inject rewrite
+  // must not inspect incidental `ctx.get("conversation")` strings in the
+  // compiled bundle.
+  if (source.includes('window.__ModuleLoader__.load(')) return source
+
   // Current Sidebar main no longer reads the conversation service directly.
   // Older snapshots did, so keep the compatibility injection for those bundles.
   if (!source.includes('ctx.get("conversation")')) return source
 
   const declaration = findClientInjectDeclaration(source)
-  // Sidebar 0.19+ resolves services through the injected module system and
-  // no longer emits the legacy `const inject = [...]` declaration. In that
-  // layout there is nothing to rewrite; preserve the upstream client bundle.
-  if (declaration === null) return source
+  // A bundle that still accesses conversation must expose the legacy inject
+  // declaration so the host can provide the service. If no unambiguous
+  // declaration exists, fail closed instead of shipping a bundle that will
+  // crash only after the client mounts.
+  if (declaration === null) {
+    throw new Error('Expected one dsh-better-sidebar client inject declaration')
+  }
   if (declaration.names.includes(REQUIRED_INJECTION)) return source
 
   const slots = declaration.text.match(/([\t ]*)["']slots["'],?/u)

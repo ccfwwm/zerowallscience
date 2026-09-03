@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "5.0.4",
+  "version": "5.1.0",
   "description": "ZeroWall Science 4.3 local-first scientific research workbench with the DSH better-sidebar workbench.",
   "private": true,
   "type": "module",
@@ -26,7 +26,7 @@
     "dsh-better-sidebar-icons": "workspace:*",
     "dsh-file-review-tab": "workspace:*",
     "dsh-wechat": "workspace:*",
-    "dsh-better-sidebar": "github:omdsh-dev/DSH-better-sidebar#ad392ceea4cdbe545d99ddd3730b4cc62036bd44",
+    "dsh-better-sidebar": "workspace:^",
     "@huanlin/dsh-plugin-better-sidebar-plugin-office": "github:HuanLinOTO/dsh-plugin-better-sidebar-plugin-office#443d861f44aa8391d6869bd85ce6d1306e09c606",
     "dsh-dream-skin": "8.30.1",
     "@zerowallscience/dsh-ppt-runtime": "workspace:^",

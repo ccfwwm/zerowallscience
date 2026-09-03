@@ -1,14 +1,17 @@
 {
-  "version": "5.0.4",
+  "version": "5.1.0",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
-    "tag": "dsh-v0.1.2-alpha.5",
-    "commit": "db6bdc3576c2d4e7c965e8e3ed0c2a731eed87f5"
+    "tag": "dsh-v0.1.2-rc.1",
+    "commit": "a66e4702047846cdaa10c66c9d3df3951f5ea70d"
   },
   "betterSidebar": {
     "repository": "https://github.com/omdsh-dev/DSH-better-sidebar.git",
-    "branch": "main",
-    "commit": "ad392ceea4cdbe545d99ddd3730b4cc62036bd44"
+    "branch": "zerowall-v0180",
+    "tag": "v0.18.0",
+    "upstreamCommit": "9e1a03452794532cda1f6ac677b72579dff48dfc",
+    "commit": "2a70faf9a145ee033d2db521d7894f9c91cc2bae",
+    "source": "packages/dsh-better-sidebar"
   },
   "betterSidebarIcons": {
     "repository": "https://github.com/eg-bole/dsh-better-sidebar-icons.git",

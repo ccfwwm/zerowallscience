@@ -160,7 +160,7 @@ function verifyArchivePolicy() {
   const betterSidebarPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-better-sidebar/package.json'))
   if (betterSidebarPackages.length !== 1) throw new Error(`dsh-better-sidebar must be packaged exactly once; found ${betterSidebarPackages.length}.`)
   const betterSidebarManifest = JSON.parse(readArchiveFile('node_modules/dsh-better-sidebar/package.json').toString('utf8'))
-  if (betterSidebarManifest.version !== '0.19.0-alpha.0') throw new Error(`Packaged dsh-better-sidebar must be 0.19.0-alpha.0; found ${betterSidebarManifest.version}.`)
+  if (betterSidebarManifest.version !== '0.18.0') throw new Error(`Packaged dsh-better-sidebar must be 0.18.0; found ${betterSidebarManifest.version}.`)
   const betterSidebarClient = readArchiveFile('node_modules/dsh-better-sidebar/lib/client.js').toString('utf8')
   const betterSidebarInject = [...betterSidebarClient.matchAll(/const inject = \[[\s\S]*?\];/gu)]
     .map(match => [...match[0].matchAll(/["']([^"']+)["']/gu)].map(value => value[1]))
@@ -168,12 +168,12 @@ function verifyArchivePolicy() {
   // Sidebar 0.19+ uses the module system and session-scoped context for its
   // conversation bridge; it intentionally does not list conversation in the
   // legacy inject array. Older packages still require the explicit injection.
-  if (betterSidebarManifest.version !== '0.19.0-alpha.0'
+  if (betterSidebarManifest.version !== '0.18.0'
     && betterSidebarClient.includes('ctx.get("conversation")')
     && (betterSidebarInject === undefined || !betterSidebarInject.includes('conversation'))) {
     throw new Error('Packaged dsh-better-sidebar accesses conversation without declaring it in the client inject list.')
   }
-  if (betterSidebarManifest.version !== '0.19.0-alpha.0' && !betterSidebarClient.includes('expandedRef.current')) {
+  if (betterSidebarManifest.version !== '0.18.0' && !betterSidebarClient.includes('expandedRef.current')) {
     throw new Error('Packaged dsh-better-sidebar is missing the stable expanded-directory snapshot used by file-tree refreshes.')
   }
   const presentationsClient = readArchiveFile('node_modules/@zerowallscience/plugin-presentations/lib/client.js').toString('utf8')
@@ -960,8 +960,8 @@ function readArchiveFile(path) {
 
 async function verifySourceRuntimePolicy() {
   const upstream = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'deepseek-harness', 'upstream.json'), 'utf8'))
-  if (upstream.version !== '0.1.2-alpha.5' || upstream.tag !== 'dsh-v0.1.2-alpha.5') {
-    throw new Error(`Pinned DSH must be alpha.5; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
+  if (upstream.version !== '0.1.2-rc.1' || upstream.tag !== 'dsh-v0.1.2-rc.1') {
+    throw new Error(`Pinned DSH must be rc.1; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
   }
   const sourceDsh = JSON.parse(await readFile(resolve(repositoryRoot, 'deepseek-harness', 'package.json'), 'utf8'))
   if (sourceDsh.version !== upstream.version) throw new Error(`DSH source package must be ${upstream.version}; found ${sourceDsh.version}.`)

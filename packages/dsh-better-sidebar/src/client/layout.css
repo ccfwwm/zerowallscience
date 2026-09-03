@@ -1,0 +1,113 @@
+/**
+ * Layout push: an open panel occupies layout instead of floating over it.
+ * The right panel reserves padding inside the AppFrame three-column grid,
+ * so the app sidebar, conversation, and details column all remain to its
+ * left while the frame's border-box stays viewport-wide. Harness measures
+ * that border-box to choose desktop versus narrow presentation; preserving
+ * it prevents a desktop window from entering narrow mode merely because the
+ * plugin panel opened.
+ *
+ * AppFrame positions its details drag handle from the measured border-box.
+ * Move that handle left by the same reserved width so it stays on the details
+ * column edge. The ordinary sidebar handle remains at its native coordinate.
+ *
+ * The bottom panel squeezes only the conversation column. The anchor is the
+ * [data-dsh-center-col] tag the Sidebar shell's locator writes on the
+ * frame's measured center grid item (Sidebar.tsx locate — not a positional
+ * path: the frame also contains an overlay layer and drag handles). A
+ * stretched grid item shrinks by its bottom margin, so the conversation
+ * output and composer lift without touching either sidebar.
+ *
+ * Sizes ride CSS variables updated by the Sidebar shell (0 while collapsed).
+ * Expand/collapse uses the host theme duration; drags disable transitions so
+ * every reserved edge tracks the pointer.
+ */
+/* Current shells expose [data-dsh-frame]; rc.8-era shells expose the same
+   AppFrame only as the root slot's direct child. */
+#root [data-dsh-frame],
+#root > [data-slot="root"] > div {
+  box-sizing: border-box;
+  padding-right: var(--dsh-sidebar-width, 0px);
+  transition: padding-right var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+#root [data-dsh-frame] > [data-side="details"],
+#root > [data-slot="root"] > div > [data-side="details"] {
+  transform: translateX(calc(0px - var(--dsh-sidebar-width, 0px)));
+  transition:
+    left var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+/* The AppFrame's center column. The Sidebar shell's locator (Sidebar.tsx
+   locate/measureCenter) tags the measured column node with
+   [data-dsh-center-col] — one attribute write per node lifetime. The rule
+   used to anchor on a structural has()-selector over the conversation slot
+   wrapper, whose match cache invalidates on every #root subtree mutation
+   (the streaming chat mutates it constantly), re-evaluating the selector
+   against the whole document; the tag is evaluated once per node instead.
+   A stretched grid item shrinks by its margins, so the conversation
+   content (output + input bar) lifts without touching the sidebars. */
+#root [data-dsh-center-col] {
+  margin-bottom: var(--dsh-sidebar-height, 0px);
+  /* Grid/flex items default to min-height:auto. A long unbreakable token
+     (OAuth URL) then grows this column past the viewport and clips the
+     composer + left-rail Settings row. min-height:0 lets the cell shrink;
+     overflow-wrap lets the token wrap instead of forcing its intrinsic
+     size. The host's own descendants remain responsible for scrolling. */
+  min-height: 0;
+  overflow-wrap: anywhere;
+  transition: margin-bottom var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+/* When the sidebar is collapsed, the toggle cluster reclaims the top-right
+   corner. Push the DSH session header's right padding out so its right-aligned
+   utilities (the "Session log" download capsule) yield the corner instead of
+   hiding under the cluster. The header default right-pads 28px; the 2-button
+   cluster spans right 10→70px, so 78px clears it with an 8px gap. Anchor on
+   the header's slot host wrapper ([data-slot="conversation.session.header"])
+   rather than a positional path: DSH 0.1.x nests the header several levels
+   under the center column. The Sidebar shell toggles the body attribute with
+   the panel open state. */
+body[data-dsh-sidebar-collapsed] [data-slot="conversation.session.header"] > header {
+  padding-right: 78px;
+}
+
+body[data-dsh-sidebar-dragging] #root [data-dsh-frame],
+body[data-dsh-sidebar-dragging] #root > [data-slot="root"] > div,
+body[data-dsh-sidebar-dragging] #root [data-dsh-frame] > [data-side="details"],
+body[data-dsh-sidebar-dragging] #root > [data-slot="root"] > div > [data-side="details"],
+body[data-dsh-sidebar-dragging] #root [data-dsh-center-col],
+#root [data-dsh-frame][data-dragging] > [data-side="details"],
+#root > [data-slot="root"] > div[data-dragging] > [data-side="details"] {
+  transition: none;
+}
+
+/* DSH 0.1.x gives external settings sections a generic gear and exposes no
+   icon field in the settings.section contract. settings-nav-icon.ts marks
+   only this plugin's localized row; render the requested Lucide
+   gallery-horizontal-end SVG as a currentColor mask so it follows the native
+   nav hover/active colors without changing the shell's 16px icon rhythm. */
+[data-dsh-better-sidebar-settings-nav] > svg:first-child {
+  display: none;
+}
+
+[data-dsh-better-sidebar-settings-nav]::before {
+  content: '';
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 7v10'/%3E%3Cpath d='M6 5v14'/%3E%3Crect width='12' height='18' x='10' y='3' rx='2'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 7v10'/%3E%3Cpath d='M6 5v14'/%3E%3Crect width='12' height='18' x='10' y='3' rx='2'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #root [data-dsh-frame],
+  #root > [data-slot="root"] > div,
+  #root [data-dsh-frame] > [data-side="details"],
+  #root > [data-slot="root"] > div > [data-side="details"],
+  #root [data-dsh-center-col] {
+    transition: none;
+  }
+}

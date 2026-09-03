@@ -1,7 +1,7 @@
 version: 1
 id: zerowall-development
 channel: development
-dsh: 0.1.2-alpha.5
+dsh: 0.1.2-rc.1
 plugins:
   - 'dsh-dream-skin'
   - 'dsh-better-sidebar'

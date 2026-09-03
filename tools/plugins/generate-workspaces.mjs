@@ -41,9 +41,10 @@ const clientInject = [
 ]
 
 const externalClientDependencies = {
-  // Pin the exact GitHub main snapshot used for this upgrade. The package's
-  // prepare script builds lib/ from source during pnpm install.
-  'dsh-better-sidebar': 'github:omdsh-dev/DSH-better-sidebar#ad392ceea4cdbe545d99ddd3730b4cc62036bd44',
+  // Use the merged ZeroWall workspace package so the v0.18.0 merge and
+  // ZeroWall compatibility changes are reproducible without overwriting the
+  // custom host integration with a remote package snapshot.
+  'dsh-better-sidebar': 'workspace:^',
   'dsh-dream-skin': '8.30.1',
 }
 
@@ -212,7 +213,7 @@ for (const plugin of plugins) {
       } : {}),
     },
     zerowall: {
-      dsh: { min: '0.1.2-alpha.5', max: '0.1.2-alpha.5' },
+      dsh: { min: '0.1.2-rc.1', max: '0.1.2-rc.1' },
       requiredServices: plugin.requiredServices ?? [],
       optionalServices: plugin.optionalServices ?? [],
       capabilities: plugin.capabilities,

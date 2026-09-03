@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-images",
-  "version": "5.0.4",
+  "version": "5.1.0",
   "description": "ZeroWall Science images domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -53,8 +53,8 @@
   },
   "zerowall": {
     "dsh": {
-      "min": "0.1.2-alpha.5",
-      "max": "0.1.2-alpha.5"
+      "min": "0.1.2-rc.1",
+      "max": "0.1.2-rc.1"
     },
     "requiredServices": [
       "tools",
@@ -129,7 +129,7 @@
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
-    "dsh-better-sidebar": "github:omdsh-dev/DSH-better-sidebar#ad392ceea4cdbe545d99ddd3730b4cc62036bd44",
+    "dsh-better-sidebar": "workspace:^",
     "dsh-dream-skin": "8.30.1",
     "@zerowallscience/plugin-account": "workspace:^",
     "@zerowallscience/plugin-secrets": "workspace:^",

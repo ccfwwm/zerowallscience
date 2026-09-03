@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-desktop-compat",
-  "version": "5.0.4",
+  "version": "5.1.0",
   "description": "ZeroWall Science desktop-compat domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -21,8 +21,8 @@
   },
   "zerowall": {
     "dsh": {
-      "min": "0.1.2-alpha.5",
-      "max": "0.1.2-alpha.5"
+      "min": "0.1.2-rc.1",
+      "max": "0.1.2-rc.1"
     },
     "requiredServices": [],
     "optionalServices": [

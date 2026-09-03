@@ -5,16 +5,16 @@ import { resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
 
-test('stable profile pins alpha.5 and includes the bundled WeChat plugin', async () => {
+test('stable profile pins rc.1 and includes the bundled WeChat plugin', async () => {
   const profile = await readFile(resolve(root, 'profiles/generated/stable.yml'), 'utf8')
   assert.match(profile, /channel: stable/)
-  assert.match(profile, /dsh: 0\.1\.2-alpha\.5/)
-  assert.match(profile, /'@zerowallscience\/plugin-wechat'/)
+  assert.match(profile, /dsh: 0\.1\.2-rc\.1/)
+  assert.match(profile, /'dsh-wechat'/)
 })
 
 test('better-sidebar is a single pinned default workbench in every profile', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-better-sidebar'], 'github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20')
+  assert.equal(desktop.dependencies['dsh-better-sidebar'], 'workspace:^')
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
   assert.equal((patch.match(/^\s*- id: better-sidebar\s*$/gmu) ?? []).length, 1)
   for (const profile of ['development', 'preview', 'stable']) {
@@ -23,14 +23,15 @@ test('better-sidebar is a single pinned default workbench in every profile', asy
   }
 })
 
-test('better-sidebar reloads the visible file tree and rejects stale session responses', async () => {
-  const patch = await readFile(resolve(root, 'patches/dsh-better-sidebar@0.18.1-alpha.0.patch'), 'utf8')
-  assert.match(patch, /const generationRef = .*useRef\)\(0\)/u)
-  assert.match(patch, /generation !== generationRef\.current/u)
-  assert.match(patch, /component: \(\{ ctx, store, scope, tab, visible,/u)
-  assert.match(patch, /visible=\{visible\}/u)
-  assert.match(patch, /diff --git a\/lib\/client\.js b\/lib\/client\.js/u)
-  assert.match(patch, /diff --git a\/lib\/client-registry\.js b\/lib\/client-registry\.js/u)
+test('better-sidebar contains the merged v0.18.0 compatibility changes', async () => {
+  const editor = await readFile(resolve(root, 'packages/dsh-better-sidebar/src/client/EditorHost.tsx'), 'utf8')
+  const tree = await readFile(resolve(root, 'packages/dsh-better-sidebar/src/client/FileTree.tsx'), 'utf8')
+  const sidechat = await readFile(resolve(root, 'packages/dsh-better-sidebar/src/client/SideChatView.tsx'), 'utf8')
+  assert.match(editor, /loadGenerationRef/u)
+  assert.match(editor, /visible\?: boolean/u)
+  assert.match(tree, /generationRef/u)
+  assert.match(tree, /TREE_REQUEST_TIMEOUT_MS/u)
+  assert.match(sidechat, /expandSessionEntries/u)
 })
 
 test('Dream Skin is a single pinned theme layer loaded before ZeroWall UI', async () => {
@@ -83,13 +84,13 @@ test('desktop image limits fit inside the buffered client connection carrier', a
     `base64 image envelope requires ${requiredBodyBytes} bytes but carrier allows ${maxRequestBodyBytes}`)
 })
 
-test('all ZeroWall plugins expose a manifest and alpha.5 range', async () => {
+test('all ZeroWall plugins expose a manifest and rc.1 range', async () => {
   const names = ['base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'mineru', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat']
   for (const name of names) {
     const manifest = JSON.parse(await readFile(resolve(root, `plugins/${name}/zerowall.plugin.json`), 'utf8'))
     assert.match(manifest.name, /^@zerowallscience\/plugin-/)
-    assert.equal(manifest.dsh.min, '0.1.2-alpha.5')
-    assert.equal(manifest.dsh.max, '0.1.2-alpha.5')
+    assert.equal(manifest.dsh.min, '0.1.2-rc.1')
+    assert.equal(manifest.dsh.max, '0.1.2-rc.1')
   }
 })
 

@@ -28,6 +28,8 @@ overrides:
   'tsdown': '0.22.2'
   '@tsdown/css': '0.22.2'
   '@electron/get': '5.1.0'
+  'react': '18.2.0'
+  'react-dom': '18.2.0'
   '@deepseek-ai/dsh-llm-pi-ai>@earendil-works/pi-ai': '0.84.2'
   '@deepseek-ai/cosmokit': 'link:deepseek-harness/vendor/cosmokit'
   '@deepseek-ai/schemastery': 'link:deepseek-harness/vendor/schemastery'
@@ -39,8 +41,7 @@ peerDependencyRules:
     typescript: '>=5 <7'
 
 allowBuilds:
-  'dsh-better-sidebar@git+ssh://git@github.com/omdsh-dev/DSH-better-sidebar.git#ad392ceea4cdbe545d99ddd3730b4cc62036bd44': true
-  'dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/ad392ceea4cdbe545d99ddd3730b4cc62036bd44': true
+  dsh-better-sidebar: true
   esbuild: true
   electron: true
   electron-winstaller: true
@@ -55,5 +56,5 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - '@earendil-works/pi-ai@0.84.2'
-  - dsh-better-sidebar@0.18.1-alpha.0
+  - dsh-better-sidebar@0.18.0
   - dsh-dream-skin@8.30.1

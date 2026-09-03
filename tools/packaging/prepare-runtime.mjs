@@ -15,6 +15,11 @@ const desktopModules = resolve(root, 'desktop/node_modules')
 const workspaceModules = resolve(root, 'node_modules')
 const zerowallPackageRoots = [
   resolve(root, 'store'),
+  // Keep the merged ZeroWall Sidebar as the canonical runtime package. Some
+  // workspace plugins retain a stale pnpm link under their own node_modules
+  // directory; treating the Sidebar as a workspace package prevents that
+  // parent-first lookup from introducing a second version into the ASAR.
+  resolve(root, 'packages/dsh-better-sidebar'),
   resolve(root, 'packages/dsh-wechat'),
   ...await pluginRoots(resolve(root, 'plugins')),
 ]
