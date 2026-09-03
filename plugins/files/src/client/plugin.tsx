@@ -199,13 +199,25 @@ function openParsedAttachment(ctx: ClientContext, detail: AttachmentActionDetail
 }
 
 async function copyAttachment(remote: FilesRemote, detail: AttachmentActionDetail): Promise<void> {
+  let downloaded: UploadedFileBytes | undefined
   try {
     const response = await remote.downloadOriginal({ sessionId: detail.sessionId, attachmentId: detail.file.attachmentId })
     const file = remoteValue<UploadedFileBytes>('zerowallFiles.downloadOriginal', response)
+    downloaded = file
     const desktop = (window as unknown as { zerowallDesktop?: { copyFile?(input: { name: string; mediaType: string; data: string }): Promise<boolean> } }).zerowallDesktop
     if (await desktop?.copyFile?.({ name: file.name, mediaType: file.mediaType, data: file.data })) return
   } catch {
-    // Text fallback below preserves a useful clipboard result.
+    // Browser clipboard fallback below preserves a useful result.
+  }
+  if (downloaded !== undefined && navigator.clipboard?.write !== undefined && typeof ClipboardItem !== 'undefined') {
+    try {
+      const binary = atob(downloaded.data)
+      const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
+      await navigator.clipboard.write([new ClipboardItem({ [downloaded.mediaType || 'application/octet-stream']: new Blob([bytes], { type: downloaded.mediaType || 'application/octet-stream' }) })])
+      return
+    } catch {
+      // Text fallback below is still preferable to dropping the action.
+    }
   }
   await navigator.clipboard.writeText(detail.file.name)
 }
@@ -227,9 +239,25 @@ export function apply(ctx: ClientContext): void {
     const copy = (event: Event): void => { void copyAttachment(remote, (event as CustomEvent<AttachmentActionDetail>).detail) }
     window.addEventListener('zerowall:attachment-open', open)
     window.addEventListener('zerowall:attachment-copy', copy)
+    const readd = (event: Event): void => {
+      const detail = (event as CustomEvent<{ attachmentId?: unknown; sessionId?: unknown }>).detail
+      if (typeof detail?.attachmentId !== 'string') return
+      if (typeof detail.sessionId !== 'string' || detail.sessionId.length === 0) return
+      const sessionId = detail.sessionId
+      void remote.downloadOriginal({ sessionId, attachmentId: detail.attachmentId }).then(response => {
+        if (!response.ok) throw new Error(response.error.message)
+        const value = response.value
+        const binary = atob(value.data)
+        const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
+        const file = new File([bytes], value.name, { type: value.mediaType || 'application/octet-stream' })
+        window.dispatchEvent(new CustomEvent('zerowall:attachment-files', { detail: { files: [file] } }))
+      }).catch(() => undefined)
+    }
+    window.addEventListener('zerowall:attachment-readd', readd)
     return () => {
       window.removeEventListener('zerowall:attachment-open', open)
       window.removeEventListener('zerowall:attachment-copy', copy)
+      window.removeEventListener('zerowall:attachment-readd', readd)
     }
   }, 'zerowall: attachment actions')
 }

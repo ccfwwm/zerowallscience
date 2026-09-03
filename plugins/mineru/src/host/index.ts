@@ -20,6 +20,7 @@ export const inject = ['settings', 'tools', 'sessions', 'zerowallFiles', 'zerowa
 export const MINERU_SETTINGS_NS = 'zerowall-mineru' as SettingsNamespace
 export const TOKEN_MANAGEMENT_URL = 'https://mineru.net/apiManage/token'
 const TOKEN_KEY = 'zerowall.environment.mineru_api_token'
+const ENV_TOKEN_KEY_PREFIX = 'zerowall.environment.var.'
 const MINERU_TOOL_NAMES = ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task'] as const
 const DEFAULTS: MineruConfig = { apiBaseUrl: 'https://mineru.net', tokenCredential: 'MINERU_API_TOKEN', mode: 'auto', modelVersion: 'vlm', language: 'ch', enableTable: true, enableFormula: true, isOcr: false, extraFormats: [], timeoutMs: 600000, pollIntervalMs: 3000, pollJitterMs: 500, submitRatePerMinute: 40, dailyLimit: 5000, inlineMarkdownBytes: 12000, artifactRootName: '.dsh-mineru' }
 const ConfigSchema: z<MineruConfig> = z.object({ apiBaseUrl: z.string().default(DEFAULTS.apiBaseUrl), tokenCredential: z.string().default(DEFAULTS.tokenCredential), mode: z.union(['auto', 'precision', 'agent'] as const).default(DEFAULTS.mode), modelVersion: z.union(['pipeline', 'vlm', 'MinerU-HTML'] as const).default(DEFAULTS.modelVersion), language: z.string().default(DEFAULTS.language), enableTable: z.boolean().default(true), enableFormula: z.boolean().default(true), isOcr: z.boolean().default(false), extraFormats: z.array(z.union(['docx', 'html', 'latex'] as const)).default([]), timeoutMs: z.number().default(DEFAULTS.timeoutMs), pollIntervalMs: z.number().default(DEFAULTS.pollIntervalMs), pollJitterMs: z.number().default(DEFAULTS.pollJitterMs), submitRatePerMinute: z.number().default(DEFAULTS.submitRatePerMinute), dailyLimit: z.number().default(DEFAULTS.dailyLimit), inlineMarkdownBytes: z.number().default(DEFAULTS.inlineMarkdownBytes), artifactRootName: z.string().default(DEFAULTS.artifactRootName) })
@@ -92,6 +93,12 @@ export class ZeroWallMineruService extends TypertRemoteService {
   private async token(): Promise<string | undefined> {
     let value: string | undefined
     try { value = await this.secrets.get(TOKEN_KEY) } catch { value = undefined }
+    // Environment settings store user-managed secrets under the normalized
+    // variable key. Keep the dedicated MinerU credential as the preferred
+    // source, while accepting MINERU_API_TOKEN configured in Settings.
+    if (!value) {
+      try { value = await this.secrets.get(`${ENV_TOKEN_KEY_PREFIX}${this.config().tokenCredential.toLowerCase()}`) } catch { value = undefined }
+    }
     return value?.trim() || undefined
   }
   @Remote('getConfigStatus') async getConfigStatus(): Promise<MineruConfigStatus> { const cfg = this.config(); const token = await this.token(); const registeredTools = MINERU_TOOL_NAMES.filter(tool => this.hostCtx.tools.get(tool) !== undefined); return { ...cfg, api: apiFor(cfg.mode, token), tokenConfigured: token !== undefined, tokenManagementUrl: TOKEN_MANAGEMENT_URL, available: registeredTools.length === MINERU_TOOL_NAMES.length, registeredTools } }

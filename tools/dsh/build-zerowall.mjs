@@ -6,6 +6,7 @@ const root = resolve(import.meta.dirname, '../..')
 const source = resolve(root, 'deepseek-harness')
 const pnpmCli = process.env.npm_execpath
 const expected = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
+const rootManifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 
 if (!pnpmCli) throw new Error('pnpm executable path is unavailable to the ZeroWall DSH build wrapper.')
 
@@ -34,6 +35,6 @@ function runPnpm(args, extraEnv = {}) {
   execFileSync(process.execPath, [pnpmCli, ...args], {
     cwd: source,
     stdio: 'inherit',
-    env: { ...process.env, ...extraEnv },
+    env: { ...process.env, DSH_CLIENT_VERSION: rootManifest.version, ...extraEnv },
   })
 }
