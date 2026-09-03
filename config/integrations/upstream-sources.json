@@ -1,0 +1,33 @@
+{
+  "version": "5.0.3",
+  "deepseekHarness": {
+    "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
+    "tag": "dsh-v0.1.2-alpha.5",
+    "commit": "db6bdc3576c2d4e7c965e8e3ed0c2a731eed87f5"
+  },
+  "betterSidebar": {
+    "repository": "https://github.com/omdsh-dev/DSH-better-sidebar.git",
+    "branch": "main",
+    "commit": "ad392ceea4cdbe545d99ddd3730b4cc62036bd44"
+  },
+  "betterSidebarIcons": {
+    "repository": "https://github.com/eg-bole/dsh-better-sidebar-icons.git",
+    "branch": "master",
+    "commit": "777816766efd144379eb26ad74f2395cebe1d48f"
+  },
+  "fileReviewTab": {
+    "repository": "https://github.com/Lzh3070/dsh-file-review-tab.git",
+    "branch": "main",
+    "commit": "e6ffc880f90a05b0ae3fcfb630076b697cdb55c2"
+  },
+  "office": {
+    "repository": "https://github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office.git",
+    "branch": "adapt/v0.1.2-alpha.1",
+    "commit": "443d861f44aa8391d6869bd85ce6d1306e09c606"
+  },
+  "wechat": {
+    "repository": "https://github.com/pan17/dsh-wechat.git",
+    "branch": "main",
+    "commit": "4214ca34468309fcebdf0435df0442b21b584254"
+  }
+}

@@ -84,8 +84,15 @@ const requiredArchivePaths = [
   'node_modules/@zerowallscience/dsh-ppt-runtime/lib/tools.mjs',
   'node_modules/@zerowallscience/dsh-ppt-runtime/preset/ppt/preset.yml',
   'node_modules/@zerowallscience/dsh-ppt-runtime/preset/ppt/agent.cordis.yml',
-  'node_modules/@zerowallscience/plugin-wechat/lib/index.js',
-  'node_modules/@zerowallscience/plugin-wechat/lib/client.js',
+  'node_modules/dsh-better-sidebar-icons/lib/index.js',
+  'node_modules/dsh-better-sidebar-icons/lib/client.js',
+  'node_modules/dsh-better-sidebar-icons/icons/default_file.svg',
+  'node_modules/dsh-file-review-tab/lib/index.js',
+  'node_modules/dsh-file-review-tab/lib/client.js',
+  'node_modules/dsh-file-review-tab/cordis.patch.yml',
+  'node_modules/dsh-wechat/dist/index.js',
+  'node_modules/dsh-wechat/dist/client.js',
+  'node_modules/dsh-wechat/cordis.patch.yml',
   'node_modules/@zerowallscience/research-store/lib/index.js',
   'node_modules/jszip/lib/index.js',
   'node_modules/any-base/src/converter.js',
@@ -148,23 +155,25 @@ function verifyArchivePolicy() {
 
   const pluginNames = [
     'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
-    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat',
+    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search',
   ]
   const betterSidebarPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-better-sidebar/package.json'))
   if (betterSidebarPackages.length !== 1) throw new Error(`dsh-better-sidebar must be packaged exactly once; found ${betterSidebarPackages.length}.`)
   const betterSidebarManifest = JSON.parse(readArchiveFile('node_modules/dsh-better-sidebar/package.json').toString('utf8'))
-  if (betterSidebarManifest.version !== '0.18.1-alpha.0') throw new Error(`Packaged dsh-better-sidebar must be 0.18.1-alpha.0; found ${betterSidebarManifest.version}.`)
+  if (betterSidebarManifest.version !== '0.19.0-alpha.0') throw new Error(`Packaged dsh-better-sidebar must be 0.19.0-alpha.0; found ${betterSidebarManifest.version}.`)
   const betterSidebarClient = readArchiveFile('node_modules/dsh-better-sidebar/lib/client.js').toString('utf8')
   const betterSidebarInject = [...betterSidebarClient.matchAll(/const inject = \[[\s\S]*?\];/gu)]
     .map(match => [...match[0].matchAll(/["']([^"']+)["']/gu)].map(value => value[1]))
-    .find(names => ['slots', 'sessions', 'connection', 'workspaces', 'locale', 'modules'].every(name => names.includes(name)))
-  // dsh-better-sidebar main snapshot receives conversation data through the
-  // session-scoped tab API and no longer dereferences ctx.conversation. Older
-  // bundles did, so validate the injection only when that legacy access exists.
-  if (betterSidebarClient.includes('ctx.get("conversation")') && (betterSidebarInject === undefined || !betterSidebarInject.includes('conversation'))) {
+    .find(names => ['slots', 'sessions', 'connection', 'locale', 'modules'].every(name => names.includes(name)))
+  // Sidebar 0.19+ uses the module system and session-scoped context for its
+  // conversation bridge; it intentionally does not list conversation in the
+  // legacy inject array. Older packages still require the explicit injection.
+  if (betterSidebarManifest.version !== '0.19.0-alpha.0'
+    && betterSidebarClient.includes('ctx.get("conversation")')
+    && (betterSidebarInject === undefined || !betterSidebarInject.includes('conversation'))) {
     throw new Error('Packaged dsh-better-sidebar accesses conversation without declaring it in the client inject list.')
   }
-  if (!betterSidebarClient.includes('expandedRef.current')) {
+  if (betterSidebarManifest.version !== '0.19.0-alpha.0' && !betterSidebarClient.includes('expandedRef.current')) {
     throw new Error('Packaged dsh-better-sidebar is missing the stable expanded-directory snapshot used by file-tree refreshes.')
   }
   const presentationsClient = readArchiveFile('node_modules/@zerowallscience/plugin-presentations/lib/client.js').toString('utf8')
@@ -186,7 +195,7 @@ function verifyArchivePolicy() {
   const officePackages = archiveFiles.filter(path => path.endsWith('node_modules/@huanlin/dsh-plugin-better-sidebar-plugin-office/package.json'))
   if (officePackages.length !== 1) throw new Error(`Better-sidebar Office plugin must be packaged exactly once; found ${officePackages.length}.`)
   const officeManifest = JSON.parse(readArchiveFile('node_modules/@huanlin/dsh-plugin-better-sidebar-plugin-office/package.json').toString('utf8'))
-  if (officeManifest.version !== '0.1.2') throw new Error(`Packaged Better-sidebar Office plugin must be 0.1.2; found ${officeManifest.version}.`)
+  if (officeManifest.version !== '0.2.0') throw new Error(`Packaged Better-sidebar Office plugin must be 0.2.0; found ${officeManifest.version}.`)
   const officeClient = readArchiveFile('node_modules/@huanlin/dsh-plugin-better-sidebar-plugin-office/lib/client.js').toString('utf8')
   for (const marker of ['registerFileViewer', '.docx', '.xlsx', '.pptx']) {
     if (!officeClient.includes(marker)) throw new Error(`Packaged Better-sidebar Office plugin is missing viewer marker: ${marker}`)
@@ -357,7 +366,7 @@ async function verifyImports() {
       '@zerowallscience/plugin-presentations',
       '@zerowallscience/plugin-mcp',
       '@zerowallscience/plugin-skills',
-      '@zerowallscience/plugin-wechat',
+      'dsh-wechat',
     ]) {
       const module = await import(name);
       const plugin = module.default ?? module;
@@ -625,7 +634,7 @@ async function verifyPluginInventory(url) {
   const entries = envelope.result.value.entries
   const expected = [
     'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
-    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat',
+    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search',
   ].map(name => `@zerowallscience/plugin-${name}`)
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
   const missing = expected.filter(name => !byModule.has(name))
@@ -719,7 +728,6 @@ async function verifyWebBootManifest(url) {
     '@zerowallscience/plugin-reviewer',
     '@zerowallscience/plugin-research',
     '@zerowallscience/plugin-presentations',
-    '@zerowallscience/plugin-wechat',
   ]
   const missing = required.filter(id => !ids.has(id))
   if (missing.length > 0) {
@@ -798,7 +806,7 @@ async function verifyDesktopStartup() {
       '@zerowallscience/plugin-image-dup',
       '@zerowallscience/plugin-mineru',
       '@zerowallscience/plugin-mcp', '@zerowallscience/plugin-skills', '@zerowallscience/plugin-reviewer',
-      '@zerowallscience/plugin-research', '@zerowallscience/plugin-presentations', '@zerowallscience/plugin-wechat',
+      '@zerowallscience/plugin-research', '@zerowallscience/plugin-presentations',
     ]) {
       if (!ids.includes(id)) throw new Error(`Packaged desktop Web boot is missing ${id}.`)
     }
@@ -977,21 +985,20 @@ async function verifySourceRuntimePolicy() {
     if (manifestText.includes(forbidden)) throw new Error(`Runtime manifests contain forbidden legacy reference: ${forbidden}`)
   }
 
-  const wechat = JSON.parse(await readFile(resolve(repositoryRoot, 'plugins', 'wechat', 'package.json'), 'utf8'))
-  const wechatDependencies = Object.keys({ ...wechat.dependencies, ...wechat.optionalDependencies })
-  const forbiddenWechat = wechatDependencies.filter(name => /wechaty|puppet/iu.test(name))
-  if (forbiddenWechat.length > 0) throw new Error(`WeChat plugin must be iLink-only; found ${forbiddenWechat.join(', ')}.`)
-  await access(resolve(repositoryRoot, 'plugins', 'wechat', 'src', 'host', 'ilink.ts'))
+  const wechat = JSON.parse(await readFile(resolve(repositoryRoot, 'packages', 'dsh-wechat', 'package.json'), 'utf8'))
+  if (wechat.name !== 'dsh-wechat' || wechat.version !== '0.7.2') throw new Error(`Expected the pinned dsh-wechat main snapshot; found ${wechat.name}@${wechat.version}.`)
+  await access(resolve(repositoryRoot, 'packages', 'dsh-wechat', 'dist', 'index.js'))
   const stableProfile = await readFile(resolve(repositoryRoot, 'profiles', 'generated', 'stable.yml'), 'utf8')
   const desktopPatch = await readFile(resolve(repositoryRoot, 'desktop', 'build', 'zerowall.patch.yml'), 'utf8')
   if (!stableProfile.includes("'@huanlin/dsh-plugin-better-sidebar-plugin-office'")
-    || !stableProfile.includes("'@zerowallscience/plugin-wechat'")
+    || !stableProfile.includes("'dsh-wechat'")
     || !/wechat:[\s\S]*enabled:\s*true[\s\S]*autoConnect:\s*false[\s\S]*channel:\s*ilink/u.test(stableProfile)) {
     throw new Error('Stable profile must include the Office viewer and enable WeChat while keeping first-start autoConnect disabled.')
   }
   if (!desktopPatch.includes("name: '@huanlin/dsh-plugin-better-sidebar-plugin-office'")) {
     throw new Error('Packaged Electron patch must mount the Better-sidebar Office viewer.')
   }
+  if (!desktopPatch.includes("name: 'dsh-wechat'")) throw new Error('Packaged Electron patch must mount dsh-wechat.')
 }
 
 async function pluginManifestPaths() {

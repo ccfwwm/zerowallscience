@@ -86,6 +86,12 @@
   config:
     maxRequestBodyBytes: 167772160
 
+# File Review Tab owns the produced-files Definition and turn-tail row in the
+# ZeroWall composition. Disable DSH's stock entry to avoid duplicate
+# `conversation Definition "deliverables"` registration during client boot.
+- id: ui-deliverables
+  disabled: true
+
 # The file-backed providers declare their path fields in the runtime schema.
 # Keep the product patch explicit so a packaged profile does not leave the
 # browser roster waiting forever for the settings service.
@@ -110,9 +116,18 @@
     - id: better-sidebar
       name: 'dsh-better-sidebar'
 
+    - id: better-sidebar-icons
+      name: 'dsh-better-sidebar-icons'
+
+    - id: file-review-tab
+      name: 'dsh-file-review-tab'
+
     # Office viewers extend Better Sidebar and must mount after its service.
     - id: better-sidebar-office
       name: '@huanlin/dsh-plugin-better-sidebar-plugin-office'
+
+    - id: dsh-wechat
+      name: 'dsh-wechat'
 
     - id: zerowall-base
       name: '@zerowallscience/plugin-base'
@@ -182,8 +197,6 @@
     - id: zerowall-reviewer
       name: '@zerowallscience/plugin-reviewer'
 
-    - id: zerowall-wechat
-      name: '@zerowallscience/plugin-wechat'
       config:
         channel: ilink
         enabled: true

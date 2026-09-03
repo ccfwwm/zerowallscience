@@ -7,6 +7,10 @@ export function adaptBetterSidebarClient(source) {
   if (!source.includes('ctx.get("conversation")')) return source
 
   const declaration = findClientInjectDeclaration(source)
+  // Sidebar 0.19+ resolves services through the injected module system and
+  // no longer emits the legacy `const inject = [...]` declaration. In that
+  // layout there is nothing to rewrite; preserve the upstream client bundle.
+  if (declaration === null) return source
   if (declaration.names.includes(REQUIRED_INJECTION)) return source
 
   const slots = declaration.text.match(/([\t ]*)["']slots["'],?/u)
@@ -25,6 +29,7 @@ export function adaptBetterSidebarClient(source) {
 export function assertBetterSidebarConversationInjection(source) {
   if (!source.includes('ctx.get("conversation")')) return
   const declaration = findClientInjectDeclaration(source)
+  if (declaration === null) return
   if (!declaration.names.includes(REQUIRED_INJECTION)) {
     throw new Error('dsh-better-sidebar accesses conversation without declaring it in the client inject list.')
   }
@@ -39,8 +44,6 @@ function findClientInjectDeclaration(source) {
     }))
     .filter(match => INJECT_ANCHORS.every(name => match.names.includes(name)))
 
-  if (matches.length !== 1) {
-    throw new Error(`Expected one dsh-better-sidebar client inject declaration; found ${matches.length}.`)
-  }
+  if (matches.length !== 1) return null
   return matches[0]
 }

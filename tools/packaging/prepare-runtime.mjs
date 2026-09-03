@@ -15,6 +15,7 @@ const desktopModules = resolve(root, 'desktop/node_modules')
 const workspaceModules = resolve(root, 'node_modules')
 const zerowallPackageRoots = [
   resolve(root, 'store'),
+  resolve(root, 'packages/dsh-wechat'),
   ...await pluginRoots(resolve(root, 'plugins')),
 ]
 const desktopRuntimeSeeds = [
@@ -23,7 +24,10 @@ const desktopRuntimeSeeds = [
   // graph because it is an application entry rather than a library import.
   '@deepseek-ai/dsh-web-frontend',
   'dsh-better-sidebar',
+  'dsh-better-sidebar-icons',
+  'dsh-file-review-tab',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
+  'dsh-wechat',
   'dsh-dream-skin',
   '@deepseek-ai/dsh-subagent-claude-code',
   '@deepseek-ai/dsh-subagent-codex',
@@ -173,6 +177,16 @@ async function copyRuntimePackage(package_, targetRoot) {
     const clientPath = resolve(targetRoot, 'lib/client.js')
     const clientSource = await readFile(clientPath, 'utf8')
     await writeFile(clientPath, adaptBetterSidebarClient(clientSource))
+    return
+  }
+
+  if (manifest.name === 'dsh-better-sidebar-icons' || manifest.name === 'dsh-file-review-tab' || manifest.name === 'dsh-wechat') {
+    // These upstream plugins publish compiled lib/dist plus their bundle patch
+    // and (for icons) the SVG asset directory. Keep the package boundary and
+    // exclude repository-only tests/docs through the common runtime filter.
+    for (const entry of ['lib', 'dist', 'icons', 'resources', 'cordis.patch.yml']) {
+      await copyEntry(sourceRoot, targetRoot, entry)
+    }
     return
   }
 

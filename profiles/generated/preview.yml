@@ -5,7 +5,10 @@ dsh: 0.1.2-alpha.5
 plugins:
   - 'dsh-dream-skin'
   - 'dsh-better-sidebar'
+  - 'dsh-better-sidebar-icons'
+  - 'dsh-file-review-tab'
   - '@huanlin/dsh-plugin-better-sidebar-plugin-office'
+  - 'dsh-wechat'
   - '@zerowallscience/plugin-base'
   - '@zerowallscience/plugin-secrets'
   - '@zerowallscience/plugin-environment'
@@ -29,7 +32,6 @@ plugins:
   - '@zerowallscience/plugin-presentations'
   - '@zerowallscience/plugin-skills'
   - '@zerowallscience/plugin-reviewer'
-  - '@zerowallscience/plugin-wechat'
 wechat:
   enabled: true
   autoConnect: false

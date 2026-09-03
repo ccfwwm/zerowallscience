@@ -1,0 +1,6 @@
+node_modules/
+lib/
+*.tgz
+coverage/
+playwright-report/
+test-results/

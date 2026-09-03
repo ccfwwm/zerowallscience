@@ -10,14 +10,17 @@ const desktop = await json('desktop/package.json')
 const thirdPartyOrder = [
   'dsh-dream-skin',
   'dsh-better-sidebar',
+  'dsh-better-sidebar-icons',
+  'dsh-file-review-tab',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
+  'dsh-wechat',
 ]
 const zeroWallOrder = [
   'base', 'secrets', 'environment', 'desktop-compat', 'projects', 'mcp',
   'account', 'ai-cloud', 'opencode', 'web-search',
   'files', 'images', 'image-dup',
   'research', 'mineru', 'singlecell', 'execution', 'python', 'runs',
-  'publications', 'presentations', 'skills', 'reviewer', 'wechat',
+  'publications', 'presentations', 'skills', 'reviewer',
 ]
 const expectedOrder = [
   ...thirdPartyOrder,
@@ -142,7 +145,7 @@ const inventory = {
 }
 
 await writeFile(output, `${JSON.stringify(inventory, null, 2)}\n`)
-console.log(`Recorded DSH ${upstream.version}, ${dshPackages.length} Harness packages, 3 third-party plugins, and ${zeroWallPlugins.length} ZeroWall plugins.`)
+console.log(`Recorded DSH ${upstream.version}, ${dshPackages.length} Harness packages, ${thirdPartyPlugins.length} third-party plugins, and ${zeroWallPlugins.length} ZeroWall plugins.`)
 
 async function json(path) {
   return JSON.parse(await readFile(resolve(root, path), 'utf8'))

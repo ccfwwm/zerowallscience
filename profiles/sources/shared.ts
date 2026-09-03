@@ -1,7 +1,10 @@
 export const bundledPlugins = [
   'dsh-dream-skin',
   'dsh-better-sidebar',
+  'dsh-better-sidebar-icons',
+  'dsh-file-review-tab',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
+  'dsh-wechat',
   '@zerowallscience/plugin-base',
   '@zerowallscience/plugin-secrets',
   '@zerowallscience/plugin-environment',
@@ -25,7 +28,6 @@ export const bundledPlugins = [
   '@zerowallscience/plugin-presentations',
   '@zerowallscience/plugin-skills',
   '@zerowallscience/plugin-reviewer',
-  '@zerowallscience/plugin-wechat',
 ] as const
 
 export interface ZeroWallProfileSource {

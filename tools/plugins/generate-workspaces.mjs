@@ -43,7 +43,7 @@ const clientInject = [
 const externalClientDependencies = {
   // Pin the exact GitHub main snapshot used for this upgrade. The package's
   // prepare script builds lib/ from source during pnpm install.
-  'dsh-better-sidebar': 'github:omdsh-dev/DSH-better-sidebar#efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20',
+  'dsh-better-sidebar': 'github:omdsh-dev/DSH-better-sidebar#ad392ceea4cdbe545d99ddd3730b4cc62036bd44',
   'dsh-dream-skin': '8.30.1',
 }
 
@@ -158,7 +158,6 @@ const plugins = [
   { id: 'publications', client: true, remote: true, capabilities: ['papers', 'publications'], permissions: ['files'], dependencies: ['runs'] },
   { id: 'presentations', client: true, remote: true, capabilities: ['presentations'], permissions: ['files', 'processes', 'network', 'approvals'], requiredServices: ['tools', 'sessions', 'zerowallImageGeneration'] },
   { id: 'web-search', client: true, capabilities: ['web-search'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'], requiredServices: ['agents', 'web'] },
-  { id: 'wechat', client: true, capabilities: ['remote.wechat'], permissions: ['credentials', 'network', 'files', 'approvals'], dependencies: ['secrets', 'projects', 'files', 'base'], requiredServices: ['agents', 'sessions', 'agentDefaultModel'], optionalServices: ['webServer', 'workspaceRegistry', 'agentPresets'] },
 ]
 
 // plugin-base is the single client-side assembly point for ZeroWall Typert

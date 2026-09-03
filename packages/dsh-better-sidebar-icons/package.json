@@ -1,0 +1,58 @@
+{
+  "name": "dsh-better-sidebar-icons",
+  "version": "0.1.2",
+  "description": "VSCode-style file/folder icon theme for the dsh-better-sidebar explorer and editor tabs (vscode-icons port). Applied as a pure DOM overlay: no core changes, unload-safe.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "import": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "files": [
+    "lib",
+    "icons",
+    "docs",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "dsh-better-sidebar": "^0.6.0"
+  },
+  "peerDependenciesMeta": {
+    "dsh-better-sidebar": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.0",
+    "jsdom": "^25.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.6.2",
+    "vitest": "^4.1.11"
+  },
+  "license": "MIT"
+}

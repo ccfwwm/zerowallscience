@@ -2,6 +2,7 @@ packages:
   - desktop
   - store
   - plugins/*
+  - '!plugins/wechat'
   - packages/*
   - deepseek-harness
   - deepseek-harness/vendor/*
@@ -38,7 +39,8 @@ peerDependencyRules:
     typescript: '>=5 <7'
 
 allowBuilds:
-  'dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/efc328a8c1cf22268e7d5c0c1ef5eb9091ffed20': true
+  'dsh-better-sidebar@git+ssh://git@github.com/omdsh-dev/DSH-better-sidebar.git#ad392ceea4cdbe545d99ddd3730b4cc62036bd44': true
+  'dsh-better-sidebar@https://codeload.github.com/omdsh-dev/DSH-better-sidebar/tar.gz/ad392ceea4cdbe545d99ddd3730b4cc62036bd44': true
   esbuild: true
   electron: true
   electron-winstaller: true
@@ -55,7 +57,3 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-ai@0.84.2'
   - dsh-better-sidebar@0.18.1-alpha.0
   - dsh-dream-skin@8.30.1
-
-patchedDependencies:
-  '@huanlin/dsh-plugin-better-sidebar-plugin-office@0.1.2': patches/@huanlin__dsh-plugin-better-sidebar-plugin-office@0.1.2.patch
-  dsh-better-sidebar@0.18.1-alpha.0: patches/dsh-better-sidebar@0.18.1-alpha.0.patch
