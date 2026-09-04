@@ -28,6 +28,7 @@ export const SCIMASTER_API_KEY_CREDENTIAL = 'zerowall.mcp.scimaster_api_key'
 export const SCIMASTER_API_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/home'
 export const RDATALINUX_R_MCP_LEGACY_URL = 'http://103.217.185.141/r-platform/mcp'
 export const RDATALINUX_R_MCP_URL = 'http://103.217.185.141:8099/r-platform/mcp'
+export const RDATALINUX_BIOMNI_SERVER_NAME = 'rdatalinux_biomni'
 export const RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL = 'zerowall.mcp.rdatalinux_authorization'
 export const RDATALINUX_R_MCP_AUTHORIZATION_ENV = 'R_PLATFORM_MCP_AUTHORIZATION'
 const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 30_000
@@ -280,12 +281,18 @@ export class ZeroWallMcpService extends TypertRemoteService {
       if (!/^Bearer\s+\S+$/iu.test(authorization)) throw new Error('rdatalinux R MCP Authorization 必须是 Bearer <key>。')
       await this.secrets.set(RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL, authorization)
       const record = this.projects().listMcpServers().find(item => item.serverName === 'rdatalinux_r_platform')
-      if (record === undefined) return undefined
-      const next = record.transport === 'streamable-http' && record.headerRefs.Authorization !== RDATALINUX_R_MCP_AUTHORIZATION_ENV
-        ? this.projects().updateMcpServer(record.id, { headerRefs: { ...record.headerRefs, Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV } })
-        : record
-      await this.reconcile(next)
-      return this.dto(next)
+      const biomni = this.projects().listMcpServers().find(item => item.serverName === RDATALINUX_BIOMNI_SERVER_NAME)
+      if (record === undefined && biomni === undefined) return undefined
+      let result: McpServerRecord | undefined
+      for (const item of [record, biomni]) {
+        if (item === undefined) continue
+        const next = item.transport === 'streamable-http' && item.headerRefs.Authorization !== RDATALINUX_R_MCP_AUTHORIZATION_ENV
+          ? this.projects().updateMcpServer(item.id, { headerRefs: { ...item.headerRefs, Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV } })
+          : item
+        await this.reconcile(next)
+        result ??= next
+      }
+      return result === undefined ? undefined : this.dto(result)
     })
   }
 
@@ -294,9 +301,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
     return this.exclusive(async () => {
       await this.secrets.delete(RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL)
       const record = this.projects().listMcpServers().find(item => item.serverName === 'rdatalinux_r_platform')
-      if (record === undefined) return undefined
-      await this.reconcile(record)
-      return this.dto(record)
+      const biomni = this.projects().listMcpServers().find(item => item.serverName === RDATALINUX_BIOMNI_SERVER_NAME)
+      if (record === undefined && biomni === undefined) return undefined
+      for (const item of [record, biomni]) if (item !== undefined) await this.reconcile(item)
+      return record === undefined ? (biomni === undefined ? undefined : this.dto(biomni)) : this.dto(record)
     })
   }
 
@@ -379,7 +387,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       }
     }
     for (const server of projects.listMcpServers()) {
-      if (server.serverName === 'rdatalinux_r_platform' && server.transport === 'streamable-http' && server.headerRefs.Authorization === undefined) {
+      if ((server.serverName === 'rdatalinux_r_platform' || server.serverName === RDATALINUX_BIOMNI_SERVER_NAME) && server.transport === 'streamable-http' && server.headerRefs.Authorization === undefined) {
         projects.updateMcpServer(server.id, { headerRefs: { ...server.headerRefs, Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV } })
       }
     }
@@ -391,11 +399,20 @@ export class ZeroWallMcpService extends TypertRemoteService {
         failOnStartupError: false,
       })
     }
+    if (!projects.listMcpServers().some(server => server.serverName === RDATALINUX_BIOMNI_SERVER_NAME)) {
+      projects.createMcpServer({
+        name: 'rdatalinux Biomni', serverName: RDATALINUX_BIOMNI_SERVER_NAME, transport: 'streamable-http',
+        enabled: true, url: RDATALINUX_R_MCP_URL,
+        headerRefs: { Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV },
+        failOnStartupError: false,
+      })
+    }
     const bundled = projects.listMcpServers()
     const displayNames: Record<string, string> = {
       zerowall_managed_scimaster: 'Sci',
       zerowall_managed_bio_tools: 'Bio Tools',
       zerowall_managed_ketcher: 'Ketcher Chemistry',
+      [RDATALINUX_BIOMNI_SERVER_NAME]: 'rdatalinux Biomni',
     }
     for (const server of bundled) {
       const desired = displayNames[server.serverName]
@@ -455,11 +472,11 @@ export class ZeroWallMcpService extends TypertRemoteService {
         return
       }
     }
-    if (record.serverName === 'rdatalinux_r_platform') {
+    if (record.serverName === 'rdatalinux_r_platform' || record.serverName === RDATALINUX_BIOMNI_SERVER_NAME) {
       try { rdatalinuxAuthorization = await this.secrets.get(RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL) } catch { rdatalinuxAuthorization = undefined }
       if (!rdatalinuxAuthorization?.trim()) rdatalinuxAuthorization = process.env[RDATALINUX_R_MCP_AUTHORIZATION_ENV]
     }
-    const environment = record.serverName === 'rdatalinux_r_platform' && rdatalinuxAuthorization?.trim()
+    const environment = (record.serverName === 'rdatalinux_r_platform' || record.serverName === RDATALINUX_BIOMNI_SERVER_NAME) && rdatalinuxAuthorization?.trim()
       ? { ...process.env, [RDATALINUX_R_MCP_AUTHORIZATION_ENV]: rdatalinuxAuthorization }
       : process.env
     const resolved = resolveMcpConfig(record, environment)

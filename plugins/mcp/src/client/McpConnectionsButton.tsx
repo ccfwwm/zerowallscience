@@ -386,9 +386,9 @@ export function McpConnectionsButton(props: Props) {
             </div>
             <a className={css.sciMasterGuide} href="https://scimaster.bohrium.com/vibe-write/home" target="_blank" rel="noreferrer">{props.t('mcp.sciMasterApiKeyGuide')}</a>
           </section>}
-          {selected?.serverName === 'rdatalinux_r_platform' && <section className={css.sciMasterCard} aria-label="rdatalinux R MCP">
-             <div className={css.sciMasterHeading}><strong>rdatalinux R MCP</strong><span className={rdatalinuxConfigured ? css.configured : css.missing}>{rdatalinuxConfigured ? '已配置' : '未配置'}</span></div>
-             <p className={css.sciMasterHelp}>端点固定为 http://103.217.185.141:8099/r-platform/mcp。Authorization 仅保存到 ZeroWall 凭据保险库。</p>
+          {(selected?.serverName === 'rdatalinux_r_platform' || selected?.serverName === 'rdatalinux_biomni') && <section className={css.sciMasterCard} aria-label="rdatalinux R/Biomni MCP">
+             <div className={css.sciMasterHeading}><strong>{selected.serverName === 'rdatalinux_biomni' ? 'rdatalinux Biomni' : 'rdatalinux R MCP'}</strong><span className={rdatalinuxConfigured ? css.configured : css.missing}>{rdatalinuxConfigured ? '已配置' : '未配置'}</span></div>
+             <p className={css.sciMasterHelp}>端点固定为 http://103.217.185.141:8099/r-platform/mcp。R 与 Biomni 共用 MCP Authorization，凭据仅保存到 ZeroWall 凭据保险库。</p>
              <div className={css.sciMasterActions}>
                <input type="password" value={rdatalinuxAuthorization} onChange={event => setRdatalinuxAuthorizationValue(event.target.value)} placeholder="Bearer &lt;MCP key&gt;" autoComplete="off" />
                <button type="button" className={css.saveButton} onClick={() => void saveRdatalinuxAuthorization()} disabled={rdatalinuxBusy || rdatalinuxAuthorization.trim() === ''}>保存</button>
