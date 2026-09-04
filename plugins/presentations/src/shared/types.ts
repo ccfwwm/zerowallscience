@@ -34,6 +34,12 @@ export interface EditableObject {
   imageUri?: string
   rasterReason?: string
   visible?: boolean
+  /** Source classification used by the rebuild QA gates. */
+  sourceCategory?: 'panel' | 'text_item' | 'visual_core' | 'evidence_tile' | 'plot' | 'native_symbol' | 'inset' | 'caption'
+  parentRegion?: string
+  editability?: 'native' | 'atomic-raster'
+  sourceRectPx?: [number, number, number, number]
+  assetRole?: string
 }
 
 export interface EditableSlideManifest {
@@ -47,4 +53,28 @@ export interface EditableSlideManifest {
   authorizedOmissions: string[]
   nativeObjectCount: number
   rasterizedObjectCount: number
+  fidelityProfile?: 'reference_lock' | 'balanced' | 'draft'
+  mode?: 'native' | 'hybrid'
+  sceneMapUri?: string
+  drawLogUri?: string
+  qaReportUri?: string
+}
+
+export interface RebuildSceneMap {
+  version: 1
+  slideId: string
+  source: { path: string; width_px: number; height_px: number; checksum: string }
+  fidelity_profile: 'reference_lock' | 'balanced' | 'draft'
+  mode: 'native' | 'hybrid'
+  canvas: { width_pt: number; height_pt: number }
+  reference_inventory: {
+    complete: boolean
+    regions: string[]
+    counts: Record<string, number>
+    required_ids: string[]
+    unresolved_ambiguities: string[]
+    authorized_omissions: string[]
+  }
+  objects: Array<Record<string, unknown>>
+  links: Array<Record<string, unknown>>
 }

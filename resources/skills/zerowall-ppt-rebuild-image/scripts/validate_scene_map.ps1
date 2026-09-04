@@ -101,6 +101,16 @@ foreach ($object in $objects) {
 }
 
 $objectIds = @($objects | ForEach-Object { [string]$_.id })
+$nativeObjects = @($objects | Where-Object { [string]$_.editability -eq 'native' -or [string]$_.kind -ne 'picture' })
+$rasterObjects = @($objects | Where-Object { [string]$_.kind -eq 'picture' })
+if ($nativeObjects.Count -eq 0) { Add-Issue $errors "Scene map must contain at least one native editable object." }
+foreach ($picture in $rasterObjects) {
+    $rect = @($picture.source_rect_px)
+    if ($rect.Count -eq 4 -and $sourceWidth -gt 0 -and $sourceHeight -gt 0) {
+        $area = ([double]$rect[2] * [double]$rect[3]) / ($sourceWidth * $sourceHeight)
+        if ($area -ge 0.9) { Add-Issue $errors "Picture '$([string]$picture.id)' covers too much of the source page; full-slide raster is forbidden." }
+    }
+}
 foreach ($link in $links) {
     $id = [string]$link.id
     foreach ($field in @("parent_region", "required", "status", "from", "to", "direction", "topology_verified")) {

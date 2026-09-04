@@ -32,11 +32,11 @@ export async function writeEditablePresentation(presentation: PresentationRecord
     if (manifest) {
       for (const object of [...manifest.objects].sort((a, b) => (a.z ?? 0) - (b.z ?? 0))) {
         if (object.visible === false) continue
-        addEditableObject(slide, object)
+        assertEditableRaster(object, manifest.canvas)
+        addEditableObject(slide, object, manifest.source)
         if (object.kind === 'image' || object.kind === 'svg') rasterizedObjectCount += 1
         else nativeObjectCount += 1
       }
-      nativeObjectCount += manifest.nativeObjectCount - manifest.objects.filter(object => object.kind === 'image' || object.kind === 'svg').length
       continue
     }
     const image = fileUriPath(item.visualUri ?? '')
@@ -73,7 +73,7 @@ async function readManifest(uri: string | undefined): Promise<EditableSlideManif
   }
 }
 
-function addEditableObject(slide: PptxGenJS.Slide, object: EditableObject): void {
+function addEditableObject(slide: PptxGenJS.Slide, object: EditableObject, source?: EditableSlideManifest['source']): void {
   // Manifest coordinates are points on a 960x540 canvas; PptxGenJS uses
   // inches, so 72 points map to one inch on the 13.333x7.5 wide slide.
   const base = { x: object.x / 72, y: object.y / 72, w: object.w / 72, h: object.h / 72, objectName: object.objectId }
@@ -83,7 +83,15 @@ function addEditableObject(slide: PptxGenJS.Slide, object: EditableObject): void
   }
   if (object.kind === 'image' && object.imageUri) {
     const path = fileUriPath(object.imageUri)
-    if (path && existsSync(path)) slide.addImage({ ...base, path, sizing: { type: 'contain', w: base.w, h: base.h } })
+    if (path && existsSync(path)) {
+      const rect = object.sourceRectPx
+      const sourceWidth = source?.widthPx ?? 0
+      const sourceHeight = source?.heightPx ?? 0
+      const sizing = rect && sourceWidth > 0 && sourceHeight > 0
+        ? { type: 'crop' as const, w: base.w, h: base.h, x: (rect[0] / sourceWidth) * base.w, y: (rect[1] / sourceHeight) * base.h }
+        : { type: 'contain' as const, w: base.w, h: base.h }
+      slide.addImage({ ...base, path, sizing })
+    }
     return
   }
   if (object.kind === 'svg' && object.imageUri) {
@@ -95,7 +103,27 @@ function addEditableObject(slide: PptxGenJS.Slide, object: EditableObject): void
     slide.addShape('line', { ...base, line: { color: normalizeColor(object.line), width: object.lineWidth ?? 1 } })
     return
   }
+  if (object.kind === 'table') {
+    slide.addTable([[{ text: object.text ?? '' }]], { ...base, border: { type: 'solid', color: normalizeColor(object.line, 'B7C6D4'), pt: object.lineWidth ?? 1 }, fill: { color: normalizeColor(object.fill, 'FFFFFF') }, color: normalizeColor(object.color) })
+    return
+  }
+  if (object.kind === 'chart') {
+    // A chart without a data series is not a valid editable chart. Keep a
+    // native frame rather than silently inserting a raster image.
+    slide.addShape('rect', { ...base, fill: { color: normalizeColor(object.fill, 'FFFFFF'), transparency: 100 }, line: { color: normalizeColor(object.line, 'B7C6D4'), width: object.lineWidth ?? 1 } })
+    return
+  }
   slide.addShape(object.kind === 'shape' ? 'roundRect' : 'rect', { ...base, fill: { color: normalizeColor(object.fill, 'FFFFFF'), transparency: object.fill ? 0 : 100 }, line: { color: normalizeColor(object.line, 'B7C6D4'), width: object.lineWidth ?? 1 } })
+}
+
+function assertEditableRaster(object: EditableObject, canvas: { widthPt: number; heightPt: number }): void {
+  if (object.kind !== 'image' && object.kind !== 'svg') return
+  const coverage = (object.w * object.h) / (canvas.widthPt * canvas.heightPt)
+  if (coverage >= 0.9 || (object.x <= 0 && object.y <= 0 && object.w >= canvas.widthPt && object.h >= canvas.heightPt)) {
+    throw new Error(`Editable rebuild refuses full-slide raster object: ${object.objectId}`)
+  }
+  if (!object.rasterReason?.trim()) throw new Error(`Raster object ${object.objectId} requires rasterReason.`)
+  if (object.editability !== undefined && object.editability !== 'atomic-raster') throw new Error(`Raster object ${object.objectId} must be marked atomic-raster.`)
 }
 
 function normalizeColor(value: string | undefined, fallback = '000000'): string {

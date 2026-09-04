@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-image-dup",
-  "version": "5.1.0",
+  "version": "5.1.1",
   "dsh": {
     "min": "0.1.2-rc.1",
     "max": "0.1.2-rc.1"

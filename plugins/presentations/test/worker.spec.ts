@@ -8,11 +8,29 @@ import { ResearchStore } from '@zerowallscience/research-store'
 import type { GenerateImageResult, ZeroWallImageGenerationService } from '@zerowallscience/plugin-images'
 import { PresentationWorker } from '../src/host/worker.js'
 import { materializeDirectImage } from '../src/host/index.js'
+import { writeEditablePresentation } from '../src/host/export.js'
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
 
 describe('presentation generation', () => {
+  it('rejects a full-slide raster manifest during editable export', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-ppt-raster-gate-'))
+    roots.push(root)
+    const store = new ResearchStore(join(root, 'research.db'))
+    const project = store.createProject({ name: 'Test', rootPath: root })
+    const imagePath = join(root, 'reference.png')
+    await writeFile(imagePath, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'))
+    const manifestPath = join(root, 'manifest.json')
+    await writeFile(manifestPath, JSON.stringify({ version: 1, slideId: 'slide-1', source: { kind: 'image', uri: `file://${imagePath}`, checksum: 'x', widthPx: 1, heightPx: 1 }, canvas: { widthPt: 960, heightPt: 540 }, objects: [{ objectId: 'slide-1.visual', kind: 'image', x: 0, y: 0, w: 960, h: 540, imageUri: `file://${imagePath}`, rasterReason: 'bad', editability: 'atomic-raster' }], requiredIds: ['slide-1.visual'], unresolvedAmbiguities: [], authorizedOmissions: [], nativeObjectCount: 0, rasterizedObjectCount: 1 }), 'utf8')
+    const presentation = store.createPresentation({ projectId: project.id, title: '栅栏', outline: [{ title: '一', points: [] }] })
+    store.updatePresentation(presentation.id, { slides: [{ id: 'slide-1', title: '一', body: '', assetUris: [], editableManifestUri: `file://${manifestPath}` }] })
+    try {
+      const current = store.getPresentation(presentation.id)!
+      await expect(writeEditablePresentation(current, `file://${join(root, 'out.pptx')}`)).rejects.toThrow('full-slide raster')
+    } finally { store.close() }
+  })
+
   it('materializes direct image paths and base64 data without requiring image.png', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-ppt-direct-image-'))
     roots.push(root)
@@ -220,6 +238,13 @@ describe('presentation generation', () => {
       expect(rebuilt.slides[0]?.editableStatus).toBe('ready')
       expect(rebuilt.artifacts.map(item => item.kind)).toEqual(expect.arrayContaining(['editable-pptx', 'scene-map', 'editable-manifest']))
       expect(existsSync(filePath(rebuilt.artifacts.find(item => item.kind === 'editable-pptx')!.uri))).toBe(true)
+      const manifestUri = rebuilt.slides[0]?.editableManifestUri
+      expect(manifestUri).toBeTruthy()
+      const manifest = JSON.parse(readFileSync(filePath(manifestUri!), 'utf8')) as { objects: Array<{ kind: string; x: number; y: number; w: number; h: number }>; sceneMapUri?: string; nativeObjectCount: number; rasterizedObjectCount: number }
+      expect(manifest.sceneMapUri).not.toBe(manifestUri)
+      expect(manifest.objects.some(object => object.kind !== 'image' && object.kind !== 'svg')).toBe(true)
+      expect(manifest.objects.filter(object => object.kind === 'image' || object.kind === 'svg').every(object => object.w * object.h < 960 * 540 * 0.9)).toBe(true)
+      expect(manifest.nativeObjectCount).toBeGreaterThan(manifest.rasterizedObjectCount)
     } finally {
       worker.dispose()
       store.close()

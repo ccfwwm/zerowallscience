@@ -29,6 +29,8 @@ Host 会从当前会话最近一批持久事件和待处理消息中恢复；只
 6. 多页任务可以并发进行素材准备、scene map 和页面 IR 生成；最终 PPTX 组装和提交必须单写入。
 7. 每次修改都必须写入同一个 `presentationId` 的新 revision，不创建同名副本。
 8. 生成后必须从已保存的 PPTX 回渲，检查结构、文字、遮挡、比例和可编辑对象统计。
+9. `rebuild_presentation` 必须生成独立的 scene map、editable manifest、draw log 和 QA 报告；`sceneMapUri` 不能指向 manifest。
+10. editable PPTX 中禁止整页 PNG/JPEG/SVG。图片对象只能是带有 `rasterReason` 的局部、不可经济重建的 visual core；缺少视觉分析能力时必须报告不完整，不能伪装成功。
 
 ## 执行顺序
 
@@ -38,6 +40,8 @@ Host 会从当前会话最近一批持久事件和待处理消息中恢复；只
 ```
 
 Windows 有可用的 ZeroWall PowerPoint Live Bridge 时使用可见的持久化 PowerPoint 会话；否则使用受控 Office CLI/runtime 路径。不得逐对象反复连接 COM，也不得静默退化为整页 PNG PPTX。
+
+`native` 模式要求页面中的文字、面板、边框、箭头、表格和图表全部原生化；`hybrid` 模式允许复杂照片、生物结构、纹理等以局部裁剪图片存在，但周围的标签、连线和容器仍必须是原生对象。默认使用 `hybrid` + `reference_lock` + `reject` fallback。
 
 ## 修改方式
 

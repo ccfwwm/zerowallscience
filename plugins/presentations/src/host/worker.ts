@@ -9,6 +9,7 @@ import type { GenerateImageResult, ZeroWallImageGenerationService } from '@zerow
 import type { PresentationSlidePatch } from '@zerowallscience/plugin-presentations/types'
 import { writeEditablePresentation, writePresentation } from './export.js'
 import type { EditableSlideManifest } from '../shared/types.js'
+import { analyzeScene } from './scene-analyzer.js'
 
 export interface EditableSourcePage {
   path: string
@@ -207,23 +208,34 @@ export class PresentationWorker {
           const sourceBytes = await readFile(imagePath)
           const sourceChecksum = createHash('sha256').update(sourceBytes).digest('hex')
           if (source?.checksum && source.checksum !== sourceChecksum) throw new Error(`输入素材校验失败：第 ${index + 1} 页 checksum 不匹配。`)
+          const analysis = await analyzeScene({ slideId: slide.id, title: slide.title, body: slide.body, sourcePath: imagePath, checksum: sourceChecksum, ...(source?.widthPx === undefined ? {} : { widthPx: source.widthPx }), ...(source?.heightPx === undefined ? {} : { heightPx: source.heightPx }), ...(instruction === undefined ? {} : { instruction }) })
+          const sceneMapPath = join(root, 'slides', slide.id, 'scene-map.json')
+          const drawLogPath = join(root, 'slides', slide.id, 'draw-log.json')
+          const qaPath = join(root, 'slides', slide.id, 'qa-report.json')
+          await writeFile(sceneMapPath, JSON.stringify(analysis.sceneMap, null, 2), 'utf8')
+          await writeFile(drawLogPath, JSON.stringify({ version: 1, slideId: slide.id, objects: analysis.manifestObjects.map(object => ({ objectId: object.objectId, kind: object.kind, z: object.z ?? 0 })) }, null, 2), 'utf8')
+          const nativeObjectCount = analysis.manifestObjects.filter(object => object.editability !== 'atomic-raster').length
+          const rasterizedObjectCount = analysis.manifestObjects.filter(object => object.editability === 'atomic-raster').length
           const manifest: EditableSlideManifest = {
             version: 1,
             slideId: slide.id,
-            source: { kind: source?.kind ?? 'zerowall-visual', uri: fileUri(imagePath), checksum: sourceChecksum, widthPx: source?.widthPx ?? 1536, heightPx: source?.heightPx ?? 1024, page: source?.page ?? index + 1 },
+            source: { kind: source?.kind ?? 'zerowall-visual', uri: fileUri(imagePath), checksum: sourceChecksum, widthPx: analysis.sceneMap.source.width_px, heightPx: analysis.sceneMap.source.height_px, page: source?.page ?? index + 1 },
             canvas: { widthPt: 960, heightPt: 540 },
-            objects: [
-              // Keep the reference page at its measured aspect ratio across the
-              // whole 16:9 canvas. The native text layer remains editable and
-              // can be changed without losing the source visual fidelity.
-              { objectId: `${slide.id}.visual`, kind: 'image', x: 0, y: 0, w: 960, h: 540, imageUri: fileUri(imagePath), rasterReason: '原始页面视觉参考；语义覆盖层保持可编辑', z: 0 },
-              { objectId: `${slide.id}.title`, kind: 'text', x: 48, y: 24, w: 864, h: 48, text: slide.title, fontFace: 'Aptos Display', fontSize: 24, color: '#17324D', z: 20 },
-              { objectId: `${slide.id}.body`, kind: 'text', x: 48, y: 480, w: 864, h: 42, text: instruction ? `${slide.body}\n${instruction}` : slide.body, fontFace: 'Aptos', fontSize: 12, color: '#30465C', z: 20 },
-            ],
-            requiredIds: [`${slide.id}.title`, `${slide.id}.body`, `${slide.id}.visual`], unresolvedAmbiguities: [], authorizedOmissions: [], nativeObjectCount: 2, rasterizedObjectCount: 1,
+            objects: analysis.manifestObjects,
+            requiredIds: analysis.sceneMap.reference_inventory.required_ids,
+            unresolvedAmbiguities: [],
+            authorizedOmissions: [],
+            nativeObjectCount,
+            rasterizedObjectCount,
+            fidelityProfile: 'reference_lock',
+            mode: 'hybrid',
+            sceneMapUri: fileUri(sceneMapPath),
+            drawLogUri: fileUri(drawLogPath),
+            qaReportUri: fileUri(qaPath),
           }
           await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8')
-          slides[index] = { ...slide, editableManifestUri: fileUri(manifestPath), editableStatus: 'ready', nativeObjectCount: 2, rasterizedObjectCount: 1, sceneMapUri: fileUri(manifestPath) }
+          await writeFile(qaPath, JSON.stringify({ version: 1, status: 'pending-render-review', slideId: slide.id, nativeObjectCount, rasterizedObjectCount, fullSlideRasterForbidden: true }, null, 2), 'utf8')
+          slides[index] = { ...slide, editableManifestUri: fileUri(manifestPath), editableStatus: 'ready', nativeObjectCount, rasterizedObjectCount, sceneMapUri: fileUri(sceneMapPath) }
         } catch (error) {
           slides[index] = { ...slide, editableStatus: 'failed', rebuildError: error instanceof Error ? error.message : String(error) }
         }
@@ -240,11 +252,17 @@ export class PresentationWorker {
     const artifact = { kind: 'editable-pptx' as const, uri: fileUri(pptxPath), mediaType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', checksum: createHash('sha256').update(readFileSync(pptxPath)).digest('hex') }
     const sceneMapPath = join(root, 'scene-map.json')
     const manifestPath = join(root, 'editable-manifest.json')
+    const assetsPath = join(root, 'assets', 'manifest.json')
+    const qaPath = join(root, 'qa-report.json')
     await writeFile(sceneMapPath, JSON.stringify({ version: 1, presentationId: id, generationId, slides: slides.filter(slide => slide.editableManifestUri).map(slide => ({ slideId: slide.id, sceneMapUri: slide.sceneMapUri, editableManifestUri: slide.editableManifestUri })) }, null, 2), 'utf8')
     await writeFile(manifestPath, JSON.stringify({ version: 1, presentationId: id, generationId, slides: slides.filter(slide => slide.editableManifestUri).map(slide => ({ slideId: slide.id, manifestUri: slide.editableManifestUri, nativeObjectCount: slide.nativeObjectCount ?? 0, rasterizedObjectCount: slide.rasterizedObjectCount ?? 0 })) }, null, 2), 'utf8')
+    await mkdir(join(root, 'assets'), { recursive: true })
+    await writeFile(assetsPath, JSON.stringify({ version: 1, presentationId: id, generationId, slides: slides.filter(slide => slide.editableManifestUri).map(slide => ({ slideId: slide.id, rasterizedObjectCount: slide.rasterizedObjectCount ?? 0, policy: 'local visual-core only; full-slide raster forbidden' })) }, null, 2), 'utf8')
+    await writeFile(qaPath, JSON.stringify({ version: 1, presentationId: id, generationId, status: 'pending-render-review', fullSlideRasterForbidden: true, nativeObjectCount: slides.reduce((sum, slide) => sum + (slide.nativeObjectCount ?? 0), 0), rasterizedObjectCount: slides.reduce((sum, slide) => sum + (slide.rasterizedObjectCount ?? 0), 0), slides: slides.filter(slide => slide.editableManifestUri).map(slide => ({ slideId: slide.id, sceneMapUri: slide.sceneMapUri, editableManifestUri: slide.editableManifestUri })) }, null, 2), 'utf8')
     let artifacts = replaceArtifact(updated.artifacts, artifact)
     artifacts = replaceArtifact(artifacts, { kind: 'scene-map', uri: fileUri(sceneMapPath), mediaType: 'application/json', checksum: createHash('sha256').update(readFileSync(sceneMapPath)).digest('hex') })
     artifacts = replaceArtifact(artifacts, { kind: 'editable-manifest', uri: fileUri(manifestPath), mediaType: 'application/json', checksum: createHash('sha256').update(readFileSync(manifestPath)).digest('hex') })
+    artifacts = replaceArtifact(artifacts, { kind: 'rebuild-qa-report', uri: fileUri(qaPath), mediaType: 'application/json', checksum: createHash('sha256').update(readFileSync(qaPath)).digest('hex') })
     return this.store.updatePresentation(id, { status: 'ready', artifacts, rebuildJob: { ...rebuildJob, stage: 'ready', progress: 1, updatedAt: new Date().toISOString(), finishedAt: new Date().toISOString() }, slides, style: { ...updated.style, editableNativeObjectCount: counts.nativeObjectCount, editableRasterizedObjectCount: counts.rasterizedObjectCount } })
   }
 
@@ -277,7 +295,10 @@ export class PresentationWorker {
       const target = join(root, 'slides', slide.id, 'editable-manifest.json')
       await mkdir(join(root, 'slides', slide.id), { recursive: true })
       await writeFile(target, JSON.stringify(manifest, null, 2), 'utf8')
-      slides[slides.indexOf(slide)] = { ...slide, editableManifestUri: fileUri(target), sceneMapUri: fileUri(target), editableStatus: 'ready' }
+      // Keep the scene-map contract separate from its editable manifest. The
+      // edited manifest is a new revision, while the scene map remains the
+      // source-of-truth inventory for the slide.
+      slides[slides.indexOf(slide)] = { ...slide, editableManifestUri: fileUri(target), editableStatus: 'ready' }
     }
     const updated = this.store.updatePresentation(id, { status: 'generating', error: '', slides, rebuildJob: { id: randomUUID(), generationId, stage: 'reviewed', progress: 0.8, concurrency: 1, startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } })
     const pptxPath = presentationPath(updated, project.rootPath, 'pptx')

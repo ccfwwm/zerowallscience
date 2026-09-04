@@ -1,5 +1,5 @@
 {
-  "version": "5.1.0",
+  "version": "5.1.1",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.1.2-rc.1",
