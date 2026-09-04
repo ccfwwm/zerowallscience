@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-projects",
-  "version": "5.1.1",
+  "version": "5.1.12",
   "description": "ZeroWall Science projects domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

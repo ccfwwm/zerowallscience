@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { McpServerRecord } from '@zerowallscience/research-store'
-import { redactError, resolveMcpConfig, resolveStdioLaunch } from '../src/host/index.js'
+import { aiCloudCredentialKey, redactError, resolveMcpConfig, resolveStdioLaunch } from '../src/host/index.js'
 
 const base: McpServerRecord = {
   id: 'mcp-1', name: 'Tools', serverName: 'tools', transport: 'stdio', enabled: true,
@@ -66,5 +66,13 @@ describe('ZeroWall MCP config boundary', () => {
     expect(redacted).not.toContain('pass')
     expect(redacted).not.toContain('query-secret')
     expect(redacted).toContain('[redacted]')
+  })
+
+  it('maps only supported AI Cloud provider routes to group secret keys', () => {
+    expect(aiCloudCredentialKey('zerowall-ai-cloud-50-completions')).toBe('zerowall.ai-cloud.group.50')
+    expect(aiCloudCredentialKey('zerowall-ai-cloud-50-responses')).toBe('zerowall.ai-cloud.group.50')
+    expect(aiCloudCredentialKey('zerowall-ai-cloud-50-messages')).toBe('zerowall.ai-cloud.group.50')
+    expect(aiCloudCredentialKey('zerowall-ai-cloud-0-completions')).toBeUndefined()
+    expect(aiCloudCredentialKey('other-provider-50')).toBeUndefined()
   })
 })

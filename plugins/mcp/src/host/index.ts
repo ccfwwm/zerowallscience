@@ -34,6 +34,12 @@ export const RDATALINUX_R_MCP_AUTHORIZATION_ENV = 'R_PLATFORM_MCP_AUTHORIZATION'
 const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 30_000
 const RDATALINUX_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
 
+/** Resolve the AI Cloud group secret key without accepting arbitrary providers. */
+export function aiCloudCredentialKey(provider: string): string | undefined {
+  const match = /^zerowall-ai-cloud-([1-9]\d*)(?:-(?:responses|messages|completions))?$/u.exec(provider)
+  return match?.[1] === undefined ? undefined : `zerowall.ai-cloud.group.${match[1]}`
+}
+
 type RuntimeMcpConfig = {
   serverName: string
   toolCallTimeoutMs: number
@@ -91,6 +97,18 @@ export class ZeroWallMcpService extends TypertRemoteService {
   constructor(ctx: Context) {
     super(ctx, 'zerowallMcp')
     const service = this
+    // Biomni execution runs through the DSH MCP bridge, but its model key is
+    // owned by ZeroWall AI Cloud rather than the DSH credential-local store.
+    // Expose a narrow Host-only resolver so the bridge can inject the active
+    // route key into Biomni execution calls without putting it in session
+    // messages, connection records, or tool descriptions.
+    ctx.provide('zerowallMcpCredentialResolver', {
+      resolve: async (provider: string, _model: string): Promise<string | undefined> => {
+        const key = aiCloudCredentialKey(provider)
+        if (key === undefined) return undefined
+        try { return await service.secrets.get(key) } catch { return undefined }
+      },
+    } as never)
     ctx.tools.register(defineTool({
       name: 'r_upload_workspace_file',
       description: 'Upload a file from the current ZeroWall session workspace to an rdatalinux R project without putting base64 in the conversation. local_path must be a regular file inside the session workspace; remote_path is relative to the rdatalinux project. Requires confirm=true.',

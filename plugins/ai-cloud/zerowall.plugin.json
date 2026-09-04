@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-ai-cloud",
-  "version": "5.1.1",
+  "version": "5.1.12",
   "dsh": {
     "min": "0.1.2-rc.1",
     "max": "0.1.2-rc.1"
