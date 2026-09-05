@@ -96,6 +96,13 @@ const requiredArchivePaths = [
   'node_modules/@daweifu/capability-menu/lib/client.js',
   'node_modules/dsh-auto-review/lib/index.js',
   'node_modules/dsh-auto-review/lib/client.js',
+  'node_modules/@changfenhuang/dsh-genui/lib/index.js',
+  'node_modules/@changfenhuang/dsh-genui/lib/client.js',
+  'node_modules/@changfenhuang/dsh-genui/lib/assets/mermaid.js',
+  'node_modules/@changfenhuang/dsh-genui/lib/assets/three.js',
+  'node_modules/@changfenhuang/dsh-genui/lib/assets/echarts.js',
+  'node_modules/@changfenhuang/dsh-genui/SKILL.md',
+  'node_modules/@changfenhuang/dsh-genui/cordis.patch.yml',
   'node_modules/dsh-wechat/cordis.patch.yml',
   'node_modules/@zerowallscience/research-store/lib/index.js',
   'node_modules/jszip/lib/index.js',
@@ -640,7 +647,7 @@ async function verifyPluginInventory(url) {
     'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
     'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search',
   ].map(name => `@zerowallscience/plugin-${name}`)
-  expected.push('dsh-wechat', 'dsh-file-review-tab', 'dsh-auto-review', '@daweifu/capability-menu', '@daweifu/capability-menu/policy', '@daweifu/capability-menu/search', '@daweifu/capability-menu/invoke')
+  expected.push('dsh-wechat', 'dsh-file-review-tab', 'dsh-auto-review', '@daweifu/capability-menu', '@daweifu/capability-menu/policy', '@daweifu/capability-menu/search', '@daweifu/capability-menu/invoke', '@changfenhuang/dsh-genui')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
   const missing = expected.filter(name => !byModule.has(name))
   if (missing.length > 0) throw new Error(`Packaged Host plugin inventory is missing: ${missing.join(', ')}`)
@@ -823,6 +830,7 @@ async function verifyDesktopStartup() {
       '@zerowallscience/plugin-mineru',
       '@zerowallscience/plugin-mcp', '@zerowallscience/plugin-skills', '@zerowallscience/plugin-reviewer',
       '@zerowallscience/plugin-research', '@zerowallscience/plugin-presentations',
+      '@changfenhuang/dsh-genui',
     ]) {
       if (!ids.includes(id)) throw new Error(`Packaged desktop Web boot is missing ${id}.`)
     }

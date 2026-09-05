@@ -165,6 +165,10 @@
             bash: ai
             write: ai
 
+    # GenUI renders dsh-ui fences inline and keeps its heavy engines lazy.
+    - id: genui
+      name: '@changfenhuang/dsh-genui'
+
     - id: zerowall-base
       name: '@zerowallscience/plugin-base'
 

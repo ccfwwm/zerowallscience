@@ -25,6 +25,7 @@
   "dependencies": {
     "@daweifu/capability-menu": "workspace:*",
     "dsh-auto-review": "workspace:*",
+    "@changfenhuang/dsh-genui": "workspace:*",
     "dsh-better-sidebar-icons": "workspace:*",
     "dsh-file-review-tab": "workspace:*",
     "dsh-wechat": "workspace:*",

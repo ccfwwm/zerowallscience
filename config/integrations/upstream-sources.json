@@ -52,5 +52,14 @@
     "version": "0.10.4",
     "license": "Apache-2.0",
     "source": "packages/dsh-auto-review"
+  },
+  "genui": {
+    "repository": "https://github.com/omdsh-dev/dsh-genui.git",
+    "branch": "main",
+    "commit": "02a7264e3ad49e69cb66ef24491e0166c18f6cc6",
+    "version": "0.9.8",
+    "license": "MIT",
+    "package": "@changfenhuang/dsh-genui",
+    "source": "packages/dsh-genui"
   }
 }

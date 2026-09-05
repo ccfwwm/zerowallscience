@@ -484,6 +484,26 @@ export class ZeroWallMcpService extends TypertRemoteService {
         }
       }
     }
+    if (deferDefaultConnections && markerVersion < 6) {
+      // Releases before the deferred-boot fix persisted the bundled servers
+      // as enabled. On an existing install that made the new desktop flag
+      // ineffective: every managed server still performed tools/list during
+      // boot and could exhaust the Harness heap. Disable only the exact
+      // ZeroWall defaults once; custom MCP records and future user choices are
+      // left untouched.
+      const defaultServerNames = new Set([
+        RDATALINUX_SERVER_NAME,
+        'huagongshe',
+        'zerowall_managed_scimaster',
+        'zerowall_managed_bio_tools',
+        'zerowall_managed_ketcher',
+      ])
+      for (const server of projects.listMcpServers()) {
+        if (defaultServerNames.has(server.serverName) && server.enabled) {
+          projects.updateMcpServer(server.id, { enabled: false })
+        }
+      }
+    }
     for (const server of projects.listMcpServers()) {
       if (server.serverName === RDATALINUX_SERVER_NAME && server.transport === 'streamable-http' && server.headerRefs.Authorization === undefined) {
         projects.updateMcpServer(server.id, { headerRefs: { ...server.headerRefs, Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV } })
@@ -524,7 +544,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       projects.createMcpServer({ name: 'Sci', serverName: 'zerowall_managed_scimaster', transport: 'stdio', enabled: defaultEnabled, command: 'zerowall-managed:scimaster', cwd: '', failOnStartupError: false })
     }
     await mkdir(dirname(marker), { recursive: true })
-    await writeFile(marker, '{"version":5}\n', 'utf8')
+    await writeFile(marker, '{"version":6}\n', 'utf8')
   }
 
   private projects() {

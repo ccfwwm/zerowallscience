@@ -24,6 +24,7 @@ const zerowallPackageRoots = [
   resolve(root, 'packages/dsh-file-review-tab'),
   resolve(root, 'packages/dsh-capability-menu'),
   resolve(root, 'packages/dsh-auto-review'),
+  resolve(root, 'packages/dsh-genui'),
   ...await pluginRoots(resolve(root, 'plugins')),
 ]
 const desktopRuntimeSeeds = [
@@ -38,6 +39,7 @@ const desktopRuntimeSeeds = [
   'dsh-wechat',
   '@daweifu/capability-menu',
   'dsh-auto-review',
+  '@changfenhuang/dsh-genui',
   'dsh-dream-skin',
   '@deepseek-ai/dsh-subagent-claude-code',
   '@deepseek-ai/dsh-subagent-codex',
@@ -195,6 +197,15 @@ async function copyRuntimePackage(package_, targetRoot) {
     // and (for icons) the SVG asset directory. Keep the package boundary and
     // exclude repository-only tests/docs through the common runtime filter.
     for (const entry of ['lib', 'dist', 'icons', 'resources', 'cordis.patch.yml']) {
+      await copyEntry(sourceRoot, targetRoot, entry)
+    }
+    return
+  }
+
+  if (manifest.name === '@changfenhuang/dsh-genui') {
+    // Keep the renderer core, lazy engine assets, skill, and bundle patch;
+    // repository docs/tests/site files are not part of the desktop runtime.
+    for (const entry of ['lib', 'SKILL.md', 'cordis.patch.yml']) {
       await copyEntry(sourceRoot, targetRoot, entry)
     }
     return

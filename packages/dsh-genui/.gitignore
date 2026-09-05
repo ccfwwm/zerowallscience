@@ -1,0 +1,5 @@
+node_modules/
+*.tsbuildinfo
+lib/
+.e2e-artifacts/
+.playwright-cli/

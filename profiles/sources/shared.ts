@@ -7,6 +7,7 @@ export const bundledPlugins = [
   'dsh-wechat',
   '@daweifu/capability-menu',
   'dsh-auto-review',
+  '@changfenhuang/dsh-genui',
   '@zerowallscience/plugin-base',
   '@zerowallscience/plugin-secrets',
   '@zerowallscience/plugin-environment',
