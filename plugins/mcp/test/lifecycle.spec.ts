@@ -57,8 +57,8 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallProjectsService)
       const migrated = ctx.zerowallProjects.createMcpServer({
-        name: 'rdatalinux R',
-        serverName: 'rdatalinux_r_platform',
+        name: 'rplatform',
+        serverName: 'rplatform',
         transport: 'streamable-http',
         enabled: false,
         url: RDATALINUX_R_MCP_LEGACY_URL,
@@ -187,8 +187,8 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       const servers = await ctx.zerowallMcp.list()
-      expect(servers).toHaveLength(5)
-      expect(servers.map(server => server.name)).toEqual(['Sci', 'Bio Tools', 'Ketcher Chemistry', 'rdatalinux Biomni', 'rdatalinux R'])
+      expect(servers).toHaveLength(6)
+      expect(servers.map(server => server.name)).toEqual(['Sci', 'Bio Tools', 'Ketcher Chemistry', 'rbioagent', 'rplatform', 'rplotfigure'])
       expect(servers.find(server => server.serverName === 'zerowall_filesystem')).toBeUndefined()
       expect(servers.every(server => server.runtimeState === 'starting' || server.runtimeState === 'blocked')).toBe(true)
       await expect.poll(async () => Object.fromEntries((await ctx.zerowallMcp.list()).map(server => [server.serverName, server.runtimeState])), { timeout: 10_000, interval: 25 })

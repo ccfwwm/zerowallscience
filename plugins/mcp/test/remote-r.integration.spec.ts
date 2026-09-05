@@ -15,7 +15,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
-describe.runIf(Boolean(process.env.R_PLATFORM_MCP_AUTHORIZATION))('rdatalinux R MCP live integration', () => {
+describe.runIf(Boolean(process.env.R_PLATFORM_MCP_AUTHORIZATION))('rplatform MCP live integration', () => {
   it('registers the authenticated remote tools in the ZeroWall Agent registry', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-r-mcp-live-'))
     roots.push(root)
@@ -27,14 +27,14 @@ describe.runIf(Boolean(process.env.R_PLATFORM_MCP_AUTHORIZATION))('rdatalinux R 
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
-      await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rdatalinux_r_platform')?.runtimeState, { timeout: 20_000, interval: 100 }).toBe('active')
-      const server = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rdatalinux_r_platform')
+      await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rplatform')?.runtimeState, { timeout: 20_000, interval: 100 }).toBe('active')
+      const server = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rplatform')
       expect(server?.runtimeState, server?.runtimeError).toBe('active')
       expect(server?.tools.length).toBeGreaterThanOrEqual(26)
-      expect(server?.tools).toContain('mcp__rdatalinux_r_platform__r_health')
-      expect(server?.tools).toContain('mcp__rdatalinux_r_platform__r_read_image')
-      expect(server?.tools).toContain('mcp__rdatalinux_r_platform__r_get_job_result')
-      expect(ctx.tools.schemas().map(schema => schema.name)).toContain('mcp__rdatalinux_r_platform__r_health')
+      expect(server?.tools).toContain('mcp__rplatform__r_health')
+      expect(server?.tools).toContain('mcp__rplatform__r_read_image')
+      expect(server?.tools).toContain('mcp__rplatform__r_get_job_result')
+      expect(ctx.tools.schemas().map(schema => schema.name)).toContain('mcp__rplatform__r_health')
     } finally {
       await ctx.fiber.dispose()
     }
