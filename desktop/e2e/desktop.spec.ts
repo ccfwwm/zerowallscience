@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -147,6 +147,34 @@ describe('ZeroWall Science Electron', () => {
     await optionalPlugin.getByRole('button', { name: /启用插件|停用插件/ }).waitFor({ state: 'visible' })
     await settings.getByRole('button', { name: '关闭' }).click()
     await expect.poll(() => page.getByRole('dialog', { name: '设置' }).count()).toBe(0)
+  })
+
+  it('shows environment configuration as a list with AIchem credentials and live model catalog', async () => {
+    await page.getByRole('button', { name: '设置' }).click()
+    const settings = page.getByRole('dialog', { name: '设置' })
+    await settings.getByRole('button', { name: '环境配置', exact: true }).click()
+    await settings.getByRole('heading', { name: '化工社 AIchem' }).waitFor()
+    await expect.poll(() => settings.getByText('模型目录已同步', { exact: true }).count()).toBe(1)
+    expect(await settings.getByText('科研 MCP 能力', { exact: true }).count()).toBe(0)
+    expect(await settings.getByLabel('化工社 API Token').getAttribute('type')).toBe('password')
+    const artifacts = join(desktopRoot, 'dist', 'verification-5.3.0')
+    mkdirSync(artifacts, { recursive: true })
+    for (const viewport of [{ width: 1280, height: 900 }, { width: 720, height: 900 }]) {
+      await page.setViewportSize(viewport)
+      await settings.getByRole('heading', { name: '环境配置', exact: true }).scrollIntoViewIfNeeded()
+      const rows = await settings.locator('article').evaluateAll(elements => elements.map(element => {
+        const box = element.getBoundingClientRect()
+        return { x: box.x, width: box.width, bottom: box.bottom, top: box.top }
+      }))
+      expect(rows.length).toBeGreaterThanOrEqual(6)
+      for (let i = 1; i < rows.length; i++) {
+        expect(Math.abs(rows[i].x - rows[0].x)).toBeLessThan(2)
+        expect(rows[i].top).toBeGreaterThanOrEqual(rows[i - 1].bottom - 1)
+      }
+      await page.screenshot({ path: join(artifacts, `environment-${viewport.width}.png`) })
+      await settings.getByLabel('化工社 API Token').scrollIntoViewIfNeeded()
+      await page.screenshot({ path: join(artifacts, `aichem-${viewport.width}.png`) })
+    }
   })
 
   it('opens the account surface without exposing credentials to the Renderer', async () => {

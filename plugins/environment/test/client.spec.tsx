@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement, type ComponentType } from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { apply } from '../src/client/index.js'
 
@@ -14,6 +14,7 @@ describe('environment settings client', () => {
       set: vi.fn().mockResolvedValue(undefined),
     }
     const remotes = {
+      session: { modelCatalog: vi.fn().mockResolvedValue({ ok: true, value: { groups: [{ id: 'cloud', models: [{ id: 'claude-sonnet-5', name: 'Claude Sonnet 5', reasoning: { efforts: [{ id: 'high', name: '高' }] } }] }], failures: [] } }) },
       zerowallEnvironment: {
         listVariables: vi.fn().mockResolvedValue({ ok: true, value: [{ name: 'SCI_TOKEN', configured: true }] }),
         getImageModelSelection: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
@@ -23,6 +24,8 @@ describe('environment settings client', () => {
       },
       zerowallMcp: {
         getSciMasterCredentialStatus: vi.fn().mockResolvedValue({ ok: true, value: { configured: true } }),
+        getHuagongsheCredentialStatus: vi.fn().mockResolvedValue({ ok: true, value: { configured: false } }),
+        setHuagongsheApiKey: vi.fn().mockResolvedValue({ ok: true, value: { runtimeState: 'active' } }),
       },
     }
     const ctx = {
@@ -55,5 +58,12 @@ describe('environment settings client', () => {
     await waitFor(() => expect(screen.getByText('SCI_TOKEN')).toBeTruthy())
     expect(screen.getAllByRole('option', { name: '高' }).length).toBeGreaterThanOrEqual(1)
     expect(screen.getByRole('option', { name: '中（推荐）' })).toBeTruthy()
+    expect(screen.queryByText('科研 MCP 能力')).toBeNull()
+    expect(screen.getByRole('link', { name: /获取 API Token 与接入说明/ }).getAttribute('href')).toBe('https://huagongshe.com/mcp-guide')
+    const token = screen.getByLabelText('化工社 API Token')
+    fireEvent.change(token, { target: { value: 'test-token' } })
+    fireEvent.click(token.parentElement!.querySelector('button')!)
+    await waitFor(() => expect(remotes.zerowallMcp.setHuagongsheApiKey).toHaveBeenCalledWith('test-token'))
+    await waitFor(() => expect((token as HTMLInputElement).value).toBe(''))
   })
 })

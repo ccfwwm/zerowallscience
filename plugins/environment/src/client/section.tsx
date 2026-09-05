@@ -36,7 +36,9 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const [imageQuality, setImageQuality] = useState<ImageGenerationQuality>('medium')
   const [mineru, setMineru] = useState<any>({ apiBaseUrl: 'https://mineru.net', mode: 'auto', modelVersion: 'vlm', language: 'ch', tokenConfigured: false, available: false, registeredTools: [] })
   const [mineruToken, setMineruToken] = useState('')
-  const [mcpServers, setMcpServers] = useState<any[]>([])
+  const [chemConfigured, setChemConfigured] = useState(false)
+  const [chemKey, setChemKey] = useState('')
+  const [chemConnection, setChemConnection] = useState('')
 
   useEffect(() => {
     setReviewerValue(reviewerScope.getSnapshot().value ?? defaultReviewer)
@@ -84,10 +86,10 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       if (mcpRemote?.getSciMasterCredentialStatus === undefined) throw new Error('MCP 服务不可用')
       const value = await unwrap(mcpRemote.getSciMasterCredentialStatus()) as any
       if (!cancelled) setSciConfigured(value?.configured === true)
-      if (mcpRemote?.list !== undefined) {
-        const servers = await unwrap(mcpRemote.list())
-        if (!cancelled) setMcpServers(Array.isArray(servers) ? servers : [])
-      }
+    })
+    void load('chem', async () => {
+      const value = await unwrap(mcpRemote.getHuagongsheCredentialStatus())
+      if (!cancelled) setChemConfigured(value?.configured === true)
     })
     void load('mineru', async () => {
       if (mineruRemote?.getConfigStatus === undefined) throw new Error('MinerU 服务不可用')
@@ -95,7 +97,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       if (!cancelled && value) setMineru(value)
     })
     return () => { cancelled = true }
-  }, [accountRemote, environmentRemote, mcpRemote, modelCatalog, unwrap])
+  }, [accountRemote, environmentRemote, mcpRemote, mineruRemote, modelCatalog, unwrap])
 
   const reviewerModels = useMemo(() => catalogGroups.flatMap((group: any) => (Array.isArray(group.models) ? group.models.map((model: any) => ({
     ...model,
@@ -168,7 +170,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
 
   return <section className={css.root}>
     <header className={css.header}>
-      <div><span className={css.eyebrow}>ZeroWall Science</span><h2>环境配置</h2><p>集中管理审核模型、SciMaster、生图模型和运行时变量。</p></div>
+      <div><span className={css.eyebrow}>ZeroWall Science</span><h2>环境配置</h2></div>
       <span className={css.securityNote}>敏感值仅保存在本机安全存储中</span>
     </header>
     {error ? <p className={css.error} role="alert">{error}</p> : null}
@@ -183,11 +185,6 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
             <label className={css.field}><span>推理强度</span><select className={css.control} value={reviewer.reasoningEffort ?? ''} disabled={busy || reviewerEfforts.length === 0} onChange={event => void setReviewer('reasoningEffort', event.target.value)}><option value="">跟随模型默认{selectedReviewerModel?.reasoning?.defaultEffort ? `（${selectedReviewerModel.reasoning.defaultEffort}）` : ''}</option>{reviewer.reasoningEffort && !reviewerEfforts.some((effort: any) => effort.id === reviewer.reasoningEffort) ? <option value={reviewer.reasoningEffort}>{reviewer.reasoningEffort}（当前配置）</option> : null}{reviewerEfforts.map((effort: any) => <option key={effort.id} value={effort.id}>{effort.name ?? effort.id}</option>)}</select><small>{reviewerEfforts.length === 0 ? '当前模型未声明可选推理强度' : '可按模型目录提供的能力选择'}</small></label>
           </> : null}
         </div>
-      </article>
-
-      <article className={`${css.card} ${css.variablesCard}`}>
-        <div className={css.cardHeader}><div><h3>科研 MCP 能力</h3><p>统一查看内置与远程科研服务；详细连接仍可在 MCP 高级设置中编辑。</p></div><span className={css.status}>{statusText('mcp', `${mcpServers.length} 个服务`)}</span></div>
-        <div className={css.variableList}>{mcpServers.length === 0 ? <span className={css.muted}>暂无 MCP 服务</span> : mcpServers.map(server => <div className={css.variableRow} key={server.id ?? server.serverName}><code>{server.serverName}</code><span>{server.runtimeState === 'active' ? '已连接' : server.runtimeState === 'blocked' ? '待配置' : server.runtimeState === 'error' ? '连接错误' : server.enabled ? '启动中' : '已停用'}</span><span>{Array.isArray(server.tools) ? `${server.tools.length} 个工具` : ''}</span></div>)}</div>
       </article>
 
       <article className={css.card}>
@@ -212,6 +209,18 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
         <div className={css.cardHeader}><div><h3>SciMaster</h3><p>用于科研写作和 MCP 服务连接。</p></div><span className={sciConfigured ? css.statusGood : css.status}>{status.mcp === 'loading' ? '正在加载…' : sciConfigured ? '已配置' : '未配置'}</span></div>
         <div className={css.keyRow}><input className={css.control} type="password" placeholder="输入 SciMaster API Key" value={sciKey} onChange={event => setSciKey(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !sciKey.trim() || mcpRemote?.setSciMasterApiKey === undefined} onClick={() => void saveSci()}>保存 Key</button><button className={css.secondaryButton} type="button" disabled={busy || !sciConfigured || mcpRemote?.clearSciMasterApiKey === undefined} onClick={() => void run(async () => { await unwrap(mcpRemote.clearSciMasterApiKey()); setSciConfigured(false) })}>清除</button></div>
         <a className={css.helpLink} href={SCI_MASTER_KEY_URL} target="_blank" rel="noreferrer">打开 SciMaster 获取 API Key ↗</a>
+      </article>
+
+      <article className={css.card}>
+        <div className={css.cardHeader}><div><h3>化工社 AIchem</h3><p>化合物、反应与投料计算。公开查询无需 Token，个人反应库与保存操作需要授权。</p></div><span className={chemConfigured ? css.statusGood : css.status}>{statusText('chem', chemConfigured ? 'Token 已配置' : '公开查询')}</span></div>
+        <div className={css.keyRow}>
+          <input className={css.control} aria-label="化工社 API Token" type="password" placeholder="输入化工社 API Token" value={chemKey} onChange={event => setChemKey(event.target.value)} autoComplete="off" />
+          <button className={css.primaryButton} type="button" disabled={busy || !chemKey.trim() || !mcpRemote?.setHuagongsheApiKey} onClick={() => void run(async () => { const value = await unwrap(mcpRemote.setHuagongsheApiKey(chemKey)); setChemConfigured(true); setChemKey(''); setChemConnection(value.runtimeState === 'active' ? '已连接' : 'Token 已保存，连接待重试') })}>保存 Token</button>
+          <button className={css.secondaryButton} type="button" disabled={busy || !chemConfigured} onClick={() => void run(async () => { await unwrap(mcpRemote.clearHuagongsheApiKey()); setChemConfigured(false); setChemConnection('') })}>清除</button>
+          <button className={css.secondaryButton} type="button" disabled={busy || !mcpRemote?.list} onClick={() => void run(async () => { const rows = await unwrap(mcpRemote.list()); const record = rows.find((row: any) => row.serverName === 'huagongshe'); if (!record) throw new Error('尚未添加化工社连接，请保存 Token 或在 MCP 设置中添加官方连接。'); const value = await unwrap(mcpRemote.reload(record.id)); if (value.runtimeState !== 'active') throw new Error(value.runtimeError || '化工社连接不可用'); setChemConnection(`已连接 · ${value.tools.length} 个工具`) })}>检测连接</button>
+        </div>
+        <a className={css.helpLink} href="https://huagongshe.com/mcp-guide" target="_blank" rel="noreferrer">获取 API Token 与接入说明 ↗</a>
+        {chemConnection ? <p className={css.muted} role="status">{chemConnection}</p> : null}
       </article>
 
       <article className={css.card}>

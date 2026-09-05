@@ -26,6 +26,9 @@ export type { CreateMcpServerRequest, McpRuntimeState, McpServerDto, UpdateMcpSe
 // POSIX-style segments. Keep the SciMaster key under the MCP namespace.
 export const SCIMASTER_API_KEY_CREDENTIAL = 'zerowall.mcp.scimaster_api_key'
 export const SCIMASTER_API_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/home'
+export const HUAGONGSHE_URL = 'https://huagongshe.com/mcp'
+export const HUAGONGSHE_CREDENTIAL = 'zerowall.mcp.huagongshe_token'
+export const HUAGONGSHE_AUTH_ENV = 'HUAGONGSHE_MCP_AUTHORIZATION'
 export const RDATALINUX_R_MCP_LEGACY_URL = 'http://103.217.185.141/r-platform/mcp'
 export const RDATALINUX_R_MCP_URL = 'http://103.217.185.141:8099/r-platform/mcp'
 export const RDATALINUX_SERVER_NAME = 'rmcp'
@@ -285,6 +288,43 @@ export class ZeroWallMcpService extends TypertRemoteService {
     })
   }
 
+  @Remote('getHuagongsheCredentialStatus')
+  async getHuagongsheCredentialStatus(): Promise<{ configured: boolean }> {
+    try {
+      if ((await this.secrets.get(HUAGONGSHE_CREDENTIAL))?.trim()) return { configured: true }
+    } catch { /* Existing environment references remain supported. */ }
+    const record = this.projects().listMcpServers().find(item => item.serverName === 'huagongshe' && item.url === HUAGONGSHE_URL)
+    const reference = record?.headerRefs.Authorization
+    return { configured: Boolean(reference && process.env[reference]?.trim()) }
+  }
+
+  @Remote('setHuagongsheApiKey')
+  setHuagongsheApiKey(token: string): Promise<McpServerDto> {
+    return this.exclusive(async () => {
+      const value = token.trim().replace(/^Bearer\s+/iu, '')
+      if (!value || /\s/u.test(value)) throw new Error('请输入有效的化工社 API Token。')
+      const previous = this.projects().listMcpServers().find(item => item.serverName === 'huagongshe')
+      if (previous && previous.url !== HUAGONGSHE_URL) throw new Error('化工社连接地址已自定义，请先在 MCP 设置中恢复官方地址。')
+      await this.secrets.set(HUAGONGSHE_CREDENTIAL, value)
+      const record = previous
+        ? this.projects().updateMcpServer(previous.id, { headerRefs: { ...previous.headerRefs, Authorization: HUAGONGSHE_AUTH_ENV } })
+        : this.projects().createMcpServer({ name: '化工社 AIchem', serverName: 'huagongshe', transport: 'streamable-http', url: HUAGONGSHE_URL, enabled: true, headerRefs: { Authorization: HUAGONGSHE_AUTH_ENV }, failOnStartupError: false })
+      await this.reconcile(record)
+      return this.dto(record)
+    })
+  }
+
+  @Remote('clearHuagongsheApiKey')
+  clearHuagongsheApiKey(): Promise<void> {
+    return this.exclusive(async () => {
+      await this.secrets.delete(HUAGONGSHE_CREDENTIAL)
+      const record = this.projects().listMcpServers().find(item => item.serverName === 'huagongshe' && item.url === HUAGONGSHE_URL)
+      if (!record) return
+      const { Authorization: _removed, ...headerRefs } = record.headerRefs
+      await this.reconcile(this.projects().updateMcpServer(record.id, { headerRefs }))
+    })
+  }
+
   @Remote('getRdatalinuxCredentialStatus')
   async getRdatalinuxCredentialStatus(): Promise<{ configured: boolean; endpoint: string }> {
     try {
@@ -426,6 +466,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
       })
     }
     const bundled = projects.listMcpServers()
+    if (!bundled.some(server => server.serverName === 'huagongshe')) {
+      projects.createMcpServer({ name: '化工社 AIchem', serverName: 'huagongshe', transport: 'streamable-http', enabled: true, url: HUAGONGSHE_URL, failOnStartupError: false })
+    }
     const displayNames: Record<string, string> = {
       zerowall_managed_scimaster: 'Sci',
       [RDATALINUX_SERVER_NAME]: 'rmcp',
@@ -494,10 +537,17 @@ export class ZeroWallMcpService extends TypertRemoteService {
       try { rdatalinuxAuthorization = await this.secrets.get(RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL) } catch { rdatalinuxAuthorization = undefined }
       if (!rdatalinuxAuthorization?.trim()) rdatalinuxAuthorization = process.env[RDATALINUX_R_MCP_AUTHORIZATION_ENV]
     }
+    let huagongsheAuthorization: string | undefined
+    if (record.serverName === 'huagongshe' && record.url === HUAGONGSHE_URL) {
+      try {
+        const token = await this.secrets.get(HUAGONGSHE_CREDENTIAL)
+        if (token?.trim()) huagongsheAuthorization = `Bearer ${token.trim()}`
+      } catch { /* An unavailable vault is reported by reference resolution. */ }
+    }
     const environment = record.serverName === RDATALINUX_SERVER_NAME && rdatalinuxAuthorization?.trim()
       ? { ...process.env, [RDATALINUX_R_MCP_AUTHORIZATION_ENV]: rdatalinuxAuthorization }
       : process.env
-    const resolved = resolveMcpConfig(record, environment)
+    const resolved = resolveMcpConfig(record, huagongsheAuthorization ? { ...environment, [HUAGONGSHE_AUTH_ENV]: huagongsheAuthorization } : environment)
     if (resolved.config === undefined) {
       await this.disposeOne(record.id)
       if (current()) this.statuses.set(record.id, {
