@@ -4,8 +4,7 @@
 // `3.5万`, `0.3%`, `¥99` compare as real numbers instead of strings, numeric
 // columns right-align, and the button/copy confirmations announce via hidden
 // live regions (button content is atomic to screen readers).
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
-import { act } from 'react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GenuiBlock, GENUI_ACTION_DEBOUNCE_MS } from '../src/client/GenuiBlock.tsx'
 import { GenuiActionContext } from '../src/client/action-context.ts'

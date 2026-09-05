@@ -13,7 +13,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
-import type { SkillProvider } from '@deepseek-ai/dsh-skill'
+import type { SkillProvider, SkillRegistry } from '@deepseek-ai/dsh-skill'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
@@ -137,8 +137,11 @@ function bundledSkillProvider(): SkillProvider {
     ? resolve(moduleDirectory, '../../SKILL.md')
     : resolve(moduleDirectory, '../SKILL.md')
   const raw = readFileSync(path, 'utf8')
-  const end = raw.indexOf('\n---\n', 4)
-  if (!raw.startsWith('---\n') || end < 0) throw new Error('genui SKILL.md has invalid frontmatter')
+  // Packaged skills may retain Windows CRLF line endings.  Normalize only
+  // the in-memory definition so frontmatter detection is platform-neutral.
+  const normalized = raw.replace(/\r\n?/g, '\n')
+  const end = normalized.indexOf('\n---\n', 4)
+  if (!normalized.startsWith('---\n') || end < 0) throw new Error('genui SKILL.md has invalid frontmatter')
   return {
     name: BUNDLED_SKILL_PROVIDER,
     list: () => Promise.resolve([{
@@ -160,7 +163,7 @@ function bundledSkillProvider(): SkillProvider {
       provider: BUNDLED_SKILL_PROVIDER,
       path,
       resourceBase: { kind: 'directory', path: dirname(path) },
-      content: raw.slice(end + 5),
+      content: normalized.slice(end + 5),
     }),
   }
 }
@@ -198,8 +201,21 @@ export function apply(ctx: Context): void {
     if (name === 'tools') tryRegister(value as { register(tool: unknown): unknown })
   })
 
-  ctx.inject(['skills'], (skillCtx) => {
-    skillCtx.skills.registerProvider(() => bundledSkillProvider())
+  // SkillRegistry is optional because the fence language is useful in
+  // minimal hosts too.  `ctx.inject()` would create a detached waiting fiber;
+  // the GenUI plugin could finish before that fiber registers the provider.
+  // Probe the live service and listen for its binding instead, while keeping
+  // the provider disposer owned by this plugin's fiber.
+  let skillRegistered = false
+  const tryRegisterSkill = (value: SkillRegistry | undefined): void => {
+    if (skillRegistered || value === undefined) return
+    const dispose = value.registerProvider(() => bundledSkillProvider())
+    ctx.effect(() => dispose, 'genui.skill-provider')
+    skillRegistered = true
+  }
+  tryRegisterSkill(ctx.reflect.get('skills', false) as SkillRegistry | undefined)
+  ctx.on('internal/service', (name: string, value: unknown) => {
+    if (name === 'skills') tryRegisterSkill(value as SkillRegistry | undefined)
   })
 
   // Lazy-engine asset route: same optional-probe pattern as the tools
