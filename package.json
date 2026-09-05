@@ -1,11 +1,13 @@
 {
   "name": "zerowallscience",
-  "version": "5.1.12",
+  "version": "5.3.0",
   "description": "ZeroWall Science local-first scientific research workbench.",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.7.0",
-  "engines": { "node": "24.9.0" },
+  "engines": {
+    "node": "24.9.0"
+  },
   "scripts": {
     "plugins:generate": "node tools/plugins/generate-workspaces.mjs",
     "profiles:generate": "tsx tools/profiles/generate.ts",

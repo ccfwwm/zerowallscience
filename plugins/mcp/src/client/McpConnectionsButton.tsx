@@ -386,8 +386,8 @@ export function McpConnectionsButton(props: Props) {
             </div>
             <a className={css.sciMasterGuide} href="https://scimaster.bohrium.com/vibe-write/home" target="_blank" rel="noreferrer">{props.t('mcp.sciMasterApiKeyGuide')}</a>
           </section>}
-          {(selected?.serverName === 'rplatform' || selected?.serverName === 'rbioagent' || selected?.serverName === 'rplotfigure') && <section className={css.sciMasterCard} aria-label="rdatalinux MCP">
-             <div className={css.sciMasterHeading}><strong>{selected.serverName === 'rbioagent' ? 'rbioagent' : selected.serverName === 'rplotfigure' ? 'rplotfigure' : 'rplatform'}</strong><span className={rdatalinuxConfigured ? css.configured : css.missing}>{rdatalinuxConfigured ? '已配置' : '未配置'}</span></div>
+          {selected?.serverName === 'rmcp' && <section className={css.sciMasterCard} aria-label="rdatalinux MCP">
+             <div className={css.sciMasterHeading}><strong>rmcp · rbioagent / rplatform / rplotfigure</strong><span className={rdatalinuxConfigured ? css.configured : css.missing}>{rdatalinuxConfigured ? '已配置' : '未配置'}</span></div>
              <p className={css.sciMasterHelp}>端点固定为 http://103.217.185.141:8099/r-platform/mcp。R 与 Biomni 共用 MCP Authorization，凭据仅保存到 ZeroWall 凭据保险库。</p>
              <div className={css.sciMasterActions}>
                <input type="password" value={rdatalinuxAuthorization} onChange={event => setRdatalinuxAuthorizationValue(event.target.value)} placeholder="Bearer &lt;MCP key&gt;" autoComplete="off" />

@@ -36,7 +36,7 @@ describe('rdatalinux workspace upload bridge', () => {
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       ctx.tools.register(defineTool({
-        name: 'mcp__rplatform__r_upload_file',
+        name: 'mcp__rmcp__rplatform__r_upload_file',
         description: 'test remote upload',
         parameters: { project_id: { type: 'string', required: true }, path: { type: 'string', required: true }, data_base64: { type: 'string', required: true }, confirm: { type: 'boolean', required: true } },
         output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
@@ -59,3 +59,4 @@ describe('rdatalinux workspace upload bridge', () => {
     }
   })
 })
+

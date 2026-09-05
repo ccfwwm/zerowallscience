@@ -27,16 +27,17 @@ describe.runIf(Boolean(process.env.R_PLATFORM_MCP_AUTHORIZATION))('rplatform MCP
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
-      await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rplatform')?.runtimeState, { timeout: 20_000, interval: 100 }).toBe('active')
-      const server = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rplatform')
+      await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')?.runtimeState, { timeout: 20_000, interval: 100 }).toBe('active')
+      const server = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')
       expect(server?.runtimeState, server?.runtimeError).toBe('active')
       expect(server?.tools.length).toBeGreaterThanOrEqual(26)
-      expect(server?.tools).toContain('mcp__rplatform__r_health')
-      expect(server?.tools).toContain('mcp__rplatform__r_read_image')
-      expect(server?.tools).toContain('mcp__rplatform__r_get_job_result')
-      expect(ctx.tools.schemas().map(schema => schema.name)).toContain('mcp__rplatform__r_health')
+      expect(server?.tools).toContain('mcp__rmcp__rplatform__r_health')
+      expect(server?.tools).toContain('mcp__rmcp__rplatform__r_read_image')
+      expect(server?.tools).toContain('mcp__rmcp__rplatform__r_get_job_result')
+      expect(ctx.tools.schemas().map(schema => schema.name)).toContain('mcp__rmcp__rplatform__r_health')
     } finally {
       await ctx.fiber.dispose()
     }
   }, 30_000)
 })
+
