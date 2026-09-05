@@ -36,6 +36,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const [imageQuality, setImageQuality] = useState<ImageGenerationQuality>('medium')
   const [mineru, setMineru] = useState<any>({ apiBaseUrl: 'https://mineru.net', mode: 'auto', modelVersion: 'vlm', language: 'ch', tokenConfigured: false, available: false, registeredTools: [] })
   const [mineruToken, setMineruToken] = useState('')
+  const [mcpServers, setMcpServers] = useState<any[]>([])
 
   useEffect(() => {
     setReviewerValue(reviewerScope.getSnapshot().value ?? defaultReviewer)
@@ -83,6 +84,10 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       if (mcpRemote?.getSciMasterCredentialStatus === undefined) throw new Error('MCP 服务不可用')
       const value = await unwrap(mcpRemote.getSciMasterCredentialStatus()) as any
       if (!cancelled) setSciConfigured(value?.configured === true)
+      if (mcpRemote?.list !== undefined) {
+        const servers = await unwrap(mcpRemote.list())
+        if (!cancelled) setMcpServers(Array.isArray(servers) ? servers : [])
+      }
     })
     void load('mineru', async () => {
       if (mineruRemote?.getConfigStatus === undefined) throw new Error('MinerU 服务不可用')
@@ -178,6 +183,11 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
             <label className={css.field}><span>推理强度</span><select className={css.control} value={reviewer.reasoningEffort ?? ''} disabled={busy || reviewerEfforts.length === 0} onChange={event => void setReviewer('reasoningEffort', event.target.value)}><option value="">跟随模型默认{selectedReviewerModel?.reasoning?.defaultEffort ? `（${selectedReviewerModel.reasoning.defaultEffort}）` : ''}</option>{reviewer.reasoningEffort && !reviewerEfforts.some((effort: any) => effort.id === reviewer.reasoningEffort) ? <option value={reviewer.reasoningEffort}>{reviewer.reasoningEffort}（当前配置）</option> : null}{reviewerEfforts.map((effort: any) => <option key={effort.id} value={effort.id}>{effort.name ?? effort.id}</option>)}</select><small>{reviewerEfforts.length === 0 ? '当前模型未声明可选推理强度' : '可按模型目录提供的能力选择'}</small></label>
           </> : null}
         </div>
+      </article>
+
+      <article className={`${css.card} ${css.variablesCard}`}>
+        <div className={css.cardHeader}><div><h3>科研 MCP 能力</h3><p>统一查看内置与远程科研服务；详细连接仍可在 MCP 高级设置中编辑。</p></div><span className={css.status}>{statusText('mcp', `${mcpServers.length} 个服务`)}</span></div>
+        <div className={css.variableList}>{mcpServers.length === 0 ? <span className={css.muted}>暂无 MCP 服务</span> : mcpServers.map(server => <div className={css.variableRow} key={server.id ?? server.serverName}><code>{server.serverName}</code><span>{server.runtimeState === 'active' ? '已连接' : server.runtimeState === 'blocked' ? '待配置' : server.runtimeState === 'error' ? '连接错误' : server.enabled ? '启动中' : '已停用'}</span><span>{Array.isArray(server.tools) ? `${server.tools.length} 个工具` : ''}</span></div>)}</div>
       </article>
 
       <article className={css.card}>
