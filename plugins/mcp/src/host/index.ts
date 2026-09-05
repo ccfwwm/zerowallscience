@@ -51,6 +51,7 @@ type RuntimeMcpConfig = {
   toolCallTimeoutMs: number
   failOnStartupError: boolean
   reconnect: McpReconnectPolicy
+  enabledTools: string[]
 } & ({
   transport: 'stdio'
   command: string
@@ -100,6 +101,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private environmentRefreshInFlight = false
   private readonly secrets = new SecretBrokerClient()
   private readonly mcpToolIndex = new Map<string, { server: string; name: string; description: string }>()
+  readonly enabledToolSelections = new Map<string, Set<string>>()
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallMcp')
@@ -184,8 +186,16 @@ export class ZeroWallMcpService extends TypertRemoteService {
       parameters: { tools: { type: 'array', required: true, items: { type: 'string' } } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args: unknown, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }] },
       async execute(args: { tools: string[] }) {
-        const names = [...new Set(args.tools.map(String).map(value => value.trim()).filter(Boolean))].slice(0, 12)
-        return { enabled: names.filter(name => service.mcpToolIndex.has(name)), missing: names.filter(name => !service.mcpToolIndex.has(name)), count: names.filter(name => service.mcpToolIndex.has(name)).length }
+        const names = [...new Set(args.tools.map(String).map(value => value.trim()).filter(Boolean))].slice(0, 24)
+        const valid = names.filter(name => service.mcpToolIndex.has(name))
+        const byServer = new Map<string, string[]>()
+        for (const name of valid) { const item = service.mcpToolIndex.get(name)!; const list = byServer.get(item.server) ?? []; list.push(name); byServer.set(item.server, list) }
+        for (const [serverName, selected] of byServer) {
+          service.enabledToolSelections.set(serverName, new Set(selected))
+          const record = service.projects().listMcpServers().find(candidate => candidate.serverName === serverName)
+          if (record !== undefined) await service.reconcile(record)
+        }
+        return { enabled: valid, missing: names.filter(name => !service.mcpToolIndex.has(name)), count: valid.length, active: valid }
       },
     }) as any)
     this.recordsReady = this.seedBundledServers().then(() => {
@@ -572,7 +582,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     const environment = record.serverName === RDATALINUX_SERVER_NAME && rdatalinuxAuthorization?.trim()
       ? { ...process.env, [RDATALINUX_R_MCP_AUTHORIZATION_ENV]: rdatalinuxAuthorization }
       : process.env
-    const resolved = resolveMcpConfig(record, huagongsheAuthorization ? { ...environment, [HUAGONGSHE_AUTH_ENV]: huagongsheAuthorization } : environment)
+    const resolved = resolveMcpConfig(record, huagongsheAuthorization ? { ...environment, [HUAGONGSHE_AUTH_ENV]: huagongsheAuthorization } : environment, process.cwd(), serviceEnabledTools(this, record.serverName) ?? [])
     if (resolved.config === undefined) {
       await this.disposeOne(record.id)
       if (current()) this.statuses.set(record.id, {
@@ -706,7 +716,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
 function dshHome(): string { return resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh')) }
 function defaultMcpMarkerPath(): string { return join(dshHome(), 'zerowall-mcp-defaults-v1.json') }
-export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.ProcessEnv, hostCwd = process.cwd()): ResolvedMcpConfig {
+export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.ProcessEnv, hostCwd = process.cwd(), enabledTools: string[]): ResolvedMcpConfig {
   const missing = new Set<string>()
   const resolveRefs = (refs: Record<string, string>): Record<string, string> => Object.fromEntries(
     Object.entries(refs).map(([target, source]) => {
@@ -722,6 +732,7 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
     toolCallTimeoutMs: record.toolCallTimeoutMs,
     failOnStartupError: record.failOnStartupError,
     reconnect: record.reconnect,
+      enabledTools,
   }
   const launch = record.transport === 'stdio' ? resolveStdioLaunch(record, hostCwd) : undefined
   return {
@@ -830,3 +841,10 @@ export function apply(ctx: Context): void {
 }
 
 export default { apply }
+
+
+
+function serviceEnabledTools(service: ZeroWallMcpService, serverName: string): string[] | undefined { return service.enabledToolSelections.get(serverName) ? [...service.enabledToolSelections.get(serverName)!].map(name => name.replace(`mcp__${serverName}__`, '')) : undefined }
+
+
+
