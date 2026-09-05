@@ -99,7 +99,23 @@ export interface SessionQuery {
   readTitle(sessionId: string): Promise<{ title?: string } | undefined>;
   /** Lightweight raw-log event records (ascending seq), for recency recovery. */
   listEvents(sessionId: string): Promise<Array<{ type: string; time: number; data?: unknown; seq?: number }>>;
+  /**
+   * Full validated log (0.1.2+). `listEvents` no longer carries `data`, so
+   * `/history` prefers this when the host exposes it.
+   */
+  readSession?(sessionId: string): Promise<{
+    events: Array<{ type: string; time?: number; data?: unknown }>;
+  }>;
 }
+
+/**
+ * Outcome of reading a session log for "has the user spoken?" checks.
+ * `ok: false` means the log could not be validated (corrupt persistence);
+ * that is NOT a blank session.
+ */
+export type SessionLogActivity =
+  | { ok: true; lastUserMessageTime?: number }
+  | { ok: false; error: string };
 
 export interface HistoryEntry {
   role: "user" | "assistant";
@@ -327,22 +343,40 @@ export class DshOps {
   }
 
   /**
-   * Time of the session's last user-prompt event (`user/message`), read from
-   * the raw log. Used to recover recency after a restart, when the in-memory
-   * activity map is empty; undefined when the log holds no user prompt.
+   * Read whether a session log is usable and, if so, when the last
+   * `user/message` landed. Distinguishes a true blank session (readable,
+   * never spoken to) from a corrupt / unreadable log — `/s new` must not
+   * treat the latter as "already blank".
    */
-  async lastUserMessageTime(sessionId: string): Promise<number | undefined> {
+  async inspectSessionActivity(sessionId: string): Promise<SessionLogActivity> {
     const query = this.get<SessionQuery>("sessionQuery");
-    if (!query) return undefined;
+    // No query service: we cannot prove corruption. Treat as a readable
+    // empty log so `/s new` keeps the historical "already blank" path
+    // instead of minting a duplicate session on every command.
+    if (!query) return { ok: true };
     try {
       const records = await query.listEvents(sessionId);
       for (let i = records.length - 1; i >= 0; i--) {
-        if (records[i]!.type === "user/message") return records[i]!.time;
+        if (records[i]!.type === "user/message") {
+          return { ok: true, lastUserMessageTime: records[i]!.time };
+        }
       }
-      return undefined;
-    } catch {
-      return undefined;
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  /**
+   * Time of the session's last user-prompt event (`user/message`), read from
+   * the raw log. Used to recover recency after a restart, when the in-memory
+   * activity map is empty; undefined when the log holds no user prompt or
+   * cannot be read (callers that need to tell those apart use
+   * {@link inspectSessionActivity}).
+   */
+  async lastUserMessageTime(sessionId: string): Promise<number | undefined> {
+    const activity = await this.inspectSessionActivity(sessionId);
+    return activity.ok ? activity.lastUserMessageTime : undefined;
   }
 
   // ─── History ──────────────────────────────────────────────────────────────
@@ -423,18 +457,25 @@ export class DshOps {
       // fall through to persisted path
     }
 
-    // 2) Persisted fallback
+    // 2) Persisted fallback. Prefer `readSession` (full events with `data`);
+    // `listEvents` in 0.1.2 is metadata-only and cannot reconstruct text.
     const query = this.get<SessionQuery>("sessionQuery");
     if (!query) return [];
     try {
-      const records = await query.listEvents(sessionId);
+      let records: Array<{ type: string; time?: number; data?: unknown }> = [];
+      if (typeof query.readSession === "function") {
+        const snapshot = await query.readSession(sessionId);
+        records = snapshot.events ?? [];
+      } else {
+        records = await query.listEvents(sessionId);
+      }
       const entries: HistoryEntry[] = [];
       for (const r of records) {
         if (r.type !== "user/message" && r.type !== "assistant/message") continue;
-        const text = this.extractHistoryText((r as { data?: unknown }).data);
+        const text = this.extractHistoryText(r.data);
         if (!text) continue;
         const role = r.type === "user/message" ? "user" as const : "assistant" as const;
-        entries.push({ role, text, time: r.time });
+        entries.push({ role, text, time: typeof r.time === "number" ? r.time : Date.now() });
       }
       return entries.slice(-cap);
     } catch {

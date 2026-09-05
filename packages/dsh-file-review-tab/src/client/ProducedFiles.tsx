@@ -1,65 +1,41 @@
-// ProducedFiles: the review card a finished turn ends with. Paths and hunks
-// come from mutation-tool results, never from the closing prose.
-//
-// Sidebar-tab port: the original Review DRAWER (a host-grid details-column
-// hijack) is removed — it fought the better-sidebar panel for the same screen
-// edge. The 审查 button and the per-file chips now open the plugin's
-// better-sidebar 'file-review' tab instead, carrying the turn's paths (or the
-// one clicked path) as `meta.expandPaths` so the tab expands exactly those
-// diffs. The Undo/Reapply toggle is unchanged.
+// ProducedFiles: compact turn-tail summary and automatic review-container selection.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ObservableSnapshot } from './runtime-compat.ts'
+import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type {
-  FileReviewAction, FileReviewRequest, FileReviewResult,
-} from '../change-types.ts'
+import type { FileReviewRequest, FileReviewResult } from '../change-types.ts'
+import type { NS } from './locales.ts'
+import { ReviewStats } from './ReviewContent.tsx'
+import { ReviewResultToast, unavailableChanges, useReviewActions } from './review-actions.tsx'
+import { reviewHost } from './review-host.ts'
+import { StandaloneReviewDrawer } from './StandaloneReviewDrawer.tsx'
 import { basename, type ProducedFileReview } from './turn-deliverables.ts'
-import type { NS } from './chat-locales.ts'
 import { summarizeDiffs, type UnifiedDiffStats } from './UnifiedDiff.tsx'
 import css from './ProducedFiles.module.css'
 
-/** Keep the turn-tail card compact; the sidebar tab always lists every file. */
+/** Keep the turn-tail card compact; either review container still receives every file. */
 const SHOWN_LIMIT = 6
-const SUCCESS_NOTICE_DURATION = 2000
-const ERROR_NOTICE_DURATION = 5000
 
-interface NoticeFile {
-  readonly path: string
-}
-
-interface ToggleNotice {
-  readonly seq: number
-  readonly tone: 'success' | 'error'
-  readonly title: string
-  readonly description?: string | undefined
-  readonly files: readonly NoticeFile[]
-}
+type ReviewScope = { readonly kind: 'all' } | { readonly kind: 'file'; readonly path: string }
 
 /** Matched file reviews plus the opener and locale supplied by the turn-tail slot. */
-export type ProducedFilesProps = Pick<TurnTailOwnerProps, 'openFile' | 'turn'> & {
+export type ProducedFilesProps = Pick<TurnTailOwnerProps, 'openFile'> & {
   matched: readonly ProducedFileReview[]
-  /** Session workspace root (reserved; the chat card shows tool paths verbatim). */
+  /** Session workspace root, used only to shorten paths shown in the review UI. */
   projectRoot?: string | undefined
   inspectChanges?: (request: FileReviewRequest) => Promise<FileReviewResult>
   applyChanges?: (request: FileReviewRequest) => Promise<FileReviewResult>
-  /**
-   * Open the plugin's sidebar tab with the given paths pre-expanded
-   * (the 审查 button passes every produced path; a file chip passes its own).
-   * The owning turn number rides along so the tab expands only this turn's
-   * rows — a path that recurs in other turns stays collapsed there.
-   */
-  openInSidebarTab?: (paths: readonly string[], turn?: number) => void
+  /** Runtime-injected session identity; absent only in isolated render tests. */
+  sessionId?: string | undefined
+  /** Turn-tail identity used to keep repeated file/line coordinates distinct. */
+  turn?: TurnTailOwnerProps['turn'] | undefined
+  seq?: number | undefined
+  /** Reconcile the aggregate review-comment reference in the session composer. */
+  syncComments?: (() => void) | undefined
+  /** Live display-only preference for visually wrapping logical diff lines. */
+  wordWrap?: ObservableSnapshot<boolean> | undefined
 } & PropsLocale<typeof NS>
-
-const unavailableChanges = async (request: FileReviewRequest): Promise<FileReviewResult> => ({
-  files: request.files.map(file => ({
-    path: file.path,
-    state: 'unsupported',
-    changed: false,
-    reason: 'Host file toggle is unavailable',
-  })),
-})
 
 function FileIcon() {
   return (
@@ -79,279 +55,130 @@ function ReviewIcon() {
   )
 }
 
-function CloseIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className={css.closeIcon}>
-      <path d="m5.5 5.5 9 9m0-9-9 9" />
-    </svg>
-  )
-}
-
-function SuccessIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className={css.noticeIconSvg}>
-      <path d="m5 10 3.25 3.25L15 6.5" />
-    </svg>
-  )
-}
-
-function ErrorIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className={css.noticeIconSvg}>
-      <circle cx="10" cy="10" r="6.5" />
-      <path d="m7.5 7.5 5 5m0-5-5 5" />
-    </svg>
-  )
-}
-
-function ResultToast({
-  notice, closeLabel, dismissLabel, fileListLabel, fileOpenLabel, openFile, onDone,
-}: {
-  readonly notice: ToggleNotice
-  readonly closeLabel: string
-  readonly dismissLabel: string
-  readonly fileListLabel: string
-  readonly fileOpenLabel: (path: string) => string
-  readonly openFile: (path: string) => void
-  readonly onDone: () => void
-}) {
-  useEffect(() => {
-    const duration = notice.tone === 'success'
-      ? SUCCESS_NOTICE_DURATION
-      : ERROR_NOTICE_DURATION
-    const timer = window.setTimeout(onDone, duration)
-    return () => { window.clearTimeout(timer) }
-  }, [notice.tone, onDone])
-  return (
-    <div
-      className={`${css.toast} ${notice.tone === 'success' ? css.toastSuccess : css.toastError}`}
-      role="alert"
-    >
-      <div className={css.toastHeader}>
-        <span className={css.noticeIcon}>
-          {notice.tone === 'success' ? <SuccessIcon /> : <ErrorIcon />}
-        </span>
-        <div className={css.toastCopy}>
-          <strong className={css.toastTitle}>{notice.title}</strong>
-          {notice.description !== undefined && (
-            <span className={css.toastDescription}>{notice.description}</span>
-          )}
-        </div>
-        <button
-          type="button"
-          className={css.toastCloseButton}
-          aria-label={closeLabel}
-          onClick={onDone}
-        >
-          <CloseIcon />
-        </button>
-      </div>
-      {notice.files.length > 0 && (
-        <div className={css.noticeFiles}>
-          <span className={css.noticeFileListLabel}>{fileListLabel}</span>
-          <ul className={css.noticeFileList}>
-            {notice.files.map(file => (
-              <li key={file.path}>
-                <button
-                  type="button"
-                  className={css.noticeFileButton}
-                  aria-label={fileOpenLabel(file.path)}
-                  onClick={() => { openFile(file.path) }}
-                >
-                  <span className={css.noticeFilePath}>{basename(file.path)}</span>
-                  <span className={css.noticeFileArrow} aria-hidden="true">↗</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {notice.tone === 'error' && (
-        <button type="button" className={css.noticeDismissButton} onClick={onDone}>
-          {dismissLabel}
-        </button>
-      )}
-    </div>
-  )
-}
-
 function addStats(left: UnifiedDiffStats, right: UnifiedDiffStats): UnifiedDiffStats {
   return { added: left.added + right.added, removed: left.removed + right.removed }
 }
 
-function Stats({ stats, label }: { readonly stats: UnifiedDiffStats; readonly label: string }) {
-  return (
-    <span className={css.stats} aria-label={label}>
-      <span className={css.added}>+{stats.added}</span>
-      <span className={css.removed}>-{stats.removed}</span>
-    </span>
-  )
-}
-
-/** Render one turn's produced files as a summary card opening the sidebar tab. */
+/** Render one turn's produced files and delegate review opening through ReviewHost. */
 export function ProducedFiles({
-  matched: reviews, openFile, turn: turnLocation,
-  inspectChanges = unavailableChanges, applyChanges = unavailableChanges,
-  openInSidebarTab, t,
+  matched: reviews,
+  openFile,
+  projectRoot,
+  inspectChanges = unavailableChanges,
+  applyChanges = unavailableChanges,
+  sessionId,
+  turn,
+  seq = 0,
+  syncComments,
+  wordWrap,
+  t,
 }: ProducedFilesProps) {
-  // The owning turn number (TurnLocation.turn) rides every deep link so the
-  // sidebar tab expands this turn's rows only.
-  const turnNumber = turnLocation.turn
-  const [toggleAction, setToggleAction] = useState<FileReviewAction>('undo')
-  const [statusPending, setStatusPending] = useState(true)
-  const [togglePending, setTogglePending] = useState(false)
-  const [toast, setToast] = useState<ToggleNotice | null>(null)
-  const toastSeqRef = useRef(0)
+  const cardRef = useRef<HTMLElement>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const [drawerScope, setDrawerScope] = useState<ReviewScope | null>(null)
+  const [isPreviewExpanded, setIsPreviewExpanded] = useState(false)
+  const turnNumber = turn?.turn ?? 0
 
-  const reviewsWithStats = useMemo(() => reviews.map(review => ({
-    review,
-    stats: summarizeDiffs(review.diffs),
-  })), [reviews])
+  const reviewsWithStats = useMemo(
+    () =>
+      reviews.map((review) => ({
+        review,
+        stats: summarizeDiffs(review.diffs),
+      })),
+    [reviews],
+  )
   const totalStats = useMemo(
-    () => reviewsWithStats.reduce<UnifiedDiffStats>(
-      (total, item) => addStats(total, item.stats),
-      { added: 0, removed: 0 },
-    ),
+    () =>
+      reviewsWithStats.reduce<UnifiedDiffStats>((total, item) => addStats(total, item.stats), {
+        added: 0,
+        removed: 0,
+      }),
     [reviewsWithStats],
   )
-  // Deleted paths carry no hunks and cannot be inspected or toggled; they are
-  // display vocabulary on the chips only.
-  const toggleFiles = useMemo(() => reviews
-    .filter(review => review.deleted !== true)
-    .map(review => ({ path: review.path, diffs: review.diffs })), [reviews])
-  const reversiblePaths = useMemo(() => new Set(reviews.filter(review =>
-    review.diffs.length > 0 && review.diffs.every(diff =>
-      diff.path === review.path
-      && diff.oldText !== null
-      && diff.oldText !== diff.newText
-      && (diff.oldText !== '' || diff.oldStart !== undefined)
-      && (diff.newText !== '' || diff.newStart !== undefined))).map(review => review.path)), [reviews])
-  const hasReversibleFiles = reversiblePaths.size > 0
-  const shown = reviewsWithStats.slice(0, SHOWN_LIMIT)
+  const shown = isPreviewExpanded ? reviewsWithStats : reviewsWithStats.slice(0, SHOWN_LIMIT)
   const hidden = reviewsWithStats.length - shown.length
-  const allPaths = useMemo(() => reviews.map(review => review.path), [reviews])
-  // A turn that only deleted files reads as a deletion summary, not an edit.
-  const allDeleted = reviews.length > 0 && reviews.every(review => review.deleted === true)
-  const statsMatter = totalStats.added > 0 || totalStats.removed > 0
+  const drawerReviews = useMemo(
+    () =>
+      drawerScope?.kind === 'file'
+        ? reviews.filter((review) => review.path === drawerScope.path)
+        : reviews,
+    [drawerScope, reviews],
+  )
+  const actions = useReviewActions({ reviews, inspectChanges, applyChanges, t })
 
-  const showToast = useCallback((notice: Omit<ToggleNotice, 'seq'>) => {
-    toastSeqRef.current += 1
-    setToast({ seq: toastSeqRef.current, ...notice })
+  const closeDrawer = useCallback(() => {
+    setDrawerScope(null)
   }, [])
 
-  const phaseForResult = useCallback((
-    result: FileReviewResult,
-    currentAction: FileReviewAction,
-  ): FileReviewAction => {
-    if (reversiblePaths.size === 0) return 'undo'
-    const byPath = new Map(result.files.map(file => [file.path, file]))
-    const target = currentAction === 'undo' ? 'undone' : 'applied'
-    return [...reversiblePaths].every(path => byPath.get(path)?.state === target)
-      ? (currentAction === 'undo' ? 'redo' : 'undo')
-      : currentAction
-  }, [reversiblePaths])
-
-  useEffect(() => {
-    let active = true
-    setStatusPending(true)
-    void inspectChanges({ action: 'undo', files: toggleFiles }).then((result) => {
-      if (!active) return
-      const allUndone = reversiblePaths.size > 0
-        && [...reversiblePaths].every(path =>
-          result.files.find(file => file.path === path)?.state === 'undone')
-      setToggleAction(allUndone ? 'redo' : 'undo')
-    }).catch(() => {
-      // The action remains usable after a transient inspection failure; execution
-      // performs the same Host-side checks again.
-    }).finally(() => {
-      if (active) setStatusPending(false)
-    })
-    return () => { active = false }
-  }, [inspectChanges, reversiblePaths, toggleFiles])
-
-  const runToggle = useCallback(() => {
-    if (statusPending || togglePending || !hasReversibleFiles) return
-    const action = toggleAction
-    setTogglePending(true)
-    void applyChanges({ action, files: toggleFiles }).then((result) => {
-      setToggleAction(phaseForResult(result, action))
-      const targetState = action === 'undo' ? 'undone' : 'applied'
-      const byPath = new Map(result.files.map(file => [file.path, file]))
-      const failures: NoticeFile[] = toggleFiles.flatMap((file) => {
-        const outcome = byPath.get(file.path)
-        if (outcome?.state === targetState) return []
-        return [{ path: file.path }]
-      })
-      if (failures.length === 0) {
-        showToast({
-          tone: 'success',
-          title: t(action === 'undo' ? 'produced.undoSuccess' : 'produced.redoSuccess'),
-          files: [],
+  const openReview = useCallback(
+    (scope: ReviewScope, trigger: HTMLButtonElement) => {
+      const focusPaths = scope.kind === 'file' ? [scope.path] : reviews.map((review) => review.path)
+      const handled =
+        sessionId !== undefined &&
+        reviewHost.open({
+          sessionId,
+          cwd: projectRoot,
+          target: { turn: turnNumber, closingSeq: seq, focusPaths },
         })
+      if (handled) {
+        setDrawerScope(null)
         return
       }
-      showToast({
-        tone: 'error',
-        title: t(action === 'undo' ? 'produced.undoPartial' : 'produced.redoPartial'),
-        description: t(action === 'undo'
-          ? 'produced.undoPartialDescription'
-          : 'produced.redoPartialDescription'),
-        files: failures,
-      })
-    }).catch((error: unknown) => {
-      showToast({
-        tone: 'error',
-        title: t(action === 'undo' ? 'produced.undoError' : 'produced.redoError'),
-        description: error instanceof Error ? error.message : String(error),
-        files: [],
-      })
-    }).finally(() => { setTogglePending(false) })
-  }, [
-    applyChanges, hasReversibleFiles, phaseForResult, showToast, t,
-    statusPending, toggleAction, toggleFiles, togglePending,
-  ])
+      triggerRef.current = trigger
+      setDrawerScope(scope)
+    },
+    [projectRoot, reviews, seq, sessionId, turnNumber],
+  )
+
+  useEffect(() => {
+    if (drawerScope?.kind !== 'file') return
+    if (!reviews.some((review) => review.path === drawerScope.path)) closeDrawer()
+  }, [closeDrawer, drawerScope, reviews])
 
   return (
     <>
-      <section className={css.card} aria-label={t('produced.summary')}>
+      <section ref={cardRef} className={css.card} aria-label={t('produced.summary')}>
         <header className={css.cardHeader}>
-          <span className={css.fileIconWrap}><FileIcon /></span>
+          <span className={css.fileIconWrap}>
+            <FileIcon />
+          </span>
           <div className={css.cardTitleBlock}>
             <span className={css.cardTitle}>
-              {allDeleted
-                ? (reviews.length === 1
-                  ? t('produced.deletedOne')
-                  : t('produced.deletedAll', { count: String(reviews.length) }))
-                : reviews.length === 1
-                  ? t('produced.editedOne')
-                  : t('produced.edited', { count: String(reviews.length) })}
+              {reviews.length === 1
+                ? t('produced.editedOne')
+                : t('produced.edited', { count: String(reviews.length) })}
             </span>
-            {statsMatter && (
-              <Stats
-                stats={totalStats}
-                label={t('review.stats', {
-                  added: String(totalStats.added), removed: String(totalStats.removed),
-                })}
-              />
-            )}
+            <ReviewStats
+              stats={totalStats}
+              label={t('review.stats', {
+                added: String(totalStats.added),
+                removed: String(totalStats.removed),
+              })}
+            />
           </div>
           <button
             type="button"
             className={css.toggleButton}
-            disabled={statusPending || togglePending || !hasReversibleFiles}
-            title={!hasReversibleFiles ? t('produced.toggleUnavailable') : undefined}
-            aria-label={toggleAction === 'undo' ? t('produced.undo') : t('produced.redo')}
-            onClick={runToggle}
+            disabled={actions.statusPending || actions.togglePending || !actions.hasReversibleFiles}
+            title={!actions.hasReversibleFiles ? t('produced.toggleUnavailable') : undefined}
+            aria-label={actions.action === 'undo' ? t('produced.undo') : t('produced.redo')}
+            onClick={actions.run}
           >
-            {togglePending
-              ? (toggleAction === 'undo' ? t('produced.undoing') : t('produced.redoing'))
-              : (toggleAction === 'undo' ? t('produced.undo') : t('produced.redo'))}
+            {actions.togglePending
+              ? actions.action === 'undo'
+                ? t('produced.undoing')
+                : t('produced.redoing')
+              : actions.action === 'undo'
+                ? t('produced.undo')
+                : t('produced.redo')}
           </button>
           <button
             type="button"
             className={css.reviewButton}
             aria-label={t('produced.reviewAll')}
-            onClick={() => { openInSidebarTab?.(allPaths, turnNumber) }}
+            onClick={(event) => {
+              openReview({ kind: 'all' }, event.currentTarget)
+            }}
           >
             <ReviewIcon />
             {t('review.title')}
@@ -365,41 +192,60 @@ export function ProducedFiles({
               className={css.fileRow}
               title={review.path}
               aria-label={t('produced.review', { name: review.path })}
-              onClick={() => { openInSidebarTab?.([review.path], turnNumber) }}
+              onClick={(event) => {
+                openReview({ kind: 'file', path: review.path }, event.currentTarget)
+              }}
             >
               <span className={css.fileName}>{basename(review.path)}</span>
-              {review.deleted === true
-                ? <span className={css.deletedBadge}>{t('produced.deleted')}</span>
-                : (
-                  <Stats
-                    stats={stats}
-                    label={t('review.stats', {
-                      added: String(stats.added), removed: String(stats.removed),
-                    })}
-                  />
-                )}
+              <ReviewStats
+                stats={stats}
+                label={t('review.stats', {
+                  added: String(stats.added),
+                  removed: String(stats.removed),
+                })}
+              />
             </button>
           ))}
           {hidden > 0 && (
-            <div className={css.moreFiles}>
-              {hidden === 1
-                ? t('produced.moreOne')
-                : t('produced.more', { count: String(hidden) })}
-            </div>
+            <button
+              type="button"
+              className={css.moreFiles}
+              aria-expanded={isPreviewExpanded}
+              onClick={() => {
+                setIsPreviewExpanded(true)
+              }}
+            >
+              {hidden === 1 ? t('produced.moreOne') : t('produced.more', { count: String(hidden) })}
+            </button>
           )}
         </div>
       </section>
 
-      {toast !== null && (
-        <ResultToast
-          key={toast.seq}
-          notice={toast}
-          closeLabel={t('produced.noticeClose')}
-          dismissLabel={t('produced.noticeDismiss')}
-          fileListLabel={t('produced.skippedFiles', { count: String(toast.files.length) })}
-          fileOpenLabel={path => t('produced.open', { name: basename(path) })}
+      {drawerScope !== null && (
+        <StandaloneReviewDrawer
+          anchorRef={cardRef}
+          trigger={triggerRef.current}
+          onClose={closeDrawer}
+          reviews={drawerReviews}
+          projectRoot={projectRoot}
+          sessionId={sessionId}
+          turn={turnNumber}
+          closingSeq={seq}
           openFile={openFile}
-          onDone={() => { setToast(current => current?.seq === toast.seq ? null : current) }}
+          inspectChanges={inspectChanges}
+          applyChanges={applyChanges}
+          syncComments={syncComments}
+          wordWrap={wordWrap}
+          t={t}
+        />
+      )}
+      {actions.notice !== null && (
+        <ReviewResultToast
+          key={actions.notice.seq}
+          notice={actions.notice}
+          t={t}
+          openFile={openFile}
+          onDone={actions.dismissNotice}
         />
       )}
     </>

@@ -1,25 +1,24 @@
 /**
  * Turn-scoped produced-file definition and readers. Client-only and
- * model-free: the vocabulary is the mutation tools' own follow-along
- * `locations`, never the closing prose.
+ * model-free: Native calls use Host presentation views while PTC settlements
+ * use this plugin's validated durable marker, never the closing prose.
  */
-import type { ConversationNodeDefinition, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client';
+import type { ConversationNodeDefinition } from './runtime-compat.ts';
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives';
-import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client';
+import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client';
 import type { ProducedFileDiff, ProducedFileReview } from '../change-types.ts';
 export type { ProducedFileDiff, ProducedFileReview } from '../change-types.ts';
 interface ProducedPath {
     readonly seq: number;
     readonly path: string;
     readonly diffs: readonly ProducedFileDiff[];
-    /** Terminal commands deleted this path in the same Turn (display-only). */
-    readonly deleted?: true;
+    readonly complete?: false | undefined;
 }
 /** Immutable produced-file facts published against one Turn. */
 export interface DeliverablesTurnData {
     readonly produced: readonly ProducedPath[];
 }
-declare module '@deepseek-ai/dsh-client-runtime/client' {
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
     interface ConversationTurnDataMap {
         /** Successful mutation paths accumulated in this Turn. */
         deliverables: DeliverablesTurnData;
@@ -27,7 +26,11 @@ declare module '@deepseek-ai/dsh-client-runtime/client' {
 }
 interface DeliverablesState extends DeliverablesTurnData {
     readonly turn: number;
-    readonly calls: ReadonlyMap<string, ToolResultNode['callView']>;
+    readonly calls: ReadonlyMap<string, {
+        readonly step: number;
+        readonly view: unknown;
+    }>;
+    readonly subCalls: ReadonlySet<string>;
 }
 /**
  * Files and review hunks available at one closing Assistant boundary.
@@ -39,15 +42,13 @@ export declare function reviewsForClosing(data: Readonly<DeliverablesTurnData> |
 /**
  * Files produced by one Turn data value.
  *
- * The source is the mutation tools' own follow-along `locations`, not the
- * closing prose: a produced file must be listed whether or not the model
- * remembered to name it. A mutation is recognized by render intent, not by
- * tool name — a diff card, or a generic card whose `kind` is `edit` (the shape
- * `str_replace_editor`'s insert presents) — so a new mutation tool joins by
- * declaring what it does. Reads contribute nothing (looking at a file does not
- * produce it), and neither do deletes (there is nothing left to open) or
- * failed calls. Paths keep first-seen order and appear once, so a file written
- * and then edited in the same turn is one entry.
+ * The source is the mutation tools' presentation contract, not the closing
+ * prose: Native calls arrive as Host views and PTC calls as the Adapter's
+ * marker. A mutation is recognized by render intent, never by tool name, so a
+ * new mutation tool joins by declaring what it does. Reads and failed calls
+ * contribute nothing; successful deletes are included when their mutation
+ * intent names a path. Paths keep first-seen order and appear once, so a file
+ * written and then edited in the same turn is one entry.
  *
  * The Conversation Location index owns turn membership before this function
  * runs, so paths cannot spill across turns and this derivation does not infer

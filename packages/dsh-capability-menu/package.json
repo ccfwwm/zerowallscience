@@ -1,0 +1,126 @@
+{
+  "name": "@daweifu/capability-menu",
+  "version": "0.1.2",
+  "description": "Unified capability management for the DeepSeek Harness: catalog (ctx.capability) + meta_search/meta_invoke + Resident/On-demand/Disabled projection policy + 能力管理 settings tab, in one installable bundle (server + browser).",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PKUfudawei/dsh-capability-menu.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsdown",
+    "bundle": "tsdown",
+    "bridge": "node scripts/bridge-runtime.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "vitest run",
+    "prepare": "npm run build"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./registry": {
+      "types": "./lib/types/registry.d.ts",
+      "default": "./lib/registry.js"
+    },
+    "./search": {
+      "types": "./lib/types/search.d.ts",
+      "default": "./lib/search.js"
+    },
+    "./invoke": {
+      "types": "./lib/types/invoke.d.ts",
+      "default": "./lib/invoke.js"
+    },
+    "./policy": {
+      "types": "./lib/types/policy.d.ts",
+      "default": "./lib/policy.js"
+    },
+    "./client": {
+      "types": "./lib/client.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-api-remotes"
+      ],
+      "external": [
+        "react",
+        "react/jsx-runtime"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-agent": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-api-remotes": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-connection": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-locale": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-llm": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-scope": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-session": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-skill": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-system-prompt": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-tools": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.2-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "react": "^18.2.0"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:*",
+    "@deepseek-ai/dsh-agent": "workspace:*",
+    "@deepseek-ai/dsh-api-remotes": "workspace:*",
+    "@deepseek-ai/dsh-client-connection": "workspace:*",
+    "@deepseek-ai/dsh-client-locale": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-primitives": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-renderer": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-settings": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-scope": "workspace:*",
+    "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-skill": "workspace:*",
+    "@deepseek-ai/dsh-skill-filesystem": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:*",
+    "@deepseek-ai/dsh-util-values": "^0.1.2-rc.1",
+    "@deepseek-ai/schemastery": "workspace:^",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.2.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8",
+    "zod": "^4.4.3"
+  }
+}

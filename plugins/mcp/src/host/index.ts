@@ -51,7 +51,7 @@ type RuntimeMcpConfig = {
   toolCallTimeoutMs: number
   failOnStartupError: boolean
   reconnect: McpReconnectPolicy
-  enabledTools: string[]
+  enabledTools?: string[]
 } & ({
   transport: 'stdio'
   command: string
@@ -101,7 +101,6 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private environmentRefreshInFlight = false
   private readonly secrets = new SecretBrokerClient()
   private readonly mcpToolIndex = new Map<string, { server: string; name: string; description: string }>()
-  readonly enabledToolSelections = new Map<string, Set<string>>()
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallMcp')
@@ -171,13 +170,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
       description: 'Search connected MCP tools by keyword and return compact matches.',
       parameters: { query: { type: 'string', required: true }, server: { type: 'string' }, limit: { type: 'number' } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args: unknown, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }] },
-      async execute(args: { query: string; server?: string; limit?: number }) {
-        const terms = args.query.trim().toLowerCase().split(/\s+/u).filter(Boolean)
-        const limit = Math.max(1, Math.min(20, Math.floor(args.limit ?? 8)))
-        const rows = [...service.mcpToolIndex.values()].map(item => ({ item, score: terms.reduce((n, term) => n + (`${item.server} ${item.name} ${item.description}`.toLowerCase().includes(term) ? 1 : 0), 0) }))
-          .filter(row => (args.server === undefined || row.item.server === args.server) && (terms.length === 0 || row.score > 0))
-          .sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name)).slice(0, limit)
-        return { query: args.query, tools: rows.map(row => row.item), total: rows.length }
+      async execute(args: { query: string; server?: string; limit?: number }, exec: any) {
+        return forwardCapability(ctx, exec, 'meta_search', { query: args.query, kind: 'tool', server: args.server, max_results: args.limit ?? 8 })
       },
     }) as any)
     ctx.tools.register(defineTool({
@@ -185,17 +179,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
       description: 'Select MCP tools for the current task and return compact metadata.',
       parameters: { tools: { type: 'array', required: true, items: { type: 'string' } } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args: unknown, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }] },
-      async execute(args: { tools: string[] }) {
-        const names = [...new Set(args.tools.map(String).map(value => value.trim()).filter(Boolean))].slice(0, 24)
-        const valid = names.filter(name => service.mcpToolIndex.has(name))
-        const byServer = new Map<string, string[]>()
-        for (const name of valid) { const item = service.mcpToolIndex.get(name)!; const list = byServer.get(item.server) ?? []; list.push(name); byServer.set(item.server, list) }
-        for (const [serverName, selected] of byServer) {
-          service.enabledToolSelections.set(serverName, new Set(selected))
-          const record = service.projects().listMcpServers().find(candidate => candidate.serverName === serverName)
-          if (record !== undefined) await service.reconcile(record)
-        }
-        return { enabled: valid, missing: names.filter(name => !service.mcpToolIndex.has(name)), count: valid.length, active: valid }
+      async execute(args: { tools: string[] }, exec: any) {
+        return forwardCapability(ctx, exec, 'meta_enable', { tools: args.tools })
       },
     }) as any)
     this.recordsReady = this.seedBundledServers().then(() => {
@@ -255,6 +240,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   @Remote('create')
   create(input: CreateMcpServerRequest): Promise<McpServerDto> {
     return this.exclusive(async () => {
+      if (isManagedMcpName(input.serverName)) throw new Error('This connection is managed in Environment settings.')
       const record = this.projects().createMcpServer(input as CreateMcpServerInput)
       await this.reconcile(record)
       return this.dto(record)
@@ -264,6 +250,13 @@ export class ZeroWallMcpService extends TypertRemoteService {
   @Remote('update')
   update(input: UpdateMcpServerRequest): Promise<McpServerDto> {
     return this.exclusive(async () => {
+      const existing = this.projects().listMcpServers().find(record => record.id === input.id)
+      if (existing !== undefined && isManagedMcpName(existing.serverName)) {
+        const allowed = new Set(['enabled', 'name'])
+        if (Object.keys(input.changes).some(key => !allowed.has(key))) throw new Error('Managed connection fields are read-only. Use Environment settings.')
+      } else if (input.changes.serverName !== undefined && isManagedMcpName(input.changes.serverName)) {
+        throw new Error('Managed connection names are reserved.')
+      }
       const record = this.projects().updateMcpServer(input.id, input.changes as UpdateMcpServerInput)
       await this.reconcile(record)
       return this.dto(record)
@@ -578,11 +571,16 @@ export class ZeroWallMcpService extends TypertRemoteService {
         const token = await this.secrets.get(HUAGONGSHE_CREDENTIAL)
         if (token?.trim()) huagongsheAuthorization = `Bearer ${token.trim()}`
       } catch { /* An unavailable vault is reported by reference resolution. */ }
+      if (!huagongsheAuthorization && !process.env[HUAGONGSHE_AUTH_ENV]?.trim()) {
+        await this.disposeOne(record.id)
+        if (current()) this.statuses.set(record.id, { state: 'blocked', error: '请在环境配置中设置化工社 Token。', missingEnvironmentVariables: [] })
+        return
+      }
     }
     const environment = record.serverName === RDATALINUX_SERVER_NAME && rdatalinuxAuthorization?.trim()
       ? { ...process.env, [RDATALINUX_R_MCP_AUTHORIZATION_ENV]: rdatalinuxAuthorization }
       : process.env
-    const resolved = resolveMcpConfig(record, huagongsheAuthorization ? { ...environment, [HUAGONGSHE_AUTH_ENV]: huagongsheAuthorization } : environment, process.cwd(), serviceEnabledTools(this, record.serverName) ?? [])
+    const resolved = resolveMcpConfig(record, huagongsheAuthorization ? { ...environment, [HUAGONGSHE_AUTH_ENV]: huagongsheAuthorization } : environment, process.cwd())
     if (resolved.config === undefined) {
       await this.disposeOne(record.id)
       if (current()) this.statuses.set(record.id, {
@@ -592,14 +590,17 @@ export class ZeroWallMcpService extends TypertRemoteService {
       })
       return
     }
-    // A generation swap is prepared beside the existing Fiber. Keep the
-    // healthy connection usable and visible until its replacement finishes.
-    if (current() && !this.fibers.has(record.id)) this.statuses.set(record.id, { state: 'starting', error: '', missingEnvironmentVariables: [] })
+    if (!current()) return
+    // DSH reserves a server namespace until the prior client is disposed.
+    await this.disposeOne(record.id)
+    if (!current()) return
+    this.statuses.set(record.id, { state: 'starting', error: '', missingEnvironmentVariables: [] })
+    let replacement: Fiber | undefined
     try {
       const config = resolved.config as McpClient.Config
       if (sciMasterApiKey !== undefined && config.transport === 'stdio') config.env.ZEROWALL_SCIMASTER_API_KEY = sciMasterApiKey
-      const previous = this.fibers.get(record.id)
       const fiber = this.ctx.plugin(McpClient, config)
+      replacement = fiber
       await fiber
       if (!current()) {
         await fiber.dispose()
@@ -608,7 +609,6 @@ export class ZeroWallMcpService extends TypertRemoteService {
       this.fibers.set(record.id, fiber)
       { const names = this.toolNames(record.serverName); this.registeredTools.set(record.id, names); this.indexMcpTools(record.serverName, names) }
       this.readyVersions.set(record.id, version)
-      if (previous !== undefined && previous !== fiber) await previous.dispose()
       // The fiber resolves after the initial transport handshake and
       // tools/list synchronization.  The lifecycle event normally arrives on
       // the same turn, but it can cross a nested Fiber boundary before this
@@ -620,35 +620,13 @@ export class ZeroWallMcpService extends TypertRemoteService {
         this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
       }
     } catch (error) {
+      await replacement?.dispose()
       if (!current()) return
-      if (this.fibers.has(record.id)) {
-        this.ctx.logger.warn(`zerowall-mcp: retained healthy ${record.serverName} connection after refresh failure: ${redactError(error)}`)
-        return
-      }
       this.statuses.set(record.id, {
         state: 'error',
         error: redactError(error),
         missingEnvironmentVariables: [],
       })
-    }
-  }
-
-  private async startResolved(record: McpServerRecord, resolvedConfig: RuntimeMcpConfig, version: number, current: () => boolean, sciMasterApiKey?: string): Promise<void> {
-    if (current() && !this.fibers.has(record.id)) this.statuses.set(record.id, { state: 'starting', error: '', missingEnvironmentVariables: [] })
-    try {
-      const config = resolvedConfig as McpClient.Config
-      if (sciMasterApiKey !== undefined && config.transport === 'stdio') config.env.ZEROWALL_SCIMASTER_API_KEY = sciMasterApiKey
-      const previous = this.fibers.get(record.id)
-      const fiber = this.ctx.plugin(McpClient, config)
-      await fiber
-      if (!current()) { await fiber.dispose(); return }
-      { const names = this.toolNames(record.serverName); this.fibers.set(record.id, fiber); this.registeredTools.set(record.id, names); this.indexMcpTools(record.serverName, names); this.readyVersions.set(record.id, version) }
-      if (previous !== undefined && previous !== fiber) await previous.dispose()
-      this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
-    } catch (error) {
-      if (!current()) return
-      if (this.fibers.has(record.id)) { this.ctx.logger.warn(`zerowall-mcp: retained healthy ${record.serverName} connection after refresh failure: ${redactError(error)}`); return }
-      this.statuses.set(record.id, { state: 'error', error: redactError(error), missingEnvironmentVariables: [] })
     }
   }
 
@@ -716,7 +694,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
 function dshHome(): string { return resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh')) }
 function defaultMcpMarkerPath(): string { return join(dshHome(), 'zerowall-mcp-defaults-v1.json') }
-export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.ProcessEnv, hostCwd = process.cwd(), enabledTools: string[]): ResolvedMcpConfig {
+export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.ProcessEnv, hostCwd = process.cwd(), enabledTools?: string[]): ResolvedMcpConfig {
   const missing = new Set<string>()
   const resolveRefs = (refs: Record<string, string>): Record<string, string> => Object.fromEntries(
     Object.entries(refs).map(([target, source]) => {
@@ -732,7 +710,7 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
     toolCallTimeoutMs: record.toolCallTimeoutMs,
     failOnStartupError: record.failOnStartupError,
     reconnect: record.reconnect,
-      enabledTools,
+    ...(enabledTools === undefined ? {} : { enabledTools }),
   }
   const launch = record.transport === 'stdio' ? resolveStdioLaunch(record, hostCwd) : undefined
   return {
@@ -844,7 +822,16 @@ export default { apply }
 
 
 
-function serviceEnabledTools(service: ZeroWallMcpService, serverName: string): string[] | undefined { return service.enabledToolSelections.get(serverName) ? [...service.enabledToolSelections.get(serverName)!].map(name => name.replace(`mcp__${serverName}__`, '')) : undefined }
+async function forwardCapability(ctx: Context, exec: any, name: string, args: unknown): Promise<Record<string, JsonValue>> {
+  const result = await ctx.tools.execute({ callId: ToolCallId(`${exec.callId}:${name}`), name, arguments: args, agent: exec.agent, parent: exec.token, rootCallId: exec.rootCallId ?? exec.callId, signal: exec.signal })
+  if (result.isError) throw new Error(result.content.filter(block => block.type === 'text').map(block => block.text).join('\n'))
+  if (result.value === null || typeof result.value !== 'object' || Array.isArray(result.value)) throw new Error(`Invalid capability response from ${name}`)
+  return result.value as Record<string, JsonValue>
+}
+
+function isManagedMcpName(name: string): boolean {
+  return ['rmcp', 'huagongshe', 'zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher'].includes(name)
+}
 
 
 

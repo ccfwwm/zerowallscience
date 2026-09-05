@@ -1,127 +1,142 @@
-/**
- * Minimal zh/en copy for the file-review sidebar tab. Follows the DSH i18n
- * system: the client apply attaches the locale service (`ctx.locale`,
- * provided by `@deepseek-ai/dsh-client-locale`) through {@link attachLocale},
- * and `t()` resolves the active locale from it. Without an attached service
- * (standalone/test compositions) the browser language is used. Mirrors the
- * dsh-better-sidebar locales pattern.
- */
+/** `file-review` namespace dictionaries. */
 
-/** The dictionary namespace this plugin owns in the DSH locale registry. */
-export const LOCALE_NS = 'fileReviewTab'
+/** Dictionary namespace owned by this plugin. */
+export const NS = 'file-review'
 
-/** The zh dictionary (the key-set source of truth). */
-export const zh = {
-  tabTitle: '文件审查',
-  empty: '本会话暂无文件改动',
-  sessionUnavailable: '会话不可用',
-  remoteUnavailable: '文件审查服务不可用',
-  turn: '第 {n} 轮',
-  turnLive: '进行中',
-  files: '{count} 个文件',
-  filesOne: '1 个文件',
-  undo: '撤销',
-  redo: '重新应用',
-  undoing: '正在撤销…',
-  redoing: '正在重新应用…',
-  undoTurn: '撤销本轮',
-  redoTurn: '重新应用本轮',
-  toggleUnavailable: '没有可安全还原的文件',
-  stateUndone: '已撤销',
-  stateConflict: '内容冲突',
-  stateUnsupported: '不可还原',
-  stateError: '错误',
-  deleted: '已删除',
-  deletedHint: '该文件在本轮中被终端命令删除，内容已不存在，无法查看差异或撤销。',
-  archived: '已归档 {n} 轮',
-  archivedExpand: '展开已归档轮次',
-  archivedCollapse: '收起已归档轮次',
-  loadMore: '加载更多（还有 {n} 轮）',
-  undoSuccess: '已成功撤销更改',
-  redoSuccess: '已成功重新应用更改',
-  undoPartial: '部分文件未能撤销',
-  redoPartial: '部分文件未能重新应用',
-  toggleError: '操作失败',
-  openInEditor: '在编辑器中打开',
-  open: '打开 {name}',
-  copy: '复制差异',
-  copied: '已复制',
-  showUnchanged: '显示 {count} 行未更改内容',
-  hideUnchanged: '隐藏 {count} 行未更改内容',
-  stats: '新增 {added} 行，删除 {removed} 行',
-  unavailable: '无法为此更改还原可审查的差异。',
-  refresh: '刷新状态',
-} as const
+/** English dictionary (the key-set source of truth). */
+export const en = {
+  'settings.title': 'File review',
+  'settings.description': 'Configuration options for the File Review plugin.',
+  'settings.expand': 'Expand',
+  'settings.collapse': 'Collapse',
+  'settings.readOnly': 'The settings file is read-only.',
+  'settings.wordWrap.title': 'Automatically wrap long lines',
+  'settings.wordWrap.description':
+    'Controls whether long single-line text wraps automatically during review. Defaults to false.',
+  'produced.summary': 'Edited files',
+  'produced.editedOne': 'Edited 1 file',
+  'produced.edited': 'Edited {count} files',
+  'produced.moreOne': '1 more file',
+  'produced.more': '{count} more files',
+  'produced.open': 'Open {name}',
+  'produced.review': 'Review {name}',
+  'produced.reviewAll': 'Review all produced files',
+  'produced.undo': 'Undo',
+  'produced.redo': 'Reapply',
+  'produced.undoing': 'Undoing…',
+  'produced.redoing': 'Reapplying…',
+  'produced.toggleUnavailable': 'No safely reversible files are available in this change',
+  'produced.undoSuccess': 'Changes undone',
+  'produced.redoSuccess': 'Changes reapplied',
+  'produced.undoPartial': 'Not all changes were restored',
+  'produced.redoPartial': 'Not all changes were reapplied',
+  'produced.undoPartialDescription': 'An error occurred while restoring some files',
+  'produced.redoPartialDescription': 'An error occurred while reapplying some files',
+  'produced.skippedFiles': 'Skipped ({count})',
+  'produced.undoError': 'Could not undo changes',
+  'produced.redoError': 'Could not reapply changes',
+  'produced.noticeClose': 'Dismiss notification',
+  'produced.noticeDismiss': 'Close',
+  'review.title': 'Review',
+  'review.fileOne': '1 file',
+  'review.files': '{count} files',
+  'review.close': 'Close',
+  'review.resize': 'Resize review panel',
+  'review.resizeHint': 'Drag to resize. Double-click to reset.',
+  'review.openInEditor': 'Open in editor',
+  'review.copy': 'Copy diff',
+  'review.copied': 'Copied',
+  'review.showUnchanged': '{count} unchanged lines',
+  'review.hideUnchanged': 'Hide {count} unchanged lines',
+  'review.stats': '{added} lines added, {removed} lines removed',
+  'review.unavailable':
+    'No reconstructable diff is available for this change. You can still open the current file.',
+  'review.sidebarTargetUnavailable': 'This review target is invalid or no longer available.',
+  'review.sidebarSessionUnavailable': 'This conversation is not available yet.',
+  'review.sidebarDataUnavailable': 'No review data is available for this turn and file selection.',
+  'review.commentAdd': 'Add comment on line {line}',
+  'review.commentEdit': 'Edit comment on line {line}',
+  'review.commentPlaceholder': 'Leave a review comment…',
+  'review.commentNewlineHint': 'Shift+Enter for a new line',
+  'review.commentCancel': 'Cancel',
+  'review.commentSave': 'Save',
+  'review.commentDelete': 'Delete',
+  'review.commentCountOne': '1 comment',
+  'review.commentCount': '{count} comments',
+  'review.commentPreview': 'Review comment preview',
+  'review.commentOpenPreview': 'Preview {count} review comments',
+  'review.commentRemoveAll': 'Remove all review comments',
+  'review.commentSideLeft': 'left',
+  'review.commentSideRight': 'right',
+  'review.commentLocation': '{side} line {line}',
+}
 
 /** Union of this namespace's dictionary keys. */
-export type CopyKey = keyof typeof zh
+export type DeliverablesKey = keyof typeof en
 
-/** The en dictionary. */
-export const en: Record<CopyKey, string> = {
-  tabTitle: 'File Review',
-  empty: 'No file changes in this session yet',
-  sessionUnavailable: 'Session is unavailable',
-  remoteUnavailable: 'File review service is unavailable',
-  turn: 'Turn {n}',
-  turnLive: 'in progress',
-  files: '{count} files',
-  filesOne: '1 file',
-  undo: 'Undo',
-  redo: 'Reapply',
-  undoing: 'Undoing…',
-  redoing: 'Reapplying…',
-  undoTurn: 'Undo turn',
-  redoTurn: 'Reapply turn',
-  toggleUnavailable: 'No safely reversible files are available',
-  stateUndone: 'undone',
-  stateConflict: 'conflict',
-  stateUnsupported: 'not reversible',
-  stateError: 'error',
-  deleted: 'deleted',
-  deletedHint: 'This file was deleted by a terminal command in this turn; its content is gone, so no diff or undo is available.',
-  archived: 'Archived turns ({n})',
-  archivedExpand: 'Expand archived turns',
-  archivedCollapse: 'Collapse archived turns',
-  loadMore: 'Load more ({n} more turns)',
-  undoSuccess: 'Changes undone',
-  redoSuccess: 'Changes reapplied',
-  undoPartial: 'Some files could not be undone',
-  redoPartial: 'Some files could not be reapplied',
-  toggleError: 'Operation failed',
-  openInEditor: 'Open in editor',
-  open: 'Open {name}',
-  copy: 'Copy diff',
-  copied: 'Copied',
-  showUnchanged: '{count} unchanged lines',
-  hideUnchanged: 'Hide {count} unchanged lines',
-  stats: '{added} lines added, {removed} lines removed',
-  unavailable: 'No reconstructable diff is available for this change.',
-  refresh: 'Refresh status',
-}
-
-/** The DSH locale service attached by the client apply (absent → browser detection). */
-let localeService: { getSnapshot(): { active: string } } | undefined
-
-/** Attach (or detach, with undefined) the DSH locale service. */
-export function attachLocale(service: { getSnapshot(): { active: string } } | undefined): void {
-  localeService = service
-}
-
-/** The active locale id ('zh' | 'en'): the DSH locale service's snapshot when attached. */
-function activeLocale(): string {
-  return localeService?.getSnapshot().active
-    ?? (typeof navigator !== 'undefined' ? navigator.language : '')
-    ?? 'en'
-}
-
-/** Translate a copy key; `{name}` placeholders interpolate from `params`. */
-export function t(key: CopyKey, params?: Record<string, string | number>): string {
-  const dict = activeLocale().toLowerCase().startsWith('zh') ? zh : en
-  let text: string = dict[key]
-  if (params !== undefined) {
-    for (const [name, value] of Object.entries(params)) {
-      text = text.replaceAll(`{${name}}`, String(value))
-    }
-  }
-  return text
+/** Simplified Chinese dictionary. */
+export const zh: Record<DeliverablesKey, string> = {
+  'settings.title': '文件审查',
+  'settings.description': 'file review插件的配置项',
+  'settings.expand': '展开',
+  'settings.collapse': '收起',
+  'settings.readOnly': '配置文件为只读。',
+  'settings.wordWrap.title': '是否自动换行显示',
+  'settings.wordWrap.description':
+    '控制review的时候对于单行文本很长的情况下是否自动换行显示，默认为False',
+  'produced.summary': '已编辑文件',
+  'produced.editedOne': '已编辑 1 个文件',
+  'produced.edited': '已编辑 {count} 个文件',
+  'produced.moreOne': '另有 1 个文件',
+  'produced.more': '另有 {count} 个文件',
+  'produced.open': '打开 {name}',
+  'produced.review': '审查 {name}',
+  'produced.reviewAll': '审查所有产出文件',
+  'produced.undo': '撤销',
+  'produced.redo': '重新应用',
+  'produced.undoing': '正在撤销…',
+  'produced.redoing': '正在重新应用…',
+  'produced.toggleUnavailable': '本次更改中没有可安全还原的文件',
+  'produced.undoSuccess': '已成功撤销更改',
+  'produced.redoSuccess': '已成功重新应用更改',
+  'produced.undoPartial': '未还原全部更改',
+  'produced.redoPartial': '未重新应用全部更改',
+  'produced.undoPartialDescription': '还原部分文件时出错',
+  'produced.redoPartialDescription': '重新应用部分文件时出错',
+  'produced.skippedFiles': '已跳过（{count} 个）',
+  'produced.undoError': '未能撤销更改',
+  'produced.redoError': '未能重新应用更改',
+  'produced.noticeClose': '关闭提示',
+  'produced.noticeDismiss': '关闭',
+  'review.title': '审查',
+  'review.fileOne': '1 个文件',
+  'review.files': '{count} 个文件',
+  'review.close': '关闭',
+  'review.resize': '调整审查面板大小',
+  'review.resizeHint': '拖动以调整大小。双击恢复默认大小。',
+  'review.openInEditor': '在编辑器中打开',
+  'review.copy': '复制差异',
+  'review.copied': '已复制',
+  'review.showUnchanged': '显示 {count} 行未更改内容',
+  'review.hideUnchanged': '隐藏 {count} 行未更改内容',
+  'review.stats': '新增 {added} 行，删除 {removed} 行',
+  'review.unavailable': '无法为此更改还原可审查的差异。你仍可打开当前文件。',
+  'review.sidebarTargetUnavailable': '此审查目标无效或已不可用。',
+  'review.sidebarSessionUnavailable': '当前会话暂不可用。',
+  'review.sidebarDataUnavailable': '此回合和文件选择没有可用的审查数据。',
+  'review.commentAdd': '评论第 {line} 行',
+  'review.commentEdit': '编辑第 {line} 行的评论',
+  'review.commentPlaceholder': '输入审查评论…',
+  'review.commentNewlineHint': 'Shift+Enter 换行',
+  'review.commentCancel': '取消',
+  'review.commentSave': '保存',
+  'review.commentDelete': '删除',
+  'review.commentCountOne': '1 个评论',
+  'review.commentCount': '{count} 个评论',
+  'review.commentPreview': '审查评论预览',
+  'review.commentOpenPreview': '预览 {count} 条审查评论',
+  'review.commentRemoveAll': '移除全部审查评论',
+  'review.commentSideLeft': '左侧',
+  'review.commentSideRight': '右侧',
+  'review.commentLocation': '{side}第 {line} 行',
 }

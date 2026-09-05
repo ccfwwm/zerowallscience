@@ -13,6 +13,8 @@ import { WeChatDSHBridge } from "./bridge/bridge.js";
 import { ConfigStore, type EditableConfig } from "./config-store.js";
 import { defaultConfig, type WeChatDSHConfig } from "./config.js";
 import { qrSvgFor } from "./qr.js";
+import { sessionIdFrom, sessionIdFromAssembleContext, weChatSurfaceText } from "./surface-prompt.js";
+export { sessionIdFrom };
 
 export const name = "dsh-wechat";
 export const inject: string[] = [];
@@ -26,6 +28,9 @@ export interface PluginConfig {
   cwd?: string;
   textChunkLimit?: number;
   cardTimeoutMs?: number;
+  silent?: boolean;
+  surfacePromptEnabled?: boolean;
+  surfacePrompt?: string;
 }
 
 export function apply(ctx: unknown, rawConfig: PluginConfig = {}): () => Promise<void> {
@@ -37,11 +42,15 @@ export function apply(ctx: unknown, rawConfig: PluginConfig = {}): () => Promise
   const config = configStore.resolve(baseConfig);
   const context = ctx as {
     get<T = unknown>(name: string): T | undefined;
-    on(event: string, listener: (...args: unknown[]) => unknown): () => void;
+    on(
+      event: string,
+      listener: (...args: unknown[]) => unknown,
+      options?: boolean | { prepend?: boolean; global?: boolean },
+    ): () => void;
     inject?: (deps: string[], callback: (ctx: unknown) => unknown) => unknown;
   };
 
-  const bridge = new WeChatDSHBridge(context, config);
+  const bridge = new WeChatDSHBridge(context, config, undefined, configStore);
 
   // ─── Session event feed: assistant output → WeChat ───
   context.on("session/event", (session, event) => {
@@ -73,8 +82,8 @@ export function apply(ctx: unknown, rawConfig: PluginConfig = {}): () => Promise
   });
 
   // ─── send_wechat tool: agent-initiated push to the bound user ───
-  // (Approval is fully native — no custom ask gate; the mux frame stream
-  // below mirrors DSH's own approval/question frames to WeChat.)
+  // (Approval/question cards are fully native — the Host waterfalls below
+  // race WeChat against the GUI so whoever answers first wins.)
   if (typeof context.inject === "function") {
     context.inject(["tools"], (toolsCtx) => {
       const toolsService = (toolsCtx as {
@@ -124,35 +133,36 @@ export function apply(ctx: unknown, rawConfig: PluginConfig = {}): () => Promise
     console.warn("[dsh-wechat] ctx.inject unavailable; send_wechat tool disabled");
   }
 
-  // ─── Mux frame stream: approval/question cards mirrored to WeChat ───
-  // The decision point stays in the native apiproxy pending table; this
-  // subscription renders the same frames as the GUI and injects the WeChat
-  // user's decision through apiProxy.respond() (whoever answers first wins).
-  if (typeof context.inject === "function") {
-    let apiProxyInjected = false;
-    context.inject(["apiProxy"], (apiCtx) => {
-      apiProxyInjected = true;
-      const apiProxy = (apiCtx as {
-        get<T = unknown>(name: string): T | undefined;
-      }).get<{
-        respond(message: unknown): Promise<{ accepted: boolean; reason?: string }>;
-        events?: unknown;
-      }>("apiProxy");
-      if (!apiProxy) {
-        console.warn("[dsh-wechat] apiProxy inject fired but get('apiProxy') is undefined; approval/question cards disabled");
-        return;
+  // ─── Approval / question cards: Host waterfalls (GUI-equivalent mirror) ───
+  // Untagged listeners are admitted globally by scopeTarget, so a host-level
+  // answerer sees every session. prepend:true so we wrap next() (the GUI
+  // terminal answerer) instead of running after it. No WeChat peer →
+  // immediately next() so the GUI remains the sole answerer. Errors fall
+  // through to next() rather than collapsing the GUI card.
+  context.on("approval/request", async (req, next) => {
+    const nextFn = next as () => Promise<"allowed-once" | "rejected" | "cancelled" | "unavailable">;
+    try {
+      return await bridge.answerApprovalRequest(req as never, nextFn);
+    } catch (err) {
+      console.error(`[dsh-wechat] approval/request answerer failed: ${String(err)}`);
+      return nextFn();
+    }
+  }, { prepend: true });
+  context.on("user-questions/request", async (req, next) => {
+    const nextFn = next as () => Promise<unknown>;
+    try {
+      return await bridge.answerQuestionRequest(req as never, nextFn as never);
+    } catch (err) {
+      // WeChat /rq cancels by rejecting the waiter; rethrow so the Host
+      // settles the ask as aborted. Other failures fall through to GUI.
+      if (err && typeof err === "object" && (err as { code?: string }).code === "ASK_ABORTED") {
+        throw err;
       }
-      console.log("[dsh-wechat] apiProxy inject resolved; attaching mux");
-      bridge.attachMux(apiProxy as never);
-    });
-    setTimeout(() => {
-      if (!apiProxyInjected) {
-        console.warn("[dsh-wechat] apiProxy inject callback never ran (10s); approval/question cards may be disabled");
-      }
-    }, 10_000);
-  } else {
-    console.warn("[dsh-wechat] ctx.inject unavailable; approval/question cards disabled");
-  }
+      console.error(`[dsh-wechat] user-questions/request answerer failed: ${String(err)}`);
+      return nextFn();
+    }
+  }, { prepend: true });
+  console.log("[dsh-wechat] approval/question waterfall answerers attached");
 
   // ─── DSH native command registry (ctx.commands) ───
 // When the host composes `@deepseek-ai/dsh-commands`, late-bind the
@@ -217,19 +227,14 @@ if (typeof context.inject === "function") {
         name: "dsh-wechat-surface",
         order: 50,
         text: (context) => {
-          const agent = (context as { agent?: unknown })?.agent as
-            | { id?: string; session?: { id?: string; header?: { id?: string } } }
-            | undefined;
-          // Three candidate id paths — the master DSH Agent carries the session
-          // id on `agent.id` (also via `Session.id` / `SessionHeader.id`).
-          // Older or forked shapes may only expose one of them; the cascade
-          // keeps this dynamic context working when DSH's Agent shape drifts.
-          const sessionId =
-            agent?.session?.header?.id ?? agent?.session?.id ?? agent?.id;
+          const sessionId = sessionIdFromAssembleContext(context);
           const source = sessionId ? bridge.surfaceSourceFor(sessionId) : undefined;
-          return source === "wechat"
-            ? "你正在通过微信(WeChat)与用户聊天。回复会发送到微信，请使用适合微信阅读的格式（纯文本、适度使用 emoji、避免过长的表格）。"
-            : "";
+          const cfg = bridge.getConfig();
+          return weChatSurfaceText({
+            enabled: cfg.surfacePromptEnabled,
+            prompt: cfg.surfacePrompt,
+            source,
+          });
         },
       });
     });
@@ -395,20 +400,6 @@ if (typeof context.inject === "function") {
   });
 
   return () => bridge.stop();
-}
-
-export function sessionIdFrom(session: unknown): string | undefined {
-  if (!session || typeof session !== "object") return undefined;
-  const s = session as {
-    id?: unknown;
-    header?: { id?: unknown };
-    session?: { id?: unknown; header?: { id?: unknown } };
-  };
-  const candidates = [s.id, s.header?.id, s.session?.header?.id, s.session?.id];
-  for (const c of candidates) {
-    if (typeof c === "string" && c) return c;
-  }
-  return undefined;
 }
 
 function pickDefined(raw: PluginConfig): Partial<WeChatDSHConfig> {

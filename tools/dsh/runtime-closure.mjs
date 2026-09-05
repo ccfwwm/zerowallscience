@@ -21,7 +21,12 @@ const presetText = await readFile(resolve(dshRoot, 'packages/preset/agent-preset
 const presetRoots = [...presetText.matchAll(/^\s+name:\s+['"]([^'"]+)['"]\s*$/gmu)].map(match => match[1])
 const patchText = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
 const patchRoots = [...patchText.matchAll(/^\s+name:\s+['"]([^'"]+)['"]\s*$/gmu)].map(match => match[1])
-const queue = [...new Set(['@deepseek-ai/dsh', ...presetRoots, ...patchRoots])]
+const pluginPeers = []
+for (const directory of ['packages/dsh-wechat', 'packages/dsh-capability-menu', 'packages/dsh-auto-review', 'packages/dsh-file-review-tab']) {
+  const manifest = JSON.parse(await readFile(resolve(root, directory, 'package.json'), 'utf8'))
+  pluginPeers.push(...Object.keys(manifest.peerDependencies ?? {}), ...Object.keys(manifest.dependencies ?? {}))
+}
+const queue = [...new Set(['@deepseek-ai/dsh', ...presetRoots, ...patchRoots, ...pluginPeers])]
   .filter(name => manifests.has(name))
 const closure = new Set()
 for (let index = 0; index < queue.length; index += 1) {

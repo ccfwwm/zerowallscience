@@ -1,15 +1,20 @@
 /**
  * Turn-scoped produced-file definition and readers. Client-only and
- * model-free: the vocabulary is the mutation tools' own follow-along
- * `locations`, never the closing prose.
+ * model-free: Native calls use Host presentation views while PTC settlements
+ * use this plugin's validated durable marker, never the closing prose.
  */
 import type {
-  ConversationMatch, ConversationNodeDefinition, ToolResultNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  ConversationNodeDefinition,
+} from './runtime-compat.ts'
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ProducedFileDiff, ProducedFileReview } from '../change-types.ts'
-import { deletedPaths } from './deleted-paths.ts'
+import {
+  markerFromContent,
+  normalizeMutationPresentation,
+  type PtcFileReviewMarker,
+} from '../ptc-marker.ts'
 
 export type { ProducedFileDiff, ProducedFileReview } from '../change-types.ts'
 
@@ -17,8 +22,18 @@ interface ProducedPath {
   readonly seq: number
   readonly path: string
   readonly diffs: readonly ProducedFileDiff[]
-  /** Terminal commands deleted this path in the same Turn (display-only). */
-  readonly deleted?: true
+  readonly complete?: false | undefined
+}
+
+function legacyCallView(call: { name: string; arguments: string }): unknown {
+  try {
+    const args = JSON.parse(call.arguments) as Record<string, unknown>
+    const path = args.file_path
+    if (typeof path !== 'string') return undefined
+    if (call.name === 'write' && typeof args.content === 'string') return { card: 'diff', locations: [{ path }], diffs: [{ path, oldText: null, newText: args.content }] }
+    if (call.name === 'edit' && typeof args.old_string === 'string' && typeof args.new_string === 'string') return { card: 'diff', locations: [{ path }], diffs: [{ path, oldText: args.old_string, newText: args.new_string }] }
+  } catch { /* malformed historical calls are display-only */ }
+  return undefined
 }
 
 /** Immutable produced-file facts published against one Turn. */
@@ -26,7 +41,7 @@ export interface DeliverablesTurnData {
   readonly produced: readonly ProducedPath[]
 }
 
-declare module '@deepseek-ai/dsh-client-runtime/client' {
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ConversationTurnDataMap {
     /** Successful mutation paths accumulated in this Turn. */
     deliverables: DeliverablesTurnData
@@ -35,68 +50,40 @@ declare module '@deepseek-ai/dsh-client-runtime/client' {
 
 interface DeliverablesState extends DeliverablesTurnData {
   readonly turn: number
-  readonly calls: ReadonlyMap<string, ToolResultNode['callView']>
+  readonly calls: ReadonlyMap<
+    string,
+    {
+      readonly step: number
+      readonly view: unknown
+    }
+  >
+  readonly subCalls: ReadonlySet<string>
 }
 
-/**
- * Paths a call view reports having created or changed, by render intent rather
- * than tool name: a diff card, or a generic card whose kind is `edit` (the
- * shape `str_replace_editor`'s insert presents). Every other card produces
- * nothing to open — a read looked, a delete removed, a terminal ran. Only
- * root call views enter this Turn accumulator; nested Code Mode dispatches
- * preserve the pre-assembly behavior and do not contribute independently.
- */
-function producedPaths(view: ToolResultNode['callView']): readonly string[] {
-  if (view === null
-    || (view.card !== 'diff' && !(view.card === 'generic' && view.kind === 'edit'))) return []
-  const locations = (view as { locations?: unknown }).locations
-  if (!Array.isArray(locations)) return []
-  const paths: string[] = []
-  const seen = new Set<string>()
-  for (const location of locations) {
-    if (typeof location !== 'object' || location === null || Array.isArray(location)) continue
-    const path = (location as Record<string, unknown>).path
-    if (typeof path !== 'string' || seen.has(path)) continue
-    seen.add(path)
-    paths.push(path)
-  }
-  return paths
+function dispatchMarker(event: { type: string; data: unknown }): PtcFileReviewMarker | null {
+  if (event.type !== 'tool/code-dispatch') return null
+  const data = event.data as unknown as Record<string, unknown>
+  if (
+    data.isError !== false ||
+    typeof data.rootCallId !== 'string' ||
+    data.rootCallId === '' ||
+    typeof data.subCallId !== 'string' ||
+    data.subCallId === '' ||
+    !Array.isArray(data.content)
+  )
+    return null
+  return markerFromContent(data.content, {
+    rootCallId: data.rootCallId,
+    subCallId: data.subCallId,
+  })
 }
 
-/** Validate diff hunks crossing the Host/browser transport. */
-function producedDiffs(view: unknown): readonly ProducedFileDiff[] {
-  if (typeof view !== 'object' || view === null || Array.isArray(view)) return []
-  const record = view as Record<string, unknown>
-  if (record.card !== 'diff' || !Array.isArray(record.diffs)) return []
-  const diffs: ProducedFileDiff[] = []
-  for (const value of record.diffs) {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return []
-    const { path, oldText, newText, oldStart, newStart } = value as Record<string, unknown>
-    if (typeof path !== 'string'
-      || (oldText !== null && typeof oldText !== 'string')
-      || typeof newText !== 'string'
-      || (oldStart !== undefined
-        && (typeof oldStart !== 'number' || !Number.isInteger(oldStart) || oldStart < 1))
-      || (newStart !== undefined
-        && (typeof newStart !== 'number' || !Number.isInteger(newStart) || newStart < 1))) return []
-    diffs.push({
-      path,
-      oldText,
-      newText,
-      ...(typeof oldStart === 'number' ? { oldStart } : {}),
-      ...(typeof newStart === 'number' ? { newStart } : {}),
-    })
-  }
-  return diffs
-}
-
-/** Applied result hunks, or successful-call intent only when no result view exists. */
-function reviewDiffs(
-  callView: ToolResultNode['callView'],
-  resultView: ConversationMatch['view'],
-): readonly ProducedFileDiff[] {
-  if (resultView?.for === 'result') return producedDiffs(resultView.view)
-  return producedDiffs(callView)
+function nativeResultMarker(event: SessionEvent): PtcFileReviewMarker | null {
+  if (event.type !== 'tool/result') return null
+  const callId = event.data.message.source.callId
+  const result = event.data.message.content[0]
+  if (typeof callId !== 'string' || callId === '' || !Array.isArray(result?.content)) return null
+  return markerFromContent(result.content, { rootCallId: callId, subCallId: callId })
 }
 
 /**
@@ -110,8 +97,8 @@ export function reviewsForClosing(
   seq = Number.POSITIVE_INFINITY,
 ): readonly ProducedFileReview[] {
   if (data === undefined) return []
-  const reviews: Array<{ path: string; diffs: ProducedFileDiff[]; deleted?: true }> = []
-  const byPath = new Map<string, { path: string; diffs: ProducedFileDiff[]; deleted?: true }>()
+  const reviews: Array<{ path: string; diffs: ProducedFileDiff[]; complete?: false }> = []
+  const byPath = new Map<string, { path: string; diffs: ProducedFileDiff[]; complete?: false }>()
   for (const produced of data.produced) {
     if (produced.seq > seq) continue
     const review = byPath.get(produced.path)
@@ -119,16 +106,13 @@ export function reviewsForClosing(
       const created = {
         path: produced.path,
         diffs: [...produced.diffs],
-        ...(produced.deleted === true ? { deleted: true as const } : {}),
+        ...(produced.complete === false ? { complete: false as const } : {}),
       }
       byPath.set(produced.path, created)
       reviews.push(created)
     } else {
       review.diffs.push(...produced.diffs)
-      // Last state wins: a deletion marks the entry, a later write (the file
-      // was recreated in the same turn) clears it again.
-      if (produced.deleted === true) review.deleted = true
-      else delete review.deleted
+      if (produced.complete === false) review.complete = false
     }
   }
   return reviews
@@ -137,15 +121,13 @@ export function reviewsForClosing(
 /**
  * Files produced by one Turn data value.
  *
- * The source is the mutation tools' own follow-along `locations`, not the
- * closing prose: a produced file must be listed whether or not the model
- * remembered to name it. A mutation is recognized by render intent, not by
- * tool name — a diff card, or a generic card whose `kind` is `edit` (the shape
- * `str_replace_editor`'s insert presents) — so a new mutation tool joins by
- * declaring what it does. Reads contribute nothing (looking at a file does not
- * produce it), and neither do deletes (there is nothing left to open) or
- * failed calls. Paths keep first-seen order and appear once, so a file written
- * and then edited in the same turn is one entry.
+ * The source is the mutation tools' presentation contract, not the closing
+ * prose: Native calls arrive as Host views and PTC calls as the Adapter's
+ * marker. A mutation is recognized by render intent, never by tool name, so a
+ * new mutation tool joins by declaring what it does. Reads and failed calls
+ * contribute nothing; successful deletes are included when their mutation
+ * intent names a path. Paths keep first-seen order and appear once, so a file
+ * written and then edited in the same turn is one entry.
  *
  * The Conversation Location index owns turn membership before this function
  * runs, so paths cannot spill across turns and this derivation does not infer
@@ -161,17 +143,12 @@ export function producedForClosing(
   if (data === undefined) return []
   const paths: string[] = []
   const seen = new Set<string>()
-  const lastDeleted = new Map<string, boolean>()
   for (const produced of data.produced) {
-    if (produced.seq > seq) continue
-    lastDeleted.set(produced.path, produced.deleted === true)
-    if (seen.has(produced.path)) continue
+    if (produced.seq > seq || seen.has(produced.path)) continue
     seen.add(produced.path)
     paths.push(produced.path)
   }
-  // Deleted paths carry no openable file; they stay out of the mention
-  // vocabulary even when an earlier write in the same turn recorded them.
-  return paths.filter(path => lastDeleted.get(path) !== true)
+  return paths
 }
 
 /**
@@ -179,7 +156,9 @@ export function producedForClosing(
  * @param owner - Turn-tail owner currency for the closing assistant.
  * @returns Produced-file reviews as the component's match, or null to decline before mount.
  */
-export function selectProducedFiles(owner: TurnTailOwnerProps): readonly ProducedFileReview[] | null {
+export function selectProducedFiles(
+  owner: TurnTailOwnerProps,
+): readonly ProducedFileReview[] | null {
   const reviews = reviewsForClosing(owner.turn.data.get('deliverables'), owner.seq)
   return reviews.length === 0 ? null : reviews
 }
@@ -190,56 +169,89 @@ export const deliverablesDefinition: ConversationNodeDefinition<DeliverablesStat
   match: (event) => {
     if (event.type === 'turn/start') return { id: String(event.data.turn), role: 'start' }
     if (event.type === 'tool/call') return { id: String(event.data.turn), role: 'update' }
-    if (event.type === 'tool/result'
-      && (event as { surfaceOp?: unknown }).surfaceOp === 'append') {
+    if (event.type === 'tool/result' && (event as { surfaceOp?: unknown }).surfaceOp === 'append') {
       return { id: String(event.data.turn), role: 'update' }
     }
+    const marker = dispatchMarker(event)
+    if (marker !== null) return { id: String(marker.turn), role: 'update' }
     return null
   },
   start: (_context, match) => {
     if (match.event.type !== 'turn/start') throw new Error('deliverables start requires turn/start')
-    return { turn: match.event.data.turn, calls: new Map(), produced: [] }
+    return { turn: match.event.data.turn, calls: new Map(), subCalls: new Set(), produced: [] }
   },
   update: (context, match) => {
+    const legacyView = (match as unknown as { view?: { for: string; view: unknown } }).view
     if (match.event.type === 'tool/call') {
+      if (typeof match.event.data.callId !== 'string' || match.event.data.callId === '') {
+        return context.state
+      }
       const calls = new Map(context.state.calls)
-      calls.set(
-        String(match.event.data.callId),
-        match.view?.for === 'call' ? match.view.view : null,
-      )
+      calls.set(match.event.data.callId, {
+        step: match.event.data.step,
+        view: legacyView?.for === 'call' ? legacyView.view : legacyCallView(match.event.data),
+      })
       return { ...context.state, calls }
     }
-    if (match.event.type !== 'tool/result') return context.state
-    const result = match.event.data.message.content[0]
-    if (result.isError === true) return context.state
-    const callId = String(match.event.data.message.source.callId)
-    const callView = context.state.calls.get(callId) ?? null
-    const diffs = reviewDiffs(callView, match.view)
-    const additions: ProducedPath[] = producedPaths(callView).map(path => ({
-      seq: match.event.seq,
-      path,
-      diffs: diffs.filter(diff => diff.path === path),
-    }))
-    // dsh deletes files only through the terminals; a successful terminal
-    // call's literal rm-family arguments are the only deletion record there
-    // is (dsh has no delete-file tool). They join the same produced
-    // vocabulary as hunks-bearing paths: no diffs, never undoable.
-    for (const path of callView !== null ? deletedPaths(callView) : []) {
-      if (additions.some(addition => addition.path === path)) continue
-      additions.push({ seq: match.event.seq, path, diffs: [], deleted: true })
+    if (match.event.type === 'tool/result') {
+      const result = match.event.data.message.content[0]
+      if (result.isError === true) return context.state
+      const callId = match.event.data.message.source.callId
+      if (typeof callId !== 'string' || callId === '') return context.state
+      const call = context.state.calls.get(callId)
+      if (call === undefined) return context.state
+      const captured = nativeResultMarker(match.event)
+      const files =
+        captured !== null && captured.turn === context.state.turn && captured.step === call.step
+          ? captured.files
+          : normalizeMutationPresentation(call.view, legacyView?.for === 'result' ? legacyView.view :
+            match.event.data.meta && typeof match.event.data.meta === 'object' && 'diffs' in match.event.data.meta
+              ? { card: 'diff', diffs: match.event.data.meta.diffs } : undefined)
+      const additions = files.map((file) => ({
+        seq: match.event.seq,
+        path: file.path,
+        diffs: file.diffs,
+        ...(file.diffs.length === 0 ? { complete: false as const } : {}),
+      }))
+      return additions.length === 0
+        ? context.state
+        : { ...context.state, produced: [...context.state.produced, ...additions] }
     }
-    return additions.length === 0
-      ? context.state
-      : { ...context.state, produced: [...context.state.produced, ...additions] }
+    const marker = dispatchMarker(match.event)
+    const root = marker === null ? undefined : context.state.calls.get(marker.rootCallId)
+    if (
+      marker === null ||
+      marker.turn !== context.state.turn ||
+      root === undefined ||
+      root.step !== marker.step ||
+      context.state.subCalls.has(marker.subCallId)
+    )
+      return context.state
+    const subCalls = new Set(context.state.subCalls)
+    subCalls.add(marker.subCallId)
+    return {
+      ...context.state,
+      subCalls,
+      produced: [
+        ...context.state.produced,
+        ...marker.files.map((file) => ({
+          seq: match.event.seq,
+          path: file.path,
+          diffs: file.diffs,
+          ...(file.diffs.length === 0 ? { complete: false as const } : {}),
+        })),
+      ],
+    }
   },
-  buildLocationData: (context, scope) => scope !== 'turn' || context.state === undefined
-    ? null
-    : {
-      kind: 'turn',
-      turn: context.state.turn,
-      key: 'deliverables',
-      value: { produced: context.state.produced },
-    },
+  buildLocationData: (context, scope) =>
+    scope !== 'turn' || context.state === undefined
+      ? null
+      : {
+          kind: 'turn',
+          turn: context.state.turn,
+          key: 'deliverables',
+          value: { produced: context.state.produced },
+        },
 }
 
 /**
@@ -273,13 +285,19 @@ export function producedFileMentions(
     resolve(value) {
       const path = paths.includes(value) ? value : onlyPathWithBasename(paths, value)
       if (path === undefined) return undefined
-      return { open: () => { openFile(path) }, label: label(path), title: path }
+      return {
+        open: () => {
+          openFile(path)
+        },
+        label: label(path),
+        title: path,
+      }
     },
   }
 }
 
 /** The single produced path whose basename is exactly `value`, else undefined. */
 function onlyPathWithBasename(paths: readonly string[], value: string): string | undefined {
-  const matches = paths.filter(path => basename(path) === value)
+  const matches = paths.filter((path) => basename(path) === value)
   return matches.length === 1 ? matches[0] : undefined
 }

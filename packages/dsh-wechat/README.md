@@ -22,8 +22,8 @@ DSH 设置页内扫码登录与连接配置。以静态 Cordis 插件交付，�
   由 bridge 直接处理（见下方命令表）
 - **审批/提问卡（双端同卡）** — 微信与 GUI 弹一致的原生审批/提问卡，
   谁先回复谁生效（原生防双决）
-- **微信渠道提示词（动态注入）** — 微信消息注入「通过微信」提示；GUI 消息时自动消失
-- **静默模式** — `/silent on` 后每轮只发送最终回复，设置页可切换
+- **微信渠道提示词（动态注入）** — 微信消息注入可配置提示词；GUI 消息时自动消失。设置页可开关/编辑正文，微信 `/surface on|off` 切换
+- **静默模式** — `/silent on` 后每轮只发送最终回复，设置页可切换（全局配置，重新扫码后仍保留）
 - **繁忙时投递（与 DSH 同源）** — 按 `busyEnter` 排队/插话；微信 `/enter` 同步
 - **跨会话通知** — 后台会话的已完成/报错/卡片通过微信提醒，`/notify on|off|status` 切换，默认关闭（单用户单闸）
 - **二维码登录** — `http://127.0.0.1:3080/wechat/qr` 扫码登录，设置页内嵌
@@ -103,7 +103,8 @@ profile 实际注册的所有原生命令；本地命令表里已有的名字自
 | `/perm — status \| list \| switch <名称\|编号> \| default [名称\|编号]` | 权限管理（switch 实时切当前会话；default 写 DSH 设置，新会话生效） |
 | `/reasoning — [list \| default \| switch <等级>]` | 推理等级：查看当前/默认与模型支持的等级；`switch <等级>` 切换（实时 + 写默认）；`default` 恢复模型默认 |
 | `/enter queue\|steer\|status`（`/busy`） | 繁忙时投递：agent 运行中收到微信消息时排队（`queue`）还是插话进当前轮次（`steer`）；读写 DSH 设置 `ui-conversation.busyEnter`，与 GUI「繁忙时 Enter 键行为」同源同步；空闲会话始终新开一轮 |
-| `/silent on\|off`（`/sl`） | 静默模式：开启后 agent 每轮的中间过程输出（工具调用、思考等）不再逐条推送，只在轮次结束时发送最终回复，避免刷屏；跨重启持久化，设置页可切换 |
+| `/silent on\|off`（`/sl`） | 静默模式：开启后 agent 每轮的中间过程输出（工具调用、思考等）不再逐条推送，只在轮次结束时发送最终回复，避免刷屏；写入 `config.json`，重新扫码后仍保留，设置页可切换 |
+| `/surface on\|off\|status`（`/wxprompt`） | 微信渠道提示词注入开关（默认关）；正文在设置页编辑，不在微信改 |
 | `/notify on\|off\|status`（`/watch`） | 跨会话通知：后台会话的已完成/报错/卡片提醒，默认关闭（单用户单闸，设置页可切换） |
 | `/history [数量]` | 查看最近历史消息（默认 5 条，最多 20 条）；当前会话有未回答的提问/权限卡时会完整重发，可直接回复 |
 | `/stop` | 中断当前任务 |
@@ -127,8 +128,7 @@ profile 实际注册的所有原生命令；本地命令表里已有的名字自
     │                          DSH 进程内服务（零 @deepseek-ai 运行时依赖）
     │        agents.create/resume ── agent.followup（消息入）
     │        session/event ── assistant/message、turn/end（消息出）
-    │        apiProxy.events.mux 帧流 ── approval/question 卡（镜像 GUI）
-    │        apiProxy.respond() ── 微信决策注入原生 pending 表
+    │        approval/request · user-questions/request waterfall ── 审批/提问卡（镜像 GUI，谁先答谁生效）
     │        tools.register ── send_wechat 工具
 ```
 
@@ -144,7 +144,7 @@ profile 实际注册的所有原生命令；本地命令表里已有的名字自
 - **扫码** — 未登录时页面内直接显示二维码，扫码确认后自动进入已登录
 - **操作按钮** — `重新扫码`（清除 token 重新登录）、`退出登录`，与保存配置同行
 - **连接配置** — baseUrl / cdnBaseUrl / botType / cwd /
-  textChunkLimit / cardTimeoutMs / 跨会话通知（全局）/ 静默；保存即生效，
+  textChunkLimit / cardTimeoutMs / 跨会话通知（全局）/ 静默 / 微信渠道提示词（开关 + 正文）；保存即生效，
   网关参数变更会自动重启长轮询；存储于 `~/.dsh-wechat/config.json` 与 `state.json`
 
 与宿主通信走插件自己的 HTTP API（`/wechat/api/status|config|relogin|
@@ -172,19 +172,22 @@ logout`），客户端零 `@deepseek-ai` 依赖。
 | `textChunkLimit` | `4000` | 微信单条消息长度上限 |
 | `cardTimeoutMs` | `1800000` | 提问/权限卡软超时（30 分钟） |
 | `crossSessionNotify` | `false` | 跨会话通知总闸（已完成/报错/卡片，单用户） |
+| `silent` | `false` | 静默模式总闸（只发每轮最终回复；重新扫码后仍保留） |
+| `surfacePromptEnabled` | `false` | 微信渠道提示词总闸（微信消息驱动时注入，GUI 消息时仍隐藏） |
+| `surfacePrompt` | 见默认中文 | 注入正文（设置页编辑；含 `{{` 会被打散以免打断 DSH interpolate） |
 
 ## 开发
 
 ```bash
 npm install
 npm run build    # tsc → dist/
-npm test         # vitest（317 个用例：splitText/格式化/解析/帧处理/状态存储/命令解析/超时恢复/状态颜色/历史截断）
+npm test         # vitest（373 个用例：splitText/格式化/解析/帧处理/waterfall 竞速/状态存储/命令解析/超时恢复/状态颜色/历史截断/渠道提示词）
 ```
 
 ## 已知边界
 
-- 帧流 `events.mux`/`respond` 是 ApiProxy 正式契约；若 DSH 版本调整帧
-  结构，按契约适配即可。
+- 审批/提问卡挂在 Host 的 `approval/request` 与 `user-questions/request`
+  waterfall 上，与 GUI 竞速；无微信 peer 时立即 `next()`，软超时只撤微信卡、不替用户决策。微信先答时会 abort 传给 GUI 的 `request.signal`（不碰 turn 的 `exec.signal`），Web composer 卡随 Gateway `cancel` 帧收起。DSH 重启后未决卡片随 turn 消失（上游已知限制）。
 - `send_wechat` 工具对所有 agent 可见；任何会话的 agent 都能调用——绑定会话发送到绑定用户，未绑定会话回退到首个已知微信用户（单用户部署默认行为）。
   单用户模式下，工具推送与 assistant 回复共享唯一一份微信 10 条/窗口限流预算：超限或发送失败自动进入 `/next` FIFO 缓存队列。计数和队列持久化到 `state.json`，普通 DSH 更新或重启后继续沿用；下一条微信入站会重置窗口并自动补发。微信真实限流响应（HTTP 200 + `ret: -2` / `prepare failed`）也会被识别并缓存，不再误判成功。
 - `/preset switch` 遵循 DSH 约束：只有未产生任何内容的会话才能当场

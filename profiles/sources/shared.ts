@@ -5,6 +5,8 @@ export const bundledPlugins = [
   'dsh-file-review-tab',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
   'dsh-wechat',
+  '@daweifu/capability-menu',
+  'dsh-auto-review',
   '@zerowallscience/plugin-base',
   '@zerowallscience/plugin-secrets',
   '@zerowallscience/plugin-environment',

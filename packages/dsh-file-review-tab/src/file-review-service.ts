@@ -1,49 +1,42 @@
 /** Host-side, workspace-contained undo / redo service for produced text diffs. */
 
-import { readFile, lstat, realpath } from 'node:fs/promises'
-import { isAbsolute, relative, resolve } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { link, lstat, open, readFile, realpath, rename, unlink } from 'node:fs/promises'
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  FileReviewAction, FileReviewChange, FileReviewFileResult, FileReviewRequest, FileReviewResult,
-  ProducedFileDiff, RecordedMutation, RecordedRequest, RecordedResult,
+  FileReviewAction,
+  FileReviewChange,
+  FileReviewFileResult,
+  FileReviewRequest,
+  FileReviewResult,
 } from './change-types.ts'
+import { isReversibleChange } from './file-review-change.ts'
 
 type InspectState = Exclude<FileReviewFileResult['state'], 'error'>
 
-interface InspectedFile {
-  readonly state: InspectState
-  readonly text?: string | undefined
-  readonly nextText?: string | undefined
-  readonly reason?: string | undefined
-}
-
-interface ResolvedFile {
+interface PresentFile {
+  readonly kind: 'file'
   readonly filename: string
   readonly mode: number
   readonly bytes: Uint8Array
-  /** Raw disk text (line endings as stored). */
   readonly text: string
-  /** Whether the file uses CRLF line endings on disk. */
-  readonly crlf: boolean
-  /** Disk text normalized to the backend diff basis (LF), used for hunk math. */
-  readonly lfText: string
 }
 
-/**
- * The mutation tools' recorded hunks (both diff cards and Code Mode
- * before/after values) ride the filesystem backend's LF-normalized basis,
- * while files on disk may use CRLF. All hunk matching therefore runs on the
- * normalized text; the write path restores the file's own line-ending style.
- */
-function normalizeNewlines(text: string): string {
-  return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+interface MissingFile {
+  readonly kind: 'missing'
+  readonly filename: string
 }
 
-function restoreNewlines(text: string, crlf: boolean): string {
-  return crlf ? text.replace(/\n/g, '\r\n') : text
+type FileImage = PresentFile | MissingFile
+
+class FileConflictError extends Error {}
+
+function sameMode(left: number, right: number): boolean {
+  const mask = process.platform === 'win32' ? 0o200 : 0o777
+  return (left & mask) === (right & mask)
 }
 
 function inside(root: string, candidate: string): boolean {
@@ -51,20 +44,37 @@ function inside(root: string, candidate: string): boolean {
   return child === '' || (!child.startsWith('..') && !isAbsolute(child))
 }
 
-async function resolveFile(cwd: string, requestedPath: string): Promise<ResolvedFile> {
+function errorCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === code
+  )
+}
+
+async function resolveFile(cwd: string, requestedPath: string): Promise<FileImage> {
   const root = await realpath(cwd)
   const candidate = resolve(root, requestedPath)
   if (!inside(root, candidate)) throw new Error('path is outside the session workspace')
-  const linkStat = await lstat(candidate)
+  let linkStat
+  try {
+    linkStat = await lstat(candidate)
+  } catch (error) {
+    if (!errorCode(error, 'ENOENT')) throw error
+    const parent = await realpath(dirname(candidate))
+    if (!inside(root, parent)) throw new Error('resolved path is outside the session workspace')
+    return { kind: 'missing', filename: resolve(parent, basename(candidate)) }
+  }
   if (linkStat.isSymbolicLink()) throw new Error('symbolic links are not supported')
   if (!linkStat.isFile()) throw new Error('path is not a regular file')
+  if (linkStat.size > 16 * 1024 * 1024) throw new Error('file exceeds the 16 MiB review limit')
   const filename = await realpath(candidate)
   if (!inside(root, filename)) throw new Error('resolved path is outside the session workspace')
   const bytes = await readFile(filename)
   const text = bytes.toString('utf8')
   if (!Buffer.from(text, 'utf8').equals(bytes)) throw new Error('file is not valid UTF-8 text')
-  const crlf = text.includes('\r')
-  return { filename, mode: linkStat.mode & 0o777, bytes, text, crlf, lfText: normalizeNewlines(text) }
+  return { kind: 'file', filename, mode: linkStat.mode & 0o777, bytes, text }
 }
 
 function offsetAtLine(text: string, line: number): number | null {
@@ -85,6 +95,11 @@ function replaceHunk(
   replacement: string,
   line: number | undefined,
 ): string | null {
+  // DSH diffs may normalize line endings; preserve the file's CRLF convention.
+  if (text.includes('\r\n') && !text.replaceAll('\r\n', '').includes('\n')) {
+    const changed = replaceHunk(text.replaceAll('\r\n', '\n'), source.replaceAll('\r\n', '\n'), replacement.replaceAll('\r\n', '\n'), line)
+    return changed === null ? null : changed.replaceAll('\n', '\r\n')
+  }
   let offset: number
   if (line !== undefined) {
     const located = offsetAtLine(text, line)
@@ -98,20 +113,13 @@ function replaceHunk(
   return text.slice(0, offset) + replacement + text.slice(offset + source.length)
 }
 
-function hunkSupported(diff: ProducedFileDiff, path: string): boolean {
-  if (diff.path !== path || diff.oldText === null || diff.oldText === diff.newText) return false
-  if (diff.oldText === '' && diff.oldStart === undefined) return false
-  if (diff.newText === '' && diff.newStart === undefined) return false
-  return true
-}
-
 /** Apply a complete file's hunk sequence in memory, or report a strict mismatch. */
 export function transformFile(
   text: string,
   file: FileReviewChange,
   action: FileReviewAction,
 ): string | null {
-  if (file.diffs.length === 0 || !file.diffs.every(diff => hunkSupported(diff, file.path))) {
+  if (!isReversibleChange(file) || file.diffs.some((diff) => diff.lifecycle !== undefined)) {
     return null
   }
   const diffs = action === 'undo' ? [...file.diffs].reverse() : file.diffs
@@ -132,45 +140,90 @@ export function transformFile(
   return next
 }
 
-function hunkSidePresent(text: string, file: FileReviewChange, side: 'old' | 'new'): boolean {
-  for (const diff of file.diffs) {
-    const source = side === 'old' ? diff.oldText : diff.newText
-    if (source === null) continue
-    const line = side === 'old' ? diff.oldStart : diff.newStart
-    if (line !== undefined) {
-      const located = offsetAtLine(text, line)
-      if (located === null || text.slice(located, located + source.length) !== source) return false
-    } else if (text.indexOf(source) === -1) {
-      return false
-    }
-  }
-  return true
+function virtualFile(image: FileImage, text: string, mode: number): PresentFile {
+  return { kind: 'file', filename: image.filename, mode, bytes: Buffer.from(text), text }
 }
 
-function inspectText(text: string, file: FileReviewChange): InspectedFile {
-  if (file.diffs.length === 0 || !file.diffs.every(diff => hunkSupported(diff, file.path))) {
+function transformImage(
+  image: FileImage,
+  file: FileReviewChange,
+  action: FileReviewAction,
+): FileImage | null {
+  if (!isReversibleChange(file)) return null
+  const diffs = action === 'undo' ? [...file.diffs].reverse() : file.diffs
+  let next = image
+  for (const diff of diffs) {
+    if (diff.lifecycle?.kind === 'create') {
+      if (action === 'redo') {
+        if (next.kind !== 'missing') return null
+        next = virtualFile(next, diff.newText, diff.lifecycle.mode)
+      } else {
+        if (next.kind !== 'file' || next.text !== diff.newText || !sameMode(next.mode, diff.lifecycle.mode))
+          return null
+        next = { kind: 'missing', filename: next.filename }
+      }
+      continue
+    }
+    if (diff.lifecycle?.kind === 'delete') {
+      if (diff.oldText === null) return null
+      if (action === 'redo') {
+        if (next.kind !== 'file' || next.text !== diff.oldText || !sameMode(next.mode, diff.lifecycle.mode))
+          return null
+        next = { kind: 'missing', filename: next.filename }
+      } else {
+        if (next.kind !== 'missing') return null
+        next = virtualFile(next, diff.oldText, diff.lifecycle.mode)
+      }
+      continue
+    }
+    if (next.kind !== 'file' || diff.oldText === null) return null
+    const source = action === 'undo' ? diff.newText : diff.oldText
+    const replacement = action === 'undo' ? diff.oldText : diff.newText
+    const changed = replaceHunk(
+      next.text,
+      source,
+      replacement,
+      action === 'undo' ? diff.newStart : diff.oldStart,
+    )
+    if (changed === null) return null
+    next = virtualFile(next, changed, next.mode)
+  }
+  return next
+}
+
+function sameImage(left: FileImage, right: FileImage): boolean {
+  return left.kind === 'missing'
+    ? right.kind === 'missing'
+    : right.kind === 'file' && left.text === right.text && sameMode(left.mode, right.mode)
+}
+
+function inspectImage(
+  image: FileImage,
+  file: FileReviewChange,
+  requestedAction: FileReviewAction,
+): { readonly state: InspectState; readonly reason?: string } {
+  if (!isReversibleChange(file)) {
     return { state: 'unsupported', reason: 'change has no complete reversible diff' }
   }
-  const undone = transformFile(text, file, 'undo')
-  const redone = transformFile(text, file, 'redo')
+  const undone = transformImage(image, file, 'undo')
+  const redone = transformImage(image, file, 'redo')
   if (undone !== null && redone !== null) {
-    // Both directions textually succeed. This is the classic pure-append
-    // shape: the before hunks are a lead-in prefix of the after hunks, so
-    // they are contained in the after state too. Decide by what the CURRENT
-    // text actually contains: the after hunks are present => applied (undo
-    // strips them); otherwise the change is undone and only before hunks
-    // remain.
-    return hunkSidePresent(text, file, 'new')
-      ? { state: 'applied', text, nextText: undone }
-      : { state: 'undone', text, nextText: redone }
+    if (sameImage(undone, image) && sameImage(redone, image)) {
+      return { state: requestedAction === 'undo' ? 'applied' : 'undone' }
+    }
+    return { state: 'conflict', reason: 'file matches both diff directions ambiguously' }
   }
-  if (undone !== null) return { state: 'applied', text, nextText: undone }
-  if (redone !== null) return { state: 'undone', text, nextText: redone }
+  if (undone !== null) return { state: 'applied' }
+  if (redone !== null) return { state: 'undone' }
   return { state: 'conflict', reason: 'current content does not match the recorded change' }
 }
 
-async function inspectOne(cwd: string, file: FileReviewChange): Promise<FileReviewFileResult> {
-  if (file.diffs.length === 0 || !file.diffs.every(diff => hunkSupported(diff, file.path))) {
+async function inspectOne(
+  cwd: string,
+  file: FileReviewChange,
+  action: FileReviewAction,
+): Promise<FileReviewFileResult> {
+  if (!isReversibleChange(file)) {
     return {
       path: file.path,
       state: 'unsupported',
@@ -180,7 +233,7 @@ async function inspectOne(cwd: string, file: FileReviewChange): Promise<FileRevi
   }
   try {
     const resolved = await resolveFile(cwd, file.path)
-    const inspected = inspectText(resolved.lfText, file)
+    const inspected = inspectImage(resolved, file, action)
     return { path: file.path, state: inspected.state, changed: false, reason: inspected.reason }
   } catch (error) {
     return {
@@ -192,12 +245,98 @@ async function inspectOne(cwd: string, file: FileReviewChange): Promise<FileRevi
   }
 }
 
+async function assertUnchanged(image: PresentFile): Promise<void> {
+  try {
+    const currentStat = await lstat(image.filename)
+    if (
+      currentStat.isSymbolicLink() ||
+      !currentStat.isFile() ||
+      (currentStat.mode & 0o777) !== image.mode
+    ) {
+      throw new FileConflictError('file changed while the operation was being prepared')
+    }
+    const current = await readFile(image.filename)
+    if (!Buffer.from(image.bytes).equals(current)) {
+      throw new FileConflictError('file changed while the operation was being prepared')
+    }
+  } catch (error) {
+    if (error instanceof FileConflictError) throw error
+    throw new FileConflictError('file changed while the operation was being prepared')
+  }
+}
+
+async function createFileAtomicExclusive(image: PresentFile): Promise<void> {
+  const temp = `${image.filename}.${randomUUID()}.tmp`
+  const handle = await open(temp, 'wx', image.mode)
+  try {
+    try {
+      await handle.writeFile(image.text, 'utf8')
+      // File creation modes are filtered through the process umask; reset the
+      // captured permissions before linking the inode into its final name.
+      await handle.chmod(image.mode)
+    } finally {
+      await handle.close()
+    }
+    try {
+      await link(temp, image.filename)
+    } catch (error) {
+      if (errorCode(error, 'EEXIST')) {
+        throw new FileConflictError('target path is no longer missing')
+      }
+      throw error
+    }
+  } finally {
+    await unlink(temp).catch(() => {})
+  }
+}
+
+async function replaceFileAtomicExact(current: PresentFile, target: PresentFile): Promise<void> {
+  const temp = `${target.filename}.${randomUUID()}.tmp`
+  const handle = await open(temp, 'wx', target.mode)
+  try {
+    try {
+      await handle.writeFile(target.text, 'utf8')
+      await handle.chmod(target.mode)
+    } finally {
+      await handle.close()
+    }
+    await assertUnchanged(current)
+    await rename(temp, target.filename)
+  } finally {
+    await unlink(temp).catch(() => {})
+  }
+}
+
+async function commitImage(current: FileImage, target: FileImage): Promise<boolean> {
+  if (sameImage(current, target)) return false
+  if (current.kind === 'file') await assertUnchanged(current)
+  if (current.kind === 'file' && target.kind === 'missing') {
+    await unlink(current.filename)
+    return true
+  }
+  if (current.kind === 'missing' && target.kind === 'file') {
+    try {
+      await lstat(current.filename)
+      throw new FileConflictError('target path is no longer missing')
+    } catch (error) {
+      if (!errorCode(error, 'ENOENT')) throw error
+    }
+    await createFileAtomicExclusive(target)
+    return true
+  }
+  if (current.kind === 'file' && target.kind === 'file') {
+    await replaceFileAtomicExact(current, target)
+    return true
+  }
+  return false
+}
+
 async function applyOne(
   cwd: string,
   file: FileReviewChange,
   action: FileReviewAction,
 ): Promise<FileReviewFileResult> {
-  if (file.diffs.length === 0 || !file.diffs.every(diff => hunkSupported(diff, file.path))) {
+  if (!isReversibleChange(file)) {
     return {
       path: file.path,
       state: 'unsupported',
@@ -207,34 +346,32 @@ async function applyOne(
   }
   try {
     const resolved = await resolveFile(cwd, file.path)
-    const inspected = inspectText(resolved.lfText, file)
-    const sourceState = action === 'undo' ? 'applied' : 'undone'
     const targetState = action === 'undo' ? 'undone' : 'applied'
-    if (inspected.state === targetState) {
-      return { path: file.path, state: targetState, changed: false }
-    }
-    if (inspected.state !== sourceState || inspected.nextText === undefined) {
-      return { path: file.path, state: inspected.state, changed: false, reason: inspected.reason }
-    }
-
-    // Re-read immediately before commit. This is the closest available CAS fence for
-    // external editors that do not participate in the package's writer lock.
-    const current = await readFile(resolved.filename)
-    if (!Buffer.from(resolved.bytes).equals(current)) {
+    const target = transformImage(resolved, file, action)
+    const reverse = transformImage(resolved, file, action === 'undo' ? 'redo' : 'undo')
+    if (target === null) {
+      if (reverse !== null) return { path: file.path, state: targetState, changed: false }
       return {
         path: file.path,
         state: 'conflict',
         changed: false,
-        reason: 'file changed while the operation was being prepared',
+        reason: 'current content does not match the recorded change',
       }
     }
-    await writeFileAtomic(
-      resolved.filename,
-      restoreNewlines(inspected.nextText, resolved.crlf),
-      { mode: resolved.mode },
-    )
-    return { path: file.path, state: targetState, changed: true }
+    if (reverse !== null && !(sameImage(target, resolved) && sameImage(reverse, resolved))) {
+      return {
+        path: file.path,
+        state: 'conflict',
+        changed: false,
+        reason: 'file matches both diff directions ambiguously',
+      }
+    }
+    const changed = await commitImage(resolved, target)
+    return { path: file.path, state: targetState, changed }
   } catch (error) {
+    if (error instanceof FileConflictError) {
+      return { path: file.path, state: 'conflict', changed: false, reason: error.message }
+    }
     return {
       path: file.path,
       state: 'error',
@@ -250,48 +387,18 @@ function sessionCwd(agent: Agent): string {
   return cwd
 }
 
-/** Per-agent cap on recorded Code Mode mutations (oldest evicted first). */
-const RECORDED_PER_AGENT_CAP = 4000
-
-function agentKey(agent: Agent): string {
-  return String(agent.id)
-}
-
 /** Host service published as the `fileReview` Remote namespace. */
 export class FileReviewService extends TypertRemoteService {
-  /** Per-agent record of Code Mode (`run_code`) file mutations, dispatch order. */
-  private readonly recordLog = new Map<string, RecordedMutation[]>()
-
   constructor(ctx: Context) {
     super(ctx, 'fileReview')
-  }
-
-  /** Append one nested (Code Mode) file mutation for the receiving agent. */
-  recordMutation(agent: Agent, mutation: RecordedMutation): void {
-    const key = agentKey(agent)
-    const list = this.recordLog.get(key)
-    if (list === undefined) {
-      this.recordLog.set(key, [mutation])
-      return
-    }
-    list.push(mutation)
-    if (list.length > RECORDED_PER_AGENT_CAP) {
-      list.splice(0, list.length - RECORDED_PER_AGENT_CAP)
-    }
-  }
-
-  /** Return the recorded mutations for the requested `run_code` roots. */
-  async recorded(agent: Agent, request: RecordedRequest): Promise<RecordedResult> {
-    const list = this.recordLog.get(agentKey(agent))
-    if (list === undefined || request.rootCallIds.length === 0) return { mutations: [] }
-    const wanted = new Set(request.rootCallIds)
-    return { mutations: list.filter(mutation => wanted.has(mutation.rootCallId)) }
   }
 
   /** Inspect current disk state without changing files. */
   async status(agent: Agent, request: FileReviewRequest): Promise<FileReviewResult> {
     const cwd = sessionCwd(agent)
-    const files = await Promise.all(request.files.map(file => inspectOne(cwd, file)))
+    const files = await Promise.all(
+      request.files.map((file) => inspectOne(cwd, file, request.action)),
+    )
     return { files }
   }
 

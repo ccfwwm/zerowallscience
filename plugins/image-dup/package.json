@@ -155,7 +155,8 @@
     "pdf-lib": "^1.17.1",
     "sharp": "^0.35.3",
     "lucide-react": "^0.468.0",
-    "react": "^18.2.0"
+    "react": "^18.2.0",
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.3"

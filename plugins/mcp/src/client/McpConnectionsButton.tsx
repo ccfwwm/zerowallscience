@@ -66,7 +66,7 @@ export interface McpServerInput {
 interface McpActions {
   listMcpServers: () => Promise<McpServerView[]>
   createMcpServer: (input: McpServerInput) => Promise<McpServerView>
-  updateMcpServer: (id: string, input: McpServerInput) => Promise<McpServerView>
+  updateMcpServer: (id: string, input: Partial<McpServerInput>) => Promise<McpServerView>
   removeMcpServer: (id: string) => Promise<void>
   reloadMcpServer: (id: string) => Promise<McpServerView>
   getSciMasterCredentialStatus: () => Promise<{ configured: boolean }>
@@ -122,7 +122,7 @@ export function McpConnectionsButton(props: Props) {
   selectedIdRef.current = selectedId
 
   const selected = useMemo(() => servers.find(server => server.id === selectedId), [servers, selectedId])
-  const managedConnection = selected?.serverName === 'zerowall_managed_scimaster' || selected?.serverName === 'huagongshe' || selected?.serverName === 'rmcp'
+  const managedConnection = selected !== undefined && ['zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher', 'huagongshe', 'rmcp'].includes(selected.serverName)
   const hasStartingServer = servers.some(server => server.runtimeState === 'starting')
 
   const refresh = useCallback(async (preferredId?: string) => {
@@ -263,7 +263,7 @@ export function McpConnectionsButton(props: Props) {
       const input = inputFromDraft(draft, props.t)
       const saved = selectedId === NEW_SERVER
         ? await createMcpServer(input)
-        : await updateMcpServer(selectedId, input)
+        : await updateMcpServer(selectedId, managedConnection ? { enabled: input.enabled } : input)
       await refresh(saved.id)
     } catch (reason) {
       setError(message(reason))

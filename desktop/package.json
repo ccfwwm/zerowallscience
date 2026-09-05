@@ -23,6 +23,8 @@
     "package:stable:mac:arm64": "node scripts/verify-target.mjs darwin arm64 && electron-builder --config build/electron-builder.stable.cjs --mac --arm64 --publish never && node scripts/verify-packaged-runtime.mjs"
   },
   "dependencies": {
+    "@daweifu/capability-menu": "workspace:*",
+    "dsh-auto-review": "workspace:*",
     "dsh-better-sidebar-icons": "workspace:*",
     "dsh-file-review-tab": "workspace:*",
     "dsh-wechat": "workspace:*",

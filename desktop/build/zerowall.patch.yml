@@ -129,6 +129,35 @@
     - id: dsh-wechat
       name: 'dsh-wechat'
 
+    - id: capability-menu-registry
+      name: '@daweifu/capability-menu/registry'
+    - id: capability-menu-search
+      name: '@daweifu/capability-menu/search'
+    - id: capability-menu-invoke
+      name: '@daweifu/capability-menu/invoke'
+    - id: capability-menu-policy
+      name: '@daweifu/capability-menu/policy'
+      config:
+        tools:
+          on-demand: ['*']
+          resident: [read, read_image, glob, grep, ask_user_question, todo_write]
+        skills:
+          on-demand: ['*']
+    - id: capability-menu
+      name: '@daweifu/capability-menu'
+
+    - id: auto-review
+      name: 'dsh-auto-review'
+      config:
+        allowUnmarkedAudit: true
+        enableByDefault: false
+        language: zh
+        fallbackPolicy: delegate
+        toolsPolicy:
+          overrides:
+            bash: ai
+            write: ai
+
     - id: zerowall-base
       name: '@zerowallscience/plugin-base'
 

@@ -1,5 +1,5 @@
 {
-  "version": "5.1.12",
+  "version": "5.4.0",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.1.2-rc.1",
@@ -19,9 +19,12 @@
     "commit": "777816766efd144379eb26ad74f2395cebe1d48f"
   },
   "fileReviewTab": {
-    "repository": "https://github.com/Lzh3070/dsh-file-review-tab.git",
+    "repository": "https://github.com/left0ver/dsh-file-review.git",
     "branch": "main",
-    "commit": "e6ffc880f90a05b0ae3fcfb630076b697cdb55c2"
+    "commit": "d0d82d3ae223ab2fbb2e1ff826788947ec800b36",
+    "version": "0.6.0",
+    "license": "MIT",
+    "source": "packages/dsh-file-review-tab"
   },
   "office": {
     "repository": "https://github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office.git",
@@ -31,6 +34,23 @@
   "wechat": {
     "repository": "https://github.com/pan17/dsh-wechat.git",
     "branch": "main",
-    "commit": "4214ca34468309fcebdf0435df0442b21b584254"
+    "commit": "a755e5c0f7901b700bd85cb4053a34753e9ac8c4",
+    "version": "0.8.0",
+    "license": "MIT",
+    "source": "packages/dsh-wechat"
+  },
+  "capabilityMenu": {
+    "repository": "https://github.com/PKUfudawei/dsh-capability-menu.git",
+    "commit": "41f3db99f131893ab9e4e82b97e941593dd56e47",
+    "version": "0.1.2",
+    "license": "Apache-2.0",
+    "source": "packages/dsh-capability-menu"
+  },
+  "autoReview": {
+    "repository": "https://github.com/PerryLink/dsh-auto-review.git",
+    "commit": "6940bd3ad6454aa91eccbe7e4c661b6835cdb7b8",
+    "version": "0.10.4",
+    "license": "Apache-2.0",
+    "source": "packages/dsh-auto-review"
   }
 }

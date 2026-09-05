@@ -27,6 +27,8 @@ beforeAll(async () => {
       APPDATA: join(root, 'appdata'),
       LOCALAPPDATA: join(root, 'localappdata'),
       ZEROWALL_USER_DATA_DIR: join(root, 'zerowall-user-data'),
+      USERPROFILE: root,
+      HOME: root,
       ELECTRON_DISABLE_SECURITY_WARNINGS: 'false',
     },
     stdio: 'pipe',

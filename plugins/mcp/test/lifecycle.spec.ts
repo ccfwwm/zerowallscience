@@ -2,7 +2,8 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -13,6 +14,10 @@ import ZeroWallMcpService, {
 } from '../src/host/index.js'
 
 const roots: string[] = []
+beforeEach(() => {
+  // Vitest worker IPC is not the desktop credential broker.
+  vi.spyOn(SecretBrokerClient.prototype, 'get').mockResolvedValue(undefined)
+})
 afterEach(() => {
   delete process.env.ZEROWALL_RESEARCH_DB
   delete process.env.ZEROWALL_DISABLE_DEFAULT_MCP
@@ -122,6 +127,11 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect(afterDelayedStarting?.runtimeState).toBe('active')
       expect(afterDelayedStarting?.tools).toEqual(expect.arrayContaining(['mcp__fixture__add', 'mcp__fixture__greet']))
 
+      const reloaded = await ctx.zerowallMcp.reload(created.id)
+      expect(reloaded.runtimeState, reloaded.runtimeError).toBe('active')
+      expect(reloaded.tools).toEqual(created.tools)
+      expect(ctx.tools.schemas().filter(tool => tool.name === 'mcp__fixture__add')).toHaveLength(1)
+
       const disabled = await ctx.zerowallMcp.update({ id: created.id, changes: { enabled: false } })
       expect(disabled.runtimeState).toBe('disabled')
       expect(disabled.tools).toEqual([])
@@ -160,7 +170,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       expect((await ctx.zerowallMcp.list()).every(item => item.runtimeState === 'starting' || item.runtimeState === 'blocked')).toBe(true)
-      await expect.poll(async () => (await ctx.zerowallMcp.list()).every(item => item.runtimeState === 'blocked'), { timeout: 10_000, interval: 25 }).toBe(true)
+      await expect.poll(async () => (await ctx.zerowallMcp.list()).filter(item => item.serverName.startsWith('zerowall_managed_')).every(item => item.runtimeState === 'blocked'), { timeout: 10_000, interval: 25 }).toBe(true)
       mkdirSync(environmentStore, { recursive: true })
       writeFileSync(join(environmentStore, 'current.json'), JSON.stringify({ version: '4.1.10', root: installed, health: 'ready' }))
       await expect.poll(async () => Object.fromEntries((await ctx.zerowallMcp.list()).map(item => [item.serverName, item.runtimeState])), { timeout: 10_000, interval: 100 })
@@ -187,8 +197,8 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       const servers = await ctx.zerowallMcp.list()
-      expect(servers).toHaveLength(4)
-      expect(servers.map(server => server.name)).toEqual(['Sci', 'Bio Tools', 'Ketcher Chemistry', 'rmcp'])
+      expect(servers).toHaveLength(5)
+      expect(servers.map(server => server.name)).toEqual(expect.arrayContaining(['Sci', 'Bio Tools', 'Ketcher Chemistry', 'rmcp', '化工社 AIchem']))
       expect(servers.find(server => server.serverName === 'zerowall_filesystem')).toBeUndefined()
       expect(servers.every(server => server.runtimeState === 'starting' || server.runtimeState === 'blocked')).toBe(true)
       await expect.poll(async () => Object.fromEntries((await ctx.zerowallMcp.list()).map(server => [server.serverName, server.runtimeState])), { timeout: 10_000, interval: 25 })

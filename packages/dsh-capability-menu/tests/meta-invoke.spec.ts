@@ -1,0 +1,321 @@
+import { describe, expect, it } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
+import SkillRegistry from '@deepseek-ai/dsh-skill'
+import * as SkillFileSystem from '@deepseek-ai/dsh-skill-filesystem'
+import * as registry from '../src/registry.ts'
+import * as policy from '../src/policy.ts'
+import * as toolMetaInvoke from '../src/invoke.ts'
+
+const testSignal = new AbortController().signal
+
+function agentStub(name: string) {
+  return {
+    id: name,
+    options: {},
+    session: { header: { cwd: process.cwd() }, snapshotEvents: () => [], append: () => {} },
+    ctx: new Context(),
+    status: 'idle',
+  } as never
+}
+
+async function setup(home: string, config: toolMetaInvoke.Config = {}, registryConfig: registry.Config = {}): Promise<Context> {
+  const ctx = new Context()
+  await ctx.plugin(SystemPrompt)
+  await ctx.plugin(ToolRuntime)
+  await ctx.plugin(SkillRegistry)
+  await ctx.plugin(SkillFileSystem, {
+    dshHome: `${home}/.dsh`,
+    agentsHome: `${home}/.agents`,
+    watch: false,
+  })
+  // Disable on-demand catalog emission by default so tests never write the
+  // real ~/.dsh; callers override via registryConfig when they test it.
+  await ctx.plugin(registry, { catalogFile: '', ...registryConfig })
+  await ctx.plugin(policy)
+  await ctx.plugin(toolMetaInvoke, config)
+  return ctx
+}
+
+function registerMcpTool(
+  ctx: Context,
+  server: string,
+  raw: string,
+  description: string,
+  onExecute?: (args: unknown) => unknown,
+): string {
+  const name = `mcp__${server}__${raw}`
+  ctx.tools.register(defineTool({
+    name,
+    description,
+    parameters: { title: { type: 'string', required: true, description: 'Title' } },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, received: { type: 'json' }, id: { type: 'string' } } },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+    },
+    async execute(args) {
+      if (onExecute) return onExecute(args) as never
+      return { ok: true, received: args }
+    },
+  }))
+  return name
+}
+
+function registerNativeTool(
+  ctx: Context,
+  name: string,
+  description: string,
+  onExecute?: (args: unknown) => unknown,
+): string {
+  ctx.tools.register(defineTool({
+    name,
+    description,
+    parameters: { command: { type: 'string', required: true, description: 'Command to run' } },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, received: { type: 'json' } } },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+    },
+    async execute(args) {
+      if (onExecute) return onExecute(args) as never
+      return { ok: true, received: args }
+    },
+  }))
+  return name
+}
+
+async function writeSkill(root: string, name: string, description: string, body: string): Promise<void> {
+  const { mkdir, writeFile } = await import('node:fs/promises')
+  const { join } = await import('node:path')
+  const dir = join(root, name)
+  await mkdir(dir, { recursive: true })
+  await writeFile(join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`)
+}
+
+async function runTool(
+  ctx: Context,
+  name: string,
+  args: Record<string, unknown>,
+  agent: unknown = agentStub('agent'),
+): Promise<{ value: unknown; isError: boolean }> {
+  const result = await ctx.tools.execute({
+    callId: ToolCallId(`call-${name}`),
+    name,
+    arguments: args,
+    agent: agent as never,
+    signal: testSignal,
+  })
+  return { value: result.value, isError: result.isError }
+}
+
+describe('capability-menu-invoke', () => {
+  it('forwards MCP calls through the tool pipeline and preserves args', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    const ctx = await setup(home)
+    let received: unknown
+    const issue = registerMcpTool(ctx, 'gongfeng', 'create_issue', 'Create an issue', args => {
+      received = args
+      return { ok: true, id: 'issue-1' }
+    })
+    await ctx.capability.refresh()
+
+    const { value, isError } = await runTool(ctx, 'meta_invoke', { id: issue, kind: 'tool', args: { title: 'hello' } })
+    expect(isError).toBe(false)
+    const result = value as { ok: boolean; kind: string; id: string; detail: { forwarded: boolean; target: string } }
+    expect(result.ok).toBe(true)
+    expect(result.kind).toBe('mcp')
+    expect(result.detail.forwarded).toBe(true)
+    expect(result.detail.target).toBe(issue)
+    expect(received).toEqual({ title: 'hello' })
+  })
+
+  it('surfaces target failure as an isError result', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    const ctx = await setup(home)
+    const failing = registerMcpTool(ctx, 'gongfeng', 'boom', 'Always fails', () => {
+      throw new Error('target exploded')
+    })
+    await ctx.capability.refresh()
+
+    const { isError } = await runTool(ctx, 'meta_invoke', { id: failing, kind: 'tool', args: { title: 'x' } })
+    expect(isError).toBe(true)
+  })
+
+  it('loads a skill and renders content like the skill tool', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    // Skills must exist before the skill provider/registry load (see registry tests).
+    await writeSkill(`${home}/.agents/skills`, 'frontend-design', 'Design guidance', 'Follow the design principles.')
+    const ctx = await setup(home)
+    await ctx.capability.refresh()
+
+    const { value, isError } = await runTool(ctx, 'meta_invoke', { id: 'frontend-design', kind: 'skill' })
+    expect(isError).toBe(false)
+    const result = value as { ok: boolean; kind: string; detail: { name: string; content: string } }
+    expect(result.ok).toBe(true)
+    expect(result.kind).toBe('skill')
+    expect(result.detail.name).toBe('frontend-design')
+    expect(result.detail.content).toContain('design principles')
+  })
+
+  it('resolve mode returns the target schema without executing', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    let executed = false
+    const ctx = await setup(home, { forwardMode: 'resolve' })
+    const issue = registerMcpTool(ctx, 'gongfeng', 'create_issue', 'Create an issue', () => {
+      executed = true
+      return { ok: true }
+    })
+    await ctx.capability.refresh()
+
+    const { value, isError } = await runTool(ctx, 'meta_invoke', { id: issue, kind: 'tool', args: { title: 'x' } })
+    expect(isError).toBe(false)
+    const result = value as { ok: boolean; kind: string; detail: { target: string; parameters: unknown } }
+    expect(result.kind).toBe('resolve')
+    expect(result.detail.target).toBe(issue)
+    expect(result.detail.parameters).toBeDefined()
+    expect(executed).toBe(false)
+  })
+
+  it('forwards a harness-native tool (built-in server) through the tool pipeline', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    const ctx = await setup(home)
+    let received: unknown
+    const bash = registerNativeTool(ctx, 'bash', 'Run commands in a bash shell', args => {
+      received = args
+      return { ok: true }
+    })
+    await ctx.capability.refresh()
+
+    const { value, isError } = await runTool(ctx, 'meta_invoke', { id: bash, kind: 'tool', args: { command: 'echo hi' } })
+    expect(isError).toBe(false)
+    const result = value as { ok: boolean; kind: string; detail: { forwarded: boolean; target: string } }
+    expect(result.ok).toBe(true)
+    expect(result.kind).toBe('mcp')
+    expect(result.detail.forwarded).toBe(true)
+    expect(result.detail.target).toBe(bash)
+    expect(received).toEqual({ command: 'echo hi' })
+  })
+
+  it('executes an On-demand native tool while it stays out of the exposure surface', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SkillRegistry)
+    await ctx.plugin(SkillFileSystem, {
+      dshHome: `${home}/.dsh`,
+      agentsHome: `${home}/.agents`,
+      watch: false,
+    })
+    await ctx.plugin(registry, { catalogFile: '' })
+    await ctx.plugin(policy, { tools: { 'on-demand': ['grep'] } })
+    await ctx.plugin(toolMetaInvoke, {})
+    const grep = registerNativeTool(ctx, 'grep', 'Search file contents with regular expressions', args => ({ ok: true, received: args }))
+    await ctx.capability.refresh()
+
+    // On-demand natives are projected out of the model-facing tool list…
+    const assembly = await ctx.systemPrompt.assemble()
+    expect(assembly.tools.map(tool => tool.name)).not.toContain(grep)
+
+    // …but stay reachable through meta_invoke.
+    const { value, isError } = await runTool(ctx, 'meta_invoke', { id: grep, kind: 'tool', args: { command: 'ls' } })
+    expect(isError).toBe(false)
+    const result = value as { ok: boolean; kind: string; detail: { forwarded: boolean; target: string } }
+    expect(result.ok).toBe(true)
+    expect(result.detail.target).toBe(grep)
+  })
+
+  it('rejects an unknown capability id', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    const ctx = await setup(home)
+    const { isError } = await runTool(ctx, 'meta_invoke', { id: 'mcp__nope__missing', kind: 'tool' })
+    expect(isError).toBe(true)
+  })
+
+  it('rejects a disabled capability', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SkillRegistry)
+    await ctx.plugin(SkillFileSystem, {
+      dshHome: `${home}/.dsh`,
+      agentsHome: `${home}/.agents`,
+      watch: false,
+    })
+    await ctx.plugin(registry, { catalogFile: '' })
+    await ctx.plugin(policy, { tools: { disabled: ['mcp__gongfeng__create_issue'] } })
+    await ctx.plugin(toolMetaInvoke, {})
+    const issue = registerMcpTool(ctx, 'gongfeng', 'create_issue', 'Create an issue')
+    await ctx.capability.refresh()
+
+    const { isError } = await runTool(ctx, 'meta_invoke', { id: issue, kind: 'tool', args: { title: 'x' } })
+    expect(isError).toBe(true)
+  })
+
+  it('rejects a disabled skill', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    await writeSkill(`${home}/.agents/skills`, 'forbidden-skill', 'Forbidden skill body', 'Body text.')
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SkillRegistry)
+    await ctx.plugin(SkillFileSystem, {
+      dshHome: `${home}/.dsh`,
+      agentsHome: `${home}/.agents`,
+      watch: false,
+    })
+    await ctx.plugin(registry, { catalogFile: '' })
+    await ctx.plugin(policy, { skills: { disabled: ['forbidden-skill'] } })
+    await ctx.plugin(toolMetaInvoke, {})
+    await ctx.capability.refresh()
+
+    const { isError } = await runTool(ctx, 'meta_invoke', { id: 'forbidden-skill', kind: 'skill' })
+    expect(isError).toBe(true)
+  })
+
+  it('dedups already-loaded skills within one session and returns a short reminder on repeat', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    await writeSkill(`${home}/.agents/skills`, 'frontend-design', 'Design guidance', 'Full design instructions body here.')
+    const ctx = await setup(home)
+    await ctx.capability.refresh()
+    // Same agent object = same session: the second load must be a short reminder.
+    const agent = agentStub('agent')
+
+    const first = await runTool(ctx, 'meta_invoke', { id: 'frontend-design', kind: 'skill' }, agent)
+    expect(first.isError).toBe(false)
+    const firstDetail = (first.value as { detail: { content: string } }).detail
+    expect(firstDetail.content).toContain('Full design instructions')
+
+    const second = await runTool(ctx, 'meta_invoke', { id: 'frontend-design', kind: 'skill' }, agent)
+    expect(second.isError).toBe(false)
+    const secondDetail = (second.value as { detail: { content: string } }).detail
+    expect(secondDetail.content).not.toContain('Full design instructions')
+    expect(secondDetail.content).toContain('already loaded')
+  })
+
+  it('keeps loaded-skill dedup isolated per session in the same process', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    // A registered On-demand skill (agent-dir skill) resolves through ctx.skills
+    // for both agents in the same process.
+    await writeSkill(`${home}/.agents/skills`, 'frontend-design', 'Design guidance', 'Full design instructions body here.')
+    const ctx = await setup(home)
+    await ctx.capability.refresh()
+
+    const agentA = agentStub('agent-a')
+    const agentB = agentStub('agent-b')
+
+    const a1 = await runTool(ctx, 'meta_invoke', { id: 'frontend-design', kind: 'skill' }, agentA)
+    const b1 = await runTool(ctx, 'meta_invoke', { id: 'frontend-design', kind: 'skill' }, agentB)
+    const a2 = await runTool(ctx, 'meta_invoke', { id: 'frontend-design', kind: 'skill' }, agentA)
+
+    const content = (result: { value: unknown }): string => (result.value as { detail: { content: string } }).detail.content
+    // Session A loads the full body once…
+    expect(content(a1)).toContain('Full design instructions')
+    // …session B in the same process must get the full body too (not a reminder).
+    expect(content(b1)).toContain('Full design instructions')
+    // Re-loading in session A returns the short reminder.
+    expect(content(a2)).toContain('already loaded')
+  })
+})

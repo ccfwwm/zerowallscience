@@ -14,7 +14,7 @@ export function apply(ctx: ClientContext): void {
       embedded: true,
       listMcpServers: async () => unwrapRemoteResult('zerowall.mcp.list', await remote.zerowallMcp.list()),
       createMcpServer: async (input: McpServerInput) => unwrapRemoteResult('zerowall.mcp.create', await remote.zerowallMcp.create(input)),
-      updateMcpServer: async (id: string, input: McpServerInput) => unwrapRemoteResult('zerowall.mcp.update', await remote.zerowallMcp.update({ id, changes: input })),
+      updateMcpServer: async (id: string, input: Partial<McpServerInput>) => unwrapRemoteResult('zerowall.mcp.update', await remote.zerowallMcp.update({ id, changes: input })),
       removeMcpServer: async (id: string) => { unwrapRemoteResult('zerowall.mcp.deleteConnection', await remote.zerowallMcp.deleteConnection(id)) },
       reloadMcpServer: async (id: string) => unwrapRemoteResult('zerowall.mcp.reload', await remote.zerowallMcp.reload(id)),
       getSciMasterCredentialStatus: async () => unwrapRemoteResult('zerowall.mcp.getSciMasterCredentialStatus', await remote.zerowallMcp.getSciMasterCredentialStatus()),

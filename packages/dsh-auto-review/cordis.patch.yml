@@ -1,0 +1,30 @@
+# dsh-auto-review bundle patch: mount the auto-review answerer. `name` is the
+# package name, resolved through the profile's node_modules. An id-targeted
+# override replaces the whole config row — restate every key when overriding.
+#
+# The Web GUI review panel needs NO extra row: the package's `dsh.client`
+# declaration auto-registers its browser half (a session-header action), and
+# the host half registers an `autoReview` session projection whenever the
+# profile provides the session-projection capability (the web profile does).
+- insert:
+    - id: auto-review
+      name: dsh-auto-review
+      config:
+        enableByDefault: false
+        language: zh
+        fallbackPolicy: delegate
+        toolsPolicy:
+          # Tools NOT listed fall back to the schema default `human`
+          # (delegate to the human answerer — the chain is never short-circuited).
+          # `edit` (in-place modification) is deliberately NOT AI-reviewed by
+          # default: add it here explicitly if you accept in-place edits without
+          # a human in the loop.
+          overrides:
+            bash: ai
+            write: ai
+    # OPTIONAL invariant companion — uncomment and add to YOUR profile patch
+    # layer only in compositions that provide the `invariants` service
+    # (agent-spine apps such as headless/ACP). The plain web profile has no
+    # invariants service, so this row would sit PENDING there and fail boot:
+    # - id: auto-review-invariant
+    #   name: dsh-auto-review/invariant

@@ -24,7 +24,7 @@
     "sidebar-icons:bundle": "pnpm --filter dsh-better-sidebar-icons run build",
     "file-review:bundle": "pnpm --filter dsh-file-review-tab run build",
     "plugins:typert": "node tools/plugins/generate-typert.mjs",
-    "wechat:bundle": "pnpm --filter dsh-wechat run build",
+    "wechat:bundle": "pnpm --filter dsh-wechat run build && pnpm --filter @daweifu/capability-menu run build && pnpm --filter dsh-auto-review run build",
     "sidebar:bundle": "pnpm --filter dsh-better-sidebar run build",
     "plugins:bundle": "pnpm plugins:typert && pnpm --filter @zerowallscience/plugin-* run bundle && node tools/plugins/inline-css.mjs",
     "plugins:typecheck": "pnpm --filter @zerowallscience/plugin-* run typecheck",

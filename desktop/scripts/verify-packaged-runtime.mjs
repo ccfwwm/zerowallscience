@@ -92,6 +92,10 @@ const requiredArchivePaths = [
   'node_modules/dsh-file-review-tab/cordis.patch.yml',
   'node_modules/dsh-wechat/dist/index.js',
   'node_modules/dsh-wechat/dist/client.js',
+  'node_modules/@daweifu/capability-menu/lib/index.js',
+  'node_modules/@daweifu/capability-menu/lib/client.js',
+  'node_modules/dsh-auto-review/lib/index.js',
+  'node_modules/dsh-auto-review/lib/client.js',
   'node_modules/dsh-wechat/cordis.patch.yml',
   'node_modules/@zerowallscience/research-store/lib/index.js',
   'node_modules/jszip/lib/index.js',
@@ -636,6 +640,7 @@ async function verifyPluginInventory(url) {
     'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
     'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search',
   ].map(name => `@zerowallscience/plugin-${name}`)
+  expected.push('dsh-wechat', 'dsh-file-review-tab', 'dsh-auto-review', '@daweifu/capability-menu', '@daweifu/capability-menu/policy', '@daweifu/capability-menu/search', '@daweifu/capability-menu/invoke')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
   const missing = expected.filter(name => !byModule.has(name))
   if (missing.length > 0) throw new Error(`Packaged Host plugin inventory is missing: ${missing.join(', ')}`)
@@ -754,6 +759,8 @@ async function verifyDesktopStartup() {
       APPDATA: resolve(root, 'appdata'),
       LOCALAPPDATA: resolve(root, 'localappdata'),
       ZEROWALL_USER_DATA_DIR: resolve(root, 'user-data'),
+      USERPROFILE: root,
+      HOME: root,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -794,7 +801,11 @@ async function verifyDesktopStartup() {
       if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
     })
     page.on('requestfailed', request => browserErrors.push(`request: ${request.url()} ${request.failure()?.errorText ?? 'failed'}`))
-    await page.waitForFunction(() => Array.isArray(window.__DSH_BOOT__?.entries), undefined, { timeout: 120_000 })
+    try {
+      await page.waitForFunction(() => Array.isArray(window.__DSH_BOOT__?.entries), undefined, { timeout: 120_000 })
+    } catch (error) {
+      throw new Error(`Desktop boot failed at ${page.url()}. Body: ${(await page.locator('body').innerText()).slice(0, 6000)}\nBrowser: ${browserErrors.slice(-15).join('\n')}\nProcess: ${output.slice(-6000)}\n${error}`)
+    }
     const ids = await page.evaluate(() => {
       const boot = window.__DSH_BOOT__
       return Array.isArray(boot?.entries) ? boot.entries.map(entry => entry.id) : []
@@ -986,7 +997,7 @@ async function verifySourceRuntimePolicy() {
   }
 
   const wechat = JSON.parse(await readFile(resolve(repositoryRoot, 'packages', 'dsh-wechat', 'package.json'), 'utf8'))
-  if (wechat.name !== 'dsh-wechat' || wechat.version !== '0.7.2') throw new Error(`Expected the pinned dsh-wechat main snapshot; found ${wechat.name}@${wechat.version}.`)
+  if (wechat.name !== 'dsh-wechat' || wechat.version !== '0.8.0') throw new Error(`Expected the pinned dsh-wechat snapshot; found ${wechat.name}@${wechat.version}.`)
   await access(resolve(repositoryRoot, 'packages', 'dsh-wechat', 'dist', 'index.js'))
   const stableProfile = await readFile(resolve(repositoryRoot, 'profiles', 'generated', 'stable.yml'), 'utf8')
   const desktopPatch = await readFile(resolve(repositoryRoot, 'desktop', 'build', 'zerowall.patch.yml'), 'utf8')
