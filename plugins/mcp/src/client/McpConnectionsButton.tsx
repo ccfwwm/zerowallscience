@@ -397,6 +397,9 @@ export function McpConnectionsButton(props: Props) {
                {rdatalinuxConfigured && <button type="button" onClick={() => void clearRdatalinux()} disabled={rdatalinuxBusy}>清除</button>}
              </div>
           </section>}
+          {selected !== undefined && <div className={css.settingRow}>
+            <Toggle checked={draft.enabled} onChange={checked => setDraft({ ...draft, enabled: checked })} label={props.t('mcp.enabled')} />
+          </div>}
           <fieldset className={css.form} disabled={managedConnection}>
             <div className={css.twoColumns}>
               <Field label={props.t('common.name')}><input value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} placeholder="Literature tools" /></Field>
@@ -407,7 +410,6 @@ export function McpConnectionsButton(props: Props) {
                 <button type="button" className={draft.transport === 'stdio' ? css.segmentActive : ''} onClick={() => setDraft({ ...draft, transport: 'stdio' })}>stdio</button>
                 <button type="button" className={draft.transport === 'streamable-http' ? css.segmentActive : ''} onClick={() => setDraft({ ...draft, transport: 'streamable-http' })}>HTTP</button>
               </div>
-              <Toggle checked={draft.enabled} onChange={checked => setDraft({ ...draft, enabled: checked })} label={props.t('mcp.enabled')} />
             </div>
             {draft.transport === 'stdio' ? <>
               <Field label={props.t('mcp.command')}><input value={draft.command} onChange={event => setDraft({ ...draft, command: event.target.value })} placeholder="npx" /></Field>
