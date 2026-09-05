@@ -28,6 +28,7 @@ export interface OpenCodeCatalogModel {
 export const DEFAULT_MODELS: OpenCodeCatalogModel[] = [
   { id: 'big-pickle', name: 'Big Pickle (Free)', description: 'OpenCode Zen free model', contextWindow: 1_000_000, maxTokens: 128_000, supportsImages: false },
   { id: 'x-preview-free', name: 'X Preview Free', description: 'OpenCode Zen free model', contextWindow: 200_000, maxTokens: 128_000, supportsImages: false },
+  { id: 'mimo-v2.5-free', name: 'mimo-v2.5-free', description: 'OpenCode Zen free vision model', contextWindow: 262_000, maxTokens: 128_000, supportsImages: true },
 ]
 
 const DEFAULT_CONTEXT_WINDOW = 1_000_000
@@ -283,7 +284,9 @@ async function syncModels(baseURL: string, current: readonly OpenCodeCatalogMode
       const previous = known.get(id)
       const contextWindow = Number.isSafeInteger(item.context_length) && (item.context_length as number) > 0 ? item.context_length as number : previous?.contextWindow ?? DEFAULT_CONTEXT_WINDOW
       const maxTokens = Number.isSafeInteger(item.max_output_tokens) && (item.max_output_tokens as number) > 0 ? item.max_output_tokens as number : previous?.maxTokens ?? DEFAULT_MAX_TOKENS
-      const supportsImages = Array.isArray(item.modalities) ? item.modalities.includes('image') : previous?.supportsImages
+      const supportsImages = Array.isArray(item.modalities)
+        ? item.modalities.includes('image')
+        : previous?.supportsImages ?? isKnownVisionModel(id)
       return { id, name: item.name?.trim() || previous?.name || id, contextWindow, maxTokens, ...(supportsImages === undefined ? {} : { supportsImages }) }
     })
   } catch (error) { logger.warn('llm-opencode: automatic model sync failed; keeping the built-in catalog'); logger.warn(error); return [...current] }
@@ -291,6 +294,10 @@ async function syncModels(baseURL: string, current: readonly OpenCodeCatalogMode
 
 function isFreeModel(id: string): boolean {
   return id === 'big-pickle' || /(?:^|[-_])free(?:$|[-_])/iu.test(id)
+}
+
+function isKnownVisionModel(id: string): boolean {
+  return /(?:mimo(?:[-_.]?v?2\.5)?|vision|multimodal|vl)/iu.test(id)
 }
 
 export function apply(ctx: Context): void {

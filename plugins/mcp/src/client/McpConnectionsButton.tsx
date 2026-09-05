@@ -122,6 +122,7 @@ export function McpConnectionsButton(props: Props) {
   selectedIdRef.current = selectedId
 
   const selected = useMemo(() => servers.find(server => server.id === selectedId), [servers, selectedId])
+  const managedConnection = selected?.serverName === 'zerowall_managed_scimaster' || selected?.serverName === 'huagongshe' || selected?.serverName === 'rmcp'
   const hasStartingServer = servers.some(server => server.runtimeState === 'starting')
 
   const refresh = useCallback(async (preferredId?: string) => {
@@ -370,13 +371,14 @@ export function McpConnectionsButton(props: Props) {
           {selected?.runtimeError && <p className={css.error} role="alert">{selected.runtimeError}</p>}
           {(selected?.missingEnvironmentVariables.length ?? 0) > 0 && <p className={css.warning}>{props.t('mcp.missing', { names: selected?.missingEnvironmentVariables.join(', ') ?? '' })}</p>}
           {error && <p className={css.error} role="alert">{error}</p>}
+          {managedConnection && <p className={css.warning}>此托管连接由“环境配置”管理；本页仅显示状态、工具和通用诊断。</p>}
           {selected !== undefined && <section className={css.toolsCard} aria-label={props.t('mcp.availableTools')}>
             <div className={css.toolsHeading}><strong>{props.t('mcp.availableTools')}</strong><span>{selected.tools.length}</span></div>
             {selected.tools.length === 0
               ? <p>{selected.runtimeState === 'active' ? props.t('mcp.noTools') : props.t('mcp.toolsUnavailable')}</p>
               : <div className={css.toolList}>{selected.tools.map(tool => <code key={tool}>{tool}</code>)}</div>}
           </section>}
-          {selected?.serverName === 'zerowall_managed_scimaster' && <section className={css.sciMasterCard} aria-label={props.t('mcp.sciMasterSettings')}>
+          {false && selected?.serverName === 'zerowall_managed_scimaster' && <section className={css.sciMasterCard} aria-label={props.t('mcp.sciMasterSettings')}>
             <div className={css.sciMasterHeading}><strong>{props.t('mcp.sciMasterApiKey')}</strong><span className={sciMasterConfigured ? css.configured : css.missing}>{sciMasterConfigured ? props.t('mcp.sciMasterConfigured') : props.t('mcp.sciMasterMissing')}</span></div>
             <p className={css.sciMasterHelp}>{props.t('mcp.sciMasterApiKeyHelp')}</p>
             <div className={css.sciMasterActions}>
@@ -386,7 +388,7 @@ export function McpConnectionsButton(props: Props) {
             </div>
             <a className={css.sciMasterGuide} href="https://scimaster.bohrium.com/vibe-write/home" target="_blank" rel="noreferrer">{props.t('mcp.sciMasterApiKeyGuide')}</a>
           </section>}
-          {selected?.serverName === 'rmcp' && <section className={css.sciMasterCard} aria-label="rdatalinux MCP">
+          {false && selected?.serverName === 'rmcp' && <section className={css.sciMasterCard} aria-label="rdatalinux MCP">
              <div className={css.sciMasterHeading}><strong>rmcp · rbioagent / rplatform / rplotfigure</strong><span className={rdatalinuxConfigured ? css.configured : css.missing}>{rdatalinuxConfigured ? '已配置' : '未配置'}</span></div>
              <p className={css.sciMasterHelp}>端点固定为 http://103.217.185.141:8099/r-platform/mcp。R 与 Biomni 共用 MCP Authorization，凭据仅保存到 ZeroWall 凭据保险库。</p>
              <div className={css.sciMasterActions}>
@@ -395,7 +397,7 @@ export function McpConnectionsButton(props: Props) {
                {rdatalinuxConfigured && <button type="button" onClick={() => void clearRdatalinux()} disabled={rdatalinuxBusy}>清除</button>}
              </div>
           </section>}
-          <div className={css.form}>
+          <fieldset className={css.form} disabled={managedConnection}>
             <div className={css.twoColumns}>
               <Field label={props.t('common.name')}><input value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} placeholder="Literature tools" /></Field>
               <Field label={props.t('mcp.namespace')}><input value={draft.serverName} onChange={event => setDraft({ ...draft, serverName: event.target.value })} placeholder="literature" /></Field>
@@ -426,7 +428,7 @@ export function McpConnectionsButton(props: Props) {
               <Field label={props.t('mcp.attempts')}><input className={css.shortInput} type="number" min="1" value={draft.reconnectMaxAttempts} onChange={event => setDraft({ ...draft, reconnectMaxAttempts: event.target.value })} /></Field>
               <Toggle checked={draft.failOnStartupError} onChange={checked => setDraft({ ...draft, failOnStartupError: checked })} label={props.t('mcp.strictStartup')} />
             </div>
-          </div>
+          </fieldset>
           <footer className={css.footer}>
             <button className={css.saveButton} type="button" onClick={() => void save()} disabled={busy}><Save size={17} /><span>{selected === undefined ? props.t('common.create') : props.t('common.save')}</span></button>
           </footer>

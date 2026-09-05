@@ -99,6 +99,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private environmentSignature = ''
   private environmentRefreshInFlight = false
   private readonly secrets = new SecretBrokerClient()
+  private readonly mcpToolIndex = new Map<string, { server: string; name: string; description: string }>()
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallMcp')
@@ -163,6 +164,30 @@ export class ZeroWallMcpService extends TypertRemoteService {
         return { projectId: args.project_id, localPath: requested, remotePath: args.remote_path, name: basename(source), bytes: bytes.length, sha256, remote: nested.value as JsonValue }
       },
     }) as any)
+    ctx.tools.register(defineTool({
+      name: 'mcp_search_tools',
+      description: 'Search connected MCP tools by keyword and return compact matches.',
+      parameters: { query: { type: 'string', required: true }, server: { type: 'string' }, limit: { type: 'number' } },
+      output: { schema: { type: 'object', additionalProperties: true }, render: (_args: unknown, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }] },
+      async execute(args: { query: string; server?: string; limit?: number }) {
+        const terms = args.query.trim().toLowerCase().split(/\s+/u).filter(Boolean)
+        const limit = Math.max(1, Math.min(20, Math.floor(args.limit ?? 8)))
+        const rows = [...service.mcpToolIndex.values()].map(item => ({ item, score: terms.reduce((n, term) => n + (`${item.server} ${item.name} ${item.description}`.toLowerCase().includes(term) ? 1 : 0), 0) }))
+          .filter(row => (args.server === undefined || row.item.server === args.server) && (terms.length === 0 || row.score > 0))
+          .sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name)).slice(0, limit)
+        return { query: args.query, tools: rows.map(row => row.item), total: rows.length }
+      },
+    }) as any)
+    ctx.tools.register(defineTool({
+      name: 'mcp_enable_tools',
+      description: 'Select MCP tools for the current task and return compact metadata.',
+      parameters: { tools: { type: 'array', required: true, items: { type: 'string' } } },
+      output: { schema: { type: 'object', additionalProperties: true }, render: (_args: unknown, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }] },
+      async execute(args: { tools: string[] }) {
+        const names = [...new Set(args.tools.map(String).map(value => value.trim()).filter(Boolean))].slice(0, 12)
+        return { enabled: names.filter(name => service.mcpToolIndex.has(name)), missing: names.filter(name => !service.mcpToolIndex.has(name)), count: names.filter(name => service.mcpToolIndex.has(name)).length }
+      },
+    }) as any)
     this.recordsReady = this.seedBundledServers().then(() => {
       for (const record of this.projects().listMcpServers()) {
         this.statuses.set(record.id, {
@@ -189,7 +214,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       // A delayed reconnect/start event must not regress a connection that
       // has already completed its initial tools/list synchronization.
       if (state === 'starting' && this.fibers.has(record.id) && this.registeredTools.has(record.id)) return
-      if (state === 'active') this.registeredTools.set(record.id, this.toolNames(record.serverName))
+      if (state === 'active') { const names = this.toolNames(record.serverName); this.registeredTools.set(record.id, names); this.indexMcpTools(record.serverName, names) }
       this.statuses.set(record.id, {
         state,
         error: error === undefined ? '' : redactError(error),
@@ -571,7 +596,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
         return
       }
       this.fibers.set(record.id, fiber)
-      this.registeredTools.set(record.id, this.toolNames(record.serverName))
+      { const names = this.toolNames(record.serverName); this.registeredTools.set(record.id, names); this.indexMcpTools(record.serverName, names) }
       this.readyVersions.set(record.id, version)
       if (previous !== undefined && previous !== fiber) await previous.dispose()
       // The fiber resolves after the initial transport handshake and
@@ -607,7 +632,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       const fiber = this.ctx.plugin(McpClient, config)
       await fiber
       if (!current()) { await fiber.dispose(); return }
-      this.fibers.set(record.id, fiber); this.registeredTools.set(record.id, this.toolNames(record.serverName)); this.readyVersions.set(record.id, version)
+      { const names = this.toolNames(record.serverName); this.fibers.set(record.id, fiber); this.registeredTools.set(record.id, names); this.indexMcpTools(record.serverName, names); this.readyVersions.set(record.id, version) }
       if (previous !== undefined && previous !== fiber) await previous.dispose()
       this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
     } catch (error) {
@@ -651,6 +676,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
         this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
       }
     }
+  }
+
+  private indexMcpTools(serverName: string, names: string[]): void {
+    for (const name of names) this.mcpToolIndex.set(name, { server: serverName, name, description: name.replace(/^mcp__[^_]+__/u, '').replaceAll('_', ' ') })
   }
 
   private toolNames(serverName: string): string[] {

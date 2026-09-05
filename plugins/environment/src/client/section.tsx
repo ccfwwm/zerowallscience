@@ -39,6 +39,10 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const [chemConfigured, setChemConfigured] = useState(false)
   const [chemKey, setChemKey] = useState('')
   const [chemConnection, setChemConnection] = useState('')
+  const [rdatalinuxConfigured, setRdatalinuxConfigured] = useState(false)
+  const [rdatalinuxEndpoint, setRdatalinuxEndpoint] = useState('http://103.217.185.141:8099/r-platform/mcp')
+  const [rdatalinuxAuthorization, setRdatalinuxAuthorization] = useState('')
+  const [rdatalinuxConnection, setRdatalinuxConnection] = useState('')
 
   useEffect(() => {
     setReviewerValue(reviewerScope.getSnapshot().value ?? defaultReviewer)
@@ -90,6 +94,11 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     void load('chem', async () => {
       const value = await unwrap(mcpRemote.getHuagongsheCredentialStatus())
       if (!cancelled) setChemConfigured(value?.configured === true)
+    })
+    void load('rdatalinux', async () => {
+      if (mcpRemote?.getRdatalinuxCredentialStatus === undefined) throw new Error('MCP 服务不可用')
+      const value = await unwrap(mcpRemote.getRdatalinuxCredentialStatus()) as any
+      if (!cancelled) { setRdatalinuxConfigured(value?.configured === true); setRdatalinuxEndpoint(value?.endpoint ?? 'http://103.217.185.141:8099/r-platform/mcp') }
     })
     void load('mineru', async () => {
       if (mineruRemote?.getConfigStatus === undefined) throw new Error('MinerU 服务不可用')
@@ -159,6 +168,12 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     setImage(value)
     void run(async () => { await unwrap(environmentRemote.setImageModelSelection(value)) })
   }
+  const saveRdatalinux = () => void run(async () => {
+    const value = await unwrap(mcpRemote.setRdatalinuxAuthorization(rdatalinuxAuthorization)) as any
+    setRdatalinuxConfigured(true)
+    setRdatalinuxAuthorization('')
+    setRdatalinuxConnection(value?.runtimeState === 'active' ? `已连接 · ${(value.tools ?? []).length} 个工具` : '凭据已保存，连接待重试')
+  })
   const saveImageQuality = (value: ImageGenerationQuality) => {
     setImageQuality(value)
     void run(async () => {
@@ -185,6 +200,13 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
             <label className={css.field}><span>推理强度</span><select className={css.control} value={reviewer.reasoningEffort ?? ''} disabled={busy || reviewerEfforts.length === 0} onChange={event => void setReviewer('reasoningEffort', event.target.value)}><option value="">跟随模型默认{selectedReviewerModel?.reasoning?.defaultEffort ? `（${selectedReviewerModel.reasoning.defaultEffort}）` : ''}</option>{reviewer.reasoningEffort && !reviewerEfforts.some((effort: any) => effort.id === reviewer.reasoningEffort) ? <option value={reviewer.reasoningEffort}>{reviewer.reasoningEffort}（当前配置）</option> : null}{reviewerEfforts.map((effort: any) => <option key={effort.id} value={effort.id}>{effort.name ?? effort.id}</option>)}</select><small>{reviewerEfforts.length === 0 ? '当前模型未声明可选推理强度' : '可按模型目录提供的能力选择'}</small></label>
           </> : null}
         </div>
+      </article>
+
+      <article className={css.card}>
+        <div className={css.cardHeader}><div><h3>rdatalinux rmcp</h3><p>R、Biomni 和绘图工具共用此 MCP 连接。端点固定，凭据仅保存在本机凭据保险库。</p></div><span className={rdatalinuxConfigured ? css.statusGood : css.status}>{statusText('rdatalinux', rdatalinuxConfigured ? '已配置' : '未配置')}</span></div>
+        <label className={css.field}><span>Endpoint</span><input className={css.control} value={rdatalinuxEndpoint} readOnly /></label>
+        <div className={css.keyRow}><input className={css.control} type="password" placeholder="Bearer &lt;MCP key&gt;" value={rdatalinuxAuthorization} onChange={event => setRdatalinuxAuthorization(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !rdatalinuxAuthorization.trim() || !mcpRemote?.setRdatalinuxAuthorization} onClick={saveRdatalinux}>保存 Authorization</button><button className={css.secondaryButton} type="button" disabled={busy || !rdatalinuxConfigured || !mcpRemote?.clearRdatalinuxAuthorization} onClick={() => void run(async () => { await unwrap(mcpRemote.clearRdatalinuxAuthorization()); setRdatalinuxConfigured(false); setRdatalinuxConnection('') })}>清除</button><button className={css.secondaryButton} type="button" disabled={busy || !mcpRemote?.list} onClick={() => void run(async () => { const rows = await unwrap(mcpRemote.list()); const record = rows.find((row: any) => row.serverName === 'rmcp'); if (!record) throw new Error('尚未初始化 rmcp 连接。'); const value = await unwrap(mcpRemote.reload(record.id)); if (value.runtimeState !== 'active') throw new Error(value.runtimeError || 'rmcp 连接不可用'); setRdatalinuxConnection(`已连接 · ${(value.tools ?? []).length} 个工具`) })}>检测连接</button></div>
+        {rdatalinuxConnection ? <p className={css.muted} role="status">{rdatalinuxConnection}</p> : null}
       </article>
 
       <article className={css.card}>

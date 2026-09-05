@@ -337,15 +337,15 @@ export function TextEditor(props: FileViewerProps) {
   /** md/mermaid block split for the preview (mermaid fences lift out). Split
    *  only in preview mode: edit-mode keystrokes must not re-scan the source. */
   const mdBlocks = useMemo(
-    () => (markdown && mode === 'preview' ? splitMermaidBlocks(previewMdText) : []),
-    [markdown, mode, previewMdText],
+    () => (markdown && mode === 'preview' ? splitMermaidBlocks(previewText) : []),
+    [markdown, mode, previewText],
   )
   /** Raw-HTML analysis (block runs lifted out + inline gate). Non-null only
    *  for documents that actually contain HTML — plain markdown keeps the
    *  legacy single-pass render path below, byte-for-byte. */
   const htmlInfo = useMemo(
-    () => (markdown && mode === 'preview' ? analyzeMarkdownHtml(previewMdText) : null),
-    [markdown, mode, previewMdText],
+    () => (markdown && mode === 'preview' ? analyzeMarkdownHtml(previewText) : null),
+    [markdown, mode, previewText],
   )
   const hasMermaid = useMemo(
     () => htmlInfo !== null
