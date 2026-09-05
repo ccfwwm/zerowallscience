@@ -31,6 +31,7 @@ export interface PluginConfig {
   silent?: boolean;
   surfacePromptEnabled?: boolean;
   surfacePrompt?: string;
+  autoStart?: boolean;
 }
 
 export function apply(ctx: unknown, rawConfig: PluginConfig = {}): () => Promise<void> {
@@ -394,10 +395,16 @@ if (typeof context.inject === "function") {
     console.log("[dsh-wechat] ctx.inject unavailable; QR page disabled (login QR is logged)");
   }
 
-  // Start the bridge (token resume or QR login), stop on dispose.
-  void bridge.start().catch((err) => {
-    console.error(`[dsh-wechat] bridge start failed: ${String(err)}`);
-  });
+  // A packaged desktop should finish the main UI boot before starting an
+  // interactive QR/login flow. Existing installations can opt back in via
+  // the profile patch; the Settings page always exposes reconnect/re-login.
+  if (config.autoStart) {
+    void bridge.start().catch((err) => {
+      console.error(`[dsh-wechat] bridge start failed: ${String(err)}`);
+    });
+  } else {
+    console.log("[dsh-wechat] bridge startup deferred; connect it from Settings → WeChat");
+  }
 
   return () => bridge.stop();
 }

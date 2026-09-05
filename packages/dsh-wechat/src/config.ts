@@ -31,6 +31,8 @@ export interface WeChatDSHConfig {
   surfacePromptEnabled: boolean;
   /** Runtime-context text injected for WeChat-driven turns (edited from the settings page). */
   surfacePrompt: string;
+  /** Start the iLink bridge during Host boot. Desktop builds may defer this to Settings. */
+  autoStart: boolean;
 }
 
 /** Default WeChat surface prompt — injected as a runtime-context snapshot. */
@@ -54,5 +56,6 @@ export function defaultConfig(): WeChatDSHConfig {
     silent: false,
     surfacePromptEnabled: false,
     surfacePrompt: DEFAULT_SURFACE_PROMPT,
+    autoStart: true,
   };
 }

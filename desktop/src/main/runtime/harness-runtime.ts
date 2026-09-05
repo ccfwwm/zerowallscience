@@ -63,6 +63,10 @@ export function buildHarnessSpawnOptions(
       ZEROWALL_RESEARCH_DB: options.researchDbPath,
       ZEROWALL_MCP_ENVIRONMENT_ROOT: options.mcpEnvironmentRoot,
       ZEROWALL_BUNDLED_SKILLS: options.bundledSkillsPath,
+      // The desktop shell seeds managed MCP records for the Settings page,
+      // while deferring their expensive transports/tools-list until the user
+      // enables a capability or saves its environment credentials.
+      ZEROWALL_DEFER_DEFAULT_MCP: '1',
       // Managed MCP processes inherit these explicit mounts. They are roots,
       // never development-machine paths, and user skills may shadow bundled
       // names through the skill registry's normal priority rules.
@@ -98,6 +102,7 @@ export class HarnessRuntime {
   private url?: string
   private authenticatedUrl?: string
   private readonly logLines: string[] = []
+  private readonly outputBuffers = new Map<string, string>()
 
   constructor(private readonly options: HarnessRuntimeOptions) {}
 
@@ -110,6 +115,7 @@ export class HarnessRuntime {
     this.launchDirectory = launchDirectory
     this.url = undefined
     this.authenticatedUrl = undefined
+    this.outputBuffers.clear()
 
     await mkdir(dirname(this.options.logPath), { recursive: true })
     this.logStream = createWriteStream(this.options.logPath, { flags: 'a' })
@@ -236,11 +242,12 @@ export class HarnessRuntime {
   }
 
   private writeChunk(source: string, chunk: Buffer): void {
-    for (const line of chunk.toString('utf8').split(/\r?\n/)) {
-      if (line.length === 0) continue
-      this.writeLog(`[${source}] ${line}`)
+    const buffered = `${this.outputBuffers.get(source) ?? ''}${chunk.toString('utf8')}`
+    const lines = buffered.split(/\r?\n/)
+    this.outputBuffers.set(source, lines.pop() ?? '')
+    const captureUrl = (line: string): void => {
       const match = /dsh web:\s+(https?:\/\/\S+)/u.exec(line)
-      if (match?.[1] === undefined || !match[1].includes('?token=')) continue
+      if (match?.[1] === undefined || !match[1].includes('?token=')) return
       this.authenticatedUrl = match[1].replace(/[\])}>,.;]+$/u, '')
       // stdout can arrive just after the HTTP readiness probe. Reload the
       // already-created Electron window with the authenticated URL.
@@ -248,6 +255,13 @@ export class HarnessRuntime {
         this.url = this.authenticatedUrl
         this.options.onChanged(this.snapshot())
       }
+    }
+    // Capture a token even when the final line has not received its newline.
+    captureUrl(buffered)
+    for (const line of lines) {
+      if (line.length === 0) continue
+      this.writeLog(`[${source}] ${line}`)
+      captureUrl(line)
     }
   }
 

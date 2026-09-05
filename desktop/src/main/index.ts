@@ -53,11 +53,20 @@ function configureIdentity(): void {
 
 async function migrateLegacyUserData(): Promise<void> {
   const target = app.getPath('userData')
+  let appData: string
+  try {
+    appData = app.getPath('appData')
+  } catch {
+    // Electron can expose an unusable APPDATA during first-run/smoke
+    // environments. Legacy migration is optional; startup must continue with
+    // the explicitly configured user-data directory.
+    return
+  }
   const legacyNames = identity.channel === 'stable'
     ? ['zerowall-science-3']
     : ['zerowall-science-3-preview']
   for (const name of legacyNames) {
-    const legacy = join(app.getPath('appData'), name)
+    const legacy = join(appData, name)
     if (legacy === target) continue
     try {
       await cp(legacy, target, { recursive: true, force: false, errorOnExist: false })
@@ -237,6 +246,10 @@ async function showSplash(): Promise<void> {
 
 async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
   if (snapshot.phase !== 'ready' || snapshot.url === undefined) return
+  // DSH first exposes the loopback endpoint and then prints an authenticated
+  // URL. The bare endpoint intentionally returns 401 and renders as a blank
+  // page, so wait for the token-bearing URL before navigating the window.
+  if (!/[?&]token=/u.test(snapshot.url)) return
   const window = mainWindow ?? createWindow()
   await window.loadURL(snapshot.url)
   if (!window.isDestroyed()) {

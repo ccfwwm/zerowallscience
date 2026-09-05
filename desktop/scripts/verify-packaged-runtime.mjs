@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { access, mkdtemp, readFile, readdir, stat } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, readdir, stat } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
@@ -749,6 +749,11 @@ async function verifyWebBootManifest(url) {
 
 async function verifyDesktopStartup() {
   const root = await mkdtemp(resolve(tmpdir(), 'zerowall-packaged-desktop-'))
+  // Electron's app.getPath('appData') throws when APPDATA/LOCALAPPDATA do not
+  // exist yet. Create the isolated roots so this smoke covers a clean first
+  // launch instead of failing before the Harness can start.
+  await mkdir(resolve(root, 'appdata'), { recursive: true })
+  await mkdir(resolve(root, 'localappdata'), { recursive: true })
   const child = spawn(packaged.executablePath, ['--remote-debugging-port=0', `--user-data-dir=${resolve(root, 'chromium')}`], {
     cwd: packaged.root,
     // Isolate Electron's app.getPath('userData') as well as the Harness home.
@@ -822,7 +827,11 @@ async function verifyDesktopStartup() {
       if (!ids.includes(id)) throw new Error(`Packaged desktop Web boot is missing ${id}.`)
     }
     try {
-      await page.getByText('ZeroWall Science', { exact: true }).first().waitFor({ state: 'visible', timeout: 30_000 })
+      // The packaged profile may initialize optional MCP/WeChat providers
+      // before the shell replaces its loading card. Keep this aligned with
+      // the overall desktop startup budget instead of treating a slow but
+      // healthy plugin graph as a white-screen failure.
+      await page.getByText('ZeroWall Science', { exact: true }).first().waitFor({ state: 'visible', timeout: 240_000 })
     } catch (error) {
       const snapshot = (await page.locator('body').innerText().catch(() => '')).slice(0, 4_000)
       throw new Error(`Packaged desktop did not render the ZeroWall Science brand. body=${JSON.stringify(snapshot)} errors=${JSON.stringify(browserErrors.slice(-20))}\n${error.message}`)

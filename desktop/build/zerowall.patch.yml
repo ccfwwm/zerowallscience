@@ -1,6 +1,9 @@
 - id: hmr
   name: '@deepseek-ai/cordis-plugin-hmr'
-  disabled: false
+  # HMR is a development watcher. In the packaged desktop it can observe
+  # session/config files written by the running Host and repeatedly reload
+  # plugin fibers, growing the embedded Node heap until the window is blank.
+  disabled: true
   config:
     root: ['.']
 
@@ -128,6 +131,10 @@
 
     - id: dsh-wechat
       name: 'dsh-wechat'
+      config:
+        # QR/login is user initiated in the packaged desktop so it cannot
+        # hold the first client boot behind an external network request.
+        autoStart: false
 
     - id: capability-menu-registry
       name: '@daweifu/capability-menu/registry'

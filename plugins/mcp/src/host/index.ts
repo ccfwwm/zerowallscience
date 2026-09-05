@@ -300,8 +300,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
       await this.secrets.set(SCIMASTER_API_KEY_CREDENTIAL, value)
       const record = this.projects().listMcpServers().find(item => item.serverName === 'zerowall_managed_scimaster')
       if (record === undefined) return undefined
-      await this.reconcile(record)
-      return this.dto(record)
+      const next = record.enabled ? record : this.projects().updateMcpServer(record.id, { enabled: true })
+      await this.reconcile(next)
+      return this.dto(next)
     })
   }
 
@@ -337,8 +338,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
       const record = previous
         ? this.projects().updateMcpServer(previous.id, { headerRefs: { ...previous.headerRefs, Authorization: HUAGONGSHE_AUTH_ENV } })
         : this.projects().createMcpServer({ name: '化工社 AIchem', serverName: 'huagongshe', transport: 'streamable-http', url: HUAGONGSHE_URL, enabled: true, headerRefs: { Authorization: HUAGONGSHE_AUTH_ENV }, failOnStartupError: false })
-      await this.reconcile(record)
-      return this.dto(record)
+      const next = record.enabled ? record : this.projects().updateMcpServer(record.id, { enabled: true })
+      await this.reconcile(next)
+      return this.dto(next)
     })
   }
 
@@ -375,8 +377,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
       for (const item of [record]) {
         if (item === undefined) continue
         const next = item.transport === 'streamable-http' && item.headerRefs.Authorization !== RDATALINUX_R_MCP_AUTHORIZATION_ENV
-          ? this.projects().updateMcpServer(item.id, { headerRefs: { ...item.headerRefs, Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV } })
-          : item
+          ? this.projects().updateMcpServer(item.id, { headerRefs: { ...item.headerRefs, Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV }, enabled: true })
+          : item.enabled ? item : this.projects().updateMcpServer(item.id, { enabled: true })
         await this.reconcile(next)
         result ??= next
       }
@@ -445,6 +447,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   private async seedBundledServers(): Promise<void> {
     if (process.env.ZEROWALL_DISABLE_DEFAULT_MCP === '1') return
+    const deferDefaultConnections = process.env.ZEROWALL_DEFER_DEFAULT_MCP === '1'
+    const defaultEnabled = !deferDefaultConnections
     const marker = defaultMcpMarkerPath()
     let markerVersion = 0
     try {
@@ -488,14 +492,17 @@ export class ZeroWallMcpService extends TypertRemoteService {
     if (!projects.listMcpServers().some(server => server.serverName === RDATALINUX_SERVER_NAME)) {
       projects.createMcpServer({
         name: 'rmcp', serverName: RDATALINUX_SERVER_NAME, transport: 'streamable-http',
-        enabled: true, url: RDATALINUX_R_MCP_URL,
+        // Seed the managed record for Settings/Environment, but do not start
+        // a remote tools/list request during a clean desktop boot. Saving a
+        // credential or explicitly enabling the connection reconciles it.
+        enabled: defaultEnabled, url: RDATALINUX_R_MCP_URL,
         headerRefs: { Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV },
         failOnStartupError: false,
       })
     }
     const bundled = projects.listMcpServers()
     if (!bundled.some(server => server.serverName === 'huagongshe')) {
-      projects.createMcpServer({ name: '化工社 AIchem', serverName: 'huagongshe', transport: 'streamable-http', enabled: true, url: HUAGONGSHE_URL, failOnStartupError: false })
+      projects.createMcpServer({ name: '化工社 AIchem', serverName: 'huagongshe', transport: 'streamable-http', enabled: defaultEnabled, url: HUAGONGSHE_URL, failOnStartupError: false })
     }
     const displayNames: Record<string, string> = {
       zerowall_managed_scimaster: 'Sci',
@@ -508,13 +515,13 @@ export class ZeroWallMcpService extends TypertRemoteService {
       if (desired !== undefined && server.name !== desired) projects.updateMcpServer(server.id, { name: desired })
     }
     if (!bundled.some(server => server.serverName === 'zerowall_managed_bio_tools')) {
-      projects.createMcpServer({ name: 'Bio Tools', serverName: 'zerowall_managed_bio_tools', transport: 'stdio', enabled: true, command: 'zerowall-managed:bio-tools', cwd: '', failOnStartupError: false })
+      projects.createMcpServer({ name: 'Bio Tools', serverName: 'zerowall_managed_bio_tools', transport: 'stdio', enabled: defaultEnabled, command: 'zerowall-managed:bio-tools', cwd: '', failOnStartupError: false })
     }
     if (!bundled.some(server => server.serverName === 'zerowall_managed_ketcher')) {
-      projects.createMcpServer({ name: 'Ketcher Chemistry', serverName: 'zerowall_managed_ketcher', transport: 'stdio', enabled: true, command: 'zerowall-managed:ketcher', cwd: '', failOnStartupError: false })
+      projects.createMcpServer({ name: 'Ketcher Chemistry', serverName: 'zerowall_managed_ketcher', transport: 'stdio', enabled: defaultEnabled, command: 'zerowall-managed:ketcher', cwd: '', failOnStartupError: false })
     }
     if (!bundled.some(server => server.serverName === 'zerowall_managed_scimaster')) {
-      projects.createMcpServer({ name: 'Sci', serverName: 'zerowall_managed_scimaster', transport: 'stdio', enabled: true, command: 'zerowall-managed:scimaster', cwd: '', failOnStartupError: false })
+      projects.createMcpServer({ name: 'Sci', serverName: 'zerowall_managed_scimaster', transport: 'stdio', enabled: defaultEnabled, command: 'zerowall-managed:scimaster', cwd: '', failOnStartupError: false })
     }
     await mkdir(dirname(marker), { recursive: true })
     await writeFile(marker, '{"version":5}\n', 'utf8')
