@@ -14,6 +14,5 @@ import remote11 from '@zerowallscience/plugin-research/remote'
 import remote12 from '@zerowallscience/plugin-runs/remote'
 import remote13 from '@zerowallscience/plugin-singlecell/remote'
 import remote14 from '@zerowallscience/plugin-skills/remote'
-import remote15 from 'dsh-file-review-tab/remote'
 
-export const zerowallRemoteContributions = [remote0, remote1, remote2, remote3, remote4, remote5, remote6, remote7, remote8, remote9, remote10, remote11, remote12, remote13, remote14, remote15] as const
+export const zerowallRemoteContributions = [remote0, remote1, remote2, remote3, remote4, remote5, remote6, remote7, remote8, remote9, remote10, remote11, remote12, remote13, remote14] as const
