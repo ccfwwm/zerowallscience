@@ -1,8 +1,6 @@
 import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session';
 import { createScope, scopeParentOf } from '@deepseek-ai/dsh-scope';
 export const SELECTION_EVENT = 'zerowall/capabilities/selection';
-export const MAX_ENABLED = 24;
-export const MAX_SCHEMA_BYTES = 48 * 1024;
 /** One durable selection per session, applied to both schema projection and execution. */
 export function createSelections(ctx, policy) {
     ;
@@ -63,8 +61,6 @@ export function createSelections(ctx, policy) {
         restrictions.set(agent, { ctx: scoped, allow, dispose: scoped.tools.restrict({ allow }), disposeScope: prior?.disposeScope ?? scope.dispose });
     };
     const update = (agent, changes) => {
-        if (changes.filter(change => change.tier === 'resident').length > 8)
-            throw new Error('Enable at most 8 capabilities per request.');
         const prior = get(agent);
         const next = { tools: new Set(prior.tools), disabled: new Set(prior.disabled), onDemand: new Set(prior.onDemand) };
         for (const { name, kind, tier } of changes) {
@@ -85,19 +81,13 @@ export function createSelections(ctx, policy) {
             else
                 next.onDemand.add(key);
         }
-        const schemas = catalog(agent, () => ctx.tools.schemas(agent)).filter(tool => next.tools.has(tool.name));
-        const bytes = Buffer.byteLength(JSON.stringify(schemas));
-        if (next.tools.size > MAX_ENABLED || bytes > MAX_SCHEMA_BYTES)
-            throw new Error('Capability budget exceeded. Disable tools before enabling another batch.');
         const data = { tools: [...next.tools].sort(), disabled: [...next.disabled].sort(), onDemand: [...next.onDemand].sort() };
         agent.session.append(SELECTION_EVENT, data);
         selections.set(agent.session, next);
         sync(agent);
-        return { enabled: data.tools, disabled: data.disabled, remainingTools: MAX_ENABLED - next.tools.size, remainingSchemaBytes: MAX_SCHEMA_BYTES - bytes };
+        return { enabled: data.tools, disabled: data.disabled, remainingTools: Number.POSITIVE_INFINITY, remainingSchemaBytes: Number.POSITIVE_INFINITY };
     };
     const select = (agent, names, enable = true) => {
-        if (names.length > 8)
-            throw new Error('Enable at most 8 tools per request.');
         for (const name of names)
             if (enable && classify(name, 'tool', agent) === 'disabled')
                 throw new Error(`Capability ${name} is disabled. Change it in capability settings first.`);
@@ -114,6 +104,12 @@ export function createSelections(ctx, policy) {
         restrictions.delete(agent);
         await restriction?.disposeScope();
     });
-    return { visible, select, update, classify, readTool: (name, agent) => catalog(agent, () => ctx.tools.get(name, agent)), snapshot: (agent) => ({ tools: [...get(agent).tools], disabled: [...get(agent).disabled], onDemand: [...get(agent).onDemand] }) };
+    const reset = (agent) => {
+        const state = { tools: new Set(), disabled: new Set(), onDemand: new Set() };
+        selections.set(agent.session, state);
+        agent.session.append(SELECTION_EVENT, { tools: [], disabled: [], onDemand: [] });
+        sync(agent);
+    };
+    return { visible, select, update, classify, reset, source: (_name, _kind, _agent) => 'default', readTool: (name, agent) => catalog(agent, () => ctx.tools.get(name, agent)), snapshot: (agent) => ({ tools: [...get(agent).tools], disabled: [...get(agent).disabled], onDemand: [...get(agent).onDemand] }) };
 }
 //# sourceMappingURL=selection.js.map

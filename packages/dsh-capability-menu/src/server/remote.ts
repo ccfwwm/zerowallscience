@@ -91,6 +91,13 @@ export class CapabilityPolicyGateway extends TypertRemoteService {
     if (changes.length > 0) policy.updateSelection(agent, changes)
   }
 
+  @Remote('resetDefaults')
+  async resetDefaults(sessionId?: string): Promise<CapabilityClassification[]> {
+    const agent = sessionId === undefined ? undefined : this.ctx.agents.get(SessionId(sessionId))
+    if (sessionId !== undefined && agent === undefined) throw new Error('Session is not active.')
+    return [...await this.ctx.capabilityPolicy.resetDefaults(agent)]
+  }
+
   /** Classify every capability currently indexed by `ctx.capability`. */
   @Remote('classifyAll')
   classifyAll(sessionId?: string): CapabilityClassification[] {

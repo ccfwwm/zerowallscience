@@ -59,6 +59,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$6361706162696c697479506f6c696379 {
     getConfig: (sessionId?: string) => Promise<RemoteResult<Record<string, unknown>>>;
     updateConfig: (partial: Record<string, unknown>, sessionId?: string) => Promise<RemoteResult<void>>;
+    resetDefaults: (sessionId?: string) => Promise<RemoteResult<CapabilityRow[]>>;
     classifyAll: (sessionId?: string) => Promise<RemoteResult<CapabilityRow[]>>;
     listSkillDir: (id: string, relPath?: string) => Promise<RemoteResult<SkillFileEntry[] | undefined>>;
     readSkillFile: (id: string, relPath: string) => Promise<RemoteResult<string | undefined>>;
@@ -68,6 +69,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteMap {
     'capabilityPolicy/getConfig': (sessionId?: string) => Promise<RemoteResult<Record<string, unknown>>>;
     'capabilityPolicy/updateConfig': (partial: Record<string, unknown>, sessionId?: string) => Promise<RemoteResult<void>>;
+    'capabilityPolicy/resetDefaults': (sessionId?: string) => Promise<RemoteResult<CapabilityRow[]>>;
     'capabilityPolicy/classifyAll': (sessionId?: string) => Promise<RemoteResult<CapabilityRow[]>>;
     'capabilityPolicy/listSkillDir': (id: string, relPath?: string) => Promise<RemoteResult<SkillFileEntry[] | undefined>>;
     'capabilityPolicy/readSkillFile': (id: string, relPath: string) => Promise<RemoteResult<string | undefined>>;

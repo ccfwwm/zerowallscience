@@ -296,6 +296,21 @@ function CapabilitySection(props) {
 				className: "mc-notice",
 				children: notice
 			}),
+			/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+				type: "button",
+				className: "mc-catalog-btn",
+				disabled: busy,
+				onClick: async () => {
+					setBusy(true);
+					try {
+						unwrap(await remote.resetDefaults(), "capabilityPolicy.resetDefaults");
+						await reload();
+					} finally {
+						setBusy(false);
+					}
+				},
+				children: t("resetDefaults")
+			}),
 			state.status === "ready" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ReadyBody, {
 				remote,
 				snapshot: state.snapshot,
@@ -1004,7 +1019,8 @@ async function apply(ctx) {
 		catalogOnDemand: "按需能力目录",
 		catalogPolicyNote: "当前会话的有效策略；选择随会话保存。",
 		catalogDisabled: "按需能力目录未启用（catalogFile 为空）",
-		catalogUnreadable: "按需能力目录文件读取失败"
+		catalogUnreadable: "按需能力目录文件读取失败",
+		resetDefaults: "恢复默认策略"
 	};
 	const en = {
 		nav: "Capability Management",
@@ -1042,7 +1058,8 @@ async function apply(ctx) {
 		catalogOnDemand: "On-demand catalog",
 		catalogPolicyNote: "Effective policy for the current session. Selections are saved with the session.",
 		catalogDisabled: "On-demand catalog emission is disabled (catalogFile is empty).",
-		catalogUnreadable: "Failed to read the on-demand catalog file."
+		catalogUnreadable: "Failed to read the on-demand catalog file.",
+		resetDefaults: "Restore defaults"
 	};
 	ctx.effect(() => ctx.locale.register(NS, {
 		zh,
@@ -1063,7 +1080,7 @@ async function apply(ctx) {
 			return ctx.get("sessions")?.list.getSnapshot().current;
 		};
 		const namespace = raw == null ? raw : new Proxy(raw, { get(target, key) {
-			if (key === "getConfig" || key === "classifyAll" || key === "getCatalogDocs") return () => Reflect.apply(target[key], target, [currentSession()]);
+			if (key === "getConfig" || key === "classifyAll" || key === "getCatalogDocs" || key === "resetDefaults") return () => Reflect.apply(target[key], target, [currentSession()]);
 			if (key === "updateConfig") return (partial) => Reflect.apply(target.updateConfig, target, [partial, currentSession()]);
 			const value = Reflect.get(target, key);
 			return typeof value === "function" ? value.bind(target) : value;

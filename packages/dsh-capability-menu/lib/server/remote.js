@@ -54,6 +54,7 @@ let CapabilityPolicyGateway = (() => {
     let _instanceExtraInitializers = [];
     let _getConfig_decorators;
     let _updateConfig_decorators;
+    let _resetDefaults_decorators;
     let _classifyAll_decorators;
     let _getDetail_decorators;
     let _listSkillDir_decorators;
@@ -64,6 +65,7 @@ let CapabilityPolicyGateway = (() => {
             const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
             _getConfig_decorators = [Remote('getConfig')];
             _updateConfig_decorators = [Remote('updateConfig')];
+            _resetDefaults_decorators = [Remote('resetDefaults')];
             _classifyAll_decorators = [Remote('classifyAll')];
             _getDetail_decorators = [Remote('getDetail')];
             _listSkillDir_decorators = [Remote('listSkillDir')];
@@ -71,6 +73,7 @@ let CapabilityPolicyGateway = (() => {
             _getCatalogDocs_decorators = [Remote('getCatalogDocs')];
             __esDecorate(this, null, _getConfig_decorators, { kind: "method", name: "getConfig", static: false, private: false, access: { has: obj => "getConfig" in obj, get: obj => obj.getConfig }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _updateConfig_decorators, { kind: "method", name: "updateConfig", static: false, private: false, access: { has: obj => "updateConfig" in obj, get: obj => obj.updateConfig }, metadata: _metadata }, null, _instanceExtraInitializers);
+            __esDecorate(this, null, _resetDefaults_decorators, { kind: "method", name: "resetDefaults", static: false, private: false, access: { has: obj => "resetDefaults" in obj, get: obj => obj.resetDefaults }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _classifyAll_decorators, { kind: "method", name: "classifyAll", static: false, private: false, access: { has: obj => "classifyAll" in obj, get: obj => obj.classifyAll }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _getDetail_decorators, { kind: "method", name: "getDetail", static: false, private: false, access: { has: obj => "getDetail" in obj, get: obj => obj.getDetail }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _listSkillDir_decorators, { kind: "method", name: "listSkillDir", static: false, private: false, access: { has: obj => "listSkillDir" in obj, get: obj => obj.listSkillDir }, metadata: _metadata }, null, _instanceExtraInitializers);
@@ -117,6 +120,12 @@ let CapabilityPolicyGateway = (() => {
             }
             if (changes.length > 0)
                 policy.updateSelection(agent, changes);
+        }
+        async resetDefaults(sessionId) {
+            const agent = sessionId === undefined ? undefined : this.ctx.agents.get(SessionId(sessionId));
+            if (sessionId !== undefined && agent === undefined)
+                throw new Error('Session is not active.');
+            return [...await this.ctx.capabilityPolicy.resetDefaults(agent)];
         }
         /** Classify every capability currently indexed by `ctx.capability`. */
         classifyAll(sessionId) {

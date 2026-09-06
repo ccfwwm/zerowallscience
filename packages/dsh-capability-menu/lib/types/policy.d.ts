@@ -68,6 +68,8 @@ export interface CapabilitySetConfig {
 }
 /** Resident / On-demand / Disabled projection policy configuration. */
 export interface Config {
+    /** Apply the shipped ZeroWall defaults and migrate legacy session selections. */
+    zeroWallDefaults?: boolean;
     /** Tool classification: `tools.resident` / `tools.on-demand` / `tools.disabled`. */
     tools?: CapabilitySetConfig;
     /** Skill classification: `skills.resident` / `skills.on-demand` / `skills.disabled`. */
@@ -137,6 +139,7 @@ export declare function classify(compiled: CompiledCapabilityRules, target: Matc
  * display that ties the residency strategy to the model-facing relationship.
  */
 export interface CapabilityClassification {
+    readonly policySource?: 'default' | 'user' | 'migration';
     readonly id: string;
     readonly kind: CapabilityKind;
     /** Model-facing name (tool name or skill bare name). */
@@ -155,6 +158,8 @@ export interface CapabilityClassification {
  * The `ctx.capabilityPolicy` service surface.
  */
 export interface CapabilityPolicyService {
+    resetDefaults(agent?: Agent): Promise<readonly CapabilityClassification[]>;
+    selectionSource(name: string, kind: CapabilityKind, agent: Agent): 'default' | 'user' | 'migration';
     readTool(name: string, agent: Agent): ToolDefinition | undefined;
     classifyFor(name: string, kind: 'tool' | 'skill', agent?: Agent): CapabilityClass;
     updateSelection(agent: Agent, changes: readonly {

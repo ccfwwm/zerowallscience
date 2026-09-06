@@ -5,6 +5,7 @@
  * @module @daweifu/capability-menu (policy plugin)
  */
 import { createSelections } from "./selection.js";
+import { defaultConfig } from "./defaults.js";
 import z from '@deepseek-ai/schemastery';
 import { renderToolsSdk, renderToolsSdkPy } from '@deepseek-ai/dsh-tools';
 import { escapeText, isUserInvocable, renderSkillContent } from '@deepseek-ai/dsh-skill';
@@ -12,6 +13,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { serverNameOf } from "./registry.js";
 /** Validate and default the policy configuration. */
 export const Config = z.object({
+    zeroWallDefaults: z.boolean().default(false),
     tools: z.object({
         resident: z.array(z.string()).default([]),
         'on-demand': z.array(z.string()).default([]),
@@ -197,6 +199,8 @@ export async function apply(ctx, config = {}) {
     const legacySkills = config.skills?.exposed !== undefined || config.skills?.progressive !== undefined || config.skills?.blocked !== undefined;
     normalized.tools = normalizeSetConfig(config.tools);
     normalized.skills = normalizeSetConfig(config.skills);
+    if (config.zeroWallDefaults)
+        Object.assign(normalized, defaultConfig(normalized));
     if (legacyTools || legacySkills) {
         ctx.logger.warn('capability-policy: legacy rule keys `exposed`/`progressive`/`blocked` were auto-mapped to `resident`/`on-demand`/`disabled`; edit the profile patch to persist the new keys');
     }
@@ -232,6 +236,17 @@ export async function apply(ctx, config = {}) {
     };
     recompile();
     const service = {
+        selectionSource: (name, kind, agent) => selections.source(name, kind, agent),
+        async resetDefaults(agent) {
+            if (agent !== undefined)
+                selections.reset(agent);
+            else
+                await service.updateConfig(defaultConfig(current));
+            return service.classifyAll().map(row => ({ ...row,
+                class: service.classifyFor(row.id, row.kind, agent),
+                ...(agent === undefined ? {} : { policySource: selections.source(row.id, row.kind, agent) }),
+            }));
+        },
         readTool: (name, agent) => selections.readTool(name, agent),
         classifyFor: (name, kind, agent) => selections.classify(name, kind, agent),
         updateSelection: (agent, changes) => selections.update(agent, changes),
@@ -418,9 +433,7 @@ export async function apply(ctx, config = {}) {
         const pointer = {
             name: 'capability-menu-catalog',
             text: [
-                'On-demand capabilities are not in the resident tool list above. Their catalog is a YAML file you can browse with grep/read:',
-                `  ${catalogPath}`,
-                'Use meta_search to discover capabilities and meta_enable to enable tools or load a selected skill. Only enable what the current task requires.',
+                'Use meta_search for on-demand tools and skills. It can enable matching read-only discovery tools automatically. Use meta_enable for other selected tools. Disabled tools require a settings change; do not repeat searches for them.',
             ].join('\n'),
         };
         return { ...projected, sections: [...projected.sections, pointer] };

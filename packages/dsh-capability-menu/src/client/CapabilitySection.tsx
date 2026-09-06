@@ -74,6 +74,7 @@ export type CapabilityKey =
   | 'catalogPolicyNote'
   | 'catalogDisabled'
   | 'catalogUnreadable'
+  | 'resetDefaults'
 
 type ViewState =
   | { status: 'loading' }
@@ -329,6 +330,7 @@ export function CapabilitySection(props: CapabilitySectionProps): JSX.Element {
         </div>
       )}
       {notice !== null && <div className="mc-notice">{notice}</div>}
+      <button type="button" className="mc-catalog-btn" disabled={busy} onClick={async () => { setBusy(true); try { unwrap(await remote.resetDefaults(), 'capabilityPolicy.resetDefaults') ; await reload() } finally { setBusy(false) } }}>{t('resetDefaults')}</button>
       {state.status === 'ready' && <ReadyBody
         remote={remote}
         snapshot={state.snapshot}

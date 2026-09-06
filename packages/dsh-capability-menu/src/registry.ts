@@ -365,6 +365,9 @@ export function apply(ctx: Context, config: Config = {}): void {
     const stats = existing?.stats ?? { uses: 0, successes: 0, failures: 0, totalMs: 0 }
     const isMcp = schema.name.startsWith(MCP_ID_PREFIX)
     const serverName = isMcp ? serverNameOf(schema.name) : BUILT_IN_SERVER
+    const lowerName = schema.name.toLowerCase()
+    const tags = ['rplatform', 'rbioagent', 'rplotfigure', 'figureya', '绘图', '可视化', 'plot', '图表']
+      .filter(domain => lowerName.includes(domain.toLowerCase()) || (serverName === 'rmcp' && ['figureya', '绘图', '可视化', 'plot', '图表'].includes(domain)))
     nextToolRecords.set(schema.name, {
       id: schema.name,
       kind: 'tool',
@@ -374,7 +377,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       origin: { provider: serverName, serverName },
       parameters: schema.parameters as JsonSchemaNode,
       invocation: { modelInvocable: true, userInvocable: false },
-      tags: [serverName, 'tool', ...['rplatform', 'rbioagent', 'rplotfigure'].filter(domain => schema.name.includes(domain))],
+      tags: [serverName, 'tool', ...tags],
       stats,
       summary: toSummary(schema.description, summaryMaxChars),
     })

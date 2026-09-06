@@ -4398,6 +4398,34 @@ const TYPERT_REMOTE = {
 			}
 		},
 		{
+			id: "@daweifu/capability-menu#capabilityPolicy/resetDefaults",
+			service: "capabilityPolicy",
+			namespace: "capabilityPolicy",
+			method: "resetDefaults",
+			invocation: { kind: "direct" },
+			parameters: [{
+				name: "sessionId",
+				wire: "sessionId",
+				source: "json",
+				acceptsUndefined: true,
+				codec: {
+					mode: "strict",
+					typeSymbol: "string",
+					schema: string().optional()
+				}
+			}],
+			result: {
+				mode: "strict",
+				typeSymbol: "@daweifu/capability-menu#CapabilityRow",
+				schema: array(capabilityRow$schema)
+			},
+			sourceLocation: {
+				file: "src/server/remote.ts",
+				line: 90,
+				column: 3
+			}
+		},
+		{
 			id: "@daweifu/capability-menu#capabilityPolicy/listSkillDir",
 			service: "capabilityPolicy",
 			namespace: "capabilityPolicy",

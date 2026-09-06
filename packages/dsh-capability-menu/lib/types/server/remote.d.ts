@@ -47,6 +47,7 @@ export declare class CapabilityPolicyGateway extends TypertRemoteService {
     getConfig(sessionId?: string): CapabilityPolicyConfig;
     /** Replace a subset of the policy config (recompile rules + rewrite catalog). */
     updateConfig(partial: Partial<CapabilityPolicyConfig>, sessionId?: string): Promise<void>;
+    resetDefaults(sessionId?: string): Promise<CapabilityClassification[]>;
     /** Classify every capability currently indexed by `ctx.capability`. */
     classifyAll(sessionId?: string): CapabilityClassification[];
     /** Resolve one capability's full detail (schema, description; skill body optional). */

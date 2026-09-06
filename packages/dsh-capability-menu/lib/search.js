@@ -37,6 +37,7 @@ export function apply(ctx, config = {}) {
             server: { type: 'string', description: 'Filter by server name — an MCP server (gongfeng/iwiki/km/zhiyan_qci) or the reserved built-in pseudo-server grouping harness-native tools.' },
             tag: { type: 'string', description: 'Filter by tag.' },
             max_results: { type: 'integer', description: 'Maximum results (default and maximum 12).' },
+            auto_enable: { type: 'boolean', description: 'Automatically enable matching read-only tools for this session (default true).' },
         },
         output: {
             schema: {
@@ -71,6 +72,7 @@ export function apply(ctx, config = {}) {
             const server = args.server?.trim() || undefined;
             const tag = args.tag?.trim() || undefined;
             const requestedMax = args.max_results;
+            const autoEnable = args.auto_enable !== false;
             if (query.length > 0 && id.length > 0) {
                 throw new Error('meta_search: query and id are mutually exclusive; pass exactly one');
             }
@@ -115,10 +117,20 @@ export function apply(ctx, config = {}) {
                 tag,
                 maxResults: Math.max(1, Math.min(Number.isFinite(requestedMax) ? requestedMax : maxResults, 12)),
                 scope,
-            }).filter(result => !isDisabled(result.id, result.kind));
+            });
             const summaries = [];
+            const autoEnabled = [];
             for (const result of results) {
-                const summary = { id: result.id, kind: result.kind, name: result.name, ...(result.server === undefined ? {} : { server: result.server }), summary: result.summary.slice(0, 350) };
+                const disabled = isDisabled(result.id, result.kind);
+                const readOnly = result.kind === 'tool' && /(?:^|[_:-])(read|get|list|search|find|describe|catalog|status|metadata|info|preview|validate)(?:$|[_:-])/i.test(result.name);
+                if (autoEnable && readOnly && !disabled && exec.agent !== undefined && result.kind === 'tool') {
+                    try {
+                        ctx.get('capabilityPolicy')?.selectTools(exec.agent, [result.id], true);
+                        autoEnabled.push(result.id);
+                    }
+                    catch { /* execution approval remains authoritative */ }
+                }
+                const summary = { id: result.id, kind: result.kind, name: result.name, ...(result.server === undefined ? {} : { server: result.server }), summary: result.summary.slice(0, 350), status: disabled ? 'disabled' : autoEnabled.includes(result.id) ? 'enabled' : 'available', ...(disabled ? { hint: 'Restore defaults or enable this capability in Capability Management before use.' } : {}) };
                 if (JSON.stringify([...summaries, summary]).length > 10_000)
                     continue;
                 summaries.push(summary);
@@ -127,7 +139,7 @@ export function apply(ctx, config = {}) {
                 mode: 'list',
                 total: summaries.length,
                 results: summaries,
-                hint: 'Use meta_enable to enable selected tools or load one skill.',
+                hint: autoEnabled.length > 0 ? `Read-only tools auto-enabled: ${autoEnabled.join(', ')}. Use meta_enable for other selected tools or skills.` : 'Use meta_enable to enable selected tools or load one skill.',
             };
         },
         presentCall(args) {

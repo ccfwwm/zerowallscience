@@ -145,11 +145,13 @@
     - id: capability-menu-policy
       name: '@daweifu/capability-menu/policy'
       config:
+        zeroWallDefaults: true
         tools:
-          on-demand: ['*']
-          resident: [read, read_image, glob, grep, ask_user_question, todo_write]
+          on-demand: ['server:rmcp', 'server:zerowall_managed_bio_tools']
+          resident: ['*']
         skills:
           on-demand: ['*']
+          resident: [genui]
     - id: capability-menu
       name: '@daweifu/capability-menu'
 

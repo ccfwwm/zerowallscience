@@ -119,6 +119,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$6361706162696c697479506f6c696379 {
     getConfig: (sessionId?: string) => Promise<RemoteResult<Record<string, unknown>>>
     updateConfig: (partial: Record<string, unknown>, sessionId?: string) => Promise<RemoteResult<void>>
+    resetDefaults: (sessionId?: string) => Promise<RemoteResult<CapabilityRow[]>>
     classifyAll: (sessionId?: string) => Promise<RemoteResult<CapabilityRow[]>>
     listSkillDir: (id: string, relPath?: string) => Promise<RemoteResult<SkillFileEntry[] | undefined>>
     readSkillFile: (id: string, relPath: string) => Promise<RemoteResult<string | undefined>>
@@ -128,6 +129,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteMap {
     'capabilityPolicy/getConfig': (sessionId?: string) => Promise<RemoteResult<Record<string, unknown>>>
     'capabilityPolicy/updateConfig': (partial: Record<string, unknown>, sessionId?: string) => Promise<RemoteResult<void>>
+    'capabilityPolicy/resetDefaults': (sessionId?: string) => Promise<RemoteResult<CapabilityRow[]>>
     'capabilityPolicy/classifyAll': (sessionId?: string) => Promise<RemoteResult<CapabilityRow[]>>
     'capabilityPolicy/listSkillDir': (id: string, relPath?: string) => Promise<RemoteResult<SkillFileEntry[] | undefined>>
     'capabilityPolicy/readSkillFile': (id: string, relPath: string) => Promise<RemoteResult<string | undefined>>
@@ -174,6 +176,13 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
       parameters: [{ name: 'sessionId', wire: 'sessionId', source: 'json', acceptsUndefined: true, codec: { mode: 'strict', typeSymbol: 'string', schema: z.string().optional() } }],
       result: { mode: 'strict', typeSymbol: '@daweifu/capability-menu#CapabilityRow', schema: z.array(capabilityRow$schema) },
       sourceLocation: { file: 'src/server/remote.ts', line: 72, column: 3 },
+    },
+    {
+      id: '@daweifu/capability-menu#capabilityPolicy/resetDefaults',
+      service: 'capabilityPolicy', namespace: 'capabilityPolicy', method: 'resetDefaults', invocation: { kind: 'direct' },
+      parameters: [{ name: 'sessionId', wire: 'sessionId', source: 'json', acceptsUndefined: true, codec: { mode: 'strict', typeSymbol: 'string', schema: z.string().optional() } }],
+      result: { mode: 'strict', typeSymbol: '@daweifu/capability-menu#CapabilityRow', schema: z.array(capabilityRow$schema) },
+      sourceLocation: { file: 'src/server/remote.ts', line: 90, column: 3 },
     },
     {
       id: '@daweifu/capability-menu#capabilityPolicy/listSkillDir',

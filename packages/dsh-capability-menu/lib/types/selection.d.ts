@@ -2,8 +2,6 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { CapabilityPolicyService } from './policy.ts';
 export declare const SELECTION_EVENT = "zerowall/capabilities/selection";
-export declare const MAX_ENABLED = 24;
-export declare const MAX_SCHEMA_BYTES: number;
 declare module '@deepseek-ai/dsh-session/types' {
     interface SessionEventMap {
         'zerowall/capabilities/selection': {
@@ -34,6 +32,8 @@ export declare function createSelections(ctx: Context, policy: CapabilityPolicyS
         remainingSchemaBytes: number;
     };
     classify: (name: string, kind: "tool" | "skill", agent?: Agent) => Tier;
+    reset: (agent: Agent) => void;
+    source: (_name: string, _kind: "tool" | "skill", _agent: Agent) => "default";
     readTool: (name: string, agent: Agent) => import("@deepseek-ai/dsh-tools").ToolDefinition | undefined;
     snapshot: (agent: Agent) => {
         tools: string[];

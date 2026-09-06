@@ -5,8 +5,6 @@ import { createScope, scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { CapabilityPolicyService } from './policy.ts'
 
 export const SELECTION_EVENT = 'zerowall/capabilities/selection'
-export const MAX_ENABLED = 24
-export const MAX_SCHEMA_BYTES = 48 * 1024
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
@@ -66,7 +64,6 @@ export function createSelections(ctx: Context, policy: CapabilityPolicyService) 
     restrictions.set(agent, { ctx: scoped, allow, dispose: scoped.tools.restrict({ allow }), disposeScope: prior?.disposeScope ?? scope!.dispose })
   }
   const update = (agent: Agent, changes: readonly { name: string; kind: 'tool' | 'skill'; tier: Tier }[]) => {
-    if (changes.filter(change => change.tier === 'resident').length > 8) throw new Error('Enable at most 8 capabilities per request.')
     const prior = get(agent)
     const next = { tools: new Set(prior.tools), disabled: new Set(prior.disabled), onDemand: new Set(prior.onDemand) }
     for (const { name, kind, tier } of changes) {
@@ -81,17 +78,13 @@ export function createSelections(ctx: Context, policy: CapabilityPolicyService) 
       else if (tier === 'disabled') next.disabled.add(key)
       else next.onDemand.add(key)
     }
-    const schemas = catalog(agent, () => ctx.tools.schemas(agent)).filter(tool => next.tools.has(tool.name))
-    const bytes = Buffer.byteLength(JSON.stringify(schemas))
-    if (next.tools.size > MAX_ENABLED || bytes > MAX_SCHEMA_BYTES) throw new Error('Capability budget exceeded. Disable tools before enabling another batch.')
     const data = { tools: [...next.tools].sort(), disabled: [...next.disabled].sort(), onDemand: [...next.onDemand].sort() }
     agent.session.append(SELECTION_EVENT, data)
     selections.set(agent.session, next)
     sync(agent)
-    return { enabled: data.tools, disabled: data.disabled, remainingTools: MAX_ENABLED - next.tools.size, remainingSchemaBytes: MAX_SCHEMA_BYTES - bytes }
+    return { enabled: data.tools, disabled: data.disabled, remainingTools: Number.POSITIVE_INFINITY, remainingSchemaBytes: Number.POSITIVE_INFINITY }
   }
   const select = (agent: Agent, names: readonly string[], enable = true) => {
-    if (names.length > 8) throw new Error('Enable at most 8 tools per request.')
     for (const name of names) if (enable && classify(name, 'tool', agent) === 'disabled') throw new Error(`Capability ${name} is disabled. Change it in capability settings first.`)
     return update(agent, names.map(name => ({ name, kind: 'tool', tier: enable ? 'resident' : 'on-demand' })))
   }
@@ -105,5 +98,11 @@ export function createSelections(ctx: Context, policy: CapabilityPolicyService) 
     restrictions.delete(agent)
     await restriction?.disposeScope()
   })
-  return { visible, select, update, classify, readTool: (name: string, agent: Agent) => catalog(agent, () => ctx.tools.get(name, agent)), snapshot: (agent: Agent) => ({ tools: [...get(agent).tools], disabled: [...get(agent).disabled], onDemand: [...get(agent).onDemand] }) }
+  const reset = (agent: Agent): void => {
+    const state = { tools: new Set<string>(), disabled: new Set<string>(), onDemand: new Set<string>() }
+    selections.set(agent.session, state)
+    agent.session.append(SELECTION_EVENT, { tools: [], disabled: [], onDemand: [] })
+    sync(agent)
+  }
+  return { visible, select, update, classify, reset, source: (_name: string, _kind: 'tool' | 'skill', _agent: Agent) => 'default' as const, readTool: (name: string, agent: Agent) => catalog(agent, () => ctx.tools.get(name, agent)), snapshot: (agent: Agent) => ({ tools: [...get(agent).tools], disabled: [...get(agent).disabled], onDemand: [...get(agent).onDemand] }) }
 }

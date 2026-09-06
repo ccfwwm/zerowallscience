@@ -15,7 +15,7 @@ export function apply(ctx: Context): void {
   ctx.systemPrompt.section({
     name: 'zerowall:identity',
     order: -999,
-    text: 'ZeroWall Science is a scientific research workbench. Discover tools and skills with meta_search and enable only the capabilities needed for the current task with meta_enable. Capability selection is specific to this session. Keep credentials in Settings; never request, echo, or expose keys. Preserve operation approvals for uploads, execution, writes, deletions and cancellations. Return large outputs as file references and concise summaries. Answer verification and operation approval are independent settings.',
+    text: 'ZeroWall Science is a scientific research workbench. Built-in tools and dsh-genui are available by default. rmcp is an on-demand MCP family: rplatform handles R computation/projects/workspaces, rbioagent handles biomedical analysis, and rplotfigure handles FigureYa plotting and charts. zerowall_managed_bio_tools provides biomedical database and research analysis tools; huagongshe provides chemistry search, structures, reactions and stoichiometry. Use meta_search with terms such as FigureYa, figureya, 绘图, 可视化, rplotfigure, R, Biomni or chemistry to find on-demand capabilities, then use meta_enable to enable the selected tools. Only enabled on-demand schemas are sent in the next request. Keep credentials in Settings; never request, echo, or expose keys. Preserve operation approvals for uploads, execution, writes, deletions and cancellations. Return large outputs as file references and concise summaries. Answer verification and operation approval are independent settings.',
   })
   if (process.platform === 'win32') {
     ctx.systemPrompt.section({

@@ -72,6 +72,7 @@ export async function apply(ctx: ClientContext & { slots: SlotRegistry }): Promi
     catalogPolicyNote: '当前会话的有效策略；选择随会话保存。',
     catalogDisabled: '按需能力目录未启用（catalogFile 为空）',
     catalogUnreadable: '按需能力目录文件读取失败',
+    resetDefaults: '恢复默认策略',
   } satisfies Record<CapabilityKey, string>
   const en = {
     nav: 'Capability Management',
@@ -110,6 +111,7 @@ export async function apply(ctx: ClientContext & { slots: SlotRegistry }): Promi
     catalogPolicyNote: 'Effective policy for the current session. Selections are saved with the session.',
     catalogDisabled: 'On-demand catalog emission is disabled (catalogFile is empty).',
     catalogUnreadable: 'Failed to read the on-demand catalog file.',
+    resetDefaults: 'Restore defaults',
   } satisfies Record<CapabilityKey, string>
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'capability-menu: dictionaries')
@@ -137,7 +139,7 @@ export async function apply(ctx: ClientContext & { slots: SlotRegistry }): Promi
     }
     const namespace = raw == null ? raw : new Proxy(raw, {
       get(target, key) {
-        if (key === 'getConfig' || key === 'classifyAll' || key === 'getCatalogDocs') return () => Reflect.apply(target[key], target, [currentSession()])
+        if (key === 'getConfig' || key === 'classifyAll' || key === 'getCatalogDocs' || key === 'resetDefaults') return () => Reflect.apply(target[key], target, [currentSession()])
         if (key === 'updateConfig') return (partial: Record<string, unknown>) => Reflect.apply(target.updateConfig, target, [partial, currentSession()])
         const value = Reflect.get(target, key)
         return typeof value === 'function' ? value.bind(target) : value
