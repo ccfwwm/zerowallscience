@@ -2,7 +2,7 @@ import { defineConfig } from 'tsdown'
 
 const id = '@daweifu/capability-menu'
 
-export default defineConfig([{
+const clientConfig = defineConfig({
   entry: { client: 'src/client/index.ts' },
   format: ['cjs'],
   outDir: 'lib',
@@ -31,4 +31,20 @@ export default defineConfig([{
   // and return `module.exports` so the loader captures the module table.
   banner: (ctx) => `window.__ModuleLoader__.load({ id: ${JSON.stringify(id)}, factory: (require) => {\nvar module = { exports: {} };\nvar exports = module.exports;\n`,
   footer: () => `\nreturn module.exports;\n}});`,
-}])
+})
+
+// The Host remote assembly imports this descriptor as a normal ESM module.
+// Keep it as a separate entry so the browser bundle's ModuleLoader wrapper is
+// never applied to the Typert contribution.
+const remoteConfig = defineConfig({
+  entry: { 'typert.remote-client': 'src/client/remote.ts' },
+  format: ['esm'],
+  outDir: 'lib',
+  clean: false,
+  platform: 'node',
+  sourcemap: false,
+  outExtensions: () => ({ js: '.js' }),
+  external: [/^@deepseek-ai\//],
+})
+
+export default [clientConfig, remoteConfig]

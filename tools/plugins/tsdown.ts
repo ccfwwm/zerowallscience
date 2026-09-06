@@ -71,6 +71,8 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
         // `react/jsx-runtime`) are resolved as explicit subpath imports.
         alwaysBundle: [
           /^@zerowallscience\/plugin-/,
+          /^@daweifu\/capability-menu(?:\/|$)/,
+          /^dsh-file-review-tab(?:\/|$)/,
           /^lucide-react(?:\/|$)/,
           /^qrcode(?:\/|$)/,
           /^zod(?:\/|$)/,

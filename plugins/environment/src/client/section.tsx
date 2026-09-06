@@ -169,10 +169,13 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     void run(async () => { await unwrap(environmentRemote.setImageModelSelection(value)) })
   }
   const saveRdatalinux = () => void run(async () => {
-    const value = await unwrap(mcpRemote.setRdatalinuxAuthorization(rdatalinuxAuthorization)) as any
+    const key = rdatalinuxAuthorization.trim().replace(/^Bearer\s+/iu, '')
+    if (!key) throw new Error('请输入 rdatalinux MCP key。')
+    const value = await unwrap(mcpRemote.setRdatalinuxAuthorization(`Bearer ${key}`)) as any
     setRdatalinuxConfigured(true)
     setRdatalinuxAuthorization('')
-    setRdatalinuxConnection(value?.runtimeState === 'active' ? `已连接 · ${(value.tools ?? []).length} 个工具` : '凭据已保存，连接待重试')
+    if (value?.runtimeState === 'active') setRdatalinuxConnection(`已连接 · ${(value.tools ?? []).length} 个工具`)
+    else setRdatalinuxConnection(value?.runtimeError ? `检测失败：${value.runtimeError}` : '凭据已保存，连接待重试')
   })
   const saveImageQuality = (value: ImageGenerationQuality) => {
     setImageQuality(value)
@@ -205,7 +208,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       <article className={css.card}>
         <div className={css.cardHeader}><div><h3>rdatalinux rmcp</h3><p>R、Biomni 和绘图工具共用此 MCP 连接。端点固定，凭据仅保存在本机凭据保险库。</p></div><span className={rdatalinuxConfigured ? css.statusGood : css.status}>{statusText('rdatalinux', rdatalinuxConfigured ? '已配置' : '未配置')}</span></div>
         <label className={css.field}><span>Endpoint</span><input className={css.control} value={rdatalinuxEndpoint} readOnly /></label>
-        <div className={css.keyRow}><input className={css.control} type="password" placeholder="Bearer &lt;MCP key&gt;" value={rdatalinuxAuthorization} onChange={event => setRdatalinuxAuthorization(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !rdatalinuxAuthorization.trim() || !mcpRemote?.setRdatalinuxAuthorization} onClick={saveRdatalinux}>保存 Authorization</button><button className={css.secondaryButton} type="button" disabled={busy || !rdatalinuxConfigured || !mcpRemote?.clearRdatalinuxAuthorization} onClick={() => void run(async () => { await unwrap(mcpRemote.clearRdatalinuxAuthorization()); setRdatalinuxConfigured(false); setRdatalinuxConnection('') })}>清除</button><button className={css.secondaryButton} type="button" disabled={busy || !mcpRemote?.list} onClick={() => void run(async () => { const rows = await unwrap(mcpRemote.list()); const record = rows.find((row: any) => row.serverName === 'rmcp'); if (!record) throw new Error('尚未初始化 rmcp 连接。'); const value = await unwrap(mcpRemote.reload(record.id)); if (value.runtimeState !== 'active') throw new Error(value.runtimeError || 'rmcp 连接不可用'); setRdatalinuxConnection(`已连接 · ${(value.tools ?? []).length} 个工具`) })}>检测连接</button></div>
+        <div className={css.keyRow}><input className={css.control} type="password" placeholder="输入 MCP key（无需填写 Bearer）" value={rdatalinuxAuthorization} onChange={event => setRdatalinuxAuthorization(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !rdatalinuxAuthorization.trim() || !mcpRemote?.setRdatalinuxAuthorization} onClick={saveRdatalinux}>保存 Key</button><button className={css.secondaryButton} type="button" disabled={busy || !rdatalinuxConfigured || !mcpRemote?.clearRdatalinuxAuthorization} onClick={() => void run(async () => { await unwrap(mcpRemote.clearRdatalinuxAuthorization()); setRdatalinuxConfigured(false); setRdatalinuxConnection('') })}>清除</button><button className={css.secondaryButton} type="button" disabled={busy || !mcpRemote?.list} onClick={() => void run(async () => { const rows = await unwrap(mcpRemote.list()); const record = rows.find((row: any) => row.serverName === 'rmcp'); if (!record) throw new Error('尚未初始化 rmcp 连接。'); const value = await unwrap(mcpRemote.reload(record.id)); if (value.runtimeState !== 'active') throw new Error(value.runtimeError || 'rmcp 连接不可用'); setRdatalinuxConnection(`已连接 · ${(value.tools ?? []).length} 个工具`) })}>检测连接</button></div>
         {rdatalinuxConnection ? <p className={css.muted} role="status">{rdatalinuxConnection}</p> : null}
       </article>
 

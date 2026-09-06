@@ -535,10 +535,15 @@ export function apply(ctx: Context, config: Config = {}): void {
   }
 
   /** Refresh the whole catalog: tools and skills, then re-emit the YAML. */
-  const refresh = async (): Promise<void> => {
+  let refreshInFlight: Promise<void> | undefined
+  const refresh = (): Promise<void> => {
+    if (refreshInFlight !== undefined) return refreshInFlight
+    refreshInFlight = (async () => {
     await rebuildTools()
     await refreshSkills()
     await writeCatalog()
+    })().finally(() => { refreshInFlight = undefined })
+    return refreshInFlight
   }
 
   /** Register once; also subscribe to change events. */

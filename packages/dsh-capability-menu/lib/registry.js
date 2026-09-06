@@ -328,10 +328,16 @@ export function apply(ctx, config = {}) {
         }
     };
     /** Refresh the whole catalog: tools and skills, then re-emit the YAML. */
-    const refresh = async () => {
-        await rebuildTools();
-        await refreshSkills();
-        await writeCatalog();
+    let refreshInFlight;
+    const refresh = () => {
+        if (refreshInFlight !== undefined)
+            return refreshInFlight;
+        refreshInFlight = (async () => {
+            await rebuildTools();
+            await refreshSkills();
+            await writeCatalog();
+        })().finally(() => { refreshInFlight = undefined; });
+        return refreshInFlight;
     };
     /** Register once; also subscribe to change events. */
     const disposers = [];

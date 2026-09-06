@@ -249,7 +249,11 @@ for (const plugin of plugins) {
       ...(plugin.client ? externalClientDependencies : {}),
       ...Object.fromEntries((plugin.dependencies ?? []).map(id => [`@zerowallscience/plugin-${id}`, 'workspace:^'])),
       ...(plugin.id === 'base'
-        ? Object.fromEntries(plugins.filter(candidate => candidate.remote).map(candidate => [`@zerowallscience/plugin-${candidate.id}`, 'workspace:^']))
+        ? {
+            ...Object.fromEntries(plugins.filter(candidate => candidate.remote).map(candidate => [`@zerowallscience/plugin-${candidate.id}`, 'workspace:^'])),
+            '@daweifu/capability-menu': 'workspace:*',
+            'dsh-file-review-tab': 'workspace:*',
+          }
         : {}),
       ...(npmDependencies[plugin.id] ?? {}),
     },

@@ -370,10 +370,10 @@ export class ZeroWallFilesService extends TypertRemoteService {
     } catch (error) {
       const extraction: FileExtraction = { kind: 'mineru', state: 'failed', parser: 'mineru', error: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500), createdAt }
       await saveStored({ ...(await readStored(ref.attachmentId)), mineruExtraction: extraction })
-      // `auto` is deliberately deterministic: once a MinerU token is
-      // configured, MinerU is the selected parser. Do not silently replace a
-      // remote parse failure with local output, otherwise users cannot tell
-      // which parser produced the content and the failure is hidden.
+      // `auto` must remain usable when MinerU is unavailable. Preserve the
+      // remote failure for diagnostics, then fall back to the built-in parser
+      // so uploaded PDFs and text documents remain readable offline.
+      if (mode === 'auto') return extractLocal(await readStored(ref.attachmentId))
       return extraction
     }
   }

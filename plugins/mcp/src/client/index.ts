@@ -2,7 +2,10 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { McpConnectionsButton, type McpServerInput } from './McpConnectionsButton.tsx'
 import { NS, unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 
-export const inject = ['slots', 'locale', 'remote', 'remote.zerowallMcp']
+// Do not make the whole settings tab depend on the remote namespace's first
+// handshake. The tab can render while the Host reconnects; action handlers
+// report a precise unavailable error until the namespace is ready.
+export const inject = ['slots', 'locale', 'remote']
 
 export function apply(ctx: ClientContext): void {
   const remote = ctx.remote as any
@@ -12,7 +15,7 @@ export function apply(ctx: ClientContext): void {
     label: () => t('capabilities.mcpTab'), locale: NS,
     inject: () => ({
       embedded: true,
-      listMcpServers: async () => unwrapRemoteResult('zerowall.mcp.list', await remote.zerowallMcp.list()),
+      listMcpServers: async () => unwrapRemoteResult('zerowall.mcp.list', await remote.zerowallMcp?.list?.() ?? { ok: false, error: 'MCP remote is still connecting.' }),
       createMcpServer: async (input: McpServerInput) => unwrapRemoteResult('zerowall.mcp.create', await remote.zerowallMcp.create(input)),
       updateMcpServer: async (id: string, input: Partial<McpServerInput>) => unwrapRemoteResult('zerowall.mcp.update', await remote.zerowallMcp.update({ id, changes: input })),
       removeMcpServer: async (id: string) => { unwrapRemoteResult('zerowall.mcp.deleteConnection', await remote.zerowallMcp.deleteConnection(id)) },

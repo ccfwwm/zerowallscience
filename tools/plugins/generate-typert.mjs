@@ -1,15 +1,19 @@
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { WorkspaceTypertGenerator } from '../../deepseek-harness/packages/typert/generator/lib/types/workspace.js'
 
 const root = resolve(import.meta.dirname, '../..')
 const pluginsRoot = resolve(root, 'plugins')
+const packageRoots = [pluginsRoot, resolve(root, 'packages')]
 const remotePackages = []
 
-for (const entry of await readdir(pluginsRoot, { withFileTypes: true })) {
+for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, { withFileTypes: true })) {
   if (!entry.isDirectory()) continue
-  const packageRoot = resolve(pluginsRoot, entry.name)
-  const manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
+  const packageRoot = resolve(rootDir, entry.name)
+  let manifest
+  try {
+    manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
+  } catch { continue }
   if (manifest.exports?.['./remote'] === undefined) {
     await removeTypertArtifacts(packageRoot)
     continue
@@ -18,7 +22,16 @@ for (const entry of await readdir(pluginsRoot, { withFileTypes: true })) {
     packageRoots: ['deepseek-harness/packages', 'plugins', 'store'],
   }).generate([manifest.name], ['host'])
   const host = artifacts.find(artifact => artifact.face === 'host')
-  if (host?.remote === undefined) throw new Error(`${manifest.name} exports ./remote but generated no Remote contribution.`)
+  // Some standalone packages ship a prebuilt remote descriptor rather than a
+  // DSH host face (for example capability-menu's browser-facing gateway).
+  // Keep that artifact and include it in the common assembly.
+  if (host?.remote === undefined) {
+    if (rootDir === resolve(root, 'packages') && await hasRemoteArtifact(packageRoot)) {
+      remotePackages.push(manifest.name)
+      continue
+    }
+    throw new Error(`${manifest.name} exports ./remote but generated no Remote contribution.`)
+  }
   await mkdir(resolve(packageRoot, 'lib'), { recursive: true })
   await Promise.all([
     writeFile(resolve(packageRoot, 'lib/typert.host.js'), host.js),
@@ -28,6 +41,15 @@ for (const entry of await readdir(pluginsRoot, { withFileTypes: true })) {
     writeFile(resolve(packageRoot, 'lib/typert.remote-client.d.ts.map'), host.remote.dtsMap),
   ])
   remotePackages.push(manifest.name)
+}
+
+async function hasRemoteArtifact(packageRoot) {
+  try {
+    for (const name of ['lib/typert.remote-client.js', 'lib/remote.js']) {
+      try { await access(resolve(packageRoot, name)); return true } catch { /* try next */ }
+    }
+    return false
+  } catch { return false }
 }
 
 await writeRemoteAssembly(remotePackages.sort())

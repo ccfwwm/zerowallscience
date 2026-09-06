@@ -47,6 +47,10 @@
       "types": "./lib/client.d.ts",
       "default": "./lib/client.js"
     },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./src/*": "./src/*",
     "./package.json": "./package.json"

@@ -80,6 +80,9 @@ export function buildHarnessSpawnOptions(
       ...(options.brandIconPath === undefined ? {} : { ZEROWALL_BRAND_ICON: options.brandIconPath }),
       DSH_TELEMETRY_DISABLED: '1',
       NO_COLOR: '1',
+      // Keep long-lived desktop sessions from being terminated by the
+      // default V8 heap ceiling while large MCP catalogs are refreshed.
+      NODE_OPTIONS: [parentEnvironment.NODE_OPTIONS, '--max-old-space-size=6144'].filter(Boolean).join(' '),
       ...(options.runtimeModulesPath ? { NODE_PATH: options.runtimeModulesPath } : {}),
       ...(options.runAsNode ? {
         ELECTRON_RUN_AS_NODE: '1',

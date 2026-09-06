@@ -121,6 +121,24 @@ export function McpConnectionsButton(props: Props) {
   const selectedIdRef = useRef(selectedId)
   selectedIdRef.current = selectedId
 
+  // Keep the list, selection and editor snapshot in lockstep. Refreshes can
+  // arrive after a user click (for example while a server is starting); a
+  // single helper prevents the right pane from briefly showing another
+  // connection's draft.
+  const applySelection = useCallback((next: McpServerView[], id: string) => {
+    const current = next.find(server => server.id === id)
+    const first = next[0]
+    const target = current ?? (id !== NEW_SERVER ? first : undefined)
+    setServers(next)
+    if (target !== undefined) {
+      setSelectedId(target.id)
+      setDraft(draftFromServer(target))
+    } else {
+      setSelectedId(NEW_SERVER)
+      setDraft(emptyDraft())
+    }
+  }, [])
+
   const selected = useMemo(() => servers.find(server => server.id === selectedId), [servers, selectedId])
   const managedConnection = selected !== undefined && ['zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher', 'huagongshe', 'rmcp'].includes(selected.serverName)
   const hasStartingServer = servers.some(server => server.runtimeState === 'starting')
@@ -131,24 +149,12 @@ export function McpConnectionsButton(props: Props) {
     try {
       const next = await listMcpServers()
       if (version !== refreshVersion.current) return
-      setServers(next)
       const id = preferredId ?? selectedIdRef.current
-      const current = next.find(server => server.id === id)
-      const first = next[0]
-      if (current !== undefined) {
-        setSelectedId(current.id)
-        setDraft(draftFromServer(current))
-      } else if (first !== undefined && id !== NEW_SERVER) {
-        setSelectedId(first.id)
-        setDraft(draftFromServer(first))
-      } else {
-        setSelectedId(NEW_SERVER)
-        setDraft(emptyDraft())
-      }
+      applySelection(next, id)
     } catch (reason) {
       if (version === refreshVersion.current) setError(message(reason))
     }
-  }, [listMcpServers])
+  }, [applySelection, listMcpServers])
 
   useEffect(() => {
     if (!open) return
@@ -181,12 +187,13 @@ export function McpConnectionsButton(props: Props) {
   }
 
   useEffect(() => {
-    if (!open || !hasStartingServer) return
-    // Only an actual startup needs convergence polling. Stable connections are
-    // refreshed by explicit actions or environment-generation events.
+    if (!open || (!hasStartingServer && servers.length > 0)) return
+    // During the first remote handshake the list may briefly be unavailable;
+    // converge in the background so the tab does not stay on “new connection”
+    // or appear empty after the rest of Settings has already mounted.
     const timer = window.setInterval(() => { void refresh() }, 10_000)
     return () => window.clearInterval(timer)
-  }, [hasStartingServer, open, refresh])
+  }, [hasStartingServer, open, refresh, servers.length])
 
   const saveSciMasterKey = async () => {
     if (sciMasterKey.trim() === '') return
@@ -245,14 +252,12 @@ export function McpConnectionsButton(props: Props) {
   }, [deleteTarget, embedded, open])
 
   const choose = (server: McpServerView) => {
-    setSelectedId(server.id)
-    setDraft(draftFromServer(server))
+    applySelection(servers, server.id)
     setError(undefined)
   }
 
   const chooseNew = () => {
-    setSelectedId(NEW_SERVER)
-    setDraft(emptyDraft())
+    applySelection(servers, NEW_SERVER)
     setError(undefined)
   }
 
@@ -432,7 +437,7 @@ export function McpConnectionsButton(props: Props) {
             </div>
           </fieldset>
           <footer className={css.footer}>
-            <button className={css.saveButton} type="button" onClick={() => void save()} disabled={busy}><Save size={17} /><span>{selected === undefined ? props.t('common.create') : props.t('common.save')}</span></button>
+            {!managedConnection && <button className={css.saveButton} type="button" onClick={() => void save()} disabled={busy}><Save size={17} /><span>{selected === undefined ? props.t('common.create') : props.t('common.save')}</span></button>}
           </footer>
         </main>
       </div>

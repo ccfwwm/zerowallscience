@@ -160,6 +160,8 @@
     "@zerowallscience/plugin-runs": "workspace:^",
     "@zerowallscience/plugin-publications": "workspace:^",
     "@zerowallscience/plugin-presentations": "workspace:^",
+    "@daweifu/capability-menu": "workspace:*",
+    "dsh-file-review-tab": "workspace:*",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

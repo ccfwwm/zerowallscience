@@ -197,7 +197,11 @@ export class ZeroWallMcpService extends TypertRemoteService {
       // an unhandled startup rejection that terminates the whole Host.
       ctx.logger.warn(`zerowall-mcp: default connection migration failed: ${redactError(error)}`)
     })
-    this.operation = this.recordsReady.then(() => this.reconcileAll()).catch((error: unknown) => {
+    // Reconciliation is deliberately scheduled after the Host fiber is
+    // published. It must never hold web boot on remote handshakes/tools-list.
+    this.operation = this.recordsReady.then(() => new Promise<void>(resolve => {
+      setTimeout(() => { void this.reconcileAll().finally(resolve) }, 0)
+    })).catch((error: unknown) => {
       ctx.logger.warn(`zerowall-mcp: initial connection reconciliation failed: ${redactError(error)}`)
     })
     // dsh-mcp-client publishes lifecycle events on the root context so that
@@ -448,7 +452,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private async seedBundledServers(): Promise<void> {
     if (process.env.ZEROWALL_DISABLE_DEFAULT_MCP === '1') return
     const deferDefaultConnections = process.env.ZEROWALL_DEFER_DEFAULT_MCP === '1'
-    const defaultEnabled = !deferDefaultConnections
+    // Default MCP records are enabled by policy. Their reconciliation is
+    // started asynchronously by the Host, so enabling them here does not
+    // block the desktop UI boot and keeps the MCP tab populated immediately.
+    const defaultEnabled = true
     const marker = defaultMcpMarkerPath()
     let markerVersion = 0
     try {
@@ -484,7 +491,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
         }
       }
     }
-    if (deferDefaultConnections && markerVersion < 6) {
+    if (deferDefaultConnections && markerVersion < 6 && process.env.ZEROWALL_REENABLE_DEFAULT_MCP_MIGRATION === '1') {
       // Releases before the deferred-boot fix persisted the bundled servers
       // as enabled. On an existing install that made the new desktop flag
       // ineffective: every managed server still performed tools/list during
@@ -501,6 +508,24 @@ export class ZeroWallMcpService extends TypertRemoteService {
       for (const server of projects.listMcpServers()) {
         if (defaultServerNames.has(server.serverName) && server.enabled) {
           projects.updateMcpServer(server.id, { enabled: false })
+        }
+      }
+    }
+    if (markerVersion < 7) {
+      // Built-in MCP connections are enabled by product policy. Older 5.3/5.4
+      // installs could retain the temporary deferred-boot disabled flag; move
+      // those managed records back to the normal enabled state. User-created
+      // connections use different names and are intentionally untouched.
+      const defaultServerNames = new Set([
+        RDATALINUX_SERVER_NAME,
+        'huagongshe',
+        'zerowall_managed_scimaster',
+        'zerowall_managed_bio_tools',
+        'zerowall_managed_ketcher',
+      ])
+      for (const server of projects.listMcpServers()) {
+        if (defaultServerNames.has(server.serverName) && !server.enabled) {
+          projects.updateMcpServer(server.id, { enabled: true })
         }
       }
     }
@@ -544,7 +569,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       projects.createMcpServer({ name: 'Sci', serverName: 'zerowall_managed_scimaster', transport: 'stdio', enabled: defaultEnabled, command: 'zerowall-managed:scimaster', cwd: '', failOnStartupError: false })
     }
     await mkdir(dirname(marker), { recursive: true })
-    await writeFile(marker, '{"version":6}\n', 'utf8')
+    await writeFile(marker, '{"version":7}\n', 'utf8')
   }
 
   private projects() {
