@@ -14,7 +14,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { FileReviewRequest, FileReviewResult } from '../change-types.ts'
-import { TYPERT_REMOTE } from '../remote.ts'
 import {
   DEFAULT_WORD_WRAP,
   FILE_REVIEW_SETTINGS_NAMESPACE,
@@ -65,7 +64,6 @@ interface FileReviewRemote {
  * @param ctx - client root context.
  */
 export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
-  const disposeRemote = await ctx.remote.$mount(TYPERT_REMOTE)
   const disposeReviewSource = ctx.inputTriggers.registerSource(reviewCommentSource())
   const settings = ctx.settingsScope.bind<Config>({
     namespace: FILE_REVIEW_SETTINGS_NAMESPACE,
@@ -235,6 +233,5 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
     reviewRemotes.clear()
     disposeReviewSource()
     clearAllReviewComments()
-    await disposeRemote()
   }
 }
