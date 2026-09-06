@@ -36,7 +36,20 @@ export async function apply(ctx: ClientContext): Promise<void> {
   // fallback branding while it is pending.
   registerZeroWallBrand(ctx)
   applyDefaultIvoryTheme(ctx)
-  for (const contribution of zerowallRemoteContributions) await ctx.remote.$mount(contribution)
+  // Remote contributions can also be discovered through an installed feature
+  // package. Deduplicate descriptor IDs at the single assembly point so a
+  // second copy cannot abort client startup with "direct method already
+  // mounted".
+  const mounted = new Set<string>()
+  for (const contribution of zerowallRemoteContributions) {
+    const descriptors = contribution.descriptors.filter((descriptor) => {
+      if (mounted.has(descriptor.id)) return false
+      mounted.add(descriptor.id)
+      return true
+    })
+    if (descriptors.length === 0) continue
+    await ctx.remote.$mount({ ...contribution, descriptors })
+  }
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'zerowall: dictionaries')
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'zerowall-update', order: -30, locale: NS,
