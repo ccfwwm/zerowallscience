@@ -12,7 +12,6 @@ import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
-import { TYPERT_REMOTE } from './remote.ts'
 import { CapabilitySection, type CapabilitySectionInjected, type CapabilityKey } from './CapabilitySection.tsx'
 
 export type { CapabilitySectionInjected, CapabilitySectionProps } from './CapabilitySection.tsx'
@@ -29,10 +28,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Required services (cordis fiber inject). `remote.capabilityPolicy` is NOT
- *  injected: we mount it in `apply`, so declaring it would deadlock the boot
- *  ("waiting for service"). Access it via `ctx.get('remote.capabilityPolicy')`,
- *  which resolves the mounted namespace service without the inject gate. */
+/** Required services (cordis fiber inject). The shared ZeroWall base client
+ * mounts the Typert remote contribution exactly once; this package only reads
+ * the resulting namespace and must not mount it a second time. */
 export const inject = ['slots', 'locale', 'remote']
 
 /** Register the 能力管理 section once `settings.section` is on the ledger. */
@@ -116,18 +114,9 @@ export async function apply(ctx: ClientContext & { slots: SlotRegistry }): Promi
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'capability-menu: dictionaries')
 
-  // Mount the Host `capabilityPolicy` remote contribution so
-  // `ctx.remote.capabilityPolicy` exists in this fiber. `$mount` runs the
-  // contribution through an async effect that can fail silently; surface any
-  // failure here instead of crashing the settings section later.
-  let mountError: string | undefined
-  let disposeRemote: (() => Promise<void>) | undefined
-  try {
-    disposeRemote = await ctx.remote.$mount(TYPERT_REMOTE)
-  } catch (error) {
-    mountError = String(error)
-    console.error('[capability-menu] $mount failed:', error)
-  }
+  // The base client owns remote mounting. Keep a diagnostic when the shared
+  // namespace is unavailable, but never register the same methods here.
+  const mountError: string | undefined = undefined
   const t = ctx.locale.bind(NS) as CapabilitySectionInjected['t']
   const remote = (): unknown => {
     try {
@@ -178,7 +167,5 @@ export async function apply(ctx: ClientContext & { slots: SlotRegistry }): Promi
     inject: injected,
   }, CapabilitySection))
 
-  return () => {
-    disposeRemote?.()
-  }
+  return () => {}
 }

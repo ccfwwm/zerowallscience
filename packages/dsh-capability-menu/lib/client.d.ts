@@ -170,10 +170,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'settings.capability': Record<CapabilityKey, string>;
   }
 }
-/** Required services (cordis fiber inject). `remote.capabilityPolicy` is NOT
- *  injected: we mount it in `apply`, so declaring it would deadlock the boot
- *  ("waiting for service"). Access it via `ctx.get('remote.capabilityPolicy')`,
- *  which resolves the mounted namespace service without the inject gate. */
+/** Required services (cordis fiber inject). The shared ZeroWall base client
+ * mounts the Typert remote contribution exactly once; this package only reads
+ * the resulting namespace and must not mount it a second time. */
 declare const inject: string[];
 /** Register the 能力管理 section once `settings.section` is on the ledger. */
 declare function apply(ctx: Context & {
