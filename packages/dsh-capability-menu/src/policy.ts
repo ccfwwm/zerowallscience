@@ -13,7 +13,7 @@ import z from '@deepseek-ai/schemastery'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import { renderToolsSdk, renderToolsSdkPy } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
-import { escapeText, isUserInvocable, renderSkillContent } from '@deepseek-ai/dsh-skill'
+import { isUserInvocable, renderSkillContent } from '@deepseek-ai/dsh-skill'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { serverNameOf, type CapabilityKind } from './registry.ts'
 
@@ -533,19 +533,10 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
   // it publishes, only the Resident subset reaches the model.
   ctx.on('agent/pre-step', async (payload, next) => {
     const session = payload.agent.session
-    // Replace legacy catalog nodes on the model surface; retain the original log.
+    // Skills are discovered through meta_search/meta_enable. Suppress the
+    // legacy dsh-tool-skill catalog entirely so it cannot render an empty
+    // `skill-catalog` row after filtering.
     const live = new Set(session.surface?.nodes ?? [])
-    for (const event of session.snapshotEvents()) {
-      if (!live.has(event.seq) || event.type !== 'user/message') continue
-      const catalogSource = event.data.source as unknown as Record<string, unknown>
-      if (catalogSource.kind !== 'skill-catalog') continue
-      if (!event.data.content.some(block => block.type === 'text' && block.text.length > 800)) continue
-      session.append('user/message', {
-        ...event.data,
-        content: [{ type: 'text', text: 'Skills are available on demand through meta_search and meta_enable. Earlier catalogs are superseded.' }],
-        source: { ...catalogSource, entries: [] } as unknown as typeof event.data.source,
-      }, { surfaceOp: { op: 'replace', start: event.seq, end: event.seq }, sourceEventSeqs: [event.seq] })
-    }
     const decision = await next()
     if (decision.kind !== 'enter') return decision
     const selectedSkills = service.selectionFor(payload.agent).tools
@@ -564,27 +555,10 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
     const messages = decision.messages.flatMap(message => {
       const source = message.source as { kind?: unknown; entries?: unknown }
       if (source.kind !== 'skill-catalog') return message
-      const entries = Array.isArray(source.entries)
-        ? source.entries.filter((entry): entry is { name: string; description?: string } =>
-            typeof entry === 'object' && entry !== null && typeof (entry as { name?: unknown }).name === 'string')
-        : []
-      const kept = entries
-        // GenUI instructions are part of the stable system prompt section
-        // (`genui:fence`); listing/loading the bundled skill as a separate
-        // catalog message duplicates the same instructions in every turn.
-        .filter(entry => entry.name !== 'genui' && service.classifyFor(entry.name, 'skill', payload.agent) === 'resident')
-        .slice(0, 24)
-        .map(entry => ({ name: entry.name, description: (entry.description ?? '').slice(0, 160) }))
       // GenUI is documented by the stable system-prompt section and must not
       // leave a second visible catalog/injection row in every turn.
-      if (entries.length > 0 && kept.length === 0 && entries.every(entry => entry.name === 'genui')) return []
-      if (JSON.stringify(kept) === JSON.stringify(entries) && !message.content.some(block => block.type === 'text' && block.text.length > 5000)) return message
       changed = true
-      return {
-        ...message,
-        content: [{ type: 'text' as const, text: renderSkillCatalog(kept) }],
-        source: { ...message.source, entries: kept } as unknown as typeof message.source,
-      }
+      return []
     })
     if (!changed && injections.length === 0) return decision
     return { ...decision, messages: [...messages, ...injections] }
@@ -628,28 +602,4 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
   // tools/skills change event. Awaiting here closes the cold-start window
   // where the first assemble could point at a file that does not exist yet.
   await ctx.capability.refresh()
-}
-
-/**
- * Rebuild the text body of a skill-catalog user message from a filtered entry
- * list. Mirrors the `<available_skills>` format emitted by `dsh-tool-skill` so
- * the model sees a consistent, complete replacement catalog.
- */
-function renderSkillCatalog(entries: ReadonlyArray<{ name: string; description?: string }>): string {
-  const guidance = entries.length === 0
-    ? ['Discover skills with meta_search and load a selected skill with meta_enable.']
-    : [
-        'Load a selected skill with meta_enable before following its instructions. This catalog contains summaries only.',
-      ]
-  return [
-    '<system-reminder>',
-    'A skill is a reusable set of task-specific instructions. The following skills are available in this session:',
-    '',
-    '<available_skills>',
-    ...entries.map(entry => `- \`${escapeText(entry.name)}\`: ${escapeText(entry.description ?? '')}`),
-    '</available_skills>',
-    '',
-    ...guidance,
-    '</system-reminder>',
-  ].join('\n')
 }

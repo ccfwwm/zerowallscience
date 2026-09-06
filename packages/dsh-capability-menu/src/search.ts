@@ -108,7 +108,6 @@ export function apply(ctx: Context, config: Config = {}): void {
     }, exec: ToolRunContext) {
       const query = args.query?.trim() ?? ''
       const id = args.id?.trim() ?? ''
-      const detail = args.detail === true
       const kind = args.kind ?? 'all'
       const server = args.server?.trim() || undefined
       const tag = args.tag?.trim() || undefined
@@ -118,9 +117,10 @@ export function apply(ctx: Context, config: Config = {}): void {
       if (query.length > 0 && id.length > 0) {
         throw new Error('meta_search: query and id are mutually exclusive; pass exactly one')
       }
-      if (detail && id.length === 0) {
-        throw new Error('meta_search: detail:true requires an exact id; pass id to get the full schema of one capability')
-      }
+      // Models often attach `detail: true` to a keyword search while looking
+      // for a capability. Treat that as list mode; full detail is only
+      // selected when an exact result id is supplied. This keeps discovery
+      // single-hop and avoids turning a harmless search into a tool error.
 
       const scope = exec.agent
       const context = {

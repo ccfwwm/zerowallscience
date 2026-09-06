@@ -246,7 +246,7 @@ describe('capability-menu-policy plugin', () => {
     expect(decision).toEqual({ kind: 'allow' })
   })
 
-  it('filters the skill catalog to Resident skills at pre-step', async () => {
+  it('removes legacy skill catalog messages at pre-step', async () => {
     const ctx = await setup({ skills: { resident: ['frontend-design'], 'on-demand': ['legacy-skill'] } })
     const message = {
       id: 'msg-1',
@@ -270,12 +270,7 @@ describe('capability-menu-policy plugin', () => {
     }, () => Promise.resolve({ kind: 'enter', messages: [message] }))
     expect(decision.kind).toBe('enter')
     if (decision.kind !== 'enter') return
-    const [filtered] = decision.messages
-    const source = filtered.source as { kind: string; entries: Array<{ name: string }> }
-    expect(source.entries.map(entry => entry.name)).toEqual(['frontend-design'])
-    const text = (filtered.content[0] as { text: string }).text
-    expect(text).toContain('<available_skills>')
-    expect(text).not.toContain('legacy-skill')
+    expect(decision.messages).toEqual([])
   })
 
   it('appends a catalog pointer section when a catalog file is configured', async () => {

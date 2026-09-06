@@ -77,7 +77,7 @@ it('keeps the first request small and enforces session enable/disable through To
   console.log(JSON.stringify({ catalogTools: 172, catalogSchemaBytes: Buffer.byteLength(JSON.stringify(ctx.tools.schemas())), initialSchemaBytes: Buffer.byteLength(JSON.stringify(before.tools)), enabledSchemaBytes: Buffer.byteLength(JSON.stringify(enabled.tools)) }))
 })
 
-it('replaces a historical skill catalog on a real session surface without deleting its log', async () => {
+it('hides a historical skill catalog from the request while retaining its log', async () => {
   const ctx = new Context()
   roots.push(ctx)
   await ctx.plugin(SystemPrompt)
@@ -92,11 +92,11 @@ it('replaces a historical skill catalog on a real session surface without deleti
     source: { kind: 'skill-catalog', form: 'catalog', entries: [{ name: 'large-skill', description: 'Long description' }] },
   }), { surfaceOp: 'append' })
   const owner = { ctx, id: session.id, session } as Agent
-  await ctx.waterfall('agent/pre-step', { agent: owner, signal: new AbortController().signal, turn: 1, step: 1 } as never,
+  const decision = await ctx.waterfall('agent/pre-step', { agent: owner, signal: new AbortController().signal, turn: 1, step: 1 } as never,
     () => Promise.resolve({ kind: 'enter' as const, messages: [] }))
   expect(session.snapshotEvents().some(event => event.seq === original.seq)).toBe(true)
-  expect(session.surface.nodes).not.toContain(original.seq)
-  const replacements = session.snapshotEvents().filter(event => session.surface.nodes.includes(event.seq) && event.type === 'user/message')
-  expect(JSON.stringify(replacements).length).toBeLessThan(2000)
-  expect(JSON.stringify(replacements)).toContain('meta_search')
+  expect(session.surface.nodes).toContain(original.seq)
+  expect(decision.kind).toBe('enter')
+  if (decision.kind !== 'enter') return
+  expect(decision.messages).toHaveLength(0)
 })

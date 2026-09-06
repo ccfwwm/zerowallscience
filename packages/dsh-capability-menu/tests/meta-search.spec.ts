@@ -117,14 +117,15 @@ describe('capability-menu-search', () => {
     expect(result.result.parameters.properties).toHaveProperty('title')
   })
 
-  it('rejects detail:true without an exact id', async () => {
+  it('treats detail:true without an exact id as a normal keyword search', async () => {
     const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-search-'))
     const ctx = await setup(home)
     registerMcpTool(ctx, 'gongfeng', 'create_issue', 'Create an issue')
     await ctx.capability.refresh()
 
-    const { isError } = await runTool(ctx, 'meta_search', { query: 'issue', detail: true })
-    expect(isError).toBe(true)
+    const result = await runTool(ctx, 'meta_search', { query: 'issue', detail: true })
+    expect(result.isError).toBe(false)
+    expect((result.value as { mode: string }).mode).toBe('list')
   })
 
   it('rejects query and id together', async () => {
