@@ -1,4 +1,4 @@
-# ZeroWall 5.4.0 Plugin Integration
+# ZeroWall 5.5.0 Plugin Integration
 
 Pinned sources and licenses are recorded in `config/integrations/upstream-sources.json` and `THIRD_PARTY_NOTICES.md`.
 
@@ -8,7 +8,7 @@ The active WeChat implementation is `packages/dsh-wechat` 0.8.0. The legacy `plu
 
 Capability management uses the upstream menu with a ZeroWall per-session selection service. `meta_search` and `meta_enable` are the default discovery tools. MCP aliases forward through the same service. Schema projection, PTC SDK generation and ToolRuntime execution share that policy. Selection events restore tools and disabled capabilities after session replay. Default native tools are read, read_image, glob, grep, ask_user_question and todo_write when registered.
 
-Each enable request accepts at most eight capabilities. Sessions allow 24 explicitly selected capabilities and 48 KiB of tool schemas. Search lists are capped at 12 results, descriptions at 350 characters, and detail responses at 12,000 characters. Full skill instructions load through explicit selection. Legacy large skill catalogs are replaced only on the model surface, retaining the source log.
+Capability enabling is intentionally unlimited in this release; the model still receives only the selected schemas for the current session. Search lists and descriptions remain compact, and full skill instructions load through explicit selection. Legacy large skill catalogs are replaced only on the model surface, retaining the source log.
 
 `dsh-auto-review` owns operation approval, defaults off, uses Chinese reports, and delegates failures to human approval. `plugins/reviewer` retains answer and citation verification with its existing settings and events. These are independent functions and switches, as requested.
 

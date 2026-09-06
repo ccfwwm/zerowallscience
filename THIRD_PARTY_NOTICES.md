@@ -12,7 +12,7 @@ versioned dependency inventory.
 
 ## ZeroWall scientific capability adaptations
 
-The 5.4.0 desktop adapts the following pinned plugins. Their original LICENSE files remain in each source package. ZeroWall changes cover DSH API compatibility, session capability selection, Windows file review, and desktop profile wiring.
+The 5.5.0 desktop adapts the following pinned plugins. Their original LICENSE files remain in each source package. ZeroWall changes cover DSH API compatibility, session capability selection, Windows file review, FigureYa project artifacts, and desktop profile wiring.
 
 | Source package | Upstream revision | License |
 | --- | --- | --- |
