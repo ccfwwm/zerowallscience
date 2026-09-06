@@ -5,7 +5,7 @@ import { NS, unwrapRemoteResult } from '@zerowallscience/plugin-base/client-help
 // Do not make the whole settings tab depend on the remote namespace's first
 // handshake. The tab can render while the Host reconnects; action handlers
 // report a precise unavailable error until the namespace is ready.
-export const inject = ['slots', 'locale', 'remote']
+export const inject = ['slots', 'locale', 'remote', 'remote.zerowallMcp']
 
 export function apply(ctx: ClientContext): void {
   const remote = ctx.remote as any

@@ -78,7 +78,7 @@ let CapabilityPolicyGateway = (() => {
             __esDecorate(this, null, _getCatalogDocs_decorators, { kind: "method", name: "getCatalogDocs", static: false, private: false, access: { has: obj => "getCatalogDocs" in obj, get: obj => obj.getCatalogDocs }, metadata: _metadata }, null, _instanceExtraInitializers);
             if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
         }
-        static inject = ['capabilityPolicy', 'capability'];
+        static inject = ['capabilityPolicy', 'capability', 'agents'];
         constructor(ctx) {
             super(ctx, 'capabilityPolicyGateway', { namespace: 'capabilityPolicy' });
             __runInitializers(this, _instanceExtraInitializers);

@@ -53,7 +53,7 @@ export interface CatalogDocs {
  * service through `this.ctx.capabilityPolicy`.
  */
 export class CapabilityPolicyGateway extends TypertRemoteService {
-  static inject = ['capabilityPolicy', 'capability']
+  static inject = ['capabilityPolicy', 'capability', 'agents']
 
   constructor(ctx: Context) {
     super(ctx, 'capabilityPolicyGateway', { namespace: 'capabilityPolicy' })
