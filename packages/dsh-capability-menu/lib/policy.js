@@ -385,7 +385,7 @@ export async function apply(ctx, config = {}) {
             injections.push(createUserMessage({ content: [{ type: 'text', text: renderSkillContent(skill) }], source: { kind: 'skill-invocation', name, form: 'instructions' } }));
         }
         let changed = false;
-        const messages = decision.messages.map(message => {
+        const messages = decision.messages.flatMap(message => {
             const source = message.source;
             if (source.kind !== 'skill-catalog')
                 return message;
@@ -399,6 +399,10 @@ export async function apply(ctx, config = {}) {
                 .filter(entry => entry.name !== 'genui' && service.classifyFor(entry.name, 'skill', payload.agent) === 'resident')
                 .slice(0, 24)
                 .map(entry => ({ name: entry.name, description: (entry.description ?? '').slice(0, 160) }));
+            // GenUI is documented by the stable system-prompt section and must not
+            // leave a second visible catalog/injection row in every turn.
+            if (entries.length > 0 && kept.length === 0 && entries.every(entry => entry.name === 'genui'))
+                return [];
             if (JSON.stringify(kept) === JSON.stringify(entries) && !message.content.some(block => block.type === 'text' && block.text.length > 5000))
                 return message;
             changed = true;
