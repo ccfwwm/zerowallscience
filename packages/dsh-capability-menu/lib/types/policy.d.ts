@@ -175,8 +175,9 @@ export interface CapabilityPolicyService {
     selectTools(agent: Agent, names: readonly string[], enable?: boolean): {
         enabled: string[];
         disabled: string[];
-        remainingTools: number;
-        remainingSchemaBytes: number;
+        unlimited: boolean;
+        remainingTools: null;
+        remainingSchemaBytes: null;
     };
     /** Classify a tool by its public name (`mcp__<server>__<raw>` or meta tool). */
     classifyTool(name: string): CapabilityClass;

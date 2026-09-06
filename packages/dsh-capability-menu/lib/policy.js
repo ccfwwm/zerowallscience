@@ -370,7 +370,9 @@ export async function apply(ctx, config = {}) {
         const decision = await next();
         if (decision.kind !== 'enter')
             return decision;
-        const selectedSkills = service.selectionFor(payload.agent).tools.filter(name => name.startsWith('skill:')).map(name => name.slice(6));
+        const selectedSkills = service.selectionFor(payload.agent).tools
+            .filter(name => name.startsWith('skill:') && name.slice(6) !== 'genui')
+            .map(name => name.slice(6));
         const loaded = new Set(session.snapshotEvents().filter(event => live.has(event.seq) && event.type === 'user/message')
             .flatMap(event => event.type === 'user/message' && event.data.source.kind === 'skill-invocation' ? [event.data.source.name] : []));
         const injections = [];
@@ -391,7 +393,10 @@ export async function apply(ctx, config = {}) {
                 ? source.entries.filter((entry) => typeof entry === 'object' && entry !== null && typeof entry.name === 'string')
                 : [];
             const kept = entries
-                .filter(entry => service.classifyFor(entry.name, 'skill', payload.agent) === 'resident')
+                // GenUI instructions are part of the stable system prompt section
+                // (`genui:fence`); listing/loading the bundled skill as a separate
+                // catalog message duplicates the same instructions in every turn.
+                .filter(entry => entry.name !== 'genui' && service.classifyFor(entry.name, 'skill', payload.agent) === 'resident')
                 .slice(0, 24)
                 .map(entry => ({ name: entry.name, description: (entry.description ?? '').slice(0, 160) }));
             if (JSON.stringify(kept) === JSON.stringify(entries) && !message.content.some(block => block.type === 'text' && block.text.length > 5000))

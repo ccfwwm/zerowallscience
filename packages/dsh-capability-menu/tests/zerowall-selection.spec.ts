@@ -23,7 +23,7 @@ function agent(ctx: Context, events: any[] = []): Agent {
   } } as unknown as Agent
 }
 
-it('bounds the first request for 172 tools and enforces session enable/disable through ToolRuntime', async () => {
+it('keeps the first request small and enforces session enable/disable through ToolRuntime', async () => {
   const ctx = new Context()
   roots.push(ctx)
   await ctx.plugin(SystemPrompt)
@@ -68,9 +68,12 @@ it('bounds the first request for 172 tools and enforces session enable/disable t
   await execute(first, 'meta_enable', { tools: [target], enabled: false })
   expect((await execute(first, target)).isError).toBe(true)
   expect(executed).toBe(2)
-  const overLimit = await execute(first, 'meta_enable', { tools: Array.from({ length: 9 }, (_, i) => `mcp__rmcp__rplatform__tool_${i}`) })
-  expect(overLimit.isError).toBe(true)
-  expect(ctx.tools.schemas(first).filter(tool => tool.name.startsWith('mcp__'))).toHaveLength(0)
+  const unlimited = await execute(first, 'meta_enable', { tools: Array.from({ length: 9 }, (_, i) => `mcp__rmcp__rplatform__tool_${i}`) })
+  expect(unlimited.isError, JSON.stringify(unlimited)).toBe(false)
+  const unlimitedPayload = JSON.parse(unlimited.content.find(block => block.type === 'text')?.text ?? '{}')
+  expect(unlimitedPayload.unlimited).toBe(true)
+  expect(unlimitedPayload.remainingTools).toBeNull()
+  expect(ctx.tools.schemas(first).filter(tool => tool.name.startsWith('mcp__'))).toHaveLength(9)
   console.log(JSON.stringify({ catalogTools: 172, catalogSchemaBytes: Buffer.byteLength(JSON.stringify(ctx.tools.schemas())), initialSchemaBytes: Buffer.byteLength(JSON.stringify(before.tools)), enabledSchemaBytes: Buffer.byteLength(JSON.stringify(enabled.tools)) }))
 })
 

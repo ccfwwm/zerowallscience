@@ -78,7 +78,7 @@ export type MetaInvokeResult =
 export function apply(ctx: Context, config: Config = {}): void {
   ctx.tools.register(defineTool({
     name: 'meta_enable',
-    description: 'Enable up to 8 discovered tools or load a selected skill in this session. Enabled tools become directly callable. Existing approvals still apply.',
+    description: 'Enable discovered tools or load a selected skill in this session. There is no count or schema-byte quota. Enabled tools become directly callable; existing approvals still apply.',
     parameters: {
       tools: { type: 'array', items: { type: 'string' } },
       skill: { type: 'string' },

@@ -18,8 +18,9 @@ export declare function createSelections(ctx: Context, policy: CapabilityPolicyS
     select: (agent: Agent, names: readonly string[], enable?: boolean) => {
         enabled: string[];
         disabled: string[];
-        remainingTools: number;
-        remainingSchemaBytes: number;
+        unlimited: boolean;
+        remainingTools: null;
+        remainingSchemaBytes: null;
     };
     update: (agent: Agent, changes: readonly {
         name: string;
@@ -28,8 +29,9 @@ export declare function createSelections(ctx: Context, policy: CapabilityPolicyS
     }[]) => {
         enabled: string[];
         disabled: string[];
-        remainingTools: number;
-        remainingSchemaBytes: number;
+        unlimited: boolean;
+        remainingTools: null;
+        remainingSchemaBytes: null;
     };
     classify: (name: string, kind: "tool" | "skill", agent?: Agent) => Tier;
     reset: (agent: Agent) => void;

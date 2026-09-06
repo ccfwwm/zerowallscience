@@ -82,7 +82,16 @@ export function createSelections(ctx: Context, policy: CapabilityPolicyService) 
     agent.session.append(SELECTION_EVENT, data)
     selections.set(agent.session, next)
     sync(agent)
-    return { enabled: data.tools, disabled: data.disabled, remainingTools: Number.POSITIVE_INFINITY, remainingSchemaBytes: Number.POSITIVE_INFINITY }
+    // The session has no capability count or schema-byte quota.  Do not use
+    // Infinity here: tool results are lossless JSON and JSON has no Infinity
+    // value, so the protocol validator rejects the whole meta_enable result.
+    return {
+      enabled: data.tools,
+      disabled: data.disabled,
+      unlimited: true,
+      remainingTools: null,
+      remainingSchemaBytes: null,
+    }
   }
   const select = (agent: Agent, names: readonly string[], enable = true) => {
     for (const name of names) if (enable && classify(name, 'tool', agent) === 'disabled') throw new Error(`Capability ${name} is disabled. Change it in capability settings first.`)

@@ -304,7 +304,7 @@ export interface CapabilityPolicyService {
   updateSelection(agent: Agent, changes: readonly { name: string; kind: 'tool' | 'skill'; tier: CapabilityClass }[]): unknown
   selectionFor(agent: Agent): { tools: string[]; disabled: string[] }
   isVisibleTool(name: string, agent?: Agent): boolean
-  selectTools(agent: Agent, names: readonly string[], enable?: boolean): { enabled: string[]; disabled: string[]; remainingTools: number; remainingSchemaBytes: number }
+  selectTools(agent: Agent, names: readonly string[], enable?: boolean): { enabled: string[]; disabled: string[]; unlimited: boolean; remainingTools: null; remainingSchemaBytes: null }
   /** Classify a tool by its public name (`mcp__<server>__<raw>` or meta tool). */
   classifyTool(name: string): CapabilityClass
   /** Classify a skill by its bare name. */
@@ -548,7 +548,9 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
     }
     const decision = await next()
     if (decision.kind !== 'enter') return decision
-    const selectedSkills = service.selectionFor(payload.agent).tools.filter(name => name.startsWith('skill:')).map(name => name.slice(6))
+    const selectedSkills = service.selectionFor(payload.agent).tools
+      .filter(name => name.startsWith('skill:') && name.slice(6) !== 'genui')
+      .map(name => name.slice(6))
     const loaded = new Set(session.snapshotEvents().filter(event => live.has(event.seq) && event.type === 'user/message')
       .flatMap(event => event.type === 'user/message' && event.data.source.kind === 'skill-invocation' ? [event.data.source.name] : []))
     const injections = []
@@ -567,7 +569,10 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
             typeof entry === 'object' && entry !== null && typeof (entry as { name?: unknown }).name === 'string')
         : []
       const kept = entries
-        .filter(entry => service.classifyFor(entry.name, 'skill', payload.agent) === 'resident')
+        // GenUI instructions are part of the stable system prompt section
+        // (`genui:fence`); listing/loading the bundled skill as a separate
+        // catalog message duplicates the same instructions in every turn.
+        .filter(entry => entry.name !== 'genui' && service.classifyFor(entry.name, 'skill', payload.agent) === 'resident')
         .slice(0, 24)
         .map(entry => ({ name: entry.name, description: (entry.description ?? '').slice(0, 160) }))
       if (JSON.stringify(kept) === JSON.stringify(entries) && !message.content.some(block => block.type === 'text' && block.text.length > 5000)) return message
