@@ -23,7 +23,7 @@ export interface McpEnvironmentManifest {
   pythonHealth: { imports: string[]; bioServer: string; ketcherServer: string }
   skillsRoot: string
   sci: { version: string; nodeMinimum: string; cli: string; mcp: string }
-  mcp: { bioToolsVersion: string; ketcherChemistryVersion: string; sciMasterVersion: string; toolCount: number; licenseToolCount: number; servers: string[] }
+  mcp: { bioToolsVersion: string; ketcherChemistryVersion: string; sciMasterVersion: string; publicToolCount: number; internalToolCount: number; servers: string[] }
   source: { claudeScienceRuntime: string; sourceHashes: Record<string, string> }
   signature: { algorithm: 'ed25519'; keyId: string; value: string }
 }

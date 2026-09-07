@@ -1,5 +1,5 @@
 /**
- * Model-facing `meta_invoke` tool: unified execution/loading of capabilities.
+ * Model-facing `capability_execute` tool: unified execution/loading of capabilities.
  *
  * @module @daweifu/capability-menu (invoke plugin)
  */
@@ -11,7 +11,7 @@ export declare const name = "capability-menu-invoke";
 export declare const inject: string[];
 /** Forwarding mode for the MCP branch. */
 export type MetaForwardMode = 'direct' | 'resolve';
-/** Model-facing `meta_invoke` configuration. */
+/** Model-facing `capability_execute` configuration. */
 export interface Config {
     /** How to forward MCP calls: `direct` executes via the tool pipeline; `resolve` returns the schema for the model to call directly. */
     forwardMode?: MetaForwardMode;
@@ -57,7 +57,7 @@ export type MetaInvokeResult = {
     detail: MetaInvokeResolveDetail;
 };
 /**
- * Register the `meta_invoke` tool.
+ * Register the `capability_execute` tool.
  *
  * Dispatch is by the explicit `kind` argument (no id-prefix parsing).
  *

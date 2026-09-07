@@ -50,10 +50,10 @@ describe('wildcard / rule matching', () => {
           kind: 'tool',
           ruleKind: 'tool',
         },
-        new Set(['meta_search', 'meta_invoke']),
+        new Set(['capability_search', 'capability_execute']),
       )
     expect(matcher('execute_cmd')).toBe('resident')                 // resident exact
-    expect(matcher('meta_search')).toBe('resident')                 // mandatory meta tool
+    expect(matcher('capability_search')).toBe('resident')                 // mandatory meta tool
     expect(matcher('mcp__gongfeng__create_issue')).toBe('resident') // resident glob beats on-demand glob
     expect(matcher('mcp__km__search')).toBe('on-demand')         // on-demand glob (server:km:*)
     expect(matcher('mcp__other__tool')).toBe('on-demand')        // on-demand glob mcp__*
@@ -133,8 +133,8 @@ describe('capability-menu-policy plugin', () => {
       tools: { resident: ['execute_cmd', 'mcp__gongfeng__*'], 'on-demand': ['mcp__*'] },
     })
     registerTool(ctx, 'execute_cmd')
-    registerTool(ctx, 'meta_search')
-    registerTool(ctx, 'meta_invoke')
+    registerTool(ctx, 'capability_search')
+    registerTool(ctx, 'capability_execute')
     registerTool(ctx, 'mcp__gongfeng__create_issue')
     registerTool(ctx, 'mcp__km__search')
 
@@ -142,13 +142,13 @@ describe('capability-menu-policy plugin', () => {
     expect(service.isResidentTool('execute_cmd')).toBe(true)
     expect(service.isResidentTool('mcp__gongfeng__create_issue')).toBe(true)
     expect(service.isResidentTool('mcp__km__search')).toBe(false)
-    expect(service.isResidentTool('meta_search')).toBe(true)
+    expect(service.isResidentTool('capability_search')).toBe(true)
 
     const assembly = await ctx.systemPrompt.assemble()
     const names = assembly.tools.map(t => t.name)
     expect(names).toContain('execute_cmd')
-    expect(names).toContain('meta_search')
-    expect(names).toContain('meta_invoke')
+    expect(names).toContain('capability_search')
+    expect(names).toContain('capability_execute')
     expect(names).toContain('mcp__gongfeng__create_issue')
     expect(names).not.toContain('mcp__km__search')
   })
@@ -156,18 +156,18 @@ describe('capability-menu-policy plugin', () => {
   it('keeps every tool when the resident list is empty (default resident)', async () => {
     // With no explicit resident list, every non-meta tool defaults to Resident.
     const ctx = await setup({})
-    registerTool(ctx, 'meta_search')
+    registerTool(ctx, 'capability_search')
     registerTool(ctx, 'some_tool')
     const assembly = await ctx.systemPrompt.assemble()
     const names = assembly.tools.map(t => t.name)
-    expect(names).toContain('meta_search')
+    expect(names).toContain('capability_search')
     expect(names).toContain('some_tool')
   })
 
   it('excludes disabled tools from the projection even when also resident', async () => {
     const ctx = await setup({ tools: { resident: ['a'], disabled: ['a'] } })
     registerTool(ctx, 'a')
-    registerTool(ctx, 'meta_search')
+    registerTool(ctx, 'capability_search')
     const service = ctx.capabilityPolicy
     expect(service.isDisabledTool('a')).toBe(true)
     expect(service.isResidentTool('a')).toBe(false)
@@ -176,7 +176,7 @@ describe('capability-menu-policy plugin', () => {
   })
 
   it('fails loud when a meta tool is disabled', async () => {
-    await expect(setup({ tools: { disabled: ['meta_search'] } })).rejects.toThrow(/meta tool "meta_search" cannot be disabled/)
+    await expect(setup({ tools: { disabled: ['capability_search'] } })).rejects.toThrow(/meta tool "capability_search" cannot be disabled/)
   })
 
   it('auto-maps legacy rule keys (exposed/progressive) to resident/on-demand', async () => {
@@ -235,7 +235,7 @@ describe('capability-menu-policy plugin', () => {
     expect(decision).toEqual({ kind: 'deny', reason: 'capability "bash" is disabled and cannot be executed' })
   })
 
-  it('does not deny On-demand tools so meta_invoke can still execute them', async () => {
+  it('does not deny On-demand tools so capability_execute can still execute them', async () => {
     const ctx = await setup({ tools: { 'on-demand': ['mcp__km__search'] } })
     const decision = await ctx.waterfall('tools/pre-execute', {
       callId: ToolCallId('call-1'),
@@ -278,8 +278,8 @@ describe('capability-menu-policy plugin', () => {
     const { stat } = await import('node:fs/promises')
     const catalogFile = `${home}/capability-catalog.yaml`
     const ctx = await setup({ tools: { 'on-demand': ['mcp__km__search'] } }, { catalogFile })
-    registerTool(ctx, 'meta_search')
-    registerTool(ctx, 'meta_invoke')
+    registerTool(ctx, 'capability_search')
+    registerTool(ctx, 'capability_execute')
     registerTool(ctx, 'mcp__km__search')
     // C1: the on-demand catalog must exist right after policy mount, without an
     // explicit refresh() (the registry startup path skips writeCatalog).
@@ -298,8 +298,8 @@ describe('capability-menu-policy plugin', () => {
     const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-policy-'))
     const catalogFile = `${home}/capability-catalog.yaml`
     const ctx = await setup({}, { catalogFile })
-    registerTool(ctx, 'meta_search')
-    registerTool(ctx, 'meta_invoke')
+    registerTool(ctx, 'capability_search')
+    registerTool(ctx, 'capability_execute')
     await ctx.capability.refresh()
 
     const assembly = await ctx.systemPrompt.assemble()

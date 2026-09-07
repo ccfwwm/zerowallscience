@@ -18,7 +18,7 @@ export interface McpEnvironmentManifest {
   pythonHealth: { imports: string[]; bioServer: string; ketcherServer: string }
   skillsRoot: string
   sci: { version: string; nodeMinimum: string; cli: string; mcp: string }
-  mcp: { bioToolsVersion: string; ketcherChemistryVersion: string; sciMasterVersion: string; toolCount: number; licenseToolCount: number; servers: string[] }
+  mcp: { bioToolsVersion: string; ketcherChemistryVersion: string; sciMasterVersion: string; publicToolCount: number; internalToolCount: number; servers: string[] }
   source: { claudeScienceRuntime: string; sourceHashes: Record<string, string> }
   signature: { algorithm: 'ed25519'; keyId: string; value: string }
 }
@@ -45,7 +45,7 @@ export function validateMcpEnvironmentManifest(value: unknown): McpEnvironmentMa
   const mcp = item.mcp as Record<string, unknown> | undefined
   if (!Array.isArray(health?.imports) || typeof health.bioServer !== 'string' || typeof health.ketcherServer !== 'string') throw new Error('MCP environment Python health metadata is invalid.')
   if (typeof item.skillsRoot !== 'string' || typeof sci?.version !== 'string' || typeof sci.nodeMinimum !== 'string' || typeof sci.cli !== 'string' || typeof sci.mcp !== 'string') throw new Error('MCP environment SciMaster metadata is invalid.')
-  if (typeof mcp?.sciMasterVersion !== 'string' || !Array.isArray(mcp.servers)) throw new Error('MCP environment server metadata is invalid.')
+  if (typeof mcp?.sciMasterVersion !== 'string' || mcp.publicToolCount !== 8 || !Number.isSafeInteger(mcp.internalToolCount) || Number(mcp.internalToolCount) < mcp.publicToolCount || !Array.isArray(mcp.servers)) throw new Error('MCP environment server metadata is invalid.')
   return value as McpEnvironmentManifest
 }
 

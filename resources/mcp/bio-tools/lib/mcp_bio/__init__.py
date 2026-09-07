@@ -1,3 +1,3 @@
-"""mcp-bio — single aggregated bio-retrieval MCP server (22 domains, 194 tools)."""
+"""Compact Bio MCP facade over 23 domains and 247 internal capabilities."""
 
 __version__ = "0.1.0"

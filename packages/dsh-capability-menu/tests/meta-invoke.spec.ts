@@ -120,7 +120,7 @@ describe('capability-menu-invoke', () => {
     })
     await ctx.capability.refresh()
 
-    const { value, isError } = await runTool(ctx, 'meta_invoke', { id: issue, kind: 'tool', args: { title: 'hello' } })
+    const { value, isError } = await runTool(ctx, 'capability_execute', { id: issue, kind: 'tool', args: { title: 'hello' } })
     expect(isError).toBe(false)
     const result = value as { ok: boolean; kind: string; id: string; detail: { forwarded: boolean; target: string } }
     expect(result.ok).toBe(true)
@@ -138,7 +138,7 @@ describe('capability-menu-invoke', () => {
     })
     await ctx.capability.refresh()
 
-    const { isError } = await runTool(ctx, 'meta_invoke', { id: failing, kind: 'tool', args: { title: 'x' } })
+    const { isError } = await runTool(ctx, 'capability_execute', { id: failing, kind: 'tool', args: { title: 'x' } })
     expect(isError).toBe(true)
   })
 
@@ -149,7 +149,7 @@ describe('capability-menu-invoke', () => {
     const ctx = await setup(home)
     await ctx.capability.refresh()
 
-    const { value, isError } = await runTool(ctx, 'meta_invoke', { id: 'frontend-design', kind: 'skill' })
+    const { value, isError } = await runTool(ctx, 'capability_execute', { id: 'frontend-design', kind: 'skill' })
     expect(isError).toBe(false)
     const result = value as { ok: boolean; kind: string; detail: { name: string; content: string } }
     expect(result.ok).toBe(true)
@@ -168,7 +168,7 @@ describe('capability-menu-invoke', () => {
     })
     await ctx.capability.refresh()
 
-    const { value, isError } = await runTool(ctx, 'meta_invoke', { id: issue, kind: 'tool', args: { title: 'x' } })
+    const { value, isError } = await runTool(ctx, 'capability_execute', { id: issue, kind: 'tool', args: { title: 'x' } })
     expect(isError).toBe(false)
     const result = value as { ok: boolean; kind: string; detail: { target: string; parameters: unknown } }
     expect(result.kind).toBe('resolve')
@@ -187,7 +187,7 @@ describe('capability-menu-invoke', () => {
     })
     await ctx.capability.refresh()
 
-    const { value, isError } = await runTool(ctx, 'meta_invoke', { id: bash, kind: 'tool', args: { command: 'echo hi' } })
+    const { value, isError } = await runTool(ctx, 'capability_execute', { id: bash, kind: 'tool', args: { command: 'echo hi' } })
     expect(isError).toBe(false)
     const result = value as { ok: boolean; kind: string; detail: { forwarded: boolean; target: string } }
     expect(result.ok).toBe(true)
@@ -218,8 +218,8 @@ describe('capability-menu-invoke', () => {
     const assembly = await ctx.systemPrompt.assemble()
     expect(assembly.tools.map(tool => tool.name)).not.toContain(grep)
 
-    // …but stay reachable through meta_invoke.
-    const { value, isError } = await runTool(ctx, 'meta_invoke', { id: grep, kind: 'tool', args: { command: 'ls' } })
+    // …but stay reachable through capability_execute.
+    const { value, isError } = await runTool(ctx, 'capability_execute', { id: grep, kind: 'tool', args: { command: 'ls' } })
     expect(isError).toBe(false)
     const result = value as { ok: boolean; kind: string; detail: { forwarded: boolean; target: string } }
     expect(result.ok).toBe(true)
@@ -229,7 +229,7 @@ describe('capability-menu-invoke', () => {
   it('rejects an unknown capability id', async () => {
     const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
     const ctx = await setup(home)
-    const { isError } = await runTool(ctx, 'meta_invoke', { id: 'mcp__nope__missing', kind: 'tool' })
+    const { isError } = await runTool(ctx, 'capability_execute', { id: 'mcp__nope__missing', kind: 'tool' })
     expect(isError).toBe(true)
   })
 
@@ -250,7 +250,7 @@ describe('capability-menu-invoke', () => {
     const issue = registerMcpTool(ctx, 'gongfeng', 'create_issue', 'Create an issue')
     await ctx.capability.refresh()
 
-    const { isError } = await runTool(ctx, 'meta_invoke', { id: issue, kind: 'tool', args: { title: 'x' } })
+    const { isError } = await runTool(ctx, 'capability_execute', { id: issue, kind: 'tool', args: { title: 'x' } })
     expect(isError).toBe(true)
   })
 
@@ -271,7 +271,7 @@ describe('capability-menu-invoke', () => {
     await ctx.plugin(toolMetaInvoke, {})
     await ctx.capability.refresh()
 
-    const { isError } = await runTool(ctx, 'meta_invoke', { id: 'forbidden-skill', kind: 'skill' })
+    const { isError } = await runTool(ctx, 'capability_execute', { id: 'forbidden-skill', kind: 'skill' })
     expect(isError).toBe(true)
   })
 
@@ -283,12 +283,12 @@ describe('capability-menu-invoke', () => {
     // Same agent object = same session: the second load must be a short reminder.
     const agent = agentStub('agent')
 
-    const first = await runTool(ctx, 'meta_invoke', { id: 'frontend-design', kind: 'skill' }, agent)
+    const first = await runTool(ctx, 'capability_execute', { id: 'frontend-design', kind: 'skill' }, agent)
     expect(first.isError).toBe(false)
     const firstDetail = (first.value as { detail: { content: string } }).detail
     expect(firstDetail.content).toContain('Full design instructions')
 
-    const second = await runTool(ctx, 'meta_invoke', { id: 'frontend-design', kind: 'skill' }, agent)
+    const second = await runTool(ctx, 'capability_execute', { id: 'frontend-design', kind: 'skill' }, agent)
     expect(second.isError).toBe(false)
     const secondDetail = (second.value as { detail: { content: string } }).detail
     expect(secondDetail.content).not.toContain('Full design instructions')
@@ -306,9 +306,9 @@ describe('capability-menu-invoke', () => {
     const agentA = agentStub('agent-a')
     const agentB = agentStub('agent-b')
 
-    const a1 = await runTool(ctx, 'meta_invoke', { id: 'frontend-design', kind: 'skill' }, agentA)
-    const b1 = await runTool(ctx, 'meta_invoke', { id: 'frontend-design', kind: 'skill' }, agentB)
-    const a2 = await runTool(ctx, 'meta_invoke', { id: 'frontend-design', kind: 'skill' }, agentA)
+    const a1 = await runTool(ctx, 'capability_execute', { id: 'frontend-design', kind: 'skill' }, agentA)
+    const b1 = await runTool(ctx, 'capability_execute', { id: 'frontend-design', kind: 'skill' }, agentB)
+    const a2 = await runTool(ctx, 'capability_execute', { id: 'frontend-design', kind: 'skill' }, agentA)
 
     const content = (result: { value: unknown }): string => (result.value as { detail: { content: string } }).detail.content
     // Session A loads the full body once…
@@ -317,5 +317,21 @@ describe('capability-menu-invoke', () => {
     expect(content(b1)).toContain('Full design instructions')
     // Re-loading in session A returns the short reminder.
     expect(content(a2)).toContain('already loaded')
+  })
+
+  it('routes an exact compact internal capability through the MCP host directory', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-compact-invoke-'))
+    const ctx = await setup(home)
+    const received: unknown[] = []
+    ctx.provide('zerowallMcp' as never, {
+      async executeCompactCapability(id: string, args: unknown) {
+        received.push({ id, args })
+        return { target: 'mcp__rmcp__r_figureya_run', content: [{ type: 'text', text: '{"ok":true}' }], value: { ok: true } }
+      },
+    } as never)
+    const result = await runTool(ctx, 'capability_execute', { id: 'figureya.generate.multi.volcano', kind: 'tool', args: { project_id: 'p' } })
+    expect(result.isError).toBe(false)
+    expect(received).toEqual([{ id: 'figureya.generate.multi.volcano', args: { project_id: 'p' } }])
+    expect((result.value as { detail: { target: string } }).detail.target).toBe('mcp__rmcp__r_figureya_run')
   })
 })

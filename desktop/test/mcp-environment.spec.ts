@@ -25,7 +25,7 @@ function signedManifest(version = '4.1.9', keyId = 'stable-1', environmentVersio
     python: { version: '3.12', relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/Lib/site-packages', modules: ['mcp', 'numpy', 'pandas', 'httpx'], supportsZeroWallTool: true },
     pythonHealth: { imports: [], bioServer: 'bio-tools/run_server.py mcp_bio', ketcherServer: 'ketcher-chemistry/server.js' },
     skillsRoot: 'skills', sci: { version: '0.3.15', nodeMinimum: '20.3.0', cli: 'sci/dist/cli.mjs', mcp: 'sci/dist/mcp.cjs' },
-    mcp: { bioToolsVersion: version, ketcherChemistryVersion: version, sciMasterVersion: '0.3.15', toolCount: 247, licenseToolCount: 14, servers: ['zerowall_managed_bio_tools', 'zerowall_managed_ketcher', 'zerowall_managed_scimaster'] },
+    mcp: { bioToolsVersion: version, ketcherChemistryVersion: version, sciMasterVersion: '0.3.15', publicToolCount: 8, internalToolCount: 247, servers: ['zerowall_managed_bio_tools', 'zerowall_managed_ketcher', 'zerowall_managed_scimaster'] },
     source: { claudeScienceRuntime: '0.0.37-linux-x64', sourceHashes: {} }, signature: { algorithm: 'ed25519', keyId, value: '' },
   }
   manifest.signature.value = sign(null, canonicalManifest(manifest), keys.privateKey).toString('base64')

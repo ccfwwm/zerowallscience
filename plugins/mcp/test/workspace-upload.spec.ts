@@ -36,24 +36,66 @@ describe('rdatalinux workspace upload bridge', () => {
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       ctx.tools.register(defineTool({
-        name: 'mcp__rmcp__rplatform__r_upload_file',
+        name: 'mcp__rmcp__r_files',
         description: 'test remote upload',
-        parameters: { project_id: { type: 'string', required: true }, path: { type: 'string', required: true }, data_base64: { type: 'string', required: true }, confirm: { type: 'boolean', required: true } },
+        parameters: { action: { type: 'string', required: true }, arguments: { type: 'json', required: true } },
         output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
         execute: async (args: any) => { forwarded.push(args); return { ok: true } },
       }))
       const result = await ctx.tools.execute({
         signal: new AbortController().signal,
         callId: ToolCallId('workspace-upload'),
-        name: 'r_upload_workspace_file',
-        arguments: { project_id: 'study-1', local_path: 'counts_raw', remote_path: 'data/raw/counts_raw', confirm: true },
+        name: 'r_files',
+        arguments: { action: 'upload_workspace', project_id: 'study-1', local_path: 'counts_raw', remote_path: 'data/raw/counts_raw', confirm: true },
         agent: { session: { header: { cwd: root } } } as any,
       })
       expect(result.isError).toBe(false)
       expect(forwarded).toHaveLength(1)
-      expect(forwarded[0]).toMatchObject({ project_id: 'study-1', path: 'data/raw/counts_raw', confirm: true })
-      expect(Buffer.from(forwarded[0].data_base64, 'base64')).toEqual(bytes)
+      expect(forwarded[0]).toMatchObject({ action: 'r.upload.file', arguments: { project_id: 'study-1', path: 'data/raw/counts_raw', confirm: true } })
+      expect(Buffer.from(forwarded[0].arguments.data_base64, 'base64')).toEqual(bytes)
       expect((result.isError ? undefined : result.value)).toMatchObject({ bytes: bytes.length, sha256: createHash('sha256').update(readFileSync(source)).digest('hex') })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('downloads a remote file into the workspace without returning base64', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-r-download-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.DSH_HOME = join(root, 'harness')
+    process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+    const bytes = Buffer.from('remote-figure-bytes')
+    const sha256 = createHash('sha256').update(bytes).digest('hex')
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(ZeroWallMcpService)
+      ctx.tools.register(defineTool({
+        name: 'mcp__rmcp__r_files',
+        description: 'test remote download',
+        parameters: { action: { type: 'string', required: true }, arguments: { type: 'json', required: true } },
+        output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+        execute: async (args: any) => {
+          const structuredContent = args.action === 'r.get.file.manifest'
+            ? { path: args.arguments.path, bytes: bytes.length, sha256, mime_type: 'image/png' }
+            : { path: args.arguments.path, offset: args.arguments.offset, bytes: bytes.length, eof: true, data_base64: bytes.toString('base64') }
+          return { content: [{ type: 'text', text: JSON.stringify(structuredContent) }], structuredContent }
+        },
+      }))
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal,
+        callId: ToolCallId('workspace-download'),
+        name: 'r_files',
+        arguments: { action: 'download_workspace', project_id: 'study-1', remote_path: 'figureya/run-1/plot.png', local_path: 'outputs/plot.png', confirm: true },
+        agent: { session: { header: { cwd: root } } } as any,
+      })
+      expect(result.isError).toBe(false)
+      expect(readFileSync(join(root, 'outputs', 'plot.png'))).toEqual(bytes)
+      expect(JSON.stringify(result.isError ? {} : result.value)).not.toContain('data_base64')
+      expect((result.isError ? undefined : result.value)).toMatchObject({ localPath: 'outputs/plot.png', remotePath: 'figureya/run-1/plot.png', bytes: bytes.length, sha256 })
     } finally {
       await ctx.fiber.dispose()
     }

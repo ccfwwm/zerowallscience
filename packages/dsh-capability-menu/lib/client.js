@@ -43,6 +43,10 @@ const CLASS_KEYS = [
 	"on-demand",
 	"disabled"
 ];
+const INTERNAL_CAPABILITY_COUNTS = {
+	rmcp: 175,
+	zerowall_managed_bio_tools: 247
+};
 /** Click-cycle order on machine values (displayed as On-demand → Disabled → Resident). */
 const NEXT_CLASS = {
 	"on-demand": "disabled",
@@ -475,7 +479,10 @@ function ReadyBody(props) {
 								}),
 								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 									className: "mc-server-count",
-									children: t("toolCount", { count: tools.length })
+									children: INTERNAL_CAPABILITY_COUNTS[server] === void 0 ? t("toolCount", { count: tools.length }) : t("publicInternalCount", {
+										publicCount: tools.length,
+										internalCount: INTERNAL_CAPABILITY_COUNTS[server]
+									})
 								}),
 								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 									className: "mc-server-meta",
@@ -1006,6 +1013,7 @@ async function apply(ctx) {
 		emptyTools: "暂无工具",
 		emptySkills: "暂无 Skill",
 		toolCount: "{count} 个工具",
+		publicInternalCount: "{publicCount} 个公开入口 / {internalCount} 个内部能力",
 		residentShort: "常驻",
 		onDemandShort: "按需",
 		disabledShort: "禁用",
@@ -1045,6 +1053,7 @@ async function apply(ctx) {
 		emptyTools: "No tools",
 		emptySkills: "No skills",
 		toolCount: "{count} tools",
+		publicInternalCount: "{publicCount} public / {internalCount} internal capabilities",
 		residentShort: "Resident",
 		onDemandShort: "On-demand",
 		disabledShort: "Disabled",

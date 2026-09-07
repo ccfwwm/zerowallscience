@@ -1,5 +1,5 @@
 /**
- * Model-facing `meta_search` tool: capability catalog search + detail.
+ * Model-facing `capability_search` tool: capability catalog search + detail.
  *
  * @module @daweifu/capability-menu (search plugin)
  */
@@ -8,7 +8,7 @@ import z from '@deepseek-ai/schemastery';
 import type { CapabilityDetail, CapabilitySummary } from './registry.ts';
 export declare const name = "capability-menu-search";
 export declare const inject: string[];
-/** Model-facing `meta_search` configuration. */
+/** Model-facing `capability_search` configuration. */
 export interface Config {
     /** Maximum results returned in list mode (default 20). */
     maxResults?: number;
@@ -30,7 +30,7 @@ export interface MetaSearchDetailResult {
 /** Canonical tool result: one of the two modes. */
 export type MetaSearchResult = MetaSearchListResult | MetaSearchDetailResult;
 /**
- * Register the `meta_search` tool.
+ * Register the `capability_search` tool.
  *
  * - Mode A (list, default): query by keyword/tag/server, returns id + short summary.
  * - Mode B (detail): pass an exact id (optionally `detail: true`) to get the full schema.

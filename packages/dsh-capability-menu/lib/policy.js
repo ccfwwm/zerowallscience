@@ -32,10 +32,10 @@ export const Config = z.object({
         exposed: z.array(z.string()),
         progressive: z.array(z.string()),
     }),
-    metaTools: z.array(z.string()).default(['meta_search', 'meta_invoke', 'meta_enable', 'structured_output']),
+    metaTools: z.array(z.string()).default(['capability_search', 'capability_execute', 'structured_output']),
     // schemastery object properties are optional-by-default; no `.optional()` needed.
 });
-export const DEFAULT_META_TOOLS = ['meta_search', 'meta_enable', 'structured_output'];
+export const DEFAULT_META_TOOLS = ['capability_search', 'capability_execute', 'structured_output'];
 /**
  * Map a legacy rule set (old keys `exposed`/`progressive`/`blocked`) onto the
  * current key names (`resident`/`on-demand`/`disabled`), so already-deployed
@@ -328,7 +328,7 @@ export async function apply(ctx, config = {}) {
     // Disabled capabilities are a hard deny at the execution surface, not just a
     // projection concern: a hallucinated direct call to a disabled tool (or to the
     // `skill` loader for a disabled skill) must never reach the underlying server.
-    // On-demand tools stay executable — meta_invoke forwards through this same
+    // On-demand tools stay executable — capability_execute forwards through this same
     // pipeline, so only Disabled is rejected here.
     ctx.on('tools/pre-execute', async (exec, next) => {
         if (service.isDisabledTool(exec.name)) {
@@ -351,7 +351,7 @@ export async function apply(ctx, config = {}) {
     // it publishes, only the Resident subset reaches the model.
     ctx.on('agent/pre-step', async (payload, next) => {
         const session = payload.agent.session;
-        // Skills are discovered through meta_search/meta_enable. Suppress the
+        // Skills are discovered through capability_search/capability_execute. Suppress the
         // legacy dsh-tool-skill catalog entirely so it cannot render an empty
         // `skill-catalog` row after filtering.
         const live = new Set(session.surface?.nodes ?? []);
@@ -388,7 +388,7 @@ export async function apply(ctx, config = {}) {
     });
     // Project the model-visible tool list, then append a one-line pointer to the
     // on-demand catalog so the model knows it exists without having to "think of"
-    // meta_search first. Skills keep the dsh-native catalog, but filtered to
+    // capability_search first. Skills keep the dsh-native catalog, but filtered to
     // Resident by the `agent/pre-step` hook above.
     ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
         const resolved = await next();
@@ -412,7 +412,7 @@ export async function apply(ctx, config = {}) {
         const pointer = {
             name: 'capability-menu-catalog',
             text: [
-                'Use meta_search for on-demand tools and skills. It can enable matching read-only discovery tools automatically. Use meta_enable for other selected tools. Disabled tools require a settings change; do not repeat searches for them.',
+                `Use capability_search for on-demand tools and skills listed in ${catalogPath}, then call capability_execute with one exact id. Disabled capabilities require a settings change.`,
             ].join('\n'),
         };
         return { ...projected, sections: [...projected.sections, pointer] };

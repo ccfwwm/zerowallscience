@@ -1,5 +1,5 @@
 /**
- * Model-facing `meta_search` tool: capability catalog search + detail.
+ * Model-facing `capability_search` tool: capability catalog search + detail.
  *
  * @module @daweifu/capability-menu (search plugin)
  */
@@ -12,7 +12,7 @@ export const Config = z.object({
     maxResults: z.number().default(20),
 });
 /**
- * Register the `meta_search` tool.
+ * Register the `capability_search` tool.
  *
  * - Mode A (list, default): query by keyword/tag/server, returns id + short summary.
  * - Mode B (detail): pass an exact id (optionally `detail: true`) to get the full schema.
@@ -27,8 +27,8 @@ export function apply(ctx, config = {}) {
         throw new Error('maxResults must be a positive integer');
     }
     const tool = defineTool({
-        name: 'meta_search',
-        description: 'Search tools and skills by keyword, category or server. Returns bounded summaries or details for one exact id. Use meta_enable to enable selected tools or load one skill.',
+        name: 'capability_search',
+        description: 'Search tools and skills by keyword, category, or server. Returns bounded summaries by default and the input schema only for one exact id. Execute an exact result with capability_execute.',
         parameters: {
             query: { type: 'string', description: 'Natural-language or keyword query; mutually exclusive with id.' },
             id: { type: 'string', description: 'Exact capability id (from a previous search results[].id); mutually exclusive with query, takes precedence.' },
@@ -37,7 +37,6 @@ export function apply(ctx, config = {}) {
             server: { type: 'string', description: 'Filter by server name — an MCP server (gongfeng/iwiki/km/zhiyan_qci) or the reserved built-in pseudo-server grouping harness-native tools.' },
             tag: { type: 'string', description: 'Filter by tag.' },
             max_results: { type: 'integer', description: 'Maximum results (default and maximum 12).' },
-            auto_enable: { type: 'boolean', description: 'Automatically enable matching read-only tools for this session (default true).' },
         },
         output: {
             schema: {
@@ -71,9 +70,8 @@ export function apply(ctx, config = {}) {
             const server = args.server?.trim() || undefined;
             const tag = args.tag?.trim() || undefined;
             const requestedMax = args.max_results;
-            const autoEnable = args.auto_enable !== false;
             if (query.length > 0 && id.length > 0) {
-                throw new Error('meta_search: query and id are mutually exclusive; pass exactly one');
+                throw new Error('capability_search: query and id are mutually exclusive; pass exactly one');
             }
             // Models often attach `detail: true` to a keyword search while looking
             // for a capability. Treat that as list mode; full detail is only
@@ -86,7 +84,7 @@ export function apply(ctx, config = {}) {
                 scope,
             };
             // Disabled capabilities are not discoverable: the registry keeps them
-            // indexed for the management surface, but meta_search never surfaces
+            // indexed for the management surface, but capability_search never surfaces
             // them to the model.
             const policy = ctx.get('capabilityPolicy');
             const isDisabled = (capId, capKind) => policy?.classifyFor(capId, capKind, exec.agent) === 'disabled';
@@ -95,14 +93,35 @@ export function apply(ctx, config = {}) {
             if (id.length > 0) {
                 const resolved = ctx.capability.get(id, kindArg);
                 if (resolved === undefined) {
-                    throw new Error(`meta_search: capability "${id}" is unknown, unavailable, or ambiguous — pass kind: "tool" | "skill" when both exist`);
+                    const compact = ctx.get('zerowallMcp');
+                    if (compact !== undefined && kindArg !== 'skill') {
+                        const [remote] = await compact.searchCompactCapabilities('', id, 1, exec);
+                        if (remote !== undefined) {
+                            return {
+                                mode: 'detail',
+                                result: {
+                                    id: remote.id,
+                                    kind: 'tool',
+                                    actions: ['execute'],
+                                    name: remote.id,
+                                    description: remote.summary.slice(0, 900),
+                                    origin: { provider: remote.backend, serverName: remote.backend },
+                                    parameters: remote.inputSchema ?? {},
+                                    invocation: { modelInvocable: true, userInvocable: false },
+                                    tags: [remote.backend, remote.publicTool, 'internal'],
+                                    summary: remote.summary.slice(0, 350),
+                                },
+                            };
+                        }
+                    }
+                    throw new Error(`capability_search: capability "${id}" is unknown, unavailable, or ambiguous — pass kind: "tool" | "skill" when both exist`);
                 }
                 if (isDisabled(id, resolved.kind)) {
-                    throw new Error(`meta_search: capability "${id}" is disabled and cannot be inspected`);
+                    throw new Error(`capability_search: capability "${id}" is disabled and cannot be inspected`);
                 }
                 const result = await ctx.capability.getDetail(id, resolved.kind, context);
                 if (result === undefined) {
-                    throw new Error(`meta_search: capability "${id}" is unknown or no longer available`);
+                    throw new Error(`capability_search: capability "${id}" is unknown or no longer available`);
                 }
                 const bounded = { ...result, description: result.description.slice(0, 900) };
                 if (JSON.stringify(bounded).length > 12_000) {
@@ -119,27 +138,31 @@ export function apply(ctx, config = {}) {
                 scope,
             });
             const summaries = [];
-            const autoEnabled = [];
             for (const result of results) {
                 const disabled = isDisabled(result.id, result.kind);
-                const readOnly = result.kind === 'tool' && /(?:^|[_:-])(read|get|list|search|find|describe|catalog|status|metadata|info|preview|validate)(?:$|[_:-])/i.test(result.name);
-                if (autoEnable && readOnly && !disabled && exec.agent !== undefined && result.kind === 'tool') {
-                    try {
-                        ctx.get('capabilityPolicy')?.selectTools(exec.agent, [result.id], true);
-                        autoEnabled.push(result.id);
-                    }
-                    catch { /* execution approval remains authoritative */ }
-                }
-                const summary = { id: result.id, kind: result.kind, name: result.name, ...(result.server === undefined ? {} : { server: result.server }), summary: result.summary.slice(0, 350), status: disabled ? 'disabled' : autoEnabled.includes(result.id) ? 'enabled' : 'available', ...(disabled ? { hint: 'Restore defaults or enable this capability in Capability Management before use.' } : {}) };
+                if (disabled)
+                    continue;
+                const summary = { id: result.id, kind: result.kind, name: result.name, ...(result.server === undefined ? {} : { server: result.server }), summary: result.summary.slice(0, 350), status: 'available' };
                 if (JSON.stringify([...summaries, summary]).length > 10_000)
                     continue;
                 summaries.push(summary);
+            }
+            const compact = ctx.get('zerowallMcp');
+            if (compact !== undefined && kind !== 'skill' && summaries.length < 12) {
+                const remote = await compact.searchCompactCapabilities(query, undefined, 12 - summaries.length, exec);
+                const seen = new Set(summaries.map(item => typeof item === 'object' && item !== null && !Array.isArray(item) ? item.id : undefined));
+                for (const result of remote) {
+                    if (seen.has(result.id))
+                        continue;
+                    summaries.push({ id: result.id, kind: 'tool', name: result.id, server: result.backend, summary: result.summary.slice(0, 350), status: 'available' });
+                    seen.add(result.id);
+                }
             }
             return {
                 mode: 'list',
                 total: summaries.length,
                 results: summaries,
-                hint: autoEnabled.length > 0 ? `Read-only tools auto-enabled: ${autoEnabled.join(', ')}. Use meta_enable for other selected tools or skills.` : 'Use meta_enable to enable selected tools or load one skill.',
+                hint: 'Use capability_execute with one exact result id and the reported kind.',
             };
         },
         presentCall(args) {

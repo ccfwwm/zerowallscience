@@ -41,12 +41,12 @@ dsh-capability-menu is a Cordis plugin for [DeepSeek Harness](https://github.com
 | `tool` | executes an action (an MCP tool or a harness-native built-in tool) | `execute` | indexed by `ctx.tools` |
 | `skill` | the method / flow / knowledge for a class of tasks | `load` | indexed by `ctx.skills` |
 
-The model gets two meta tools:
+The model gets two capability control tools:
 
 | tool | role | corresponding entry |
 | --- | --- | --- |
-| `meta_search` | search the capability catalog (Tool / Skill), list/detail dual mode | `@daweifu/capability-menu/search` |
-| `meta_invoke` | unified execution surface: really executes Tools (full `ctx.tools` pipeline) + loads Skills | `@daweifu/capability-menu/invoke` |
+| `capability_search` | search the capability catalog (Tool / Skill), list/detail dual mode | `@daweifu/capability-menu/search` |
+| `capability_execute` | unified execution surface: really executes Tools (full `ctx.tools` pipeline) + loads Skills | `@daweifu/capability-menu/invoke` |
 
 ### Capability Management
 
@@ -124,15 +124,15 @@ All capabilities (Tool and Skill) fall into three tiers by their **exposure leve
 | --- | --- | --- | --- | --- |
 | **Resident** | tool | full schema in `assembly.tools` → the model's `tools` request payload, visible at every step | none (already resident) | model calls it directly; at runtime it goes through the full `ctx.tools` pipeline |
 | | skill | name + description in the `<available_skills>` catalog (body not in the catalog) | none (already resident) | the `skill` tool loads the body on demand (on-demand loading) |
-| **On-demand** | tool | not in the payload (zero context cost) | `meta_search` list / `grep` the materialized catalog YAML (`catalogFile`) | executed by `meta_invoke` (via `ctx.tools.execute`, full pipeline); or fetch the schema through detail and call it directly |
-| | skill | not in the `<available_skills>` catalog | `meta_search`, or `grep` the materialized catalog YAML (`catalogFile`) | `meta_invoke` loads the SKILL.md body (via `ctx.skills`) |
-| **Disabled** | tool | not in the payload | not returned by `meta_search`, not written to the catalog YAML | refused by `meta_invoke`; hallucinated direct calls are also hard-rejected in `tools/pre-execute` |
-| | skill | not in the `<available_skills>` catalog | not returned by `meta_search`, not written to the catalog YAML | refused by `meta_invoke`; the `skill` tool is hard-rejected in `tools/pre-execute` |
+| **On-demand** | tool | not in the payload (zero context cost) | `capability_search` list / `grep` the materialized catalog YAML (`catalogFile`) | executed by `capability_execute` (via `ctx.tools.execute`, full pipeline); or fetch the schema through detail and call it directly |
+| | skill | not in the `<available_skills>` catalog | `capability_search`, or `grep` the materialized catalog YAML (`catalogFile`) | `capability_execute` loads the SKILL.md body (via `ctx.skills`) |
+| **Disabled** | tool | not in the payload | not returned by `capability_search`, not written to the catalog YAML | refused by `capability_execute`; hallucinated direct calls are also hard-rejected in `tools/pre-execute` |
+| | skill | not in the `<available_skills>` catalog | not returned by `capability_search`, not written to the catalog YAML | refused by `capability_execute`; the `skill` tool is hard-rejected in `tools/pre-execute` |
 
 > **Scope & reserved tools**:
 > - The tool tiers cover both `mcp__` cataloged tools and harness-native built-in tools (native tools are grouped under the reserved `built-in` server and are managed in all three tiers exactly like MCP tools). **Do not name a real MCP server `built-in`.**
-> - `meta_search`/`meta_invoke` are this plugin's control plane: always Resident, cannot be disabled (a rule that disables one fails at startup). `run_code` is the reserved Code Mode transport: it never enters the catalog, does not appear in Capability Management, and should not get tier rules.
-> - **Keep high-frequency core tools Resident**: an On-demand built-in tool leaves the model's resident view and needs a `meta_search` → `meta_invoke` two-hop call.
+> - `capability_search`/`capability_execute` are this plugin's control plane: always Resident, cannot be disabled (a rule that disables one fails at startup). `run_code` is the reserved Code Mode transport: it never enters the catalog, does not appear in Capability Management, and should not get tier rules.
+> - **Keep high-frequency core tools Resident**: an On-demand built-in tool leaves the model's resident view and needs a `capability_search` → `capability_execute` two-hop call.
 
 ## Configuration
 
@@ -160,8 +160,8 @@ config:
     disabled:
       - forbidden_skill
   metaTools:
-    - meta_search             # always resident; cannot be disabled
-    - meta_invoke
+    - capability_search             # always resident; cannot be disabled
+    - capability_execute
 ```
 
 > Config keys are the tier words themselves: `resident` (常驻) / `on-demand` (按需) / `disabled` (禁用).
@@ -189,7 +189,7 @@ On-demand capabilities are materialized into **one auto-generated YAML file** th
 
 - The file location is the `config.catalogFile` of the **registry entry** (`capability-menu-registry`): it defaults to `~/.dsh/capability-catalog.yaml` and an empty string disables emission. The registry rewrites it automatically on any tool/skill or classification change. When nothing is On-demand, the catalog pointer is not injected (saving context).
 - A skill must first be **registered in `ctx.skills`** (a skill provider — e.g. its SKILL.md under a user/project skills root or `customSkillDirs`) to show up automatically; there is **no separate user-maintained input file**.
-- The model browses the file with `grep`/`read` (or calls `meta_search`) to get an entry's id and `kind`, then calls `meta_invoke(id, kind)` to run/load it. Skill ids are the bare name (e.g. `frontend-design`); `kind` distinguishes tools from skills.
+- The model browses the file with `grep`/`read` (or calls `capability_search`) to get an entry's id and `kind`, then calls `capability_execute(id, kind)` to run/load it. Skill ids are the bare name (e.g. `frontend-design`); `kind` distinguishes tools from skills.
 
 ```yaml
 # ~/.dsh/capability-catalog.yaml (auto-generated; contains only On-demand

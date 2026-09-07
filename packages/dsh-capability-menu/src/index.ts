@@ -6,8 +6,8 @@
  * - four cordis plugin factories via subpath exports (`/registry`, `/search`,
  *   `/invoke`, `/policy`), mounted by the bundle patch as separate entries:
  *   - `registry` (P0): capability catalog + `ctx.capability` service (no model tool).
- *   - `search`   (P1): registers `meta_search`.
- *   - `invoke`   (P2): registers `meta_invoke`.
+ *   - `search`   (P1): registers `capability_search`.
+ *   - `invoke`   (P2): registers `capability_execute`.
  *   - `policy`   (P3): Resident/On-demand/Disabled projection policy + `ctx.capabilityPolicy`.
  * - the package root entry (`name` + `apply` below): mounts the Typert gateway
  *   that exposes `ctx.capabilityPolicy` to the browser as the `capabilityPolicy`

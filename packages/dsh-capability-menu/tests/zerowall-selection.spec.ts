@@ -23,7 +23,7 @@ function agent(ctx: Context, events: any[] = []): Agent {
   } } as unknown as Agent
 }
 
-it('keeps the first request small and enforces session enable/disable through ToolRuntime', async () => {
+it('keeps the first request small and executes an exact capability without legacy enable tools', async () => {
   const ctx = new Context()
   roots.push(ctx)
   await ctx.plugin(SystemPrompt)
@@ -53,9 +53,10 @@ it('keeps the first request small and enforces session enable/disable through To
   expect(Buffer.byteLength(JSON.stringify(before.tools))).toBeLessThan(6000)
   expect((await execute(first, target)).isError).toBe(true)
   expect(executed).toBe(0)
-  const detail = await execute(first, 'meta_search', { id: target, kind: 'tool' })
+  const detail = await execute(first, 'capability_search', { id: target, kind: 'tool' })
   expect(detail.isError, JSON.stringify(detail)).toBe(false)
-  expect((await execute(first, 'meta_enable', { tools: [target] })).isError).toBe(false)
+  const invoked = await execute(first, 'capability_execute', { id: target, kind: 'tool', args: {} })
+  expect(invoked.isError, JSON.stringify(invoked)).toBe(false)
   const enabled = await ctx.systemPrompt.assemble({ scope: first })
   expect(enabled.tools.filter(tool => tool.name.startsWith('mcp__')).map(tool => tool.name)).toEqual([target])
   expect(ctx.tools.schemas(first).filter(tool => tool.name.startsWith('mcp__')).map(tool => tool.name)).toEqual([target])
@@ -65,15 +66,9 @@ it('keeps the first request small and enforces session enable/disable through To
   const restored = agent(ctx, [...first.session.snapshotEvents()])
   await ctx.systemPrompt.assemble({ scope: restored })
   expect((await execute(restored, target)).isError).toBe(false)
-  await execute(first, 'meta_enable', { tools: [target], enabled: false })
-  expect((await execute(first, target)).isError).toBe(true)
-  expect(executed).toBe(2)
-  const unlimited = await execute(first, 'meta_enable', { tools: Array.from({ length: 9 }, (_, i) => `mcp__rmcp__rplatform__tool_${i}`) })
-  expect(unlimited.isError, JSON.stringify(unlimited)).toBe(false)
-  const unlimitedPayload = JSON.parse(unlimited.content.find(block => block.type === 'text')?.text ?? '{}')
-  expect(unlimitedPayload.unlimited).toBe(true)
-  expect(unlimitedPayload.remainingTools).toBeNull()
-  expect(ctx.tools.schemas(first).filter(tool => tool.name.startsWith('mcp__'))).toHaveLength(9)
+  expect((await execute(first, 'meta_enable', { tools: [target] })).isError).toBe(true)
+  expect((await execute(first, 'mcp_enable_tools', { tools: [target] })).isError).toBe(true)
+  expect(executed).toBe(3)
   console.log(JSON.stringify({ catalogTools: 172, catalogSchemaBytes: Buffer.byteLength(JSON.stringify(ctx.tools.schemas())), initialSchemaBytes: Buffer.byteLength(JSON.stringify(before.tools)), enabledSchemaBytes: Buffer.byteLength(JSON.stringify(enabled.tools)) }))
 })
 

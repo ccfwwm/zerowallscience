@@ -1,5 +1,5 @@
 /**
- * Model-facing `meta_invoke` tool: unified execution/loading of capabilities.
+ * Model-facing `capability_execute` tool: unified execution/loading of capabilities.
  *
  * @module @daweifu/capability-menu (invoke plugin)
  */
@@ -14,13 +14,17 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { isModelInvocable, renderSkillContent, type SkillResourceBase } from '@deepseek-ai/dsh-skill'
 import { MCP_ID_PREFIX } from './registry.ts'
 
+interface CompactCapabilityDirectory {
+  executeCompactCapability(id: string, args: unknown, exec: ToolRunContext): Promise<{ target: string; content: ContentBlock[]; value: unknown }>
+}
+
 export const name = 'capability-menu-invoke'
 export const inject = ['capability', 'capabilityPolicy', 'tools', 'skills']
 
 /** Forwarding mode for the MCP branch. */
 export type MetaForwardMode = 'direct' | 'resolve'
 
-/** Model-facing `meta_invoke` configuration. */
+/** Model-facing `capability_execute` configuration. */
 export interface Config {
   /** How to forward MCP calls: `direct` executes via the tool pipeline; `resolve` returns the schema for the model to call directly. */
   forwardMode?: MetaForwardMode
@@ -62,7 +66,7 @@ export type MetaInvokeResult =
   | { ok: true; kind: 'resolve'; id: string; detail: MetaInvokeResolveDetail }
 
 /**
- * Register the `meta_invoke` tool.
+ * Register the `capability_execute` tool.
  *
  * Dispatch is by the explicit `kind` argument (no id-prefix parsing).
  *
@@ -76,24 +80,6 @@ export type MetaInvokeResult =
  *   execution (matches the existing `skill` tool semantics).
  */
 export function apply(ctx: Context, config: Config = {}): void {
-  ctx.tools.register(defineTool({
-    name: 'meta_enable',
-    description: 'Enable discovered tools or load a selected skill in this session. There is no count or schema-byte quota. Enabled tools become directly callable; existing approvals still apply.',
-    parameters: {
-      tools: { type: 'array', items: { type: 'string' } },
-      skill: { type: 'string' },
-      enabled: { type: 'boolean' },
-    },
-    output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
-    async execute(args: { tools?: string[]; skill?: string; enabled?: boolean }, exec) {
-      if (exec.agent === undefined) throw new Error('A session is required.')
-      if (args.skill !== undefined) {
-        if (args.tools?.length) throw new Error('Choose tools or one skill per request.')
-        return await tool.execute({ id: args.skill, kind: 'skill' }, exec) as Record<string, JsonValue>
-      }
-      return ctx.capabilityPolicy.selectTools(exec.agent, args.tools ?? [], args.enabled ?? true)
-    },
-  }))
   const forwardMode = config.forwardMode ?? 'direct'
   if (forwardMode !== 'direct' && forwardMode !== 'resolve') {
     throw new Error(`forwardMode must be "direct" or "resolve", received "${String(forwardMode)}"`)
@@ -108,11 +94,11 @@ export function apply(ctx: Context, config: Config = {}): void {
   const loadedSkills = new WeakMap<object, Set<string>>()
 
   const tool = defineTool({
-    name: 'meta_invoke',
-    description: 'Execute a capability by its exact id (from meta_search) and kind. For tools (kind "tool", e.g. mcp__gongfeng__create_issue or a native tool such as bash), forwards to the underlying tool call with args. For skills (kind "skill", e.g. frontend-design), loads the full skill instructions and returns them as <skill_content> — no args needed. Always pass the same kind the search result reported.',
+    name: 'capability_execute',
+    description: 'Execute a capability by its exact id (from capability_search) and kind. For tools (kind "tool", e.g. mcp__gongfeng__create_issue or a native tool such as bash), forwards to the underlying tool call with args. For skills (kind "skill", e.g. frontend-design), loads the full skill instructions and returns them as <skill_content> — no args needed. Always pass the same kind the search result reported.',
     parameters: {
-      id: { type: 'string', required: true, description: 'Capability id from meta_search, e.g. mcp__gongfeng__create_issue or frontend-design.' },
-      kind: { type: 'string', enum: ['tool', 'skill'], required: true, description: 'Capability kind reported by meta_search for this id.' },
+      id: { type: 'string', required: true, description: 'Capability id from capability_search, e.g. mcp__gongfeng__create_issue or frontend-design.' },
+      kind: { type: 'string', enum: ['tool', 'skill'], required: true, description: 'Capability kind reported by capability_search for this id.' },
       args: { type: 'json', description: 'Arguments forwarded to a tool; ignored for skills.' },
     },
     output: {
@@ -192,18 +178,28 @@ export function apply(ctx: Context, config: Config = {}): void {
       const id = args.id.trim()
       const kind = args.kind
       if (kind !== 'tool' && kind !== 'skill') {
-        throw new Error('meta_invoke: kind must be "tool" or "skill" (the kind meta_search reported for this id)')
+        throw new Error('capability_execute: kind must be "tool" or "skill" (the kind capability_search reported for this id)')
       }
       const capability = ctx.capability.get(id, kind)
       if (capability === undefined) {
-        throw new Error(`meta_invoke: no ${kind} capability "${id}" is available`)
+        const compact = ctx.get('zerowallMcp') as unknown as CompactCapabilityDirectory | undefined
+        if (kind === 'tool' && compact !== undefined && /^(?:r|figureya|biomni|bio)\./u.test(id)) {
+          const result = await compact.executeCompactCapability(id, args.args, exec)
+          return {
+            ok: true,
+            kind: 'mcp' as const,
+            id,
+            detail: { forwarded: true as const, target: result.target, content: result.content as unknown as JsonValue[] },
+          }
+        }
+        throw new Error(`capability_execute: no ${kind} capability "${id}" is available`)
       }
       // Disabled capabilities are a hard deny at the execution surface: the
       // registry keeps them indexed so the management UI can list them, but the
-      // model can never reach a disabled capability through meta_invoke.
+      // model can never reach a disabled capability through capability_execute.
       const policy = ctx.get('capabilityPolicy')
       if (policy?.classifyFor(id, kind, exec.agent) === 'disabled') {
-        throw new Error(`meta_invoke: ${kind} capability "${id}" is disabled and cannot be invoked`)
+        throw new Error(`capability_execute: ${kind} capability "${id}" is disabled and cannot be invoked`)
       }
 
       // Tool: forward to the underlying tool execution (an MCP server call or a
@@ -224,7 +220,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           definition = ctx.tools.get(capability.name, nativeCallerView)
         }
         if (definition === undefined) {
-          throw new Error(`meta_invoke: tool "${capability.name}" is not available`)
+          throw new Error(`capability_execute: tool "${capability.name}" is not available`)
         }
         if (forwardMode === 'resolve') {
           return {
@@ -255,7 +251,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         })
         if (result.isError) {
           const message = result.content.map(block => block.type === 'text' ? block.text : `[${block.type} content]`).join('\n')
-          throw new Error(message || `meta_invoke: ${capability.name} failed`)
+          throw new Error(message || `capability_execute: ${capability.name} failed`)
         }
         return {
           ok: true,
@@ -320,10 +316,10 @@ export function apply(ctx: Context, config: Config = {}): void {
         }
         const skill = await ctx.skills.get(name, lookup).catch(() => undefined)
         if (skill === undefined) {
-          throw new Error(`meta_invoke: skill "${name}" is unknown or no longer available`)
+          throw new Error(`capability_execute: skill "${name}" is unknown or no longer available`)
         }
         if (!isModelInvocable(skill)) {
-          throw new Error(`meta_invoke: skill "${name}" is not available for model invocation`)
+          throw new Error(`capability_execute: skill "${name}" is not available for model invocation`)
         }
         sessionSkills?.add(name)
         return {
@@ -339,7 +335,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         }
       }
 
-      throw new Error(`meta_invoke: capability id "${id}" has an unrecognized kind`)
+      throw new Error(`capability_execute: capability id "${id}" has an unrecognized kind`)
     },
     presentCall(args) {
       return {

@@ -1,8 +1,8 @@
 """mcp-bio: the single bundled bio-retrieval MCP server.
 
 Aggregates all 23 domain servers (5 tier-1 drop-ins + 18 tier-2 domain
-servers) into ONE stdio MCP process serving the union of their 247 tools
-(minus any domains/tools gated by deferred.json — the single deferral knob).
+servers) into ONE stdio MCP process. The 247 source tools remain internal and
+are reached through eight compact catalog/dispatch tools.
 Tool names are globally unique across domains (asserted at import).
 
 The 23-domain partitioning lives on as:
@@ -36,6 +36,7 @@ from mcp.types import TextContent, Tool
 from mcp_servers_common.tier1 import READ_ONLY
 
 SERVER_NAME = "bio-mcp-server"
+CATALOG_VERSION = "2026-09-07.1"
 
 TIER1_PACKAGES = [
     "mcp_pubmed",
@@ -131,7 +132,10 @@ class BioAggregate:
     def __init__(self) -> None:
         deferred = load_deferred()
         skip_pkgs = {_pkg_for_domain(d) for d in deferred.get("domains", [])}
-        skip_tools = deferred_tool_names()
+        # Compact mode keeps every mapped domain capability available through
+        # exact dispatch. deferred.json remains provenance for older bundles,
+        # but no longer shrinks the runtime capability surface.
+        skip_tools: set[str] = set()
 
         # tier-1: verbatim schemas + sync handlers
         self.t1_schemas: list[dict] = []
@@ -192,65 +196,214 @@ class BioAggregate:
     def tool_names(self) -> set[str]:
         return set(self.t1_handlers) | set(self.t2_fm)
 
+    async def internal_tools(self) -> dict[str, Tool]:
+        """Return the complete internal schema catalog without advertising it."""
+        tools = {
+            s["name"]: Tool(
+                name=s["name"], description=s["description"],
+                inputSchema=s["input_schema"], annotations=READ_ONLY,
+            )
+            for s in self.t1_schemas
+        }
+        seen_fm = []
+        for fm in self.t2_fm.values():
+            if any(fm is candidate for candidate in seen_fm):
+                continue
+            seen_fm.append(fm)
+            tools.update({
+                tool.name: tool for tool in await fm.list_tools()
+                if tool.name in self.t2_fm
+            })
+        return tools
+
+    async def call_internal(self, tool: str, arguments: dict):
+        """Dispatch one internal capability with the existing locking model."""
+        handler = self.t1_handlers.get(tool)
+        if handler is not None:
+            async with self.t1_locks[tool]:
+                text = await anyio.to_thread.run_sync(lambda: handler(arguments))
+            return [TextContent(type="text", text=text)]
+        fm = self.t2_fm.get(tool)
+        if fm is None:
+            raise ValueError(f"Unknown internal bio capability: {tool}")
+
+        def _run_in_worker() -> object:
+            return anyio.run(fm.call_tool, tool, arguments)
+
+        async with self.t2_locks[tool]:
+            return await anyio.to_thread.run_sync(_run_in_worker)
+
+
+BIO_DOMAIN_GROUPS = {
+    "bio_data": {
+        "biomart", "biorxiv", "clinical-trials", "drug-regulatory",
+        "literature", "omics-archives", "pubmed", "research-resources",
+    },
+    "bio_annotation": {
+        "cellguide", "genes-ontologies", "protein-annotation", "rna",
+    },
+    "bio_variant": {
+        "clinical-genomics", "genomes", "human-genetics", "variants",
+    },
+    "bio_expression": {"expression", "regulation"},
+    "bio_analysis": {
+        "cancer-models", "chembl", "chemistry", "structures-interactions",
+        "zinc",
+    },
+}
+
+PUBLIC_TOOLS = {
+    "bio_search": "Search the internal Bio capability catalog. Returns short matches by default and one exact input schema when detail=true.",
+    "bio_data": "Execute an exact literature, trial, archive, dataset, drug-regulatory, or research-resource capability returned by bio_search.",
+    "bio_annotation": "Execute an exact gene, ontology, protein, RNA, or cell annotation capability returned by bio_search.",
+    "bio_variant": "Execute an exact variant, clinical-genomics, genome, GWAS, or human-genetics capability returned by bio_search.",
+    "bio_expression": "Execute an exact expression or regulatory-genomics capability returned by bio_search.",
+    "bio_analysis": "Execute an exact chemistry, structure, interaction, cancer-model, ChEMBL, or ZINC capability returned by bio_search.",
+    "bio_jobs": "Inspect Bio execution semantics. Built-in Bio calls are synchronous and do not create persistent server jobs.",
+    "bio_artifacts": "Inspect Bio result semantics. Results are returned as structured tool content and do not create hidden artifact files.",
+}
+
+
+def _capability_maps() -> tuple[dict[str, tuple[str, str]], dict[str, str]]:
+    by_id: dict[str, tuple[str, str]] = {}
+    public_for_id: dict[str, str] = {}
+    assigned_domains = set().union(*BIO_DOMAIN_GROUPS.values())
+    domains = load_domains()
+    if assigned_domains != set(domains):
+        raise ValueError(
+            "Bio compact groups are out of sync with domains.json: "
+            f"unassigned={sorted(set(domains) - assigned_domains)} "
+            f"unknown={sorted(assigned_domains - set(domains))}"
+        )
+    for public_tool, group_domains in BIO_DOMAIN_GROUPS.items():
+        for domain in sorted(group_domains):
+            for tool in domains[domain]:
+                capability_id = f"bio.{domain}.{tool}"
+                by_id[capability_id] = (domain, tool)
+                public_for_id[capability_id] = public_tool
+    return by_id, public_for_id
+
+
+def build_public_tools() -> list[Tool]:
+    """Build the eight stable tools advertised by the compact MCP surface."""
+    dispatch_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "capability_id": {
+                "type": "string",
+                "description": "Exact bio.<domain>.<tool> id returned by bio_search",
+            },
+            "arguments": {"type": "object", "default": {}},
+        },
+        "required": ["capability_id"],
+    }
+
+    search_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "query": {"type": "string", "default": ""},
+            "capability_id": {"type": "string"},
+            "detail": {"type": "boolean", "default": False},
+            "limit": {"type": "integer", "minimum": 1,
+                      "maximum": 50, "default": 8},
+        },
+    }
+    status_schema = {
+        "type": "object", "additionalProperties": False,
+        "properties": {"action": {"type": "string", "enum": ["status"],
+                                   "default": "status"}},
+    }
+    return [
+        Tool(
+            name=name, description=description,
+            inputSchema=(search_schema if name == "bio_search" else
+                         status_schema if name in {"bio_jobs", "bio_artifacts"}
+                         else dispatch_schema),
+            annotations=READ_ONLY,
+        )
+        for name, description in PUBLIC_TOOLS.items()
+    ]
+
 
 def build_server() -> tuple[Server, BioAggregate]:
     agg = BioAggregate()
     server = Server(SERVER_NAME)
+    by_id, public_for_id = _capability_maps()
 
     @server.list_tools()
     async def _list_tools() -> list[Tool]:
-        tools = [
-            Tool(name=s["name"], description=s["description"],
-                 inputSchema=s["input_schema"], annotations=READ_ONLY)
-            for s in agg.t1_schemas
-        ]
-        seen_fm = []
-        for fm in agg.t2_fm.values():
-            if any(fm is f for f in seen_fm):
-                continue
-            seen_fm.append(fm)
-            # The dispatch map IS the served surface: fm.list_tools() returns
-            # the instance's FULL registered set, unfiltered by deferred.json
-            # — an individually-deferred tier-2 tool would be advertised yet
-            # raise "Unknown tool" on call, re-exposing the gated upstream
-            # (review 3383284164). List only what _call_tool dispatches.
-            tools.extend(
-                t for t in await fm.list_tools() if t.name in agg.t2_fm
-            )
-        return tools
+        return build_public_tools()
 
     @server.call_tool()
     async def _call_tool(tool: str, arguments: dict | None):
         args = dict(arguments or {})
-        handler = agg.t1_handlers.get(tool)
-        if handler is not None:
-            # Same-domain serialization on the EVENT LOOP (reviews
-            # 3386234819, 3386420557): waiting here is a parked coroutine,
-            # not a parked worker thread holding a shared limiter token.
-            async with agg.t1_locks[tool]:
-                text = await anyio.to_thread.run_sync(lambda: handler(args))
-            return [TextContent(type="text", text=text)]
-        fm = agg.t2_fm.get(tool)
-        if fm is None:
+        if tool == "bio_search":
+            internal = await agg.internal_tools()
+            exact_id = str(args.get("capability_id", "")).strip()
+            detail = bool(args.get("detail", False))
+            if exact_id:
+                mapped = by_id.get(exact_id)
+                if mapped is None or mapped[1] not in internal:
+                    raise ValueError(f"Unknown Bio capability: {exact_id}")
+                schema = internal[mapped[1]]
+                payload = {
+                    "catalog_version": CATALOG_VERSION,
+                    "capability": {
+                        "id": exact_id,
+                        "domain": mapped[0],
+                        "public_tool": public_for_id[exact_id],
+                        "summary": schema.description or "",
+                    },
+                }
+                if detail:
+                    payload["capability"]["input_schema"] = schema.inputSchema
+                return [TextContent(type="text", text=json.dumps(payload))]
+            query = str(args.get("query", "")).strip().lower()
+            limit = max(1, min(50, int(args.get("limit", 8))))
+            matches = []
+            for capability_id, (domain, internal_name) in by_id.items():
+                schema = internal.get(internal_name)
+                if schema is None:
+                    continue
+                haystack = f"{capability_id} {schema.description or ''}".lower()
+                if query and query not in haystack:
+                    continue
+                matches.append({
+                    "id": capability_id, "domain": domain,
+                    "public_tool": public_for_id[capability_id],
+                    "summary": schema.description or "",
+                })
+                if len(matches) >= limit:
+                    break
+            return [TextContent(type="text", text=json.dumps({
+                "catalog_version": CATALOG_VERSION,
+                "public_tool_count": len(PUBLIC_TOOLS),
+                "internal_tool_count": len(agg.tool_names()),
+                "matches": matches,
+            }))]
+        if tool == "bio_jobs":
+            return [TextContent(type="text", text=json.dumps({
+                "mode": "synchronous", "persistent_jobs": False,
+            }))]
+        if tool == "bio_artifacts":
+            return [TextContent(type="text", text=json.dumps({
+                "mode": "inline_structured_content", "persistent_artifacts": False,
+            }))]
+        if tool not in BIO_DOMAIN_GROUPS:
             raise ValueError(f"Unknown tool: {tool}")
-        # CRITICAL: never run tier-2 tools on the server's event loop. The
-        # mcp SDK's FastMCP calls SYNC tool functions inline (no to_thread —
-        # func_metadata.call_fn_with_arg_validation), and every tier-2 tool
-        # does blocking HTTP, so one slow upstream would freeze the entire
-        # server — including local-only tools (found by stress test: a broad
-        # pride_search_projects wedged everything for 10+ minutes). Dispatch
-        # the whole fm.call_tool coroutine into a worker thread with its own
-        # event loop; sync AND async (cellguide) tools both work there, and
-        # the main loop stays free to serve concurrent requests.
-        def _run_in_worker() -> object:
-            return anyio.run(fm.call_tool, tool, args)
-
-        # Pass-through: FastMCP returns ContentBlocks or a structured dict;
-        # the low-level Server accepts both (content / structuredContent).
-        # Same-domain serialization on the EVENT LOOP — see t1 above
-        # (reviews 3386234819, 3386420557).
-        async with agg.t2_locks[tool]:
-            return await anyio.to_thread.run_sync(_run_in_worker)
+        capability_id = str(args.get("capability_id", "")).strip()
+        mapped = by_id.get(capability_id)
+        if mapped is None or public_for_id.get(capability_id) != tool:
+            raise ValueError(
+                f"Unknown capability for {tool}: {capability_id}. "
+                "Use bio_search to resolve an exact capability id."
+            )
+        tool_args = args.get("arguments", {})
+        if not isinstance(tool_args, dict):
+            raise ValueError("arguments must be an object")
+        return await agg.call_internal(mapped[1], dict(tool_args))
 
     return server, agg
 

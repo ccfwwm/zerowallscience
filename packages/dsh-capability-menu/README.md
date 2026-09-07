@@ -41,12 +41,12 @@ Capability 是本插件引入的上位概念：Tool / Skill 是不同类型的 c
 | `tool` | 执行一个动作（MCP 工具或内置原生工具） | `execute` | 由 `ctx.tools` 索引 |
 | `skill` | 某类任务的方法/流程/知识 | `load` | 由 `ctx.skills` 索引 |
 
-模型获得两个元工具：
+模型获得两个能力控制工具：
 
 | 工具 | 作用 | 对应 entry |
 | --- | --- | --- |
-| `meta_search` | 检索能力目录（Tool / Skill），list/detail 双模式 | `@daweifu/capability-menu/search` |
-| `meta_invoke` | 统一执行面：Tool 真执行（走完整 `ctx.tools` 管线）+ Skill 加载 | `@daweifu/capability-menu/invoke` |
+| `capability_search` | 检索能力目录（Tool / Skill），list/detail 双模式 | `@daweifu/capability-menu/search` |
+| `capability_execute` | 统一执行面：Tool 真执行（走完整 `ctx.tools` 管线）+ Skill 加载 | `@daweifu/capability-menu/invoke` |
 
 ### 能力管理
 
@@ -124,15 +124,15 @@ dsh plugin --profile web remove @daweifu/capability-menu
 | --- | --- | --- | --- | --- |
 | **常驻** | tool | 完整 schema 进 `assembly.tools` → 模型请求 `tools` payload，每步可见 | 无需发现（已常驻） | 模型直接调用，运行时走完整 `ctx.tools` 管线 |
 | | skill | 名字+描述进 `<available_skills>` 目录（正文不在目录） | 无需发现（已常驻） | `skill` 工具按需加载正文（渐进加载） |
-| **按需** | tool | 不进 payload（零上下文成本） | `meta_search` list / `grep` 检索物化目录 YAML（`catalogFile`） | `meta_invoke` 执行（走 `ctx.tools.execute`，管线完整）；或 detail 拿 schema 后直接调 |
-| | skill | 不进 `<available_skills>` 目录 | `meta_search` 检索 / `grep` 检索物化目录 YAML（`catalogFile`） | `meta_invoke` 加载 SKILL.md 正文（经 `ctx.skills`） |
-| **禁用** | tool | 不进 payload | `meta_search` 不返回、目录 YAML 不写入 | `meta_invoke` 拒绝；模型幻觉直调也在 `tools/pre-execute` 被硬拒绝 |
-| | skill | 不进 `<available_skills>` 目录 | `meta_search` 不返回、目录 YAML 不写入 | `meta_invoke` 拒绝；`skill` 工具在 `tools/pre-execute` 硬拒绝 |
+| **按需** | tool | 不进 payload（零上下文成本） | `capability_search` list / `grep` 检索物化目录 YAML（`catalogFile`） | `capability_execute` 执行（走 `ctx.tools.execute`，管线完整）；或 detail 拿 schema 后直接调 |
+| | skill | 不进 `<available_skills>` 目录 | `capability_search` 检索 / `grep` 检索物化目录 YAML（`catalogFile`） | `capability_execute` 加载 SKILL.md 正文（经 `ctx.skills`） |
+| **禁用** | tool | 不进 payload | `capability_search` 不返回、目录 YAML 不写入 | `capability_execute` 拒绝；模型幻觉直调也在 `tools/pre-execute` 被硬拒绝 |
+| | skill | 不进 `<available_skills>` 目录 | `capability_search` 不返回、目录 YAML 不写入 | `capability_execute` 拒绝；`skill` 工具在 `tools/pre-execute` 硬拒绝 |
 
 > **覆盖与保留**：
 > - `tool` 档同时覆盖 `mcp__` 编目工具与内置原生工具——原生工具统一以保留的 `built-in` server 归组，与 MCP 工具一样三档可管。**请勿把真实 MCP server 命名为 `built-in`。**
-> - `meta_search`/`meta_invoke` 是本插件的控制面：恒常驻、不可被禁用（在规则里禁用它们会在启动时报错）。`run_code` 是 Code Mode 保留传输层：不进目录、不在「能力管理」出现，请勿为它配置三档规则。
-> - **不建议把高频核心工具设为按需**：按需的内置工具会退出模型常驻视野，使用时需要 `meta_search` → `meta_invoke` 两跳调用。
+> - `capability_search`/`capability_execute` 是本插件的控制面：恒常驻、不可被禁用（在规则里禁用它们会在启动时报错）。`run_code` 是 Code Mode 保留传输层：不进目录、不在「能力管理」出现，请勿为它配置三档规则。
+> - **不建议把高频核心工具设为按需**：按需的内置工具会退出模型常驻视野，使用时需要 `capability_search` → `capability_execute` 两跳调用。
 
 ## 配置文件
 
@@ -160,8 +160,8 @@ config:
     disabled:
       - forbidden_skill
   metaTools:
-    - meta_search             # 恒常驻，不可被禁用
-    - meta_invoke
+    - capability_search             # 恒常驻，不可被禁用
+    - capability_execute
 ```
 
 > 配置键即档位英文词：`resident`（常驻）/ `on-demand`（按需）/ `disabled`（禁用）。
@@ -189,7 +189,7 @@ On-demand 能力自动物化成**一个 YAML 文件**给模型检索：
 
 - 文件位置在 **registry entry（`capability-menu-registry`）** 的 `config.catalogFile`，默认 `~/.dsh/capability-catalog.yaml`，置空禁用；工具/技能变更或分类调整后自动重写。没有任何按需能力时不注入目录指引，省上下文。
 - 技能必须**已注册进 `ctx.skills`**（SKILL.md 放用户/项目技能根或挂 `customSkillDirs`）才会自动出现；无独立手写输入清单。
-- 模型用 `grep`/`read` 浏览该文件（或调 `meta_search`）拿到条目的 id 与 `kind`，再调 `meta_invoke(id, kind)` 执行/加载。技能 id 即裸名（`frontend-design`），tool/skill 由 `kind` 区分。
+- 模型用 `grep`/`read` 浏览该文件（或调 `capability_search`）拿到条目的 id 与 `kind`，再调 `capability_execute(id, kind)` 执行/加载。技能 id 即裸名（`frontend-design`），tool/skill 由 `kind` 区分。
 
 ```yaml
 # ~/.dsh/capability-catalog.yaml（自动生成；仅含 On-demand 能力，

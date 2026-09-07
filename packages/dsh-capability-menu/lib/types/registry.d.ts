@@ -34,12 +34,12 @@ export declare const MCP_ID_PREFIX = "mcp__";
  * Reserved pseudo-server that groups harness-native (non-MCP) tools in the
  * management surface. Native tools (bash/read/write/…) are cataloged like MCP
  * tools — same `server` dimension — so the 能力管理 can group them, classify
- * them Resident/On-demand/Disabled, and `meta_invoke` can dispatch them.
+ * them Resident/On-demand/Disabled, and `capability_execute` can dispatch them.
  */
 export declare const BUILT_IN_SERVER = "built-in";
 /**
  * Tool names that never enter the capability catalog: this plugin's own
- * control plane (`meta_search`/`meta_invoke`, always Resident) and the
+ * control plane (`capability_search`/`capability_execute`, always Resident) and the
  * reserved Code Mode presentation transport (`run_code`).
  */
 export declare const CATALOG_EXCLUDED_TOOLS: ReadonlySet<string>;
@@ -83,7 +83,7 @@ export interface CapabilityRecord {
     };
     readonly tags: readonly string[];
     readonly stats: CapabilityStats;
-    /** Token-trimmed short description used by `meta_search` list mode. */
+    /** Token-trimmed short description used by `capability_search` list mode. */
     readonly summary: string;
 }
 /** Lightweight list-mode projection of one capability (no full schema). */
@@ -177,7 +177,7 @@ export interface CapabilityService {
     /**
      * Absolute path of the on-demand capability catalog YAML, when emission is
      * enabled. The model can browse this file with grep/read instead of only
-     * reaching the catalog through `meta_search`.
+     * reaching the catalog through `capability_search`.
      */
     catalogPath(): string | undefined;
     /**

@@ -44,15 +44,15 @@ export const MCP_ID_PREFIX = 'mcp__'
  * Reserved pseudo-server that groups harness-native (non-MCP) tools in the
  * management surface. Native tools (bash/read/write/…) are cataloged like MCP
  * tools — same `server` dimension — so the 能力管理 can group them, classify
- * them Resident/On-demand/Disabled, and `meta_invoke` can dispatch them.
+ * them Resident/On-demand/Disabled, and `capability_execute` can dispatch them.
  */
 export const BUILT_IN_SERVER = 'built-in'
 /**
  * Tool names that never enter the capability catalog: this plugin's own
- * control plane (`meta_search`/`meta_invoke`, always Resident) and the
+ * control plane (`capability_search`/`capability_execute`, always Resident) and the
  * reserved Code Mode presentation transport (`run_code`).
  */
-export const CATALOG_EXCLUDED_TOOLS: ReadonlySet<string> = new Set(['meta_search', 'meta_invoke', 'run_code'])
+export const CATALOG_EXCLUDED_TOOLS: ReadonlySet<string> = new Set(['capability_search', 'capability_execute', 'run_code'])
 
 /** Capability-stable origin metadata used by search filters and detail views. */
 export interface CapabilityOrigin {
@@ -93,7 +93,7 @@ export interface CapabilityRecord {
   readonly invocation: { modelInvocable: boolean; userInvocable: boolean }
   readonly tags: readonly string[]
   readonly stats: CapabilityStats
-  /** Token-trimmed short description used by `meta_search` list mode. */
+  /** Token-trimmed short description used by `capability_search` list mode. */
   readonly summary: string
 }
 
@@ -193,7 +193,7 @@ export interface CapabilityService {
   /**
    * Absolute path of the on-demand capability catalog YAML, when emission is
    * enabled. The model can browse this file with grep/read instead of only
-   * reaching the catalog through `meta_search`.
+   * reaching the catalog through `capability_search`.
    */
   catalogPath(): string | undefined
   /**
@@ -352,10 +352,10 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   /**
    * Index one visible tool schema into the next catalog, deduped by name.
-   * 全部可见工具都进编目，仅排除 meta_search/meta_invoke（本插件控制面，
+   * 全部可见工具都进编目，仅排除 capability_search/capability_execute（本插件控制面，
    * 恒常驻）与 run_code（Code Mode 保留传输层）。mcp__ 工具按真实 server
    * 分组；原生工具（无 mcp__ 前缀）统一归入保留的 built-in server，使能力
-   * 菜单能统一按 server 分组、三档管理，meta_invoke 也能派发它们。
+   * 菜单能统一按 server 分组、三档管理，capability_execute 也能派发它们。
    * A schema may surface from several preset scope views; the first wins.
    */
   const indexToolSchema = (schema: { name: string; description: string; parameters: JsonSchemaNode }): void => {
@@ -539,12 +539,19 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   /** Refresh the whole catalog: tools and skills, then re-emit the YAML. */
   let refreshInFlight: Promise<void> | undefined
+  let refreshRequested = false
   const refresh = (): Promise<void> => {
-    if (refreshInFlight !== undefined) return refreshInFlight
+    if (refreshInFlight !== undefined) {
+      refreshRequested = true
+      return refreshInFlight
+    }
     refreshInFlight = (async () => {
-    await rebuildTools()
-    await refreshSkills()
-    await writeCatalog()
+      do {
+        refreshRequested = false
+        await rebuildTools()
+        await refreshSkills()
+        await writeCatalog()
+      } while (refreshRequested)
     })().finally(() => { refreshInFlight = undefined })
     return refreshInFlight
   }
@@ -576,8 +583,8 @@ export function apply(ctx: Context, config: Config = {}): void {
       // Index/source is the GLOBAL registry — no visibility filter here.
       // Resident/On-demand is a projection-layer concern (`dsh-capability-policy`),
       // so an On-demand tool hidden from the model's exposure surface must still
-      // be searchable so `meta_search` can return it for `meta_invoke`. Disabled
-      // enforcement lives at the model-facing tools (meta_search/meta_invoke),
+      // be searchable so `capability_search` can return it for `capability_execute`. Disabled
+      // enforcement lives at the model-facing tools (capability_search/capability_execute),
       // keeping the management surface able to list Disabled capabilities.
       if (kind === 'all' || kind === 'tool') {
         for (const record of toolRecords.values()) all.push(record)
@@ -732,13 +739,13 @@ export function apply(ctx: Context, config: Config = {}): void {
   }
 
   // Observe tool results to write back objective stats. Nested dispatches
-  // (parent set by meta_invoke) attribute to the target capability; the
-  // meta_invoke wrapper itself records nothing for any capability.
+  // (parent set by capability_execute) attribute to the target capability; the
+  // capability_execute wrapper itself records nothing for any capability.
   ctx.on('tools/result', (exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>) => {
     const name = exec.name
     const record = toolRecords.get(name)
     if (record === undefined) return
-    // Nested dispatches (a meta_invoke call or a native-tool forward) carry the
+    // Nested dispatches (a capability_execute call or a native-tool forward) carry the
     // target tool's own name, so stats always attribute to the target capability.
     const durationMs = result.meta !== undefined && typeof result.meta === 'object'
       && result.meta !== null && 'durationMs' in result.meta

@@ -50,7 +50,7 @@ export function createSelections(ctx, policy) {
         const inherited = new Set(ctx.tools.schemas(scopeParentOf(agent)).map(tool => tool.name));
         const allow = catalog(agent, () => ctx.tools.schemas(agent)
             .filter(tool => inherited.has(tool.name) && tool.name !== 'run_code'
-            && (visible(tool.name, agent) || ['mcp_search_tools', 'mcp_enable_tools', 'meta_invoke'].includes(tool.name)))
+            && (visible(tool.name, agent) || tool.name === 'capability_execute'))
             .map(tool => tool.name));
         const prior = restrictions.get(agent);
         if (prior !== undefined && JSON.stringify(prior.allow) === JSON.stringify(allow))
@@ -87,7 +87,7 @@ export function createSelections(ctx, policy) {
         sync(agent);
         // The session has no capability count or schema-byte quota.  Do not use
         // Infinity here: tool results are lossless JSON and JSON has no Infinity
-        // value, so the protocol validator rejects the whole meta_enable result.
+        // value, so the protocol validator rejects the whole selection result.
         return {
             enabled: data.tools,
             disabled: data.disabled,
@@ -102,7 +102,7 @@ export function createSelections(ctx, policy) {
                 throw new Error(`Capability ${name} is disabled. Change it in capability settings first.`);
         return update(agent, names.map(name => ({ name, kind: 'tool', tier: enable ? 'resident' : 'on-demand' })));
     };
-    ctx.tools.guard(exec => ['run_code', 'mcp_search_tools', 'mcp_enable_tools', 'meta_invoke'].includes(exec.name) || visible(exec.name, exec.agent) ? undefined : `UNKNOWN_TOOL: ${exec.name}. Search and enable this capability first.`);
+    ctx.tools.guard(exec => ['run_code', 'capability_search', 'capability_execute'].includes(exec.name) || visible(exec.name, exec.agent) ? undefined : `UNKNOWN_TOOL: ${exec.name}. Use capability_search and capability_execute for on-demand capabilities.`);
     ctx.on('system-prompt/assemble', (_assembly, context, next) => {
         if (context.scope !== undefined && 'session' in context.scope)
             sync(context.scope);

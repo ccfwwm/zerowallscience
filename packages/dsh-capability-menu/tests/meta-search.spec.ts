@@ -96,7 +96,7 @@ describe('capability-menu-search', () => {
     const issue = registerMcpTool(ctx, 'gongfeng', 'create_issue', 'Create a new issue/ticket/bug report in a Gongfeng project')
     await ctx.capability.refresh()
 
-    const { value, isError } = await runTool(ctx, 'meta_search', { query: 'issue' })
+    const { value, isError } = await runTool(ctx, 'capability_search', { query: 'issue' })
     expect(isError).toBe(false)
     const result = value as { mode: string; total: number; results: Array<{ id: string }> }
     expect(result.mode).toBe('list')
@@ -109,7 +109,7 @@ describe('capability-menu-search', () => {
     const issue = registerMcpTool(ctx, 'gongfeng', 'create_issue', 'Create an issue')
     await ctx.capability.refresh()
 
-    const { value, isError } = await runTool(ctx, 'meta_search', { id: issue })
+    const { value, isError } = await runTool(ctx, 'capability_search', { id: issue })
     expect(isError).toBe(false)
     const result = value as { mode: string; result: { kind: string; parameters: { properties?: Record<string, unknown> } } }
     expect(result.mode).toBe('detail')
@@ -123,7 +123,7 @@ describe('capability-menu-search', () => {
     registerMcpTool(ctx, 'gongfeng', 'create_issue', 'Create an issue')
     await ctx.capability.refresh()
 
-    const result = await runTool(ctx, 'meta_search', { query: 'issue', detail: true })
+    const result = await runTool(ctx, 'capability_search', { query: 'issue', detail: true })
     expect(result.isError).toBe(false)
     expect((result.value as { mode: string }).mode).toBe('list')
   })
@@ -134,7 +134,7 @@ describe('capability-menu-search', () => {
     const issue = registerMcpTool(ctx, 'gongfeng', 'create_issue', 'Create an issue')
     await ctx.capability.refresh()
 
-    const { isError } = await runTool(ctx, 'meta_search', { query: 'issue', id: issue })
+    const { isError } = await runTool(ctx, 'capability_search', { query: 'issue', id: issue })
     expect(isError).toBe(true)
   })
 
@@ -145,13 +145,13 @@ describe('capability-menu-search', () => {
     registerMcpTool(ctx, 'gongfeng', 'search', 'Find issues by keyword')
     await ctx.capability.refresh()
 
-    const { value, isError } = await runTool(ctx, 'meta_search', { query: 'regular expressions' })
+    const { value, isError } = await runTool(ctx, 'capability_search', { query: 'regular expressions' })
     expect(isError).toBe(false)
     const result = value as { mode: string; results: Array<{ id: string; server?: string }> }
     // The native is ranked and carries the reserved built-in server on the wire.
     expect(result.results.some(item => item.id === grep && item.server === 'built-in')).toBe(true)
 
-    const detail = await runTool(ctx, 'meta_search', { id: grep })
+    const detail = await runTool(ctx, 'capability_search', { id: grep })
     expect(detail.isError).toBe(false)
     const detailResult = detail.value as { mode: string; result: { kind: string; name: string } }
     expect(detailResult.mode).toBe('detail')
@@ -176,12 +176,12 @@ describe('capability-menu-search', () => {
     const issue = registerMcpTool(ctx, 'gongfeng', 'create_issue', 'Create an issue')
     await ctx.capability.refresh()
 
-    const list = await runTool(ctx, 'meta_search', { query: 'issue' })
+    const list = await runTool(ctx, 'capability_search', { query: 'issue' })
     expect(list.isError).toBe(false)
     const listResult = list.value as { mode: string; results: Array<{ id: string }> }
     expect(listResult.results.some(item => item.id === issue)).toBe(false)
 
-    const detail = await runTool(ctx, 'meta_search', { id: issue })
+    const detail = await runTool(ctx, 'capability_search', { id: issue })
     expect(detail.isError).toBe(true)
   })
 
@@ -202,12 +202,35 @@ describe('capability-menu-search', () => {
     await ctx.plugin(toolMetaSearch, {})
     await ctx.capability.refresh()
 
-    const list = await runTool(ctx, 'meta_search', { query: 'Forbidden' })
+    const list = await runTool(ctx, 'capability_search', { query: 'Forbidden' })
     expect(list.isError).toBe(false)
     const listResult = list.value as { mode: string; results: Array<{ id: string }> }
     expect(listResult.results.some(item => item.id === 'forbidden-skill')).toBe(false)
 
-    const detail = await runTool(ctx, 'meta_search', { id: 'forbidden-skill' })
+    const detail = await runTool(ctx, 'capability_search', { id: 'forbidden-skill' })
     expect(detail.isError).toBe(true)
+  })
+
+  it('merges compact R and Bio internal capabilities without registering their schemas', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-compact-search-'))
+    const ctx = await setup(home)
+    ctx.provide('zerowallMcp' as never, {
+      async searchCompactCapabilities(_query: string, detailId?: string) {
+        return [{
+          id: detailId ?? 'figureya.generate.multi.volcano',
+          publicTool: 'r_figureya_run',
+          summary: 'Generate a multi-group volcano plot',
+          ...(detailId === undefined ? {} : { inputSchema: { type: 'object', properties: { project_id: { type: 'string' } } } }),
+          backend: 'rmcp',
+        }]
+      },
+    } as never)
+    const list = await runTool(ctx, 'capability_search', { query: 'volcano' })
+    expect(list.isError).toBe(false)
+    expect((list.value as { results: Array<{ id: string }> }).results.some(item => item.id === 'figureya.generate.multi.volcano')).toBe(true)
+    const detail = await runTool(ctx, 'capability_search', { id: 'figureya.generate.multi.volcano', kind: 'tool' })
+    expect(detail.isError).toBe(false)
+    expect((detail.value as { result: { parameters: { properties: object } } }).result.parameters.properties).toHaveProperty('project_id')
+    expect(ctx.tools.schemas().some(tool => tool.name === 'figureya.generate.multi.volcano')).toBe(false)
   })
 })

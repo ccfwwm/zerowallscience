@@ -17,8 +17,8 @@ import { type CapabilityKind } from './registry.ts';
  *   `assembly.tools` (the request `tools` payload), skills in the
  *   `<available_skills>` catalog — so the model can call/load it single-hop.
  * - `on-demand`: absent from the native surface but discoverable in the
- *   persistent meta registry; the model reaches it via `meta_search` then
- *   `meta_invoke` (catalog-resident, load/execute on demand).
+ *   persistent meta registry; the model reaches it via `capability_search` then
+ *   `capability_execute` (catalog-resident, load/execute on demand).
  * - `disabled`: neither resident nor discoverable nor executable.
  */
 export type CapabilityClass = 'resident' | 'on-demand' | 'disabled';
@@ -76,13 +76,13 @@ export interface Config {
     skills?: CapabilitySetConfig;
     /**
      * Tool names that are ALWAYS kept resident and can never be classified
-     * On-demand or Disabled. Default `[meta_search, meta_invoke]`.
+     * On-demand or Disabled. Default `[capability_search, capability_execute]`.
      */
     metaTools?: string[];
 }
 /** Validate and default the policy configuration. */
 export declare const Config: z<Config>;
-export declare const DEFAULT_META_TOOLS: readonly ["meta_search", "meta_enable", "structured_output"];
+export declare const DEFAULT_META_TOOLS: readonly ["capability_search", "capability_execute", "structured_output"];
 /**
  * Map a legacy rule set (old keys `exposed`/`progressive`/`blocked`) onto the
  * current key names (`resident`/`on-demand`/`disabled`), so already-deployed

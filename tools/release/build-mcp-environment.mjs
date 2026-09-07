@@ -112,7 +112,7 @@ const manifest = {
   pythonHealth: { imports: ['mcp', 'numpy', 'pandas', 'httpx'], bioServer: 'bio-tools/run_server.py mcp_bio', ketcherServer: 'ketcher-chemistry/server.js' },
   skillsRoot: 'skills',
   sci: { version: process.env.ZEROWALL_SCIMASTER_VERSION ?? '0.3.15', nodeMinimum: '20.3.0', cli: 'sci/dist/cli.mjs', mcp: 'sci/dist/mcp.cjs' },
-  mcp: { bioToolsVersion: process.env.ZEROWALL_BIO_TOOLS_VERSION ?? environmentVersion, ketcherChemistryVersion: process.env.ZEROWALL_KETCHER_VERSION ?? environmentVersion, sciMasterVersion: process.env.ZEROWALL_SCIMASTER_VERSION ?? '0.3.15', toolCount: Number(process.env.ZEROWALL_BIO_TOOL_COUNT ?? 247), licenseToolCount: Number(process.env.ZEROWALL_BIO_LICENSE_TOOL_COUNT ?? 14), servers: ['zerowall_managed_bio_tools', 'zerowall_managed_ketcher', 'zerowall_managed_scimaster'] },
+  mcp: { bioToolsVersion: process.env.ZEROWALL_BIO_TOOLS_VERSION ?? environmentVersion, ketcherChemistryVersion: process.env.ZEROWALL_KETCHER_VERSION ?? environmentVersion, sciMasterVersion: process.env.ZEROWALL_SCIMASTER_VERSION ?? '0.3.15', publicToolCount: Number(process.env.ZEROWALL_BIO_PUBLIC_TOOL_COUNT ?? 8), internalToolCount: Number(process.env.ZEROWALL_BIO_INTERNAL_TOOL_COUNT ?? 247), servers: ['zerowall_managed_bio_tools', 'zerowall_managed_ketcher', 'zerowall_managed_scimaster'] },
   source: { claudeScienceRuntime: process.env.ZEROWALL_CLAUDE_SCIENCE_RUNTIME ?? '0.0.37-linux-x64', sourceHashes },
   signature: { algorithm: 'ed25519', keyId, value: '' },
 }

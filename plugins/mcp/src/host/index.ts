@@ -75,6 +75,14 @@ interface RuntimeStatus {
   missingEnvironmentVariables: string[]
 }
 
+export interface CompactCapabilityRecord {
+  id: string
+  publicTool: string
+  summary: string
+  inputSchema?: JsonValue
+  backend: 'rmcp' | 'bio'
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     zerowallMcp: ZeroWallMcpService
@@ -118,20 +126,40 @@ export class ZeroWallMcpService extends TypertRemoteService {
       },
     } as never)
     ctx.tools.register(defineTool({
-      name: 'r_upload_workspace_file',
-      description: 'Upload a file from the current ZeroWall session workspace to an rdatalinux R project without putting base64 in the conversation. local_path must be a regular file inside the session workspace; remote_path is relative to the rdatalinux project. Requires confirm=true.',
+      name: 'r_files',
+      description: 'Access rdatalinux project files through the compact file facade. upload_workspace and download_workspace transfer files inside the Host without putting base64 in the conversation; other exact actions are forwarded to the remote r_files tool.',
       parameters: {
-        project_id: { type: 'string', required: true },
-        local_path: { type: 'string', required: true },
-        remote_path: { type: 'string', required: true },
-        confirm: { type: 'boolean', required: true },
+        action: { type: 'string', required: true },
+        arguments: { type: 'json' },
+        project_id: { type: 'string' },
+        local_path: { type: 'string' },
+        remote_path: { type: 'string' },
+        confirm: { type: 'boolean' },
       },
       output: {
         schema: { type: 'object', additionalProperties: true },
         render: (_args: unknown, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      async execute(args: { project_id: string; local_path: string; remote_path: string; confirm: boolean }, exec: any) {
-        if (args.confirm !== true) throw new Error('Uploading a workspace file requires confirm=true.')
+      async execute(args: { action: string; arguments?: Record<string, JsonValue>; project_id?: string; local_path?: string; remote_path?: string; confirm?: boolean }, exec: any) {
+        const remoteName = 'mcp__rmcp__r_files'
+        if (service.ctx.tools.get(remoteName) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before accessing project files.')
+        if (args.action !== 'upload_workspace' && args.action !== 'download_workspace') {
+          const nested = await service.ctx.tools.execute({
+            signal: exec.signal,
+            callId: ToolCallId(`r-files-${Date.now()}`),
+            name: remoteName,
+            arguments: { action: args.action, arguments: args.arguments ?? {} },
+            parent: exec.token,
+            agent: exec.agent,
+          })
+          if (nested.isError) {
+            const message = nested.content.map((block: ContentBlock) => block.type === 'text' ? block.text : '').filter(Boolean).join('\n')
+            throw new Error(message || 'rdatalinux R MCP file operation failed.')
+          }
+          return nested.value as Record<string, JsonValue>
+        }
+        if (args.confirm !== true) throw new Error(`${args.action === 'upload_workspace' ? 'Uploading' : 'Downloading'} a workspace file requires confirm=true.`)
+        if (typeof args.project_id !== 'string' || typeof args.local_path !== 'string' || typeof args.remote_path !== 'string') throw new Error(`project_id, local_path, and remote_path are required for ${args.action}.`)
         const sessionCwd = exec.agent?.session.header.cwd
         if (typeof sessionCwd !== 'string' || sessionCwd.trim() === '') throw new Error('The current session has no workspace directory.')
         const workspace = await realpath(resolve(sessionCwd))
@@ -140,47 +168,79 @@ export class ZeroWallMcpService extends TypertRemoteService {
         const source = resolve(workspace, requested)
         const containment = relative(workspace, source)
         if (containment === '..' || containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(containment)) throw new Error('local_path escapes the current workspace.')
-        const info = await lstat(source)
-        if (!info.isFile() || info.isSymbolicLink()) throw new Error('local_path must be a regular, non-symbolic-link file.')
-        const resolvedSource = await realpath(source)
-        if (resolvedSource !== source) throw new Error('local_path must not resolve through a symbolic link.')
-        const size = (await stat(source)).size
-        if (size < 1 || size > RDATALINUX_UPLOAD_MAX_BYTES) throw new Error('The local file must be between 1 byte and 100 MiB.')
-        const bytes = await readFile(source)
-        const sha256 = createHash('sha256').update(bytes).digest('hex')
-        const remoteName = 'mcp__rmcp__rplatform__r_upload_file'
-        if (service.ctx.tools.get(remoteName) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before uploading.')
-        const nested = await service.ctx.tools.execute({
+        if (args.action === 'upload_workspace') {
+          const info = await lstat(source)
+          if (!info.isFile() || info.isSymbolicLink()) throw new Error('local_path must be a regular, non-symbolic-link file.')
+          const resolvedSource = await realpath(source)
+          if (resolvedSource !== source) throw new Error('local_path must not resolve through a symbolic link.')
+          const size = (await stat(source)).size
+          if (size < 1 || size > RDATALINUX_UPLOAD_MAX_BYTES) throw new Error('The local file must be between 1 byte and 100 MiB.')
+          const bytes = await readFile(source)
+          const sha256 = createHash('sha256').update(bytes).digest('hex')
+          const nested = await service.ctx.tools.execute({
+            signal: exec.signal,
+            callId: ToolCallId(`r-upload-workspace-${Date.now()}`),
+            name: remoteName,
+            arguments: { action: 'r.upload.file', arguments: { project_id: args.project_id, path: args.remote_path, data_base64: bytes.toString('base64'), confirm: true } },
+            parent: exec.token,
+            agent: exec.agent,
+          })
+          if (nested.isError) {
+            const message = nested.content.map((block: ContentBlock) => block.type === 'text' ? block.text : '').filter(Boolean).join('\n')
+            throw new Error(message || 'rdatalinux R MCP upload failed.')
+          }
+          return { projectId: args.project_id, localPath: requested, remotePath: args.remote_path, name: basename(source), bytes: bytes.length, sha256, remote: nested.value as JsonValue }
+        }
+
+        const manifestResult = await service.ctx.tools.execute({
           signal: exec.signal,
-          callId: ToolCallId(`r-upload-workspace-${Date.now()}`),
+          callId: ToolCallId(`r-download-manifest-${Date.now()}`),
           name: remoteName,
-          arguments: { project_id: args.project_id, path: args.remote_path, data_base64: bytes.toString('base64'), confirm: true },
+          arguments: { action: 'r.get.file.manifest', arguments: { project_id: args.project_id, path: args.remote_path } },
           parent: exec.token,
           agent: exec.agent,
         })
-        if (nested.isError) {
-          const message = nested.content.map((block: ContentBlock) => block.type === 'text' ? block.text : '').filter(Boolean).join('\n')
-          throw new Error(message || 'rdatalinux R MCP upload failed.')
+        const manifestPayload = service.compactPayload(manifestResult, 'rdatalinux file manifest')
+        const manifest = manifestPayload.manifest !== null && typeof manifestPayload.manifest === 'object' && !Array.isArray(manifestPayload.manifest)
+          ? manifestPayload.manifest as Record<string, JsonValue>
+          : manifestPayload
+        const expectedBytes = Number(manifest.bytes)
+        const expectedSha256 = typeof manifest.sha256 === 'string' ? manifest.sha256.toLowerCase() : ''
+        if (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0 || expectedBytes > RDATALINUX_UPLOAD_MAX_BYTES) throw new Error('The remote file must be between 0 bytes and 100 MiB.')
+        if (!/^[a-f0-9]{64}$/u.test(expectedSha256)) throw new Error('The remote file manifest has no valid SHA-256.')
+        const chunks: Buffer[] = []
+        let offset = 0
+        while (offset < expectedBytes) {
+          const chunkResult = await service.ctx.tools.execute({
+            signal: exec.signal,
+            callId: ToolCallId(`r-download-chunk-${Date.now()}-${offset}`),
+            name: remoteName,
+            arguments: { action: 'r.read.file.chunk', arguments: { project_id: args.project_id, path: args.remote_path, offset, length: Math.min(4_194_304, expectedBytes - offset) } },
+            parent: exec.token,
+            agent: exec.agent,
+          })
+          const chunkPayload = service.compactPayload(chunkResult, 'rdatalinux file chunk')
+          if (typeof chunkPayload.data_base64 !== 'string' || chunkPayload.data_base64 === '') throw new Error(`The remote file chunk at offset ${offset} has no data.`)
+          const chunk = Buffer.from(chunkPayload.data_base64, 'base64')
+          if (chunk.length < 1 || offset + chunk.length > expectedBytes) throw new Error(`The remote file chunk at offset ${offset} has an invalid length.`)
+          chunks.push(chunk)
+          offset += chunk.length
         }
-        return { projectId: args.project_id, localPath: requested, remotePath: args.remote_path, name: basename(source), bytes: bytes.length, sha256, remote: nested.value as JsonValue }
-      },
-    }) as any)
-    ctx.tools.register(defineTool({
-      name: 'mcp_search_tools',
-      description: 'Search connected MCP tools by keyword and return compact matches.',
-      parameters: { query: { type: 'string', required: true }, server: { type: 'string' }, limit: { type: 'number' } },
-      output: { schema: { type: 'object', additionalProperties: true }, render: (_args: unknown, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }] },
-      async execute(args: { query: string; server?: string; limit?: number }, exec: any) {
-        return forwardCapability(ctx, exec, 'meta_search', { query: args.query, kind: 'tool', server: args.server, max_results: args.limit ?? 8 })
-      },
-    }) as any)
-    ctx.tools.register(defineTool({
-      name: 'mcp_enable_tools',
-      description: 'Select MCP tools for the current task and return compact metadata.',
-      parameters: { tools: { type: 'array', required: true, items: { type: 'string' } } },
-      output: { schema: { type: 'object', additionalProperties: true }, render: (_args: unknown, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }] },
-      async execute(args: { tools: string[] }, exec: any) {
-        return forwardCapability(ctx, exec, 'meta_enable', { tools: args.tools })
+        const bytes = Buffer.concat(chunks)
+        const sha256 = createHash('sha256').update(bytes).digest('hex')
+        if (bytes.length !== expectedBytes || sha256 !== expectedSha256) throw new Error('The downloaded file does not match its remote Manifest.')
+        await mkdir(dirname(source), { recursive: true })
+        const resolvedParent = await realpath(dirname(source))
+        const parentContainment = relative(workspace, resolvedParent)
+        if (parentContainment === '..' || parentContainment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(parentContainment)) throw new Error('local_path resolves outside the current workspace.')
+        try {
+          const existing = await lstat(source)
+          if (!existing.isFile() || existing.isSymbolicLink()) throw new Error('local_path must resolve to a regular, non-symbolic-link file.')
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        }
+        await writeFile(source, bytes)
+        return { projectId: args.project_id, localPath: requested, remotePath: args.remote_path, name: basename(source), bytes: bytes.length, sha256 }
       },
     }) as any)
     this.recordsReady = this.seedBundledServers().then(() => {
@@ -200,7 +260,13 @@ export class ZeroWallMcpService extends TypertRemoteService {
     // Reconciliation is deliberately scheduled after the Host fiber is
     // published. It must never hold web boot on remote handshakes/tools-list.
     this.operation = this.recordsReady.then(() => new Promise<void>(resolve => {
-      setTimeout(() => { void this.reconcileAll().finally(resolve) }, 0)
+      setTimeout(() => {
+        void this.reconcileAll()
+          .catch((error: unknown) => {
+            ctx.logger.warn(`zerowall-mcp: deferred connection reconciliation failed: ${redactError(error)}`)
+          })
+          .finally(resolve)
+      }, 0)
     })).catch((error: unknown) => {
       ctx.logger.warn(`zerowall-mcp: initial connection reconciliation failed: ${redactError(error)}`)
     })
@@ -232,6 +298,95 @@ export class ZeroWallMcpService extends TypertRemoteService {
       this.environmentPoller = undefined
       void this.disposeAll()
     }, 'zerowall-mcp: dispose dynamic clients')
+  }
+
+  private compactPayload(result: { value?: unknown; content: ContentBlock[]; isError: boolean }, target: string): Record<string, JsonValue> {
+    if (result.isError) throw new Error(result.content.filter(block => block.type === 'text').map(block => block.text).join('\n') || `${target} failed`)
+    if (result.value !== null && typeof result.value === 'object' && !Array.isArray(result.value)) {
+      const value = result.value as Record<string, JsonValue>
+      if (value.structuredContent !== null && typeof value.structuredContent === 'object' && !Array.isArray(value.structuredContent)) return value.structuredContent as Record<string, JsonValue>
+      if (!Array.isArray(value.content)) return value
+      const nestedText = value.content.find(block => block !== null && typeof block === 'object' && !Array.isArray(block) && block.type === 'text') as { text?: JsonValue } | undefined
+      if (typeof nestedText?.text === 'string') {
+        const parsed = JSON.parse(nestedText.text) as unknown
+        if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, JsonValue>
+      }
+    }
+    const text = result.content.find(block => block.type === 'text')
+    if (text?.type !== 'text') throw new Error(`${target} returned no structured catalog`)
+    const parsed = JSON.parse(text.text) as unknown
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`${target} returned an invalid catalog`)
+    return parsed as Record<string, JsonValue>
+  }
+
+  async searchCompactCapabilities(query: string, detailId: string | undefined, limit: number, exec: any): Promise<CompactCapabilityRecord[]> {
+    const requests = [
+      {
+        backend: 'rmcp' as const,
+        target: 'mcp__rmcp__r_runtime',
+        arguments: { action: 'capability_search', query: detailId ?? query, detail: detailId !== undefined, limit },
+      },
+      {
+        backend: 'bio' as const,
+        target: 'mcp__zerowall_managed_bio_tools__bio_search',
+        arguments: { query: detailId === undefined ? query : '', capability_id: detailId, detail: detailId !== undefined, limit },
+      },
+    ].filter(request => this.ctx.tools.get(request.target) !== undefined)
+    const settled = await Promise.allSettled(requests.map(async request => {
+      const result = await this.ctx.tools.execute({
+        callId: ToolCallId(`${exec.callId}:catalog:${request.backend}`),
+        name: request.target,
+        arguments: request.arguments,
+        agent: exec.agent,
+        parent: exec.token,
+        rootCallId: exec.rootCallId ?? exec.callId,
+        signal: exec.signal,
+      })
+      return { request, payload: this.compactPayload(result, request.target) }
+    }))
+    const records: CompactCapabilityRecord[] = []
+    for (const item of settled) {
+      if (item.status !== 'fulfilled') continue
+      const { request, payload } = item.value
+      const exact = payload.capability
+      const entries = exact !== undefined ? [exact] : (request.backend === 'bio' ? payload.matches : payload.capabilities)
+      if (!Array.isArray(entries)) continue
+      for (const value of entries) {
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) continue
+        const entry = value as Record<string, JsonValue>
+        if (typeof entry.id !== 'string' || typeof entry.public_tool !== 'string') continue
+        records.push({
+          id: entry.id,
+          publicTool: entry.public_tool,
+          summary: typeof entry.summary === 'string' ? entry.summary : '',
+          ...(entry.input_schema === undefined ? {} : { inputSchema: entry.input_schema }),
+          backend: request.backend,
+        })
+      }
+    }
+    return records.slice(0, limit)
+  }
+
+  async executeCompactCapability(id: string, args: unknown, exec: any): Promise<{ target: string; content: ContentBlock[]; value: unknown }> {
+    const [record] = await this.searchCompactCapabilities('', id, 1, exec)
+    if (record === undefined) throw new Error(`UNKNOWN_CAPABILITY: ${id}`)
+    const target = record.backend === 'bio'
+      ? `mcp__zerowall_managed_bio_tools__${record.publicTool}`
+      : `mcp__rmcp__${record.publicTool}`
+    const argumentsValue = record.backend === 'bio'
+      ? { capability_id: id, arguments: args ?? {} }
+      : { action: id, arguments: args ?? {} }
+    const result = await this.ctx.tools.execute({
+      callId: ToolCallId(`${exec.callId}:compact:${id}`),
+      name: target,
+      arguments: argumentsValue,
+      agent: exec.agent,
+      parent: exec.token,
+      rootCallId: exec.rootCallId ?? exec.callId,
+      signal: exec.signal,
+    })
+    if (result.isError) throw new Error(result.content.filter(block => block.type === 'text').map(block => block.text).join('\n') || `${id} failed`)
+    return { target, content: result.content, value: result.value }
   }
 
   @Remote('list')
@@ -873,13 +1028,6 @@ export function apply(ctx: Context): void {
 export default { apply }
 
 
-
-async function forwardCapability(ctx: Context, exec: any, name: string, args: unknown): Promise<Record<string, JsonValue>> {
-  const result = await ctx.tools.execute({ callId: ToolCallId(`${exec.callId}:${name}`), name, arguments: args, agent: exec.agent, parent: exec.token, rootCallId: exec.rootCallId ?? exec.callId, signal: exec.signal })
-  if (result.isError) throw new Error(result.content.filter(block => block.type === 'text').map(block => block.text).join('\n'))
-  if (result.value === null || typeof result.value !== 'object' || Array.isArray(result.value)) throw new Error(`Invalid capability response from ${name}`)
-  return result.value as Record<string, JsonValue>
-}
 
 function isManagedMcpName(name: string): boolean {
   return ['rmcp', 'huagongshe', 'zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher'].includes(name)

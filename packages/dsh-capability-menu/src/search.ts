@@ -1,5 +1,5 @@
 /**
- * Model-facing `meta_search` tool: capability catalog search + detail.
+ * Model-facing `capability_search` tool: capability catalog search + detail.
  *
  * @module @daweifu/capability-menu (search plugin)
  */
@@ -11,10 +11,14 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { CapabilityDetail, CapabilitySummary } from './registry.ts'
 
+interface CompactCapabilityDirectory {
+  searchCompactCapabilities(query: string, detailId: string | undefined, limit: number, exec: ToolRunContext): Promise<Array<{ id: string; publicTool: string; summary: string; inputSchema?: JsonValue; backend: 'rmcp' | 'bio' }>>
+}
+
 export const name = 'capability-menu-search'
 export const inject = ['capability', 'tools', 'skills']
 
-/** Model-facing `meta_search` configuration. */
+/** Model-facing `capability_search` configuration. */
 export interface Config {
   /** Maximum results returned in list mode (default 20). */
   maxResults?: number
@@ -43,7 +47,7 @@ export interface MetaSearchDetailResult {
 export type MetaSearchResult = MetaSearchListResult | MetaSearchDetailResult
 
 /**
- * Register the `meta_search` tool.
+ * Register the `capability_search` tool.
  *
  * - Mode A (list, default): query by keyword/tag/server, returns id + short summary.
  * - Mode B (detail): pass an exact id (optionally `detail: true`) to get the full schema.
@@ -59,8 +63,8 @@ export function apply(ctx: Context, config: Config = {}): void {
   }
 
   const tool = defineTool({
-    name: 'meta_search',
-    description: 'Search tools and skills by keyword, category or server. Returns bounded summaries or details for one exact id. Use meta_enable to enable selected tools or load one skill.',
+    name: 'capability_search',
+    description: 'Search tools and skills by keyword, category, or server. Returns bounded summaries by default and the input schema only for one exact id. Execute an exact result with capability_execute.',
     parameters: {
       query: { type: 'string', description: 'Natural-language or keyword query; mutually exclusive with id.' },
       id: { type: 'string', description: 'Exact capability id (from a previous search results[].id); mutually exclusive with query, takes precedence.' },
@@ -69,7 +73,6 @@ export function apply(ctx: Context, config: Config = {}): void {
       server: { type: 'string', description: 'Filter by server name — an MCP server (gongfeng/iwiki/km/zhiyan_qci) or the reserved built-in pseudo-server grouping harness-native tools.' },
       tag: { type: 'string', description: 'Filter by tag.' },
       max_results: { type: 'integer', description: 'Maximum results (default and maximum 12).' },
-      auto_enable: { type: 'boolean', description: 'Automatically enable matching read-only tools for this session (default true).' },
     },
     output: {
       schema: {
@@ -104,7 +107,6 @@ export function apply(ctx: Context, config: Config = {}): void {
       server?: string
       tag?: string
       max_results?: number
-      auto_enable?: boolean
     }, exec: ToolRunContext) {
       const query = args.query?.trim() ?? ''
       const id = args.id?.trim() ?? ''
@@ -112,10 +114,9 @@ export function apply(ctx: Context, config: Config = {}): void {
       const server = args.server?.trim() || undefined
       const tag = args.tag?.trim() || undefined
       const requestedMax = args.max_results
-      const autoEnable = args.auto_enable !== false
 
       if (query.length > 0 && id.length > 0) {
-        throw new Error('meta_search: query and id are mutually exclusive; pass exactly one')
+        throw new Error('capability_search: query and id are mutually exclusive; pass exactly one')
       }
       // Models often attach `detail: true` to a keyword search while looking
       // for a capability. Treat that as list mode; full detail is only
@@ -129,7 +130,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         scope,
       }
       // Disabled capabilities are not discoverable: the registry keeps them
-      // indexed for the management surface, but meta_search never surfaces
+      // indexed for the management surface, but capability_search never surfaces
       // them to the model.
       const policy = ctx.get('capabilityPolicy')
       const isDisabled = (capId: string, capKind: 'tool' | 'skill'): boolean =>
@@ -140,14 +141,35 @@ export function apply(ctx: Context, config: Config = {}): void {
       if (id.length > 0) {
         const resolved = ctx.capability.get(id, kindArg)
         if (resolved === undefined) {
-          throw new Error(`meta_search: capability "${id}" is unknown, unavailable, or ambiguous — pass kind: "tool" | "skill" when both exist`)
+          const compact = ctx.get('zerowallMcp') as unknown as CompactCapabilityDirectory | undefined
+          if (compact !== undefined && kindArg !== 'skill') {
+            const [remote] = await compact.searchCompactCapabilities('', id, 1, exec)
+            if (remote !== undefined) {
+              return {
+                mode: 'detail' as const,
+                result: {
+                  id: remote.id,
+                  kind: 'tool',
+                  actions: ['execute'],
+                  name: remote.id,
+                  description: remote.summary.slice(0, 900),
+                  origin: { provider: remote.backend, serverName: remote.backend },
+                  parameters: remote.inputSchema ?? {},
+                  invocation: { modelInvocable: true, userInvocable: false },
+                  tags: [remote.backend, remote.publicTool, 'internal'],
+                  summary: remote.summary.slice(0, 350),
+                } as unknown as JsonValue,
+              }
+            }
+          }
+          throw new Error(`capability_search: capability "${id}" is unknown, unavailable, or ambiguous — pass kind: "tool" | "skill" when both exist`)
         }
         if (isDisabled(id, resolved.kind)) {
-          throw new Error(`meta_search: capability "${id}" is disabled and cannot be inspected`)
+          throw new Error(`capability_search: capability "${id}" is disabled and cannot be inspected`)
         }
         const result = await ctx.capability.getDetail(id, resolved.kind, context)
         if (result === undefined) {
-          throw new Error(`meta_search: capability "${id}" is unknown or no longer available`)
+          throw new Error(`capability_search: capability "${id}" is unknown or no longer available`)
         }
         const bounded = { ...result, description: result.description.slice(0, 900) }
         if (JSON.stringify(bounded).length > 12_000) {
@@ -165,22 +187,28 @@ export function apply(ctx: Context, config: Config = {}): void {
         scope,
       })
       const summaries: JsonValue[] = []
-      const autoEnabled: string[] = []
       for (const result of results) {
         const disabled = isDisabled(result.id, result.kind)
-        const readOnly = result.kind === 'tool' && /(?:^|[_:-])(read|get|list|search|find|describe|catalog|status|metadata|info|preview|validate)(?:$|[_:-])/i.test(result.name)
-        if (autoEnable && readOnly && !disabled && exec.agent !== undefined && result.kind === 'tool') {
-          try { ctx.get('capabilityPolicy')?.selectTools(exec.agent, [result.id], true); autoEnabled.push(result.id) } catch { /* execution approval remains authoritative */ }
-        }
-        const summary = { id: result.id, kind: result.kind, name: result.name, ...(result.server === undefined ? {} : { server: result.server }), summary: result.summary.slice(0, 350), status: disabled ? 'disabled' : autoEnabled.includes(result.id) ? 'enabled' : 'available', ...(disabled ? { hint: 'Restore defaults or enable this capability in Capability Management before use.' } : {}) }
+        if (disabled) continue
+        const summary = { id: result.id, kind: result.kind, name: result.name, ...(result.server === undefined ? {} : { server: result.server }), summary: result.summary.slice(0, 350), status: 'available' }
         if (JSON.stringify([...summaries, summary]).length > 10_000) continue
         summaries.push(summary)
+      }
+      const compact = ctx.get('zerowallMcp') as unknown as CompactCapabilityDirectory | undefined
+      if (compact !== undefined && kind !== 'skill' && summaries.length < 12) {
+        const remote = await compact.searchCompactCapabilities(query, undefined, 12 - summaries.length, exec)
+        const seen = new Set(summaries.map(item => typeof item === 'object' && item !== null && !Array.isArray(item) ? (item as Record<string, JsonValue>).id : undefined))
+        for (const result of remote) {
+          if (seen.has(result.id)) continue
+          summaries.push({ id: result.id, kind: 'tool', name: result.id, server: result.backend, summary: result.summary.slice(0, 350), status: 'available' })
+          seen.add(result.id)
+        }
       }
       return {
         mode: 'list' as const,
         total: summaries.length,
         results: summaries,
-        hint: autoEnabled.length > 0 ? `Read-only tools auto-enabled: ${autoEnabled.join(', ')}. Use meta_enable for other selected tools or skills.` : 'Use meta_enable to enable selected tools or load one skill.',
+        hint: 'Use capability_execute with one exact result id and the reported kind.',
       }
     },
     presentCall(args) {

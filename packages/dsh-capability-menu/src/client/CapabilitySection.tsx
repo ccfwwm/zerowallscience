@@ -60,6 +60,7 @@ export type CapabilityKey =
   | 'emptyGlobalSkills'
   | 'emptyProjectSkills'
   | 'toolCount'
+  | 'publicInternalCount'
   | 'residentShort'
   | 'onDemandShort'
   | 'disabledShort'
@@ -83,6 +84,11 @@ type ViewState =
 
 const CLASS_KEYS = ['resident', 'on-demand', 'disabled'] as const
 type CapabilityClass = (typeof CLASS_KEYS)[number]
+
+const INTERNAL_CAPABILITY_COUNTS: Readonly<Record<string, number>> = {
+  rmcp: 175,
+  zerowall_managed_bio_tools: 247,
+}
 
 /** Click-cycle order on machine values (displayed as On-demand → Disabled → Resident). */
 const NEXT_CLASS: Record<CapabilityClass, CapabilityClass> = {
@@ -482,7 +488,9 @@ function ReadyBody(props: {
                     >
                       <IconTriangleRightFill14 size={12} className={`mc-chevron${open ? ' mc-chevron--open' : ''}`} />
                       <span className="mc-server-name">{server === BUILT_IN_SERVER ? t('builtInGroup') : server}</span>
-                      <span className="mc-server-count">{t('toolCount', { count: tools.length })}</span>
+                      <span className="mc-server-count">{INTERNAL_CAPABILITY_COUNTS[server] === undefined
+                        ? t('toolCount', { count: tools.length })
+                        : t('publicInternalCount', { publicCount: tools.length, internalCount: INTERNAL_CAPABILITY_COUNTS[server] })}</span>
                       <span className="mc-server-meta">
                         <span className="mc-counts">
                           {counts.filter(({ count }) => count > 0).map(({ cls, count }) => (

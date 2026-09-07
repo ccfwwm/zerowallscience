@@ -84,8 +84,8 @@ describe('meta-registry', () => {
     const bash = registerNativeTool(ctx, 'bash', 'Run commands in a bash shell')
     const grep = registerNativeTool(ctx, 'grep', 'Search file contents with regular expressions')
     // The plugin's own control plane and the reserved transport never enter the catalog.
-    registerNativeTool(ctx, 'meta_search', 'Search capabilities')
-    registerNativeTool(ctx, 'meta_invoke', 'Execute a capability')
+    registerNativeTool(ctx, 'capability_search', 'Search capabilities')
+    registerNativeTool(ctx, 'capability_execute', 'Execute a capability')
     await ctx.capability.refresh()
 
     // Natives are discoverable and grouped under the reserved built-in server.
@@ -98,9 +98,9 @@ describe('meta-registry', () => {
     // Control-plane tools stay out of list/detail.
     const allTools = ctx.capability.search({ kind: 'tool', maxResults: 100 })
     const toolIds = allTools.map(summary => summary.id)
-    expect(toolIds).not.toContain('meta_search')
-    expect(toolIds).not.toContain('meta_invoke')
-    expect(ctx.capability.get('meta_search')).toBeUndefined()
+    expect(toolIds).not.toContain('capability_search')
+    expect(toolIds).not.toContain('capability_execute')
+    expect(ctx.capability.get('capability_search')).toBeUndefined()
 
     // Detail for a native resolves through the tool registry.
     const detail = await ctx.capability.getDetail(bash)
@@ -154,7 +154,7 @@ describe('meta-registry', () => {
     const ctx = await setup(home)
     registerMcpTool(ctx, 'iwiki', 'get_document', 'Get a wiki document')
     await ctx.capability.refresh()
-    // The service allows any query; the meta_search tool wrapper enforces the detail/fuzzy rule.
+    // The service allows any query; the capability_search tool wrapper enforces the detail/fuzzy rule.
     const results = ctx.capability.search({ query: 'wiki' })
     expect(results.length).toBeGreaterThan(0)
   })
