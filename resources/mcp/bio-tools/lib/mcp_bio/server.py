@@ -36,7 +36,7 @@ from mcp.types import TextContent, Tool
 from mcp_servers_common.tier1 import READ_ONLY
 
 SERVER_NAME = "bio-mcp-server"
-CATALOG_VERSION = "2026-09-07.1"
+CATALOG_VERSION = "2026-09-07.2"
 
 TIER1_PACKAGES = [
     "mcp_pubmed",
@@ -264,6 +264,14 @@ PUBLIC_TOOLS = {
 }
 
 
+def _summary(description: str | None, limit: int = 350) -> str:
+    """Keep default catalog responses small while preserving exact detail."""
+    text = " ".join(str(description or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: max(1, limit - 3)].rstrip() + "..."
+
+
 def _capability_maps() -> tuple[dict[str, tuple[str, str]], dict[str, str]]:
     by_id: dict[str, tuple[str, str]] = {}
     public_for_id: dict[str, str] = {}
@@ -348,13 +356,14 @@ def build_server() -> tuple[Server, BioAggregate]:
                 if mapped is None or mapped[1] not in internal:
                     raise ValueError(f"Unknown Bio capability: {exact_id}")
                 schema = internal[mapped[1]]
+                summary = (schema.description or "") if detail else _summary(schema.description)
                 payload = {
                     "catalog_version": CATALOG_VERSION,
                     "capability": {
                         "id": exact_id,
                         "domain": mapped[0],
                         "public_tool": public_for_id[exact_id],
-                        "summary": schema.description or "",
+                        "summary": summary,
                     },
                 }
                 if detail:
@@ -367,16 +376,20 @@ def build_server() -> tuple[Server, BioAggregate]:
                 schema = internal.get(internal_name)
                 if schema is None:
                     continue
-                haystack = f"{capability_id} {schema.description or ''}".lower()
+                capability_text = capability_id.lower()
+                description = str(schema.description or "")
+                haystack = f"{capability_text} {description.lower()}"
                 if query and query not in haystack:
                     continue
                 matches.append({
                     "id": capability_id, "domain": domain,
                     "public_tool": public_for_id[capability_id],
-                    "summary": schema.description or "",
+                    "summary": _summary(description),
+                    "_rank": (0 if query and query in capability_text else
+                              1 if query and query in description.lower() else 2),
                 })
-                if len(matches) >= limit:
-                    break
+            matches.sort(key=lambda item: (item.pop("_rank"), item["id"]))
+            matches = matches[:limit]
             return [TextContent(type="text", text=json.dumps({
                 "catalog_version": CATALOG_VERSION,
                 "public_tool_count": len(PUBLIC_TOOLS),
