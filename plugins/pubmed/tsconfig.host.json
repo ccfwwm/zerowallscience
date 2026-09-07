@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.plugin.host.json",
+  "include": [
+    "src/host",
+    "src/shared"
+  ]
+}

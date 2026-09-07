@@ -22,6 +22,7 @@ export const bundledPlugins = [
   '@zerowallscience/plugin-images',
   '@zerowallscience/plugin-image-dup',
   '@zerowallscience/plugin-research',
+  '@zerowallscience/plugin-pubmed',
   '@zerowallscience/plugin-mineru',
   '@zerowallscience/plugin-singlecell',
   '@zerowallscience/plugin-execution',

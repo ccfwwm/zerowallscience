@@ -17,12 +17,12 @@ describe('ResearchStore', () => {
   it('applies migrations idempotently and persists projects across restart', () => {
     const path = databasePath()
     const first = new ResearchStore(path)
-    expect(first.schemaVersion()).toBe(8)
+    expect(first.schemaVersion()).toBe(9)
     const created = first.createProject({ name: 'Genome Study', rootPath: 'C:/science/genome' })
     first.close()
 
     const reopened = new ResearchStore(path)
-    expect(reopened.schemaVersion()).toBe(8)
+    expect(reopened.schemaVersion()).toBe(9)
     expect(reopened.listProjects()).toEqual([created])
     reopened.close()
   })
@@ -195,7 +195,7 @@ describe('ResearchStore', () => {
     store.createResearchEdge({ projectId: project.id, fromId: paper.id, toId: decision.id, relation: 'supports' })
 
     const snapshot = store.exportResearchSnapshot(project.id)
-    expect(snapshot).toMatchObject({ format: 'zerowall-science-research-project', version: 1 })
+    expect(snapshot).toMatchObject({ format: 'zerowall-science-research-project', version: 2 })
     expect(snapshot.executionContexts).toHaveLength(1)
     expect(snapshot.dataAssets).toHaveLength(1)
     expect(snapshot.runs[0]).toMatchObject({ status: 'succeeded', version: 3 })
@@ -214,6 +214,32 @@ describe('ResearchStore', () => {
     expect(importedSnapshot.runs[0]?.inputs).toEqual([{ name: 'sequences', uri: asset.uri, mediaType: asset.mediaType }])
     expect(importedSnapshot.artifacts[0]?.runId).toBe(importedSnapshot.runs[0]?.id)
     expect(importedSnapshot.edges).toHaveLength(3)
+    store.close()
+  })
+
+  it('deduplicates literature papers and graph commits, and rolls back invalid commits', () => {
+    const store = new ResearchStore(databasePath())
+    const project = store.createProject({ name: 'Literature', rootPath: 'C:/science/literature' })
+    const article = { pmid: '12345', doi: 'https://doi.org/10.1000/Example', title: 'A reproducible paper', abstract: 'Abstract' }
+    expect(store.saveLiteraturePapers(project.id, [article])).toHaveLength(1)
+    expect(store.saveLiteraturePapers(project.id, [article])).toHaveLength(1)
+    expect(store.listPapers(project.id)).toHaveLength(1)
+    const graph = {
+      nodes: [
+        { id: 'article:12345', type: 'article', label: article.title, detail: article },
+        { id: 'concept:gene', type: 'concept', label: 'GENE' },
+      ],
+      edges: [{ source: 'article:12345', target: 'concept:gene', kind: 'mentions', detail: { evidencePmids: ['12345'] } }],
+    } as const
+    expect(store.commitLiteratureGraph(project.id, graph)).toEqual({ addedNodes: 2, addedEdges: 1 })
+    expect(store.commitLiteratureGraph(project.id, graph)).toEqual({ addedNodes: 0, addedEdges: 0 })
+    expect(store.getLiteratureGraph(project.id).nodes).toHaveLength(2)
+    expect(store.getLiteratureGraph(project.id).edges).toHaveLength(1)
+    expect(() => store.commitLiteratureGraph(project.id, {
+      nodes: [{ id: 'concept:bad', type: 'concept', label: 'Bad' }],
+      edges: [{ source: 'concept:bad', target: 'missing', kind: 'broken' }],
+    })).toThrow()
+    expect(store.getLiteratureGraph(project.id).nodes.some(node => node.id === 'concept:bad')).toBe(false)
     store.close()
   })
 

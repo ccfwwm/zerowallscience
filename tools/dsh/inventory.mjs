@@ -22,7 +22,7 @@ const zeroWallOrder = [
   'base', 'secrets', 'environment', 'desktop-compat', 'projects', 'mcp',
   'account', 'ai-cloud', 'opencode',
   'files', 'images', 'image-dup',
-  'research', 'mineru', 'singlecell', 'execution', 'python', 'runs',
+  'research', 'pubmed', 'mineru', 'singlecell', 'execution', 'python', 'runs',
   'publications', 'presentations', 'skills', 'reviewer',
 ]
 const expectedOrder = [

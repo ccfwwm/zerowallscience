@@ -1,0 +1,28 @@
+.root { grid-column: 1 / -1; min-width: 0; border-top: 1px solid var(--border-color, #52606d); padding-top: 20px; }
+.header,.footer,.actions { display:flex; align-items:center; gap:8px; }
+.header,.footer { justify-content:space-between; flex-wrap:wrap; }
+.header h3 { margin:0; font-size:16px; }
+.root input { color:inherit; background:var(--input-background, transparent); border:1px solid var(--border-color, #687580); border-radius:4px; padding:7px; min-width:0; }
+.root input[type=checkbox] { width:16px; height:16px; accent-color:#259881; }
+.tableWrap { overflow-x:auto; margin-top:14px; }
+.table { border-collapse:collapse; width:100%; text-align:left; font-size:13px; }
+.table th,.table td { padding:12px 8px; border-bottom:1px solid var(--border-color, #52606d); vertical-align:middle; }
+.table th { font-weight:600; white-space:nowrap; }
+.table td:first-child { min-width:116px; }
+.table td:nth-child(2) { min-width:200px; }
+.table td:nth-child(3) { min-width:96px; }
+.table code,.table small { display:block; overflow-wrap:anywhere; margin-bottom:5px; }
+.table input { width:100%; box-sizing:border-box; }
+.root a { display:inline-flex; align-items:center; gap:4px; color:#369dc8; white-space:nowrap; }
+.root button { display:inline-flex; align-items:center; justify-content:center; gap:6px; color:inherit; background:transparent; border:1px solid var(--border-color, #687580); border-radius:4px; padding:7px; cursor:pointer; }
+.actions button { width:32px; height:32px; flex-shrink:0; }
+.root button:disabled { opacity:.45; cursor:default; }
+.advanced { margin-top:16px; font-size:13px; }
+.advanced summary { cursor:pointer; padding:6px 0; }
+.fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:12px; }
+.fields>label { display:flex; flex-direction:column; gap:6px; overflow-wrap:anywhere; }
+.fields fieldset { margin:0; min-width:0; border:1px solid var(--border-color, #52606d); }
+.fields fieldset label,.header label { display:flex; align-items:center; gap:7px; margin:7px 0; }
+.footer { margin-top:16px; font-size:12px; }
+.error { color:#e66b76; }
+@media(max-width:650px) { .fields { grid-template-columns:minmax(0,1fr); } }

@@ -220,6 +220,9 @@
     - id: zerowall-research
       name: '@zerowallscience/plugin-research'
 
+    - id: zerowall-pubmed
+      name: '@zerowallscience/plugin-pubmed'
+
     - id: zerowall-mineru
       name: '@zerowallscience/plugin-mineru'
 

@@ -129,7 +129,7 @@ export interface PublicationRecord {
   title: string
   status: 'draft' | 'frozen' | 'validating' | 'ready' | 'failed'
   manifest: JsonObject
-  frozenSnapshot?: ResearchProjectSnapshotV1
+  frozenSnapshot?: ResearchProjectSnapshot
   validation: JsonObject
   reproductionRunId?: string
   reproducedAt?: string
@@ -272,6 +272,12 @@ export interface ResearchProjectSnapshotV1 {
   edges: ResearchEdgeRecord[]
   auditEvents: AuditEventRecord[]
 }
+
+export interface ResearchProjectSnapshotV2 extends Omit<ResearchProjectSnapshotV1, 'version'> {
+  version: 2
+  literature: import('./literature.ts').LiteratureSnapshot
+}
+export type ResearchProjectSnapshot = ResearchProjectSnapshotV1 | ResearchProjectSnapshotV2
 
 export interface CreateExecutionContextInput { projectId: string; name: string; kind: ExecutionContextKind; config?: JsonObject }
 export interface UpdateExecutionContextInput { name?: string; kind?: ExecutionContextKind; config?: JsonObject }

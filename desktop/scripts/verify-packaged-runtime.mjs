@@ -70,6 +70,10 @@ const requiredArchivePaths = [
   'node_modules/@zerowallscience/plugin-projects/lib/index.js',
   'node_modules/@zerowallscience/plugin-files/lib/index.js',
   'node_modules/@zerowallscience/plugin-python/lib/index.js',
+  'node_modules/@zerowallscience/plugin-pubmed/lib/index.js',
+  'node_modules/@zerowallscience/plugin-pubmed/lib/typert.host.js',
+  'node_modules/@zerowallscience/plugin-pubmed/lib/typert.remote-client.js',
+  'node_modules/@zerowallscience/plugin-pubmed/THIRD_PARTY_LICENSES/Apache-2.0.txt',
   'node_modules/@zerowallscience/plugin-images/lib/client.js',
   'node_modules/@zerowallscience/plugin-image-dup/lib/index.js',
   'node_modules/@zerowallscience/plugin-image-dup/lib/client.js',
@@ -121,6 +125,7 @@ for (const path of requiredArchivePaths) {
 for (const path of [
   resolve(packaged.resourcesRoot, 'zerowall.patch.yml'),
   resolve(packaged.resourcesRoot, 'skills', 'literature-review', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'skills', 'pubmed-literature', 'SKILL.md'),
   resolve(packaged.resourcesRoot, 'skills', 'mineru-document-parser', 'SKILL.md'),
   resolve(packaged.resourcesRoot, 'skills', 'zerowall-ppt', 'SKILL.md'),
   resolve(packaged.resourcesRoot, 'skills', 'bioinfor-figure-export', 'SKILL.md'),
@@ -559,6 +564,7 @@ async function verifyHostStartup() {
           await verifyPluginInventory(probeUrl)
           await verifyFreeSearch(probeUrl)
           await verifyMineruStatus(probeUrl)
+          await verifyPubmedStatus(probeUrl)
           await verifySinglecellStatus(probeUrl)
           await verifyEventWebSockets(probeUrl)
           await verifyPlaintextSessionPersistence(probeUrl, root)
@@ -570,6 +576,7 @@ async function verifyHostStartup() {
           await verifyWebBootManifest(probeUrl)
           await verifyPluginInventory(probeUrl)
           await verifyMineruStatus(probeUrl)
+          await verifyPubmedStatus(probeUrl)
           await verifySinglecellStatus(probeUrl)
           await verifyEventWebSockets(probeUrl)
           return
@@ -676,7 +683,7 @@ async function verifyPluginInventory(url) {
   const entries = envelope.result.value.entries
   const expected = [
     'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
-    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations',
+    'skills', 'reviewer', 'research', 'pubmed', 'execution', 'python', 'runs', 'publications', 'presentations',
   ].map(name => `@zerowallscience/plugin-${name}`)
   expected.push('dsh-free-search', 'dsh-wechat', 'dsh-file-review-tab', 'dsh-auto-review', '@daweifu/capability-menu', '@daweifu/capability-menu/policy', '@daweifu/capability-menu/search', '@daweifu/capability-menu/invoke', '@changfenhuang/dsh-genui')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
@@ -732,6 +739,29 @@ async function verifyFreeSearch(url) {
   }
   if (first.value.cache !== 'miss' || second.value.cache !== 'hit') {
     throw new Error(`Packaged Host free-search cache contract failed: first=${first.value.cache}, second=${second.value.cache}.`)
+  }
+}
+
+async function verifyPubmedStatus(url) {
+  const rpcId = randomUUID()
+  const response = await fetch(authUrl(new URL(url), '/api/zerowallPubmed.getConfigStatus'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'client-request', rpcId, method: 'zerowallPubmed/getConfigStatus', payload: { args: {} } }),
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!response.ok) throw new Error(`Packaged PubMed status returned HTTP ${response.status}.`)
+  const envelope = await response.json()
+  const value = envelope?.result?.value
+  if (envelope?.rpcId !== rpcId || envelope?.result?.ok !== true || value?.config?.enabled !== true || !Array.isArray(value?.keys)) {
+    throw new Error('Packaged PubMed configuration service is unavailable.')
+  }
+  for (const name of ['NCBI_API_KEY', 'S2_API_KEY', 'OPENALEX_API_KEY']) {
+    const key = value.keys.find(item => item.name === name)
+    if (!key || typeof key.configured !== 'boolean' || !['dedicated', 'variable', 'environment', 'none'].includes(key.source)
+      || Object.keys(key).some(field => !['name', 'configured', 'source'].includes(field))) {
+      throw new Error(`Packaged PubMed credential status contract failed: ${name}.`)
+    }
   }
 }
 

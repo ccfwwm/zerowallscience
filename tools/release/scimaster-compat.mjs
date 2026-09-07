@@ -4,10 +4,12 @@ import { createHash } from 'node:crypto'
 // upstream layout change from producing an unverified or partially patched
 // MCP environment.
 export const SCIMASTER_0315_MCP_SHA256 = '0ffbbf40bfb890491467abd6cb52ea8b9e6bad570075bd38cf40560af6a4fabc'
+export const SCIMASTER_0315_MCP_PATCHED_SHA256 = 'dd9a19a68da5bc9d4a01c7a5621e8de8f0ad4d888e830b1e142c89eb078b2fa0'
 
 export function patchSciMasterMcp(source) {
   const input = Buffer.isBuffer(source) ? source : Buffer.from(source, 'utf8')
   const sourceHash = createHash('sha256').update(input).digest('hex')
+  if (sourceHash === SCIMASTER_0315_MCP_PATCHED_SHA256) return input
   if (sourceHash !== SCIMASTER_0315_MCP_SHA256) {
     throw new Error(`Unsupported SciMaster 0.3.15 MCP bundle hash: ${sourceHash}`)
   }

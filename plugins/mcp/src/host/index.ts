@@ -229,10 +229,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
         const bytes = Buffer.concat(chunks)
         const sha256 = createHash('sha256').update(bytes).digest('hex')
         if (bytes.length !== expectedBytes || sha256 !== expectedSha256) throw new Error('The downloaded file does not match its remote Manifest.')
-        await mkdir(dirname(source), { recursive: true })
-        const resolvedParent = await realpath(dirname(source))
+        const parent = dirname(source)
+        const resolvedParent = await realpath(parent).catch(async error => {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+          return resolve(parent)
+        })
         const parentContainment = relative(workspace, resolvedParent)
         if (parentContainment === '..' || parentContainment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(parentContainment)) throw new Error('local_path resolves outside the current workspace.')
+        await mkdir(parent, { recursive: true })
         try {
           const existing = await lstat(source)
           if (!existing.isFile() || existing.isSymbolicLink()) throw new Error('local_path must resolve to a regular, non-symbolic-link file.')

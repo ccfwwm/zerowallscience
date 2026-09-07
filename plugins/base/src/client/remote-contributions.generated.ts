@@ -10,9 +10,10 @@ import remote7 from '@zerowallscience/plugin-mineru/remote'
 import remote8 from '@zerowallscience/plugin-presentations/remote'
 import remote9 from '@zerowallscience/plugin-projects/remote'
 import remote10 from '@zerowallscience/plugin-publications/remote'
-import remote11 from '@zerowallscience/plugin-research/remote'
-import remote12 from '@zerowallscience/plugin-runs/remote'
-import remote13 from '@zerowallscience/plugin-singlecell/remote'
-import remote14 from '@zerowallscience/plugin-skills/remote'
+import remote11 from '@zerowallscience/plugin-pubmed/remote'
+import remote12 from '@zerowallscience/plugin-research/remote'
+import remote13 from '@zerowallscience/plugin-runs/remote'
+import remote14 from '@zerowallscience/plugin-singlecell/remote'
+import remote15 from '@zerowallscience/plugin-skills/remote'
 
-export const zerowallRemoteContributions = [remote0, remote1, remote2, remote3, remote4, remote5, remote6, remote7, remote8, remote9, remote10, remote11, remote12, remote13, remote14] as const
+export const zerowallRemoteContributions = [remote0, remote1, remote2, remote3, remote4, remote5, remote6, remote7, remote8, remote9, remote10, remote11, remote12, remote13, remote14, remote15] as const

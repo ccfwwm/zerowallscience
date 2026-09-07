@@ -26,6 +26,7 @@
     { "path": "./plugins/presentations/tsconfig.host.json" },
     { "path": "./plugins/projects/tsconfig.host.json" },
     { "path": "./plugins/publications/tsconfig.host.json" },
+    { "path": "./plugins/pubmed/tsconfig.host.json" },
     { "path": "./plugins/research/tsconfig.host.json" },
     { "path": "./plugins/runs/tsconfig.host.json" },
     { "path": "./plugins/skills/tsconfig.host.json" },

@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -63,8 +63,8 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await browser?.close().catch(() => undefined)
   stopProcessTree(application)
+  await browser?.close().catch(() => undefined)
   for (const target of roots.splice(0)) rmSync(target, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 })
 
@@ -159,7 +159,16 @@ describe('ZeroWall Science Electron', () => {
     await expect.poll(() => settings.getByText('模型目录已同步', { exact: true }).count()).toBe(1)
     expect(await settings.getByText('科研 MCP 能力', { exact: true }).count()).toBe(0)
     expect(await settings.getByLabel('化工社 API Token').getAttribute('type')).toBe('password')
-    const artifacts = join(desktopRoot, 'dist', 'verification-5.3.0')
+    const literature = settings.getByRole('region', { name: '文献服务', exact: true })
+    await literature.getByRole('heading', { name: '文献服务', exact: true }).waitFor()
+    await expect.poll(() => literature.getByRole('button', { name: '检测 NCBI / PubMed', exact: true }).isEnabled()).toBe(true)
+    for (const key of ['NCBI_API_KEY', 'S2_API_KEY', 'OPENALEX_API_KEY']) {
+      expect(await literature.getByLabel(key, { exact: true }).getAttribute('type')).toBe('password')
+      expect(await literature.getByLabel(key, { exact: true }).inputValue()).toBe('')
+    }
+    expect(await literature.getByRole('link', { name: 'NCBI / PubMed 获取 Key' }).getAttribute('href')).toBe('https://www.ncbi.nlm.nih.gov/account/settings/')
+    const version = JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')).version
+    const artifacts = join(desktopRoot, 'dist', `verification-${version}`)
     mkdirSync(artifacts, { recursive: true })
     for (const viewport of [{ width: 1280, height: 900 }, { width: 720, height: 900 }]) {
       await page.setViewportSize(viewport)
@@ -177,6 +186,14 @@ describe('ZeroWall Science Electron', () => {
         expect(current.top).toBeGreaterThanOrEqual(previous.bottom - 1)
       }
       await page.screenshot({ path: join(artifacts, `environment-${viewport.width}.png`) })
+      await literature.scrollIntoViewIfNeeded()
+      const statusHeadingHeight = await literature.getByRole('columnheader', { name: '配置状态', exact: true }).evaluate(element => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        return range.getBoundingClientRect().height
+      })
+      expect(statusHeadingHeight).toBeLessThan(30)
+      await page.screenshot({ path: join(artifacts, `literature-${viewport.width}.png`) })
       await settings.getByLabel('化工社 API Token').scrollIntoViewIfNeeded()
       await page.screenshot({ path: join(artifacts, `aichem-${viewport.width}.png`) })
     }

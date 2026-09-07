@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -96,6 +96,40 @@ describe('rdatalinux workspace upload bridge', () => {
       expect(readFileSync(join(root, 'outputs', 'plot.png'))).toEqual(bytes)
       expect(JSON.stringify(result.isError ? {} : result.value)).not.toContain('data_base64')
       expect((result.isError ? undefined : result.value)).toMatchObject({ localPath: 'outputs/plot.png', remotePath: 'figureya/run-1/plot.png', bytes: bytes.length, sha256 })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('rejects a download path outside the workspace before creating directories', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-r-download-boundary-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.DSH_HOME = join(root, 'harness')
+    process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(ZeroWallMcpService)
+      ctx.tools.register(defineTool({
+        name: 'mcp__rmcp__r_files',
+        description: 'test remote boundary',
+        parameters: { action: { type: 'string', required: true }, arguments: { type: 'json', required: true } },
+        output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+        execute: async () => ({ path: 'remote.bin', bytes: 1, sha256: createHash('sha256').update('x').digest('hex'), data_base64: Buffer.from('x').toString('base64') }),
+      }))
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal,
+        callId: ToolCallId('workspace-download-boundary'),
+        name: 'r_files',
+        arguments: { action: 'download_workspace', project_id: 'study-1', remote_path: 'remote.bin', local_path: '../outside/blocked.bin', confirm: true },
+        agent: { session: { header: { cwd: root } } } as any,
+      })
+      expect(result.isError).toBe(true)
+      expect(result.content[0]?.type === 'text' ? result.content[0].text : '').toMatch(/(?:escapes|outside) the current workspace/u)
+      expect(existsSync(join(root, '..', 'outside', 'blocked.bin'))).toBe(false)
     } finally {
       await ctx.fiber.dispose()
     }

@@ -1,13 +1,15 @@
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, existsSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash, randomUUID } from 'node:crypto'
 export * from './domain.ts'
+export type { LiteratureSnapshot, LiteratureGraph, LiteratureNode, LiteratureEdge } from './literature.ts'
+import { LiteratureStore, LITERATURE_SQL, type LiteratureGraph, type LiteratureSnapshot } from './literature.ts'
 import type {
   ArtifactRecord, AuditEventRecord, CreateArtifactInput, CreateDataAssetInput,
   CreateDecisionInput, CreateExecutionContextInput, CreatePaperInput, CreateResearchEdgeInput,
   CreateRunInput, DataAssetRecord, DecisionRecord, ExecutionContextRecord, PaperRecord,
-  ResearchEdgeRecord, ResearchNodeKind, ResearchProjectSnapshotV1, RunRecord, RunStatus,
+  ResearchEdgeRecord, ResearchNodeKind, ResearchProjectSnapshot, RunRecord, RunStatus,
   CreatePresentationInput, CreatePublicationInput, PresentationRecord, PublicationRecord,
   JsonObject, JsonValue, UpdateExecutionContextInput, UpdatePresentationChanges, UpdateRunChanges, AuditReport,
 } from './domain.ts'
@@ -73,6 +75,7 @@ export interface ProjectBundleV1 {
   exportedAt: string
   project: ProjectRecord
   sessionArchives: SessionArchiveV1[]
+  research?: ResearchProjectSnapshot
 }
 
 export interface ImportedProjectBundle {
@@ -308,20 +311,29 @@ const MIGRATIONS = [
       ALTER TABLE presentations ADD COLUMN rebuild_job_json TEXT;
     `,
   },
+  { version: 9, sql: LITERATURE_SQL },
 ] as const
 
 export class ResearchStore {
   private readonly database: DatabaseSync
+  private readonly literature: LiteratureStore
   private transactionDepth = 0
 
   constructor(path: string) {
     mkdirSync(dirname(path), { recursive: true })
     this.database = new DatabaseSync(path)
     this.database.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
+    const existing = this.database.prepare("SELECT name FROM sqlite_master WHERE name='schema_migrations'").get()
+    if (existing && this.schemaVersion() > 0 && this.schemaVersion() < 9 && path !== ':memory:') {
+      const backup = path + '.pre-literature-v9.sqlite'
+      if (!existsSync(backup)) this.database.exec("VACUUM INTO '" + backup.replaceAll("'", "''") + "'")
+    }
     this.migrate()
+    this.literature = new LiteratureStore(this.database, input => this.createPaper(input), id => this.listPapers(id))
   }
 
   close(): void {
+    try { this.database.exec('PRAGMA wal_checkpoint(TRUNCATE);') } catch { /* best effort during shutdown */ }
     this.database.close()
   }
 
@@ -847,17 +859,43 @@ export class ResearchStore {
     return this.updatePresentation(id, { exportUris: { ...current.exportUris, [format]: nonEmptyString(uri, 'Presentation export URI') } })
   }
 
-  exportResearchSnapshot(projectId: string): ResearchProjectSnapshotV1 {
+  saveLiteraturePapers(projectId: string, articles: JsonObject[]): PaperRecord[] {
+    this.requireProject(projectId)
+    return this.withTransaction(() => {
+      const papers = this.literature.savePapers(projectId, articles)
+      this.audit(projectId, undefined, 'literature.papers-saved', { paperIds: papers.map(p => p.id) })
+      return papers
+    })
+  }
+
+  getLiteratureGraph(projectId: string): LiteratureSnapshot { this.requireProject(projectId); return this.literature.graph(projectId) }
+
+  commitLiteratureGraph(projectId: string, graph: LiteratureGraph): { addedNodes: number; addedEdges: number } {
+    this.requireProject(projectId)
+    return this.withTransaction(() => {
+      const result = this.literature.merge(projectId, graph)
+      this.audit(projectId, undefined, 'literature.graph-committed', result)
+      return result
+    })
+  }
+
+  resetLiteratureGraph(projectId: string): void {
+    this.requireProject(projectId)
+    this.withTransaction(() => { this.literature.reset(projectId); this.audit(projectId, undefined, 'literature.graph-reset', {}) })
+  }
+
+  exportResearchSnapshot(projectId: string): ResearchProjectSnapshot {
     const project = this.requireProject(projectId)
     return {
-      format: 'zerowall-science-research-project', version: 1, exportedAt: new Date().toISOString(), project,
+      format: 'zerowall-science-research-project', version: 2, exportedAt: new Date().toISOString(), project,
+      literature: this.getLiteratureGraph(projectId),
       executionContexts: this.listExecutionContexts(projectId), dataAssets: this.listDataAssets(projectId),
       runs: this.listRuns(projectId), artifacts: this.listArtifacts(projectId), papers: this.listPapers(projectId),
       decisions: this.listDecisions(projectId), edges: this.listResearchEdges(projectId), auditEvents: this.listAuditEvents(projectId),
     }
   }
 
-  importResearchSnapshot(input: ResearchProjectSnapshotV1): ProjectRecord {
+  importResearchSnapshot(input: ResearchProjectSnapshot): ProjectRecord {
     validateResearchSnapshot(input)
     return this.withTransaction(() => {
       const project = this.createProject({ name: input.project.name, rootPath: input.project.rootPath, description: input.project.description })
@@ -875,6 +913,7 @@ export class ResearchStore {
       for (const item of input.papers) ids.set(item.id, this.createPaper({ ...item, projectId: project.id }).id)
       for (const item of input.decisions) ids.set(item.id, this.createDecision({ ...item, projectId: project.id }).id)
       for (const edge of input.edges) this.createResearchEdge({ projectId: project.id, fromId: mappedRequired(ids, edge.fromId), toId: mappedRequired(ids, edge.toId), relation: edge.relation, metadata: edge.metadata })
+      if (input.version === 2) this.literature.restore(project.id, input.literature, ids)
       this.audit(project.id, undefined, 'project.imported', { sourceProjectId: input.project.id })
       return project
     })
@@ -892,13 +931,14 @@ export class ResearchStore {
       exportedAt: new Date().toISOString(),
       project: projectFromRow(row),
       sessionArchives,
+      research: this.exportResearchSnapshot(id),
     }
     return parseProjectBundle(bundle)
   }
 
   importProjectBundle(input: unknown): ImportedProjectBundle {
     const bundle = parseProjectBundle(input)
-    const project = this.createProject({
+    const project = bundle.research ? this.importResearchSnapshot(bundle.research) : this.createProject({
       name: bundle.project.name,
       rootPath: bundle.project.rootPath,
       description: bundle.project.description,
@@ -1086,7 +1126,7 @@ export function parseProjectBundle(input: unknown): ProjectBundleV1 {
   const bundle = record(input, 'Project bundle')
   if (bundle.format !== PROJECT_BUNDLE_FORMAT) throw new Error('Unsupported project bundle format.')
   if (bundle.version !== PROJECT_BUNDLE_VERSION) throw new Error(`Unsupported project bundle version: ${String(bundle.version)}`)
-  exactKeys(bundle, ['format', 'version', 'exportedAt', 'project', 'sessionArchives'], 'Project bundle')
+  exactKeys(bundle, ['format', 'version', 'exportedAt', 'project', 'sessionArchives', ...(bundle.research === undefined ? [] : ['research'])], 'Project bundle')
   const project = record(bundle.project, 'Project bundle project')
   exactKeys(project, ['id', 'name', 'rootPath', 'description', 'createdAt', 'updatedAt'], 'Project bundle project')
   const parsed: ProjectBundleV1 = {
@@ -1102,8 +1142,13 @@ export function parseProjectBundle(input: unknown): ProjectBundleV1 {
       updatedAt: isoDateString(project.updatedAt, 'Project bundle project updatedAt'),
     },
     sessionArchives: sessionArchiveArray(bundle.sessionArchives),
+    ...(bundle.research === undefined ? {} : { research: bundle.research as ResearchProjectSnapshot }),
   }
   const sessionIds = new Set(parsed.sessionArchives.map((archive) => archive.sessionId))
+  if (parsed.research) {
+    validateResearchSnapshot(parsed.research)
+    if (parsed.research.project.id !== parsed.project.id || parsed.research.project.rootPath !== parsed.project.rootPath) throw new Error('Research snapshot belongs to a different project.')
+  }
   if (sessionIds.size !== parsed.sessionArchives.length) throw new Error('Project bundle sessionArchives contain duplicate session ids.')
   for (const archive of parsed.sessionArchives) {
     const header = parseSessionArchiveHeader(archive.content)
@@ -1436,7 +1481,7 @@ function publicationFromRow(row: Record<string, unknown>): PublicationRecord {
   return {
     id: String(row.id), projectId: String(row.project_id), title: String(row.title), status: row.status as PublicationRecord['status'],
     manifest: jsonObject(jsonValue(row.manifest_json, 'Publication manifest'), 'Publication manifest'),
-    ...(row.frozen_snapshot_json === null ? {} : { frozenSnapshot: jsonValue<ResearchProjectSnapshotV1>(row.frozen_snapshot_json, 'Publication frozen snapshot') }),
+    ...(row.frozen_snapshot_json === null ? {} : { frozenSnapshot: jsonValue<ResearchProjectSnapshot>(row.frozen_snapshot_json, 'Publication frozen snapshot') }),
     validation: jsonObject(jsonValue(row.validation_json, 'Publication validation'), 'Publication validation'),
     ...(row.reproduction_run_id === null ? {} : { reproductionRunId: String(row.reproduction_run_id) }),
     ...(row.reproduced_at === null ? {} : { reproducedAt: String(row.reproduced_at) }),
@@ -1701,8 +1746,9 @@ function omitName<T extends { name: string }>(value: T): Omit<T, 'name'> {
   return rest
 }
 
-function validateResearchSnapshot(input: ResearchProjectSnapshotV1): void {
-  if (input?.format !== 'zerowall-science-research-project' || input.version !== 1) throw new Error('Unsupported research project snapshot.')
+function validateResearchSnapshot(input: ResearchProjectSnapshot): void {
+  if (input?.format !== 'zerowall-science-research-project' || ![1, 2].includes(input.version)) throw new Error('Unsupported research project snapshot.')
+  if (input.version === 2 && (!input.literature || !Array.isArray(input.literature.nodes) || !Array.isArray(input.literature.edges) || !Array.isArray(input.literature.identifiers))) throw new Error('Research literature snapshot is incomplete.')
   const arrays = [input.executionContexts, input.dataAssets, input.runs, input.artifacts, input.papers, input.decisions, input.edges, input.auditEvents]
   if (arrays.some(value => !Array.isArray(value))) throw new Error('Research project snapshot is incomplete.')
   const ids = new Set<string>()

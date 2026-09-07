@@ -5,7 +5,8 @@ import {
   type ArtifactRecord, type AuditEventRecord, type CreateArtifactInput, type CreateDataAssetInput,
   type CreateDecisionInput, type CreateExecutionContextInput, type CreatePaperInput, type CreateResearchEdgeInput,
   type CreateRunInput, type DataAssetRecord, type DecisionRecord, type ExecutionContextRecord, type PaperRecord,
-  type ProjectRecord, type ResearchEdgeRecord, type ResearchProjectSnapshotV1, type RunRecord, type UpdateRunChanges, type AuditReport,
+  type ProjectRecord, type ResearchEdgeRecord, type ResearchProjectSnapshot, type RunRecord, type UpdateRunChanges, type AuditReport,
+  type JsonObject, type LiteratureGraph, type LiteratureSnapshot,
 } from '@zerowallscience/research-store/types'
 import { ResearchStore } from '@zerowallscience/research-store'
 import type {} from 'zod'
@@ -60,6 +61,10 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('listArtifacts') listArtifacts(projectId: string): ArtifactRecord[] { return this.store.listArtifacts(projectId) }
   @Remote('createPaper') createPaper(input: CreatePaperInput): PaperRecord { return this.store.createPaper(input) }
   @Remote('listPapers') listPapers(projectId: string): PaperRecord[] { return this.store.listPapers(projectId) }
+  saveLiteraturePapers(projectId: string, articles: JsonObject[]): PaperRecord[] { return this.store.saveLiteraturePapers(projectId, articles) }
+  getLiteratureGraph(projectId: string): LiteratureSnapshot { return this.store.getLiteratureGraph(projectId) }
+  commitLiteratureGraph(projectId: string, graph: LiteratureGraph): { addedNodes: number; addedEdges: number } { return this.store.commitLiteratureGraph(projectId, graph) }
+  resetLiteratureGraph(projectId: string): void { this.store.resetLiteratureGraph(projectId) }
   @Remote('createDecision') createDecision(input: CreateDecisionInput): DecisionRecord { return this.store.createDecision(input) }
   @Remote('listDecisions') listDecisions(projectId: string): DecisionRecord[] { return this.store.listDecisions(projectId) }
   @Remote('createEdge') createEdge(input: CreateResearchEdgeInput): ResearchEdgeRecord { return this.store.createResearchEdge(input) }
@@ -72,8 +77,8 @@ export class ZeroWallResearchService extends TypertRemoteService {
   }
   @Remote('getAuditReport') getAuditReport(projectId: string): AuditReport { return this.store.getAuditReport(projectId) }
   @Remote('exportAuditReport') exportAuditReport(input: { projectId: string; format: 'json' | 'markdown' }): string { return this.store.exportAuditReport(input.projectId, input.format) }
-  @Remote('exportSnapshot') exportSnapshot(projectId: string): ResearchProjectSnapshotV1 { return this.store.exportResearchSnapshot(projectId) }
-  @Remote('importSnapshot') importSnapshot(snapshot: ResearchProjectSnapshotV1): ProjectRecord { return this.store.importResearchSnapshot(snapshot) }
+  @Remote('exportSnapshot') exportSnapshot(projectId: string): ResearchProjectSnapshot { return this.store.exportResearchSnapshot(projectId) }
+  @Remote('importSnapshot') importSnapshot(snapshot: ResearchProjectSnapshot): ProjectRecord { return this.store.importResearchSnapshot(snapshot) }
   @Remote('preview') async preview(input: { projectId: string; uri: string; mediaType?: string }): Promise<ScientificPreviewPayload> {
     const project = this.store.listProjects().find(item => item.id === input.projectId)
     if (project === undefined) throw new Error(`Project was not found: ${input.projectId}`)

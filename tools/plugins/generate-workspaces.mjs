@@ -92,6 +92,7 @@ const dshDependencies = {
 
 const npmDependencies = {
   opencode: {},
+  pubmed: { compromise: '14.16.0', undici: '^7.16.0', '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   base: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0' },
   projects: { '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   account: { qrcode: '^1.5.4', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
@@ -113,6 +114,7 @@ const npmDependencies = {
 }
 
 const plugins = [
+  { id: 'pubmed', remote: true, capabilities: ['literature', 'evidence-graph'], permissions: ['files', 'network', 'credentials', 'approvals'], dependencies: ['secrets', 'research'], requiredServices: ['settings', 'tools', 'sessions', 'zerowallResearch'] },
   { id: 'opencode', capabilities: ['llm.free', 'llm.discovery'], permissions: ['network'] },
   // These services are accessed directly by plugin-base during activation.
   // Keep the generated manifest in sync so Loader injects them before apply.
@@ -233,6 +235,7 @@ for (const plugin of plugins) {
       ] : []),
       'dsh.bundle.patch.yml',
       'zerowall.plugin.json',
+      ...(plugin.id === 'pubmed' ? ['THIRD_PARTY_LICENSES'] : []),
       // The image-duplicate implementation carries upstream provenance in
       // THIRD_PARTY_LICENSES; its development README must not enter ASAR.
       ...(plugin.id === 'image-dup' ? [] : ['README.md']),

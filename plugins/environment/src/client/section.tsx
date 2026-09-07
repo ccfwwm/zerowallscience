@@ -3,6 +3,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { EnvironmentVariableInfo, ImageGenerationQuality, ImageModelSelection } from '../shared/types.js'
 import css from './section.module.css'
+import { LiteratureSettings } from './LiteratureSettings.js'
 
 interface Props extends PropsRuntime<'settings.section'> {
   reviewerScope: SettingsScope<any>
@@ -10,6 +11,7 @@ interface Props extends PropsRuntime<'settings.section'> {
   accountRemote: any
   mcpRemote: any
   mineruRemote?: any
+  pubmedRemote?: any
   unwrap(value: any): Promise<any>
   modelCatalog(check?: boolean): Promise<{ groups: any[]; failures: any[] }>
 }
@@ -20,7 +22,7 @@ const SCI_MASTER_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/home'
 
 type LoadState = 'loading' | 'ready' | 'unavailable' | 'error'
 
-export function EnvironmentSection({ reviewerScope, environmentRemote, accountRemote, mcpRemote, mineruRemote, unwrap, modelCatalog }: Props) {
+export function EnvironmentSection({ reviewerScope, environmentRemote, accountRemote, mcpRemote, mineruRemote, pubmedRemote, unwrap, modelCatalog }: Props) {
   const [reviewer, setReviewerValue] = useState(() => reviewerScope.getSnapshot().value ?? defaultReviewer)
   const [catalogGroups, setCatalogGroups] = useState<any[]>([])
   const [imageModels, setImageModels] = useState<any[]>([])
@@ -193,6 +195,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     </header>
     {error ? <p className={css.error} role="alert">{error}</p> : null}
     <div className={css.grid}>
+      <LiteratureSettings remote={pubmedRemote} unwrap={unwrap} />
       <article className={css.card}>
         <div className={css.cardHeader}><div><h3>Reviewer</h3><p>审核使用设置中的模型目录，不单独维护供应商。</p></div><span className={css.status}>{statusText('catalog', '模型目录已同步')}</span></div>
         <div className={css.formGrid}>

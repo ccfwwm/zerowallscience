@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-pubmed
+      name: '@zerowallscience/plugin-pubmed'

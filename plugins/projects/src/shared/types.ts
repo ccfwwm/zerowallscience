@@ -2,7 +2,7 @@ import type { ProjectBundleV1 as ResearchProjectBundleV1 } from '@zerowallscienc
 export type {
   ArtifactRecord, AuditEventRecord, CreateArtifactInput, CreateDataAssetInput, CreateDecisionInput,
   CreateExecutionContextInput, CreatePaperInput, CreateResearchEdgeInput, CreateRunInput, DataAssetRecord,
-  DecisionRecord, ExecutionContextRecord, PaperRecord, ResearchEdgeRecord, ResearchProjectSnapshotV1,
+  DecisionRecord, ExecutionContextRecord, PaperRecord, ResearchEdgeRecord, ResearchProjectSnapshot,
   RunRecord, RunStatus,
   CreatePresentationInput, CreatePublicationInput, PresentationRecord, PublicationRecord,
   UpdateExecutionContextInput,
