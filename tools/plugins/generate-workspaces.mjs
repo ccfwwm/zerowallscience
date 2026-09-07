@@ -109,11 +109,6 @@ const npmDependencies = {
   runs: { '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   publications: { '@zerowallscience/research-store': 'workspace:^', jszip: '3.10.1', zod: '^4.4.3' },
   presentations: { '@zerowallscience/research-store': 'workspace:^', '@zerowallscience/dsh-ppt-runtime': 'workspace:^', pptxgenjs: '4.0.1', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
-  'web-search': {
-    zod: '^4.4.3',
-    '@deepseek-ai/dsh-web': 'workspace:^',
-    '@deepseek-ai/dsh-web-search-deepseek': 'workspace:^',
-  },
   wechat: { qrcode: '^1.5.4', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0' },
 }
 
@@ -158,7 +153,6 @@ const plugins = [
   { id: 'runs', client: true, remote: true, capabilities: ['runs'], permissions: ['processes', 'files'], dependencies: ['execution'] },
   { id: 'publications', client: true, remote: true, capabilities: ['papers', 'publications'], permissions: ['files'], dependencies: ['runs'] },
   { id: 'presentations', client: true, remote: true, capabilities: ['presentations'], permissions: ['files', 'processes', 'network', 'approvals'], requiredServices: ['tools', 'sessions', 'zerowallImageGeneration'] },
-  { id: 'web-search', client: true, capabilities: ['web-search'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'], requiredServices: ['agents', 'web'] },
 ]
 
 // plugin-base is the single client-side assembly point for ZeroWall Typert

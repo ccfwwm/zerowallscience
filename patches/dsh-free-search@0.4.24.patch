@@ -1,0 +1,228 @@
+diff --git a/lib/client.js b/lib/client.js
+index b00851168a07ffd4a323746b27c3556317cdfe5a..3f0a736f6aa86e4305f1295e62dacbd93b7064ff 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -119,7 +119,7 @@ window.__ModuleLoader__.load({
+         updateView: "查看 →",
+         upgrade: "升级",
+         upgrading: "升级中…",
+-        upgradeLinkMode: "（本地开发模式，升级请用 git pull）",
++        upgradeLinkMode: "（由 ZeroWall Science 统一更新）",
+         upgradeDone: (l) => `升级到 v${l} 完成，重启 dsh 后生效`,
+         upgradeFailed: (m) => `升级失败：${m}`,
+         safeSearchLabel: "安全搜索过滤 (adlt)",
+@@ -182,7 +182,7 @@ window.__ModuleLoader__.load({
+         updateView: "View →",
+         upgrade: "Upgrade",
+         upgrading: "Upgrading…",
+-        upgradeLinkMode: "(local dev install - use git pull to update)",
++        upgradeLinkMode: "(managed by ZeroWall Science)",
+         upgradeDone: (l) => `Upgraded to v${l} - restart dsh to apply`,
+         upgradeFailed: (m) => `Upgrade failed: ${m}`,
+         safeSearchLabel: "Safe search filter (adlt)",
+@@ -328,7 +328,6 @@ window.__ModuleLoader__.load({
+       const [testing, setTesting] = react.useState(false);
+       const [testResult, setTestResult] = react.useState(null);
+       const [checkingUpdate, setCheckingUpdate] = react.useState(false);
+-      const [upgrading, setUpgrading] = react.useState(false);
+       const [updateInfo, setUpdateInfo] = react.useState(null);
+ 
+       const load = react.useCallback(async () => {
+@@ -338,7 +337,7 @@ window.__ModuleLoader__.load({
+             const view = result.value.namespaces.find((n) => n.ns === NS);
+             if (view) {
+               const v = view.value ?? {};
+-              setProvider(v.provider ?? "ddg");
++              setProvider(v.provider ?? "bing");
+               setSafeSearch(v.safeSearch === "strict" || v.safeSearch === "moderate" ? v.safeSearch : "off");
+               setBingMarket(v.bingMarket === undefined ? "zh-CN" : v.bingMarket);
+               setLang(v.lang === "en" ? "en" : "zh");
+@@ -500,29 +499,6 @@ window.__ModuleLoader__.load({
+         }
+       };
+ 
+-      const runUpdate = async () => {
+-        setUpgrading(true);
+-        setUpdateInfo(null);
+-        setFailed(false);
+-        try {
+-          const response = await fetch(`${BRIDGE_PREFIX}/update`, {
+-            method: "POST",
+-            headers: { "content-type": "application/json" },
+-            body: "{}",
+-          });
+-          const result = await response.json();
+-          if (result.ok) {
+-            setUpdateInfo({ ok: true, hasUpdate: false, upgraded: true, message: result.value.message, latest: result.value.latest });
+-          } else {
+-            setUpdateInfo({ ok: false, upgradeFailed: result.message ?? "upgrade failed" });
+-          }
+-        } catch {
+-          setUpdateInfo({ ok: false, upgradeFailed: "request failed" });
+-        } finally {
+-          setUpgrading(false);
+-        }
+-      };
+-
+       if (state.status === "loading") return null;
+       const ready = state.status === "ready";
+       const t = tt(lang);
+@@ -880,22 +856,14 @@ react_jsx_runtime.jsx("div", {
+                                     children: [
+                                       t.updateAvailable(updateInfo.current, updateInfo.latest),
+                                       " ",
+-                                      updateInfo.installable
+-                                        ? react_jsx_runtime.jsx("button", {
+-                                            className: "dshfs-btn dshfs-upgrade",
+-                                            type: "button",
+-                                            onClick: runUpdate,
+-                                            disabled: upgrading || saving || !ready,
+-                                            children: upgrading ? t.upgrading : t.upgrade,
+-                                          })
+-                                        : react_jsx_runtime.jsx("a", {
+-                                            className: "dshfs-link",
+-                                            href: updateInfo.updateUrl,
+-                                            target: "_blank",
+-                                            rel: "noopener noreferrer",
+-                                            children: t.updateView,
+-                                          }),
+-                                      updateInfo.installable ? null : " " + t.upgradeLinkMode,
++                                      react_jsx_runtime.jsx("a", {
++                                        className: "dshfs-link",
++                                        href: updateInfo.updateUrl,
++                                        target: "_blank",
++                                        rel: "noopener noreferrer",
++                                        children: t.updateView,
++                                      }),
++                                      " " + t.upgradeLinkMode,
+                                     ],
+                                   })
+                                 : react_jsx_runtime.jsx("span", {
+diff --git a/lib/index.js b/lib/index.js
+index 029b4a6e282675c2f6d1ee9d2f0bb8efefe06597..925756a1423ec2ebb2b27902f184973a02fd962a 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -1,9 +1,6 @@
+ import { SettingsConflictError, SettingsProvider } from "@deepseek-ai/dsh-settings";
+ import { defineTool } from "@deepseek-ai/dsh-tools";
+ import z from "@deepseek-ai/schemastery";
+-import fs from "node:fs";
+-import path from "node:path";
+-import { exec } from "node:child_process";
+ 
+ const DDG_HTML_URL = "https://html.duckduckgo.com/html/";
+ const DDG_LITE_URL = "https://lite.duckduckgo.com/lite/";
+@@ -87,26 +84,6 @@ function compareVersions(a, b) {
+   return 0;
+ }
+ 
+-// 检测插件的安装模式：遍历 profiles/*/node_modules/dsh-free-search，
+-// symlink（link: 本地开发）→ isLink=true；npm 真安装 → isLink=false；找不到 → null
+-function detectInstallMode() {
+-  const profilesDir = path.join(process.cwd(), "profiles");
+-  let found = null;
+-  try {
+-    for (const name of fs.readdirSync(profilesDir)) {
+-      const pkgPath = path.join(profilesDir, name, "node_modules", "dsh-free-search");
+-      if (!fs.existsSync(pkgPath)) continue;
+-      let isLink = false;
+-      try {
+-        isLink = fs.lstatSync(pkgPath).isSymbolicLink();
+-      } catch {}
+-      found = { profileDir: path.join(profilesDir, name), isLink };
+-      break;
+-    }
+-  } catch {}
+-  return found;
+-}
+-
+ // time_range 支持：固定档 day/week/month/year，或自定义（相对 12h/3d/2mo/1y、绝对 YYYY-MM-DD）
+ const TIME_RANGES = ["day", "week", "month", "year"];
+ const DAYS_BY_RANGE = { day: 1, week: 7, month: 30, year: 365 };
+@@ -1156,7 +1133,6 @@ function makeBridgeRoutes(settings, search, testEngine, getCredentials) {
+         };
+       }
+       const cmp = compareVersions(latest, PLUGIN_VERSION);
+-      const mode = detectInstallMode();
+       return {
+         ok: true,
+         value: {
+@@ -1165,46 +1141,12 @@ function makeBridgeRoutes(settings, search, testEngine, getCredentials) {
+           hasUpdate: cmp > 0,
+           updateUrl: PLUGIN_NPM_URL,
+           repoUrl: PLUGIN_REPO_URL,
+-          // 可一键升级：npm 真安装时 true；本地 link 开发模式 false（升级请 git pull 源码）
+-          installable: mode !== null && !mode.isLink,
+-          installMode: mode?.isLink ? "link" : mode !== null ? "registry" : "unknown",
++          // ZeroWall Science owns dependency upgrades through its signed desktop release.
++          installable: false,
++          installMode: "zerowall-managed",
+         },
+       };
+     },
+-    // 一键升级：仅在 npm 真安装模式下执行 pnpm 升级；link 模式拒绝（避免破坏本地开发链路）
+-    async updatePlugin() {
+-      const mode = detectInstallMode();
+-      if (mode === null) {
+-        return { ok: false, code: "install-not-found", message: "could not locate dsh-free-search in any profile" };
+-      }
+-      if (mode.isLink) {
+-        return {
+-          ok: false,
+-          code: "local-link-mode",
+-          message: "local development install (symlink) - update the source repo instead (git pull), then restart dsh",
+-        };
+-      }
+-      try {
+-        const result = await new Promise((resolve, reject) => {
+-          exec("pnpm add dsh-free-search@latest", { cwd: mode.profileDir, timeout: 120000 }, (error, stdout, stderr) => {
+-            if (error) reject(new Error(`upgrade failed: ${(stderr || stdout || error.message).trim().slice(0, 300)}`));
+-            else resolve(stdout);
+-          });
+-        });
+-        const latest = await fetchLatestVersion();
+-        return {
+-          ok: true,
+-          value: {
+-            updated: true,
+-            latest: latest ?? "unknown",
+-            message: `upgraded to latest - restart dsh to apply`,
+-            output: String(result).trim().slice(0, 200),
+-          },
+-        };
+-      } catch (error) {
+-        return { ok: false, code: "upgrade-failed", message: error instanceof Error ? error.message : String(error) };
+-      }
+-    },
+     async rawSearch(request) {
+       if (request === null || typeof request !== "object" || typeof request.query !== "string" || request.query.length === 0) {
+         return { ok: false, code: "search-rejected", message: "malformed bridge search request (query is required)" };
+@@ -1415,14 +1357,6 @@ function makeBridgeRoutes(settings, search, testEngine, getCredentials) {
+         writeJson(res, 200, await handlers.checkUpdate());
+       },
+     },
+-    {
+-      kind: "exact",
+-      path: `${BRIDGE_PREFIX}/update`,
+-      handler: async (req, res) => {
+-        if (!guard(req, res)) return;
+-        writeJson(res, 200, await handlers.updatePlugin());
+-      },
+-    },
+     {
+       kind: "exact",
+       path: `${BRIDGE_PREFIX}/raw-search`,
+diff --git a/package.json b/package.json
+index 04c0e44222b33c27084e98131d8da2948fbc2bb0..bd536a13005558c10afef6938cd8708f24879707 100644
+--- a/package.json
++++ b/package.json
+@@ -56,7 +56,8 @@
+     },
+     "client": {
+       "inject": [
+-        "@deepseek-ai/dsh-client-runtime"
++        "slots",
++        "commandUi"
+       ],
+       "platform": "web"
+     },

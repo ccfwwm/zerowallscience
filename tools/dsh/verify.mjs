@@ -10,13 +10,14 @@ const manifest = JSON.parse(await readFile(resolve(source, 'package.json'), 'utf
 const commit = git(['rev-parse', 'HEAD'])
 const branch = git(['branch', '--show-current'])
 const status = git(['status', '--porcelain'])
+const allowDirty = process.env.ZEROWALL_ALLOW_DIRTY_DSH === '1'
 const upstreamBase = git(['merge-base', 'HEAD', expected.upstreamCommit])
 const upstreamIsAncestor = runGit(['merge-base', '--is-ancestor', expected.upstreamCommit, 'HEAD'])
 
 if (manifest.version !== expected.version) throw new Error(`DSH version must be ${expected.version}, received ${manifest.version}`)
 if (commit !== expected.commit) throw new Error(`DSH commit must be ${expected.commit}, received ${commit}`)
 if (branch !== expected.branch) throw new Error(`DSH branch must be ${expected.branch}, received ${branch || '(detached)'}`)
-if (status !== '') throw new Error(`deepseek-harness contains uncommitted changes:\n${status}`)
+if (status !== '' && !allowDirty) throw new Error(`deepseek-harness contains uncommitted changes:\n${status}`)
 if (!upstreamIsAncestor || upstreamBase !== expected.upstreamCommit) {
   throw new Error(`DSH must derive from upstream ${expected.tag} at ${expected.upstreamCommit}; merge-base is ${upstreamBase}`)
 }
@@ -28,7 +29,7 @@ for (const value of ['packages/client/runtime', 'packages/host/apiproxy']) {
   }
 }
 
-console.log(`Verified DSH ${manifest.version} at ${commit} on ${branch}, based on ${expected.tag}.`)
+console.log(`Verified DSH ${manifest.version} at ${commit} on ${branch}, based on ${expected.tag}${status === '' ? '' : ' with explicitly included working-tree changes'}.`)
 
 function git(args) {
   return execFileSync('git', args, { cwd: source, encoding: 'utf8' }).trim()

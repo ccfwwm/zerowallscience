@@ -3,7 +3,7 @@
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.1.2-rc.1",
-    "commit": "e9ed0a81624b4d2f6f90cebf31acf5096ef1aa80"
+    "commit": "d5f0f8a74bd8a94fe9cd438803ba5dcc52638baf"
   },
   "betterSidebar": {
     "repository": "https://github.com/omdsh-dev/DSH-better-sidebar.git",

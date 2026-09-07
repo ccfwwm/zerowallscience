@@ -17,7 +17,7 @@ export const bundledPlugins = [
   '@zerowallscience/plugin-account',
   '@zerowallscience/plugin-ai-cloud',
   '@zerowallscience/plugin-opencode',
-  '@zerowallscience/plugin-web-search',
+  'dsh-free-search',
   '@zerowallscience/plugin-files',
   '@zerowallscience/plugin-images',
   '@zerowallscience/plugin-image-dup',

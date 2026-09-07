@@ -13,13 +13,14 @@ if (!pnpmCli) throw new Error('pnpm executable path is unavailable to the ZeroWa
 const manifest = JSON.parse(await readFile(resolve(source, 'package.json'), 'utf8'))
 const commit = git(['rev-parse', 'HEAD'])
 const status = git(['status', '--porcelain'])
+const allowDirty = process.env.ZEROWALL_ALLOW_DIRTY_DSH === '1'
 if (manifest.version !== expected.version) {
   throw new Error(`DSH version must be ${expected.version}, received ${manifest.version}`)
 }
 if (commit !== expected.commit) {
   throw new Error(`DSH commit must be ${expected.commit}, received ${commit}`)
 }
-if (status !== '') {
+if (status !== '' && !allowDirty) {
   throw new Error(`deepseek-harness must be clean before building:\n${status}`)
 }
 

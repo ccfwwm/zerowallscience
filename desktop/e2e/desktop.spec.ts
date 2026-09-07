@@ -169,9 +169,12 @@ describe('ZeroWall Science Electron', () => {
         return { x: box.x, width: box.width, bottom: box.bottom, top: box.top }
       }))
       expect(rows.length).toBeGreaterThanOrEqual(6)
+      const first = rows[0]!
       for (let i = 1; i < rows.length; i++) {
-        expect(Math.abs(rows[i].x - rows[0].x)).toBeLessThan(2)
-        expect(rows[i].top).toBeGreaterThanOrEqual(rows[i - 1].bottom - 1)
+        const current = rows[i]!
+        const previous = rows[i - 1]!
+        expect(Math.abs(current.x - first.x)).toBeLessThan(2)
+        expect(current.top).toBeGreaterThanOrEqual(previous.bottom - 1)
       }
       await page.screenshot({ path: join(artifacts, `environment-${viewport.width}.png`) })
       await settings.getByLabel('化工社 API Token').scrollIntoViewIfNeeded()

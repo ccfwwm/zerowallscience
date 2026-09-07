@@ -53,7 +53,7 @@
     "@zerowallscience/plugin-runs": "workspace:^",
     "@zerowallscience/plugin-secrets": "workspace:^",
     "@zerowallscience/plugin-skills": "workspace:^",
-    "@zerowallscience/plugin-web-search": "workspace:^",
+    "dsh-free-search": "0.4.24",
     "@zerowallscience/research-store": "workspace:^"
   },
   "devDependencies": {

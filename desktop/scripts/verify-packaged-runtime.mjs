@@ -96,6 +96,9 @@ const requiredArchivePaths = [
   'node_modules/@daweifu/capability-menu/lib/client.js',
   'node_modules/dsh-auto-review/lib/index.js',
   'node_modules/dsh-auto-review/lib/client.js',
+  'node_modules/dsh-free-search/lib/index.js',
+  'node_modules/dsh-free-search/lib/client.js',
+  'node_modules/dsh-free-search/package.json',
   'node_modules/@changfenhuang/dsh-genui/lib/index.js',
   'node_modules/@changfenhuang/dsh-genui/lib/client.js',
   'node_modules/@changfenhuang/dsh-genui/lib/assets/mermaid.js',
@@ -166,7 +169,7 @@ function verifyArchivePolicy() {
 
   const pluginNames = [
     'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
-    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search',
+    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations',
   ]
   const betterSidebarPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-better-sidebar/package.json'))
   if (betterSidebarPackages.length !== 1) throw new Error(`dsh-better-sidebar must be packaged exactly once; found ${betterSidebarPackages.length}.`)
@@ -232,12 +235,38 @@ function verifyArchivePolicy() {
     /^node_modules\/dsh-dream-skin\/(?:README|LICENSE|scripts|test|tests)\b/iu.test(path)
   ))
   if (forbiddenDreamSkinFiles.length > 0) throw new Error(`Dream Skin source/documentation files found in ASAR:\n${forbiddenDreamSkinFiles.join('\n')}`)
+  const freeSearchPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-free-search/package.json'))
+  if (freeSearchPackages.length !== 1) throw new Error(`dsh-free-search must be packaged exactly once; found ${freeSearchPackages.length}.`)
+  const freeSearchManifest = JSON.parse(readArchiveFile('node_modules/dsh-free-search/package.json').toString('utf8'))
+  if (freeSearchManifest.version !== '0.4.24' || freeSearchManifest.license !== 'MIT') {
+    throw new Error(`Packaged dsh-free-search must be MIT-licensed 0.4.24; found ${freeSearchManifest.version} (${freeSearchManifest.license}).`)
+  }
+  const freeSearchInject = freeSearchManifest.dsh?.client?.inject
+  if (!Array.isArray(freeSearchInject) || !freeSearchInject.includes('slots') || !freeSearchInject.includes('commandUi')) {
+    throw new Error(`Packaged dsh-free-search has an incompatible client inject contract: ${JSON.stringify(freeSearchInject)}.`)
+  }
+  const freeSearchHost = readArchiveFile('node_modules/dsh-free-search/lib/index.js').toString('utf8')
+  const freeSearchClient = readArchiveFile('node_modules/dsh-free-search/lib/client.js').toString('utf8')
+  for (const marker of ['id: "ddg"', 'searchBing', 'advanced_search', 'platform_search', 'free_search_test', 'registerSearchProvider']) {
+    if (!freeSearchHost.includes(marker)) throw new Error(`Packaged dsh-free-search Host is missing marker: ${marker}`)
+  }
+  for (const marker of ['settings.plugin.item', 'free-search-engine', 'slots', 'commandUi']) {
+    if (!freeSearchClient.includes(marker)) throw new Error(`Packaged dsh-free-search client is missing marker: ${marker}`)
+  }
+  for (const forbidden of ['@deepseek-ai/dsh-client-runtime', 'node:child_process', 'pnpm add dsh-free-search@latest', '/update']) {
+    if (freeSearchHost.includes(forbidden) || freeSearchClient.includes(forbidden) || JSON.stringify(freeSearchManifest).includes(forbidden)) {
+      throw new Error(`Packaged dsh-free-search contains removed compatibility or self-update marker: ${forbidden}`)
+    }
+  }
   for (const name of [...pluginNames.map(value => `plugin-${value}`), 'research-store']) {
     const packagePaths = archiveFiles.filter(path => path.endsWith(`@zerowallscience/${name}/package.json`))
     if (packagePaths.length !== 1) throw new Error(`@zerowallscience/${name} must be packaged exactly once; found ${packagePaths.length}.`)
   }
   for (const name of ['platform-client', 'platform-host']) {
     if (archiveFiles.some(path => path.includes(`@zerowallscience/${name}/`))) throw new Error(`Legacy package @zerowallscience/${name} must not be packaged.`)
+  }
+  if (archiveFiles.some(path => path.startsWith('node_modules/@zerowallscience/plugin-web-search/'))) {
+    throw new Error('Removed @zerowallscience/plugin-web-search must not be packaged.')
   }
   for (const name of ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-host-apiproxy']) {
     if (archiveFiles.some(path => path.startsWith(`node_modules/${name}/`))) throw new Error(`Removed rc2 package ${name} must not be packaged.`)
@@ -377,6 +406,7 @@ async function verifyImports() {
       '@zerowallscience/plugin-presentations',
       '@zerowallscience/plugin-mcp',
       '@zerowallscience/plugin-skills',
+      'dsh-free-search',
       'dsh-wechat',
     ]) {
       const module = await import(name);
@@ -527,6 +557,7 @@ async function verifyHostStartup() {
         try {
           await verifyWebBootManifest(probeUrl)
           await verifyPluginInventory(probeUrl)
+          await verifyFreeSearch(probeUrl)
           await verifyMineruStatus(probeUrl)
           await verifySinglecellStatus(probeUrl)
           await verifyEventWebSockets(probeUrl)
@@ -645,14 +676,63 @@ async function verifyPluginInventory(url) {
   const entries = envelope.result.value.entries
   const expected = [
     'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
-    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search',
+    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations',
   ].map(name => `@zerowallscience/plugin-${name}`)
-  expected.push('dsh-wechat', 'dsh-file-review-tab', 'dsh-auto-review', '@daweifu/capability-menu', '@daweifu/capability-menu/policy', '@daweifu/capability-menu/search', '@daweifu/capability-menu/invoke', '@changfenhuang/dsh-genui')
+  expected.push('dsh-free-search', 'dsh-wechat', 'dsh-file-review-tab', 'dsh-auto-review', '@daweifu/capability-menu', '@daweifu/capability-menu/policy', '@daweifu/capability-menu/search', '@daweifu/capability-menu/invoke', '@changfenhuang/dsh-genui')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
   const missing = expected.filter(name => !byModule.has(name))
   if (missing.length > 0) throw new Error(`Packaged Host plugin inventory is missing: ${missing.join(', ')}`)
   const inactive = expected.filter(name => byModule.get(name)?.enabled !== true || byModule.get(name)?.fiberPhase !== 'active')
   if (inactive.length > 0) throw new Error(`Packaged Host ZeroWall plugins are not active: ${inactive.map(name => `${name}=${JSON.stringify(byModule.get(name))}`).join('; ')}`)
+}
+
+async function verifyFreeSearch(url) {
+  const endpoint = path => authUrl(new URL(url), `/api/dsh-free-search-settings/${path}`)
+  const post = async (path, body = {}) => {
+    const response = await fetch(endpoint(path), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!response.ok) throw new Error(`Packaged Host free-search ${path} returned HTTP ${response.status}.`)
+    return response.json()
+  }
+
+  const valueOf = described => described?.value?.namespaces?.find(candidate => candidate?.ns === 'free-search')?.value
+  const valueOfMutation = mutation => mutation?.value?.value
+  const switched = await post('mutate', { ns: 'free-search', ops: [{ op: 'set', path: ['provider'], value: 'ddg' }] })
+  if (switched?.ok !== true || valueOfMutation(switched)?.provider !== 'ddg') {
+    throw new Error(`Packaged Host free-search setting write failed: ${JSON.stringify(switched)}`)
+  }
+  const restored = await post('mutate', { ns: 'free-search', ops: [{ op: 'set', path: ['provider'], value: 'bing' }] })
+  if (restored?.ok !== true || valueOfMutation(restored)?.provider !== 'bing') {
+    throw new Error(`Packaged Host free-search default restore failed: ${JSON.stringify(restored)}`)
+  }
+  const described = await post('describe')
+  const settings = valueOf(described)
+  const expected = { provider: 'bing', bingMarket: 'zh-CN', lang: 'zh', safeSearch: 'off', cache: true, cacheTtl: 5, keyStorage: 'credentials' }
+  for (const [key, value] of Object.entries(expected)) {
+    if (settings?.[key] !== value) throw new Error(`Packaged Host free-search setting ${key} must be ${JSON.stringify(value)}; found ${JSON.stringify(settings?.[key])}.`)
+  }
+
+  const query = { query: '人工智能 科学研究 最新进展', maxResults: 3 }
+  const first = await post('raw-search', query)
+  const second = await post('raw-search', query)
+  for (const [label, result] of [['first', first], ['second', second]]) {
+    const sources = result?.value?.sources
+    if (result?.ok !== true || result?.value?.provider !== 'bing' || !Array.isArray(sources) || sources.length === 0) {
+      throw new Error(`Packaged Host free-search ${label} query failed: ${JSON.stringify(result)}`)
+    }
+    if (!sources.every(source => typeof source?.title === 'string' && source.title.length > 0
+      && typeof source?.url === 'string' && /^https?:\/\//u.test(source.url)
+      && typeof source?.snippet === 'string' && source.snippet.length > 0)) {
+      throw new Error(`Packaged Host free-search ${label} query returned incomplete sources: ${JSON.stringify(sources)}`)
+    }
+  }
+  if (first.value.cache !== 'miss' || second.value.cache !== 'hit') {
+    throw new Error(`Packaged Host free-search cache contract failed: first=${first.value.cache}, second=${second.value.cache}.`)
+  }
 }
 
 async function verifyMineruStatus(url) {
@@ -740,6 +820,7 @@ async function verifyWebBootManifest(url) {
     '@zerowallscience/plugin-reviewer',
     '@zerowallscience/plugin-research',
     '@zerowallscience/plugin-presentations',
+    'dsh-free-search',
   ]
   const missing = required.filter(id => !ids.has(id))
   if (missing.length > 0) {
@@ -830,6 +911,7 @@ async function verifyDesktopStartup() {
       '@zerowallscience/plugin-mineru',
       '@zerowallscience/plugin-mcp', '@zerowallscience/plugin-skills', '@zerowallscience/plugin-reviewer',
       '@zerowallscience/plugin-research', '@zerowallscience/plugin-presentations',
+      'dsh-free-search',
       '@changfenhuang/dsh-genui',
     ]) {
       if (!ids.includes(id)) throw new Error(`Packaged desktop Web boot is missing ${id}.`)
@@ -1031,7 +1113,16 @@ async function verifySourceRuntimePolicy() {
 
 async function pluginManifestPaths() {
   const root = resolve(repositoryRoot, 'plugins')
-  return (await readdir(root, { withFileTypes: true }))
-    .filter(entry => entry.isDirectory())
-    .map(entry => resolve(root, entry.name, 'package.json'))
+  const manifests = []
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const manifest = resolve(root, entry.name, 'package.json')
+    try {
+      await access(manifest)
+      manifests.push(manifest)
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+    }
+  }
+  return manifests
 }

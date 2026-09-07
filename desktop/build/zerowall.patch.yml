@@ -42,12 +42,12 @@
     root: !!js dshHomePath('sessions')
     compression: none
 
-# The ZeroWall provider follows the active AI Cloud DeepSeek route. Keep the
-# DSH web seam pinned to it; the stock provider remains bundled for users who
-# run an official DeepSeek credential outside the desktop account.
+# dsh-free-search owns the default search seam. Its provider id remains `ddg`
+# while the preferred engine is Bing; keep the independent HTTP fetch provider.
 - id: web
   config:
-    searchProvider: zerowall-ai-cloud-search
+    searchProvider: ddg
+    fetchProvider: http
 
 # OpenCode Zen is the anonymous, free default. Its adapter omits
 # Authorization when OPENCODE_API_KEY is absent and refreshes the free catalog
@@ -197,8 +197,16 @@
     - id: zerowall-opencode
       name: '@zerowallscience/plugin-opencode'
 
-    - id: zerowall-web-search
-      name: '@zerowallscience/plugin-web-search'
+    - id: web-search-free
+      name: 'dsh-free-search'
+      config:
+        provider: bing
+        bingMarket: zh-CN
+        lang: zh
+        safeSearch: off
+        cache: true
+        cacheTtl: 5
+        keyStorage: credentials
 
     - id: zerowall-files
       name: '@zerowallscience/plugin-files'

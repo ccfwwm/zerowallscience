@@ -25,6 +25,7 @@ The 5.5.0 desktop adapts the following pinned plugins. Their original LICENSE fi
 | --- | --- | --- | --- |
 | `@zerowallscience/plugin-image-dup` | [`PetCT/dsh-Bio-image-dup-check`](https://github.com/PetCT/dsh-Bio-image-dup-check) | `7051eb55f611a46db3d9cfa1768e56c7d1a91553` | MIT |
 | `@zerowallscience/dsh-ppt-runtime` | [`yejiming/dsh-ppt`](https://github.com/yejiming/dsh-ppt) | `538f23c834056e2b3ab7314524d4b31416803a6b` | MIT |
+| `dsh-free-search@0.4.24` | [`DDDMUC/dsh-free-search`](https://github.com/DDDMUC/dsh-free-search) | `d1beabcf643256d95823a9cb8f06fc8f84a40483` | MIT |
 
 ZeroWall Science also bundles `@huanlin/dsh-plugin-better-sidebar-plugin-office@0.1.2`
 from [`HuanLinOTO/dsh-plugin-better-sidebar-plugin-office`](https://github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office)
@@ -36,6 +37,13 @@ path, Data URL, and in-memory report boundaries. The PPT runtime is shipped as
 a pinned internal library used only by `plugin-presentations`; it is not a
 second independently loaded product plugin. The corresponding license copies
 and provenance files are retained in those package directories.
+
+`dsh-free-search` is loaded directly as the desktop search plugin. ZeroWall's
+local package patch updates its DSH client service declaration and disables the
+package-level self-updater; search engines, settings, credentials, caching,
+time filtering, and platform search remain upstream behavior.
+The compatibility changes are recorded in
+`patches/dsh-free-search@0.4.24.patch` and are applied reproducibly by pnpm.
 
 ## DeepSeek Harness
 

@@ -47,7 +47,7 @@ test('Dream Skin is a single pinned theme layer loaded before ZeroWall UI', asyn
 })
 
 test('ZeroWall domain clients do not duplicate better-sidebar tabs', async () => {
-  const clients = ['account', 'ai-cloud', 'execution', 'images', 'mcp', 'presentations', 'projects', 'publications', 'research', 'reviewer', 'runs', 'skills', 'web-search', 'wechat']
+  const clients = ['account', 'ai-cloud', 'execution', 'images', 'mcp', 'presentations', 'projects', 'publications', 'research', 'reviewer', 'runs', 'skills', 'wechat']
   for (const name of clients) {
     const source = await readFile(resolve(root, `plugins/${name}/src/client/index.ts`), 'utf8')
     assert.doesNotMatch(source, /registerDomainSidebarTab/u, `${name} must not register a duplicate domain tab`)
@@ -85,13 +85,49 @@ test('desktop image limits fit inside the buffered client connection carrier', a
 })
 
 test('all ZeroWall plugins expose a manifest and rc.1 range', async () => {
-  const names = ['base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'mineru', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'web-search', 'wechat']
+  const names = ['base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'mineru', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'wechat']
   for (const name of names) {
     const manifest = JSON.parse(await readFile(resolve(root, `plugins/${name}/zerowall.plugin.json`), 'utf8'))
     assert.match(manifest.name, /^@zerowallscience\/plugin-/)
     assert.equal(manifest.dsh.min, '0.1.2-rc.1')
     assert.equal(manifest.dsh.max, '0.1.2-rc.1')
   }
+})
+
+test('dsh-free-search directly replaces the removed ZeroWall search plugin', async () => {
+  const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
+  assert.equal(desktop.dependencies['dsh-free-search'], '0.4.24')
+  assert.equal(desktop.dependencies['@zerowallscience/plugin-web-search'], undefined)
+
+  const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
+  assert.match(patch, /- id: web\s+config:\s+searchProvider: ddg\s+fetchProvider: http/u)
+  assert.match(patch, /- id: web-search-free\s+name: 'dsh-free-search'\s+config:\s+provider: bing\s+bingMarket: zh-CN\s+lang: zh\s+safeSearch: off\s+cache: true\s+cacheTtl: 5\s+keyStorage: credentials/u)
+  assert.doesNotMatch(patch, /zerowall-ai-cloud-search|@zerowallscience\/plugin-web-search/u)
+
+  for (const profile of ['development', 'preview', 'stable']) {
+    const source = await readFile(resolve(root, `profiles/generated/${profile}.yml`), 'utf8')
+    assert.equal((source.match(/'dsh-free-search'/gu) ?? []).length, 1, `${profile} must mount dsh-free-search once`)
+    assert.doesNotMatch(source, /@zerowallscience\/plugin-web-search/u)
+  }
+})
+
+test('the pinned dsh-free-search package uses current client services and has no self-updater', async () => {
+  const packageRoot = resolve(root, 'desktop/node_modules/dsh-free-search')
+  const manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
+  assert.equal(manifest.version, '0.4.24')
+  assert.equal(manifest.license, 'MIT')
+  assert.deepEqual(manifest.dsh.client.inject, ['slots', 'commandUi'])
+
+  const host = await readFile(resolve(packageRoot, 'lib/index.js'), 'utf8')
+  const client = await readFile(resolve(packageRoot, 'lib/client.js'), 'utf8')
+  for (const forbidden of ['@deepseek-ai/dsh-client-runtime', 'node:child_process', 'pnpm add dsh-free-search@latest', '${BRIDGE_PREFIX}/update']) {
+    assert.doesNotMatch(`${host}\n${client}`, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'))
+  }
+  for (const marker of ['advanced_search', 'platform_search', 'free_search_test']) assert.match(host, new RegExp(marker, 'u'))
+  assert.match(client, /free-search-engine/u)
+
+  const lockfile = await readFile(resolve(root, 'pnpm-lock.yaml'), 'utf8')
+  assert.match(lockfile, /dsh-free-search@0\.4\.24:\s+resolution: \{integrity: sha512-LcFPNf9F3kjutaNjE7j9Dw7yGi2p0bzZ7p9vbp\/yWpoeWPFBPwIikV6nka8gfM2YTH7lsQKA\/KIpVWMJ5jV08w==\}/u)
 })
 
 test('dynamic client bundles use the DSH classic-script ModuleLoader contract', async () => {

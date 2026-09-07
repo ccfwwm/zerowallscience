@@ -58,3 +58,6 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-ai@0.84.2'
   - dsh-better-sidebar@0.18.0
   - dsh-dream-skin@8.30.1
+
+patchedDependencies:
+  dsh-free-search@0.4.24: patches/dsh-free-search@0.4.24.patch

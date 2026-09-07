@@ -14,18 +14,24 @@ const thirdPartyOrder = [
   'dsh-file-review-tab',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
   'dsh-wechat',
+  '@daweifu/capability-menu',
+  'dsh-auto-review',
+  '@changfenhuang/dsh-genui',
 ]
 const zeroWallOrder = [
   'base', 'secrets', 'environment', 'desktop-compat', 'projects', 'mcp',
-  'account', 'ai-cloud', 'opencode', 'web-search',
+  'account', 'ai-cloud', 'opencode',
   'files', 'images', 'image-dup',
   'research', 'mineru', 'singlecell', 'execution', 'python', 'runs',
   'publications', 'presentations', 'skills', 'reviewer',
 ]
 const expectedOrder = [
   ...thirdPartyOrder,
-  ...zeroWallOrder.map(id => `@zerowallscience/plugin-${id}`),
+  ...zeroWallOrder.slice(0, 9).map(id => `@zerowallscience/plugin-${id}`),
+  'dsh-free-search',
+  ...zeroWallOrder.slice(9).map(id => `@zerowallscience/plugin-${id}`),
 ]
+const thirdPartyPackages = [...thirdPartyOrder, 'dsh-free-search']
 
 const zeroWallPlugins = []
 for (const id of zeroWallOrder) {
@@ -108,12 +114,12 @@ const kernelPackages = [
 const packageNames = new Set(dshPackages.map(item => item.package))
 for (const name of kernelPackages) assert(packageNames.has(name), `required DSH kernel package is missing: ${name}`)
 
-const thirdPartyPlugins = thirdPartyOrder.map((name, index) => ({
+const thirdPartyPlugins = thirdPartyPackages.map(name => ({
   package: name,
   version: desktop.dependencies?.[name] ?? null,
   owner: 'third-party',
   source: 'desktop/package.json',
-  loadOrder: index + 1,
+  loadOrder: expectedOrder.indexOf(name) + 1,
   productionPath: `resources/app.asar/node_modules/${name}`,
 }))
 for (const plugin of thirdPartyPlugins) assert(plugin.version !== null, `desktop/package.json must pin ${plugin.package}`)
