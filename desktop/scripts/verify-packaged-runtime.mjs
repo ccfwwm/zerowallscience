@@ -302,6 +302,7 @@ function verifyArchivePolicy() {
   if (!filesHost.includes('extract_uploaded_file')) {
     throw new Error('Packaged Files Host is missing the on-demand extraction tool.')
   }
+  verifyOpenCode2DshRuntime(readArchiveFile('node_modules/@zerowallscience/plugin-opencode/lib/index.js').toString('utf8'))
   const modelSelectionClient = readArchiveFile('node_modules/@deepseek-ai/dsh-client-ui-model-selection/lib/client.js').toString('utf8')
   if (!modelSelectionClient.includes('selectingKey')) {
     throw new Error('Packaged model selector is missing row-scoped selection state.')
@@ -1130,6 +1131,11 @@ async function verifySourceRuntimePolicy() {
   await access(resolve(repositoryRoot, 'packages', 'dsh-wechat', 'dist', 'index.js'))
   const stableProfile = await readFile(resolve(repositoryRoot, 'profiles', 'generated', 'stable.yml'), 'utf8')
   const desktopPatch = await readFile(resolve(repositoryRoot, 'desktop', 'build', 'zerowall.patch.yml'), 'utf8')
+  const opencodeManifest = JSON.parse(await readFile(resolve(repositoryRoot, 'plugins', 'opencode', 'package.json'), 'utf8'))
+  if (opencodeManifest.dependencies?.['@earendil-works/pi-ai'] !== '0.84.2') {
+    throw new Error('opencode2dsh must pin the repository-compatible pi-ai 0.84.2 runtime.')
+  }
+  verifyOpenCode2DshRuntime(await readFile(resolve(repositoryRoot, 'plugins', 'opencode', 'lib', 'index.js'), 'utf8'))
   if (!stableProfile.includes("'@huanlin/dsh-plugin-better-sidebar-plugin-office'")
     || !stableProfile.includes("'dsh-wechat'")
     || !/wechat:[\s\S]*enabled:\s*true[\s\S]*autoConnect:\s*false[\s\S]*channel:\s*ilink/u.test(stableProfile)) {
@@ -1139,6 +1145,16 @@ async function verifySourceRuntimePolicy() {
     throw new Error('Packaged Electron patch must mount the Better-sidebar Office viewer.')
   }
   if (!desktopPatch.includes("name: 'dsh-wechat'")) throw new Error('Packaged Electron patch must mount dsh-wechat.')
+  if (!desktopPatch.includes('provider: opencode2dsh') || desktopPatch.includes('provider: opencode-zen')) {
+    throw new Error('Packaged Electron defaults must exclusively select opencode2dsh.')
+  }
+}
+
+function verifyOpenCode2DshRuntime(source) {
+  for (const marker of ['opencode2dsh', 'Bearer public', 'models-dev-cache.json', 'x-opencode-session', 'probeModel']) {
+    if (!source.includes(marker)) throw new Error(`OpenCode runtime is missing opencode2dsh marker: ${marker}`)
+  }
+  if (source.includes('OPENCODE_API_KEY')) throw new Error('OpenCode runtime must not depend on the retired OPENCODE_API_KEY route.')
 }
 
 async function pluginManifestPaths() {

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-opencode",
-  "version": "5.7.0",
+  "version": "5.8.0",
   "description": "ZeroWall Science opencode domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -24,14 +24,18 @@
       "min": "0.1.2-rc.1",
       "max": "0.1.2-rc.1"
     },
-    "requiredServices": [],
+    "requiredServices": [
+      "llm",
+      "attachments"
+    ],
     "optionalServices": [],
     "capabilities": [
       "llm.free",
       "llm.discovery"
     ],
     "permissions": [
-      "network"
+      "network",
+      "attachments"
     ],
     "profiles": [
       "development",
@@ -91,7 +95,8 @@
     "@deepseek-ai/dsh-client-ui-attachment": "workspace:^",
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
-    "@deepseek-ai/dsh-client-ui-workspace": "workspace:^"
+    "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
+    "@earendil-works/pi-ai": "0.84.2"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.3"

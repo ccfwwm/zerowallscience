@@ -1,12 +1,10 @@
 # OpenCode adapter upstream
 
-This plugin tracks `bobowsh/dsh-llm-opencode` main at commit
-`f4d1176e3205b5d3750916c652b49fb399aafb2b`.
+This plugin adapts `FishBottle7/opencode2dsh` version `0.2.7` from commit
+`d5c4ed1c0b084064a317c9b7e798bee322acda91` (MIT).
 
-The upstream adapter's transport, SSE completion handling, free-model catalog
-sync, retry/error classification, and configurable provider behavior are the
-reference for this plugin. ZeroWall keeps its local integration boundary:
-durable image attachments are encoded as data URLs, credentials remain outside
-model catalogs and logs, and the plugin is registered through the generated
-ZeroWall bundle patch. The upstream implementation's text-only guard is not
-copied because it would regress the existing image attachment contract.
+The native adapter, OpenCode CLI correlation headers, anonymous `public`
+credential, live Zen catalog, models.dev free-model filter, cache, and static
+fallback follow that revision. ZeroWall retains its own plugin package and DSH
+loader boundary, durable image attachments, vision probes, and terminal model
+health semantics. The upstream sidecar and IP-pool subsystems are not included.

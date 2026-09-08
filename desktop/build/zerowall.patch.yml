@@ -49,9 +49,9 @@
     searchProvider: ddg
     fetchProvider: http
 
-# OpenCode Zen is the anonymous, free default. Its adapter omits
-# Authorization when OPENCODE_API_KEY is absent and refreshes the free catalog
-# in the background, so the first conversation never depends on account setup.
+# opencode2dsh is the anonymous, free default. It authenticates with the
+# upstream literal `public`, refreshes the free catalog in the background, and
+# keeps a verified static fallback so startup never depends on account setup.
 - id: session-title-llm
   config:
     targetWords: 5
@@ -59,12 +59,12 @@
     maxInputBytes: 4096
     maxOutputTokens: 64
     timeoutMs: 60000
-    provider: opencode-zen
+    provider: opencode2dsh
     model: big-pickle
 
 - id: agent-default-model
   config:
-    provider: opencode-zen
+    provider: opencode2dsh
     model: big-pickle
 
 # Both local coding assistants are installed on the desktop and their DSH

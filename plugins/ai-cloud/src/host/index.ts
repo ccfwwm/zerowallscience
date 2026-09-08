@@ -20,6 +20,13 @@ interface AgentDefaultModelService {
   saveSelection(next: ModelSelection): Promise<void>
 }
 
+interface BiomniRouteDetails {
+  provider: string
+  model: string
+  baseUrl?: string
+  apiKey?: string
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context { agentDefaultModel: AgentDefaultModelService }
 }
@@ -64,6 +71,30 @@ export class AiCloudLlmController {
       },
       resolveAttachments: () => this.ctx.get('attachments'),
     })
+    // Biomni executes through MCP but must use the exact route selected by
+    // the active ZeroWall session. Keep this resolver narrow: credentials stay
+    // in the broker and are returned only for the immediate tool call.
+    this.ctx.provide('zerowallMcpRouteResolver', {
+      resolve: async (provider: string, model: string): Promise<BiomniRouteDetails | undefined> => {
+        if (!provider.startsWith(ROUTE_PREFIX)) return undefined
+        const profile = this.profiles.get(provider)
+        if (profile === undefined) return undefined
+        const groupId = groupIdOf(provider)
+        let apiKey: string | undefined
+        try {
+          const value = await this.secrets.get(`${KEY_PREFIX}${groupId}`)
+          if (typeof value === 'string' && value.trim().length > 0) apiKey = value.trim()
+        } catch {
+          // Keep route metadata available when the broker is temporarily unavailable.
+        }
+        return {
+          provider,
+          model,
+          ...(profile.baseURL === undefined ? {} : { baseUrl: profile.baseURL }),
+          ...(apiKey === undefined ? {} : { apiKey }),
+        }
+      },
+    } as never)
   }
 
   async update(snapshot: AiCloudAccountSnapshot): Promise<void> {
@@ -86,7 +117,7 @@ export class AiCloudLlmController {
     const current = defaults.currentSelection()
     if (models.length === 0) {
       if (current.provider.startsWith(ROUTE_PREFIX)) {
-        await defaults.saveSelection({ provider: 'opencode-zen', model: 'big-pickle' })
+        await defaults.saveSelection({ provider: 'opencode2dsh', model: 'big-pickle' })
       }
       return
     }
@@ -103,7 +134,7 @@ export class AiCloudLlmController {
         await defaults.saveSelection({ provider: replacement.providerId, model: replacement.modelId })
         return
       }
-      await defaults.saveSelection({ provider: 'opencode-zen', model: 'big-pickle' })
+      await defaults.saveSelection({ provider: 'opencode2dsh', model: 'big-pickle' })
       return
     }
     const preferred = [...models]

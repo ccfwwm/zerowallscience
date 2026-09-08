@@ -185,6 +185,22 @@ describe('ZeroWall AI Cloud LLM routes', () => {
     expect(options().profiles().get('zerowall-ai-cloud-2-messages')).toMatchObject({ baseURL: 'https://hkcode.aicodeme.xyz' })
   })
 
+  it('exposes the active Biomni route metadata through the Host resolver', async () => {
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.group.2', 'biomni-secret')
+    const { ctx, controller } = await setup(secrets)
+    await controller.update({
+      status: 'signedIn', balanceFreshness: 'current', lowBalance: false,
+      models: [{ providerId: 'zerowall-ai-cloud-2-completions', groupId: '2', groupName: 'Research', modelId: 'gpt-test', baseUrl: 'https://hkcode.aicodeme.xyz/v1' }],
+    })
+    const resolver = ctx.get('zerowallMcpRouteResolver') as { resolve(provider: string, model: string): Promise<Record<string, string> | undefined> }
+    await expect(resolver.resolve('zerowall-ai-cloud-2-completions', 'gpt-test')).resolves.toEqual({
+      provider: 'zerowall-ai-cloud-2-completions', model: 'gpt-test',
+      baseUrl: 'https://hkcode.aicodeme.xyz/v1', apiKey: 'biomni-secret',
+    })
+    await expect(resolver.resolve('opencode2dsh', 'big-pickle')).resolves.toBeUndefined()
+  })
+
   it('states the gateway wire switches pi-ai cannot infer, per protocol', async () => {
     const { controller, options } = await setup(new MemorySecrets())
     await controller.update({

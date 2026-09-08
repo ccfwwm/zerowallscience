@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-pubmed",
-  "version": "5.7.0",
+  "version": "5.8.0",
   "description": "ZeroWall Science pubmed domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

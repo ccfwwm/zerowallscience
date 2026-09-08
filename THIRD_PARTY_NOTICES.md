@@ -26,6 +26,7 @@ The 5.5.0 desktop adapts the following pinned plugins. Their original LICENSE fi
 | `@zerowallscience/plugin-image-dup` | [`PetCT/dsh-Bio-image-dup-check`](https://github.com/PetCT/dsh-Bio-image-dup-check) | `7051eb55f611a46db3d9cfa1768e56c7d1a91553` | MIT |
 | `@zerowallscience/dsh-ppt-runtime` | [`yejiming/dsh-ppt`](https://github.com/yejiming/dsh-ppt) | `538f23c834056e2b3ab7314524d4b31416803a6b` | MIT |
 | `dsh-free-search@0.4.24` | [`DDDMUC/dsh-free-search`](https://github.com/DDDMUC/dsh-free-search) | `d1beabcf643256d95823a9cb8f06fc8f84a40483` | MIT |
+| `@zerowallscience/plugin-opencode` | [`FishBottle7/opencode2dsh`](https://github.com/FishBottle7/opencode2dsh) | `d5c4ed1c0b084064a317c9b7e798bee322acda91` | MIT |
 
 ZeroWall Science also bundles `@huanlin/dsh-plugin-better-sidebar-plugin-office@0.1.2`
 from [`HuanLinOTO/dsh-plugin-better-sidebar-plugin-office`](https://github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office)

@@ -12910,6 +12910,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../deepseek-harness/vendor/schemastery
         version: link:../../deepseek-harness/vendor/schemastery
+      '@earendil-works/pi-ai':
+        specifier: 0.84.2
+        version: 0.84.2(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)
     devDependencies:
       tsdown:
         specifier: 0.22.2

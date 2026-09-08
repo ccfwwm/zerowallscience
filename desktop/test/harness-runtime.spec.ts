@@ -26,7 +26,7 @@ describe('Harness runtime boundary', () => {
       mcpEnvironmentRoot: 'C:/data/mcp-environments',
       runAsNode: true,
       runtimeAnchorPath: 'C:/app/resources/app.asar/node_modules/@deepseek-ai/dsh/package.json',
-    }, { ELECTRON_RUN_AS_NODE: '1', Path: 'C:/Windows', ZEROWALL_DISABLE_DEFAULT_MCP: '1', OPENCODE_API_KEY: 'test-key-reference' })
+    }, { ELECTRON_RUN_AS_NODE: '1', Path: 'C:/Windows', ZEROWALL_DISABLE_DEFAULT_MCP: '1', CUSTOM_API_KEY: 'test-key-reference' })
     expect(options.env?.ELECTRON_RUN_AS_NODE).toBe('1')
     expect(options.env?.NODE_PATH).toBe('C:/app/resources/app.asar/node_modules')
     expect(options.env?.ZEROWALL_RUNTIME_ANCHOR).toContain('app.asar/node_modules/@deepseek-ai/dsh/package.json')
@@ -37,7 +37,7 @@ describe('Harness runtime boundary', () => {
     expect(options.env?.ZEROWALL_RESEARCH_DB).toBe('C:/data/research/zerowall-research.sqlite')
     expect(options.env?.ZEROWALL_MCP_ENVIRONMENT_ROOT).toBe('C:/data/mcp-environments')
     expect(options.env?.ZEROWALL_DISABLE_DEFAULT_MCP).toBe('1')
-    expect(options.env?.OPENCODE_API_KEY).toBe('test-key-reference')
+    expect(options.env?.CUSTOM_API_KEY).toBe('test-key-reference')
     expect(options.env?.ZEROWALL_BUNDLED_SKILLS).toBe('C:/app/resources/skills')
     expect(options.env?.ZEROWALL_MCP_BUNDLED_SKILLS).toBe('C:/app/resources/skills')
     expect(options.env?.ZEROWALL_MCP_USER_SKILLS).toBe('C:/data/harness/zerowall-skills/enabled')

@@ -91,7 +91,7 @@ const dshDependencies = {
 }
 
 const npmDependencies = {
-  opencode: {},
+  opencode: { '@earendil-works/pi-ai': '0.84.2' },
   pubmed: { compromise: '14.16.0', undici: '^7.16.0', '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   base: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0' },
   projects: { '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
@@ -115,7 +115,7 @@ const npmDependencies = {
 
 const plugins = [
   { id: 'pubmed', remote: true, capabilities: ['literature', 'evidence-graph'], permissions: ['files', 'network', 'credentials', 'approvals'], dependencies: ['secrets', 'research'], requiredServices: ['settings', 'tools', 'sessions', 'zerowallResearch'] },
-  { id: 'opencode', capabilities: ['llm.free', 'llm.discovery'], permissions: ['network'] },
+  { id: 'opencode', capabilities: ['llm.free', 'llm.discovery'], permissions: ['network', 'attachments'], requiredServices: ['llm', 'attachments'] },
   // These services are accessed directly by plugin-base during activation.
   // Keep the generated manifest in sync so Loader injects them before apply.
   { id: 'base', client: true, clientExternal: [], capabilities: ['ui.locale', 'ui.update'], permissions: [], requiredServices: ['webServer', 'systemPrompt'], optionalServices: ['updater'] },
