@@ -1,5 +1,5 @@
 import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import { LlmError, type ContentBlock, type GenerateOptions } from '@deepseek-ai/dsh-llm'
+import { fileAttachmentText, LlmError, type ContentBlock, type GenerateOptions } from '@deepseek-ai/dsh-llm'
 import type { Context as PiContext, ImageContent, Message as PiMessage, TextContent, Tool as PiTool } from '@earendil-works/pi-ai'
 
 function zeroUsage() {
@@ -19,7 +19,7 @@ function parseArguments(value: string): Record<string, unknown> {
 }
 
 function textOf(blocks: readonly ContentBlock[]): string {
-  return blocks.map(block => block.type === 'text' ? block.text : block.type === 'file' ? `[File: ${block.attachment.name}]` : '').join('')
+  return blocks.map(block => block.type === 'text' ? block.text : block.type === 'file' ? fileAttachmentText(block.attachment) : '').join('')
 }
 
 async function contentOf(
@@ -34,7 +34,7 @@ async function contentOf(
     if (block.type === 'text') {
       if (block.text !== '') content.push({ type: 'text', text: block.text })
     } else if (block.type === 'file') {
-      content.push({ type: 'text', text: `[File: ${block.attachment.name}]` })
+      content.push({ type: 'text', text: fileAttachmentText(block.attachment) })
     } else if (block.type === 'image') {
       const stored = await attachments.readImage(block.attachment as ImageAttachmentRef, signal)
       content.push({ type: 'image', data: Buffer.from(stored.data).toString('base64'), mimeType: stored.ref.mediaType })

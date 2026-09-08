@@ -6,6 +6,7 @@ import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { ModelCatalog, STATIC_FREE_MODELS, decodeModelsDev } from '../src/host/catalog.ts'
 import { OpenCode2DshAdapter, PROVIDER_ID } from '../src/host/zen-adapter.ts'
+import { toPiContext } from '../src/host/messages.ts'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -21,6 +22,26 @@ function successfulStream(text = 'OK'): Response {
 }
 
 describe('OpenCode2DshAdapter', () => {
+  it('forwards complete parsed attachment content to the model context', async () => {
+    const context = await toPiContext({
+      provider: PROVIDER_ID,
+      model: 'big-pickle',
+      messages: [{
+        role: 'user',
+        content: [{
+          type: 'file',
+          attachment: {
+            attachmentId: 'file-sha256:parsed', name: 'paper.pdf', mediaType: 'application/pdf',
+            bytes: 10, sha256: 'parsed', parser: 'pdfjs', status: 'parsed', textChars: 24,
+            preview: 'card preview', content: 'complete parsed document body',
+          },
+        }],
+      }],
+    })
+    expect(JSON.stringify(context.messages)).toContain('complete parsed document body')
+    expect(JSON.stringify(context.messages)).not.toContain('card preview')
+  })
+
   it('registers the new provider and sends public auth with CLI correlation headers', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(successfulStream())
     const adapter = new OpenCode2DshAdapter(catalog())
