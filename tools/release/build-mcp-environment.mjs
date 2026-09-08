@@ -94,6 +94,12 @@ for (const path of await filesUnder(join(root, 'resources', 'skills'))) {
   const rel = relative(join(root, 'resources', 'skills'), path).replaceAll('\\', '/')
   zip.file(`skills/${rel}`, await readFile(path))
 }
+// Ship the reproducible dependency inputs alongside the managed runtime so
+// diagnostics and future environment updates use the same source of truth.
+for (const name of ['requirements-mcp.txt', 'requirements-base.txt', 'requirements-science.txt', 'requirements-science.lock', 'requirements-mineru.txt']) {
+  const path = join(root, 'resources', 'python', name)
+  try { zip.file(`python/${name}`, await readFile(path)) } catch { /* optional layer may be absent in older checkouts */ }
+}
 const archiveName = `zerowall-mcp-windows-x64-${environmentVersion}.zip`
 const archive = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 9 } })
 const archivePath = join(output, archiveName)
@@ -108,8 +114,8 @@ const baseUrl = (process.env.ZEROWALL_MCP_ENVIRONMENT_BASE_URL ?? 'https://zerow
 const manifest = {
   schema: 2, environmentVersion, ...(legacyApplicationVersion ? { version: legacyApplicationVersion } : {}), contentRevision, environmentId: 'claude-science-mcp', platform: 'win32', architecture: 'x64',
   archiveUrl: `${baseUrl}/${environmentVersion}/${archiveName}`, archiveSha256, archiveSize: archive.byteLength,
-  python: { version: process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12', relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/site-packages', modules: ['mcp', 'numpy', 'pandas', 'httpx'], supportsZeroWallTool: true },
-  pythonHealth: { imports: ['mcp', 'numpy', 'pandas', 'httpx'], bioServer: 'bio-tools/run_server.py mcp_bio', ketcherServer: 'ketcher-chemistry/server.js' },
+  python: { version: process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12', relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/site-packages', modules: ['mcp', 'numpy', 'pandas', 'httpx', 'openpyxl', 'pypdf', 'fitz', 'docx', 'pptx', 'matplotlib'], layers: ['base', 'science', 'mineru-optional'], dependencyManifests: ['python/requirements-base.txt', 'python/requirements-science.txt', 'python/requirements-science.lock', 'python/requirements-mineru.txt'], supportsZeroWallTool: true },
+  pythonHealth: { imports: ['mcp', 'numpy', 'pandas', 'httpx', 'openpyxl', 'pypdf', 'fitz', 'docx', 'pptx', 'matplotlib'], optionalLayers: { bioinformatics: ['Bio', 'anndata', 'scanpy'], mineru: ['mineru'] }, bioServer: 'bio-tools/run_server.py mcp_bio', ketcherServer: 'ketcher-chemistry/server.js' },
   skillsRoot: 'skills',
   sci: { version: process.env.ZEROWALL_SCIMASTER_VERSION ?? '0.3.15', nodeMinimum: '20.3.0', cli: 'sci/dist/cli.mjs', mcp: 'sci/dist/mcp.cjs' },
   mcp: { bioToolsVersion: process.env.ZEROWALL_BIO_TOOLS_VERSION ?? environmentVersion, ketcherChemistryVersion: process.env.ZEROWALL_KETCHER_VERSION ?? environmentVersion, sciMasterVersion: process.env.ZEROWALL_SCIMASTER_VERSION ?? '0.3.15', publicToolCount: Number(process.env.ZEROWALL_BIO_PUBLIC_TOOL_COUNT ?? 8), internalToolCount: Number(process.env.ZEROWALL_BIO_INTERNAL_TOOL_COUNT ?? 247), servers: ['zerowall_managed_bio_tools', 'zerowall_managed_ketcher', 'zerowall_managed_scimaster'] },

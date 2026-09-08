@@ -46,6 +46,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const [rdatalinuxAuthorization, setRdatalinuxAuthorization] = useState('')
   const [rdatalinuxConnection, setRdatalinuxConnection] = useState('')
   const [tsgValues, setTsgValues] = useState<Record<string, string>>({})
+  const [trailValues, setTrailValues] = useState<Record<string, string>>({})
 
   useEffect(() => {
     setReviewerValue(reviewerScope.getSnapshot().value ?? defaultReviewer)
@@ -168,6 +169,15 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     setVariables(next)
     setTsgValues({})
   })
+  const trailKeys = ['UNPAYWALL_EMAIL', 'LITERATURE_OUTPUT_ROOT', 'AUTHORIZED_ADAPTER_MODULE', 'AUTHORIZED_ADAPTER_ALLOWED_DOMAINS']
+  const saveTrail = async () => run(async () => {
+    const entries = Object.entries(trailValues).filter(([, value]) => value.trim())
+    if (entries.length === 0) throw new Error('请输入至少一个文献流水线配置项。')
+    let next = variables
+    for (const [name, value] of entries) next = await unwrap(environmentRemote.setVariable(name, value))
+    setVariables(next)
+    setTrailValues({})
+  })
   const saveSci = async () => {
     if (!sciKey.trim()) return
     await run(async () => {
@@ -210,6 +220,11 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
         <div className={css.cardHeader}><div><h3>智慧云图书馆（TSG）</h3><p>凭据保存在本机安全存储，并注入 `zerowall-tsg-literature` Skill。Token 与会话 Cookie 分开配置。</p></div><span className={tsgKeys.every(key => variables.some(variable => variable.name === key && variable.configured)) ? css.statusGood : css.status}>{tsgKeys.filter(key => variables.some(variable => variable.name === key && variable.configured)).length}/4 已配置</span></div>
         <div className={css.formGrid}>{tsgKeys.map(key => <label className={css.field} key={key}><span>{key}</span><input className={css.control} type="password" autoComplete="off" placeholder={variables.some(variable => variable.name === key && variable.configured) ? '已配置，留空保持不变' : '输入配置值'} value={tsgValues[key] ?? ''} onChange={event => setTsgValues(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
         <div className={css.footer}><span>用于检索、申请、状态轮询和授权 PDF 下载。</span><button className={css.primaryButton} type="button" disabled={busy || Object.values(tsgValues).every(value => !value.trim())} onClick={() => void saveTsg()}>保存 TSG 配置</button></div>
+      </article>
+      <article className={css.card}>
+        <div className={css.cardHeader}><div><h3>文献流水线</h3><p>标题检索、引用追踪、公开全文、PDF 解析和报告输出使用的可选配置。</p></div><span className={trailKeys.every(key => variables.some(variable => variable.name === key && variable.configured)) ? css.statusGood : css.status}>{trailKeys.filter(key => variables.some(variable => variable.name === key && variable.configured)).length}/{trailKeys.length} 已配置</span></div>
+        <div className={css.formGrid}>{trailKeys.map(key => <label className={css.field} key={key}><span>{key}</span><input className={css.control} type={key === 'UNPAYWALL_EMAIL' ? 'email' : 'text'} autoComplete="off" placeholder={variables.some(variable => variable.name === key && variable.configured) ? '已配置，留空保持不变' : '可选配置'} value={trailValues[key] ?? ''} onChange={event => setTrailValues(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
+        <div className={css.footer}><span>凭据仍由用户自有适配器管理；任务记录来源、哈希和失败原因。</span><button className={css.primaryButton} type="button" disabled={busy || Object.values(trailValues).every(value => !value.trim())} onClick={() => void saveTrail()}>保存流水线配置</button></div>
       </article>
       <article className={css.card}>
         <div className={css.cardHeader}><div><h3>Reviewer</h3><p>审核使用设置中的模型目录，不单独维护供应商。</p></div><span className={css.status}>{statusText('catalog', '模型目录已同步')}</span></div>
