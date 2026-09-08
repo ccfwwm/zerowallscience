@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
-import { DesktopUpdateController, isDailyUpdateCheckDue, type DesktopUpdaterPort } from '../src/main/updater.js'
+import { DesktopUpdateController, isDailyUpdateCheckDue, UPDATE_CHECK_INTERVAL_MS, type DesktopUpdaterPort } from '../src/main/updater.js'
 
 class FakeUpdater extends EventEmitter implements DesktopUpdaterPort {
   autoDownload = true
@@ -52,10 +52,12 @@ describe('desktop online updater', () => {
     expect(controller.current()).toMatchObject({ phase: 'error', message: '无法下载更新，请检查网络后重试。' })
   })
 
-  it('limits automatic checks to one per day while keeping manual checks available', () => {
+  it('limits automatic checks to one per hour while keeping manual checks available', () => {
     const now = Date.parse('2026-08-19T12:00:00.000Z')
     expect(isDailyUpdateCheckDue(undefined, now)).toBe(true)
-    expect(isDailyUpdateCheckDue(now - 24 * 60 * 60 * 1000, now)).toBe(true)
+    expect(UPDATE_CHECK_INTERVAL_MS).toBe(60 * 60 * 1000)
+    expect(isDailyUpdateCheckDue(now - UPDATE_CHECK_INTERVAL_MS, now)).toBe(true)
+    expect(isDailyUpdateCheckDue(now - UPDATE_CHECK_INTERVAL_MS + 1, now)).toBe(false)
     expect(isDailyUpdateCheckDue(now - 1, now)).toBe(false)
   })
 

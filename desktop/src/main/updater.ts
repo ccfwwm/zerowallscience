@@ -16,10 +16,10 @@ interface UpdateInfo {
   releaseNotes?: unknown
 }
 
-/** Background checks are deliberately infrequent to avoid waking the app/feed unnecessarily. */
-export const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1_000
+/** Stable builds check the update feed once per hour. */
+export const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1_000
 
-/** A background check is attempted at most once per four-hour interval. */
+/** A background check is attempted at most once per one-hour interval. */
 export function isUpdateCheckDue(lastCheckedAt: number | undefined, now = Date.now()): boolean {
   return lastCheckedAt === undefined || !Number.isFinite(lastCheckedAt) || now - lastCheckedAt >= UPDATE_CHECK_INTERVAL_MS
 }

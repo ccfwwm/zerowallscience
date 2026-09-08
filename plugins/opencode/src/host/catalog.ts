@@ -67,7 +67,7 @@ export function decodeModelsDev(data: unknown): Map<string, ModelMetadata> {
   const result = new Map<string, ModelMetadata>()
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return result
   const providers = data as Record<string, unknown>
-  const provider = providers.opencode ?? providers['opencode-zen']
+  const provider = providers.opencode
   if (typeof provider !== 'object' || provider === null || Array.isArray(provider)) return result
   const models = (provider as { models?: unknown }).models
   if (typeof models !== 'object' || models === null || Array.isArray(models)) return result
