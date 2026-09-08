@@ -20,14 +20,15 @@ class DelegatingAdapter extends LlmAdapter {
   override resolveModel(provider: string, model: string, signal?: AbortSignal) { return this.inner.resolveModel(provider, model, signal) }
   async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     const key = await this.options.resolveApiKey(options.provider, this.options.profiles().get(options.provider)!)
-    yield { type: 'text-delta', delta: key === 'managed-secret' ? 'ok' : 'bad' }
+    yield { type: 'text-delta', delta: key.endsWith('secret') ? 'ok' : 'bad' }
     yield { type: 'finish', reason: { kind: 'stop' }, usage: { inputTokens: 0, outputTokens: 0 } }
   }
 }
 
-async function setup(secrets: MemorySecrets) {
+async function setup(secrets: MemorySecrets, account?: { discoverModels(): Promise<never> }) {
   const ctx = new Context()
   await ctx.plugin(LlmRuntime)
+  if (account !== undefined) ctx.provide('zerowallAccount', account as never)
   let options: PiAiAdapterOptions | undefined
   const controller = new AiCloudLlmController(ctx, {
     secrets,
@@ -199,6 +200,45 @@ describe('ZeroWall AI Cloud LLM routes', () => {
       baseUrl: 'https://hkcode.aicodeme.xyz/v1', apiKey: 'biomni-secret',
     })
     await expect(resolver.resolve('opencode2dsh', 'big-pickle')).resolves.toBeUndefined()
+  })
+
+  it('recovers a missing group key through one account catalog refresh', async () => {
+    const secrets = new MemorySecrets()
+    let refreshes = 0
+    const account = {
+      discoverModels: async () => {
+        refreshes += 1
+        await secrets.set('zerowall.ai-cloud.group.33', 'restored-secret')
+        return undefined as never
+      },
+    }
+    const { ctx, controller } = await setup(secrets, account)
+    await controller.update({
+      status: 'signedIn', balanceFreshness: 'current', lowBalance: false,
+      models: [{ providerId: 'zerowall-ai-cloud-33-responses', groupId: '33', groupName: 'Research', modelId: 'gpt-test', baseUrl: 'https://hkcode.aicodeme.xyz/v1' }],
+    })
+
+    const chunks = []
+    for await (const chunk of ctx.llm.stream({ provider: 'zerowall-ai-cloud-33-responses', model: 'gpt-test', messages: [] })) chunks.push(chunk)
+    expect(chunks[0]).toEqual({ type: 'text-delta', delta: 'ok' })
+    expect(refreshes).toBe(1)
+
+    // Once restored, subsequent calls use the broker directly and do not
+    // trigger another discoverModels request during the cooldown window.
+    for await (const _chunk of ctx.llm.stream({ provider: 'zerowall-ai-cloud-33-responses', model: 'gpt-test', messages: [] })) { /* drain */ }
+    expect(refreshes).toBe(1)
+  })
+
+  it('keeps the credential error actionable when account refresh cannot restore a key', async () => {
+    const account = { discoverModels: async () => undefined as never }
+    const { ctx, controller, options } = await setup(new MemorySecrets(), account)
+    await controller.update({
+      status: 'signedIn', balanceFreshness: 'current', lowBalance: false,
+      models: [{ providerId: 'zerowall-ai-cloud-33-responses', groupId: '33', groupName: 'Research', modelId: 'gpt-test', baseUrl: 'https://hkcode.aicodeme.xyz/v1' }],
+    })
+    await expect(options().resolveApiKey('zerowall-ai-cloud-33-responses', {} as never)).rejects.toThrow(
+      'Sign in again or refresh the account model list',
+    )
   })
 
   it('states the gateway wire switches pi-ai cannot infer, per protocol', async () => {

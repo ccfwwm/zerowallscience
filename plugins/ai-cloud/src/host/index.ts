@@ -20,6 +20,14 @@ interface AgentDefaultModelService {
   saveSelection(next: ModelSelection): Promise<void>
 }
 
+interface AccountModelRefreshService {
+  discoverModels(): Promise<AiCloudAccountSnapshot>
+}
+
+interface ManagedCredentialResolver {
+  resolve(provider: string, model: string): Promise<string | undefined>
+}
+
 interface BiomniRouteDetails {
   provider: string
   model: string
@@ -28,7 +36,10 @@ interface BiomniRouteDetails {
 }
 
 declare module '@deepseek-ai/cordis' {
-  interface Context { agentDefaultModel: AgentDefaultModelService }
+  interface Context {
+    agentDefaultModel: AgentDefaultModelService
+    zerowallAiCloudCredentialResolver: ManagedCredentialResolver
+  }
 }
 
 export interface AiCloudLlmControllerOptions {
@@ -41,6 +52,12 @@ export class AiCloudLlmController {
   private readonly adapter: LlmAdapter
   private profiles: ReadonlyMap<string, ResolvedPiAiProviderProfile> = new Map()
   private registration?: AdapterRegistrationHandle
+  // A missing group key usually means the account catalog was restored without
+  // its per-group credentials. Refresh lazily on the first request and share
+  // the in-flight operation across concurrent model/tool calls. The cooldown
+  // prevents a broken gateway from turning every request into a catalog storm.
+  private credentialRefresh: Promise<void> | undefined
+  private credentialRefreshAt = 0
 
   constructor(private readonly ctx: Context, options: AiCloudLlmControllerOptions = {}) {
     this.secrets = options.secrets ?? new SecretBrokerClient()
@@ -48,15 +65,28 @@ export class AiCloudLlmController {
       profiles: () => this.profiles,
       resolveApiKey: async (provider) => {
         const groupId = groupIdOf(provider)
-        const key = await this.secrets.get(`${KEY_PREFIX}${groupId}`)
+        const secretName = `${KEY_PREFIX}${groupId}`
+        let key = await this.secrets.get(secretName)
         if (key === undefined || key.trim().length === 0) {
-          throw new Error(`ZeroWall AI Cloud has no credential for managed route "${provider}". Refresh the account model list.`)
+          try {
+            await this.refreshManagedCredentials()
+          } catch {
+            // Keep the public failure stable and credential-safe. The account
+            // service may fail because the session expired or the gateway is
+            // temporarily unavailable; neither case should expose its raw
+            // response (which could contain account metadata).
+            this.ctx.logger.warn(`ZeroWall AI Cloud credential refresh failed for managed route "${provider}".`)
+          }
+          key = await this.secrets.get(secretName)
+        }
+        if (key === undefined || key.trim().length === 0) {
+          throw new Error(`ZeroWall AI Cloud has no credential for managed route "${provider}". Sign in again or refresh the account model list.`)
         }
         return key.trim()
       },
-      // Managed routes are hand-declared API-key routes. Their only credential
-      // source is the broker above; provider-native login and ambient discovery
-      // must not bypass the account boundary.
+      // Managed routes are hand-declared API-key routes. Credentials stay in
+      // the broker; if a restored session lost a group key, the account
+      // catalog is refreshed once before failing the request.
       auth: {
         credentials: {
           read: async () => undefined,
@@ -95,6 +125,49 @@ export class AiCloudLlmController {
         }
       },
     } as never)
+    // The MCP plugin owns the public resolver name. Publish a separate
+    // AI-Cloud-specific resolver so it can delegate here without replacing
+    // the provider-agnostic resolver (and so lazy account refresh remains in
+    // the account boundary).
+    this.ctx.provide('zerowallAiCloudCredentialResolver', {
+      resolve: async (provider: string, _model: string): Promise<string | undefined> => {
+        if (!provider.startsWith(ROUTE_PREFIX)) return undefined
+        const groupId = groupIdOf(provider)
+        const secretName = `${KEY_PREFIX}${groupId}`
+        let key = await this.secrets.get(secretName)
+        if (key === undefined || key.trim().length === 0) {
+          try {
+            await this.refreshManagedCredentials()
+          } catch {
+            this.ctx.logger.warn(`ZeroWall AI Cloud credential refresh failed for managed route "${provider}".`)
+          }
+          key = await this.secrets.get(secretName)
+        }
+        return typeof key === 'string' && key.trim().length > 0 ? key.trim() : undefined
+      },
+    } as never)
+  }
+
+  private async refreshManagedCredentials(): Promise<void> {
+    const now = Date.now()
+    if (now - this.credentialRefreshAt < 5_000) return
+    if (this.credentialRefresh !== undefined) return this.credentialRefresh
+
+    let account: AccountModelRefreshService | undefined
+    try {
+      account = this.ctx.get('zerowallAccount') as AccountModelRefreshService
+    } catch {
+      // The account plugin may be disabled in a lightweight host. In that
+      // case the normal broker/env resolver remains authoritative.
+      return
+    }
+    if (account === undefined || typeof account.discoverModels !== 'function') return
+
+    const refresh = account.discoverModels()
+      .then(() => { this.credentialRefreshAt = Date.now() })
+      .finally(() => { this.credentialRefresh = undefined })
+    this.credentialRefresh = refresh
+    await refresh
   }
 
   async update(snapshot: AiCloudAccountSnapshot): Promise<void> {

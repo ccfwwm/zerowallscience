@@ -145,6 +145,19 @@ export class ZeroWallMcpService extends TypertRemoteService {
     // messages, connection records, or tool descriptions.
     ctx.provide('zerowallMcpCredentialResolver', {
       resolve: async (provider: string, _model: string): Promise<string | undefined> => {
+        // Managed ZeroWall AI Cloud routes keep their key in the account
+        // broker. Delegate first so a missing restored group key can trigger
+        // the account service's single-flight catalog refresh before falling
+        // back to generic provider credentials.
+        try {
+          const aiCloud = service.ctx.get('zerowallAiCloudCredentialResolver') as { resolve?: (provider: string, model: string) => Promise<string | undefined> } | undefined
+          if (typeof aiCloud?.resolve === 'function') {
+            const value = await aiCloud.resolve(provider, _model)
+            if (typeof value === 'string' && value.trim().length > 0) return value.trim()
+          }
+        } catch {
+          // Continue with ambient/DSH/broker credentials below.
+        }
         const managedKey = aiCloudCredentialKey(provider)
         const candidates = managedKey === undefined
           ? providerCredentialNames(provider).map(name => `${ENVIRONMENT_SECRET_PREFIX}${name.toLowerCase()}`)
