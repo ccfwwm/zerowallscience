@@ -6,25 +6,14 @@ import type { SkillDefinition, SkillSummary } from '@deepseek-ai/dsh-skill'
 import { isSkillName } from '@deepseek-ai/dsh-skill'
 import { apply as applySkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from 'zod'
 import type { CopyBundledSkillInput, CreateSkillInput, ImportSkillInput, SkillSourceSnapshot, ZeroWallSkillDetail, ZeroWallSkillSummary } from '../shared/types.js'
 
 export type { CopyBundledSkillInput, CreateSkillInput, ImportSkillInput, SkillSourceSnapshot, ZeroWallSkillDetail, ZeroWallSkillSummary } from '../shared/types.js'
 
+// Keep systemPrompt as an activation dependency so the Host loader preserves
+// the established ordering; ARS guidance itself is owned by plugin-base.
 export const inject = ['skills', 'systemPrompt']
-
-/** Model-facing routing for the bundled Academic Research Skills suite. */
-export const ACADEMIC_RESEARCH_SYSTEM_PROMPT = [
-  'Academic Research Skills (ARS) are bundled and model-invocable through the skill tool.',
-  'Infer the user\'s research intent and load the matching core skill before substantive work; do not wait for the user to name a skill or type a command.',
-  'Use deep-research for rigorous multi-source research, research-question development, literature reviews, systematic reviews, meta-analysis, evidence synthesis, and fact-checking.',
-  'Use academic-paper for paper planning, outlining, drafting, revision, abstracts, literature-review sections, citation checks, format conversion, AI-use disclosure, and rebuttal audits.',
-  'Use academic-paper-reviewer for peer review, manuscript critique, journal-fit and methodology assessment, reviewer calibration, re-review, and referee reports.',
-  'Use academic-pipeline when the user asks for an end-to-end research-to-publication workflow spanning research, writing, integrity checks, review, revision, and finalization.',
-  'Choose the narrowest core skill that covers the request, follow its loaded instructions, and use its relative references, agents, templates, and examples when needed.',
-  'The /ars-* entries are user-invocable command shortcuts only; never invoke those wrappers as skills and never require the user to type one when a core skill matches.',
-].join(' ')
 
 declare module '@deepseek-ai/cordis' {
   interface Context { zerowallCapabilities: ZeroWallCapabilitiesService }
@@ -265,11 +254,6 @@ function skillDetail(skill: SkillDefinition): ZeroWallSkillDetail {
 }
 
 export function apply(ctx: Context): void {
-  ctx.systemPrompt.section({
-    name: 'zerowall:academic-research-skills',
-    order: 90,
-    text: ACADEMIC_RESEARCH_SYSTEM_PROMPT,
-  })
   ctx.plugin(ZeroWallCapabilitiesService)
 }
 

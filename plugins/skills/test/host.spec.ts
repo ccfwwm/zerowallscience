@@ -1,10 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
-import { ACADEMIC_RESEARCH_SYSTEM_PROMPT, ZeroWallCapabilitiesService, apply } from '../src/host/index.js'
+import { ZeroWallCapabilitiesService } from '../src/host/index.js'
 
 const summary = {
   name: 'literature-review',
@@ -14,31 +14,6 @@ const summary = {
   provider: 'zerowall-scientific-skills',
   invocation: { modelInvocable: true, userInvocable: true },
 }
-
-describe('Academic Research Skills system prompt', () => {
-  it('routes matching research work to the four model-invocable core skills', () => {
-    expect(ACADEMIC_RESEARCH_SYSTEM_PROMPT).toContain('do not wait for the user to name a skill')
-    expect(ACADEMIC_RESEARCH_SYSTEM_PROMPT).toContain('deep-research')
-    expect(ACADEMIC_RESEARCH_SYSTEM_PROMPT).toContain('academic-paper')
-    expect(ACADEMIC_RESEARCH_SYSTEM_PROMPT).toContain('academic-paper-reviewer')
-    expect(ACADEMIC_RESEARCH_SYSTEM_PROMPT).toContain('academic-pipeline')
-    expect(ACADEMIC_RESEARCH_SYSTEM_PROMPT).toContain('/ars-* entries are user-invocable command shortcuts only')
-  })
-
-  it('registers the routing guidance as an ordered system-prompt section', () => {
-    const section = vi.fn()
-    const plugin = vi.fn()
-
-    apply({ systemPrompt: { section }, plugin } as unknown as Context)
-
-    expect(section).toHaveBeenCalledWith({
-      name: 'zerowall:academic-research-skills',
-      order: 90,
-      text: ACADEMIC_RESEARCH_SYSTEM_PROMPT,
-    })
-    expect(plugin).toHaveBeenCalledWith(ZeroWallCapabilitiesService)
-  })
-})
 
 describe('ZeroWall capabilities Remote', () => {
   it('returns sanitized Skill summaries and loads full content only on demand', async () => {

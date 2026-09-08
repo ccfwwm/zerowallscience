@@ -21,6 +21,11 @@
 - 每次 Host 启动最多自动探测一次；后续真实模型请求只由“检测全部模型”或单模型检测按钮触发。
 - “同步模型”和后台目录更新只刷新模型元数据，不发送推理请求。
 
+## 桌面交互与系统提示词
+
+- 修复消息复制按钮在 Electron 中无响应的问题，桌面版优先使用主进程剪贴板，并保留浏览器降级路径。
+- 将 ARS 自动技能路由直接融合到 ZeroWall Science 主系统提示词，移除技能插件追加的独立提示词段落。
+
 ## 许可与来源
 
 ARS 内容及 DSH 适配层遵循 CC-BY-NC-4.0，来源为 `Imbad0202/academic-research-skills` v3.21.2，经 `nullptr-DZF/dsh-academic-research-skills` 适配。详见 `docs/academic-research-skills-NOTICE.md` 和随包许可证文件。
