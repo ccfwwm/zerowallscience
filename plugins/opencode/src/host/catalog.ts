@@ -156,6 +156,7 @@ export class ModelCatalog {
   }
 
   async refreshOnce(): Promise<void> {
+    const before = catalogFingerprint(this.list())
     const failures: string[] = []
     await Promise.all([
       this.refreshLive().catch(error => failures.push(safeMessage(error))),
@@ -164,7 +165,7 @@ export class ModelCatalog {
     this.lastError = failures.join('; ').slice(0, 500)
     if (this.lastError !== '') this.options.logger?.warn(`opencode2dsh catalog refresh: ${this.lastError}`)
     await this.writeStatus()
-    this.options.onRefresh?.()
+    if (catalogFingerprint(this.list()) !== before) this.options.onRefresh?.()
   }
 
   list(): OpenCodeCatalogModel[] {
@@ -249,6 +250,10 @@ export class ModelCatalog {
     if (this.options.statusPath === undefined) return
     await writeJsonAtomic(this.options.statusPath, { ...this.snapshot(), writtenAt: new Date(this.options.now()).toISOString() }).catch(() => {})
   }
+}
+
+function catalogFingerprint(models: readonly OpenCodeCatalogModel[]): string {
+  return JSON.stringify(models)
 }
 
 async function fetchWithTimeout(fetchImpl: typeof fetch, url: string, init: RequestInit, timeoutMs = 30_000): Promise<Response> {

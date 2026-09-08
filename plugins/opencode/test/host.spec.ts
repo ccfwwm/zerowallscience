@@ -134,6 +134,25 @@ describe('ModelCatalog', () => {
     ])
   })
 
+  it('publishes adapter updates only when the effective catalog changes', async () => {
+    let revision = 0
+    const onRefresh = vi.fn()
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => String(url).includes('models.dev')
+      ? new Response(JSON.stringify({ opencode: { models: {
+        'big-pickle': { name: revision === 0 ? 'Big Pickle' : 'Big Pickle Updated', cost: { input: 0, output: 0 } },
+      } } }), { status: 200 })
+      : new Response(JSON.stringify({ data: [{ id: 'big-pickle' }] }), { status: 200 }))
+    const modelCatalog = new ModelCatalog({ fetchImpl: fetchImpl as typeof fetch, onRefresh })
+
+    await modelCatalog.refreshOnce()
+    expect(onRefresh).toHaveBeenCalledOnce()
+    await modelCatalog.refreshOnce()
+    expect(onRefresh).toHaveBeenCalledOnce()
+    revision = 1
+    await modelCatalog.refreshOnce()
+    expect(onRefresh).toHaveBeenCalledTimes(2)
+  })
+
   it('falls back to the static catalog and writes a bounded health snapshot', async () => {
     const root = await mkdtemp(join(tmpdir(), 'opencode2dsh-'))
     const statusPath = join(root, 'adapter-status.json')
