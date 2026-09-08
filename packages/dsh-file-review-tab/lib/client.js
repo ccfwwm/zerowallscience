@@ -6,6 +6,7 @@ window.__ModuleLoader__.load({
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let react = require("react");
 		let react_jsx_runtime = require("react/jsx-runtime");
+		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		//#region src/settings-contract.ts
 		/** Shared Host/browser contract for file-review display preferences. */
 		/** Settings namespace owned by this plugin. */
@@ -688,36 +689,36 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(style);
 		}
 		var UnifiedDiff_module_css_default = {
-			"unifiedLineNumber": "ZkWQdW_unifiedLineNumber",
-			"commentEditor": "ZkWQdW_commentEditor",
-			"commentBody": "ZkWQdW_commentBody",
-			"unifiedOmitted": "ZkWQdW_unifiedOmitted",
-			"unifiedEmbedded": "ZkWQdW_unifiedEmbedded",
-			"commentTrigger": "ZkWQdW_commentTrigger",
-			"unifiedGap": "ZkWQdW_unifiedGap",
-			"unifiedFile": "ZkWQdW_unifiedFile",
-			"unifiedStatus": "ZkWQdW_unifiedStatus",
-			"unifiedBodyWrap": "ZkWQdW_unifiedBodyWrap",
-			"commentCancel": "ZkWQdW_commentCancel",
-			"unifiedHunkHeader": "ZkWQdW_unifiedHunkHeader",
-			"commentDelete": "ZkWQdW_commentDelete",
-			"unifiedText": "ZkWQdW_unifiedText",
-			"unifiedLine": "ZkWQdW_unifiedLine",
-			"commentRow": "ZkWQdW_commentRow",
-			"unifiedCopyButton": "ZkWQdW_unifiedCopyButton",
-			"unified_context": "ZkWQdW_unified_context",
-			"commentHint": "ZkWQdW_commentHint",
-			"unifiedHeader": "ZkWQdW_unifiedHeader",
 			"unifiedPath": "ZkWQdW_unifiedPath",
+			"unifiedBlock": "ZkWQdW_unifiedBlock",
+			"commentBody": "ZkWQdW_commentBody",
+			"unifiedSign": "ZkWQdW_unifiedSign",
+			"unifiedStatus": "ZkWQdW_unifiedStatus",
 			"commentSave": "ZkWQdW_commentSave",
+			"unifiedLineNumber": "ZkWQdW_unifiedLineNumber",
 			"unifiedBody": "ZkWQdW_unifiedBody",
-			"unified_add": "ZkWQdW_unified_add",
+			"unifiedCopyButton": "ZkWQdW_unifiedCopyButton",
+			"unifiedHeader": "ZkWQdW_unifiedHeader",
+			"commentTrigger": "ZkWQdW_commentTrigger",
+			"unifiedText": "ZkWQdW_unifiedText",
 			"unifiedAdded": "ZkWQdW_unifiedAdded",
 			"unifiedRemoved": "ZkWQdW_unifiedRemoved",
-			"unifiedBlock": "ZkWQdW_unifiedBlock",
-			"unifiedSign": "ZkWQdW_unifiedSign",
+			"unifiedBodyWrap": "ZkWQdW_unifiedBodyWrap",
+			"unifiedGap": "ZkWQdW_unifiedGap",
+			"commentHint": "ZkWQdW_commentHint",
+			"unifiedEmbedded": "ZkWQdW_unifiedEmbedded",
+			"commentEditor": "ZkWQdW_commentEditor",
+			"unifiedLine": "ZkWQdW_unifiedLine",
+			"commentCancel": "ZkWQdW_commentCancel",
+			"unifiedFile": "ZkWQdW_unifiedFile",
+			"commentDelete": "ZkWQdW_commentDelete",
+			"commentActions": "ZkWQdW_commentActions",
+			"unified_context": "ZkWQdW_unified_context",
+			"unifiedOmitted": "ZkWQdW_unifiedOmitted",
+			"unified_add": "ZkWQdW_unified_add",
 			"unified_del": "ZkWQdW_unified_del",
-			"commentActions": "ZkWQdW_commentActions"
+			"commentRow": "ZkWQdW_commentRow",
+			"unifiedHunkHeader": "ZkWQdW_unifiedHunkHeader"
 		};
 		//#endregion
 		//#region src/client/UnifiedDiff.tsx
@@ -1127,7 +1128,7 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		//#region \0dsh-file-review-tab-css:C:\softworks\gpt-tools\zerowallscience\packages\dsh-file-review-tab\src\client\ProducedFiles.module.css.mjs
-		const css$1 = "._7Tbyiq_card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);color:var(--dsw-alias-label-primary);border-radius:12px;margin-top:16px;font-size:13px;overflow:hidden}._7Tbyiq_cardHeader{align-items:center;gap:10px;min-height:56px;padding:0 12px;display:flex}._7Tbyiq_fileIconWrap{background:var(--dsw-alias-interactive-bg-hover);width:30px;height:30px;color:var(--dsw-alias-label-secondary);border-radius:8px;flex:none;place-items:center;display:grid}._7Tbyiq_icon,._7Tbyiq_buttonIcon,._7Tbyiq_closeIcon{fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.4px}._7Tbyiq_icon{width:18px;height:18px}._7Tbyiq_buttonIcon{width:16px;height:16px}._7Tbyiq_closeIcon{width:20px;height:20px}._7Tbyiq_cardTitleBlock{flex:auto;align-items:baseline;gap:10px;min-width:0;display:flex}._7Tbyiq_cardTitle{text-overflow:ellipsis;white-space:nowrap;font-weight:600;overflow:hidden}._7Tbyiq_stats{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;gap:5px;display:inline-flex}._7Tbyiq_added{color:var(--dsw-alias-state-success-primary)}._7Tbyiq_removed{color:var(--dsw-alias-state-error-primary)}._7Tbyiq_reviewButton,._7Tbyiq_toggleButton,._7Tbyiq_toolbarButton,._7Tbyiq_openButton,._7Tbyiq_closeButton{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit}._7Tbyiq_reviewButton,._7Tbyiq_toggleButton,._7Tbyiq_toolbarButton{border-radius:8px;flex:none;align-items:center;gap:6px;min-height:30px;padding:0 10px;display:inline-flex}._7Tbyiq_reviewButton:hover,._7Tbyiq_toggleButton:hover:not(:disabled),._7Tbyiq_toolbarButton:hover:not(:disabled),._7Tbyiq_openButton:hover,._7Tbyiq_closeButton:hover{background:var(--dsw-alias-interactive-bg-hover)}._7Tbyiq_reviewButton:focus-visible,._7Tbyiq_toggleButton:focus-visible,._7Tbyiq_toolbarButton:focus-visible,._7Tbyiq_openButton:focus-visible,._7Tbyiq_closeButton:focus-visible,._7Tbyiq_fileRow:focus-visible{box-shadow:inset 0 0 0 2px var(--dsw-alias-border-l3);outline:none}._7Tbyiq_fileList{border-top:1px solid var(--dsw-alias-border-l1)}._7Tbyiq_fileRow{border:0;border-bottom:1px solid var(--dsw-alias-border-l1);width:100%;min-height:38px;color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;text-align:left;background:0 0;align-items:center;gap:12px;margin:0;padding:0 12px;display:flex}._7Tbyiq_fileRow:hover{background:var(--dsw-alias-interactive-bg-hover)}._7Tbyiq_fileName{text-overflow:ellipsis;white-space:nowrap;flex:auto;min-width:0;overflow:hidden}._7Tbyiq_moreFiles{width:100%;min-height:34px;color:var(--dsw-alias-label-tertiary);cursor:pointer;font:inherit;text-align:left;background:0 0;border:0;margin:0;padding:0 12px;line-height:34px;display:block}._7Tbyiq_moreFiles:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}._7Tbyiq_moreFiles:focus-visible{box-shadow:inset 0 0 0 2px var(--dsw-alias-border-l3);outline:none}._7Tbyiq_drawer{z-index:1000;width:var(--review-drawer-width,36vw);border-left:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);max-width:100vw;color:var(--dsw-alias-label-primary);flex-direction:column;display:flex;position:fixed;inset:0 0 0 auto;box-shadow:-12px 0 32px #0000001f}._7Tbyiq_drawerSplit{z-index:1;box-shadow:none}._7Tbyiq_drawerResizing,._7Tbyiq_drawerResizing *{cursor:col-resize;user-select:none}._7Tbyiq_resizeHandle{z-index:5;cursor:col-resize;touch-action:none;background:0 0;border:0;width:12px;margin:0;padding:0;position:absolute;inset:0 auto 0 -6px}._7Tbyiq_resizeHandle:after{content:\"\";background:0 0;width:2px;transition:background .12s;position:absolute;inset:0 auto 0 5px}._7Tbyiq_resizeHandle:hover:after,._7Tbyiq_resizeHandle:focus-visible:after,._7Tbyiq_drawerResizing ._7Tbyiq_resizeHandle:after{background:var(--dsw-alias-border-l3)}._7Tbyiq_resizeHandle:focus-visible{outline:none}._7Tbyiq_drawerHeader{border-bottom:1px solid var(--dsw-alias-border-l2);flex:none;align-items:center;gap:12px;min-height:64px;padding:10px 14px 10px 18px;display:flex}._7Tbyiq_reviewContent{width:100%;min-width:0;min-height:0;color:var(--dsw-alias-label-primary);flex-direction:column;flex:auto;display:flex;overflow:hidden}._7Tbyiq_reviewToolbar{flex:0 auto;justify-content:flex-end;align-items:center;gap:8px;min-width:0;display:flex}._7Tbyiq_drawerHeading{flex-direction:column;flex:auto;gap:2px;min-width:0;display:flex}._7Tbyiq_drawerTitle{font-size:15px;font-weight:600;line-height:20px}._7Tbyiq_drawerSubtitle{color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:16px;overflow:hidden}._7Tbyiq_toolbarButton:disabled,._7Tbyiq_toggleButton:disabled{cursor:default;opacity:.45}._7Tbyiq_toast{z-index:1200;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);width:min(430px,100vw - 32px);color:var(--dsw-alias-label-primary);border-radius:14px;padding:14px;position:fixed;top:120px;left:50%;transform:translate(-50%);box-shadow:0 8px 24px #00000029}._7Tbyiq_toastSuccess{border-color:color-mix(in srgb, var(--dsw-alias-state-success-primary) 28%, transparent);width:auto;min-width:220px;max-width:min(430px,100vw - 32px);padding:8px 10px}._7Tbyiq_toastError{border-color:color-mix(in srgb, var(--dsw-alias-state-error-primary) 28%, transparent)}._7Tbyiq_toastHeader{align-items:flex-start;gap:10px;display:flex}._7Tbyiq_noticeIcon{border-radius:9px;flex:none;place-items:center;width:30px;height:30px;display:grid}._7Tbyiq_toastSuccess ._7Tbyiq_noticeIcon{background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent);color:var(--dsw-alias-state-success-primary)}._7Tbyiq_toastError ._7Tbyiq_noticeIcon{background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);color:var(--dsw-alias-state-error-primary)}._7Tbyiq_noticeIconSvg{fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.7px;width:18px;height:18px}._7Tbyiq_toastCopy{flex-direction:column;flex:auto;gap:3px;min-width:0;padding-top:3px;display:flex}._7Tbyiq_toastTitle{font-size:14px;font-weight:600;line-height:20px}._7Tbyiq_toastDescription{overflow-wrap:anywhere;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}._7Tbyiq_toastCloseButton{width:28px;height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;border-radius:7px;flex:none;place-items:center;padding:0;display:grid}._7Tbyiq_toastCloseButton:hover,._7Tbyiq_toastCloseButton:focus-visible,._7Tbyiq_noticeFileButton:hover,._7Tbyiq_noticeFileButton:focus-visible{background:var(--dsw-alias-interactive-bg-hover)}._7Tbyiq_toastCloseButton:focus-visible,._7Tbyiq_noticeFileButton:focus-visible{box-shadow:inset 0 0 0 2px var(--dsw-alias-border-l3);outline:none}._7Tbyiq_noticeFiles{margin:12px 0 0 40px}._7Tbyiq_noticeFileListLabel{color:var(--dsw-alias-label-secondary);margin:0 8px 4px;font-size:12px;line-height:18px;display:block}._7Tbyiq_noticeFileList{flex-direction:column;gap:2px;max-height:220px;margin:0;padding:0;list-style:none;display:flex;overflow:auto}._7Tbyiq_noticeFileButton{width:100%;min-height:34px;color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;text-align:left;background:0 0;border:0;border-radius:7px;align-items:center;gap:12px;padding:5px 8px;display:flex}._7Tbyiq_noticeFilePath{min-width:0;font:var(--dsw-font-markdown-code-block);text-overflow:ellipsis;white-space:nowrap;flex:auto;overflow:hidden}._7Tbyiq_noticeFileArrow{color:var(--dsw-alias-label-secondary);white-space:nowrap;flex:none;font-size:14px}._7Tbyiq_noticeDismissButton{background:var(--dsw-alias-label-primary);width:100%;min-height:34px;color:var(--dsw-alias-bg-container,Canvas);cursor:pointer;font:inherit;border:0;border-radius:8px;margin-top:12px;padding:0 12px;font-weight:600}._7Tbyiq_noticeDismissButton:hover{opacity:.9}._7Tbyiq_noticeDismissButton:focus-visible{outline:2px solid var(--dsw-alias-border-l3);outline-offset:2px}._7Tbyiq_closeButton{background:0 0;border-color:#0000;border-radius:8px;flex:none;place-items:center;width:32px;height:32px;padding:0;display:grid}._7Tbyiq_drawerBody{flex:auto;min-height:0;overflow:auto}._7Tbyiq_reviewFile+._7Tbyiq_reviewFile{border-top:8px solid var(--dsw-alias-border-l1)}._7Tbyiq_reviewFileHeader{z-index:2;border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);min-height:44px;font:var(--dsw-font-markdown-code-block);align-items:center;gap:8px;padding:0 12px;display:flex;position:sticky;top:0}._7Tbyiq_sidebarTab{background:var(--dsw-alias-bg-container,Canvas);width:100%;min-width:0;height:100%;min-height:0;color:var(--dsw-alias-label-primary);display:flex;overflow:hidden;container-type:inline-size}._7Tbyiq_sidebarTabEmpty{width:100%;min-width:0;min-height:180px;color:var(--dsw-alias-label-secondary);text-align:center;place-items:center;padding:24px;font-size:13px;line-height:20px;display:grid}@container (width<=520px){._7Tbyiq_reviewFileHeader{flex-wrap:wrap;padding-block:8px}._7Tbyiq_reviewPath{overflow-wrap:anywhere;white-space:normal;flex-basis:calc(100% - 70px)}}._7Tbyiq_reviewStatus{color:var(--dsw-alias-state-success-primary);font-weight:700}._7Tbyiq_reviewPath{text-overflow:ellipsis;white-space:nowrap;flex:auto;min-width:0;overflow:hidden}._7Tbyiq_openButton{min-height:28px;font:var(--dsw-font-xs-13);border-radius:7px;flex:none;padding:0 9px}._7Tbyiq_reviewDiff{color:var(--dsw-alias-label-primary)}._7Tbyiq_reviewUnavailable{background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-secondary);margin:0;padding:22px 16px;font-size:13px;line-height:20px}._7Tbyiq_commentDock{box-sizing:border-box;z-index:9;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance));max-width:var(--dsh-composer-card-max-width);margin:0 auto -4px;padding:0 12px;position:relative}._7Tbyiq_reviewCommentPillRoot{width:fit-content;position:relative}._7Tbyiq_reviewCommentPillRootMessage{align-self:flex-end}._7Tbyiq_commentDockPill{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-specific-input-major,var(--dsw-alias-bg-container,Canvas));min-height:34px;box-shadow:var(--dsw-shadow-lv1);border-radius:18px;align-items:center;display:inline-flex;overflow:hidden}._7Tbyiq_commentDockOpen,._7Tbyiq_commentDockRemove{color:var(--dsw-alias-label-primary);cursor:pointer;background:0 0;border:0}._7Tbyiq_commentDockOpen{min-height:34px;font:var(--dsw-font-sm-14);align-items:center;gap:7px;padding:0 4px 0 11px;display:flex}._7Tbyiq_commentDockOpen:hover,._7Tbyiq_commentDockRemove:hover{background:var(--dsw-alias-interactive-bg-hover)}._7Tbyiq_commentDockIcon{fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.4px;width:17px;height:17px;color:var(--dsw-alias-label-tertiary)}._7Tbyiq_commentDockRemove{width:30px;height:30px;color:var(--dsw-alias-label-secondary);border-radius:50%;place-items:center;margin-right:2px;font-size:22px;line-height:1;display:grid}._7Tbyiq_commentDockOpen:focus-visible,._7Tbyiq_commentDockRemove:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}._7Tbyiq_reviewCommentPreviewPositioner{z-index:20;box-sizing:border-box;width:min(360px,100vw - 48px);position:absolute}._7Tbyiq_reviewCommentPreview{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);width:100%;height:auto;max-height:min(420px,60vh);box-shadow:var(--dsw-shadow-lv3);border-radius:16px;flex-direction:column;gap:8px;padding:8px;display:flex;overflow:auto}._7Tbyiq_reviewCommentPreviewAbove{padding-bottom:8px;bottom:100%;left:0}._7Tbyiq_reviewCommentPreviewBelow{padding-top:8px;top:100%;right:0}._7Tbyiq_commentPreviewCard{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);border-radius:12px;padding:14px 16px}._7Tbyiq_commentPreviewHeader{min-width:0;font:var(--dsw-font-sm-14);align-items:center;gap:12px;display:flex}._7Tbyiq_commentPreviewPath{min-width:0;color:var(--dsw-alias-state-business-primary);text-overflow:ellipsis;white-space:nowrap;flex:auto;overflow:hidden}._7Tbyiq_commentPreviewLocation{color:var(--dsw-alias-label-tertiary);flex:none}._7Tbyiq_commentPreviewBody{color:var(--dsw-alias-label-primary);font:var(--dsw-font-sm-14);white-space:pre-wrap;overflow-wrap:anywhere;margin:10px 0 0;line-height:22px}[data-decoration=chip][title=​]{opacity:0;pointer-events:none;width:0;height:0;position:absolute;overflow:hidden}._7Tbyiq_reviewMessageRow{flex-direction:column;align-items:flex-end;gap:6px;display:flex}._7Tbyiq_reviewMessageStack{flex-direction:column;align-items:flex-end;gap:8px;min-width:0;max-width:min(525px,82%);display:flex}._7Tbyiq_reviewMessageBubble{background:var(--dsw-specific-bubble);max-width:100%;color:var(--dsw-alias-label-primary);border-radius:22px;padding:10px 16px;font-size:16px;line-height:24px}._7Tbyiq_reviewMessageCommentPill{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);min-height:36px;color:var(--dsw-alias-label-primary);cursor:pointer;font:var(--dsw-font-sm-14);white-space:nowrap;border-radius:18px;align-items:center;gap:7px;padding:0 14px;display:inline-flex}._7Tbyiq_reviewMessageCommentPill:hover,._7Tbyiq_reviewMessageCommentPill:focus-visible,._7Tbyiq_reviewMessageCommentPill[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover)}._7Tbyiq_reviewMessageCommentPill:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}._7Tbyiq_reviewMessageCommentIcon{fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.4px;width:17px;height:17px;color:var(--dsw-alias-label-tertiary)}._7Tbyiq_reviewMessageReference{color:var(--dsw-alias-label-primary);vertical-align:baseline;white-space:nowrap;background:#6187d838;border-radius:6px;margin:0 2px;padding:0 8px;font-size:.85em;line-height:1.6;display:inline-block}._7Tbyiq_reviewMessageActions{align-items:center;gap:10px;height:28px;display:flex}._7Tbyiq_reviewMessageTime{color:var(--dsw-alias-label-tertiary);white-space:nowrap;padding-right:12px;font-size:14px;line-height:24px}._7Tbyiq_reviewMessageAction{width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;border-radius:50%;justify-content:center;align-items:center;padding:6px;display:inline-flex}._7Tbyiq_reviewMessageAction:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}._7Tbyiq_reviewMessageActionIcon{fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.4px;width:16px;height:16px}._7Tbyiq_reviewMessageImages{flex-wrap:wrap;justify-content:flex-end;gap:8px;max-width:100%;display:flex}._7Tbyiq_reviewMessageImageButton{background:var(--dsw-alias-interactive-bg-hover);cursor:zoom-in;border:0;border-radius:12px;max-width:280px;max-height:280px;padding:0;overflow:hidden}._7Tbyiq_reviewMessageImageTile{width:64px;height:64px}._7Tbyiq_reviewMessageImage{object-fit:cover;width:100%;height:100%;display:block}._7Tbyiq_reviewMessageImageLoading,._7Tbyiq_reviewMessageImageRetry{background:var(--dsw-alias-interactive-bg-hover);width:96px;height:64px;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xs-12);border:0;border-radius:12px;place-items:center;display:grid}._7Tbyiq_reviewMessageImageRetry{cursor:pointer}._7Tbyiq_reviewMessageLightbox{z-index:2000;background:#000000b8;place-items:center;padding:48px;display:grid;position:fixed;inset:0}._7Tbyiq_reviewMessageLightboxImage{object-fit:contain;max-width:100%;max-height:100%}._7Tbyiq_reviewMessageLightboxClose{color:#fff;cursor:pointer;background:#ffffff29;border:0;border-radius:50%;width:36px;height:36px;font-size:26px;line-height:1;position:absolute;top:20px;right:24px}._7Tbyiq_reviewMessageExtraBlock{margin-top:8px;font-size:13px}._7Tbyiq_reviewMessageExtraBlock pre{background:var(--dsw-alias-markdown-code-block);white-space:pre-wrap;border-radius:8px;max-height:240px;margin:6px 0 0;padding:10px;overflow:auto}@media (hover:hover){[data-time-hover-root] ._7Tbyiq_reviewMessageTime{opacity:0;transition:opacity 80ms}[data-time-hover-root]:hover ._7Tbyiq_reviewMessageTime,[data-time-hover-root]:focus-within ._7Tbyiq_reviewMessageTime{opacity:1}}@media (width<=760px){._7Tbyiq_cardHeader{flex-wrap:wrap;padding-block:10px}._7Tbyiq_cardTitleBlock{flex-direction:column;gap:1px}._7Tbyiq_drawer{border-left:0;width:100vw}._7Tbyiq_resizeHandle{display:none}._7Tbyiq_drawerHeader{gap:8px;padding-left:12px}._7Tbyiq_toolbarButton{color:#0000;justify-content:center;width:32px;padding:0;overflow:hidden}._7Tbyiq_toolbarButton ._7Tbyiq_buttonIcon{color:var(--dsw-alias-label-primary)}._7Tbyiq_reviewFileHeader{flex-wrap:wrap;padding-block:8px}._7Tbyiq_reviewPath{flex-basis:calc(100% - 30px)}._7Tbyiq_openButton{margin-left:auto}}@media (prefers-reduced-motion:no-preference){._7Tbyiq_drawer{animation:.16s ease-out _7Tbyiq_drawer-enter}}@keyframes _7Tbyiq_drawer-enter{0%{opacity:0;transform:translate(20px)}to{opacity:1;transform:translate(0)}}";
+		const css$1 = "._7Tbyiq_card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);color:var(--dsw-alias-label-primary);border-radius:12px;margin-top:16px;font-size:13px;overflow:hidden}._7Tbyiq_cardHeader{align-items:center;gap:10px;min-height:56px;padding:0 12px;display:flex}._7Tbyiq_fileIconWrap{background:var(--dsw-alias-interactive-bg-hover);width:30px;height:30px;color:var(--dsw-alias-label-secondary);border-radius:8px;flex:none;place-items:center;display:grid}._7Tbyiq_icon,._7Tbyiq_buttonIcon,._7Tbyiq_closeIcon{fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.4px}._7Tbyiq_icon{width:18px;height:18px}._7Tbyiq_buttonIcon{width:16px;height:16px}._7Tbyiq_closeIcon{width:20px;height:20px}._7Tbyiq_cardTitleBlock{flex:auto;align-items:baseline;gap:10px;min-width:0;display:flex}._7Tbyiq_cardTitle{text-overflow:ellipsis;white-space:nowrap;font-weight:600;overflow:hidden}._7Tbyiq_stats{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;gap:5px;display:inline-flex}._7Tbyiq_added{color:var(--dsw-alias-state-success-primary)}._7Tbyiq_removed{color:var(--dsw-alias-state-error-primary)}._7Tbyiq_reviewButton,._7Tbyiq_toggleButton,._7Tbyiq_toolbarButton,._7Tbyiq_openButton,._7Tbyiq_closeButton{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit}._7Tbyiq_reviewButton,._7Tbyiq_toggleButton,._7Tbyiq_toolbarButton{border-radius:8px;flex:none;align-items:center;gap:6px;min-height:30px;padding:0 10px;display:inline-flex}._7Tbyiq_reviewButton:hover,._7Tbyiq_toggleButton:hover:not(:disabled),._7Tbyiq_toolbarButton:hover:not(:disabled),._7Tbyiq_openButton:hover,._7Tbyiq_closeButton:hover{background:var(--dsw-alias-interactive-bg-hover)}._7Tbyiq_reviewButton:focus-visible,._7Tbyiq_toggleButton:focus-visible,._7Tbyiq_toolbarButton:focus-visible,._7Tbyiq_openButton:focus-visible,._7Tbyiq_closeButton:focus-visible,._7Tbyiq_fileRow:focus-visible{box-shadow:inset 0 0 0 2px var(--dsw-alias-border-l3);outline:none}._7Tbyiq_fileList{border-top:1px solid var(--dsw-alias-border-l1)}._7Tbyiq_fileRow{border:0;border-bottom:1px solid var(--dsw-alias-border-l1);width:100%;min-height:38px;color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;text-align:left;background:0 0;align-items:center;gap:12px;margin:0;padding:0 12px;display:flex}._7Tbyiq_fileRow:hover{background:var(--dsw-alias-interactive-bg-hover)}._7Tbyiq_fileName{text-overflow:ellipsis;white-space:nowrap;flex:auto;min-width:0;overflow:hidden}._7Tbyiq_moreFiles{width:100%;min-height:34px;color:var(--dsw-alias-label-tertiary);cursor:pointer;font:inherit;text-align:left;background:0 0;border:0;margin:0;padding:0 12px;line-height:34px;display:block}._7Tbyiq_moreFiles:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}._7Tbyiq_moreFiles:focus-visible{box-shadow:inset 0 0 0 2px var(--dsw-alias-border-l3);outline:none}._7Tbyiq_drawer{z-index:1000;width:var(--review-drawer-width,36vw);border-left:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);max-width:100vw;color:var(--dsw-alias-label-primary);flex-direction:column;display:flex;position:fixed;inset:0 0 0 auto;box-shadow:-12px 0 32px #0000001f}._7Tbyiq_drawerSplit{z-index:1;box-shadow:none}._7Tbyiq_drawerResizing,._7Tbyiq_drawerResizing *{cursor:col-resize;user-select:none}._7Tbyiq_resizeHandle{z-index:5;cursor:col-resize;touch-action:none;background:0 0;border:0;width:12px;margin:0;padding:0;position:absolute;inset:0 auto 0 -6px}._7Tbyiq_resizeHandle:after{content:\"\";background:0 0;width:2px;transition:background .12s;position:absolute;inset:0 auto 0 5px}._7Tbyiq_resizeHandle:hover:after,._7Tbyiq_resizeHandle:focus-visible:after,._7Tbyiq_drawerResizing ._7Tbyiq_resizeHandle:after{background:var(--dsw-alias-border-l3)}._7Tbyiq_resizeHandle:focus-visible{outline:none}._7Tbyiq_drawerHeader{border-bottom:1px solid var(--dsw-alias-border-l2);flex:none;align-items:center;gap:12px;min-height:64px;padding:10px 14px 10px 18px;display:flex}._7Tbyiq_reviewContent{width:100%;min-width:0;min-height:0;color:var(--dsw-alias-label-primary);flex-direction:column;flex:auto;display:flex;overflow:hidden}._7Tbyiq_reviewToolbar{flex:0 auto;justify-content:flex-end;align-items:center;gap:8px;min-width:0;display:flex}._7Tbyiq_drawerHeading{flex-direction:column;flex:auto;gap:2px;min-width:0;display:flex}._7Tbyiq_drawerTitle{font-size:15px;font-weight:600;line-height:20px}._7Tbyiq_drawerSubtitle{color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:16px;overflow:hidden}._7Tbyiq_toolbarButton:disabled,._7Tbyiq_toggleButton:disabled{cursor:default;opacity:.45}._7Tbyiq_toast{z-index:1200;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);width:min(430px,100vw - 32px);color:var(--dsw-alias-label-primary);border-radius:14px;padding:14px;position:fixed;top:120px;left:50%;transform:translate(-50%);box-shadow:0 8px 24px #00000029}._7Tbyiq_toastSuccess{border-color:color-mix(in srgb, var(--dsw-alias-state-success-primary) 28%, transparent);width:auto;min-width:220px;max-width:min(430px,100vw - 32px);padding:8px 10px}._7Tbyiq_toastError{border-color:color-mix(in srgb, var(--dsw-alias-state-error-primary) 28%, transparent)}._7Tbyiq_toastHeader{align-items:flex-start;gap:10px;display:flex}._7Tbyiq_noticeIcon{border-radius:9px;flex:none;place-items:center;width:30px;height:30px;display:grid}._7Tbyiq_toastSuccess ._7Tbyiq_noticeIcon{background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent);color:var(--dsw-alias-state-success-primary)}._7Tbyiq_toastError ._7Tbyiq_noticeIcon{background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);color:var(--dsw-alias-state-error-primary)}._7Tbyiq_noticeIconSvg{fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.7px;width:18px;height:18px}._7Tbyiq_toastCopy{flex-direction:column;flex:auto;gap:3px;min-width:0;padding-top:3px;display:flex}._7Tbyiq_toastTitle{font-size:14px;font-weight:600;line-height:20px}._7Tbyiq_toastDescription{overflow-wrap:anywhere;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}._7Tbyiq_toastCloseButton{width:28px;height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;border-radius:7px;flex:none;place-items:center;padding:0;display:grid}._7Tbyiq_toastCloseButton:hover,._7Tbyiq_toastCloseButton:focus-visible,._7Tbyiq_noticeFileButton:hover,._7Tbyiq_noticeFileButton:focus-visible{background:var(--dsw-alias-interactive-bg-hover)}._7Tbyiq_toastCloseButton:focus-visible,._7Tbyiq_noticeFileButton:focus-visible{box-shadow:inset 0 0 0 2px var(--dsw-alias-border-l3);outline:none}._7Tbyiq_noticeFiles{margin:12px 0 0 40px}._7Tbyiq_noticeFileListLabel{color:var(--dsw-alias-label-secondary);margin:0 8px 4px;font-size:12px;line-height:18px;display:block}._7Tbyiq_noticeFileList{flex-direction:column;gap:2px;max-height:220px;margin:0;padding:0;list-style:none;display:flex;overflow:auto}._7Tbyiq_noticeFileButton{width:100%;min-height:34px;color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;text-align:left;background:0 0;border:0;border-radius:7px;align-items:center;gap:12px;padding:5px 8px;display:flex}._7Tbyiq_noticeFilePath{min-width:0;font:var(--dsw-font-markdown-code-block);text-overflow:ellipsis;white-space:nowrap;flex:auto;overflow:hidden}._7Tbyiq_noticeFileArrow{color:var(--dsw-alias-label-secondary);white-space:nowrap;flex:none;font-size:14px}._7Tbyiq_noticeDismissButton{background:var(--dsw-alias-label-primary);width:100%;min-height:34px;color:var(--dsw-alias-bg-container,Canvas);cursor:pointer;font:inherit;border:0;border-radius:8px;margin-top:12px;padding:0 12px;font-weight:600}._7Tbyiq_noticeDismissButton:hover{opacity:.9}._7Tbyiq_noticeDismissButton:focus-visible{outline:2px solid var(--dsw-alias-border-l3);outline-offset:2px}._7Tbyiq_closeButton{background:0 0;border-color:#0000;border-radius:8px;flex:none;place-items:center;width:32px;height:32px;padding:0;display:grid}._7Tbyiq_drawerBody{flex:auto;min-height:0;overflow:auto}._7Tbyiq_reviewFile+._7Tbyiq_reviewFile{border-top:8px solid var(--dsw-alias-border-l1)}._7Tbyiq_reviewFileHeader{z-index:2;border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);min-height:44px;font:var(--dsw-font-markdown-code-block);align-items:center;gap:8px;padding:0 12px;display:flex;position:sticky;top:0}._7Tbyiq_sidebarTab{background:var(--dsw-alias-bg-container,Canvas);width:100%;min-width:0;height:100%;min-height:0;color:var(--dsw-alias-label-primary);display:flex;overflow:hidden;container-type:inline-size}._7Tbyiq_sidebarTabEmpty{width:100%;min-width:0;min-height:180px;color:var(--dsw-alias-label-secondary);text-align:center;place-items:center;padding:24px;font-size:13px;line-height:20px;display:grid}@container (width<=520px){._7Tbyiq_reviewFileHeader{flex-wrap:wrap;padding-block:8px}._7Tbyiq_reviewPath{overflow-wrap:anywhere;white-space:normal;flex-basis:calc(100% - 70px)}}._7Tbyiq_reviewStatus{color:var(--dsw-alias-state-success-primary);font-weight:700}._7Tbyiq_reviewPath{text-overflow:ellipsis;white-space:nowrap;flex:auto;min-width:0;overflow:hidden}._7Tbyiq_openButton{min-height:28px;font:var(--dsw-font-xs-13);border-radius:7px;flex:none;padding:0 9px}._7Tbyiq_reviewDiff{color:var(--dsw-alias-label-primary)}._7Tbyiq_reviewUnavailable{background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-secondary);margin:0;padding:22px 16px;font-size:13px;line-height:20px}._7Tbyiq_commentDock{box-sizing:border-box;z-index:9;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance));max-width:var(--dsh-composer-card-max-width);margin:0 auto -4px;padding:0 12px;position:relative}._7Tbyiq_reviewCommentPillRoot{width:fit-content;position:relative}._7Tbyiq_reviewCommentPillRootMessage{align-self:flex-end}._7Tbyiq_commentDockPill{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-specific-input-major,var(--dsw-alias-bg-container,Canvas));min-height:34px;box-shadow:var(--dsw-shadow-lv1);border-radius:18px;align-items:center;display:inline-flex;overflow:hidden}._7Tbyiq_commentDockOpen,._7Tbyiq_commentDockRemove{color:var(--dsw-alias-label-primary);cursor:pointer;background:0 0;border:0}._7Tbyiq_commentDockOpen{min-height:34px;font:var(--dsw-font-sm-14);align-items:center;gap:7px;padding:0 4px 0 11px;display:flex}._7Tbyiq_commentDockOpen:hover,._7Tbyiq_commentDockRemove:hover{background:var(--dsw-alias-interactive-bg-hover)}._7Tbyiq_commentDockIcon{fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.4px;width:17px;height:17px;color:var(--dsw-alias-label-tertiary)}._7Tbyiq_commentDockRemove{width:30px;height:30px;color:var(--dsw-alias-label-secondary);border-radius:50%;place-items:center;margin-right:2px;font-size:22px;line-height:1;display:grid}._7Tbyiq_commentDockOpen:focus-visible,._7Tbyiq_commentDockRemove:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}._7Tbyiq_reviewCommentPreviewPositioner{z-index:20;box-sizing:border-box;width:min(360px,100vw - 48px);position:absolute}._7Tbyiq_reviewCommentPreview{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);width:100%;height:auto;max-height:min(420px,60vh);box-shadow:var(--dsw-shadow-lv3);border-radius:16px;flex-direction:column;gap:8px;padding:8px;display:flex;overflow:auto}._7Tbyiq_reviewCommentPreviewAbove{padding-bottom:8px;bottom:100%;left:0}._7Tbyiq_reviewCommentPreviewBelow{padding-top:8px;top:100%;right:0}._7Tbyiq_commentPreviewCard{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);border-radius:12px;padding:14px 16px}._7Tbyiq_commentPreviewHeader{min-width:0;font:var(--dsw-font-sm-14);align-items:center;gap:12px;display:flex}._7Tbyiq_commentPreviewPath{min-width:0;color:var(--dsw-alias-state-business-primary);text-overflow:ellipsis;white-space:nowrap;flex:auto;overflow:hidden}._7Tbyiq_commentPreviewLocation{color:var(--dsw-alias-label-tertiary);flex:none}._7Tbyiq_commentPreviewBody{color:var(--dsw-alias-label-primary);font:var(--dsw-font-sm-14);white-space:pre-wrap;overflow-wrap:anywhere;margin:10px 0 0;line-height:22px}[data-decoration=chip][title=​]{opacity:0;pointer-events:none;width:0;height:0;position:absolute;overflow:hidden}._7Tbyiq_reviewMessageRow{flex-direction:column;align-items:flex-end;gap:6px;display:flex}._7Tbyiq_reviewMessageStack{flex-direction:column;align-items:flex-end;gap:8px;min-width:0;max-width:min(525px,82%);display:flex}._7Tbyiq_reviewMessageBubble{background:var(--dsw-specific-bubble);max-width:100%;color:var(--dsw-alias-label-primary);border-radius:22px;padding:10px 16px;font-size:16px;line-height:24px}._7Tbyiq_reviewMessageFileCards{gap:6px;width:min(420px,100%);display:grid}._7Tbyiq_reviewMessageFileCard{border:1px solid var(--dsw-alias-border-l2-darkmode-thin);background:var(--dsw-alias-bg-layer-1);border-radius:8px;grid-template-columns:minmax(0,1fr) repeat(2,40px);align-items:center;min-height:68px;display:grid;overflow:hidden}._7Tbyiq_reviewMessageFileOpen,._7Tbyiq_reviewMessageFileCopy{color:inherit;background:0 0;border:0}._7Tbyiq_reviewMessageFileOpen{cursor:pointer;text-align:left;grid-template-columns:30px minmax(0,1fr);align-items:center;gap:8px;min-width:0;height:100%;padding:10px 8px 10px 12px;display:grid}._7Tbyiq_reviewMessageFileParsed,._7Tbyiq_reviewMessageFileCopy{cursor:pointer;place-items:center;width:40px;height:100%;padding:0;display:grid}._7Tbyiq_reviewMessageFileParsed{color:var(--dsw-alias-state-business-primary);grid-template-columns:1fr;font-size:18px}._7Tbyiq_reviewMessageFileOpen:hover:not(:disabled),._7Tbyiq_reviewMessageFileCopy:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}._7Tbyiq_reviewMessageFileOpen:disabled,._7Tbyiq_reviewMessageFileCopy:disabled{cursor:default;opacity:.5}._7Tbyiq_reviewMessageFileIcon{background:color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);width:28px;height:32px;color:var(--dsw-alias-state-business-primary);border-radius:6px;place-items:center;display:grid}._7Tbyiq_reviewMessageFileName{min-width:0;color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:20px;overflow:hidden}._7Tbyiq_reviewMessageFileCopy{color:var(--dsw-alias-label-secondary)}._7Tbyiq_reviewMessageCommentPill{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-container,Canvas);min-height:36px;color:var(--dsw-alias-label-primary);cursor:pointer;font:var(--dsw-font-sm-14);white-space:nowrap;border-radius:18px;align-items:center;gap:7px;padding:0 14px;display:inline-flex}._7Tbyiq_reviewMessageCommentPill:hover,._7Tbyiq_reviewMessageCommentPill:focus-visible,._7Tbyiq_reviewMessageCommentPill[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover)}._7Tbyiq_reviewMessageCommentPill:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}._7Tbyiq_reviewMessageCommentIcon{fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.4px;width:17px;height:17px;color:var(--dsw-alias-label-tertiary)}._7Tbyiq_reviewMessageReference{color:var(--dsw-alias-label-primary);vertical-align:baseline;white-space:nowrap;background:#6187d838;border-radius:6px;margin:0 2px;padding:0 8px;font-size:.85em;line-height:1.6;display:inline-block}._7Tbyiq_reviewMessageActions{align-items:center;gap:10px;height:28px;display:flex}._7Tbyiq_reviewMessageTime{color:var(--dsw-alias-label-tertiary);white-space:nowrap;padding-right:12px;font-size:14px;line-height:24px}._7Tbyiq_reviewMessageAction{width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;border-radius:50%;justify-content:center;align-items:center;padding:6px;display:inline-flex}._7Tbyiq_reviewMessageAction:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}._7Tbyiq_reviewMessageActionIcon{fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.4px;width:16px;height:16px}._7Tbyiq_reviewMessageImages{flex-wrap:wrap;justify-content:flex-end;gap:8px;max-width:100%;display:flex}._7Tbyiq_reviewMessageImageButton{background:var(--dsw-alias-interactive-bg-hover);cursor:zoom-in;border:0;border-radius:12px;max-width:280px;max-height:280px;padding:0;overflow:hidden}._7Tbyiq_reviewMessageImageTile{width:64px;height:64px}._7Tbyiq_reviewMessageImage{object-fit:cover;width:100%;height:100%;display:block}._7Tbyiq_reviewMessageImageLoading,._7Tbyiq_reviewMessageImageRetry{background:var(--dsw-alias-interactive-bg-hover);width:96px;height:64px;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xs-12);border:0;border-radius:12px;place-items:center;display:grid}._7Tbyiq_reviewMessageImageRetry{cursor:pointer}._7Tbyiq_reviewMessageLightbox{z-index:2000;background:#000000b8;place-items:center;padding:48px;display:grid;position:fixed;inset:0}._7Tbyiq_reviewMessageLightboxImage{object-fit:contain;max-width:100%;max-height:100%}._7Tbyiq_reviewMessageLightboxClose{color:#fff;cursor:pointer;background:#ffffff29;border:0;border-radius:50%;width:36px;height:36px;font-size:26px;line-height:1;position:absolute;top:20px;right:24px}._7Tbyiq_reviewMessageExtraBlock{margin-top:8px;font-size:13px}._7Tbyiq_reviewMessageExtraBlock pre{background:var(--dsw-alias-markdown-code-block);white-space:pre-wrap;border-radius:8px;max-height:240px;margin:6px 0 0;padding:10px;overflow:auto}@media (hover:hover){[data-time-hover-root] ._7Tbyiq_reviewMessageTime{opacity:0;transition:opacity 80ms}[data-time-hover-root]:hover ._7Tbyiq_reviewMessageTime,[data-time-hover-root]:focus-within ._7Tbyiq_reviewMessageTime{opacity:1}}@media (width<=760px){._7Tbyiq_cardHeader{flex-wrap:wrap;padding-block:10px}._7Tbyiq_cardTitleBlock{flex-direction:column;gap:1px}._7Tbyiq_drawer{border-left:0;width:100vw}._7Tbyiq_resizeHandle{display:none}._7Tbyiq_drawerHeader{gap:8px;padding-left:12px}._7Tbyiq_toolbarButton{color:#0000;justify-content:center;width:32px;padding:0;overflow:hidden}._7Tbyiq_toolbarButton ._7Tbyiq_buttonIcon{color:var(--dsw-alias-label-primary)}._7Tbyiq_reviewFileHeader{flex-wrap:wrap;padding-block:8px}._7Tbyiq_reviewPath{flex-basis:calc(100% - 30px)}._7Tbyiq_openButton{margin-left:auto}}@media (prefers-reduced-motion:no-preference){._7Tbyiq_drawer{animation:.16s ease-out _7Tbyiq_drawer-enter}}@keyframes _7Tbyiq_drawer-enter{0%{opacity:0;transform:translate(20px)}to{opacity:1;transform:translate(0)}}";
 		const styleId$1 = "dsh-file-review-tab/ProducedFiles.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(styleId$1) + "]") === null) {
 			const style = document.createElement("style");
@@ -1137,99 +1138,106 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(style);
 		}
 		var ProducedFiles_module_css_default = {
-			"reviewCommentPreviewBelow": "_7Tbyiq_reviewCommentPreviewBelow",
-			"drawerSubtitle": "_7Tbyiq_drawerSubtitle",
-			"reviewMessageCommentIcon": "_7Tbyiq_reviewMessageCommentIcon",
-			"sidebarTabEmpty": "_7Tbyiq_sidebarTabEmpty",
-			"noticeIcon": "_7Tbyiq_noticeIcon",
-			"drawerHeading": "_7Tbyiq_drawerHeading",
-			"cardHeader": "_7Tbyiq_cardHeader",
-			"fileList": "_7Tbyiq_fileList",
-			"noticeFileList": "_7Tbyiq_noticeFileList",
-			"commentDockIcon": "_7Tbyiq_commentDockIcon",
-			"commentPreviewHeader": "_7Tbyiq_commentPreviewHeader",
-			"resizeHandle": "_7Tbyiq_resizeHandle",
-			"toastCloseButton": "_7Tbyiq_toastCloseButton",
-			"drawerHeader": "_7Tbyiq_drawerHeader",
-			"commentDockRemove": "_7Tbyiq_commentDockRemove",
-			"closeButton": "_7Tbyiq_closeButton",
-			"reviewCommentPillRootMessage": "_7Tbyiq_reviewCommentPillRootMessage",
-			"card": "_7Tbyiq_card",
-			"toastError": "_7Tbyiq_toastError",
-			"reviewMessageImageButton": "_7Tbyiq_reviewMessageImageButton",
-			"reviewMessageLightbox": "_7Tbyiq_reviewMessageLightbox",
-			"icon": "_7Tbyiq_icon",
-			"toastSuccess": "_7Tbyiq_toastSuccess",
-			"drawerTitle": "_7Tbyiq_drawerTitle",
-			"toolbarButton": "_7Tbyiq_toolbarButton",
-			"drawerSplit": "_7Tbyiq_drawerSplit",
-			"reviewContent": "_7Tbyiq_reviewContent",
-			"commentDockPill": "_7Tbyiq_commentDockPill",
-			"drawerBody": "_7Tbyiq_drawerBody",
-			"commentPreviewPath": "_7Tbyiq_commentPreviewPath",
-			"openButton": "_7Tbyiq_openButton",
-			"drawer": "_7Tbyiq_drawer",
-			"fileIconWrap": "_7Tbyiq_fileIconWrap",
-			"removed": "_7Tbyiq_removed",
-			"stats": "_7Tbyiq_stats",
-			"fileRow": "_7Tbyiq_fileRow",
-			"noticeFileArrow": "_7Tbyiq_noticeFileArrow",
-			"reviewPath": "_7Tbyiq_reviewPath",
-			"noticeFilePath": "_7Tbyiq_noticeFilePath",
-			"reviewDiff": "_7Tbyiq_reviewDiff",
-			"commentPreviewLocation": "_7Tbyiq_commentPreviewLocation",
-			"moreFiles": "_7Tbyiq_moreFiles",
-			"closeIcon": "_7Tbyiq_closeIcon",
-			"reviewMessageRow": "_7Tbyiq_reviewMessageRow",
-			"noticeFileListLabel": "_7Tbyiq_noticeFileListLabel",
-			"noticeFileButton": "_7Tbyiq_noticeFileButton",
-			"noticeDismissButton": "_7Tbyiq_noticeDismissButton",
-			"reviewCommentPillRoot": "_7Tbyiq_reviewCommentPillRoot",
-			"fileName": "_7Tbyiq_fileName",
-			"buttonIcon": "_7Tbyiq_buttonIcon",
-			"drawerResizing": "_7Tbyiq_drawerResizing",
-			"toastHeader": "_7Tbyiq_toastHeader",
-			"reviewCommentPreviewPositioner": "_7Tbyiq_reviewCommentPreviewPositioner",
-			"reviewCommentPreviewAbove": "_7Tbyiq_reviewCommentPreviewAbove",
-			"reviewFile": "_7Tbyiq_reviewFile",
-			"reviewMessageStack": "_7Tbyiq_reviewMessageStack",
-			"reviewMessageTime": "_7Tbyiq_reviewMessageTime",
-			"reviewMessageImageRetry": "_7Tbyiq_reviewMessageImageRetry",
-			"commentDock": "_7Tbyiq_commentDock",
-			"sidebarTab": "_7Tbyiq_sidebarTab",
-			"reviewMessageActionIcon": "_7Tbyiq_reviewMessageActionIcon",
-			"reviewMessageImage": "_7Tbyiq_reviewMessageImage",
-			"reviewMessageExtraBlock": "_7Tbyiq_reviewMessageExtraBlock",
-			"toastCopy": "_7Tbyiq_toastCopy",
-			"reviewToolbar": "_7Tbyiq_reviewToolbar",
-			"cardTitleBlock": "_7Tbyiq_cardTitleBlock",
-			"added": "_7Tbyiq_added",
-			"toggleButton": "_7Tbyiq_toggleButton",
-			"reviewMessageImages": "_7Tbyiq_reviewMessageImages",
-			"reviewMessageActions": "_7Tbyiq_reviewMessageActions",
-			"cardTitle": "_7Tbyiq_cardTitle",
-			"reviewButton": "_7Tbyiq_reviewButton",
-			"reviewStatus": "_7Tbyiq_reviewStatus",
-			"reviewMessageReference": "_7Tbyiq_reviewMessageReference",
-			"noticeFiles": "_7Tbyiq_noticeFiles",
-			"reviewMessageAction": "_7Tbyiq_reviewMessageAction",
-			"reviewFileHeader": "_7Tbyiq_reviewFileHeader",
-			"commentDockOpen": "_7Tbyiq_commentDockOpen",
-			"reviewMessageLightboxImage": "_7Tbyiq_reviewMessageLightboxImage",
-			"reviewMessageCommentPill": "_7Tbyiq_reviewMessageCommentPill",
-			"drawer-enter": "_7Tbyiq_drawer-enter",
-			"reviewMessageLightboxClose": "_7Tbyiq_reviewMessageLightboxClose",
 			"reviewUnavailable": "_7Tbyiq_reviewUnavailable",
-			"reviewCommentPreview": "_7Tbyiq_reviewCommentPreview",
-			"commentPreviewCard": "_7Tbyiq_commentPreviewCard",
-			"commentPreviewBody": "_7Tbyiq_commentPreviewBody",
-			"reviewMessageBubble": "_7Tbyiq_reviewMessageBubble",
-			"toast": "_7Tbyiq_toast",
-			"reviewMessageImageLoading": "_7Tbyiq_reviewMessageImageLoading",
-			"toastDescription": "_7Tbyiq_toastDescription",
-			"reviewMessageImageTile": "_7Tbyiq_reviewMessageImageTile",
+			"cardHeader": "_7Tbyiq_cardHeader",
+			"reviewCommentPreviewBelow": "_7Tbyiq_reviewCommentPreviewBelow",
+			"toggleButton": "_7Tbyiq_toggleButton",
+			"commentPreviewHeader": "_7Tbyiq_commentPreviewHeader",
+			"noticeDismissButton": "_7Tbyiq_noticeDismissButton",
 			"noticeIconSvg": "_7Tbyiq_noticeIconSvg",
-			"toastTitle": "_7Tbyiq_toastTitle"
+			"reviewCommentPreviewAbove": "_7Tbyiq_reviewCommentPreviewAbove",
+			"commentPreviewLocation": "_7Tbyiq_commentPreviewLocation",
+			"reviewMessageRow": "_7Tbyiq_reviewMessageRow",
+			"reviewMessageBubble": "_7Tbyiq_reviewMessageBubble",
+			"reviewContent": "_7Tbyiq_reviewContent",
+			"closeButton": "_7Tbyiq_closeButton",
+			"drawerTitle": "_7Tbyiq_drawerTitle",
+			"noticeFileListLabel": "_7Tbyiq_noticeFileListLabel",
+			"commentDockOpen": "_7Tbyiq_commentDockOpen",
+			"reviewMessageFileCard": "_7Tbyiq_reviewMessageFileCard",
+			"noticeFiles": "_7Tbyiq_noticeFiles",
+			"openButton": "_7Tbyiq_openButton",
+			"reviewMessageFileName": "_7Tbyiq_reviewMessageFileName",
+			"commentPreviewPath": "_7Tbyiq_commentPreviewPath",
+			"reviewMessageFileCopy": "_7Tbyiq_reviewMessageFileCopy",
+			"sidebarTab": "_7Tbyiq_sidebarTab",
+			"moreFiles": "_7Tbyiq_moreFiles",
+			"toastError": "_7Tbyiq_toastError",
+			"reviewMessageReference": "_7Tbyiq_reviewMessageReference",
+			"reviewMessageActionIcon": "_7Tbyiq_reviewMessageActionIcon",
+			"reviewMessageImageLoading": "_7Tbyiq_reviewMessageImageLoading",
+			"cardTitle": "_7Tbyiq_cardTitle",
+			"reviewCommentPillRootMessage": "_7Tbyiq_reviewCommentPillRootMessage",
+			"reviewMessageLightboxImage": "_7Tbyiq_reviewMessageLightboxImage",
+			"closeIcon": "_7Tbyiq_closeIcon",
+			"reviewCommentPreviewPositioner": "_7Tbyiq_reviewCommentPreviewPositioner",
+			"reviewFile": "_7Tbyiq_reviewFile",
+			"commentPreviewCard": "_7Tbyiq_commentPreviewCard",
+			"reviewCommentPreview": "_7Tbyiq_reviewCommentPreview",
+			"drawerSubtitle": "_7Tbyiq_drawerSubtitle",
+			"noticeFilePath": "_7Tbyiq_noticeFilePath",
+			"reviewMessageAction": "_7Tbyiq_reviewMessageAction",
+			"reviewMessageImageRetry": "_7Tbyiq_reviewMessageImageRetry",
+			"drawerSplit": "_7Tbyiq_drawerSplit",
+			"reviewMessageLightboxClose": "_7Tbyiq_reviewMessageLightboxClose",
+			"toastDescription": "_7Tbyiq_toastDescription",
+			"sidebarTabEmpty": "_7Tbyiq_sidebarTabEmpty",
+			"toastCloseButton": "_7Tbyiq_toastCloseButton",
+			"noticeFileArrow": "_7Tbyiq_noticeFileArrow",
+			"toolbarButton": "_7Tbyiq_toolbarButton",
+			"reviewMessageFileCards": "_7Tbyiq_reviewMessageFileCards",
+			"commentDockRemove": "_7Tbyiq_commentDockRemove",
+			"reviewToolbar": "_7Tbyiq_reviewToolbar",
+			"commentPreviewBody": "_7Tbyiq_commentPreviewBody",
+			"reviewMessageImageTile": "_7Tbyiq_reviewMessageImageTile",
+			"reviewMessageLightbox": "_7Tbyiq_reviewMessageLightbox",
+			"reviewMessageCommentIcon": "_7Tbyiq_reviewMessageCommentIcon",
+			"reviewMessageActions": "_7Tbyiq_reviewMessageActions",
+			"reviewMessageExtraBlock": "_7Tbyiq_reviewMessageExtraBlock",
+			"reviewMessageFileIcon": "_7Tbyiq_reviewMessageFileIcon",
+			"fileName": "_7Tbyiq_fileName",
+			"toastCopy": "_7Tbyiq_toastCopy",
+			"drawerHeading": "_7Tbyiq_drawerHeading",
+			"reviewMessageFileOpen": "_7Tbyiq_reviewMessageFileOpen",
+			"toastHeader": "_7Tbyiq_toastHeader",
+			"fileRow": "_7Tbyiq_fileRow",
+			"fileList": "_7Tbyiq_fileList",
+			"noticeFileButton": "_7Tbyiq_noticeFileButton",
+			"reviewMessageFileParsed": "_7Tbyiq_reviewMessageFileParsed",
+			"commentDockPill": "_7Tbyiq_commentDockPill",
+			"toast": "_7Tbyiq_toast",
+			"cardTitleBlock": "_7Tbyiq_cardTitleBlock",
+			"buttonIcon": "_7Tbyiq_buttonIcon",
+			"reviewButton": "_7Tbyiq_reviewButton",
+			"drawerResizing": "_7Tbyiq_drawerResizing",
+			"fileIconWrap": "_7Tbyiq_fileIconWrap",
+			"stats": "_7Tbyiq_stats",
+			"icon": "_7Tbyiq_icon",
+			"toastTitle": "_7Tbyiq_toastTitle",
+			"noticeFileList": "_7Tbyiq_noticeFileList",
+			"reviewMessageCommentPill": "_7Tbyiq_reviewMessageCommentPill",
+			"commentDock": "_7Tbyiq_commentDock",
+			"reviewPath": "_7Tbyiq_reviewPath",
+			"drawer-enter": "_7Tbyiq_drawer-enter",
+			"noticeIcon": "_7Tbyiq_noticeIcon",
+			"added": "_7Tbyiq_added",
+			"reviewMessageImages": "_7Tbyiq_reviewMessageImages",
+			"reviewMessageTime": "_7Tbyiq_reviewMessageTime",
+			"toastSuccess": "_7Tbyiq_toastSuccess",
+			"reviewMessageImageButton": "_7Tbyiq_reviewMessageImageButton",
+			"reviewMessageStack": "_7Tbyiq_reviewMessageStack",
+			"reviewDiff": "_7Tbyiq_reviewDiff",
+			"card": "_7Tbyiq_card",
+			"reviewMessageImage": "_7Tbyiq_reviewMessageImage",
+			"drawerHeader": "_7Tbyiq_drawerHeader",
+			"drawer": "_7Tbyiq_drawer",
+			"resizeHandle": "_7Tbyiq_resizeHandle",
+			"reviewFileHeader": "_7Tbyiq_reviewFileHeader",
+			"commentDockIcon": "_7Tbyiq_commentDockIcon",
+			"drawerBody": "_7Tbyiq_drawerBody",
+			"removed": "_7Tbyiq_removed",
+			"reviewStatus": "_7Tbyiq_reviewStatus",
+			"reviewCommentPillRoot": "_7Tbyiq_reviewCommentPillRoot"
 		};
 		//#endregion
 		//#region src/client/ReviewContent.tsx
@@ -2738,22 +2746,22 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(style);
 		}
 		var FileReviewSettingsCard_module_css_default = {
-			"card": "nOY42a_card",
-			"field": "nOY42a_field",
-			"title": "nOY42a_title",
-			"chevron": "nOY42a_chevron",
-			"row": "nOY42a_row",
-			"description": "nOY42a_description",
-			"label": "nOY42a_label",
-			"heading": "nOY42a_heading",
-			"toggle": "nOY42a_toggle",
 			"hint": "nOY42a_hint",
-			"body": "nOY42a_body",
-			"cardOpen": "nOY42a_cardOpen",
-			"header": "nOY42a_header",
 			"chevronOpen": "nOY42a_chevronOpen",
+			"row": "nOY42a_row",
+			"cardOpen": "nOY42a_cardOpen",
+			"readOnly": "nOY42a_readOnly",
+			"card": "nOY42a_card",
+			"title": "nOY42a_title",
+			"label": "nOY42a_label",
 			"thumb": "nOY42a_thumb",
-			"readOnly": "nOY42a_readOnly"
+			"heading": "nOY42a_heading",
+			"description": "nOY42a_description",
+			"chevron": "nOY42a_chevron",
+			"body": "nOY42a_body",
+			"toggle": "nOY42a_toggle",
+			"header": "nOY42a_header",
+			"field": "nOY42a_field"
 		};
 		//#endregion
 		//#region src/client/FileReviewSettingsCard.tsx
@@ -2965,6 +2973,84 @@ window.__ModuleLoader__.load({
 		/** User-message projection that keeps serialized review context out of the visible bubble. */
 		const REVIEW_START = "<file_review_comments>";
 		const REVIEW_END = "</file_review_comments>";
+		function stringField(value, key) {
+			const field = value[key];
+			return typeof field === "string" && field !== "" ? field : void 0;
+		}
+		/** Normalize the canonical durable file block plus older replay wrappers. */
+		function fileAttachmentFromBlock(block) {
+			if (block === null || typeof block !== "object" || Array.isArray(block)) return void 0;
+			const value = block;
+			const sources = [];
+			const pending = [{
+				record: value,
+				depth: 0
+			}];
+			const seen = /* @__PURE__ */ new Set();
+			while (pending.length > 0) {
+				const next = pending.shift();
+				if (next === void 0 || seen.has(next.record)) continue;
+				seen.add(next.record);
+				sources.push(next.record);
+				if (next.depth >= 5) continue;
+				for (const key of [
+					"attachment",
+					"file",
+					"metadata",
+					"ref",
+					"data"
+				]) {
+					const nested = next.record[key];
+					if (nested !== null && typeof nested === "object" && !Array.isArray(nested)) pending.push({
+						record: nested,
+						depth: next.depth + 1
+					});
+				}
+			}
+			const hasFileIdentity = (record) => typeof record.attachmentId === "string" && record.attachmentId.length > 0 && (typeof record.name === "string" || typeof record.mediaType === "string");
+			if (value.type !== "file" && !sources.some(hasFileIdentity)) return void 0;
+			const firstString = (key) => {
+				for (const source of sources) {
+					const found = stringField(source, key);
+					if (found !== void 0) return found;
+				}
+			};
+			const firstNumber = (key) => {
+				for (const source of sources) {
+					const found = source[key];
+					if (typeof found === "number") return found;
+				}
+			};
+			const attachmentId = firstString("attachmentId");
+			if (attachmentId === void 0) return void 0;
+			const attachment = {
+				attachmentId,
+				name: firstString("name") ?? "uploaded-file",
+				mediaType: firstString("mediaType") ?? "application/octet-stream",
+				bytes: firstNumber("bytes") ?? 0
+			};
+			const parser = firstString("parser");
+			const status = firstString("status");
+			const textChars = firstNumber("textChars");
+			const pageCount = firstNumber("pageCount");
+			const sheetCount = firstNumber("sheetCount");
+			const preview = firstString("preview");
+			const content = firstString("content");
+			const parseStatus = firstString("parseStatus");
+			const parseProgress = firstNumber("parseProgress");
+			const parseError = firstString("parseError");
+			if (parser !== void 0) attachment.parser = parser;
+			if (status !== void 0) attachment.status = status;
+			if (textChars !== void 0) attachment.textChars = textChars;
+			if (pageCount !== void 0) attachment.pageCount = pageCount;
+			if (sheetCount !== void 0) attachment.sheetCount = sheetCount;
+			if (preview !== void 0) attachment.preview = preview;
+			if (content !== void 0) attachment.content = content;
+			if (parseStatus !== void 0) attachment.parseStatus = parseStatus;
+			if (parseProgress !== void 0) attachment.parseProgress = parseProgress;
+			if (parseError !== void 0) attachment.parseError = parseError;
+			return attachment;
+		}
 		function unescapeXml(value) {
 			return value.replaceAll("&quot;", "\"").replaceAll("&apos;", "'").replaceAll("&gt;", ">").replaceAll("&lt;", "<").replaceAll("&amp;", "&");
 		}
@@ -3007,18 +3093,123 @@ window.__ModuleLoader__.load({
 		function contentParts(content) {
 			const texts = [];
 			const images = [];
+			const files = [];
 			const rest = [];
 			for (const block of content) {
 				const value = block;
 				if (value.type === "text" && typeof value.text === "string") texts.push(value.text);
 				else if (value.type === "image" && value.attachment !== void 0) images.push({ attachment: value.attachment });
-				else rest.push(block);
+				else {
+					const file = fileAttachmentFromBlock(block);
+					if (file === void 0) rest.push(block);
+					else files.push(file);
+				}
 			}
 			return {
 				text: texts.join(""),
 				images,
+				files,
 				rest
 			};
+		}
+		function fileIconFor(file) {
+			const extension = file.name.split(".").pop()?.toLocaleLowerCase() ?? "";
+			if (file.mediaType.includes("zip") || file.mediaType.includes("compressed") || [
+				"zip",
+				"7z",
+				"rar",
+				"tar",
+				"gz"
+			].includes(extension)) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconArchiveOutline20, { size: 22 });
+			if (file.mediaType.includes("json") || file.mediaType.includes("javascript") || [
+				"ts",
+				"tsx",
+				"js",
+				"jsx",
+				"py",
+				"rs",
+				"go"
+			].includes(extension)) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCodeOutline16, { size: 22 });
+			if (file.mediaType.startsWith("image/") || [
+				"png",
+				"jpg",
+				"jpeg",
+				"webp",
+				"gif",
+				"svg"
+			].includes(extension)) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconBrowseOutline16, { size: 22 });
+			if (file.mediaType.includes("spreadsheet") || file.mediaType.includes("excel") || [
+				"xls",
+				"xlsx",
+				"csv"
+			].includes(extension)) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconDataOutline16, { size: 22 });
+			if (file.mediaType.includes("presentation") || [
+				"ppt",
+				"pptx",
+				"key"
+			].includes(extension)) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconFolderClose16, { size: 22 });
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconDataOutline16, { size: 22 });
+		}
+		function FileCards({ files, sessionId, openAttachment, openParsedAttachment, copyAttachment }) {
+			if (files.length === 0) return null;
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+				className: ProducedFiles_module_css_default.reviewMessageFileCards,
+				role: "list",
+				"aria-label": "附件",
+				children: files.map((file) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+					className: ProducedFiles_module_css_default.reviewMessageFileCard,
+					role: "listitem",
+					draggable: true,
+					onDragStart: (event) => {
+						event.dataTransfer.effectAllowed = "copy";
+						event.dataTransfer.setData("application/x-zerowall-attachment", JSON.stringify({
+							attachmentId: file.attachmentId,
+							name: file.name,
+							mediaType: file.mediaType,
+							sessionId
+						}));
+						event.dataTransfer.setData("text/plain", file.name);
+					},
+					children: [
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+							type: "button",
+							className: ProducedFiles_module_css_default.reviewMessageFileOpen,
+							onClick: () => openAttachment?.(file),
+							disabled: openAttachment === void 0,
+							title: "预览附件",
+							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+								className: ProducedFiles_module_css_default.reviewMessageFileIcon,
+								"aria-hidden": true,
+								children: fileIconFor(file)
+							}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+								className: ProducedFiles_module_css_default.reviewMessageFileName,
+								children: file.name
+							})]
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							className: `${ProducedFiles_module_css_default.reviewMessageFileOpen} ${ProducedFiles_module_css_default.reviewMessageFileParsed}`,
+							onClick: () => openParsedAttachment?.(file),
+							disabled: openParsedAttachment === void 0,
+							title: "查看解析结果",
+							"aria-label": `查看 ${file.name} 的解析结果`,
+							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+								"aria-hidden": true,
+								children: "↗"
+							})
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							className: ProducedFiles_module_css_default.reviewMessageFileCopy,
+							onClick: () => copyAttachment?.(file),
+							disabled: copyAttachment === void 0,
+							title: "复制附件",
+							"aria-label": `复制附件 ${file.name}`,
+							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCopyOutline16, {})
+						})
+					]
+				}, file.attachmentId))
+			});
 		}
 		/** Match the host's compact reference treatment for ordinary user messages. */
 		function projectPlainReferences(text) {
@@ -3132,9 +3323,9 @@ window.__ModuleLoader__.load({
 			});
 		}
 		/** Shadow the host user renderer while preserving its ordinary-message behavior. */
-		function ReviewUserMessage({ node, cwd, renderMessageImages, t, reviewT }) {
+		function ReviewUserMessage({ node, sessionId, cwd, renderMessageImages, openAttachment, openParsedAttachment, copyAttachment, t, reviewT }) {
 			const { content, time } = node.data;
-			const { text, images, rest } = contentParts(content);
+			const { text, images, files, rest } = contentParts(content);
 			const projection = projectReviewMessageText(text);
 			const visibleText = projection?.visibleText ?? text;
 			const countLabel = projection === null ? null : projection.commentCount === 1 ? reviewT("review.commentCountOne") : reviewT("review.commentCount", { count: String(projection.commentCount) });
@@ -3149,6 +3340,13 @@ window.__ModuleLoader__.load({
 						renderMessageImages({
 							images,
 							align: "end"
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)(FileCards, {
+							files,
+							sessionId,
+							openAttachment,
+							openParsedAttachment,
+							copyAttachment
 						}),
 						countLabel !== null && projection !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ReviewCommentPill, {
 							comments: projection.comments.map((comment, index) => ({

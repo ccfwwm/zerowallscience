@@ -796,6 +796,93 @@
   line-height: 24px;
 }
 
+.reviewMessageFileCards {
+  display: grid;
+  width: min(420px, 100%);
+  gap: 6px;
+}
+
+.reviewMessageFileCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(2, 40px);
+  min-height: 68px;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.reviewMessageFileOpen,
+.reviewMessageFileCopy {
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.reviewMessageFileOpen {
+  display: grid;
+  min-width: 0;
+  height: 100%;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px 10px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.reviewMessageFileParsed,
+.reviewMessageFileCopy {
+  display: grid;
+  width: 40px;
+  height: 100%;
+  padding: 0;
+  place-items: center;
+  cursor: pointer;
+}
+
+.reviewMessageFileParsed {
+  grid-template-columns: 1fr;
+  color: var(--dsw-alias-state-business-primary);
+  font-size: 18px;
+}
+
+.reviewMessageFileOpen:hover:not(:disabled),
+.reviewMessageFileCopy:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.reviewMessageFileOpen:disabled,
+.reviewMessageFileCopy:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.reviewMessageFileIcon {
+  display: grid;
+  width: 28px;
+  height: 32px;
+  place-items: center;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.reviewMessageFileName {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reviewMessageFileCopy {
+  color: var(--dsw-alias-label-secondary);
+}
+
 .reviewMessageCommentPill {
   display: inline-flex;
   min-height: 36px;

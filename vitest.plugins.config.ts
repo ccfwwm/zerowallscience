@@ -25,5 +25,10 @@ export default defineConfig({
     environment: 'node',
     passWithNoTests: true,
     restoreMocks: true,
+    server: {
+      // Published DSH UI primitives import KaTeX CSS as a side effect. Route
+      // them through Vite so browser-component tests do not hand CSS to Node.
+      deps: { inline: [/@deepseek-ai\/dsh-client-ui-primitives/] },
+    },
   },
 })

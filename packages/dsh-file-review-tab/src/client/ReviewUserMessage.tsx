@@ -3,6 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  IconArchiveOutline20,
+  IconBrowseOutline16,
+  IconCodeOutline16,
+  IconCopyOutline16,
+  IconDataOutline16,
+  IconFolderClose16,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NS } from './locales.ts'
 import { ReviewCommentPill } from './ReviewCommentPill.tsx'
@@ -31,10 +39,111 @@ type UserMessageProps = ChatNodeViewProps<'user' | 'steering'> & {
 
 type ImageAttachment = import('@deepseek-ai/dsh-attachment').ImageAttachmentRef
 
+interface ChatFileAttachment {
+  readonly attachmentId: string
+  readonly name: string
+  readonly mediaType: string
+  readonly bytes: number
+  readonly parser?: string
+  readonly status?: string
+  readonly textChars?: number
+  readonly pageCount?: number
+  readonly sheetCount?: number
+  readonly preview?: string
+  readonly content?: string
+  readonly parseStatus?: 'idle' | 'queued' | 'running' | 'done' | 'failed'
+  readonly parseProgress?: number
+  readonly parseError?: string
+}
+
 interface ContentParts {
   readonly text: string
   readonly images: readonly { readonly attachment: ImageAttachment }[]
+  readonly files: readonly ChatFileAttachment[]
   readonly rest: readonly unknown[]
+}
+
+type MutableChatFileAttachment = { -readonly [Key in keyof ChatFileAttachment]: ChatFileAttachment[Key] }
+
+function stringField(value: Record<string, unknown>, key: string): string | undefined {
+  const field = value[key]
+  return typeof field === 'string' && field !== '' ? field : undefined
+}
+
+/** Normalize the canonical durable file block plus older replay wrappers. */
+function fileAttachmentFromBlock(block: unknown): ChatFileAttachment | undefined {
+  if (block === null || typeof block !== 'object' || Array.isArray(block)) return undefined
+  const value = block as Record<string, unknown>
+  const sources: Record<string, unknown>[] = []
+  const pending: Array<{ record: Record<string, unknown>; depth: number }> = [
+    { record: value, depth: 0 },
+  ]
+  const seen = new Set<Record<string, unknown>>()
+  while (pending.length > 0) {
+    const next = pending.shift()
+    if (next === undefined || seen.has(next.record)) continue
+    seen.add(next.record)
+    sources.push(next.record)
+    if (next.depth >= 5) continue
+    for (const key of ['attachment', 'file', 'metadata', 'ref', 'data']) {
+      const nested = next.record[key]
+      if (nested !== null && typeof nested === 'object' && !Array.isArray(nested)) {
+        pending.push({ record: nested as Record<string, unknown>, depth: next.depth + 1 })
+      }
+    }
+  }
+
+  const hasFileIdentity = (record: Record<string, unknown>): boolean =>
+    typeof record.attachmentId === 'string' &&
+    record.attachmentId.length > 0 &&
+    (typeof record.name === 'string' || typeof record.mediaType === 'string')
+  if (value.type !== 'file' && !sources.some(hasFileIdentity)) return undefined
+
+  const firstString = (key: string): string | undefined => {
+    for (const source of sources) {
+      const found = stringField(source, key)
+      if (found !== undefined) return found
+    }
+    return undefined
+  }
+  const firstNumber = (key: string): number | undefined => {
+    for (const source of sources) {
+      const found = source[key]
+      if (typeof found === 'number') return found
+    }
+    return undefined
+  }
+  const attachmentId = firstString('attachmentId')
+  if (attachmentId === undefined) return undefined
+  const attachment: MutableChatFileAttachment = {
+    attachmentId,
+    name: firstString('name') ?? 'uploaded-file',
+    mediaType: firstString('mediaType') ?? 'application/octet-stream',
+    bytes: firstNumber('bytes') ?? 0,
+  }
+  const parser = firstString('parser')
+  const status = firstString('status')
+  const textChars = firstNumber('textChars')
+  const pageCount = firstNumber('pageCount')
+  const sheetCount = firstNumber('sheetCount')
+  const preview = firstString('preview')
+  const content = firstString('content')
+  const parseStatus = firstString('parseStatus')
+  const parseProgress = firstNumber('parseProgress')
+  const parseError = firstString('parseError')
+  if (parser !== undefined) attachment.parser = parser
+  if (status !== undefined) attachment.status = status
+  if (textChars !== undefined) attachment.textChars = textChars
+  if (pageCount !== undefined) attachment.pageCount = pageCount
+  if (sheetCount !== undefined) attachment.sheetCount = sheetCount
+  if (preview !== undefined) attachment.preview = preview
+  if (content !== undefined) attachment.content = content
+  if (parseStatus !== undefined) {
+    attachment.parseStatus = parseStatus as Exclude<ChatFileAttachment['parseStatus'], undefined>
+  }
+  if (parseProgress !== undefined) attachment.parseProgress = parseProgress
+  if (parseError !== undefined) attachment.parseError = parseError
+  return attachment
 }
 
 function unescapeXml(value: string): string {
@@ -89,6 +198,7 @@ export function projectReviewMessageText(text: string): ReviewMessageProjection 
 function contentParts(content: readonly unknown[]): ContentParts {
   const texts: string[] = []
   const images: Array<{ attachment: ImageAttachment }> = []
+  const files: ChatFileAttachment[] = []
   const rest: unknown[] = []
   for (const block of content) {
     const value = block as {
@@ -99,9 +209,120 @@ function contentParts(content: readonly unknown[]): ContentParts {
     if (value.type === 'text' && typeof value.text === 'string') texts.push(value.text)
     else if (value.type === 'image' && value.attachment !== undefined) {
       images.push({ attachment: value.attachment as ImageAttachment })
-    } else rest.push(block)
+    } else {
+      const file = fileAttachmentFromBlock(block)
+      if (file === undefined) rest.push(block)
+      else files.push(file)
+    }
   }
-  return { text: texts.join(''), images, rest }
+  return { text: texts.join(''), images, files, rest }
+}
+
+function fileIconFor(file: ChatFileAttachment): ReactNode {
+  const extension = file.name.split('.').pop()?.toLocaleLowerCase() ?? ''
+  if (
+    file.mediaType.includes('zip') ||
+    file.mediaType.includes('compressed') ||
+    ['zip', '7z', 'rar', 'tar', 'gz'].includes(extension)
+  )
+    return <IconArchiveOutline20 size={22} />
+  if (
+    file.mediaType.includes('json') ||
+    file.mediaType.includes('javascript') ||
+    ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go'].includes(extension)
+  )
+    return <IconCodeOutline16 size={22} />
+  if (
+    file.mediaType.startsWith('image/') ||
+    ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(extension)
+  )
+    return <IconBrowseOutline16 size={22} />
+  if (
+    file.mediaType.includes('spreadsheet') ||
+    file.mediaType.includes('excel') ||
+    ['xls', 'xlsx', 'csv'].includes(extension)
+  )
+    return <IconDataOutline16 size={22} />
+  if (
+    file.mediaType.includes('presentation') ||
+    ['ppt', 'pptx', 'key'].includes(extension)
+  )
+    return <IconFolderClose16 size={22} />
+  return <IconDataOutline16 size={22} />
+}
+
+function FileCards({
+  files,
+  sessionId,
+  openAttachment,
+  openParsedAttachment,
+  copyAttachment,
+}: {
+  readonly files: readonly ChatFileAttachment[]
+  readonly sessionId?: string
+  readonly openAttachment?: ((attachment: ChatFileAttachment) => void) | undefined
+  readonly openParsedAttachment?: ((attachment: ChatFileAttachment) => void) | undefined
+  readonly copyAttachment?: ((attachment: ChatFileAttachment) => void) | undefined
+}) {
+  if (files.length === 0) return null
+  return (
+    <div className={css.reviewMessageFileCards} role="list" aria-label="附件">
+      {files.map((file) => (
+        <div
+          className={css.reviewMessageFileCard}
+          role="listitem"
+          key={file.attachmentId}
+          draggable
+          onDragStart={(event) => {
+            event.dataTransfer.effectAllowed = 'copy'
+            event.dataTransfer.setData(
+              'application/x-zerowall-attachment',
+              JSON.stringify({
+                attachmentId: file.attachmentId,
+                name: file.name,
+                mediaType: file.mediaType,
+                sessionId,
+              }),
+            )
+            event.dataTransfer.setData('text/plain', file.name)
+          }}
+        >
+          <button
+            type="button"
+            className={css.reviewMessageFileOpen}
+            onClick={() => openAttachment?.(file)}
+            disabled={openAttachment === undefined}
+            title="预览附件"
+          >
+            <span className={css.reviewMessageFileIcon} aria-hidden>
+              {fileIconFor(file)}
+            </span>
+            <span className={css.reviewMessageFileName}>{file.name}</span>
+          </button>
+          <button
+            type="button"
+            className={`${css.reviewMessageFileOpen} ${css.reviewMessageFileParsed}`}
+            onClick={() => openParsedAttachment?.(file)}
+            disabled={openParsedAttachment === undefined}
+            title="查看解析结果"
+            aria-label={`查看 ${file.name} 的解析结果`}
+          >
+            <span aria-hidden>↗</span>
+          </button>
+          <button
+            type="button"
+            className={css.reviewMessageFileCopy}
+            onClick={() => copyAttachment?.(file)}
+            disabled={copyAttachment === undefined}
+            title="复制附件"
+            aria-label={`复制附件 ${file.name}`}
+          >
+            <IconCopyOutline16 />
+          </button>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 /** Match the host's compact reference treatment for ordinary user messages. */
@@ -243,9 +464,19 @@ function MessageActions({
 }
 
 /** Shadow the host user renderer while preserving its ordinary-message behavior. */
-export function ReviewUserMessage({ node, cwd, renderMessageImages, t, reviewT }: UserMessageProps) {
+export function ReviewUserMessage({
+  node,
+  sessionId,
+  cwd,
+  renderMessageImages,
+  openAttachment,
+  openParsedAttachment,
+  copyAttachment,
+  t,
+  reviewT,
+}: UserMessageProps) {
   const { content, time } = node.data
-  const { text, images, rest } = contentParts(content)
+  const { text, images, files, rest } = contentParts(content)
   const projection = projectReviewMessageText(text)
   const visibleText = projection?.visibleText ?? text
   const countLabel =
@@ -264,6 +495,13 @@ export function ReviewUserMessage({ node, cwd, renderMessageImages, t, reviewT }
     <div className={css.reviewMessageRow} data-time-hover-root="">
       <div className={css.reviewMessageStack}>
         {renderMessageImages({ images, align: 'end' })}
+        <FileCards
+          files={files}
+          sessionId={sessionId}
+          openAttachment={openAttachment}
+          openParsedAttachment={openParsedAttachment}
+          copyAttachment={copyAttachment}
+        />
         {countLabel !== null && projection !== null && (
           <ReviewCommentPill
             comments={projection.comments.map((comment, index) => ({
