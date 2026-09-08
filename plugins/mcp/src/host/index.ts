@@ -37,6 +37,7 @@ export const RDATALINUX_R_PLATFORM_SERVER_NAME = 'rplatform'
 export const RDATALINUX_RPLOTFIGURE_SERVER_NAME = 'rplotfigure'
 export const RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL = 'zerowall.mcp.rdatalinux_authorization'
 export const RDATALINUX_R_MCP_AUTHORIZATION_ENV = 'R_PLATFORM_MCP_AUTHORIZATION'
+const ENVIRONMENT_SECRET_PREFIX = 'zerowall.environment.var.'
 const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 30_000
 const RDATALINUX_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
 
@@ -73,6 +74,30 @@ interface RuntimeStatus {
   state: McpRuntimeState
   error: string
   missingEnvironmentVariables: string[]
+}
+
+/**
+ * Resolve a model provider's API key without exposing it to the model or
+ * persisting it in an MCP request. Environment credentials are stored by the
+ * environment plugin under lowercase names, while hydrate() also mirrors
+ * them into process.env for providers that use native discovery.
+ */
+export function providerCredentialNames(provider: string): string[] {
+  const normalized = provider.trim().toLowerCase()
+  const names: string[] = []
+  const add = (name: string): void => { if (!names.includes(name)) names.push(name) }
+  if (/deepseek/u.test(normalized)) add('DEEPSEEK_API_KEY')
+  if (/openai|gpt/u.test(normalized)) add('OPENAI_API_KEY')
+  if (/anthropic|claude/u.test(normalized)) add('ANTHROPIC_API_KEY')
+  if (/google|gemini|vertex/u.test(normalized)) add('GOOGLE_API_KEY')
+  if (/moonshot|kimi/u.test(normalized)) add('MOONSHOT_API_KEY')
+  if (/qwen|aliyun|dashscope/u.test(normalized)) add('DASHSCOPE_API_KEY')
+  if (/zhipu|glm/u.test(normalized)) add('ZHIPUAI_API_KEY')
+  if (/minimax/u.test(normalized)) add('MINIMAX_API_KEY')
+  const stem = normalized.replace(/[^a-z0-9]+/gu, '_').replace(/^_+|_+$/gu, '').toUpperCase()
+  if (stem) add(`${stem}_API_KEY`)
+  add('LLM_API_KEY')
+  return names
 }
 
 export interface CompactCapabilityRecord {
@@ -120,9 +145,33 @@ export class ZeroWallMcpService extends TypertRemoteService {
     // messages, connection records, or tool descriptions.
     ctx.provide('zerowallMcpCredentialResolver', {
       resolve: async (provider: string, _model: string): Promise<string | undefined> => {
-        const key = aiCloudCredentialKey(provider)
-        if (key === undefined) return undefined
-        try { return await service.secrets.get(key) } catch { return undefined }
+        const managedKey = aiCloudCredentialKey(provider)
+        const candidates = managedKey === undefined
+          ? providerCredentialNames(provider).map(name => `${ENVIRONMENT_SECRET_PREFIX}${name.toLowerCase()}`)
+          : [managedKey, ...providerCredentialNames(provider).map(name => `${ENVIRONMENT_SECRET_PREFIX}${name.toLowerCase()}`)]
+        for (const name of providerCredentialNames(provider)) {
+          const ambient = process.env[name]?.trim()
+          if (ambient) return ambient
+        }
+        // Official DSH providers keep their apiKeyEnv value in the harness
+        // credential service rather than ZeroWall's environment namespace.
+        // Resolve that service first when this plugin runs inside the DSH Host.
+        const dshCredentials = service.ctx.get('credentials') as { resolve?: (ref: string) => Promise<{ value?: string } | undefined> } | undefined
+        if (typeof dshCredentials?.resolve === 'function') {
+          for (const name of providerCredentialNames(provider)) {
+            try {
+              const resolved = await dshCredentials.resolve(name)
+              if (typeof resolved?.value === 'string' && resolved.value.trim()) return resolved.value.trim()
+            } catch { /* continue with the ZeroWall broker */ }
+          }
+        }
+        for (const key of candidates) {
+          try {
+            const value = await service.secrets.get(key)
+            if (typeof value === 'string' && value.trim()) return value.trim()
+          } catch { /* try the next provider-specific credential */ }
+        }
+        return undefined
       },
     } as never)
     ctx.tools.register(defineTool({

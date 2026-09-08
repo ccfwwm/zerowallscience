@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { McpServerRecord } from '@zerowallscience/research-store'
-import { aiCloudCredentialKey, redactError, resolveMcpConfig, resolveStdioLaunch } from '../src/host/index.js'
+import { aiCloudCredentialKey, providerCredentialNames, redactError, resolveMcpConfig, resolveStdioLaunch } from '../src/host/index.js'
 
 const base: McpServerRecord = {
   id: 'mcp-1', name: 'Tools', serverName: 'tools', transport: 'stdio', enabled: true,
@@ -74,5 +74,12 @@ describe('ZeroWall MCP config boundary', () => {
     expect(aiCloudCredentialKey('zerowall-ai-cloud-50-messages')).toBe('zerowall.ai-cloud.group.50')
     expect(aiCloudCredentialKey('zerowall-ai-cloud-0-completions')).toBeUndefined()
     expect(aiCloudCredentialKey('other-provider-50')).toBeUndefined()
+  })
+
+  it('maps official and custom providers to host credential references', () => {
+    expect(providerCredentialNames('deepseek-official')).toContain('DEEPSEEK_API_KEY')
+    expect(providerCredentialNames('openai-custom')).toContain('OPENAI_API_KEY')
+    expect(providerCredentialNames('my-lab-gateway')).toContain('MY_LAB_GATEWAY_API_KEY')
+    expect(providerCredentialNames('deepseek-official')).toContain('LLM_API_KEY')
   })
 })

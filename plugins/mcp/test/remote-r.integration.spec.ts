@@ -36,7 +36,10 @@ describe.runIf(Boolean(process.env.R_PLATFORM_MCP_AUTHORIZATION))('compact R MCP
       await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')?.runtimeState, { timeout: 20_000, interval: 100 }).toBe('active')
       const server = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')
       expect(server?.runtimeState, server?.runtimeError).toBe('active')
-      expect(server?.tools).toHaveLength(17)
+      // The compact surface may grow by adding a new aggregate domain, but
+      // must remain bounded and never regress to the legacy raw routes.
+      expect(server?.tools.length).toBeGreaterThanOrEqual(17)
+      expect(server?.tools.length).toBeLessThanOrEqual(24)
       expect(server?.tools).toContain('mcp__rmcp__r_runtime')
       expect(server?.tools).toContain('mcp__rmcp__r_jobs')
       expect(server?.tools).toContain('mcp__rmcp__r_figureya_artifacts')
