@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { cp, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { appendFile, cp, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
@@ -286,6 +286,15 @@ app.whenReady().then(async () => {
     encrypt: (value) => safeStorage.encryptString(value),
     decrypt: (value) => safeStorage.decryptString(value),
   })
+  let mcpEnvironment!: McpEnvironmentController
+  let mcpEnvironmentStartTimer: NodeJS.Timeout | undefined
+  const scheduleMcpEnvironmentUpdate = (): void => {
+    if (mcpEnvironmentStartTimer !== undefined) return
+    mcpEnvironmentStartTimer = setTimeout(() => {
+      void mcpEnvironment.autoUpdate().catch(() => undefined)
+    }, 5_000)
+    mcpEnvironmentStartTimer.unref()
+  }
   const harnessRuntime = new HarnessRuntime({
     dshEntryPath: dshEntryPath(),
     nodeExecutablePath: nodeExecutablePath(),
@@ -310,18 +319,20 @@ app.whenReady().then(async () => {
     launchProcess: (executable, args, options) => spawn(executable, args, options) as HarnessChildProcess,
     onChildStarted: (child) => { attachCredentialBroker(child, credentialVault); attachDesktopBridge(child) },
     onChanged: (snapshot) => {
-      if (snapshot.phase === 'ready') void showHarness(snapshot)
+      if (snapshot.phase === 'ready') void showHarness(snapshot).then(scheduleMcpEnvironmentUpdate)
       if (snapshot.phase === 'failed' && !quitting) dialog.showErrorBox(`${identity.productName} could not start`, snapshot.message)
     },
   })
   runtime = harnessRuntime
 
-  const mcpEnvironment = new McpEnvironmentController({
+  const mcpEnvironmentLogPath = join(app.getPath('logs'), 'mcp-environment.log')
+  mcpEnvironment = new McpEnvironmentController({
     root: mcpEnvironmentRoot,
     manifestUrl: process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/mcp-environments/windows-x64/latest.json',
     publicKey: process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? MCP_ENVIRONMENT_PUBLIC_KEY,
     publicKeys: MCP_ENVIRONMENT_KEYRING,
     publish: status => {
+      void appendFile(mcpEnvironmentLogPath, `${JSON.stringify({ timestamp: new Date().toISOString(), ...status })}\n`, 'utf8').catch(() => undefined)
       const window = mainWindow
       if (window !== undefined && !window.isDestroyed()) window.webContents.send('desktop:mcp-environment:status-changed', status)
     },
@@ -436,8 +447,9 @@ app.whenReady().then(async () => {
 
   await launch()
   // Environment updates run independently from desktop updates. Startup and
-  // hourly checks both install a newer signed revision automatically.
-  void mcpEnvironment.autoUpdate()
+  // hourly checks both install a newer signed revision automatically. The
+  // first update begins only after the authenticated workbench is visible so
+  // a large archive cannot delay the first usable window.
   const mcpEnvironmentInterval = setInterval(() => { void mcpEnvironment.autoUpdate().catch(() => undefined) }, UPDATE_CHECK_INTERVAL_MS)
   mcpEnvironmentInterval.unref()
   const updateRecordPath = join(userData, 'updates', 'last-check.json')

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import JSZip from 'jszip'
-import { canonicalManifest, McpEnvironmentController, selectPythonHealthImports, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
+import { canonicalManifest, extractZipInWorker, McpEnvironmentController, selectPythonHealthImports, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
 
 const roots: string[] = []
 const keys = generateKeyPairSync('ed25519')
@@ -46,6 +46,22 @@ async function environment(root: string, manifest: McpEnvironmentManifest): Prom
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
 describe('MCP environment upgrades', () => {
+  it('extracts archives off the main thread and reports file progress', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-mcp-worker-')); roots.push(root)
+    const archivePath = join(root, 'environment.zip')
+    const target = join(root, 'target')
+    const progress: Array<[number, number]> = []
+    let eventLoopResponsive = false
+    await writeFile(archivePath, testArchive)
+    setTimeout(() => { eventLoopResponsive = true }, 0)
+
+    await extractZipInWorker(archivePath, target, (completed, total) => progress.push([completed, total]))
+
+    expect(eventLoopResponsive).toBe(true)
+    expect(progress.at(-1)).toEqual([7, 7])
+    await expect(readFile(join(target, 'skills', 'example', 'SKILL.md'), 'utf8')).resolves.toBe('')
+  })
+
   it('limits Python health imports to three representative lightweight modules', () => {
     expect(selectPythonHealthImports(['httpx', 'scanpy', 'pandas', 'numpy', 'mcp', 'anndata'])).toEqual(['mcp', 'numpy', 'pandas'])
     expect(selectPythonHealthImports(['httpx'])).toEqual(['httpx'])
@@ -160,5 +176,7 @@ describe('MCP environment upgrades', () => {
     releaseHealth()
     await expect(completion).resolves.toMatchObject({ phase: 'ready', environmentVersion: '1.2.0', contentRevision: 1, updated: true })
     expect(published.some(status => status.phase === 'downloading' && (status.progress ?? 0) > 5)).toBe(true)
+    expect(published.some(status => status.phase === 'installing' && (status.progress ?? 0) > 80)).toBe(true)
+    expect((await import('node:fs/promises')).readdir(root).then(entries => entries.some(entry => entry.startsWith('.download-')))).resolves.toBe(false)
   })
 })

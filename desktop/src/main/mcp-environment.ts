@@ -1,9 +1,10 @@
 import { createHash, verify } from 'node:crypto'
 import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { createInterface } from 'node:readline'
-import { access, cp, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { delimiter, dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path'
-import JSZip from 'jszip'
+import { access, cp, lstat, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { delimiter, dirname, join, resolve } from 'node:path'
+import { Worker } from 'node:worker_threads'
 import type { McpEnvironmentStatus, McpPythonInfo, McpPythonPackage, McpSkillAudit } from '../shared/contracts.js'
 
 export interface McpEnvironmentManifest {
@@ -231,19 +232,26 @@ export class McpEnvironmentController {
       const fetcher = this.options.fetcher ?? fetch
       const archiveResponse = await fetcher(manifest.archiveUrl, { cache: 'no-store' })
       if (!archiveResponse.ok) throw new Error(`MCP environment archive returned HTTP ${archiveResponse.status}.`)
-      const archive = await this.readArchiveWithProgress(archiveResponse, manifest)
-      this.set({ phase: 'verifying', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), progress: 70, message: '正在验证科研 MCP 环境' })
-      if (archive.byteLength !== manifest.archiveSize || sha256(archive) !== manifest.archiveSha256) throw new Error('MCP environment archive hash or size is invalid.')
       const current = await readCurrent(this.options.root)
       const currentSlot = current?.slot === 'a' || current?.slot === 'b' ? current.slot : undefined
       const targetSlot: 'a' | 'b' = currentSlot === 'a' ? 'b' : 'a'
       const target = join(this.options.root, 'slots', targetSlot)
       const temporary = `${target}.tmp-${process.pid}-${Date.now()}`
-      await rm(temporary, { recursive: true, force: true })
-      await mkdir(temporary, { recursive: true })
-      this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: targetSlot, progress: 80, message: '正在安装科研 MCP 环境' })
+      const archivePath = join(this.options.root, `.download-${process.pid}-${Date.now()}.zip`)
       try {
-        await extractZip(archive, temporary)
+        const downloaded = await this.downloadArchiveWithProgress(archiveResponse, manifest, archivePath)
+        this.set({ phase: 'verifying', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), progress: 70, message: '正在验证科研 MCP 环境' })
+        if (downloaded.byteLength !== manifest.archiveSize || downloaded.sha256 !== manifest.archiveSha256) throw new Error('MCP environment archive hash or size is invalid.')
+        await rm(temporary, { recursive: true, force: true })
+        await mkdir(temporary, { recursive: true })
+        this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: targetSlot, progress: 80, message: '正在安装科研 MCP 环境' })
+        let lastInstallProgress = 80
+        await extractZipInWorker(archivePath, temporary, (completed, total) => {
+          const progress = total === 0 ? 91 : Math.min(91, 80 + Math.floor((completed / total) * 11))
+          if (progress <= lastInstallProgress) return
+          lastInstallProgress = progress
+          this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: targetSlot, progress, message: `正在安装科研 MCP 环境 ${completed} / ${total}` })
+        })
         this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: targetSlot, progress: 92, message: '正在校验 Python 与科研服务' })
         await this.verifyHealth(temporary, manifest)
         await writeFile(join(temporary, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
@@ -253,6 +261,8 @@ export class McpEnvironmentController {
       } catch (error) {
         await rm(temporary, { recursive: true, force: true })
         throw error
+      } finally {
+        await rm(archivePath, { force: true }).catch(() => undefined)
       }
       await mkdir(this.options.root, { recursive: true })
       if (current !== undefined && current.root && current.health === 'ready' && (current.slot === 'a' || current.slot === 'b')) {
@@ -278,27 +288,40 @@ export class McpEnvironmentController {
     }
   }
 
-  private async readArchiveWithProgress(response: Response, manifest: McpEnvironmentManifest): Promise<Buffer> {
-    if (response.body === null) return Buffer.from(await response.arrayBuffer())
-    const reader = response.body.getReader()
-    const chunks: Uint8Array[] = []
+  private async downloadArchiveWithProgress(response: Response, manifest: McpEnvironmentManifest, archivePath: string): Promise<{ byteLength: number; sha256: string }> {
+    await mkdir(dirname(archivePath), { recursive: true })
+    const file = await open(archivePath, 'wx')
+    const hash = createHash('sha256')
     let received = 0
     let lastProgress = 5
-    while (true) {
-      const result = await reader.read()
-      if (result.done) break
-      chunks.push(result.value)
-      received += result.value.byteLength
-      const ratio = manifest.archiveSize > 0 ? Math.min(received / manifest.archiveSize, 1) : 0
-      const progress = Math.min(68, 5 + Math.floor(ratio * 63))
-      if (progress > lastProgress) {
-        lastProgress = progress
-        const receivedMb = (received / 1024 / 1024).toFixed(1)
-        const totalMb = (manifest.archiveSize / 1024 / 1024).toFixed(1)
-        this.set({ phase: 'downloading', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), progress, message: `正在下载科研环境 ${receivedMb} MB / ${totalMb} MB` })
+    try {
+      if (response.body === null) {
+        const chunk = new Uint8Array(await response.arrayBuffer())
+        await file.write(chunk)
+        hash.update(chunk)
+        received = chunk.byteLength
+      } else {
+        const reader = response.body.getReader()
+        while (true) {
+          const result = await reader.read()
+          if (result.done) break
+          await file.write(result.value)
+          hash.update(result.value)
+          received += result.value.byteLength
+          const ratio = manifest.archiveSize > 0 ? Math.min(received / manifest.archiveSize, 1) : 0
+          const progress = Math.min(68, 5 + Math.floor(ratio * 63))
+          if (progress > lastProgress) {
+            lastProgress = progress
+            const receivedMb = (received / 1024 / 1024).toFixed(1)
+            const totalMb = (manifest.archiveSize / 1024 / 1024).toFixed(1)
+            this.set({ phase: 'downloading', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), progress, message: `正在下载科研环境 ${receivedMb} MB / ${totalMb} MB` })
+          }
+        }
       }
+    } finally {
+      await file.close()
     }
-    return Buffer.concat(chunks.map(chunk => Buffer.from(chunk)))
+    return { byteLength: received, sha256: hash.digest('hex') }
   }
 
   private async fetchManifest(): Promise<McpEnvironmentManifest> {
@@ -491,20 +514,56 @@ async function pathExists(path: string): Promise<boolean> {
   try { await access(path); return true } catch { return false }
 }
 
-async function extractZip(archive: Uint8Array, target: string): Promise<void> {
-  const zip = await JSZip.loadAsync(archive)
-  for (const entry of Object.values(zip.files)) {
-    const name = normalize(entry.name.replaceAll('/', '\\'))
-    if (entry.dir) continue
-    if (isAbsolute(name) || name === '..' || name.startsWith(`..\\`)) throw new Error('MCP environment archive contains an unsafe path.')
-    const path = resolve(target, name)
-    if (relative(target, path).startsWith('..')) throw new Error('MCP environment archive escapes its installation directory.')
-    await mkdir(dirname(path), { recursive: true })
-    await writeFile(path, await entry.async('nodebuffer'), { flag: 'wx' })
+const ZIP_EXTRACTION_WORKER = String.raw`
+const { parentPort, workerData } = require('node:worker_threads')
+const fs = require('node:fs/promises')
+const path = require('node:path')
+const imported = require(workerData.jsZipPath)
+const JSZip = imported.default || imported
+
+async function run() {
+  const zip = await JSZip.loadAsync(await fs.readFile(workerData.archivePath))
+  const entries = Object.values(zip.files).filter(entry => !entry.dir)
+  let completed = 0
+  const progressStep = Math.max(1, Math.floor(entries.length / 100))
+  for (const entry of entries) {
+    const name = path.normalize(entry.name.replaceAll('/', path.sep))
+    if (path.isAbsolute(name) || name === '..' || name.startsWith('..' + path.sep)) throw new Error('MCP environment archive contains an unsafe path.')
+    const destination = path.resolve(workerData.target, name)
+    const relation = path.relative(workerData.target, destination)
+    if (relation === '..' || relation.startsWith('..' + path.sep) || path.isAbsolute(relation)) throw new Error('MCP environment archive escapes its installation directory.')
+    await fs.mkdir(path.dirname(destination), { recursive: true })
+    await fs.writeFile(destination, await entry.async('nodebuffer'), { flag: 'wx' })
+    completed += 1
+    if (completed === entries.length || completed % progressStep === 0) parentPort.postMessage({ type: 'progress', completed, total: entries.length })
   }
+  parentPort.postMessage({ type: 'done' })
 }
 
-function sha256(value: Uint8Array): string { return createHash('sha256').update(value).digest('hex') }
+run().catch(error => parentPort.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }))
+`
+
+export async function extractZipInWorker(archivePath: string, target: string, onProgress: (completed: number, total: number) => void = () => undefined): Promise<void> {
+  const jsZipPath = createRequire(import.meta.url).resolve('jszip')
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    const worker = new Worker(ZIP_EXTRACTION_WORKER, { eval: true, workerData: { archivePath, target, jsZipPath } })
+    let settled = false
+    const finish = (error?: Error): void => {
+      if (settled) return
+      settled = true
+      void worker.terminate()
+      if (error === undefined) resolvePromise()
+      else rejectPromise(error)
+    }
+    worker.on('message', (message: { type?: unknown; completed?: unknown; total?: unknown; message?: unknown }) => {
+      if (message.type === 'progress' && typeof message.completed === 'number' && typeof message.total === 'number') onProgress(message.completed, message.total)
+      else if (message.type === 'done') finish()
+      else if (message.type === 'error') finish(new Error(typeof message.message === 'string' ? message.message : 'MCP environment extraction failed.'))
+    })
+    worker.once('error', finish)
+    worker.once('exit', code => { if (!settled) finish(new Error(`MCP environment extraction worker exited with code ${code}.`)) })
+  })
+}
 function sanitizeError(error: unknown): string { return (error instanceof Error ? error.message : String(error)).replace(/https?:\/\/[^\s]+/gu, '[download-url]').slice(0, 500) }
 
 async function assertRegularFile(path: string): Promise<void> {
