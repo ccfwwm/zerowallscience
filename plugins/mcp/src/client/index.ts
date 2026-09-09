@@ -1,5 +1,5 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import { McpConnectionsButton, type McpServerInput } from './McpConnectionsButton.tsx'
+import { McpConnectionsButton, PythonEnvironmentPanel, type McpServerInput } from './McpConnectionsButton.tsx'
 import { NS, unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 
 // Do not make the whole settings tab depend on the remote namespace's first
@@ -31,4 +31,8 @@ export function apply(ctx: ClientContext): void {
       clearRdatalinuxAuthorization: async () => unwrapRemoteResult('zerowall.mcp.clearRdatalinuxAuthorization', await mcpRemote.clearRdatalinuxAuthorization()),
     }),
   }, McpConnectionsButton))
+  ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
+    name: 'settings.plugins.tab', id: 'zerowall-python-environment', order: -9,
+    label: () => 'Python 环境', locale: NS, inject: () => ({}),
+  }, PythonEnvironmentPanel))
 }

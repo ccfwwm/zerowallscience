@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DesktopClipboardFile, DesktopClipboardImage, DesktopInfo, DesktopUpdateStatus, McpEnvironmentStatus } from '../shared/contracts.js'
+import type { DesktopClipboardFile, DesktopClipboardImage, DesktopInfo, DesktopUpdateStatus, McpEnvironmentStatus, McpPythonInfo } from '../shared/contracts.js'
 
 contextBridge.exposeInMainWorld('zerowallDesktop', {
   info: async (): Promise<DesktopInfo> => await ipcRenderer.invoke('desktop:info') as DesktopInfo,
@@ -17,6 +17,10 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
   getMcpEnvironmentStatus: async (): Promise<McpEnvironmentStatus> => await ipcRenderer.invoke('desktop:mcp-environment:get-status') as McpEnvironmentStatus,
   retryMcpEnvironment: async (): Promise<McpEnvironmentStatus> => await ipcRenderer.invoke('desktop:mcp-environment:retry') as McpEnvironmentStatus,
   selectMcpEnvironment: async (): Promise<McpEnvironmentStatus> => await ipcRenderer.invoke('desktop:mcp-environment:select-path') as McpEnvironmentStatus,
+  checkMcpEnvironment: async (): Promise<McpEnvironmentStatus> => await ipcRenderer.invoke('desktop:mcp-environment:check') as McpEnvironmentStatus,
+  updateMcpEnvironment: async (): Promise<McpEnvironmentStatus> => await ipcRenderer.invoke('desktop:mcp-environment:update') as McpEnvironmentStatus,
+  getMcpPythonInfo: async (query?: string): Promise<McpPythonInfo> => await ipcRenderer.invoke('desktop:mcp-python:info', query) as McpPythonInfo,
+  installMcpPythonPackage: async (spec: string): Promise<McpPythonInfo> => await ipcRenderer.invoke('desktop:mcp-python:install', spec) as McpPythonInfo,
   onMcpEnvironmentStatus: (listener: (status: McpEnvironmentStatus) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, status: McpEnvironmentStatus) => listener(status)
     ipcRenderer.on('desktop:mcp-environment:status-changed', handler)

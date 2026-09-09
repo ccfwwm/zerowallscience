@@ -36,7 +36,24 @@ export interface McpEnvironmentStatus {
   version?: string
   progress?: number
   message?: string
-  python?: { ready: boolean; version?: string; executable?: string; sitePackages?: string; message?: string }
+  onlineEnvironmentVersion?: string
+  onlineContentRevision?: number
+  updateAvailable?: boolean
+  lastCheckedAt?: string
+  lastUpdateError?: string
+  python?: { ready: boolean; version?: string; executable?: string; sitePackages?: string; overlayPath?: string; packageCount?: number; message?: string }
+}
+
+export interface McpPythonPackage { name: string; version: string; location?: string }
+export interface McpPythonInfo {
+  ready: boolean
+  version?: string
+  executable?: string
+  sitePackages?: string
+  overlayPath?: string
+  packageCount?: number
+  packages: McpPythonPackage[]
+  message?: string
 }
 
 export type DesktopUpdatePhase = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'upToDate' | 'error' | 'unavailable'

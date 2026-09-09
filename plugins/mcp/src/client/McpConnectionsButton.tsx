@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Cable, Download, Plus, RefreshCw, RotateCw, Save, ServerCog, Trash2, Upload, X } from 'lucide-react'
+import { Cable, Download, Plus, RefreshCw, RotateCw, Save, ServerCog, Trash2, Upload, X, PackageSearch } from 'lucide-react'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { PropsLocale, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import {
@@ -96,6 +96,8 @@ interface Draft {
   reconnectMaxAttempts: string
 }
 
+interface PythonEnvironmentInfo { ready: boolean; version?: string; executable?: string; sitePackages?: string; overlayPath?: string; packageCount?: number; packages: Array<{ name: string; version: string; location?: string }>; message?: string }
+
 type Props = Partial<SidebarFooterActionOwnerProps> & McpActions & PropsLocale<typeof NS> & { embedded?: boolean }
 
 const NEW_SERVER = '__new__'
@@ -109,7 +111,8 @@ export function McpConnectionsButton(props: Props) {
   const [deleteTarget, setDeleteTarget] = useState<McpServerView>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const [environment, setEnvironment] = useState<{ phase: string; environmentVersion?: string; contentRevision?: number; currentSlot?: 'a' | 'b' | 'manual'; updated?: boolean; rollbackAvailable?: boolean; version?: string; progress?: number; message?: string; python?: { ready: boolean; version?: string; sitePackages?: string; message?: string } }>()
+  const [environment, setEnvironment] = useState<{ phase: string; environmentVersion?: string; contentRevision?: number; currentSlot?: 'a' | 'b' | 'manual'; updated?: boolean; rollbackAvailable?: boolean; version?: string; progress?: number; message?: string; onlineEnvironmentVersion?: string; onlineContentRevision?: number; updateAvailable?: boolean; lastUpdateError?: string; python?: { ready: boolean; version?: string; sitePackages?: string; message?: string } }>()
+  const [pythonBusy, setPythonBusy] = useState(false)
   const [sciMasterConfigured, setSciMasterConfigured] = useState(false)
   const [sciMasterKey, setSciMasterKey] = useState('')
   const [sciMasterBusy, setSciMasterBusy] = useState(false)
@@ -163,6 +166,7 @@ export function McpConnectionsButton(props: Props) {
       setEnvironment(status)
       if (status.phase === 'ready' || status.phase === 'manual') void refresh()
     })
+    void window.zerowallDesktop?.checkMcpEnvironment?.().then(status => setEnvironment(status))
     void getSciMasterCredentialStatus().then(status => setSciMasterConfigured(status.configured)).catch(() => setSciMasterConfigured(false))
     void getRdatalinuxCredentialStatus().then(status => setRdatalinuxConfigured(status.configured)).catch(() => setRdatalinuxConfigured(false))
     return window.zerowallDesktop?.onMcpEnvironmentStatus?.(status => {
@@ -229,6 +233,18 @@ export function McpConnectionsButton(props: Props) {
     const next = await window.zerowallDesktop?.retryMcpEnvironment?.()
     if (next !== undefined) setEnvironment(next)
     await refresh()
+  }
+
+  const checkEnvironment = async () => {
+    const next = await window.zerowallDesktop?.checkMcpEnvironment?.()
+    if (next !== undefined) setEnvironment(next)
+  }
+
+  const updateEnvironment = async () => {
+    setPythonBusy(true)
+    try { const next = await window.zerowallDesktop?.updateMcpEnvironment?.(); if (next !== undefined) setEnvironment(next); await refresh() }
+    catch (reason) { setError(message(reason)) }
+    finally { setPythonBusy(false) }
   }
 
   const selectEnvironment = async () => {
@@ -348,10 +364,11 @@ export function McpConnectionsButton(props: Props) {
         </div>
       </header>
       {environment !== undefined && environment.phase !== 'idle' && <div className={environment.phase === 'failed' ? css.error : css.warning} role="status">
-        <strong>{props.t('mcp.environment')}: </strong>{environment.phase === 'checking' ? props.t('mcp.environmentChecking') : environment.phase === 'ready' || environment.phase === 'manual' ? (environment.environmentVersion === undefined ? environment.phase : props.t('mcp.environmentVersion', { version: environment.environmentVersion, revision: environment.contentRevision ?? 1 })) : environment.message ?? environment.phase}{typeof environment.progress === 'number' && environment.phase !== 'ready' && environment.phase !== 'manual' ? ` ${Math.round(environment.progress)}%` : ''}
-        {environment.updated === true && <span className={css.syncBadge}>{props.t('mcp.environmentUpdated')}</span>}
-        {environment.python !== undefined && <div>{props.t('mcp.pythonEnvironment')}: {environment.python.ready ? `ready${environment.python.version === undefined ? '' : ` (${environment.python.version})`}` : environment.python.message ?? 'unavailable'}</div>}
-        {(environment.phase === 'failed' || environment.phase === 'unavailable') && <><button type="button" onClick={() => void retryEnvironment()}>{props.t('mcp.environmentRetry')}</button><button type="button" onClick={() => void selectEnvironment()}>{props.t('mcp.environmentManual')}</button></>}
+        <strong>科研 MCP 环境：</strong>{environment.phase === 'checking' ? '正在检查' : environment.phase === 'ready' || environment.phase === 'manual' ? `${environment.environmentVersion ?? environment.phase} · 内容修订 ${environment.contentRevision ?? 1}` : environment.message ?? environment.phase}{typeof environment.progress === 'number' && environment.phase !== 'ready' && environment.phase !== 'manual' ? ` ${Math.round(environment.progress)}%` : ''}
+        {environment.onlineEnvironmentVersion !== undefined && <span> · 在线 {environment.onlineEnvironmentVersion} / 修订 {environment.onlineContentRevision ?? 1}</span>}
+        {environment.updated === true && <span className={css.syncBadge}>已更新</span>}
+        {environment.lastUpdateError && <div className={css.environmentFailure}>更新失败，已保留当前可用环境：{environment.lastUpdateError}</div>}
+        <div className={css.sciMasterActions}><button type="button" onClick={() => void checkEnvironment()} disabled={pythonBusy}>检查更新</button>{environment.updateAvailable === true && <button type="button" className={css.saveButton} onClick={() => void updateEnvironment()} disabled={pythonBusy}>立即更新科研环境</button>}{(environment.phase === 'failed' || environment.phase === 'unavailable') && <><button type="button" onClick={() => void retryEnvironment()}>{props.t('mcp.environmentRetry')}</button><button type="button" onClick={() => void selectEnvironment()}>{props.t('mcp.environmentManual')}</button></>}</div>
       </div>}
       <div className={css.workspace}>
         <aside className={css.sidebar}>
@@ -460,6 +477,65 @@ export function McpConnectionsButton(props: Props) {
     </button>
     {open && createPortal(<div className={css.backdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false) }}>{manager}</div>, document.body)}
   </>
+}
+
+export function PythonEnvironmentPanel() {
+  const [info, setInfo] = useState<PythonEnvironmentInfo>()
+  const [environment, setEnvironment] = useState<{ environmentVersion?: string; contentRevision?: number; onlineEnvironmentVersion?: string; onlineContentRevision?: number; updateAvailable?: boolean; lastUpdateError?: string; phase: string; message?: string }>()
+  const [query, setQuery] = useState('')
+  const [spec, setSpec] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [feedback, setFeedback] = useState<string>()
+
+  const load = useCallback(async (search = '') => {
+    const [nextInfo, nextEnvironment] = await Promise.all([
+      window.zerowallDesktop?.getMcpPythonInfo?.(search),
+      window.zerowallDesktop?.checkMcpEnvironment?.(),
+    ])
+    if (nextInfo !== undefined) setInfo(nextInfo)
+    if (nextEnvironment !== undefined) setEnvironment(nextEnvironment)
+  }, [])
+
+  useEffect(() => { void load() }, [load])
+
+  const install = async () => {
+    if (spec.trim() === '') return
+    setBusy(true); setFeedback(undefined)
+    try {
+      const next = await window.zerowallDesktop?.installMcpPythonPackage?.(spec)
+      if (next !== undefined) setInfo(next)
+      setFeedback(`${spec.trim()} 安装完成。`); setSpec('')
+    } catch (reason) { setFeedback(message(reason)) }
+    finally { setBusy(false) }
+  }
+
+  const update = async () => {
+    setBusy(true); setFeedback(undefined)
+    try { const status = await window.zerowallDesktop?.updateMcpEnvironment?.(); if (status?.lastUpdateError) throw new Error(status.lastUpdateError); await load(query); setFeedback('科研 Python 环境已更新。') }
+    catch (reason) { setFeedback(message(reason)) }
+    finally { setBusy(false) }
+  }
+
+  return <section className={css.pythonPanel} aria-labelledby="zerowall-python-title">
+    <header className={css.header}><div><p>ZeroWall Science</p><h2 id="zerowall-python-title">Python 环境</h2></div><button className={css.iconButton} type="button" onClick={() => void load(query)} disabled={busy} title="重新检测" aria-label="重新检测"><RefreshCw size={17} /></button></header>
+    <div className={css.pythonBody}>
+      <div className={css.pythonSummary}>
+        <div><span>运行状态</span><strong>{info?.ready ? '可用' : '不可用'}</strong></div>
+        <div><span>Python 版本</span><strong>{info?.version ?? '未检测'}</strong></div>
+        <div><span>已安装包</span><strong>{info?.packageCount ?? info?.packages.length ?? 0}</strong></div>
+        <div><span>科研环境</span><strong>{environment?.environmentVersion ?? '未安装'} / 修订 {environment?.contentRevision ?? '-'}</strong></div>
+      </div>
+      <div className={css.environmentLine}><span>在线版本：{environment?.onlineEnvironmentVersion ?? '检测中'} / 修订 {environment?.onlineContentRevision ?? '-'}</span>{environment?.updateAvailable === true ? <button type="button" onClick={() => void update()} disabled={busy}>更新 Python 环境</button> : <span className={css.configured}>当前已是所需版本</span>}</div>
+      {environment?.lastUpdateError && <p className={css.error}>上次环境更新失败：{environment.lastUpdateError}</p>}
+      {info?.message && <p className={css.error}>{info.message}</p>}
+      {info?.ready && <>
+        <dl className={css.pathList}><dt>解释器</dt><dd>{info.executable}</dd><dt>内置包目录</dt><dd>{info.sitePackages}</dd><dt>用户扩展目录</dt><dd>{info.overlayPath}</dd></dl>
+        <div className={css.packageToolbar}><div className={css.sciMasterActions}><input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void load(query) }} placeholder="搜索已安装包" /><button type="button" onClick={() => void load(query)} disabled={busy}>搜索</button><button type="button" onClick={() => { setQuery(''); void load('') }} disabled={busy}>全部</button></div><div className={css.sciMasterActions}><input value={spec} onChange={event => setSpec(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void install() }} placeholder="添加包，例如 pandas==2.2.3" /><button className={css.saveButton} type="button" onClick={() => void install()} disabled={busy || spec.trim() === ''}>安装</button></div></div>
+        <div className={css.packageList} role="list">{info.packages.map(pkg => <div key={`${pkg.name}-${pkg.version}`} role="listitem"><strong>{pkg.name}</strong><span>{pkg.version}</span></div>)}</div>
+      </>}
+      {feedback && <p className={feedback.includes('完成') || feedback.includes('已更新') ? css.success : css.error}>{feedback}</p>}
+    </div>
+  </section>
 }
 
 function Field({ label, children }: { label: string, children: React.ReactNode }) {

@@ -111,27 +111,34 @@ class State:
 
 
 class TSGClient:
-    def __init__(self, token: str, cookie: str | None = None, timeout: float = 30,
-                 user_token: str | None = None, pm_jsessionid: str | None = None,
-                 user_jsessionid: str | None = None):
-        if not token:
-            raise ValueError("token is required (use --token or TSG_TOKEN)")
+    def __init__(self, pm_jsessionid: str, user_sessionid: str,
+                 sguser: str, tsguser: str, timeout: float = 30):
+        values = {
+            "TSG_PM_JSESSIONID": pm_jsessionid,
+            "TSG_SESSIONID": user_sessionid,
+            "TSG_SGUSER": sguser,
+            "TSG_TSGUSER": tsguser,
+        }
+        missing = [name for name, value in values.items() if not value]
+        if missing:
+            raise ValueError(f"missing required TSG cookies: {', '.join(missing)}")
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json, text/javascript, */*; q=0.01",
                                       "X-Requested-With": "XMLHttpRequest",
                                       "User-Agent": "tsg-literature-cli/1.0"})
-        self.session.headers["token"] = token
-        self.user_token = user_token or token
-        if cookie:
-            for pair in cookie.split(";"):
-                if "=" in pair:
-                    key, value = pair.strip().split("=", 1)
-                    self.session.cookies.set(key, value)
-        if pm_jsessionid:
-            self.session.cookies.set("JSESSIONID", pm_jsessionid, domain="pm.yuntsg.com", path="/")
-        if user_jsessionid:
-            self.session.cookies.set("JSESSIONID", user_jsessionid, domain="user.tsgyun.com", path="/")
+        self.sguser = sguser
+        self.tsguser = tsguser
+        # The web API accepts the same JWT values both as their browser cookie
+        # and as its legacy `token` header; no additional token is configured.
+        self.session.headers["token"] = sguser
+        # These are the four browser cookies exported from the two TSG hosts.
+        # Keep each cookie domain-scoped so credentials are never sent to the
+        # wrong service.
+        self.session.cookies.set("JSESSIONID", pm_jsessionid, domain="pm.yuntsg.com", path="/")
+        self.session.cookies.set("sguser", sguser, domain=".yuntsg.com", path="/")
+        self.session.cookies.set("SESSIONID", user_sessionid, domain="user.tsgyun.com", path="/")
+        self.session.cookies.set("tsguser", tsguser, domain=".tsgyun.com", path="/")
 
     def _json(self, response: requests.Response) -> dict[str, Any]:
         if response.status_code in (401, 403):
@@ -165,7 +172,7 @@ class TSGClient:
 
     def cases(self, page: int = 1, size: int = 100) -> list[Case]:
         old_token = self.session.headers.get("token")
-        self.session.headers["token"] = self.user_token
+        self.session.headers["token"] = self.tsguser
         try:
             response = self.session.get(CASES_URL, params={"giveup": "", "page": page, "size": size,
                                                            "typeid": "", "cyear": ""}, timeout=self.timeout)
@@ -174,12 +181,11 @@ class TSGClient:
         data = self._json(response)
         return [Case.from_api(x) for x in data.get("data", {}).get("list", [])]
 
-    def viewer_pdf_url(self, case: Case, token: str | None = None) -> str:
+    def viewer_pdf_url(self, case: Case) -> str:
         parsed = urlparse(case.pdf_url)
         if case.pdf_url and parsed.scheme in ("http", "https") and parsed.netloc and parsed.path not in ("", "/"):
             return case.pdf_url
-        user_token = token or self.user_token
-        url = f"{VIEWER_URL}?casesid={case.case_id}&type=user&token={user_token}"
+        url = f"{VIEWER_URL}?casesid={case.case_id}&type=user&token={self.tsguser}"
         html = self.session.get(url, timeout=self.timeout).text
         def element(name: str) -> str:
             match = re.search(rf'<[^>]+id=["\']{name}["\'][^>]*>(.*?)</[^>]+>', html, re.I | re.S)
@@ -223,11 +229,10 @@ class TSGClient:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Authorized TSG Yun literature search and download CLI")
     p.add_argument("--state-dir", type=Path, default=Path(".tsg-state"))
-    p.add_argument("--token", default=os.getenv("TSG_TOKEN"), help="token (prefer TSG_TOKEN environment variable)")
-    p.add_argument("--user-token", default=os.getenv("TSG_USER_TOKEN"), help="user/fulltext token (prefer TSG_USER_TOKEN)")
-    p.add_argument("--cookie", default=os.getenv("TSG_COOKIE"), help="optional browser Cookie header")
-    p.add_argument("--pm-jsessionid", default=os.getenv("TSG_PM_JSESSIONID"))
-    p.add_argument("--user-jsessionid", default=os.getenv("TSG_USER_JSESSIONID"))
+    p.add_argument("--pm-jsessionid", default=os.getenv("TSG_PM_JSESSIONID"), help="JSESSIONID for pm.yuntsg.com")
+    p.add_argument("--user-sessionid", default=os.getenv("TSG_SESSIONID"), help="SESSIONID for user.tsgyun.com")
+    p.add_argument("--sguser", default=os.getenv("TSG_SGUSER"), help="sguser cookie for .yuntsg.com")
+    p.add_argument("--tsguser", default=os.getenv("TSG_TSGUSER"), help="tsguser cookie for .tsgyun.com")
     sub = p.add_subparsers(dest="command", required=True)
     s = sub.add_parser("search"); s.add_argument("term"); s.add_argument("--page", type=int, default=1); s.add_argument("--size", type=int, default=20)
     r = sub.add_parser("request"); r.add_argument("pmids", nargs="+")
@@ -240,8 +245,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     state = State(args.state_dir)
-    client = TSGClient(args.token, args.cookie, user_token=args.user_token,
-                       pm_jsessionid=args.pm_jsessionid, user_jsessionid=args.user_jsessionid)
+    client = TSGClient(args.pm_jsessionid, args.user_sessionid, args.sguser, args.tsguser)
     articles = state.articles(); cases = state.cases()
     if args.command in ("search", "run"):
         found, rekey = client.search(args.term, getattr(args, "page", 1), getattr(args, "size", 20))

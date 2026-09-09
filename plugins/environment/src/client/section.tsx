@@ -160,7 +160,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       setNewValue('')
     })
   }
-  const tsgKeys = ['TSG_TOKEN', 'TSG_USER_TOKEN', 'TSG_PM_JSESSIONID', 'TSG_USER_JSESSIONID']
+  const tsgKeys = ['TSG_PM_JSESSIONID', 'TSG_SESSIONID', 'TSG_SGUSER', 'TSG_TSGUSER']
   const saveTsg = async () => run(async () => {
     const entries = Object.entries(tsgValues).filter(([, value]) => value.trim())
     if (entries.length === 0) throw new Error('请输入至少一个云图书馆配置项。')
@@ -169,7 +169,17 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     setVariables(next)
     setTsgValues({})
   })
-  const trailKeys = ['UNPAYWALL_EMAIL', 'LITERATURE_OUTPUT_ROOT', 'AUTHORIZED_ADAPTER_MODULE', 'AUTHORIZED_ADAPTER_ALLOWED_DOMAINS']
+  const trailKeys = [
+    'RESEARCH_VAULT_PATH', 'RESEARCH_SOURCES_PATH', 'RESEARCH_REGISTRY_PATH',
+    'RESEARCH_VAULT_LAYOUT', 'RESEARCH_CONTACT_EMAIL', 'UNPAYWALL_EMAIL', 'S2_API_KEY',
+    'RESEARCH_RTFM_DB', 'RESEARCH_ENABLE_SHADOW_LIBS', 'RESEARCH_ENABLE_NOTEBOOKLM',
+    'RESEARCH_SKIP_END_DOCTOR', 'RESEARCH_BROWSER_COOKIES', 'RESEARCH_BROWSER_PROFILE',
+    'RESEARCH_ANNAS_HEADFUL_BUDGET_S', 'RESEARCH_LIBGEN_MIRRORS', 'RESEARCH_MIN_BOOK_PAGES',
+    'RESEARCH_RG_SEARCH_GAP_S', 'RESEARCH_SCIDB_SETTLE_MS', 'RESEARCH_REQUIRE_GIT',
+    'LITERATURE_OUTPUT_ROOT', 'LITERATURE_DISABLE_PAPER_DOWNLOAD', 'LITERATURE_DOWNLOAD_WORKERS', 'LITERATURE_MAX_PDF_BYTES',
+    'AUTHORIZED_ADAPTER_MODULE', 'AUTHORIZED_ADAPTER_ALLOWED_DOMAINS',
+    'ZEROWALL_PAPER_DOWNLOAD_ROOT', 'AUTHORIZED_ADAPTER_MODULE', 'AUTHORIZED_ADAPTER_ALLOWED_DOMAINS',
+  ]
   const saveTrail = async () => run(async () => {
     const entries = Object.entries(trailValues).filter(([, value]) => value.trim())
     if (entries.length === 0) throw new Error('请输入至少一个文献流水线配置项。')
@@ -217,13 +227,13 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     <div className={css.grid}>
       <LiteratureSettings remote={pubmedRemote} unwrap={unwrap} />
       <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>智慧云图书馆（TSG）</h3><p>凭据保存在本机安全存储，并注入 `zerowall-tsg-literature` Skill。Token 与会话 Cookie 分开配置。</p></div><span className={tsgKeys.every(key => variables.some(variable => variable.name === key && variable.configured)) ? css.statusGood : css.status}>{tsgKeys.filter(key => variables.some(variable => variable.name === key && variable.configured)).length}/4 已配置</span></div>
+        <div className={css.cardHeader}><div><h3>智慧云图书馆（TSG）</h3><p>填写浏览器中导出的四个 Cookie，凭据保存在本机安全存储，并按 TSG 域名使用。</p></div><span className={tsgKeys.every(key => variables.some(variable => variable.name === key && variable.configured)) ? css.statusGood : css.status}>{tsgKeys.filter(key => variables.some(variable => variable.name === key && variable.configured)).length}/4 已配置</span></div>
         <div className={css.formGrid}>{tsgKeys.map(key => <label className={css.field} key={key}><span>{key}</span><input className={css.control} type="password" autoComplete="off" placeholder={variables.some(variable => variable.name === key && variable.configured) ? '已配置，留空保持不变' : '输入配置值'} value={tsgValues[key] ?? ''} onChange={event => setTsgValues(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
         <div className={css.footer}><span>用于检索、申请、状态轮询和授权 PDF 下载。</span><button className={css.primaryButton} type="button" disabled={busy || Object.values(tsgValues).every(value => !value.trim())} onClick={() => void saveTsg()}>保存 TSG 配置</button></div>
       </article>
       <article className={css.card}>
         <div className={css.cardHeader}><div><h3>文献流水线</h3><p>标题检索、引用追踪、公开全文、PDF 解析和报告输出使用的可选配置。</p></div><span className={trailKeys.every(key => variables.some(variable => variable.name === key && variable.configured)) ? css.statusGood : css.status}>{trailKeys.filter(key => variables.some(variable => variable.name === key && variable.configured)).length}/{trailKeys.length} 已配置</span></div>
-        <div className={css.formGrid}>{trailKeys.map(key => <label className={css.field} key={key}><span>{key}</span><input className={css.control} type={key === 'UNPAYWALL_EMAIL' ? 'email' : 'text'} autoComplete="off" placeholder={variables.some(variable => variable.name === key && variable.configured) ? '已配置，留空保持不变' : '可选配置'} value={trailValues[key] ?? ''} onChange={event => setTrailValues(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
+        <div className={css.formGrid}>{trailKeys.map(key => <label className={css.field} key={key}><span>{key}</span><input className={css.control} type={key === 'UNPAYWALL_EMAIL' ? 'email' : ['S2_API_KEY', 'RESEARCH_BROWSER_COOKIES'].includes(key) ? 'password' : 'text'} autoComplete="off" placeholder={variables.some(variable => variable.name === key && variable.configured) ? '已配置，留空保持不变' : '可选配置'} value={trailValues[key] ?? ''} onChange={event => setTrailValues(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
         <div className={css.footer}><span>凭据仍由用户自有适配器管理；任务记录来源、哈希和失败原因。</span><button className={css.primaryButton} type="button" disabled={busy || Object.values(trailValues).every(value => !value.trim())} onClick={() => void saveTrail()}>保存流水线配置</button></div>
       </article>
       <article className={css.card}>

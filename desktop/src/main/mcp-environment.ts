@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline'
 import { access, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path'
 import JSZip from 'jszip'
-import type { McpEnvironmentStatus } from '../shared/contracts.js'
+import type { McpEnvironmentStatus, McpPythonInfo, McpPythonPackage } from '../shared/contracts.js'
 
 export interface McpEnvironmentManifest {
   schema: 2
@@ -42,6 +42,7 @@ export interface McpEnvironmentControllerOptions {
 export const MCP_ENVIRONMENT_KEYRING: Record<string, string> = {
   'stable-1': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAu8wAGfgRWqQBdIGcbkwPlBq01SjgEMybgNh3xVv0ej4=\n-----END PUBLIC KEY-----`,
   'stable-2': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAUvKwSI31zGGut3nRi4kRqZGg8eBJskIrfa8Xmp/7VJw=\n-----END PUBLIC KEY-----`,
+  'stable-3': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA9DJ9yg3F5f67/cEE54AdIDtQshvLP0SF5gVe3F3X+wA=\n-----END PUBLIC KEY-----`,
 }
 
 export class McpEnvironmentController {
@@ -60,6 +61,59 @@ export class McpEnvironmentController {
 
   retry(): Promise<McpEnvironmentStatus> { return this.initialize() }
 
+  /** Check the signed feed without downloading an archive. */
+  async checkForUpdates(): Promise<McpEnvironmentStatus> {
+    try {
+      const manifest = await this.fetchManifest()
+      const record = await readCurrent(this.options.root)
+      const currentManifest = record?.root && record.health === 'ready' ? await this.readInstalledManifest(record.root).catch(() => undefined) : undefined
+      const root = record?.root ?? ''
+      const slot = record?.slot === 'a' || record?.slot === 'b' || record?.slot === 'manual' ? record.slot : undefined
+      const status = environmentStatus(currentManifest ? 'ready' : 'checking', currentManifest ?? manifest, root, slot ?? 'manual', false, record?.rollbackAvailable === true)
+      status.onlineEnvironmentVersion = environmentVersion(manifest)
+      status.onlineContentRevision = contentRevision(manifest)
+      status.updateAvailable = currentManifest === undefined || environmentVersion(currentManifest) !== environmentVersion(manifest) || contentRevision(currentManifest) !== contentRevision(manifest) || currentManifest.archiveSha256 !== manifest.archiveSha256
+      status.lastCheckedAt = new Date().toISOString()
+      if (status.updateAvailable) status.message = `发现科研环境 ${environmentVersion(manifest)}（内容修订 ${contentRevision(manifest)}）可更新`
+      return this.set(status)
+    } catch (error) {
+      return this.set({ ...this.status, phase: this.status.phase === 'ready' ? 'ready' : 'failed', message: sanitizeError(error), lastCheckedAt: new Date().toISOString() })
+    }
+  }
+
+  updateForUser(): Promise<McpEnvironmentStatus> { return this.initialize() }
+
+  async pythonInfo(query = ''): Promise<McpPythonInfo> {
+    const current = await readCurrent(this.options.root)
+    if (!current?.root || current.health !== 'ready') return { ready: false, packages: [], message: '科研 MCP 环境尚未就绪。' }
+    try {
+      const manifest = await this.readInstalledManifest(current.root)
+      const executable = join(current.root, manifest.python.relativeExecutable)
+      const sitePackages = join(current.root, manifest.python.relativeSitePackages)
+      const overlayPath = pythonOverlayPath(this.options.root, manifest)
+      await mkdir(overlayPath, { recursive: true })
+      const versionResult = await execute(executable, ['--version'], current.root, undefined, { PYTHONPATH: [overlayPath, sitePackages].join(';'), PYTHONNOUSERSITE: '1' }, 20_000)
+      const listed = await execute(executable, ['-c', 'import sys,importlib.metadata,json; sys.path.insert(0,sys.argv[1]); print(json.dumps(sorted([{"name":d.metadata.get("Name") or d.name,"version":d.version,"location":str(d.locate_file(""))} for d in importlib.metadata.distributions()], key=lambda x:x["name"].lower())))', overlayPath], current.root, undefined, { PYTHONPATH: [overlayPath, sitePackages].join(';'), PYTHONNOUSERSITE: '1' }, 30_000)
+      const packages = (JSON.parse(listed.stdout.trim()) as McpPythonPackage[]).filter((pkg, index, values) => values.findIndex(candidate => candidate.name.toLowerCase() === pkg.name.toLowerCase() && candidate.version === pkg.version && candidate.location === pkg.location) === index)
+      const needle = query.trim().toLowerCase()
+      return { ready: true, version: `${versionResult.stdout}\n${versionResult.stderr}`.trim().replace(/^Python\s+/u, ''), executable, sitePackages, overlayPath, packageCount: packages.length, packages: needle === '' ? packages : packages.filter(pkg => pkg.name.toLowerCase().includes(needle)) }
+    } catch (error) { return { ready: false, packages: [], message: sanitizeError(error) } }
+  }
+
+  async installPythonPackage(spec: string): Promise<McpPythonInfo> {
+    const normalized = spec.trim()
+    if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*(?:\[[A-Za-z0-9_,.-]+\])?(?:[=<>!~]=?[A-Za-z0-9.*+!<>=~.-]+)?$/u.test(normalized)) throw new Error('包名格式不安全，仅支持 PyPI 包名及版本约束。')
+    const current = await readCurrent(this.options.root)
+    if (!current?.root || current.health !== 'ready') throw new Error('科研 MCP 环境尚未就绪。')
+    const manifest = await this.readInstalledManifest(current.root)
+    const executable = join(current.root, manifest.python.relativeExecutable)
+    const sitePackages = join(current.root, manifest.python.relativeSitePackages)
+    const overlayPath = pythonOverlayPath(this.options.root, manifest)
+    await mkdir(overlayPath, { recursive: true })
+    await execute(executable, ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '--upgrade', '--target', overlayPath, normalized], current.root, undefined, { PYTHONPATH: [overlayPath, sitePackages].join(';'), PYTHONNOUSERSITE: '1' }, 180_000)
+    return this.pythonInfo()
+  }
+
   async selectManual(root: string): Promise<McpEnvironmentStatus> {
     const selected = resolve(root)
     const manifest = await this.readInstalledManifest(selected)
@@ -70,20 +124,23 @@ export class McpEnvironmentController {
   }
 
   private async install(): Promise<McpEnvironmentStatus> {
+    let requestedManifest: McpEnvironmentManifest | undefined
     try {
       if (process.platform !== 'win32' || process.arch !== 'x64') return this.set({ phase: 'unavailable', message: 'Managed scientific MCP environments are currently available on Windows x64 only.' })
       if (this.options.publicKey.trim() === '') throw new Error('The MCP environment verification key is not configured.')
       await this.cleanupTemporaryInstallations()
       this.set({ phase: 'checking', progress: 0, message: '正在检查科研 MCP 环境' })
-      const fetcher = this.options.fetcher ?? fetch
-      const manifestResponse = await fetcher(this.options.manifestUrl, { cache: 'no-store' })
-      if (!manifestResponse.ok) throw new Error(`MCP environment manifest returned HTTP ${manifestResponse.status}.`)
-      const manifest = validateManifest(await manifestResponse.json())
-      if (!verifyManifestWithKeyring(manifest, this.options.publicKey, this.options.publicKeys)) throw new Error('MCP environment manifest signature is invalid.')
+      const manifest = await this.fetchManifest()
+      requestedManifest = manifest
       await this.migrateLegacyCurrent(manifest)
       const installed = await this.installedRoot(manifest)
-      if (installed !== undefined) return this.set(environmentStatus('ready', manifest, installed.root, installed.slot, false, installed.rollbackAvailable))
+      if (installed !== undefined) {
+        const status = environmentStatus('ready', manifest, installed.root, installed.slot, false, installed.rollbackAvailable)
+        status.onlineEnvironmentVersion = environmentVersion(manifest); status.onlineContentRevision = contentRevision(manifest); status.updateAvailable = false; status.lastCheckedAt = new Date().toISOString()
+        return this.set(status)
+      }
       this.set({ phase: 'downloading', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), progress: 5, message: '正在同步科研 MCP 环境' })
+      const fetcher = this.options.fetcher ?? fetch
       const archiveResponse = await fetcher(manifest.archiveUrl, { cache: 'no-store' })
       if (!archiveResponse.ok) throw new Error(`MCP environment archive returned HTTP ${archiveResponse.status}.`)
       const archive = Buffer.from(await archiveResponse.arrayBuffer())
@@ -113,12 +170,33 @@ export class McpEnvironmentController {
         await this.writeCurrent({ ...current, root: current.root, slot: current.slot, rollbackAvailable: true, rollbackAt: new Date().toISOString() }, 'rollback.json')
       }
       await this.writeCurrent({ mode: 'managed', environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), archiveSha256: manifest.archiveSha256, root: target, slot: targetSlot, manifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: current?.health === 'ready' && current.slot !== 'manual' })
-      return this.set(environmentStatus('ready', manifest, target, targetSlot, true, current?.health === 'ready' && current.slot !== 'manual'))
+      const status = environmentStatus('ready', manifest, target, targetSlot, true, current?.health === 'ready' && current.slot !== 'manual')
+      status.onlineEnvironmentVersion = environmentVersion(manifest); status.onlineContentRevision = contentRevision(manifest); status.updateAvailable = false; status.lastCheckedAt = new Date().toISOString()
+      return this.set(status)
     } catch (error) {
       const retained = await this.currentHealthyRoot()
-      if (retained !== undefined) return this.set(environmentStatus('ready', retained.manifest, retained.root, retained.slot, false, retained.rollbackAvailable))
+      if (retained !== undefined) {
+        const status = environmentStatus('ready', retained.manifest, retained.root, retained.slot, false, retained.rollbackAvailable)
+        status.lastUpdateError = sanitizeError(error)
+        if (requestedManifest !== undefined) {
+          status.onlineEnvironmentVersion = environmentVersion(requestedManifest)
+          status.onlineContentRevision = contentRevision(requestedManifest)
+          status.updateAvailable = true
+        }
+        return this.set(status)
+      }
       return this.set({ phase: 'failed', message: sanitizeError(error) })
     }
+  }
+
+  private async fetchManifest(): Promise<McpEnvironmentManifest> {
+    if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('托管科研 MCP 环境仅支持 Windows x64。')
+    if (this.options.publicKey.trim() === '') throw new Error('MCP environment verification key is not configured.')
+    const response = await (this.options.fetcher ?? fetch)(this.options.manifestUrl, { cache: 'no-store' })
+    if (!response.ok) throw new Error(`MCP environment manifest returned HTTP ${response.status}.`)
+    const manifest = validateManifest(await response.json())
+    if (!verifyManifestWithKeyring(manifest, this.options.publicKey, this.options.publicKeys)) throw new Error('MCP environment manifest signature is invalid.')
+    return manifest
   }
 
   private async cleanupTemporaryInstallations(): Promise<void> {
@@ -241,14 +319,18 @@ function environmentVersion(manifest: McpEnvironmentManifest): string {
 }
 
 function environmentStatus(phase: McpEnvironmentStatus['phase'], manifest: McpEnvironmentManifest, root: string, slot: 'a' | 'b' | 'manual', updated: boolean, rollbackAvailable: boolean): McpEnvironmentStatus {
-  return { phase, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: slot, updated, rollbackAvailable, version: environmentVersion(manifest), progress: phase === 'ready' || phase === 'manual' ? 100 : undefined, message: root, python: pythonStatus(manifest) }
+  return { phase, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: slot, updated, rollbackAvailable, version: environmentVersion(manifest), progress: phase === 'ready' || phase === 'manual' ? 100 : undefined, message: root, python: pythonStatus(manifest, root) }
 }
 
-function pythonStatus(manifest: McpEnvironmentManifest): NonNullable<McpEnvironmentStatus['python']> {
-  return { ready: true, version: manifest.python.version, sitePackages: manifest.python.relativeSitePackages }
+function pythonStatus(manifest: McpEnvironmentManifest, root: string): NonNullable<McpEnvironmentStatus['python']> {
+  return { ready: true, version: manifest.python.version, executable: root ? join(root, manifest.python.relativeExecutable) : undefined, sitePackages: manifest.python.relativeSitePackages }
 }
 
 function contentRevision(manifest: McpEnvironmentManifest): number { return manifest.contentRevision ?? 1 }
+function pythonOverlayPath(root: string, manifest: McpEnvironmentManifest): string {
+  const runtime = manifest.python.version.match(/^\d+\.\d+/u)?.[0] ?? manifest.python.version
+  return join(root, 'python-overlay', `python-${runtime.replace(/[^A-Za-z0-9.-]/gu, '-')}`)
+}
 
 interface CurrentEnvironmentRecord {
   mode?: string
@@ -312,12 +394,12 @@ export async function assertEnvironmentFiles(root: string, manifest: McpEnvironm
 
 interface ProcessResult { stdout: string; stderr: string }
 
-function execute(command: string, args: string[], cwd: string, input?: string, extraEnv: Record<string, string> = {}): Promise<ProcessResult> {
+function execute(command: string, args: string[], cwd: string, input?: string, extraEnv: Record<string, string> = {}, timeoutMs = 15_000): Promise<ProcessResult> {
   return new Promise((resolveResult, reject) => {
     const child = spawn(command, args, { cwd, windowsHide: true, env: { ...process.env, ...extraEnv, ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
     let stdout = ''
     let stderr = ''
-    const timer = setTimeout(() => { child.kill(); reject(new Error(`MCP health check timed out: ${args.at(-1) ?? command}`)) }, 15_000)
+    const timer = setTimeout(() => { child.kill(); reject(new Error(`MCP process timed out: ${args.at(-1) ?? command}`)) }, timeoutMs)
     child.stdout.setEncoding('utf8').on('data', value => { stdout += value })
     child.stderr.setEncoding('utf8').on('data', value => { stderr += value })
     child.once('error', error => { clearTimeout(timer); reject(error) })
@@ -334,9 +416,20 @@ async function checkMcpServer(command: string, args: string[], cwd: string): Pro
     const child = spawn(command, args, { cwd, windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
     const lines = createInterface({ input: child.stdout })
     let phase: 'initialize' | 'tools' = 'initialize'
-    const timer = setTimeout(() => { child.kill(); lines.close(); reject(new Error(`MCP server health check timed out: ${args.at(-1) ?? command}`)) }, 15_000)
-    const finish = (error?: Error) => { clearTimeout(timer); lines.close(); child.kill(); error === undefined ? resolveCheck() : reject(error) }
+    let finishing = false
+    let settled = false
+    const settle = (error?: Error) => { if (settled) return; settled = true; error === undefined ? resolveCheck() : reject(error) }
+    const finish = (error?: Error) => {
+      if (finishing) return
+      finishing = true; clearTimeout(timer); lines.close()
+      if (child.exitCode !== null) return settle(error)
+      child.once('exit', () => settle(error))
+      child.kill()
+      const exitTimer = setTimeout(() => settle(error), 2_000); exitTimer.unref()
+    }
+    const timer = setTimeout(() => finish(new Error(`MCP server health check timed out: ${args.at(-1) ?? command}`)), 15_000)
     child.once('error', error => finish(error))
+    child.once('exit', code => { if (!finishing) finish(new Error(`MCP server exited before health check completed (${code ?? 'unknown'}): ${args.at(-1) ?? command}`)) })
     child.stderr.resume()
     lines.on('line', line => {
       let reply: { id?: number; result?: unknown; error?: unknown }

@@ -986,6 +986,17 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
     ...(enabledTools === undefined ? {} : { enabledTools }),
   }
   const launch = record.transport === 'stdio' ? resolveStdioLaunch(record, hostCwd) : undefined
+  if (record.transport === 'stdio' && record.command === 'zerowall-managed:bio-tools') {
+    const managed = managedEnvironmentRecord()
+    const root = managed?.root
+    const version = managed?.environmentVersion ?? managed?.version
+    if (root && version) {
+      const pythonVersion = managed.manifest?.python?.version?.match(/^\d+\.\d+/u)?.[0] ?? managed.manifest?.python?.version ?? version
+      const overlay = resolve(root, '..', '..', 'python-overlay', `python-${pythonVersion.replace(/[^A-Za-z0-9.-]/gu, '-')}`)
+      values.PYTHONPATH = [overlay, join(root, managed.manifest?.python?.relativeSitePackages ?? 'bio-tools/python/Lib/site-packages')].join(';')
+      values.PYTHONNOUSERSITE = '1'
+    }
+  }
   return {
     missingEnvironmentVariables: [],
     config: record.transport === 'stdio'
@@ -1017,10 +1028,11 @@ export function resolveStdioLaunch(record: Pick<McpServerRecord, 'command' | 'ar
 
 function isManagedMcp(serverName: string): boolean { return serverName === 'zerowall_managed_bio_tools' || serverName === 'zerowall_managed_ketcher' || serverName === 'zerowall_managed_scimaster' }
 
-function managedEnvironmentRecord(): { root?: string; health?: string; version?: string; environmentVersion?: string; contentRevision?: number; archiveSha256?: string; mode?: string } | undefined {
+type ManagedEnvironmentRecord = { root?: string; health?: string; version?: string; environmentVersion?: string; contentRevision?: number; archiveSha256?: string; mode?: string; manifest?: { python?: { version?: string; relativeSitePackages?: string } } }
+function managedEnvironmentRecord(): ManagedEnvironmentRecord | undefined {
   const root = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
   if (!root) return undefined
-  try { return JSON.parse(readFileSync(join(root, 'current.json'), 'utf8')) as { root?: string; health?: string; version?: string; mode?: string } } catch { return undefined }
+  try { return JSON.parse(readFileSync(join(root, 'current.json'), 'utf8')) as ManagedEnvironmentRecord } catch { return undefined }
 }
 
 function managedEnvironmentSignature(record = managedEnvironmentRecord()): string {

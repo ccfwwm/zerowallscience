@@ -101,6 +101,45 @@ export function mediaTypeForPath(path: string): string {
   return MEDIA_TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream'
 }
 
+interface ByteRange {
+  start: number
+  end: number
+}
+
+/** Parse one RFC 7233 byte range. Multi-range responses are intentionally
+ * unsupported because Chromium's PDF viewer only needs a single interval. */
+function parseByteRange(header: string, size: number): ByteRange | undefined {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim())
+  if (match === null || size <= 0) return undefined
+  const [, rawStart, rawEnd] = match
+  if (rawStart === '' && rawEnd === '') return undefined
+
+  if (rawStart === '') {
+    const suffixLength = Number(rawEnd)
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return undefined
+    return { start: Math.max(0, size - suffixLength), end: size - 1 }
+  }
+
+  const start = Number(rawStart)
+  const requestedEnd = rawEnd === '' ? size - 1 : Number(rawEnd)
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(requestedEnd)
+    || start < 0 || start >= size || requestedEnd < start) return undefined
+  return { start, end: Math.min(requestedEnd, size - 1) }
+}
+
+/** Read exactly one bounded file interval without loading the rest. */
+async function readByteRange(path: string, range: ByteRange): Promise<Buffer> {
+  const length = range.end - range.start + 1
+  const buffer = Buffer.allocUnsafe(length)
+  const handle = await open(path, 'r')
+  try {
+    const { bytesRead } = await handle.read(buffer, 0, length, range.start)
+    return buffer.subarray(0, bytesRead)
+  } finally {
+    await handle.close()
+  }
+}
+
 /**
  * Resolve a session's authoritative working directory. The attached session
  * header wins; while the session is still hydrating from persistence (the
@@ -931,17 +970,42 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
         const cwd = await sessionCwdOf(ctx, sessionId, url.searchParams.get('cwd') ?? undefined)
         const path = await ensureWorkspacePath(cwd, raw, fenceEnabledOf(() => settingsFace))
         const info = await stat(path)
-        if (!info.isFile() || info.size > resolved.mediaLimit) {
+        const type = mediaTypeForPath(path)
+        const isPdf = type === 'application/pdf'
+        if (!info.isFile() || (!isPdf && info.size > resolved.mediaLimit)) {
           throw new SidebarError('fs-error', 'not a file or too large', 400)
         }
-        const type = mediaTypeForPath(path)
-        const body = await readFile(path)
         // Raw bytes either way (binary-safe); ?download=1 switches the
         // disposition so the browser saves the file instead of showing it.
-        const headers: Record<string, string> = { 'content-type': type, 'cache-control': 'no-cache' }
+        const headers: Record<string, string> = {
+          'content-type': type,
+          'cache-control': 'no-cache',
+          'content-length': String(info.size),
+        }
         if (url.searchParams.get('download') === '1') {
           headers['content-disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(basename(path))}`
         }
+
+        const rangeHeader = isPdf && typeof req.headers.range === 'string' ? req.headers.range : undefined
+        if (isPdf) headers['accept-ranges'] = 'bytes'
+        if (rangeHeader !== undefined) {
+          const range = parseByteRange(rangeHeader, info.size)
+          if (range === undefined) {
+            res.writeHead(416, { ...headers, 'content-range': `bytes */${info.size}`, 'content-length': '0' })
+            res.end()
+            return
+          }
+          const body = await readByteRange(path, range)
+          res.writeHead(206, {
+            ...headers,
+            'content-range': `bytes ${range.start}-${range.end}/${info.size}`,
+            'content-length': String(body.length),
+          })
+          res.end(body)
+          return
+        }
+
+        const body = await readFile(path)
         res.writeHead(200, headers)
         res.end(body)
       } catch (error) {

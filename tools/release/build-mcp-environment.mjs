@@ -13,6 +13,8 @@ const staging = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_STAGING ?? join(roo
 const output = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_OUTPUT ?? join(root, 'desktop', 'dist', 'mcp-environment'))
 const environmentVersion = (process.env.ZEROWALL_MCP_ENVIRONMENT_VERSION ?? process.env.ZEROWALL_MCP_ENVIRONMENT_REVISION ?? '1.0.0').trim()
 if (!environmentVersion) throw new Error('ZEROWALL_MCP_ENVIRONMENT_VERSION is required.')
+const pythonVersion = process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12'
+const pythonRuntime = pythonVersion.match(/^\d+\.\d+/u)?.[0] ?? pythonVersion
 // Keep the previous desktop-version field as a compatibility alias for
 // clients released before the MCP environment was decoupled from the app.
 // New clients use environmentVersion exclusively; the alias is signed with
@@ -29,8 +31,8 @@ const privateKey = privateKeyText.startsWith('base64:')
   ? createPrivateKey({ key: Buffer.from(privateKeyText.slice('base64:'.length), 'base64'), format: 'der', type: 'pkcs8' })
   : privateKeyText
 
-const keyId = process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-2'
-const expectedPublicKey = (process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAUvKwSI31zGGut3nRi4kRqZGg8eBJskIrfa8Xmp/7VJw=\n-----END PUBLIC KEY-----`).trim()
+const keyId = process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-3'
+const expectedPublicKey = (process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA9DJ9yg3F5f67/cEE54AdIDtQshvLP0SF5gVe3F3X+wA=\n-----END PUBLIC KEY-----`).trim()
 const derivedPublicKey = createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }).trim()
 if (derivedPublicKey !== expectedPublicKey.trim()) throw new Error(`MCP signing key does not match the pinned ${keyId} public key.`)
 
@@ -70,13 +72,24 @@ try {
 }
 const embeddedPth = join(staging, 'bio-tools', 'python', 'python312._pth')
 const embeddedPthText = await readFile(embeddedPth, 'utf8')
-const requiredPthEntries = ['site-packages/win32', 'site-packages/win32/lib', 'site-packages/pythonwin']
+const requiredPthEntries = ['site-packages/win32', 'site-packages/win32/lib', 'site-packages/pythonwin', `../../../../python-overlay/python-${pythonRuntime}`]
 const missingPthEntries = requiredPthEntries.filter(entry => !embeddedPthText.split(/\r?\n/u).includes(entry))
 if (missingPthEntries.length > 0) await writeFile(embeddedPth, `${embeddedPthText.trimEnd()}\n${missingPthEntries.join('\n')}\n`, 'utf8')
 const pythonExecutable = join(staging, 'bio-tools', 'python', 'python.exe')
-await execFileAsync(pythonExecutable, ['-c', 'import mcp, numpy, pandas, httpx'], {
+const managedPythonImports = 'mcp, numpy, pandas, httpx, openpyxl, pypdf, fitz, docx, pptx, matplotlib'
+const managedPythonEnv = { ...process.env, PYTHONPATH: join(staging, 'bio-tools', 'python', 'site-packages'), PYTHONNOUSERSITE: '1' }
+try {
+  await execFileAsync(pythonExecutable, ['-c', `import ${managedPythonImports}`], { cwd: staging, env: managedPythonEnv, windowsHide: true })
+} catch {
+  const buildPython = process.env.ZEROWALL_MCP_BUILD_PYTHON ?? (process.platform === 'win32' ? 'py' : 'python3')
+  const buildPythonArgs = process.platform === 'win32' && buildPython.toLowerCase() === 'py' ? ['-3.12'] : []
+  await execFileAsync(buildPython, [...buildPythonArgs, '-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '--upgrade', '--target', join(staging, 'bio-tools', 'python', 'site-packages'), '-r', join(root, 'resources', 'python', 'requirements-managed-ui.txt')], {
+    cwd: staging, env: managedPythonEnv, windowsHide: true, maxBuffer: 16 * 1024 * 1024,
+  })
+}
+await execFileAsync(pythonExecutable, ['-c', `import ${managedPythonImports}`], {
   cwd: staging,
-  env: { ...process.env, PYTHONNOUSERSITE: '1' },
+  env: managedPythonEnv,
   windowsHide: true,
 })
 await rm(output, { recursive: true, force: true })
@@ -96,7 +109,7 @@ for (const path of await filesUnder(join(root, 'resources', 'skills'))) {
 }
 // Ship the reproducible dependency inputs alongside the managed runtime so
 // diagnostics and future environment updates use the same source of truth.
-for (const name of ['requirements-mcp.txt', 'requirements-base.txt', 'requirements-science.txt', 'requirements-science.lock', 'requirements-mineru.txt']) {
+for (const name of ['requirements-mcp.txt', 'requirements-base.txt', 'requirements-science.txt', 'requirements-science.lock', 'requirements-mineru.txt', 'requirements-managed-ui.txt']) {
   const path = join(root, 'resources', 'python', name)
   try { zip.file(`python/${name}`, await readFile(path)) } catch { /* optional layer may be absent in older checkouts */ }
 }
@@ -114,7 +127,7 @@ const baseUrl = (process.env.ZEROWALL_MCP_ENVIRONMENT_BASE_URL ?? 'https://zerow
 const manifest = {
   schema: 2, environmentVersion, ...(legacyApplicationVersion ? { version: legacyApplicationVersion } : {}), contentRevision, environmentId: 'claude-science-mcp', platform: 'win32', architecture: 'x64',
   archiveUrl: `${baseUrl}/${environmentVersion}/${archiveName}`, archiveSha256, archiveSize: archive.byteLength,
-  python: { version: process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12', relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/site-packages', modules: ['mcp', 'numpy', 'pandas', 'httpx', 'openpyxl', 'pypdf', 'fitz', 'docx', 'pptx', 'matplotlib'], layers: ['base', 'science', 'mineru-optional'], dependencyManifests: ['python/requirements-base.txt', 'python/requirements-science.txt', 'python/requirements-science.lock', 'python/requirements-mineru.txt'], supportsZeroWallTool: true },
+  python: { version: pythonVersion, relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/site-packages', modules: ['mcp', 'numpy', 'pandas', 'httpx', 'openpyxl', 'pypdf', 'fitz', 'docx', 'pptx', 'matplotlib'], layers: ['base', 'science', 'mineru-optional'], dependencyManifests: ['python/requirements-base.txt', 'python/requirements-science.txt', 'python/requirements-science.lock', 'python/requirements-mineru.txt', 'python/requirements-managed-ui.txt'], supportsZeroWallTool: true },
   pythonHealth: { imports: ['mcp', 'numpy', 'pandas', 'httpx', 'openpyxl', 'pypdf', 'fitz', 'docx', 'pptx', 'matplotlib'], optionalLayers: { bioinformatics: ['Bio', 'anndata', 'scanpy'], mineru: ['mineru'] }, bioServer: 'bio-tools/run_server.py mcp_bio', ketcherServer: 'ketcher-chemistry/server.js' },
   skillsRoot: 'skills',
   sci: { version: process.env.ZEROWALL_SCIMASTER_VERSION ?? '0.3.15', nodeMinimum: '20.3.0', cli: 'sci/dist/cli.mjs', mcp: 'sci/dist/mcp.cjs' },

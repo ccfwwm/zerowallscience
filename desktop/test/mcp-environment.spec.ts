@@ -84,12 +84,36 @@ describe('MCP environment upgrades', () => {
     await environment(installed, installedManifest)
     await writeFile(join(root, 'current.json'), JSON.stringify({ environmentVersion: '1.0.0', contentRevision: 1, slot: 'a', root: installed, health: 'ready', manifest: installedManifest }))
     const onlineManifest = signedManifest('4.1.14', 'stable-1', '1.0.0', 1)
+    const requests: string[] = []
     const controller = new McpEnvironmentController({
       root, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
-      fetcher: async url => String(url).endsWith('latest.json') ? new Response(JSON.stringify(onlineManifest), { status: 200 }) : new Response(new Blob([new Uint8Array(testArchive)]), { status: 200 }), healthCheck: async () => undefined, publish: () => undefined,
+      fetcher: async url => { requests.push(String(url)); return String(url).endsWith('latest.json') ? new Response(JSON.stringify(onlineManifest), { status: 200 }) : new Response(new Blob([new Uint8Array(testArchive)]), { status: 200 }) }, healthCheck: async () => undefined, publish: () => undefined,
     })
     await expect(controller.initialize()).resolves.toMatchObject({ phase: 'ready', environmentVersion: '1.0.0', currentSlot: 'a', updated: false })
+    expect(requests).toEqual(['https://example.test/latest.json'])
     expect(JSON.parse(await readFile(join(root, 'current.json'), 'utf8'))).toMatchObject({ root: installed, slot: 'a' })
+  })
+
+  it('checks the online manifest without downloading and reports a required update', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-mcp-root-')); roots.push(root)
+    const installed = join(root, 'slots', 'a')
+    const installedManifest = signedManifest('4.1.13', 'stable-1', '1.0.0', 4)
+    await environment(installed, installedManifest)
+    await writeFile(join(root, 'current.json'), JSON.stringify({ environmentVersion: '1.0.0', contentRevision: 4, slot: 'a', root: installed, health: 'ready', manifest: installedManifest }))
+    const onlineManifest = signedManifest('5.10.0', 'stable-1', '1.1.2', 3)
+    const requests: string[] = []
+    const controller = new McpEnvironmentController({
+      root, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      fetcher: async url => { requests.push(String(url)); return new Response(JSON.stringify(onlineManifest), { status: 200 }) }, healthCheck: async () => undefined, publish: () => undefined,
+    })
+    await expect(controller.checkForUpdates()).resolves.toMatchObject({ phase: 'ready', environmentVersion: '1.0.0', contentRevision: 4, onlineEnvironmentVersion: '1.1.2', onlineContentRevision: 3, updateAvailable: true })
+    expect(requests).toEqual(['https://example.test/latest.json'])
+  })
+
+  it('rejects unsafe package specifications before starting pip', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-mcp-root-')); roots.push(root)
+    const controller = new McpEnvironmentController({ root, manifestUrl: 'https://example.test/latest.json', publicKey: 'test', publish: () => undefined })
+    await expect(controller.installPythonPackage('requests; calc.exe')).rejects.toThrow('包名格式不安全')
   })
 
   it('updates the inactive slot when MCP content revision changes', async () => {

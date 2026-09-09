@@ -6,12 +6,16 @@ whenToUse: Use when the user asks to search, request, monitor, or download liter
 
 Use the bundled TSG literature CLI from `C:/softworks/gpt-tools/tsg-literature-cli` (or the installed ZeroWall runtime copy). Credentials are injected by ZeroWall environment configuration; never ask the user to paste them into a prompt or tool argument.
 
-Required environment variables:
+Required environment variables are the four browser cookies shown by the TSG
+cookie store:
 
-- `TSG_TOKEN`: `pm.yuntsg.com` search/application token.
-- `TSG_USER_TOKEN`: `user.tsgyun.com` personal-center/full-text token.
-- `TSG_PM_JSESSIONID`: optional `pm.yuntsg.com` session cookie.
-- `TSG_USER_JSESSIONID`: optional `user.tsgyun.com` session cookie.
+- `TSG_PM_JSESSIONID`: `JSESSIONID` for `pm.yuntsg.com`.
+- `TSG_SESSIONID`: `SESSIONID` for `user.tsgyun.com`.
+- `TSG_SGUSER`: `sguser` for `.yuntsg.com`.
+- `TSG_TSGUSER`: `tsguser` for `.tsgyun.com`.
+
+No separate API token is required. These values are domain-scoped and are
+never printed or included in reports.
 
 Use `search` first and show the matching PMID/title list. Submit requests only after the user has selected PMID values. The service allows at most 20 applications per request. Use `watch` for pending requests and `download` only for status `2` records. The downloader reproduces the viewer's AES-CBC URL generation locally and validates the `%PDF-` signature before saving.
 

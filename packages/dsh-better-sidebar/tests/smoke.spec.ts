@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { join, resolve as resolvePath } from 'node:path'
 import { SettingsConflictError, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
-import { apply, mediaTypeForPath } from '../src/index.ts'
+import { apply, mediaTypeForPath, type SidebarConfig } from '../src/index.ts'
 import { encodeHtmlUrl } from '../src/html-route.ts'
 import * as git from '../src/git.ts'
 import { listDirectory } from '../src/fs-tree.ts'
@@ -494,7 +494,7 @@ describe('session cwd resolution over the API route', () => {
     sessionPersistence?: { inspect: (id: string) => Promise<{ meta: { cwd?: string } }> }
   }
 
-  const mountAll = (overrides: CtxOverrides = {}): SidebarWebRoute[] => {
+  const mountAll = (overrides: CtxOverrides = {}, config?: SidebarConfig): SidebarWebRoute[] => {
     const routes: SidebarWebRoute[] = []
     const ctx = {
       webRuntime: { trustedHosts: [] },
@@ -511,7 +511,7 @@ describe('session cwd resolution over the API route', () => {
       // No jobs/agents services in the smoke context: the routes degrade.
       get: (key: string) => key === 'sessionPersistence' ? overrides.sessionPersistence : undefined,
     }
-    apply(ctx as never)
+    apply(ctx as never, config)
     return routes
   }
 
@@ -548,6 +548,87 @@ describe('session cwd resolution over the API route', () => {
     await route.handler(req, res)
     return out
   }
+
+  const invokeBinaryGet = async (
+    route: SidebarWebRoute,
+    url: string,
+    headers: Record<string, string> = {},
+  ): Promise<{ status: number; headers: Record<string, string>; body: Buffer }> => {
+    const out: { status: number; headers: Record<string, string>; chunks: Buffer[] } = {
+      status: 200,
+      headers: {},
+      chunks: [],
+    }
+    const req = { method: 'GET', url, headers: { host: '127.0.0.1:3080', ...headers } } as never
+    const res = {
+      writeHead: (status: number, responseHeaders?: Record<string, string>) => {
+        out.status = status
+        out.headers = responseHeaders ?? {}
+      },
+      end: (chunk?: string | Uint8Array) => {
+        if (chunk !== undefined) out.chunks.push(Buffer.from(chunk))
+      },
+    } as never
+    await route.handler(req, res)
+    return { status: out.status, headers: out.headers, body: Buffer.concat(out.chunks) }
+  }
+
+  it('serves PDFs above mediaLimit and supports browser byte ranges', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'dsh-sidebar-large-pdf-'))
+    const pdf = join(workspace, '37735236_Upregulation of WDR6 drives hepatic de novo lipogenesis in insulin resistance in mice.pdf')
+    const bytes = Buffer.from('%PDF-1.7\nlarge-pdf-fixture\n%%EOF')
+    writeFileSync(pdf, bytes)
+    try {
+      const route = mountAll({ sessions: { get: () => ({ header: { cwd: workspace } }) } }, { mediaLimit: 8 })
+        .find(candidate => candidate.path === '/sidebar/file')!
+      const url = `/sidebar/file?sessionId=pdf&path=${encodeURIComponent(pdf)}`
+
+      const full = await invokeBinaryGet(route, url)
+      expect(full).toMatchObject({ status: 200 })
+      expect(full.headers).toMatchObject({
+        'content-type': 'application/pdf',
+        'content-length': String(bytes.length),
+        'accept-ranges': 'bytes',
+      })
+      expect(full.body).toEqual(bytes)
+
+      const partial = await invokeBinaryGet(route, url, { range: 'bytes=5-12' })
+      expect(partial).toMatchObject({ status: 206 })
+      expect(partial.headers).toMatchObject({
+        'content-range': `bytes 5-12/${bytes.length}`,
+        'content-length': '8',
+      })
+      expect(partial.body).toEqual(bytes.subarray(5, 13))
+
+      const invalid = await invokeBinaryGet(route, url, { range: `bytes=${bytes.length}-` })
+      expect(invalid).toMatchObject({ status: 416 })
+      expect(invalid.headers).toMatchObject({
+        'content-range': `bytes */${bytes.length}`,
+        'content-length': '0',
+      })
+      expect(invalid.body).toHaveLength(0)
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps mediaLimit enforcement for non-PDF files', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'dsh-sidebar-media-limit-'))
+    const image = join(workspace, 'large.png')
+    writeFileSync(image, Buffer.alloc(9, 1))
+    try {
+      const route = mountAll({ sessions: { get: () => ({ header: { cwd: workspace } }) } }, { mediaLimit: 8 })
+        .find(candidate => candidate.path === '/sidebar/file')!
+      const result = await invokeBinaryGet(route, `/sidebar/file?sessionId=image&path=${encodeURIComponent(image)}`)
+      expect(result.status).toBe(400)
+      expect(JSON.parse(result.body.toString('utf8'))).toMatchObject({
+        ok: false,
+        error: { code: 'fs-error', message: 'not a file or too large' },
+      })
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
 
   it('uses the client summary cwd while the session is detached', async () => {
     const route = mount()

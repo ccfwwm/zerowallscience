@@ -1,0 +1,5 @@
+requests>=2.31,<3
+pypdf>=4.0,<7
+pymupdf>=1.24,<2
+openpyxl>=3.1,<4
+pyyaml>=6.0,<7
