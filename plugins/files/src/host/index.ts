@@ -11,12 +11,13 @@ import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { apply as applyOfficeTools } from 'dsh-office-tools'
 import type { FileAttachmentRef, FileExtraction, MaterializedUploadedFile, PreparedFile, StoredAttachment, UploadedFileBytes, UploadedFileReadResult } from '../shared/types.js'
 
 export type { FileAttachmentRef, FileExtraction, MaterializedUploadedFile, PreparedFile, StoredAttachment, UploadedFileBytes, UploadedFileReadResult } from '../shared/types.js'
 
 export const name = 'zerowall-files'
-export const inject = ['tools', 'sessions']
+export const inject = ['tools', 'sessions', 'fs']
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024
 const MAX_TOTAL_PREVIEW = 120_000
@@ -459,6 +460,7 @@ declare module '@deepseek-ai/cordis' { interface Context { zerowallFiles: ZeroWa
 
 export function apply(ctx: Context): void {
   ctx.plugin(ZeroWallFilesService)
+  applyOfficeTools(ctx, { enablePptTools: false })
 }
 
 export default { name, inject, apply }

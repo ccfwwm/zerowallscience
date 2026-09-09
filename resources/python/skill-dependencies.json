@@ -1,0 +1,5660 @@
+{
+  "schema": 1,
+  "platform": "win32",
+  "architecture": "x64",
+  "python": "3.12",
+  "generatedAt": "2026-09-09T06:13:01.228Z",
+  "summary": {
+    "ready": 92,
+    "managed": 19,
+    "optional": 108,
+    "external": 19,
+    "incompatible": 2
+  },
+  "skills": [
+    {
+      "name": "academic-paper",
+      "path": "academic-paper",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "academic-paper-reviewer",
+      "path": "academic-paper-reviewer",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "academic-pipeline",
+      "path": "academic-pipeline",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "adaptyv",
+      "path": "adaptyv",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "aeon",
+      "path": "aeon",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "agent-infini",
+      "path": "agent-infini",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "alphafold2",
+      "path": "alphafold2",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "analysis-workflow",
+      "path": "analysis-workflow",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "analytical-method-validation",
+      "path": "analytical-method-validation",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_catalog",
+        "_common",
+        "argparse",
+        "csv",
+        "dataclasses",
+        "io",
+        "json",
+        "math",
+        "pathlib",
+        "statistics",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_catalog",
+          "import": "_catalog",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "anndata",
+      "path": "anndata",
+      "status": "managed",
+      "detectedImports": [],
+      "requirements": [
+        {
+          "name": "anndata",
+          "status": "managed",
+          "reason": "Curated runtime dependency for this Skill."
+        }
+      ]
+    },
+    {
+      "name": "arboreto",
+      "path": "arboreto",
+      "status": "optional",
+      "detectedImports": [
+        "arboreto",
+        "argparse",
+        "pandas"
+      ],
+      "requirements": [
+        {
+          "name": "arboreto",
+          "import": "arboreto",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "ars-3w",
+      "path": "ars-3w",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-abstract",
+      "path": "ars-abstract",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-cache-invalidate",
+      "path": "ars-cache-invalidate",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-citation-check",
+      "path": "ars-citation-check",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-disclosure",
+      "path": "ars-disclosure",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-format-convert",
+      "path": "ars-format-convert",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-full",
+      "path": "ars-full",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-lit-review",
+      "path": "ars-lit-review",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-mark-read",
+      "path": "ars-mark-read",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-outline",
+      "path": "ars-outline",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-plan",
+      "path": "ars-plan",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-rebuttal-audit",
+      "path": "ars-rebuttal-audit",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-reviewer",
+      "path": "ars-reviewer",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-revision",
+      "path": "ars-revision",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-revision-coach",
+      "path": "ars-revision-coach",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ars-unmark-read",
+      "path": "ars-unmark-read",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "astropy",
+      "path": "astropy",
+      "status": "managed",
+      "detectedImports": [],
+      "requirements": [
+        {
+          "name": "astropy",
+          "status": "managed",
+          "reason": "Curated runtime dependency for this Skill."
+        }
+      ]
+    },
+    {
+      "name": "bear-counter",
+      "path": "bear-counter",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "bear-map",
+      "path": "bear-map",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "bear-onboard",
+      "path": "bear-onboard",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "bear-propose",
+      "path": "bear-propose",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "bear-review",
+      "path": "bear-review",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "bear-scoop",
+      "path": "bear-scoop",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "bear-support",
+      "path": "bear-support",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "bear-trace",
+      "path": "bear-trace",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "benchling-integration",
+      "path": "benchling-integration",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "bibliometric-analysis",
+      "path": "bibliometric-analysis",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "collections",
+        "csv",
+        "dataclasses",
+        "json",
+        "os",
+        "re",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "bids",
+      "path": "bids",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [
+        "argparse",
+        "json",
+        "pathlib",
+        "urllib"
+      ],
+      "requirements": []
+    },
+    {
+      "name": "bio-plausibility",
+      "path": "bio-plausibility",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "bioinfor-figure-export",
+      "path": "bioinfor-figure-export",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "bioinfor-literature-search-digest",
+      "path": "bioinfor-literature-search-digest",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "bioinfor-public-data-access",
+      "path": "bioinfor-public-data-access",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "datetime",
+        "hashlib",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "subprocess",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "biopython",
+      "path": "biopython",
+      "status": "managed",
+      "detectedImports": [],
+      "requirements": [
+        {
+          "name": "biopython",
+          "status": "managed",
+          "reason": "Curated runtime dependency for this Skill."
+        }
+      ]
+    },
+    {
+      "name": "bioservices",
+      "path": "bioservices",
+      "status": "optional",
+      "detectedImports": [
+        "argparse",
+        "bioservices",
+        "collections",
+        "csv",
+        "multiple",
+        "os",
+        "re",
+        "sys",
+        "time"
+      ],
+      "requirements": [
+        {
+          "name": "bioservices",
+          "import": "bioservices",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "multiple",
+          "import": "multiple",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "boltz",
+      "path": "boltz",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "borzoi",
+      "path": "borzoi",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "browser-use",
+      "path": "browser-use",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "bulk-rnaseq",
+      "path": "bulk-rnaseq",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "pandas",
+        "pathlib",
+        "pytximport",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "pytximport",
+          "import": "pytximport",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "cellxgene-census",
+      "path": "cellxgene-census",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "chai1",
+      "path": "chai1",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "cirq",
+      "path": "cirq",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "citation-reviewer",
+      "path": "citation-reviewer",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "dataclasses",
+        "json",
+        "os",
+        "re",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "clinical-decision-support",
+      "path": "clinical-decision-support",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "csv",
+        "dataclasses",
+        "io",
+        "json",
+        "math",
+        "pathlib",
+        "re",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "clinical-reports",
+      "path": "clinical-reports",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "csv",
+        "dataclasses",
+        "datetime",
+        "json",
+        "math",
+        "pathlib",
+        "re",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "cobrapy",
+      "path": "cobrapy",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "code-organization",
+      "path": "code-organization",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "compute-env-setup",
+      "path": "compute-env-setup",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "customize",
+      "path": "customize",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "dask",
+      "path": "dask",
+      "status": "managed",
+      "detectedImports": [],
+      "requirements": [
+        {
+          "name": "dask",
+          "status": "managed",
+          "reason": "Curated runtime dependency for this Skill."
+        }
+      ]
+    },
+    {
+      "name": "datamol",
+      "path": "datamol",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "deep-research",
+      "path": "deep-research",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "deepchem",
+      "path": "deepchem",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [
+        "argparse",
+        "deepchem",
+        "numpy",
+        "sys",
+        "traceback"
+      ],
+      "requirements": [
+        {
+          "name": "deepchem",
+          "import": "deepchem",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "deepspot-m",
+      "path": "deepspot-m",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "deeptools",
+      "path": "deeptools",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [
+        "argparse",
+        "os",
+        "pathlib",
+        "re",
+        "shlex",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "shlex",
+          "import": "shlex",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "depmap",
+      "path": "depmap",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "diffdock",
+      "path": "diffdock",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "dnanexus-integration",
+      "path": "dnanexus-integration",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "dataclasses",
+        "importlib",
+        "inspect",
+        "json",
+        "pathlib",
+        "platform",
+        "re",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "domain-check",
+      "path": "domain-check",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "ast",
+        "dataclasses",
+        "json",
+        "pathlib",
+        "rdkit",
+        "re",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "rdkit",
+          "import": "rdkit",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "esm",
+      "path": "esm",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "esmfold2",
+      "path": "esmfold2",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "etetoolkit",
+      "path": "etetoolkit",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "collections",
+        "ete4",
+        "ipaddress",
+        "json",
+        "pathlib",
+        "statistics",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "ete4",
+          "import": "ete4",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "ipaddress",
+          "import": "ipaddress",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "evo2",
+      "path": "evo2",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "experimental-design",
+      "path": "experimental-design",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "numpy",
+        "pandas",
+        "pyDOE3"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "pyDOE3",
+          "import": "pyDOE3",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "exploratory-data-analysis",
+      "path": "exploratory-data-analysis",
+      "status": "optional",
+      "detectedImports": [
+        "Bio",
+        "PIL",
+        "__future__",
+        "_capabilities",
+        "_common",
+        "_structured",
+        "_tabular",
+        "argparse",
+        "capability_manifest",
+        "collections",
+        "csv",
+        "dataclasses",
+        "datetime",
+        "h5py",
+        "hashlib",
+        "heapq",
+        "image_inspector",
+        "itertools",
+        "json",
+        "math",
+        "numpy",
+        "os",
+        "pathlib",
+        "sequence_inspector",
+        "stat",
+        "statistics",
+        "tempfile",
+        "tifffile",
+        "typing",
+        "warnings",
+        "zipfile"
+      ],
+      "requirements": [
+        {
+          "name": "biopython",
+          "import": "Bio",
+          "status": "managed"
+        },
+        {
+          "name": "pillow",
+          "import": "PIL",
+          "status": "managed"
+        },
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_capabilities",
+          "import": "_capabilities",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_structured",
+          "import": "_structured",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_tabular",
+          "import": "_tabular",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "capability_manifest",
+          "import": "capability_manifest",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "h5py",
+          "import": "h5py",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "heapq",
+          "import": "heapq",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "image_inspector",
+          "import": "image_inspector",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "sequence_inspector",
+          "import": "sequence_inspector",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "tifffile",
+          "import": "tifffile",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pandas",
+          "status": "managed",
+          "reason": "Curated runtime dependency for this Skill."
+        }
+      ]
+    },
+    {
+      "name": "fair-esm2",
+      "path": "fair-esm2",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "figure-composer",
+      "path": "figure-composer",
+      "status": "managed",
+      "detectedImports": [
+        "PIL"
+      ],
+      "requirements": [
+        {
+          "name": "pillow",
+          "import": "PIL",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "figure-provenance",
+      "path": "figure-provenance",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "dataclasses",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "figure-style",
+      "path": "figure-style",
+      "status": "managed",
+      "detectedImports": [
+        "matplotlib",
+        "numpy",
+        "os",
+        "platform",
+        "scipy"
+      ],
+      "requirements": [
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "scipy",
+          "import": "scipy",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "flowio",
+      "path": "flowio",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "flowio",
+        "hashlib",
+        "json",
+        "numpy",
+        "pathlib",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "flowio",
+          "import": "flowio",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "fluidsim",
+      "path": "fluidsim",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "_schema",
+        "argparse",
+        "collections",
+        "copy",
+        "h5py",
+        "hashlib",
+        "json",
+        "math",
+        "numpy",
+        "os",
+        "pathlib",
+        "re",
+        "stat",
+        "sys",
+        "tempfile",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_schema",
+          "import": "_schema",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "copy",
+          "import": "copy",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "h5py",
+          "import": "h5py",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "geniml",
+      "path": "geniml",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "csv",
+        "gzip",
+        "hashlib",
+        "io",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "stat",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "gzip",
+          "import": "gzip",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "genomic-coordinates",
+      "path": "genomic-coordinates",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "dataclasses",
+        "json",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "genomic-intelligence",
+      "path": "genomic-intelligence",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "geomaster",
+      "path": "geomaster",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "geopandas",
+      "path": "geopandas",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "geopandas",
+        "hashlib",
+        "importlib",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "pyarrow",
+        "pyogrio",
+        "pyproj",
+        "re",
+        "shapely",
+        "sys",
+        "tempfile",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "geopandas",
+          "import": "geopandas",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pyarrow",
+          "import": "pyarrow",
+          "status": "managed"
+        },
+        {
+          "name": "pyogrio",
+          "import": "pyogrio",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pyproj",
+          "import": "pyproj",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "shapely",
+          "import": "shapely",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "gget",
+      "path": "gget",
+      "status": "optional",
+      "detectedImports": [
+        "argparse",
+        "gget",
+        "pandas",
+        "pathlib",
+        "sys",
+        "traceback"
+      ],
+      "requirements": [
+        {
+          "name": "gget",
+          "import": "gget",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "ginkgo-cloud-lab",
+      "path": "ginkgo-cloud-lab",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "glycoengineering",
+      "path": "glycoengineering",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "gpt-image-generator",
+      "path": "gpt-image-generator",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "gtars",
+      "path": "gtars",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "base64",
+        "collections",
+        "email",
+        "gzip",
+        "hashlib",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "re",
+        "stat",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "email",
+          "import": "email",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "gzip",
+          "import": "gzip",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "histolab",
+      "path": "histolab",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "hugging-science",
+      "path": "hugging-science",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "dataclasses",
+        "json",
+        "re",
+        "sys",
+        "typing",
+        "urllib"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "hypogenic",
+      "path": "hypogenic",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "datetime",
+        "decimal",
+        "hashlib",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "re",
+        "stat",
+        "sys",
+        "typing",
+        "yaml"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "decimal",
+          "import": "decimal",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pyyaml",
+          "import": "yaml",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "hypothesis-generation",
+      "path": "hypothesis-generation",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "csv",
+        "datetime",
+        "html",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "sys",
+        "tempfile",
+        "typing",
+        "validate_hypothesis_schema"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "validate_hypothesis_schema",
+          "import": "validate_hypothesis_schema",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "image-base64-render",
+      "path": "image-base64-render",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "imaging-data-commons",
+      "path": "imaging-data-commons",
+      "status": "optional",
+      "detectedImports": [
+        "idc_index",
+        "json",
+        "re",
+        "shutil",
+        "sys",
+        "urllib"
+      ],
+      "requirements": [
+        {
+          "name": "idc_index",
+          "import": "idc_index",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "indication-dossier",
+      "path": "indication-dossier",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "iso-standards-readiness",
+      "path": "iso-standards-readiness",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_catalog",
+        "_common",
+        "argparse",
+        "collections",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "json",
+        "pathlib",
+        "re",
+        "sys",
+        "typing",
+        "validate_evidence_manifest"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_catalog",
+          "import": "_catalog",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "validate_evidence_manifest",
+          "import": "validate_evidence_manifest",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "labarchive-integration",
+      "path": "labarchive-integration",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "base64",
+        "collections",
+        "getpass",
+        "hashlib",
+        "hmac",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "setup_config",
+        "stat",
+        "sys",
+        "time",
+        "typing",
+        "urllib",
+        "xml",
+        "zipfile"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "getpass",
+          "import": "getpass",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "hmac",
+          "import": "hmac",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "setup_config",
+          "import": "setup_config",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "lamindb",
+      "path": "lamindb",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "large-file",
+      "path": "large-file",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "astropy",
+        "cfgrib",
+        "csv",
+        "gzip",
+        "h5py",
+        "json",
+        "netCDF4",
+        "pathlib",
+        "pyarrow",
+        "pygrib",
+        "pysam",
+        "re",
+        "sys",
+        "uproot"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "astropy",
+          "import": "astropy",
+          "status": "managed"
+        },
+        {
+          "name": "cfgrib",
+          "import": "cfgrib",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "gzip",
+          "import": "gzip",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "h5py",
+          "import": "h5py",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "netCDF4",
+          "import": "netCDF4",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pyarrow",
+          "import": "pyarrow",
+          "status": "managed"
+        },
+        {
+          "name": "pygrib",
+          "import": "pygrib",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pysam",
+          "import": "pysam",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "uproot",
+          "import": "uproot",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "latchbio-integration",
+      "path": "latchbio-integration",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "importlib",
+        "inspect",
+        "json",
+        "platform",
+        "re",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "latex-posters",
+      "path": "latex-posters",
+      "status": "managed",
+      "detectedImports": [
+        "argparse",
+        "base64",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "requests",
+        "shutil",
+        "subprocess",
+        "sys",
+        "time",
+        "traceback",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "requests",
+          "import": "requests",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "ligandmpnn",
+      "path": "ligandmpnn",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "liteparse",
+      "path": "liteparse",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "json",
+        "liteparse",
+        "pathlib",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "liteparse",
+          "import": "liteparse",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "literature-review",
+      "path": "literature-review",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [
+        "json",
+        "os",
+        "re",
+        "time",
+        "urllib"
+      ],
+      "requirements": []
+    },
+    {
+      "name": "local-env-setup",
+      "path": "local-env-setup",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "managed-model-endpoints",
+      "path": "managed-model-endpoints",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "managing-pixi-environments",
+      "path": "managing-pixi-environments",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "markdown-mermaid-writing",
+      "path": "markdown-mermaid-writing",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "markitdown",
+      "path": "markitdown",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "importlib",
+        "json",
+        "markitdown",
+        "pathlib",
+        "platform",
+        "re",
+        "shutil",
+        "sys",
+        "tempfile",
+        "typing",
+        "urllib"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "markitdown",
+          "import": "markitdown",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "matchms",
+      "path": "matchms",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "csv",
+        "importlib",
+        "matchms",
+        "math",
+        "pathlib",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "matchms",
+          "import": "matchms",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "matlab",
+      "path": "matlab",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "h5py",
+        "hashlib",
+        "json",
+        "math",
+        "pathlib",
+        "re",
+        "scipy",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "h5py",
+          "import": "h5py",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "scipy",
+          "import": "scipy",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "matplotlib",
+      "path": "matplotlib",
+      "status": "managed",
+      "detectedImports": [
+        "argparse",
+        "matplotlib",
+        "numpy",
+        "scipy"
+      ],
+      "requirements": [
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "scipy",
+          "import": "scipy",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "medchem",
+      "path": "medchem",
+      "status": "optional",
+      "detectedImports": [
+        "argparse",
+        "datamol",
+        "medchem",
+        "pandas",
+        "pathlib",
+        "rdkit",
+        "sys",
+        "tqdm",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "datamol",
+          "import": "datamol",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "medchem",
+          "import": "medchem",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "rdkit",
+          "import": "rdkit",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "tqdm",
+          "import": "tqdm",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "method-choice",
+      "path": "method-choice",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "mineru-document-parser",
+      "path": "mineru-document-parser",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "molecular-dynamics",
+      "path": "molecular-dynamics",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "molfeat",
+      "path": "molfeat",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "ncats-arax",
+      "path": "ncats-arax",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "dataclasses",
+        "datetime",
+        "email",
+        "hashlib",
+        "ipaddress",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "socket",
+        "sys",
+        "tempfile",
+        "time",
+        "typing",
+        "urllib",
+        "uuid"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "email",
+          "import": "email",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "ipaddress",
+          "import": "ipaddress",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "socket",
+          "import": "socket",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "networkx",
+      "path": "networkx",
+      "status": "managed",
+      "detectedImports": [],
+      "requirements": [
+        {
+          "name": "networkx",
+          "status": "managed",
+          "reason": "Curated runtime dependency for this Skill."
+        }
+      ]
+    },
+    {
+      "name": "neurokit2",
+      "path": "neurokit2",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "csv",
+        "hashlib",
+        "io",
+        "itertools",
+        "json",
+        "math",
+        "neurokit2",
+        "numpy",
+        "os",
+        "pandas",
+        "pathlib",
+        "random",
+        "re",
+        "stat",
+        "statistics",
+        "tempfile",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "neurokit2",
+          "import": "neurokit2",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "neuropixels-analysis",
+      "path": "neuropixels-analysis",
+      "status": "optional",
+      "detectedImports": [
+        "argparse",
+        "collections",
+        "json",
+        "matplotlib",
+        "numpy",
+        "os",
+        "pandas",
+        "pathlib",
+        "probeinterface",
+        "scipy",
+        "spikeinterface"
+      ],
+      "requirements": [
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "probeinterface",
+          "import": "probeinterface",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "scipy",
+          "import": "scipy",
+          "status": "managed"
+        },
+        {
+          "name": "spikeinterface",
+          "import": "spikeinterface",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "nextflow",
+      "path": "nextflow",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "omero-integration",
+      "path": "omero-integration",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "collections",
+        "contextlib",
+        "dataclasses",
+        "datetime",
+        "itertools",
+        "json",
+        "math",
+        "omero",
+        "omero_common",
+        "os",
+        "pathlib",
+        "re",
+        "socket",
+        "sys",
+        "tempfile",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "omero",
+          "import": "omero",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "omero_common",
+          "import": "omero_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "socket",
+          "import": "socket",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "onekgpd",
+      "path": "onekgpd",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "dnaerys",
+        "gzip",
+        "json",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "time",
+        "typing",
+        "warnings"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "dnaerys",
+          "import": "dnaerys",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "gzip",
+          "import": "gzip",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "ontology-term-resolution",
+      "path": "ontology-term-resolution",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "csv",
+        "json",
+        "ols_client",
+        "pathlib",
+        "re",
+        "sys",
+        "their",
+        "time",
+        "typing",
+        "urllib"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "ols_client",
+          "import": "ols_client",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "their",
+          "import": "their",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "open-notebook",
+      "path": "open-notebook",
+      "status": "managed",
+      "detectedImports": [
+        "argparse",
+        "os",
+        "requests",
+        "time"
+      ],
+      "requirements": [
+        {
+          "name": "requests",
+          "import": "requests",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "openfold3",
+      "path": "openfold3",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "openpiv",
+      "path": "openpiv",
+      "status": "optional",
+      "detectedImports": [
+        "analyze",
+        "argparse",
+        "matplotlib",
+        "numpy",
+        "openpiv",
+        "pathlib",
+        "runner",
+        "sys",
+        "typing",
+        "warnings"
+      ],
+      "requirements": [
+        {
+          "name": "analyze",
+          "import": "analyze",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "openpiv",
+          "import": "openpiv",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "runner",
+          "import": "runner",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "opentrons-integration",
+      "path": "opentrons-integration",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [
+        "opentrons"
+      ],
+      "requirements": [
+        {
+          "name": "opentrons",
+          "import": "opentrons",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "optimize-for-gpu",
+      "path": "optimize-for-gpu",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "pacsomatic",
+      "path": "pacsomatic",
+      "status": "optional",
+      "detectedImports": [
+        "argparse",
+        "csv",
+        "os",
+        "pathlib",
+        "re",
+        "shlex",
+        "shutil",
+        "subprocess",
+        "sys",
+        "urllib"
+      ],
+      "requirements": [
+        {
+          "name": "shlex",
+          "import": "shlex",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "paper-download",
+      "path": "paper-download",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_hook_env",
+        "abc",
+        "adapters",
+        "archive_org_helper",
+        "argparse",
+        "atexit",
+        "bs4",
+        "builtins",
+        "cloudscraper",
+        "collections",
+        "contextlib",
+        "dataclasses",
+        "datetime",
+        "difflib",
+        "enum",
+        "fcntl",
+        "hashlib",
+        "html",
+        "http",
+        "importlib",
+        "inspect",
+        "io",
+        "json",
+        "lib",
+        "logging",
+        "metadata_clean",
+        "msvcrt",
+        "oa_finder",
+        "os",
+        "pathlib",
+        "pipeline",
+        "playwright",
+        "pypdf",
+        "pytest",
+        "random",
+        "re",
+        "reportlab",
+        "requests",
+        "resource",
+        "s2_resolver",
+        "shutil",
+        "signal",
+        "socket",
+        "sqlite3",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "textwrap",
+        "thousands",
+        "threading",
+        "time",
+        "tools",
+        "traceback",
+        "types",
+        "typing",
+        "unicodedata",
+        "urllib",
+        "urllib3",
+        "validate_pdf_content",
+        "xml",
+        "yaml",
+        "zipfile"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_hook_env",
+          "import": "_hook_env",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "abc",
+          "import": "abc",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "adapters",
+          "import": "adapters",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "archive_org_helper",
+          "import": "archive_org_helper",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "atexit",
+          "import": "atexit",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "beautifulsoup4",
+          "import": "bs4",
+          "status": "managed"
+        },
+        {
+          "name": "builtins",
+          "import": "builtins",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "cloudscraper",
+          "import": "cloudscraper",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "difflib",
+          "import": "difflib",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "fcntl",
+          "import": "fcntl",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "lib",
+          "import": "lib",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "metadata_clean",
+          "import": "metadata_clean",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "msvcrt",
+          "import": "msvcrt",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "oa_finder",
+          "import": "oa_finder",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pipeline",
+          "import": "pipeline",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "playwright",
+          "import": "playwright",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pypdf",
+          "import": "pypdf",
+          "status": "managed"
+        },
+        {
+          "name": "pytest",
+          "import": "pytest",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "reportlab",
+          "import": "reportlab",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "requests",
+          "import": "requests",
+          "status": "managed"
+        },
+        {
+          "name": "resource",
+          "import": "resource",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "s2_resolver",
+          "import": "s2_resolver",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "signal",
+          "import": "signal",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "socket",
+          "import": "socket",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "thousands",
+          "import": "thousands",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "tools",
+          "import": "tools",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "types",
+          "import": "types",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "urllib3",
+          "import": "urllib3",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "validate_pdf_content",
+          "import": "validate_pdf_content",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pyyaml",
+          "import": "yaml",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "paper-download-pdf-cascade",
+      "path": "paper-download-pdf-cascade",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "citation-receipts",
+      "path": "paper-download/skills/citation-receipts",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "paper-writer",
+      "path": "paper-download/skills/paper-writer",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "pdf-cascade",
+      "path": "paper-download/skills/pdf-cascade",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "registry-doctor",
+      "path": "paper-download/skills/registry-doctor",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "sota-auditor",
+      "path": "paper-download/skills/sota-auditor",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "sota-writer",
+      "path": "paper-download/skills/sota-writer",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "paper-narrative",
+      "path": "paper-narrative",
+      "status": "optional",
+      "detectedImports": [
+        "the"
+      ],
+      "requirements": [
+        {
+          "name": "the",
+          "import": "the",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "paper-to-report",
+      "path": "paper-to-report",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "dataclasses",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pathml",
+      "path": "pathml",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [
+        "PIL",
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "csv",
+        "hashlib",
+        "json",
+        "math",
+        "openslide",
+        "os",
+        "pathlib",
+        "pydicom",
+        "re",
+        "stat",
+        "tempfile",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "pillow",
+          "import": "PIL",
+          "status": "managed"
+        },
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "openslide",
+          "import": "openslide",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pydicom",
+          "import": "pydicom",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pathogen-variant-surveillance",
+      "path": "pathogen-variant-surveillance",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "datetime",
+        "json",
+        "lapis_client",
+        "math",
+        "re",
+        "sys",
+        "time",
+        "typing",
+        "urllib"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "lapis_client",
+          "import": "lapis_client",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pathway-enrichment",
+      "path": "pathway-enrichment",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "gseapy",
+        "numpy",
+        "pandas",
+        "pathlib",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "gseapy",
+          "import": "gseapy",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "pdf-explore",
+      "path": "pdf-explore",
+      "status": "optional",
+      "detectedImports": [
+        "PIL",
+        "fitz",
+        "hashlib",
+        "os",
+        "pypdf",
+        "pypdfium2",
+        "re",
+        "unicodedata"
+      ],
+      "requirements": [
+        {
+          "name": "pillow",
+          "import": "PIL",
+          "status": "managed"
+        },
+        {
+          "name": "pymupdf",
+          "import": "fitz",
+          "status": "managed"
+        },
+        {
+          "name": "pypdf",
+          "import": "pypdf",
+          "status": "managed"
+        },
+        {
+          "name": "pypdfium2",
+          "import": "pypdfium2",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "peer-review",
+      "path": "peer-review",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "csv",
+        "datetime",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "tempfile",
+        "typing",
+        "validate_review_intake"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "validate_review_intake",
+          "import": "validate_review_intake",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pennylane",
+      "path": "pennylane",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "phylogenetics",
+      "path": "phylogenetics",
+      "status": "optional",
+      "detectedImports": [
+        "argparse",
+        "ete3",
+        "os",
+        "pathlib",
+        "subprocess",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "ete3",
+          "import": "ete3",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pixi-environment-builder",
+      "path": "pixi-environment-builder",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "pkpd-modeling",
+      "path": "pkpd-modeling",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "_models",
+        "argparse",
+        "collections",
+        "csv",
+        "dataclasses",
+        "json",
+        "math",
+        "numpy",
+        "pathlib",
+        "scipy",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_models",
+          "import": "_models",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "scipy",
+          "import": "scipy",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "polars",
+      "path": "polars",
+      "status": "managed",
+      "detectedImports": [],
+      "requirements": [
+        {
+          "name": "polars",
+          "status": "managed",
+          "reason": "Curated runtime dependency for this Skill."
+        }
+      ]
+    },
+    {
+      "name": "polars-bio",
+      "path": "polars-bio",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "primekg",
+      "path": "primekg",
+      "status": "managed",
+      "detectedImports": [
+        "json",
+        "os",
+        "pandas",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "probe-compute-environment",
+      "path": "probe-compute-environment",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "product-self-knowledge",
+      "path": "product-self-knowledge",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "project-scaffold",
+      "path": "project-scaffold",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "proteinmpnn",
+      "path": "proteinmpnn",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "protocolsio-integration",
+      "path": "protocolsio-integration",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "dataclasses",
+        "hashlib",
+        "hmac",
+        "json",
+        "math",
+        "os",
+        "pagination_helper",
+        "pathlib",
+        "re",
+        "stat",
+        "sys",
+        "time",
+        "typing",
+        "urllib"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "hmac",
+          "import": "hmac",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pagination_helper",
+          "import": "pagination_helper",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "publication-figures",
+      "path": "publication-figures",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "pubmed-literature",
+      "path": "pubmed-literature",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "pufferlib",
+      "path": "pufferlib",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "copy",
+        "dataclasses",
+        "env_template",
+        "hashlib",
+        "json",
+        "math",
+        "multiprocessing",
+        "os",
+        "pathlib",
+        "platform",
+        "random",
+        "re",
+        "stat",
+        "statistics",
+        "time",
+        "typing",
+        "validate_plan"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "copy",
+          "import": "copy",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "env_template",
+          "import": "env_template",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "validate_plan",
+          "import": "validate_plan",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pydeseq2",
+      "path": "pydeseq2",
+      "status": "optional",
+      "detectedImports": [
+        "argparse",
+        "matplotlib",
+        "numpy",
+        "pandas",
+        "pathlib",
+        "pydeseq2",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "pydeseq2",
+          "import": "pydeseq2",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pydicom",
+      "path": "pydicom",
+      "status": "optional",
+      "detectedImports": [
+        "PIL",
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "datetime",
+        "derivatives",
+        "hashlib",
+        "hmac",
+        "importlib",
+        "io",
+        "json",
+        "numpy",
+        "os",
+        "pathlib",
+        "pydicom",
+        "re",
+        "secrets",
+        "stat",
+        "sys",
+        "tempfile",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "pillow",
+          "import": "PIL",
+          "status": "managed"
+        },
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "derivatives",
+          "import": "derivatives",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "hmac",
+          "import": "hmac",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pydicom",
+          "import": "pydicom",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "secrets",
+          "import": "secrets",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pyhealth",
+      "path": "pyhealth",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [
+        "pyhealth"
+      ],
+      "requirements": [
+        {
+          "name": "pyhealth",
+          "import": "pyhealth",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pylabrobot",
+      "path": "pylabrobot",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "csv",
+        "importlib",
+        "inspect",
+        "json",
+        "math",
+        "pathlib",
+        "pylabrobot",
+        "re",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pylabrobot",
+          "import": "pylabrobot",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pymatgen",
+      "path": "pymatgen",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "datetime",
+        "hashlib",
+        "importlib",
+        "json",
+        "math",
+        "mimetypes",
+        "mp_api",
+        "os",
+        "pathlib",
+        "platform",
+        "pymatgen",
+        "re",
+        "tempfile",
+        "typing",
+        "warnings"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "mp_api",
+          "import": "mp_api",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pymatgen",
+          "import": "pymatgen",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pymc",
+      "path": "pymc",
+      "status": "optional",
+      "detectedImports": [
+        "arviz",
+        "matplotlib",
+        "numpy",
+        "pandas",
+        "pathlib",
+        "pymc",
+        "scripts",
+        "sklearn",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "arviz",
+          "import": "arviz",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "pymc",
+          "import": "pymc",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "scripts",
+          "import": "scripts",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "scikit-learn",
+          "import": "sklearn",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "pymoo",
+      "path": "pymoo",
+      "status": "optional",
+      "detectedImports": [
+        "matplotlib",
+        "numpy",
+        "pymoo"
+      ],
+      "requirements": [
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pymoo",
+          "import": "pymoo",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pyopenms",
+      "path": "pyopenms",
+      "status": "optional",
+      "detectedImports": [
+        "argparse",
+        "csv",
+        "detect_features_metabo",
+        "matplotlib",
+        "numpy",
+        "os",
+        "pandas",
+        "pyopenms",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "detect_features_metabo",
+          "import": "detect_features_metabo",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "pyopenms",
+          "import": "pyopenms",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pysam",
+      "path": "pysam",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "collections",
+        "json",
+        "pathlib",
+        "pysam",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pysam",
+          "import": "pysam",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pytdc",
+      "path": "pytdc",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "contextlib",
+        "heapq",
+        "importlib",
+        "itertools",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "sys",
+        "tdc",
+        "tempfile",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "heapq",
+          "import": "heapq",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "tdc",
+          "import": "tdc",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pytorch-lightning",
+      "path": "pytorch-lightning",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [
+        "datetime",
+        "lightning",
+        "torch"
+      ],
+      "requirements": [
+        {
+          "name": "lightning",
+          "import": "lightning",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "torch",
+          "import": "torch",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "pyzotero",
+      "path": "pyzotero",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "qiskit",
+      "path": "qiskit",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "importlib",
+        "json",
+        "math",
+        "numpy",
+        "platform",
+        "qiskit",
+        "qiskit_ibm_runtime",
+        "struct",
+        "sys",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "qiskit",
+          "import": "qiskit",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "qiskit_ibm_runtime",
+          "import": "qiskit_ibm_runtime",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "struct",
+          "import": "struct",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "qutip",
+      "path": "qutip",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "dataclasses",
+        "json",
+        "math",
+        "numpy",
+        "os",
+        "pathlib",
+        "qutip",
+        "re",
+        "stat",
+        "sys",
+        "tempfile",
+        "two_level_simulation",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "qutip",
+          "import": "qutip",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "two_level_simulation",
+          "import": "two_level_simulation",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "rdkit",
+      "path": "rdkit",
+      "status": "optional",
+      "detectedImports": [
+        "argparse",
+        "csv",
+        "pathlib",
+        "rdkit",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "rdkit",
+          "import": "rdkit",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "reasoning-trace",
+      "path": "reasoning-trace",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "relsa-severity-assessment",
+      "path": "relsa-severity-assessment",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "a",
+        "argparse",
+        "dataclasses",
+        "json",
+        "matplotlib",
+        "numpy",
+        "pandas",
+        "pathlib",
+        "relsa_score",
+        "scipy",
+        "statsmodels",
+        "sys",
+        "those",
+        "typing",
+        "warnings"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "a",
+          "import": "a",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "relsa_score",
+          "import": "relsa_score",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "scipy",
+          "import": "scipy",
+          "status": "managed"
+        },
+        {
+          "name": "statsmodels",
+          "import": "statsmodels",
+          "status": "managed"
+        },
+        {
+          "name": "those",
+          "import": "those",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "remote-compute-modal",
+      "path": "remote-compute-modal",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "remote-compute-ssh",
+      "path": "remote-compute-ssh",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "reproducible-research",
+      "path": "reproducible-research",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "dataclasses",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "research-grants",
+      "path": "research-grants",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "rowan",
+      "path": "rowan",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "sc-tenifold-knockout",
+      "path": "sc-tenifold-knockout",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "csv",
+        "hashlib",
+        "json",
+        "pathlib"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "sc-upstream",
+      "path": "sc-upstream",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "scanpy",
+      "path": "scanpy",
+      "status": "optional",
+      "detectedImports": [
+        "_common",
+        "argparse",
+        "json",
+        "matplotlib",
+        "numpy",
+        "os",
+        "pandas",
+        "scanpy",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "scanpy",
+          "import": "scanpy",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "scgpt",
+      "path": "scgpt",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "scholar-evaluation",
+      "path": "scholar-evaluation",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "csv",
+        "dataclasses",
+        "datetime",
+        "io",
+        "itertools",
+        "json",
+        "math",
+        "pathlib",
+        "re",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "scientific-brainstorming",
+      "path": "scientific-brainstorming",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "collections",
+        "csv",
+        "dataclasses",
+        "datetime",
+        "io",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "re",
+        "stat",
+        "sys",
+        "tempfile",
+        "typing",
+        "unicodedata"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "scientific-critical-thinking",
+      "path": "scientific-critical-thinking",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "scikit-bio",
+      "path": "scikit-bio",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "scikit-learn",
+      "path": "scikit-learn",
+      "status": "managed",
+      "detectedImports": [
+        "matplotlib",
+        "numpy",
+        "pandas",
+        "sklearn",
+        "warnings"
+      ],
+      "requirements": [
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "scikit-learn",
+          "import": "sklearn",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "scikit-survival",
+      "path": "scikit-survival",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "importlib",
+        "io",
+        "json",
+        "math",
+        "numpy",
+        "os",
+        "pandas",
+        "pathlib",
+        "sklearn",
+        "sksurv",
+        "stat",
+        "tempfile",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "scikit-learn",
+          "import": "sklearn",
+          "status": "managed"
+        },
+        {
+          "name": "sksurv",
+          "import": "sksurv",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "scvelo",
+      "path": "scvelo",
+      "status": "optional",
+      "detectedImports": [
+        "matplotlib",
+        "numpy",
+        "os",
+        "scanpy",
+        "scvelo"
+      ],
+      "requirements": [
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "scanpy",
+          "import": "scanpy",
+          "status": "managed"
+        },
+        {
+          "name": "scvelo",
+          "import": "scvelo",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "scvi-tools",
+      "path": "scvi-tools",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [
+        "numpy",
+        "pandas"
+      ],
+      "requirements": [
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "seaborn",
+      "path": "seaborn",
+      "status": "managed",
+      "detectedImports": [],
+      "requirements": [
+        {
+          "name": "seaborn",
+          "status": "managed",
+          "reason": "Curated runtime dependency for this Skill."
+        }
+      ]
+    },
+    {
+      "name": "self-awareness",
+      "path": "self-awareness",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "shap",
+      "path": "shap",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "json",
+        "matplotlib",
+        "numpy",
+        "pandas",
+        "pathlib",
+        "platform",
+        "shap",
+        "sklearn",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "shap",
+          "import": "shap",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "scikit-learn",
+          "import": "sklearn",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "simpy",
+      "path": "simpy",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "basic_simulation_template",
+        "collections",
+        "csv",
+        "dataclasses",
+        "functools",
+        "hashlib",
+        "io",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "random",
+        "replication_runner",
+        "resource_monitor",
+        "simpy",
+        "stat",
+        "statistics",
+        "tempfile",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "basic_simulation_template",
+          "import": "basic_simulation_template",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "replication_runner",
+          "import": "replication_runner",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "resource_monitor",
+          "import": "resource_monitor",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "simpy",
+          "import": "simpy",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "singlecell-milor",
+      "path": "singlecell-milor",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "anndata",
+        "argparse",
+        "json",
+        "pandas",
+        "pathlib",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "anndata",
+          "import": "anndata",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "singlecell-qc",
+      "path": "singlecell-qc",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "gzip",
+        "json",
+        "numpy",
+        "pandas",
+        "pathlib",
+        "scanpy",
+        "scipy",
+        "scrublet"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "gzip",
+          "import": "gzip",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "scanpy",
+          "import": "scanpy",
+          "status": "managed"
+        },
+        {
+          "name": "scipy",
+          "import": "scipy",
+          "status": "managed"
+        },
+        {
+          "name": "scrublet",
+          "import": "scrublet",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "skill-creator",
+      "path": "skill-creator",
+      "status": "optional",
+      "detectedImports": [
+        "argparse",
+        "base64",
+        "concurrent",
+        "datetime",
+        "fnmatch",
+        "functools",
+        "html",
+        "http",
+        "json",
+        "math",
+        "mimetypes",
+        "os",
+        "pathlib",
+        "random",
+        "re",
+        "scripts",
+        "select",
+        "signal",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "time",
+        "uuid",
+        "webbrowser",
+        "yaml",
+        "zipfile"
+      ],
+      "requirements": [
+        {
+          "name": "fnmatch",
+          "import": "fnmatch",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "scripts",
+          "import": "scripts",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "select",
+          "import": "select",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "signal",
+          "import": "signal",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "webbrowser",
+          "import": "webbrowser",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pyyaml",
+          "import": "yaml",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "solublempnn",
+      "path": "solublempnn",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "stable-baselines3",
+      "path": "stable-baselines3",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [
+        "gymnasium",
+        "numpy",
+        "os",
+        "stable_baselines3"
+      ],
+      "requirements": [
+        {
+          "name": "gymnasium",
+          "import": "gymnasium",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "stable_baselines3",
+          "import": "stable_baselines3",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "statistical-analysis",
+      "path": "statistical-analysis",
+      "status": "managed",
+      "detectedImports": [
+        "matplotlib",
+        "numpy",
+        "pandas",
+        "scipy",
+        "seaborn",
+        "statsmodels",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "scipy",
+          "import": "scipy",
+          "status": "managed"
+        },
+        {
+          "name": "seaborn",
+          "import": "seaborn",
+          "status": "managed"
+        },
+        {
+          "name": "statsmodels",
+          "import": "statsmodels",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "statistical-power",
+      "path": "statistical-power",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "dataclasses",
+        "math",
+        "matplotlib",
+        "numpy",
+        "pandas",
+        "scipy",
+        "statsmodels"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "scipy",
+          "import": "scipy",
+          "status": "managed"
+        },
+        {
+          "name": "statsmodels",
+          "import": "statsmodels",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "stats-integrity",
+      "path": "stats-integrity",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "dataclasses",
+        "json",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "statsmodels",
+      "path": "statsmodels",
+      "status": "managed",
+      "detectedImports": [],
+      "requirements": [
+        {
+          "name": "statsmodels",
+          "status": "managed",
+          "reason": "Curated runtime dependency for this Skill."
+        }
+      ]
+    },
+    {
+      "name": "sympy",
+      "path": "sympy",
+      "status": "managed",
+      "detectedImports": [],
+      "requirements": [
+        {
+          "name": "sympy",
+          "status": "managed",
+          "reason": "Curated runtime dependency for this Skill."
+        }
+      ]
+    },
+    {
+      "name": "tamarind",
+      "path": "tamarind",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "tiledbvcf",
+      "path": "tiledbvcf",
+      "status": "incompatible",
+      "reason": "The current upstream runtime requires a different Python ABI on Windows.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "timesfm-forecasting",
+      "path": "timesfm-forecasting",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [
+        "PIL",
+        "__future__",
+        "argparse",
+        "check_system",
+        "ctypes",
+        "dataclasses",
+        "importlib",
+        "json",
+        "matplotlib",
+        "numpy",
+        "os",
+        "pandas",
+        "pathlib",
+        "platform",
+        "shutil",
+        "struct",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "timesfm",
+        "torch",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "pillow",
+          "import": "PIL",
+          "status": "managed"
+        },
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "check_system",
+          "import": "check_system",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "ctypes",
+          "import": "ctypes",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pandas",
+          "import": "pandas",
+          "status": "managed"
+        },
+        {
+          "name": "struct",
+          "import": "struct",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "timesfm",
+          "import": "timesfm",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "torch",
+          "import": "torch",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "torch-geometric",
+      "path": "torch-geometric",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "torchdrug",
+      "path": "torchdrug",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "traceability-review",
+      "path": "traceability-review",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "fitz",
+        "json",
+        "pdfminer",
+        "re",
+        "sys"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pymupdf",
+          "import": "fitz",
+          "status": "managed"
+        },
+        {
+          "name": "pdfminer",
+          "import": "pdfminer",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "transformers",
+      "path": "transformers",
+      "status": "optional",
+      "reason": "Large model, GPU-oriented, or unusually heavy dependency; installed only on demand.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "treatment-plans",
+      "path": "treatment-plans",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "dataclasses",
+        "datetime",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "sys",
+        "tempfile",
+        "typing"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "umap-learn",
+      "path": "umap-learn",
+      "status": "managed",
+      "detectedImports": [],
+      "requirements": [
+        {
+          "name": "umap-learn",
+          "status": "managed",
+          "reason": "Curated runtime dependency for this Skill."
+        }
+      ]
+    },
+    {
+      "name": "uncertainty-and-units",
+      "path": "uncertainty-and-units",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "_common",
+        "argparse",
+        "ast",
+        "convert_units",
+        "decimal",
+        "json",
+        "math",
+        "numpy",
+        "os",
+        "pathlib",
+        "pint",
+        "re",
+        "scipy",
+        "stat",
+        "statistics",
+        "sys",
+        "tempfile",
+        "typing",
+        "uncertainties"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "_common",
+          "import": "_common",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "convert_units",
+          "import": "convert_units",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "decimal",
+          "import": "decimal",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "numpy",
+          "import": "numpy",
+          "status": "managed"
+        },
+        {
+          "name": "pint",
+          "import": "pint",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "scipy",
+          "import": "scipy",
+          "status": "managed"
+        },
+        {
+          "name": "stat",
+          "import": "stat",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "uncertainties",
+          "import": "uncertainties",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "usfiscaldata",
+      "path": "usfiscaldata",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "using-model-endpoint",
+      "path": "using-model-endpoint",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "vaex",
+      "path": "vaex",
+      "status": "incompatible",
+      "reason": "No supported Python 3.12 Windows wheel is available for the maintained release.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "venue-templates",
+      "path": "venue-templates",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "datetime",
+        "json",
+        "pathlib",
+        "re",
+        "subprocess"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    },
+    {
+      "name": "zarr-python",
+      "path": "zarr-python",
+      "status": "managed",
+      "detectedImports": [],
+      "requirements": [
+        {
+          "name": "zarr",
+          "status": "managed",
+          "reason": "Curated runtime dependency for this Skill."
+        }
+      ]
+    },
+    {
+      "name": "zerowall-aichem",
+      "path": "zerowall-aichem",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "zerowall-bio-tools",
+      "path": "zerowall-bio-tools",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "zerowall-ketcher",
+      "path": "zerowall-ketcher",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "zerowall-literature",
+      "path": "zerowall-literature",
+      "status": "optional",
+      "detectedImports": [
+        "__future__",
+        "argparse",
+        "concurrent",
+        "csv",
+        "dataclasses",
+        "datetime",
+        "difflib",
+        "fitz",
+        "hashlib",
+        "importlib",
+        "json",
+        "matplotlib",
+        "mimetypes",
+        "openpyxl",
+        "os",
+        "paper_download_bridge",
+        "pathlib",
+        "pypdf",
+        "re",
+        "requests",
+        "shutil",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "threading",
+        "time",
+        "typing",
+        "urllib"
+      ],
+      "requirements": [
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "difflib",
+          "import": "difflib",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pymupdf",
+          "import": "fitz",
+          "status": "managed"
+        },
+        {
+          "name": "matplotlib",
+          "import": "matplotlib",
+          "status": "managed"
+        },
+        {
+          "name": "openpyxl",
+          "import": "openpyxl",
+          "status": "managed"
+        },
+        {
+          "name": "paper_download_bridge",
+          "import": "paper_download_bridge",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "pypdf",
+          "import": "pypdf",
+          "status": "managed"
+        },
+        {
+          "name": "requests",
+          "import": "requests",
+          "status": "managed"
+        }
+      ]
+    },
+    {
+      "name": "zerowall-mcp-guide",
+      "path": "zerowall-mcp-guide",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "zerowall-ppt",
+      "path": "zerowall-ppt",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "zerowall-ppt-rebuild-image",
+      "path": "zerowall-ppt-rebuild-image",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "zerowall-rbioagent",
+      "path": "zerowall-rbioagent",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "zerowall-rplatform",
+      "path": "zerowall-rplatform",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "zerowall-rplotfigure",
+      "path": "zerowall-rplotfigure",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "zerowall-scimaster",
+      "path": "zerowall-scimaster",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "zerowall-spreadsheet",
+      "path": "zerowall-spreadsheet",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "zerowall-tsg-literature",
+      "path": "zerowall-tsg-literature",
+      "status": "external",
+      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
+      "detectedImports": [
+        "Crypto",
+        "__future__",
+        "argparse",
+        "base64",
+        "dataclasses",
+        "datetime",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "requests",
+        "secrets",
+        "sys",
+        "tempfile",
+        "time",
+        "typing",
+        "urllib"
+      ],
+      "requirements": [
+        {
+          "name": "Crypto",
+          "import": "Crypto",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "__future__",
+          "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "requests",
+          "import": "requests",
+          "status": "managed"
+        },
+        {
+          "name": "secrets",
+          "import": "secrets",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        }
+      ]
+    }
+  ]
+}

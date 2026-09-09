@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { access, lstat, readFile } from 'node:fs/promises'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { delimiter, isAbsolute, join, relative, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
@@ -14,7 +14,7 @@ interface RResult { exitCode: number; timedOut: boolean; stdout: string; stderr:
 interface CurrentRecord { root?: unknown; health?: unknown; manifest?: Manifest }
 interface Manifest {
   version?: unknown
-  python?: { relativeExecutable?: unknown; relativeSitePackages?: unknown }
+  python?: { version?: unknown; relativeExecutable?: unknown; relativeSitePackages?: unknown }
 }
 
 const MAX_OUTPUT = 1024 * 1024
@@ -27,7 +27,7 @@ function environmentRoot(): string | undefined {
   return value === undefined || value === '' ? undefined : resolve(value)
 }
 
-export async function resolveManagedPython(): Promise<{ executable: string; root: string; sitePackages: string }> {
+export async function resolveManagedPython(): Promise<{ executable: string; root: string; sitePackages: string; overlayPath: string }> {
   const root = environmentRoot()
   if (root === undefined) throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: MCP environment root is not configured.')
   let current: CurrentRecord
@@ -49,6 +49,8 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
   }
   const executable = resolve(installRoot, relativeExecutable)
   const sitePackages = resolve(installRoot, relativeSitePackages)
+  const runtime = typeof manifest.python?.version === 'string' ? manifest.python.version.match(/^\d+\.\d+/u)?.[0] ?? '3.12' : '3.12'
+  const overlayPath = resolve(root, 'python-overlay', `python-${runtime.replace(/[^A-Za-z0-9.-]/gu, '-')}`)
   const isContained = (candidate: string): boolean => {
     const containment = relative(installRoot, candidate)
     return containment !== '..' && !containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(containment)
@@ -64,7 +66,7 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
   if (siteInfo === undefined || !siteInfo.isDirectory() || siteInfo.isSymbolicLink()) {
     throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: managed Python site-packages is missing.')
   }
-  return { executable, root: installRoot, sitePackages }
+  return { executable, root: installRoot, sitePackages, overlayPath }
 }
 
 function bounded(value: string): string { return value.length <= MAX_OUTPUT ? value : value.slice(-MAX_OUTPUT) }
@@ -86,10 +88,11 @@ async function runPython(args: PythonArgs, exec: { signal: AbortSignal; agent?: 
   const abort = () => controller.abort()
   exec.signal.addEventListener('abort', abort, { once: true })
   return await new Promise<PythonResult>((resolveResult, reject) => {
-    const child = spawn(resolved.executable, ['-c', args.code], {
+    const bootstrap = `import sys\nsys.path.insert(0, ${JSON.stringify(resolved.overlayPath)})\n${args.code}`
+    const child = spawn(resolved.executable, ['-c', bootstrap], {
       cwd: workdir,
       windowsHide: true,
-      env: { ...process.env, PYTHONNOUSERSITE: '1', PYTHONPATH: resolved.sitePackages },
+      env: { ...process.env, PYTHONNOUSERSITE: '1', PYTHONPATH: [resolved.overlayPath, resolved.sitePackages].join(delimiter) },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let stdout = ''; let stderr = ''; let timedOut = false; let settled = false

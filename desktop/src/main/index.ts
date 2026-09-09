@@ -424,7 +424,9 @@ app.whenReady().then(async () => {
     ipcMain.handle('desktop:mcp-environment:check', () => mcpEnvironment.checkForUpdates())
     ipcMain.handle('desktop:mcp-environment:update', () => mcpEnvironment.updateForUser())
     ipcMain.handle('desktop:mcp-python:info', (_event, query?: unknown) => mcpEnvironment.pythonInfo(typeof query === 'string' ? query : ''))
-    ipcMain.handle('desktop:mcp-python:install', (_event, spec?: unknown) => mcpEnvironment.installPythonPackage(typeof spec === 'string' ? spec : ''))
+  ipcMain.handle('desktop:mcp-python:install', (_event, spec?: unknown) => mcpEnvironment.installPythonPackage(typeof spec === 'string' ? spec : ''))
+  ipcMain.handle('desktop:mcp-python:check-updates', () => mcpEnvironment.checkPythonPackageUpdates())
+  ipcMain.handle('desktop:mcp-python:update', (_event, names?: unknown) => mcpEnvironment.updatePythonPackages(Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : []))
   ipcMain.handle('desktop:mcp-environment:retry', () => mcpEnvironment.retry())
   ipcMain.handle('desktop:mcp-environment:select-path', async () => {
     const result = await dialog.showOpenDialog(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined as never, { properties: ['openDirectory'] })

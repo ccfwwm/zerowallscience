@@ -1,5 +1,5 @@
 # Unified ZeroWall Science Python base profile.
-mcp>=2.0,<3
+mcp>=1.13,<2
 anyio>=4,<5
 requests>=2.31,<3
 httpx>=0.27,<1

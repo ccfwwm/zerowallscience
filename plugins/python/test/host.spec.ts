@@ -33,7 +33,7 @@ describe('managed Python runtime', () => {
     await writeFile(join(installed, 'manifest.json'), JSON.stringify(manifest))
     await writeFile(join(store, 'current.json'), JSON.stringify({ root: installed, health: 'ready', manifest }))
     process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = store
-    await expect(resolveManagedPython()).resolves.toEqual({ executable, root: installed, sitePackages })
+    await expect(resolveManagedPython()).resolves.toMatchObject({ executable, root: installed, sitePackages, overlayPath: join(store, 'python-overlay', 'python-3.12') })
 
     const escaped = { python: { relativeExecutable: '../system-python.exe', relativeSitePackages: 'bio-tools/python/Lib/site-packages' } }
     await writeFile(join(store, 'current.json'), JSON.stringify({ root: installed, health: 'ready', manifest: escaped }))

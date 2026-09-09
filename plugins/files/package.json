@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-files",
-  "version": "5.11.0",
+  "version": "5.12.0",
   "description": "ZeroWall Science files domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -66,12 +66,14 @@
     },
     "requiredServices": [
       "tools",
-      "sessions"
+      "sessions",
+      "fs"
     ],
     "optionalServices": [],
     "capabilities": [
       "files",
-      "data-assets"
+      "data-assets",
+      "office-tools"
     ],
     "permissions": [
       "files"
@@ -139,6 +141,8 @@
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
+    "@deepseek-ai/dsh-fs": "workspace:^",
+    "dsh-office-tools": "github:kw78/dsh-office-tools#30d063323e01d506a56ea89f4b2925a3a686a9fc",
     "dsh-better-sidebar": "workspace:^",
     "dsh-dream-skin": "8.30.1",
     "jszip": "3.10.1",

@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
   updateMcpEnvironment: async (): Promise<McpEnvironmentStatus> => await ipcRenderer.invoke('desktop:mcp-environment:update') as McpEnvironmentStatus,
   getMcpPythonInfo: async (query?: string): Promise<McpPythonInfo> => await ipcRenderer.invoke('desktop:mcp-python:info', query) as McpPythonInfo,
   installMcpPythonPackage: async (spec: string): Promise<McpPythonInfo> => await ipcRenderer.invoke('desktop:mcp-python:install', spec) as McpPythonInfo,
+  checkMcpPythonPackageUpdates: async (): Promise<McpPythonInfo> => await ipcRenderer.invoke('desktop:mcp-python:check-updates') as McpPythonInfo,
+  updateMcpPythonPackages: async (names?: string[]): Promise<McpPythonInfo> => await ipcRenderer.invoke('desktop:mcp-python:update', names) as McpPythonInfo,
   onMcpEnvironmentStatus: (listener: (status: McpEnvironmentStatus) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, status: McpEnvironmentStatus) => listener(status)
     ipcRenderer.on('desktop:mcp-environment:status-changed', handler)

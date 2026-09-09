@@ -61,3 +61,14 @@ minimumReleaseAgeExclude:
 
 patchedDependencies:
   dsh-free-search@0.4.24: patches/dsh-free-search@0.4.24.patch
+
+packageExtensions:
+  'dsh-office-tools@*':
+    dependencies:
+      '@deepseek-ai/cordis': 'workspace:*'
+      '@deepseek-ai/schemastery': 'workspace:*'
+      '@deepseek-ai/dsh-agent': 'workspace:*'
+      '@deepseek-ai/dsh-fs': 'workspace:*'
+      '@deepseek-ai/dsh-llm': 'workspace:*'
+      '@deepseek-ai/dsh-session': 'workspace:*'
+      '@deepseek-ai/dsh-tools': 'workspace:*'

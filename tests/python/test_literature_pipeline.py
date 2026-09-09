@@ -131,6 +131,37 @@ class LiteraturePipelineTests(unittest.TestCase):
             self.assertEqual(task.load()["stage"], "analysis_pending")
             self.assertTrue(any(row["provider"] == "mineru" for row in task.ledger()))
 
+    def test_ingest_mineru_result_preserves_nested_assets_and_detects_broken_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "task"
+            task = module.Task(root)
+            paper = module.Paper(key="doi:10.1/assets", title="Asset paper", doi="10.1/assets", pdf_path="paper.pdf")
+            state = task.load(); state.update({"task_root": str(root.resolve()), "papers": [module.asdict(paper)]}); task.save(state)
+            run_dir = Path(directory) / "mineru-run"; (run_dir / "images").mkdir(parents=True); (run_dir / "tables").mkdir()
+            (run_dir / "full.md").write_text("# Paper\n\n![figure](images/figure.png)\n![missing](images/missing.png)", encoding="utf-8")
+            (run_dir / "images" / "figure.png").write_bytes(b"png")
+            (run_dir / "tables" / "table.json").write_text("{}", encoding="utf-8")
+            with patch.object(module, "report"):
+                parsed = module.ingest_mineru_result(task, state, "10.1/assets", run_dir, "run-1", "mineru")
+            self.assertTrue((Path(parsed.mineru_snapshot_dir) / "images" / "figure.png").is_file())
+            self.assertTrue((Path(parsed.mineru_snapshot_dir) / "tables" / "table.json").is_file())
+            self.assertIn("images/missing.png", parsed.mineru_broken_links)
+            self.assertGreaterEqual(parsed.mineru_file_counts["total"], 3)
+
+    def test_paper_text_requires_mineru_snapshot(self):
+        paper = module.Paper(key="doi:10.1/text", title="Paper", pdf_path="missing.pdf")
+        self.assertEqual(module.paper_text(paper), "")
+
+    def test_tsg_is_enabled_by_default_but_can_be_disabled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            task = module.Task(Path(directory) / "task")
+            client = module.Client(task)
+            paper = module.Paper(key="doi:10.1/tsg", title="TSG paper", doi="10.1/tsg")
+            with patch.object(module, "download_via_tsg", return_value=True) as tsg, patch.object(module, "download_via_paper_download", return_value=False), patch.object(module, "download_authorized_adapter", return_value=False):
+                with patch.dict(module.os.environ, {"TSG_PM_JSESSIONID": "x", "TSG_SESSIONID": "x", "TSG_SGUSER": "x", "TSG_TSGUSER": "x"}, clear=False):
+                    module.download_paper(client, paper)
+            tsg.assert_called_once()
+
     def test_finalize_rejects_missing_agent_analysis(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "task"

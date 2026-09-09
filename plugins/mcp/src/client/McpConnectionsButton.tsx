@@ -96,7 +96,7 @@ interface Draft {
   reconnectMaxAttempts: string
 }
 
-interface PythonEnvironmentInfo { ready: boolean; version?: string; executable?: string; sitePackages?: string; overlayPath?: string; packageCount?: number; packages: Array<{ name: string; version: string; location?: string }>; message?: string }
+interface PythonEnvironmentInfo { ready: boolean; version?: string; executable?: string; sitePackages?: string; overlayPath?: string; packageCount?: number; corePackageCount?: number; overlayPackageCount?: number; packages: Array<{ name: string; version: string; location?: string; source: 'core' | 'overlay'; requiredVersion?: string; latestVersion?: string; updateAvailable?: boolean; health: 'healthy' | 'update-available' | 'locked' }>; skillAudit?: { summary: Record<string, number>; skills: Array<{ name: string; status: string; reason?: string }> }; verification?: { imports: boolean; pipCheck: boolean; message: string }; message?: string }
 
 type Props = Partial<SidebarFooterActionOwnerProps> & McpActions & PropsLocale<typeof NS> & { embedded?: boolean }
 
@@ -363,13 +363,6 @@ export function McpConnectionsButton(props: Props) {
           {!embedded && <button className={css.iconButton} type="button" onClick={() => setOpen(false)} title={props.t('common.close')} aria-label={props.t('common.close')}><X size={18} /></button>}
         </div>
       </header>
-      {environment !== undefined && environment.phase !== 'idle' && <div className={environment.phase === 'failed' ? css.error : css.warning} role="status">
-        <strong>科研 MCP 环境：</strong>{environment.phase === 'checking' ? '正在检查' : environment.phase === 'ready' || environment.phase === 'manual' ? `${environment.environmentVersion ?? environment.phase} · 内容修订 ${environment.contentRevision ?? 1}` : environment.message ?? environment.phase}{typeof environment.progress === 'number' && environment.phase !== 'ready' && environment.phase !== 'manual' ? ` ${Math.round(environment.progress)}%` : ''}
-        {environment.onlineEnvironmentVersion !== undefined && <span> · 在线 {environment.onlineEnvironmentVersion} / 修订 {environment.onlineContentRevision ?? 1}</span>}
-        {environment.updated === true && <span className={css.syncBadge}>已更新</span>}
-        {environment.lastUpdateError && <div className={css.environmentFailure}>更新失败，已保留当前可用环境：{environment.lastUpdateError}</div>}
-        <div className={css.sciMasterActions}><button type="button" onClick={() => void checkEnvironment()} disabled={pythonBusy}>检查更新</button>{environment.updateAvailable === true && <button type="button" className={css.saveButton} onClick={() => void updateEnvironment()} disabled={pythonBusy}>立即更新科研环境</button>}{(environment.phase === 'failed' || environment.phase === 'unavailable') && <><button type="button" onClick={() => void retryEnvironment()}>{props.t('mcp.environmentRetry')}</button><button type="button" onClick={() => void selectEnvironment()}>{props.t('mcp.environmentManual')}</button></>}</div>
-      </div>}
       <div className={css.workspace}>
         <aside className={css.sidebar}>
           <button className={`${css.serverRow} ${selectedId === NEW_SERVER ? css.selected : ''}`} type="button" onClick={chooseNew}>
@@ -516,6 +509,20 @@ export function PythonEnvironmentPanel() {
     finally { setBusy(false) }
   }
 
+  const checkPackages = async () => {
+    setBusy(true); setFeedback(undefined)
+    try { const next = await window.zerowallDesktop?.checkMcpPythonPackageUpdates?.(); if (next !== undefined) setInfo(next); setFeedback('用户扩展包更新状态已检测。') }
+    catch (reason) { setFeedback(message(reason)) }
+    finally { setBusy(false) }
+  }
+
+  const updatePackages = async () => {
+    setBusy(true); setFeedback(undefined)
+    try { const next = await window.zerowallDesktop?.updateMcpPythonPackages?.(); if (next !== undefined) setInfo(next); setFeedback('用户扩展包已更新。') }
+    catch (reason) { setFeedback(message(reason)) }
+    finally { setBusy(false) }
+  }
+
   return <section className={css.pythonPanel} aria-labelledby="zerowall-python-title">
     <header className={css.header}><div><p>ZeroWall Science</p><h2 id="zerowall-python-title">Python 环境</h2></div><button className={css.iconButton} type="button" onClick={() => void load(query)} disabled={busy} title="重新检测" aria-label="重新检测"><RefreshCw size={17} /></button></header>
     <div className={css.pythonBody}>
@@ -525,13 +532,15 @@ export function PythonEnvironmentPanel() {
         <div><span>已安装包</span><strong>{info?.packageCount ?? info?.packages.length ?? 0}</strong></div>
         <div><span>科研环境</span><strong>{environment?.environmentVersion ?? '未安装'} / 修订 {environment?.contentRevision ?? '-'}</strong></div>
       </div>
-      <div className={css.environmentLine}><span>在线版本：{environment?.onlineEnvironmentVersion ?? '检测中'} / 修订 {environment?.onlineContentRevision ?? '-'}</span>{environment?.updateAvailable === true ? <button type="button" onClick={() => void update()} disabled={busy}>更新 Python 环境</button> : <span className={css.configured}>当前已是所需版本</span>}</div>
+      <div className={css.environmentLine}><span>在线版本：{environment?.onlineEnvironmentVersion ?? '检测中'} / 修订 {environment?.onlineContentRevision ?? '-'}</span><span className={css.sciMasterActions}>{environment?.updateAvailable === true && <button type="button" onClick={() => void update()} disabled={busy}>更新托管环境</button>}<button type="button" onClick={() => void load(query)} disabled={busy}>检查环境</button></span></div>
       {environment?.lastUpdateError && <p className={css.error}>上次环境更新失败：{environment.lastUpdateError}</p>}
       {info?.message && <p className={css.error}>{info.message}</p>}
       {info?.ready && <>
         <dl className={css.pathList}><dt>解释器</dt><dd>{info.executable}</dd><dt>内置包目录</dt><dd>{info.sitePackages}</dd><dt>用户扩展目录</dt><dd>{info.overlayPath}</dd></dl>
         <div className={css.packageToolbar}><div className={css.sciMasterActions}><input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void load(query) }} placeholder="搜索已安装包" /><button type="button" onClick={() => void load(query)} disabled={busy}>搜索</button><button type="button" onClick={() => { setQuery(''); void load('') }} disabled={busy}>全部</button></div><div className={css.sciMasterActions}><input value={spec} onChange={event => setSpec(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void install() }} placeholder="添加包，例如 pandas==2.2.3" /><button className={css.saveButton} type="button" onClick={() => void install()} disabled={busy || spec.trim() === ''}>安装</button></div></div>
-        <div className={css.packageList} role="list">{info.packages.map(pkg => <div key={`${pkg.name}-${pkg.version}`} role="listitem"><strong>{pkg.name}</strong><span>{pkg.version}</span></div>)}</div>
+        <div className={css.environmentLine}><span>核心包 {info.corePackageCount ?? 0} · 用户扩展 {info.overlayPackageCount ?? 0}</span><span className={css.sciMasterActions}><button type="button" onClick={() => void checkPackages()} disabled={busy}>检测包更新</button>{info.packages.some(pkg => pkg.updateAvailable) && <button type="button" onClick={() => void updatePackages()} disabled={busy}>更新用户包</button>}</span></div>
+        <div className={css.packageList} role="list">{info.packages.map(pkg => <div key={`${pkg.name}-${pkg.version}`} role="listitem"><strong>{pkg.name}</strong><span>{pkg.version}{pkg.source === 'core' ? ' · 核心锁定' : pkg.updateAvailable ? ` → ${pkg.latestVersion}` : ' · 用户扩展'}</span></div>)}</div>
+        {info.skillAudit && <div className={css.environmentLine}><span>Skills 就绪 {info.skillAudit.summary.ready ?? 0} · 托管 {info.skillAudit.summary.managed ?? 0} · 按需 {info.skillAudit.summary.optional ?? 0} · 外部 {info.skillAudit.summary.external ?? 0} · 不兼容 {info.skillAudit.summary.incompatible ?? 0}</span></div>}
       </>}
       {feedback && <p className={feedback.includes('完成') || feedback.includes('已更新') ? css.success : css.error}>{feedback}</p>}
     </div>

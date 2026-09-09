@@ -96,7 +96,7 @@ const npmDependencies = {
   base: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0' },
   projects: { '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   account: { qrcode: '^1.5.4', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
-  files: { jszip: '3.10.1', 'pdf-lib': '^1.17.1', 'pdfjs-dist': '^4.10.38', xlsx: '^0.18.5', 'fast-xml-parser': '^5.11.0', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
+  files: { 'dsh-office-tools': 'github:kw78/dsh-office-tools#30d063323e01d506a56ea89f4b2925a3a686a9fc', jszip: '3.10.1', 'pdf-lib': '^1.17.1', 'pdfjs-dist': '^4.10.38', xlsx: '^0.18.5', 'fast-xml-parser': '^5.11.0', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
   images: { sharp: '^0.35.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
   'image-dup': { jimp: '^1.6.1', 'pdf-lib': '^1.17.1', sharp: '^0.35.3', 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },
   mcp: { '@zerowallscience/plugin-secrets': 'workspace:^', '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
@@ -125,7 +125,7 @@ const plugins = [
   { id: 'projects', client: true, remote: true, capabilities: ['projects', 'workspaces'], permissions: ['files'] },
   { id: 'account', client: true, remote: true, capabilities: ['account'], permissions: ['credentials', 'network'], dependencies: ['secrets', 'base'] },
   { id: 'ai-cloud', client: true, capabilities: ['llm.cloud'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'], requiredServices: ['llm', 'zerowallAccount'] },
-  { id: 'files', client: true, remote: true, capabilities: ['files', 'data-assets'], permissions: ['files'], requiredServices: ['tools', 'sessions'] },
+  { id: 'files', client: true, remote: true, capabilities: ['files', 'data-assets', 'office-tools'], permissions: ['files'], requiredServices: ['tools', 'sessions', 'fs'] },
   {
     id: 'images',
     client: true,
@@ -242,7 +242,8 @@ for (const plugin of plugins) {
       ...(plugin.id === 'image-dup' ? ['runtime', 'THIRD_PARTY_LICENSES'] : []),
     ],
     dependencies: {
-      ...dshDependencies,
+    ...dshDependencies,
+    ...(plugin.id === 'files' ? { '@deepseek-ai/dsh-fs': 'workspace:^', 'dsh-office-tools': 'github:kw78/dsh-office-tools#30d063323e01d506a56ea89f4b2925a3a686a9fc' } : {}),
       ...(plugin.client ? externalClientDependencies : {}),
       ...Object.fromEntries((plugin.dependencies ?? []).map(id => [`@zerowallscience/plugin-${id}`, 'workspace:^'])),
       ...(plugin.id === 'base'

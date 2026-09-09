@@ -123,8 +123,23 @@ def download_with_paper_download(
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
-        return PaperDownloadResult(False, "paper_download_timeout", work_dir=str(work_dir), stdout=str(exc.stdout or ""), stderr=str(exc.stderr or ""))
+        work_dir.mkdir(parents=True, exist_ok=True)
+        stdout = str(exc.stdout or "")[-12000:]
+        stderr = str(exc.stderr or "")[-12000:]
+        (work_dir / "bridge.stdout.log").write_text(stdout, encoding="utf-8")
+        (work_dir / "bridge.stderr.log").write_text(stderr, encoding="utf-8")
+        (work_dir / "bridge.result.json").write_text(json.dumps({"returncode": None, "pdf": None, "status": "paper_download_timeout", "allow_shadow": allow_shadow, "slug": slug}, ensure_ascii=False, indent=2), encoding="utf-8")
+        return PaperDownloadResult(False, "paper_download_timeout", work_dir=str(work_dir), stdout=stdout[-4000:], stderr=stderr[-4000:])
     pdf = _find_pdf(sources, slug)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    (work_dir / "bridge.stdout.log").write_text(completed.stdout[-12000:], encoding="utf-8")
+    (work_dir / "bridge.stderr.log").write_text(completed.stderr[-12000:], encoding="utf-8")
+    (work_dir / "bridge.result.json").write_text(json.dumps({
+        "returncode": completed.returncode,
+        "pdf": str(pdf) if pdf else None,
+        "allow_shadow": allow_shadow,
+        "slug": slug,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
     if completed.returncode != 0 or pdf is None:
         status = "paper_download_failed" if completed.returncode else "paper_download_no_pdf"
         return PaperDownloadResult(False, status, work_dir=str(work_dir), stdout=completed.stdout[-4000:], stderr=completed.stderr[-4000:])

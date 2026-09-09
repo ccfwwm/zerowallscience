@@ -1,0 +1,4 @@
+# Additional Windows x64 / Python 3.12 document readers used by bundled Skills.
+pip==26.2.1
+markitdown[xls,xlsx]==0.1.7
+liteparse==2.14.4

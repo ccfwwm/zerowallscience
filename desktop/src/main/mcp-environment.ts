@@ -1,10 +1,10 @@
 import { createHash, verify } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { access, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path'
+import { access, cp, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { delimiter, dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path'
 import JSZip from 'jszip'
-import type { McpEnvironmentStatus, McpPythonInfo, McpPythonPackage } from '../shared/contracts.js'
+import type { McpEnvironmentStatus, McpPythonInfo, McpPythonPackage, McpSkillAudit } from '../shared/contracts.js'
 
 export interface McpEnvironmentManifest {
   schema: 2
@@ -19,12 +19,15 @@ export interface McpEnvironmentManifest {
   archiveUrl: string
   archiveSha256: string
   archiveSize: number
-  python: { version: string; relativeExecutable: string; relativeSitePackages: string; modules: string[]; supportsZeroWallTool: boolean }
+  python: { version: string; relativeExecutable: string; relativeSitePackages: string; modules: string[]; supportsZeroWallTool: boolean; layers?: string[]; dependencyManifests?: string[] }
   pythonHealth: { imports: string[]; bioServer: string; ketcherServer: string }
   skillsRoot: string
   sci: { version: string; nodeMinimum: string; cli: string; mcp: string }
   mcp: { bioToolsVersion: string; ketcherChemistryVersion: string; sciMasterVersion: string; publicToolCount: number; internalToolCount: number; servers: string[] }
   source: { claudeScienceRuntime: string; sourceHashes: Record<string, string> }
+  dependencies?: { corePackages: Array<{ name: string; requiredVersion: string }>; userOverlay: { enabled: boolean; path: string; requirementsFile: string } }
+  skillsAudit?: McpSkillAudit
+  updatePolicy?: { required: boolean; reason?: string }
   signature: { algorithm: 'ed25519'; keyId: string; value: string }
 }
 
@@ -73,6 +76,7 @@ export class McpEnvironmentController {
       status.onlineEnvironmentVersion = environmentVersion(manifest)
       status.onlineContentRevision = contentRevision(manifest)
       status.updateAvailable = currentManifest === undefined || environmentVersion(currentManifest) !== environmentVersion(manifest) || contentRevision(currentManifest) !== contentRevision(manifest) || currentManifest.archiveSha256 !== manifest.archiveSha256
+      status.updateRequired = status.updateAvailable && manifest.updatePolicy?.required === true
       status.lastCheckedAt = new Date().toISOString()
       if (status.updateAvailable) status.message = `发现科研环境 ${environmentVersion(manifest)}（内容修订 ${contentRevision(manifest)}）可更新`
       return this.set(status)
@@ -93,10 +97,21 @@ export class McpEnvironmentController {
       const overlayPath = pythonOverlayPath(this.options.root, manifest)
       await mkdir(overlayPath, { recursive: true })
       const versionResult = await execute(executable, ['--version'], current.root, undefined, { PYTHONPATH: [overlayPath, sitePackages].join(';'), PYTHONNOUSERSITE: '1' }, 20_000)
-      const listed = await execute(executable, ['-c', 'import sys,importlib.metadata,json; sys.path.insert(0,sys.argv[1]); print(json.dumps(sorted([{"name":d.metadata.get("Name") or d.name,"version":d.version,"location":str(d.locate_file(""))} for d in importlib.metadata.distributions()], key=lambda x:x["name"].lower())))', overlayPath], current.root, undefined, { PYTHONPATH: [overlayPath, sitePackages].join(';'), PYTHONNOUSERSITE: '1' }, 30_000)
-      const packages = (JSON.parse(listed.stdout.trim()) as McpPythonPackage[]).filter((pkg, index, values) => values.findIndex(candidate => candidate.name.toLowerCase() === pkg.name.toLowerCase() && candidate.version === pkg.version && candidate.location === pkg.location) === index)
+      const env = pythonEnvironment(overlayPath, sitePackages)
+      const script = 'import importlib.metadata,json,sys\nrows=[]\nfor source,path in (("overlay",sys.argv[1]),("core",sys.argv[2])):\n for d in importlib.metadata.distributions(path=[path]):\n  rows.append({"name":d.metadata.get("Name") or d.name,"version":d.version,"location":str(d.locate_file("")),"source":source})\nprint(json.dumps(rows))'
+      const listed = await execute(executable, ['-c', script, overlayPath, sitePackages], current.root, undefined, env, 30_000)
+      const required = new Map((manifest.dependencies?.corePackages ?? []).map(pkg => [pkg.name.toLowerCase().replaceAll('_', '-'), pkg.requiredVersion]))
+      const raw = JSON.parse(listed.stdout.trim()) as Array<{ name: string; version: string; location?: string; source: 'core' | 'overlay' }>
+      const packages: McpPythonPackage[] = []
+      for (const pkg of raw) {
+        const key = pkg.name.toLowerCase().replaceAll('_', '-')
+        if (packages.some(existing => existing.name.toLowerCase().replaceAll('_', '-') === key)) continue
+        const requiredVersion = required.get(key)
+        packages.push({ ...pkg, ...(requiredVersion === undefined ? {} : { requiredVersion }), health: pkg.source === 'core' ? 'locked' : 'healthy' })
+      }
+      packages.sort((a, b) => a.name.localeCompare(b.name))
       const needle = query.trim().toLowerCase()
-      return { ready: true, version: `${versionResult.stdout}\n${versionResult.stderr}`.trim().replace(/^Python\s+/u, ''), executable, sitePackages, overlayPath, packageCount: packages.length, packages: needle === '' ? packages : packages.filter(pkg => pkg.name.toLowerCase().includes(needle)) }
+      return { ready: true, version: `${versionResult.stdout}\n${versionResult.stderr}`.trim().replace(/^Python\s+/u, ''), executable, sitePackages, overlayPath, packageCount: packages.length, corePackageCount: packages.filter(pkg => pkg.source === 'core').length, overlayPackageCount: packages.filter(pkg => pkg.source === 'overlay').length, packages: needle === '' ? packages : packages.filter(pkg => pkg.name.toLowerCase().includes(needle)), skillAudit: manifest.skillsAudit }
     } catch (error) { return { ready: false, packages: [], message: sanitizeError(error) } }
   }
 
@@ -106,12 +121,71 @@ export class McpEnvironmentController {
     const current = await readCurrent(this.options.root)
     if (!current?.root || current.health !== 'ready') throw new Error('科研 MCP 环境尚未就绪。')
     const manifest = await this.readInstalledManifest(current.root)
+    const requestedName = pythonPackageName(normalized)
+    const core = new Set((manifest.dependencies?.corePackages ?? []).map(pkg => pkg.name.toLowerCase().replaceAll('_', '-')))
+    if (core.has(requestedName)) throw new Error('该包属于签名核心环境，不能单独覆盖；请通过科研环境更新。')
     const executable = join(current.root, manifest.python.relativeExecutable)
     const sitePackages = join(current.root, manifest.python.relativeSitePackages)
     const overlayPath = pythonOverlayPath(this.options.root, manifest)
+    await this.mutateOverlay(overlayPath, async () => {
+      await execute(executable, ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '--upgrade', '--target', overlayPath, normalized], current.root!, undefined, pythonEnvironment(overlayPath, sitePackages), 180_000)
+      const validation = 'import importlib,importlib.metadata,sys\nd=importlib.metadata.distribution(sys.argv[1])\ntops=[x.strip() for x in (d.read_text("top_level.txt") or "").splitlines() if x.strip() and not x.startswith("_")]\nif tops: importlib.import_module(tops[0])'
+      await execute(executable, ['-c', validation, requestedName], current.root!, undefined, pythonEnvironment(overlayPath, sitePackages), 30_000)
+      await execute(executable, ['-m', 'pip', 'check'], current.root!, undefined, pythonEnvironment(overlayPath, sitePackages), 60_000)
+    })
+    await saveRequestedPackage(this.options.root, normalized)
+    const info = await this.pythonInfo()
+    info.verification = { imports: true, pipCheck: true, message: '安装包导入与 pip check 均通过。' }
+    return info
+  }
+
+  async checkPythonPackageUpdates(): Promise<McpPythonInfo> {
+    const context = await this.pythonContext()
+    const result = await execute(context.executable, ['-m', 'pip', 'list', '--outdated', '--format=json', '--path', context.overlayPath], context.root, undefined, pythonEnvironment(context.overlayPath, context.sitePackages), 120_000)
+    const updates = new Map((JSON.parse(result.stdout || '[]') as Array<{ name: string; latest_version: string }>).map(item => [item.name.toLowerCase().replaceAll('_', '-'), item.latest_version]))
+    const info = await this.pythonInfo()
+    info.packages = info.packages.map(pkg => {
+      const latestVersion = pkg.source === 'overlay' ? updates.get(pkg.name.toLowerCase().replaceAll('_', '-')) : undefined
+      return { ...pkg, ...(latestVersion ? { latestVersion, updateAvailable: true, health: 'update-available' as const } : {}) }
+    })
+    return info
+  }
+
+  async updatePythonPackages(names: string[] = []): Promise<McpPythonInfo> {
+    const context = await this.pythonContext()
+    const info = await this.checkPythonPackageUpdates()
+    const available = info.packages.filter(pkg => pkg.source === 'overlay' && pkg.updateAvailable === true)
+    const requested = names.length === 0 ? available.map(pkg => pkg.name) : names
+    if (requested.length === 0) return info
+    const overlayNames = new Set(info.packages.filter(pkg => pkg.source === 'overlay').map(pkg => pkg.name.toLowerCase().replaceAll('_', '-')))
+    for (const name of requested) if (!overlayNames.has(pythonPackageName(name))) throw new Error(`只能更新用户扩展包：${name}`)
+    await this.mutateOverlay(context.overlayPath, async () => {
+      await execute(context.executable, ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '--upgrade', '--target', context.overlayPath, ...requested], context.root, undefined, pythonEnvironment(context.overlayPath, context.sitePackages), 180_000)
+      await execute(context.executable, ['-m', 'pip', 'check'], context.root, undefined, pythonEnvironment(context.overlayPath, context.sitePackages), 60_000)
+    })
+    const updated = await this.pythonInfo()
+    updated.verification = { imports: true, pipCheck: true, message: '用户扩展包更新与 pip check 均通过。' }
+    return updated
+  }
+
+  private async pythonContext(): Promise<{ root: string; executable: string; sitePackages: string; overlayPath: string; manifest: McpEnvironmentManifest }> {
+    const current = await readCurrent(this.options.root)
+    if (!current?.root || current.health !== 'ready') throw new Error('科研 MCP 环境尚未就绪。')
+    const manifest = await this.readInstalledManifest(current.root)
+    const overlayPath = pythonOverlayPath(this.options.root, manifest)
     await mkdir(overlayPath, { recursive: true })
-    await execute(executable, ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '--upgrade', '--target', overlayPath, normalized], current.root, undefined, { PYTHONPATH: [overlayPath, sitePackages].join(';'), PYTHONNOUSERSITE: '1' }, 180_000)
-    return this.pythonInfo()
+    return { root: current.root, manifest, executable: join(current.root, manifest.python.relativeExecutable), sitePackages: join(current.root, manifest.python.relativeSitePackages), overlayPath }
+  }
+
+  private async mutateOverlay(overlayPath: string, action: () => Promise<void>): Promise<void> {
+    const backup = `${overlayPath}.rollback`
+    const existed = await pathExists(overlayPath)
+    await rm(backup, { recursive: true, force: true })
+    if (existed) await rename(overlayPath, backup)
+    await mkdir(overlayPath, { recursive: true })
+    if (existed) await cp(backup, overlayPath, { recursive: true })
+    try { await action(); await rm(backup, { recursive: true, force: true }) }
+    catch (error) { await rm(overlayPath, { recursive: true, force: true }); if (existed) await rename(backup, overlayPath); throw error }
   }
 
   async selectManual(root: string): Promise<McpEnvironmentStatus> {
@@ -297,6 +371,14 @@ export function validateManifest(value: unknown): McpEnvironmentManifest {
   if (typeof item.skillsRoot !== 'string' || item.skillsRoot.trim() === '' || typeof sci?.version !== 'string' || typeof sci.nodeMinimum !== 'string' || typeof sci.cli !== 'string' || typeof sci.mcp !== 'string') throw new Error('MCP environment SciMaster metadata is invalid.')
   if (item.contentRevision !== undefined && (!Number.isSafeInteger(item.contentRevision) || Number(item.contentRevision) < 1)) throw new Error('MCP environment content revision is invalid.')
   if (typeof mcp?.sciMasterVersion !== 'string' || !Array.isArray(mcp.servers) || !mcp.servers.every(item => typeof item === 'string')) throw new Error('MCP environment server metadata is invalid.')
+  if (item.dependencies !== undefined) {
+    const dependencies = item.dependencies as Record<string, unknown>
+    if (!Array.isArray(dependencies.corePackages) || !dependencies.corePackages.every(pkg => typeof pkg === 'object' && pkg !== null && typeof (pkg as Record<string, unknown>).name === 'string' && typeof (pkg as Record<string, unknown>).requiredVersion === 'string')) throw new Error('MCP environment dependency metadata is invalid.')
+  }
+  if (item.skillsAudit !== undefined) {
+    const audit = item.skillsAudit as Record<string, unknown>
+    if (!Array.isArray(audit.skills) || typeof audit.summary !== 'object' || audit.summary === null) throw new Error('MCP environment Skills audit metadata is invalid.')
+  }
   return value as McpEnvironmentManifest
 }
 
@@ -319,7 +401,7 @@ function environmentVersion(manifest: McpEnvironmentManifest): string {
 }
 
 function environmentStatus(phase: McpEnvironmentStatus['phase'], manifest: McpEnvironmentManifest, root: string, slot: 'a' | 'b' | 'manual', updated: boolean, rollbackAvailable: boolean): McpEnvironmentStatus {
-  return { phase, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: slot, updated, rollbackAvailable, version: environmentVersion(manifest), progress: phase === 'ready' || phase === 'manual' ? 100 : undefined, message: root, python: pythonStatus(manifest, root) }
+  return { phase, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: slot, updated, rollbackAvailable, version: environmentVersion(manifest), progress: phase === 'ready' || phase === 'manual' ? 100 : undefined, message: root, python: pythonStatus(manifest, root), skillAudit: manifest.skillsAudit }
 }
 
 function pythonStatus(manifest: McpEnvironmentManifest, root: string): NonNullable<McpEnvironmentStatus['python']> {
@@ -330,6 +412,23 @@ function contentRevision(manifest: McpEnvironmentManifest): number { return mani
 function pythonOverlayPath(root: string, manifest: McpEnvironmentManifest): string {
   const runtime = manifest.python.version.match(/^\d+\.\d+/u)?.[0] ?? manifest.python.version
   return join(root, 'python-overlay', `python-${runtime.replace(/[^A-Za-z0-9.-]/gu, '-')}`)
+}
+
+function pythonEnvironment(overlayPath: string, sitePackages: string): Record<string, string> {
+  return { PYTHONPATH: [overlayPath, sitePackages].join(delimiter), PYTHONNOUSERSITE: '1' }
+}
+
+function pythonPackageName(spec: string): string {
+  return spec.trim().match(/^[A-Za-z0-9][A-Za-z0-9_.-]*/u)?.[0]?.toLowerCase().replaceAll('_', '-') ?? ''
+}
+
+async function saveRequestedPackage(root: string, spec: string): Promise<void> {
+  const path = join(root, 'python-overlay', 'requirements-user.txt')
+  await mkdir(dirname(path), { recursive: true })
+  const requested = await readFile(path, 'utf8').then(text => text.split(/\r?\n/u).filter(Boolean), () => [])
+  const name = pythonPackageName(spec)
+  const rows = [...requested.filter(row => pythonPackageName(row) !== name), spec].sort((a, b) => a.localeCompare(b))
+  await writeFile(path, `${rows.join('\n')}\n`, 'utf8')
 }
 
 interface CurrentEnvironmentRecord {
