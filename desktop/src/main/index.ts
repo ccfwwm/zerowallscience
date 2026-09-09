@@ -326,11 +326,13 @@ app.whenReady().then(async () => {
   runtime = harnessRuntime
 
   const mcpEnvironmentLogPath = join(app.getPath('logs'), 'mcp-environment.log')
+  await mkdir(dirname(mcpEnvironmentLogPath), { recursive: true })
   mcpEnvironment = new McpEnvironmentController({
     root: mcpEnvironmentRoot,
     manifestUrl: process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/mcp-environments/windows-x64/latest.json',
     publicKey: process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? MCP_ENVIRONMENT_PUBLIC_KEY,
     publicKeys: MCP_ENVIRONMENT_KEYRING,
+    diagnosticPath: mcpEnvironmentLogPath,
     publish: status => {
       void appendFile(mcpEnvironmentLogPath, `${JSON.stringify({ timestamp: new Date().toISOString(), ...status })}\n`, 'utf8').catch(() => undefined)
       const window = mainWindow

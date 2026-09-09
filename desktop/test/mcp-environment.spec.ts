@@ -152,6 +152,27 @@ describe('MCP environment upgrades', () => {
     await expect(controller.initialize()).resolves.toMatchObject({ phase: 'ready', currentSlot: 'b', updated: true, rollbackAvailable: true })
   })
 
+  it('adopts a fully installed inactive slot after a previous pointer switch failed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-mcp-root-')); roots.push(root)
+    const installed = join(root, 'slots', 'a')
+    const recovered = join(root, 'slots', 'b')
+    const installedManifest = signedManifest('5.12.0', 'stable-1', '1.1.3', 1)
+    const onlineManifest = signedManifest('5.13.0', 'stable-1', '1.2.0', 1)
+    await environment(installed, installedManifest)
+    await environment(recovered, onlineManifest)
+    await writeFile(join(root, 'current.json'), JSON.stringify({ environmentVersion: '1.1.3', contentRevision: 1, slot: 'a', root: installed, health: 'ready', manifest: installedManifest }))
+    const requests: string[] = []
+    const controller = new McpEnvironmentController({
+      root, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      fetcher: async url => { requests.push(String(url)); return new Response(JSON.stringify(onlineManifest), { status: 200 }) }, healthCheck: async () => undefined, publish: () => undefined,
+    })
+
+    await expect(controller.initialize()).resolves.toMatchObject({ phase: 'ready', environmentVersion: '1.2.0', currentSlot: 'b', updated: true })
+    expect(requests).toEqual(['https://example.test/latest.json'])
+    expect(JSON.parse(await readFile(join(root, 'current.json'), 'utf8'))).toMatchObject({ root: recovered, slot: 'b', environmentVersion: '1.2.0' })
+    expect(JSON.parse(await readFile(join(root, 'rollback.json'), 'utf8'))).toMatchObject({ root: installed, slot: 'a', environmentVersion: '1.1.3' })
+  })
+
   it('starts a user update immediately and preserves active progress during checks', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-mcp-root-')); roots.push(root)
     const onlineManifest = signedManifest('5.13.0', 'stable-1', '1.2.0', 1)

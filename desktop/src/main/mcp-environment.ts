@@ -2,7 +2,7 @@ import { createHash, verify } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { createInterface } from 'node:readline'
-import { access, cp, lstat, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { access, appendFile, cp, lstat, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { delimiter, dirname, join, resolve } from 'node:path'
 import { Worker } from 'node:worker_threads'
 import type { McpEnvironmentStatus, McpPythonInfo, McpPythonPackage, McpSkillAudit } from '../shared/contracts.js'
@@ -40,6 +40,8 @@ export interface McpEnvironmentControllerOptions {
   publicKeys?: Record<string, string>
   fetcher?: typeof fetch
   healthCheck?(root: string, manifest: McpEnvironmentManifest): Promise<void>
+  /** Optional durable diagnostic log. Failures must remain inspectable after the UI closes. */
+  diagnosticPath?: string
   publish(status: McpEnvironmentStatus): void
 }
 
@@ -228,6 +230,18 @@ export class McpEnvironmentController {
         status.onlineEnvironmentVersion = environmentVersion(manifest); status.onlineContentRevision = contentRevision(manifest); status.updateAvailable = false; status.lastCheckedAt = new Date().toISOString()
         return this.set(status)
       }
+      const recovered = await this.recoverInstalledRoot(manifest)
+      if (recovered !== undefined) {
+        const current = await readCurrent(this.options.root)
+        if (current?.root && current.health === 'ready' && (current.slot === 'a' || current.slot === 'b') && resolve(current.root) !== resolve(recovered.root)) {
+          await this.writeCurrent({ ...current, rollbackAvailable: true, rollbackAt: new Date().toISOString() }, 'rollback.json')
+        }
+        await this.writeCurrent({ mode: 'managed', environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), archiveSha256: manifest.archiveSha256, root: recovered.root, slot: recovered.slot, manifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: current?.health === 'ready' && current.slot !== 'manual' })
+        await this.recordDiagnostic({ event: 'recovered_installed_slot', root: recovered.root, slot: recovered.slot, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest) })
+        const status = environmentStatus('ready', manifest, recovered.root, recovered.slot, true, current?.health === 'ready' && current.slot !== 'manual')
+        status.onlineEnvironmentVersion = environmentVersion(manifest); status.onlineContentRevision = contentRevision(manifest); status.updateAvailable = false; status.lastCheckedAt = new Date().toISOString()
+        return this.set(status)
+      }
       this.set({ phase: 'downloading', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), progress: 5, message: '正在同步科研 MCP 环境' })
       const fetcher = this.options.fetcher ?? fetch
       const archiveResponse = await fetcher(manifest.archiveUrl, { cache: 'no-store' })
@@ -235,7 +249,7 @@ export class McpEnvironmentController {
       const current = await readCurrent(this.options.root)
       const currentSlot = current?.slot === 'a' || current?.slot === 'b' ? current.slot : undefined
       const targetSlot: 'a' | 'b' = currentSlot === 'a' ? 'b' : 'a'
-      const target = join(this.options.root, 'slots', targetSlot)
+      let target = join(this.options.root, 'slots', targetSlot)
       const temporary = `${target}.tmp-${process.pid}-${Date.now()}`
       const archivePath = join(this.options.root, `.download-${process.pid}-${Date.now()}.zip`)
       try {
@@ -256,8 +270,17 @@ export class McpEnvironmentController {
         await this.verifyHealth(temporary, manifest)
         await writeFile(join(temporary, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
         await mkdir(dirname(target), { recursive: true })
-        await rm(target, { recursive: true, force: true })
-        await rename(temporary, target)
+        // The inactive slot may still be held by a stale Python/MCP process
+        // from a previous desktop instance. Prefer the stable A/B path, but
+        // never let a Windows sharing violation prevent a fresh installation.
+        try {
+          await removePathWithRetry(target)
+        } catch (error) {
+          await this.recordDiagnostic({ event: 'slot_replace_fallback', target, error: describeError(error) })
+          target = join(this.options.root, 'slots', `${targetSlot}-${environmentVersion(manifest)}-${Date.now()}`)
+          await mkdir(dirname(target), { recursive: true })
+        }
+        await renameWithRetry(temporary, target)
       } catch (error) {
         await rm(temporary, { recursive: true, force: true })
         throw error
@@ -273,6 +296,7 @@ export class McpEnvironmentController {
       status.onlineEnvironmentVersion = environmentVersion(manifest); status.onlineContentRevision = contentRevision(manifest); status.updateAvailable = false; status.lastCheckedAt = new Date().toISOString()
       return this.set(status)
     } catch (error) {
+      await this.recordDiagnostic({ event: 'install_failed', error: describeError(error), requestedManifest: requestedManifest === undefined ? undefined : { environmentVersion: environmentVersion(requestedManifest), contentRevision: contentRevision(requestedManifest), archiveSha256: requestedManifest.archiveSha256 } })
       const retained = await this.currentHealthyRoot()
       if (retained !== undefined) {
         const status = environmentStatus('ready', retained.manifest, retained.root, retained.slot, false, retained.rollbackAvailable)
@@ -341,7 +365,10 @@ export class McpEnvironmentController {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
         throw error
       }
-      await Promise.all(entries.filter(entry => entry.isDirectory() && entry.name.includes('.tmp-')).map(entry => rm(join(directory, entry.name), { recursive: true, force: true })))
+      for (const entry of entries.filter(entry => entry.isDirectory() && entry.name.includes('.tmp-'))) {
+        try { await removePathWithRetry(join(directory, entry.name)) }
+        catch (error) { await this.recordDiagnostic({ event: 'temporary_cleanup_failed', path: join(directory, entry.name), error: describeError(error) }) }
+      }
     }
   }
 
@@ -366,6 +393,28 @@ export class McpEnvironmentController {
       const slot = record.slot === 'a' || record.slot === 'b' ? record.slot : 'manual'
       return { root: record.root, slot, rollbackAvailable: record.rollbackAvailable === true }
     } catch { return undefined }
+  }
+
+  private async recoverInstalledRoot(manifest: McpEnvironmentManifest): Promise<{ root: string; slot: 'a' | 'b' } | undefined> {
+    const slots = join(this.options.root, 'slots')
+    let entries
+    try { entries = await readdir(slots, { withFileTypes: true }) } catch { return undefined }
+    const candidates = entries
+      .filter(entry => entry.isDirectory() && /^(?:a|b)(?:-|$)/u.test(entry.name) && !entry.name.includes('.tmp-'))
+      .sort((left, right) => right.name.localeCompare(left.name))
+    for (const entry of candidates) {
+      const root = join(slots, entry.name)
+      try {
+        const candidate = await readFile(join(root, 'manifest.json'), 'utf8').then(value => validateManifest(JSON.parse(value) as unknown))
+        if (environmentVersion(candidate) !== environmentVersion(manifest) || contentRevision(candidate) !== contentRevision(manifest) || candidate.archiveSha256 !== manifest.archiveSha256) continue
+        if (!verifyManifestWithKeyring(candidate, this.options.publicKey, this.options.publicKeys)) continue
+        await this.verifyHealth(root, candidate)
+        return { root, slot: entry.name.startsWith('a') ? 'a' : 'b' }
+      } catch {
+        // A partial or unhealthy orphan is ignored; normal installation follows.
+      }
+    }
+    return undefined
   }
 
   private async migrateLegacyCurrent(manifest: McpEnvironmentManifest): Promise<void> {
@@ -409,7 +458,17 @@ export class McpEnvironmentController {
     const current = join(this.options.root, fileName)
     const temporary = `${current}.tmp-${process.pid}-${Date.now()}`
     await writeFile(temporary, `${JSON.stringify(record, null, 2)}\n`, 'utf8')
-    await rename(temporary, current)
+    await replaceFileWithRetry(temporary, current)
+  }
+
+  private async recordDiagnostic(event: Record<string, unknown>): Promise<void> {
+    const path = this.options.diagnosticPath ?? join(this.options.root, '..', 'mcp-environment.log')
+    try {
+      await mkdir(dirname(path), { recursive: true })
+      await appendFile(path, `${JSON.stringify({ timestamp: new Date().toISOString(), ...event })}\n`, 'utf8')
+    } catch {
+      // Diagnostics must never make an otherwise recoverable update fail.
+    }
   }
 }
 
@@ -564,7 +623,67 @@ export async function extractZipInWorker(archivePath: string, target: string, on
     worker.once('exit', code => { if (!settled) finish(new Error(`MCP environment extraction worker exited with code ${code}.`)) })
   })
 }
-function sanitizeError(error: unknown): string { return (error instanceof Error ? error.message : String(error)).replace(/https?:\/\/[^\s]+/gu, '[download-url]').slice(0, 500) }
+function describeError(error: unknown): { message: string; code?: string; path?: string; syscall?: string } {
+  const item = error as NodeJS.ErrnoException
+  return { message: sanitizeError(error), ...(typeof item?.code === 'string' ? { code: item.code } : {}), ...(typeof item?.path === 'string' ? { path: item.path } : {}), ...(typeof item?.syscall === 'string' ? { syscall: item.syscall } : {}) }
+}
+
+function sanitizeError(error: unknown): string {
+  const item = error as NodeJS.ErrnoException
+  const message = (error instanceof Error ? error.message : String(error)).replace(/https?:\/\/[^\s]+/gu, '[download-url]').slice(0, 500)
+  const details = [typeof item?.code === 'string' ? `code=${item.code}` : '', typeof item?.path === 'string' ? `path=${item.path}` : ''].filter(Boolean)
+  return details.length === 0 ? message : `${message} (${details.join(', ')})`
+}
+
+async function removePathWithRetry(path: string, attempts = 8): Promise<void> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await rm(path, { recursive: true, force: true, maxRetries: 2, retryDelay: 250 })
+      return
+    } catch (error) {
+      lastError = error
+      const code = (error as NodeJS.ErrnoException)?.code
+      if (code !== 'EACCES' && code !== 'EPERM' && code !== 'EBUSY' && code !== 'ENOTEMPTY') throw error
+      await new Promise(resolvePromise => setTimeout(resolvePromise, 250 * Math.min(attempt + 1, 4)))
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`Unable to remove ${path}`)
+}
+
+async function renameWithRetry(from: string, to: string, attempts = 8): Promise<void> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try { await rename(from, to); return }
+    catch (error) {
+      lastError = error
+      const code = (error as NodeJS.ErrnoException)?.code
+      if (code !== 'EACCES' && code !== 'EPERM' && code !== 'EBUSY' && code !== 'ENOTEMPTY') throw error
+      await new Promise(resolvePromise => setTimeout(resolvePromise, 250 * Math.min(attempt + 1, 4)))
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`Unable to rename ${from} to ${to}`)
+}
+
+async function replaceFileWithRetry(temporary: string, destination: string): Promise<void> {
+  const backup = `${destination}.replace-${process.pid}-${Date.now()}`
+  let movedExisting = false
+  try {
+    if (await pathExists(destination)) {
+      await renameWithRetry(destination, backup)
+      movedExisting = true
+    }
+    await renameWithRetry(temporary, destination)
+    if (movedExisting) await removePathWithRetry(backup)
+  } catch (error) {
+    if (!(await pathExists(destination)) && movedExisting && await pathExists(backup)) {
+      await renameWithRetry(backup, destination).catch(() => undefined)
+    }
+    throw error
+  } finally {
+    await rm(temporary, { force: true }).catch(() => undefined)
+  }
+}
 
 async function assertRegularFile(path: string): Promise<void> {
   await access(path)
