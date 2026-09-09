@@ -3,7 +3,7 @@
   "platform": "win32",
   "architecture": "x64",
   "python": "3.12",
-  "generatedAt": "2026-09-09T06:13:01.228Z",
+  "generatedAt": "2026-09-09T09:05:15.238Z",
   "summary": {
     "ready": 92,
     "managed": 19,
@@ -5476,6 +5476,7 @@
         "difflib",
         "fitz",
         "hashlib",
+        "html",
         "importlib",
         "json",
         "matplotlib",
@@ -5486,6 +5487,7 @@
         "pathlib",
         "pypdf",
         "re",
+        "reportlab",
         "requests",
         "shutil",
         "subprocess",
@@ -5534,6 +5536,12 @@
           "name": "pypdf",
           "import": "pypdf",
           "status": "managed"
+        },
+        {
+          "name": "reportlab",
+          "import": "reportlab",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
         },
         {
           "name": "requests",

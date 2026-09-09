@@ -66,6 +66,9 @@ export class McpEnvironmentController {
 
   /** Check the signed feed without downloading an archive. */
   async checkForUpdates(): Promise<McpEnvironmentStatus> {
+    // A foreground refresh must never replace downloading/installing progress
+    // with the still-active slot's ready state.
+    if (this.operation !== undefined) return this.current()
     try {
       const manifest = await this.fetchManifest()
       const record = await readCurrent(this.options.root)
@@ -85,7 +88,18 @@ export class McpEnvironmentController {
     }
   }
 
-  updateForUser(): Promise<McpEnvironmentStatus> { return this.initialize() }
+  /** Start an update and return immediately; progress is published as events. */
+  updateForUser(): McpEnvironmentStatus {
+    if (this.operation !== undefined) return this.current()
+    this.set({ ...this.status, phase: 'checking', progress: 0, message: '科研环境更新任务已启动', lastUpdateError: undefined })
+    void this.initialize()
+    return this.current()
+  }
+
+  /** Check and install the latest signed environment without blocking startup. */
+  async autoUpdate(): Promise<McpEnvironmentStatus> {
+    return await this.initialize()
+  }
 
   async pythonInfo(query = ''): Promise<McpPythonInfo> {
     const current = await readCurrent(this.options.root)
@@ -217,7 +231,7 @@ export class McpEnvironmentController {
       const fetcher = this.options.fetcher ?? fetch
       const archiveResponse = await fetcher(manifest.archiveUrl, { cache: 'no-store' })
       if (!archiveResponse.ok) throw new Error(`MCP environment archive returned HTTP ${archiveResponse.status}.`)
-      const archive = Buffer.from(await archiveResponse.arrayBuffer())
+      const archive = await this.readArchiveWithProgress(archiveResponse, manifest)
       this.set({ phase: 'verifying', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), progress: 70, message: '正在验证科研 MCP 环境' })
       if (archive.byteLength !== manifest.archiveSize || sha256(archive) !== manifest.archiveSha256) throw new Error('MCP environment archive hash or size is invalid.')
       const current = await readCurrent(this.options.root)
@@ -230,6 +244,7 @@ export class McpEnvironmentController {
       this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: targetSlot, progress: 80, message: '正在安装科研 MCP 环境' })
       try {
         await extractZip(archive, temporary)
+        this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: targetSlot, progress: 92, message: '正在校验 Python 与科研服务' })
         await this.verifyHealth(temporary, manifest)
         await writeFile(join(temporary, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
         await mkdir(dirname(target), { recursive: true })
@@ -261,6 +276,29 @@ export class McpEnvironmentController {
       }
       return this.set({ phase: 'failed', message: sanitizeError(error) })
     }
+  }
+
+  private async readArchiveWithProgress(response: Response, manifest: McpEnvironmentManifest): Promise<Buffer> {
+    if (response.body === null) return Buffer.from(await response.arrayBuffer())
+    const reader = response.body.getReader()
+    const chunks: Uint8Array[] = []
+    let received = 0
+    let lastProgress = 5
+    while (true) {
+      const result = await reader.read()
+      if (result.done) break
+      chunks.push(result.value)
+      received += result.value.byteLength
+      const ratio = manifest.archiveSize > 0 ? Math.min(received / manifest.archiveSize, 1) : 0
+      const progress = Math.min(68, 5 + Math.floor(ratio * 63))
+      if (progress > lastProgress) {
+        lastProgress = progress
+        const receivedMb = (received / 1024 / 1024).toFixed(1)
+        const totalMb = (manifest.archiveSize / 1024 / 1024).toFixed(1)
+        this.set({ phase: 'downloading', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), progress, message: `正在下载科研环境 ${receivedMb} MB / ${totalMb} MB` })
+      }
+    }
+    return Buffer.concat(chunks.map(chunk => Buffer.from(chunk)))
   }
 
   private async fetchManifest(): Promise<McpEnvironmentManifest> {
@@ -554,8 +592,22 @@ export async function verifyMcpEnvironmentHealth(root: string, manifest: McpEnvi
   const reported = `${pythonVersion.stdout}\n${pythonVersion.stderr}`
   const expected = manifest.python.version.match(/^\d+\.\d+/u)?.[0] ?? manifest.python.version
   if (!new RegExp(`Python ${expected.replace('.', '\\.')}(?:\\.|\\s|$)`, 'u').test(reported)) throw new Error(`Managed Python version does not match ${manifest.python.version}.`)
-  await execute(python, ['-c', `import ${manifest.pythonHealth.imports.join(', ')}`], root, undefined, { PYTHONPATH: join(root, manifest.python.relativeSitePackages), PYTHONNOUSERSITE: '1' })
+  // Importing the full scientific stack can take minutes on a cold Windows
+  // machine. Three representative, lightweight imports are sufficient here;
+  // the complete package inventory remains visible in the Python panel.
+  const healthImports = selectPythonHealthImports([...manifest.pythonHealth.imports, ...manifest.python.modules])
+  if (healthImports.length > 0) {
+    await execute(python, ['-c', `import ${healthImports.join(', ')}`], root, undefined, { PYTHONPATH: join(root, manifest.python.relativeSitePackages), PYTHONNOUSERSITE: '1' }, 30_000)
+  }
   await checkMcpServer(python, [join(root, 'bio-tools', 'run_server.py'), 'mcp_bio'], join(root, 'bio-tools'))
   await checkMcpServer(node, [join(root, 'ketcher-chemistry', 'server.js')], join(root, 'ketcher-chemistry'))
   await checkMcpServer(node, [join(root, manifest.sci.mcp)], join(root, 'sci'))
+}
+
+export function selectPythonHealthImports(imports: string[]): string[] {
+  const preferred = ['mcp', 'numpy', 'pandas']
+  const declared = imports.filter(name => /^[A-Za-z_][A-Za-z0-9_.]*$/u.test(name))
+  return [...preferred.filter(name => declared.includes(name)), ...declared]
+    .filter((name, index, values) => values.indexOf(name) === index)
+    .slice(0, 3)
 }

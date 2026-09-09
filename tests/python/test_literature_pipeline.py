@@ -104,8 +104,8 @@ class LiteraturePipelineTests(unittest.TestCase):
             result = module.main(["analyze", "A paper title", "--output", "task"])
         self.assertEqual(result, 0)
         self.assertTrue(captured["download_pdfs"])
-        self.assertEqual(captured["directions"], "references,cited-by")
-        self.assertEqual(captured["max_papers"], 40)
+        self.assertEqual(captured["directions"], "cited-by")
+        self.assertEqual(captured["max_papers"], 20)
 
     def test_ingest_mineru_result_persists_artifacts_and_provenance(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -151,6 +151,111 @@ class LiteraturePipelineTests(unittest.TestCase):
     def test_paper_text_requires_mineru_snapshot(self):
         paper = module.Paper(key="doi:10.1/text", title="Paper", pdf_path="missing.pdf")
         self.assertEqual(module.paper_text(paper), "")
+
+    def test_local_pdf_is_registered_without_text_extraction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "opaque-name.pdf"
+            source.write_bytes(b"%PDF-1.4\n%%EOF\n")
+            task = module.Task(Path(directory) / "task")
+            paper = module.Client(task).from_local(source)
+            with patch.object(module, "extract_pdf_text", side_effect=AssertionError("must not parse local PDF")):
+                module.acquire_provided_target_pdf(task, paper, source)
+            self.assertEqual(paper.pdf_status, "provided_pdf")
+            self.assertEqual(paper.parse_status, "mineru_required")
+            self.assertTrue(Path(paper.pdf_path).is_file())
+
+    def test_simplified_ingest_rejects_cited_paper(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "task"; task = module.Task(root)
+            target = module.Paper(key="doi:10.1/target", title="Target", direction="target", pdf_path="target.pdf")
+            cited = module.Paper(key="doi:10.1/cited", title="Cited", direction="cited-by", pdf_path="cited.pdf")
+            state = task.load(); state.update({"workflow_mode": module.WORKFLOW_MODE, "task_root": str(root), "papers": [module.asdict(target), module.asdict(cited)]}); task.save(state)
+            run_dir = Path(directory) / "run"; run_dir.mkdir(); (run_dir / "full.md").write_text("# Cited paper\n\nBody", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "target paper"):
+                module.ingest_mineru_result(task, state, cited.key, run_dir)
+
+    def test_simplified_target_ingest_unlocks_cited_by(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "task"; task = module.Task(root)
+            target = module.Paper(key="local:test", title="file-name", direction="target", source="local", pdf_path="target.pdf", pdf_status="provided_pdf", acquisition_state="acquisition_terminal")
+            state = task.load(); state.update({"workflow_mode": module.WORKFLOW_MODE, "task_root": str(root), "papers": [module.asdict(target)]}); task.save(state)
+            run_dir = Path(directory) / "run"; run_dir.mkdir(); (run_dir / "full.md").write_text("# A precise target paper title\n\nBody", encoding="utf-8")
+            with patch.object(module, "report"):
+                parsed = module.ingest_mineru_result(task, state, target.key, run_dir, "task-1")
+            saved = task.load()
+            self.assertEqual(parsed.title, "A precise target paper title")
+            self.assertEqual(saved["stage"], "target_mineru_parsed")
+            self.assertEqual(saved["phase_status"]["cited_by_expanded"], "pending")
+
+    def test_citation_relation_never_contains_body_markers(self):
+        target = module.Paper(key="doi:target", title="Target", authors=["Alice Smith"])
+        cited = module.Paper(key="doi:cited", title="Follow-up", authors=["Bob Jones"], direction="cited-by")
+        relation = module.citation_relation(target, cited)
+        for forbidden in ("marker", "offset", "page", "excerpt"):
+            self.assertNotIn(forbidden, relation)
+
+    def test_simplified_report_has_explanation_sheet_and_no_remote_runtime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "task"; task = module.Task(root)
+            target = module.Paper(key="doi:target", title="Target paper", direction="target", pdf_path="target.pdf", pdf_status="provided_pdf", acquisition_state="acquisition_terminal", parse_status="mineru_parsed", parsed_text_path="full.md")
+            cited = module.Paper(key="doi:cited", title="Citing paper", direction="cited-by", pdf_status="unavailable_no_authorized_source", acquisition_state="acquisition_terminal", parse_status="not_required", authors=["Bob Jones"], citation_relation=module.citation_relation(target, module.Paper(key="doi:cited", title="Citing paper", direction="cited-by")))
+            state = task.load(); state.update({"workflow_mode": module.WORKFLOW_MODE, "task_root": str(root), "stage": "report_building", "papers": [module.asdict(target), module.asdict(cited)]})
+            module.simplified_report(task, state, [target, cited])
+            from openpyxl import load_workbook
+            book = load_workbook(root / "papers.xlsx", read_only=True)
+            self.assertEqual(book.sheetnames[0], "说明")
+            book.close()
+            html = (root / "report.html").read_text(encoding="utf-8")
+            self.assertNotIn("cdn", html.lower())
+            self.assertNotIn("<script src=", html.lower())
+
+    def test_title_analyze_acquires_only_target_before_mineru(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = module.Paper(key="doi:10.1/target", title="A target paper", doi="10.1/target", direction="target")
+            def downloaded(_client, paper, _allow_tsg=True):
+                paper.pdf_path = str(Path(directory) / "target.pdf")
+                paper.pdf_status = "downloaded_open_access"
+                paper.acquisition_state = "acquisition_terminal"
+            with patch.object(module.Client, "resolve", return_value=(target, [])), patch.object(module.Client, "enrich", side_effect=lambda paper: paper), patch.object(module.Client, "expand_openalex") as expand, patch.object(module, "download_paper", side_effect=downloaded), patch.object(module, "report"):
+                result = module.main(["analyze", target.title, "--output", str(Path(directory) / "task")])
+            self.assertEqual(result, 0)
+            expand.assert_not_called()
+            state = module.Task(Path(directory) / "task").load()
+            self.assertEqual(state["stage"], "target_mineru_required")
+            self.assertEqual(len(state["papers"]), 1)
+
+    def test_local_pdf_analyze_waits_for_target_mineru(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "provided.pdf"; source.write_bytes(b"%PDF-1.4\n%%EOF\n")
+            task_root = Path(directory) / "task"
+            with patch.object(module.Client, "expand_openalex") as expand, patch.object(module, "report"):
+                result = module.main(["analyze", str(source), "--output", str(task_root)])
+            self.assertEqual(result, 0); expand.assert_not_called()
+            state = module.Task(task_root).load(); paper = state["papers"][0]
+            self.assertEqual(state["stage"], "target_mineru_required")
+            self.assertEqual(paper["pdf_source"], "user_provided")
+            self.assertEqual(paper["parse_status"], "mineru_required")
+
+    def test_resume_does_not_expand_before_target_mineru(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "task"; task = module.Task(root)
+            target = module.Paper(key="doi:target", title="Target", direction="target", pdf_path="target.pdf", pdf_status="provided_pdf", acquisition_state="acquisition_terminal", parse_status="mineru_required")
+            state = task.load(); state.update({"workflow_mode": module.WORKFLOW_MODE, "task_root": str(root), "single_article": True, "papers": [module.asdict(target)]}); task.save(state)
+            with patch.object(module.Client, "expand_openalex") as expand, patch.object(module, "report"):
+                result = module.main(["resume", str(root)])
+            self.assertEqual(result, 0); expand.assert_not_called()
+            self.assertEqual(task.load()["stage"], "target_mineru_required")
+
+    def test_finalize_does_not_require_cited_paper_mineru(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "task"; task = module.Task(root)
+            full_md = root / "parsed" / "target" / "run" / "full.md"; full_md.parent.mkdir(parents=True); full_md.write_text("# Target\n\nTarget evidence body.", encoding="utf-8")
+            target = module.Paper(key="doi:target", title="Target", direction="target", pdf_path="target.pdf", pdf_status="provided_pdf", acquisition_state="acquisition_terminal", parse_status="mineru_parsed", parsed_text_path=str(full_md))
+            cited = module.Paper(key="doi:cited", title="Cited", direction="cited-by", pdf_status="unavailable_no_authorized_source", acquisition_state="acquisition_terminal", parse_status="not_required", authors=["Bob Jones"])
+            state = task.load(); state.update({"workflow_mode": module.WORKFLOW_MODE, "task_root": str(root), "single_article": True, "cited_by_expanded": True, "stage": "report_building", "papers": [module.asdict(target), module.asdict(cited)]})
+            module.build_simplified_analysis(task, state, [target, cited]); state["papers"] = [module.asdict(target), module.asdict(cited)]; task.save(state); module.report(task, state)
+            module.finalize_analysis(task, state)
+            self.assertEqual(task.load()["stage"], "complete")
 
     def test_tsg_is_enabled_by_default_but_can_be_disabled(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -435,7 +435,11 @@ app.whenReady().then(async () => {
   })
 
   await launch()
-  void mcpEnvironment.initialize()
+  // Environment updates run independently from desktop updates. Startup and
+  // hourly checks both install a newer signed revision automatically.
+  void mcpEnvironment.autoUpdate()
+  const mcpEnvironmentInterval = setInterval(() => { void mcpEnvironment.autoUpdate().catch(() => undefined) }, UPDATE_CHECK_INTERVAL_MS)
+  mcpEnvironmentInterval.unref()
   const updateRecordPath = join(userData, 'updates', 'last-check.json')
   const runScheduledUpdateCheck = async (): Promise<void> => {
     const record = await readUpdateCheckRecord(updateRecordPath)

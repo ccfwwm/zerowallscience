@@ -474,11 +474,12 @@ export function McpConnectionsButton(props: Props) {
 
 export function PythonEnvironmentPanel() {
   const [info, setInfo] = useState<PythonEnvironmentInfo>()
-  const [environment, setEnvironment] = useState<{ environmentVersion?: string; contentRevision?: number; onlineEnvironmentVersion?: string; onlineContentRevision?: number; updateAvailable?: boolean; lastUpdateError?: string; phase: string; message?: string }>()
+  const [environment, setEnvironment] = useState<{ environmentVersion?: string; contentRevision?: number; onlineEnvironmentVersion?: string; onlineContentRevision?: number; updateAvailable?: boolean; updated?: boolean; progress?: number; lastUpdateError?: string; phase: string; message?: string }>()
   const [query, setQuery] = useState('')
   const [spec, setSpec] = useState('')
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState<string>()
+  const updateRequested = useRef(false)
 
   const load = useCallback(async (search = '') => {
     const [nextInfo, nextEnvironment] = await Promise.all([
@@ -489,7 +490,25 @@ export function PythonEnvironmentPanel() {
     if (nextEnvironment !== undefined) setEnvironment(nextEnvironment)
   }, [])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    const unsubscribe = window.zerowallDesktop?.onMcpEnvironmentStatus?.(status => {
+      setEnvironment(status)
+      if (status.phase === 'ready' && updateRequested.current) {
+        updateRequested.current = false
+        if (status.updated === true) {
+          setFeedback('科研 Python 环境已更新。')
+          void window.zerowallDesktop?.getMcpPythonInfo?.().then(next => { if (next !== undefined) setInfo(next) })
+        } else if (status.lastUpdateError) {
+          setFeedback(`环境更新失败：${status.lastUpdateError}`)
+        }
+      } else if (status.phase === 'failed' && updateRequested.current) {
+        updateRequested.current = false
+        setFeedback(`环境更新失败：${status.message ?? '未知错误'}`)
+      }
+    })
+    void load()
+    return unsubscribe
+  }, [load])
 
   const install = async () => {
     if (spec.trim() === '') return
@@ -504,10 +523,17 @@ export function PythonEnvironmentPanel() {
 
   const update = async () => {
     setBusy(true); setFeedback(undefined)
-    try { const status = await window.zerowallDesktop?.updateMcpEnvironment?.(); if (status?.lastUpdateError) throw new Error(status.lastUpdateError); await load(query); setFeedback('科研 Python 环境已更新。') }
+    updateRequested.current = true
+    try {
+      const status = await window.zerowallDesktop?.updateMcpEnvironment?.()
+      if (status !== undefined) setEnvironment(status)
+      setFeedback('科研环境更新已在后台启动。')
+    }
     catch (reason) { setFeedback(message(reason)) }
     finally { setBusy(false) }
   }
+
+  const environmentBusy = environment !== undefined && ['checking', 'downloading', 'verifying', 'installing'].includes(environment.phase)
 
   const checkPackages = async () => {
     setBusy(true); setFeedback(undefined)
@@ -524,7 +550,7 @@ export function PythonEnvironmentPanel() {
   }
 
   return <section className={css.pythonPanel} aria-labelledby="zerowall-python-title">
-    <header className={css.header}><div><p>ZeroWall Science</p><h2 id="zerowall-python-title">Python 环境</h2></div><button className={css.iconButton} type="button" onClick={() => void load(query)} disabled={busy} title="重新检测" aria-label="重新检测"><RefreshCw size={17} /></button></header>
+    <header className={css.header}><div><p>ZeroWall Science</p><h2 id="zerowall-python-title">Python 环境</h2></div><button className={css.iconButton} type="button" onClick={() => void load(query)} disabled={busy || environmentBusy} title="重新检测" aria-label="重新检测"><RefreshCw size={17} /></button></header>
     <div className={css.pythonBody}>
       <div className={css.pythonSummary}>
         <div><span>运行状态</span><strong>{info?.ready ? '可用' : '不可用'}</strong></div>
@@ -532,7 +558,8 @@ export function PythonEnvironmentPanel() {
         <div><span>已安装包</span><strong>{info?.packageCount ?? info?.packages.length ?? 0}</strong></div>
         <div><span>科研环境</span><strong>{environment?.environmentVersion ?? '未安装'} / 修订 {environment?.contentRevision ?? '-'}</strong></div>
       </div>
-      <div className={css.environmentLine}><span>在线版本：{environment?.onlineEnvironmentVersion ?? '检测中'} / 修订 {environment?.onlineContentRevision ?? '-'}</span><span className={css.sciMasterActions}>{environment?.updateAvailable === true && <button type="button" onClick={() => void update()} disabled={busy}>更新托管环境</button>}<button type="button" onClick={() => void load(query)} disabled={busy}>检查环境</button></span></div>
+      <div className={css.environmentLine}><span>在线版本：{environment?.onlineEnvironmentVersion ?? '检测中'} / 修订 {environment?.onlineContentRevision ?? '-'}</span><span className={css.sciMasterActions}>{environment?.updateAvailable === true && <button type="button" onClick={() => void update()} disabled={busy || environmentBusy}>更新托管环境</button>}<button type="button" onClick={() => void load(query)} disabled={busy || environmentBusy}>检查环境</button></span></div>
+      {environmentBusy && <div className={css.environmentProgress} role="status" aria-live="polite"><div><span>{environment.message ?? '正在更新科研环境'}</span><strong>{Math.round(environment.progress ?? 0)}%</strong></div><progress max="100" value={environment.progress ?? 0} /></div>}
       {environment?.lastUpdateError && <p className={css.error}>上次环境更新失败：{environment.lastUpdateError}</p>}
       {info?.message && <p className={css.error}>{info.message}</p>}
       {info?.ready && <>
@@ -542,7 +569,7 @@ export function PythonEnvironmentPanel() {
         <div className={css.packageList} role="list">{info.packages.map(pkg => <div key={`${pkg.name}-${pkg.version}`} role="listitem"><strong>{pkg.name}</strong><span>{pkg.version}{pkg.source === 'core' ? ' · 核心锁定' : pkg.updateAvailable ? ` → ${pkg.latestVersion}` : ' · 用户扩展'}</span></div>)}</div>
         {info.skillAudit && <div className={css.environmentLine}><span>Skills 就绪 {info.skillAudit.summary.ready ?? 0} · 托管 {info.skillAudit.summary.managed ?? 0} · 按需 {info.skillAudit.summary.optional ?? 0} · 外部 {info.skillAudit.summary.external ?? 0} · 不兼容 {info.skillAudit.summary.incompatible ?? 0}</span></div>}
       </>}
-      {feedback && <p className={feedback.includes('完成') || feedback.includes('已更新') ? css.success : css.error}>{feedback}</p>}
+      {feedback && <p className={feedback.includes('完成') || feedback.includes('已更新') || feedback.includes('后台启动') ? css.success : css.error}>{feedback}</p>}
     </div>
   </section>
 }

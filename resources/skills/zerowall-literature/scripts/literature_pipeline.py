@@ -43,7 +43,9 @@ ACQUISITION_TERMINAL = {
     "downloaded_open_access", "downloaded_paper_download", "downloaded_tsg",
     "downloaded_authorized_adapter", "already_present", "unavailable_no_authorized_source",
     "blocked_ambiguous_match", "blocked_identity_mismatch", "blocked_provider_rate_limit",
+    "provided_pdf",
 }
+WORKFLOW_MODE = "cited_by_metadata"
 SENSITIVE_QUERY_KEYS = {"token", "query", "key", "cookie", "authorization", "jsessionid", "signature", "sig", "iv"}
 DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.I)
 PMID_RE = re.compile(r"(?:pubmed\.ncbi\.nlm\.nih\.gov/|pmid[:\s]*)?(\d{5,9})$", re.I)
@@ -315,8 +317,11 @@ class Client:
                 preview = "；".join(titles[:3])
                 raise ValueError(f"输入文件包含多个主文章标题（{len(titles)} 个）：{preview}。一次任务只能处理一篇主文章，请拆分为独立工作目录后重试。")
             return Paper(key=f"local:{path.resolve()}", title=titles[0], source=source, raw={"path": str(path.resolve()), "local_titles": titles})
-        text = extract_pdf_text(path) if path.suffix.lower() == ".pdf" else ""
-        title = next((clean_text(line) for line in text.splitlines() if 30 < len(clean_text(line)) < 240), path.stem)
+        # A local PDF is intentionally not text-extracted here.  MinerU is the
+        # only target-document parser in the new workflow; until it runs we
+        # keep a conservative filename title and let the parsed heading replace
+        # it during ingest.
+        title = path.stem if path.suffix.lower() == ".pdf" else path.stem
         return Paper(key=f"local:{path.resolve()}", title=title, source="local", raw={"path": str(path.resolve())})
 
     @staticmethod
@@ -400,6 +405,7 @@ class Client:
             s2 = self.get_json("semantic_scholar", f"https://api.semanticscholar.org/graph/v1/paper/DOI:{quote(paper.doi, safe='')}", headers=headers, params={"fields": "citationCount,authors"})
             if s2.get("citationCount") is not None:
                 paper.cited_by_counts["semantic_scholar"] = int(s2.get("citationCount") or 0)
+            paper.semantic_scholar_id = paper.semantic_scholar_id or clean_text(s2.get("paperId"))
             # ORCID public records are optional and only used for explicit, verified claims.
             orcid_profiles = paper.raw.setdefault("orcid_profiles", {})
             for author in paper.raw.get("author", []) or []:
@@ -453,7 +459,7 @@ class Client:
             if not item: continue
             doi = clean_text(item.get("doi")).replace("https://doi.org/", "").lower()
             authors = [clean_text(f"{a.get('author', {}).get('display_name', '')}") for a in item.get("authorships", [])]
-            paper = Paper(key=f"doi:{doi}" if doi else f"openalex:{item.get('id')}", title=clean_text(item.get("title")), doi=doi, year=str(item.get("publication_year") or ""), journal=clean_text((item.get("primary_location") or {}).get("source", {}).get("display_name")), authors=authors, source="openalex", direction=direction, cited_by_counts={"openalex": int(item.get("cited_by_count") or 0)}, raw={"openalex": slim_openalex(item), "reference_index": index if direction == "references" else None}, openalex_id=clean_text(item.get("id")))
+            paper = Paper(key=f"doi:{doi}" if doi else f"openalex:{item.get('id')}", title=clean_text(item.get("title")), doi=doi, year=str(item.get("publication_year") or ""), journal=clean_text((item.get("primary_location") or {}).get("source", {}).get("display_name")), authors=authors, source="openalex", direction=direction, cited_by_counts={"openalex": int(item.get("cited_by_count") or 0)}, raw={"openalex": slim_openalex(item), "reference_index": index if direction == "references" else None, "citation_source": "OpenAlex" if direction == "cited-by" else ""}, openalex_id=clean_text(item.get("id")))
             paper.institutions = list(dict.fromkeys(clean_text(a.get("institutions", [{}])[0].get("display_name")) for a in item.get("authorships", []) if a.get("institutions") and clean_text(a.get("institutions", [{}])[0].get("display_name"))))
             paper.countries = list(dict.fromkeys(clean_text(i.get("country_code")) for a in item.get("authorships", []) for i in a.get("institutions", []) if clean_text(i.get("country_code"))))
             loc = item.get("best_oa_location") or {}
@@ -483,9 +489,9 @@ def identity_keys(paper: Paper) -> list[str]:
 
 
 def merge_paper(existing: Paper, incoming: Paper) -> Paper:
-    for attr in ("doi", "pmid", "year", "journal", "abstract", "pdf_path", "pdf_source", "pdf_sha256", "openalex_id"):
+    for attr in ("doi", "pmid", "year", "journal", "journal_abbrev", "publisher", "volume", "issue", "pages", "abstract", "pdf_path", "pdf_source", "pdf_sha256", "openalex_id", "semantic_scholar_id"):
         if not getattr(existing, attr) and getattr(incoming, attr): setattr(existing, attr, getattr(incoming, attr))
-    for attr in ("authors", "affiliations", "oa_urls", "countries", "institutions"):
+    for attr in ("authors", "affiliations", "oa_urls", "countries", "institutions", "issn"):
         setattr(existing, attr, list(dict.fromkeys((getattr(existing, attr) or []) + (getattr(incoming, attr) or []))))
     existing.cited_by_counts.update(incoming.cited_by_counts)
     existing.raw.update({k: v for k, v in incoming.raw.items() if v not in (None, "", [], {})})
@@ -518,29 +524,33 @@ def citation_relation(target: Paper, paper: Paper) -> dict[str, Any]:
     target_authors = {clean_text(x).lower() for x in target.authors if clean_text(x)}
     paper_authors = {clean_text(x).lower() for x in paper.authors if clean_text(x)}
     overlap = target_authors & paper_authors
-    if overlap and target_authors and paper_authors:
+    if not target_authors or not paper_authors:
+        self_citation = "unknown"
+    elif overlap:
         self_citation = "full" if target_authors <= paper_authors else "partial"
     else:
         self_citation = "no"
     corpus = f"{paper.title} {paper.abstract}".lower()
+    target_corpus = clean_text(target.raw.get("mineru_excerpt") or target.title).lower()
+    shared_terms = sorted(title_tokens(corpus) & title_tokens(target_corpus))[:20]
     if any(word in corpus for word in ("supports", "supporting", "consistent with", "confirm", "validates")):
-        usage, confidence = "supportive", "medium"
+        usage, confidence = "支持", "medium"
     elif any(word in corpus for word in ("contradict", "challenge", "disagree", "refute", "critic")):
-        usage, confidence = "critical", "medium"
+        usage, confidence = "质疑/反驳", "medium"
     elif paper.abstract or paper.title:
-        usage, confidence = "neutral", "low"
+        usage, confidence = "中立", "low"
     else:
-        usage, confidence = "uncertain", "low"
+        usage, confidence = "未确认", "low"
     count = max((int(v or 0) for v in paper.cited_by_counts.values()), default=0)
     return {
         "target_paper": target.key, "citing_paper": paper.key, "cited": True,
-        "citation_source": ", ".join(sorted(paper.cited_by_counts)) or paper.source,
+        "citation_source": clean_text(paper.raw.get("citation_source")) or "OpenAlex",
         "citation_count": count, "citation_type": "journal_article",
         "self_citation": self_citation,
-        "relation_description": f"基于标题、摘要和关键词的引用关系推断：{usage}；非 PDF 正文原文。",
+        "relation_description": f"基于目标 MinerU 正文与引文标题/摘要关键词对照（共同词：{', '.join(shared_terms) or '未识别'}）的关系判断；非引文 PDF 正文原文。",
         "usage_judgement": usage, "evidence_basis": "title_abstract_keywords_search",
         "confidence": confidence, "sources": [x for x in (paper.doi, paper.pmid, paper.openalex_id) if x],
-        "author_overlap": sorted(overlap),
+        "author_overlap": sorted(overlap), "shared_terms": shared_terms,
     }
 
 
@@ -570,17 +580,24 @@ def journal_metadata(paper: Paper) -> dict[str, Any]:
 
 def _author_base_records(paper: Paper) -> list[dict[str, Any]]:
     raw_authors = paper.raw.get("author") or []
+    openalex_authors = ((paper.raw.get("openalex") or {}).get("authorships") or [])
     records = []
     for index, name in enumerate(paper.authors):
         raw = raw_authors[index] if index < len(raw_authors) else {}
+        oa = openalex_authors[index] if index < len(openalex_authors) else {}
         affiliations = [clean_text(x.get("name")) for x in raw.get("affiliation", []) if clean_text(x.get("name"))]
-        orcid = clean_text(raw.get("ORCID") or raw.get("orcid"))
+        oa_institutions = [clean_text(x.get("display_name") or (x.get("institution") or {}).get("display_name")) for x in oa.get("institutions", []) if clean_text(x.get("display_name") or (x.get("institution") or {}).get("display_name"))]
+        oa_countries = [clean_text(x.get("country_code") or (x.get("institution") or {}).get("country_code")) for x in oa.get("institutions", []) if clean_text(x.get("country_code") or (x.get("institution") or {}).get("country_code"))]
+        oa_author = oa.get("author") or {}
+        orcid = clean_text(raw.get("ORCID") or raw.get("orcid") or oa_author.get("orcid"))
         role = "first_author" if index == 0 else ("last_author" if index == len(paper.authors) - 1 else "author")
         records.append({
             "name": clean_text(name), "original_name": clean_text(name), "role": role,
-            "paper": paper.key, "publication_institution": "; ".join(dict.fromkeys(affiliations or paper.institutions)),
-            "publication_country": "; ".join(paper.countries), "current_title": "",
+            "paper": paper.key, "publication_institution": "; ".join(dict.fromkeys(affiliations or oa_institutions or paper.institutions)),
+            "publication_country": "; ".join(dict.fromkeys(oa_countries or paper.countries)), "current_title": "",
             "current_institution": "", "current_country": "", "orcid": orcid,
+            "pubmed_id": paper.pmid, "openalex_author_id": clean_text(oa_author.get("id")),
+            "semantic_scholar_paper_id": paper.semantic_scholar_id,
             "academician_status": "not_found", "fellow_status": "not_found",
             "honors": [], "appointments": [], "research_topics": [], "sources": [],
             "source_types": [], "confidence": "metadata_only", "conflicts": [],
@@ -717,6 +734,40 @@ def find_paper(papers: list[Paper], identity: str) -> Paper | None:
     return None
 
 
+def papers_from_state(state: dict[str, Any]) -> list[Paper]:
+    return [Paper(**{k: v for k, v in row.items() if k in Paper.__dataclass_fields__}) for row in state.get("papers", [])]
+
+
+def target_from_papers(papers: list[Paper]) -> Paper:
+    targets = [paper for paper in papers if paper.direction == "target"]
+    if len(targets) != 1:
+        raise ValueError(f"task must contain exactly one target paper; found {len(targets)}")
+    return targets[0]
+
+
+def acquire_provided_target_pdf(task: Task, paper: Paper, source: Path) -> None:
+    """Register a user-provided target PDF without extracting its text."""
+    source = source.resolve()
+    data = source.read_bytes()
+    if not data.startswith(b"%PDF-"):
+        raise ValueError("provided target is not a valid PDF")
+    target = task.root / "downloads" / f"target_{safe_name(source.name)}"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if source != target.resolve():
+        tmp = target.with_suffix(".tmp")
+        tmp.write_bytes(data)
+        tmp.replace(target)
+    paper.pdf_path = str(target.resolve())
+    paper.pdf_source = "user_provided"
+    paper.pdf_sha256 = hashlib.sha256(data).hexdigest()
+    paper.pdf_status = "provided_pdf"
+    paper.acquisition_state = "acquisition_terminal"
+    paper.parse_status = "mineru_required"
+    attempt = {"provider": "local", "skill": "zerowall-literature", "status": "provided_pdf", "path": str(source), "at": now()}
+    paper.acquisition_attempts.append(attempt)
+    task.record("local", str(source), "provided_pdf", paper=paper.key, sha256=paper.pdf_sha256)
+
+
 def ingest_mineru_result(task: Task, state: dict[str, Any], paper_identity: str,
                          run_dir: Path, task_id: str = "", api: str = "mineru") -> Paper:
     """Copy a complete MinerU result tree into the resumable task."""
@@ -724,6 +775,8 @@ def ingest_mineru_result(task: Task, state: dict[str, Any], paper_identity: str,
     paper = find_paper(papers, paper_identity)
     if paper is None:
         raise ValueError(f"unknown paper identity: {paper_identity}")
+    if state.get("workflow_mode") == WORKFLOW_MODE and paper.direction != "target":
+        raise ValueError("current workflow parses only the target paper; cited papers are download-only")
     run_dir = run_dir.resolve()
     full_md = run_dir / "full.md"
     if not full_md.is_file():
@@ -783,14 +836,19 @@ def ingest_mineru_result(task: Task, state: dict[str, Any], paper_identity: str,
         "json": sum(1 for item in artifacts if item["media_type"] == "application/json"),
         "total": len(artifacts),
     }
+    if paper.source == "local":
+        heading = next((clean_text(match.group(1)) for match in re.finditer(r"^#\s+(.+?)\s*$", text, re.M) if 10 < len(clean_text(match.group(1))) < 300), "")
+        if heading:
+            paper.raw["pre_mineru_title"] = paper.title
+            paper.title = heading
+            paper.key = f"title:{heading.lower()}"
     task.record_mcp("mineru", "mineru_parse", "parsed", paper=paper.key, task_id=paper.parser_task_id,
                     snapshot_dir=str(snapshot.resolve()), artifacts=len(artifacts))
     task.record("mineru", str(run_dir), "parsed", paper=paper.key, task_id=paper.parser_task_id,
                 parsed_text_path=paper.parsed_text_path, artifacts=len(artifacts))
-    target = next((item for item in papers if item.direction == "target"), papers[0])
-    assign_contexts(papers, target)
     state["papers"] = [asdict(item) for item in papers]
-    state["stage"] = "analysis_pending" if not broken_links else "parsing"
+    state["target_mineru_ingested_at"] = now()
+    state["stage"] = "target_mineru_parsed" if state.get("workflow_mode") == WORKFLOW_MODE else ("analysis_pending" if not broken_links else "parsing")
     update_phase_status(state, papers)
     task.save(state)
     report(task, state)
@@ -805,11 +863,9 @@ def validate_pdf(path: Path, expected: Paper) -> tuple[bool, str, str]:
     if not data.startswith(b"%PDF-") or not data:
         return False, "invalid_pdf_header", ""
     digest = hashlib.sha256(data).hexdigest()
-    text = extract_pdf_text(path)[:20000].lower()
-    title_ok = not text or title_score(expected.title, text[:3000]) > 0.18
-    author_ok = not text or any(clean_text(a).split()[-1].lower() in text for a in expected.authors[:3] if clean_text(a))
-    if text and not (title_ok or author_ok):
-        return False, "metadata_mismatch", digest
+    # The cited-by workflow never parses downloaded PDFs. Identity is checked
+    # through DOI/PMID/title metadata before acquisition; only the target is
+    # subsequently submitted to MinerU.
     return True, "ok", digest
 
 
@@ -1175,6 +1231,27 @@ def assign_contexts(papers: list[Paper], target: Paper) -> None:
 
 
 def update_phase_status(state: dict[str, Any], papers: list[Paper]) -> dict[str, Any]:
+    if state.get("workflow_mode") == WORKFLOW_MODE:
+        target = next((paper for paper in papers if paper.direction == "target"), None)
+        cited = [paper for paper in papers if paper.direction == "cited-by"]
+        terminal = bool(papers) and all(p.acquisition_state == "acquisition_terminal" or p.pdf_status in ACQUISITION_TERMINAL for p in papers)
+        analysis_dir = Path(state.get("task_root") or ".") / "analysis"
+        target_parsed = bool(target and target.parse_status == "mineru_parsed" and target.parsed_text_path)
+        author_ready = (analysis_dir / "author_evidence.json").is_file() and (analysis_dir / "author_analysis.md").is_file()
+        report_ready = all((Path(state.get("task_root") or ".") / name).is_file() for name in ("report.html", "papers.xlsx"))
+        state["phase_status"] = {
+            "identify_target": "complete" if target else "pending",
+            "target_pdf_acquired": "complete" if target and target.pdf_path else "pending",
+            "target_mineru_parsed": "complete" if target_parsed else ("pending" if target and target.pdf_path else "blocked"),
+            "cited_by_expanded": "complete" if cited or state.get("cited_by_expanded") else ("pending" if target_parsed else "blocked_on_target_mineru"),
+            "acquisition_terminal": "complete" if terminal else ("in_progress" if any(p.acquisition_attempts for p in papers) else "pending"),
+            "author_enrichment": "complete" if author_ready else "pending",
+            "journal_enrichment": "complete" if (analysis_dir / "journal_evidence.json").is_file() else "pending",
+            "citation_relations": "complete" if (analysis_dir / "citation_relations.json").is_file() else "pending",
+            "provider_evidence": "complete" if (analysis_dir / "provider_evidence.json").is_file() else "pending",
+            "report_outputs": "complete" if report_ready else "pending",
+        }
+        return state["phase_status"]
     related = [paper for paper in papers if paper.direction != "target"]
     downloaded = [paper for paper in papers if paper.pdf_path]
     parsed = [paper for paper in downloaded if paper.parse_status == "mineru_parsed"]
@@ -1227,6 +1304,14 @@ def update_phase_status(state: dict[str, Any], papers: list[Paper]) -> dict[str,
 def finalize_analysis(task: Task, state: dict[str, Any]) -> None:
     papers = [Paper(**{k: v for k, v in row.items() if k in Paper.__dataclass_fields__}) for row in state.get("papers", [])]
     update_phase_status(state, papers)
+    if state.get("workflow_mode") == WORKFLOW_MODE:
+        required = ("identify_target", "target_pdf_acquired", "target_mineru_parsed", "cited_by_expanded", "acquisition_terminal", "author_enrichment", "journal_enrichment", "citation_relations", "provider_evidence", "report_outputs")
+        missing = [name for name in required if state["phase_status"].get(name) != "complete"]
+        if missing:
+            state["stage"] = "analysis_pending"; task.save(state)
+            raise ValueError("cannot finalize; incomplete phases: " + ", ".join(missing))
+        state["stage"] = "complete"; task.save(state); report(task, state)
+        return
     incomplete = {"pending", "in_progress", "blocked_on_mineru", "pending_agent_analysis"}
     missing = [name for name, status in state["phase_status"].items() if status in incomplete]
     terminal = all(
@@ -1299,7 +1384,8 @@ def write_excel(path: Path, sheets: dict[str, list[dict[str, Any]]]) -> None:
             table = Table(displayName=f"Table_{re.sub(r'[^A-Za-z0-9]', '', name)[:20] or 'Data'}", ref=ref)
             table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
             sheet.add_table(table)
-    summary = book.create_sheet("Summary", 0); summary.sheet_view.showGridLines = False
+    summary_index = 1 if "说明" in sheets else 0
+    summary = book.create_sheet("Overview", summary_index); summary.sheet_view.showGridLines = False
     summary["A1"] = "ZeroWall Literature 研究摘要"; summary["A1"].font = Font(name="Arial", size=16, bold=True, color=palette["navy"])
     summary["A3"] = "指标"; summary["B3"] = "数值"
     for c in summary[3]: c.font = Font(name="Arial", bold=True, color="FFFFFF"); c.fill = PatternFill("solid", fgColor=palette["navy"])
@@ -1318,6 +1404,152 @@ def write_excel(path: Path, sheets: dict[str, list[dict[str, Any]]]) -> None:
         chart = PieChart(); chart.title = "PDF 获取状态"; chart.add_data(Reference(summary, min_col=5, min_row=start, max_row=start + len(status_rows)), titles_from_data=True); chart.set_categories(Reference(summary, min_col=4, min_row=start + 1, max_row=start + len(status_rows))); chart.height = 8; chart.width = 11; summary.add_chart(chart, "G18")
     summary.freeze_panes = "A4"
     book.save(path)
+
+
+def write_report_pdf(path: Path, title: str, lines: list[str]) -> None:
+    """Create a local presentation PDF without requiring a browser or network."""
+    try:
+        from reportlab.lib.colors import HexColor  # type: ignore
+        from reportlab.lib.pagesizes import A4  # type: ignore
+        from reportlab.pdfbase import pdfmetrics  # type: ignore
+        from reportlab.pdfbase.ttfonts import TTFont  # type: ignore
+        from reportlab.pdfgen import canvas  # type: ignore
+        font = "Helvetica"
+        for candidate in (Path("C:/Windows/Fonts/msyh.ttc"), Path("C:/Windows/Fonts/simhei.ttf")):
+            if candidate.is_file():
+                pdfmetrics.registerFont(TTFont("ZWChinese", str(candidate))); font = "ZWChinese"; break
+        c = canvas.Canvas(str(path), pagesize=A4); width, height = A4
+        def header() -> float:
+            c.setFillColor(HexColor("#15324B")); c.rect(0, height - 92, width, 92, fill=1, stroke=0)
+            c.setFillColor(HexColor("#FFFFFF")); c.setFont(font, 18); c.drawString(40, height - 54, title[:48])
+            return height - 120
+        y = header(); c.setFillColor(HexColor("#243746")); c.setFont(font, 9.5)
+        for raw in lines:
+            for segment in [raw[i:i + 72] for i in range(0, max(len(raw), 1), 72)]:
+                if y < 50: c.showPage(); y = header(); c.setFillColor(HexColor("#243746")); c.setFont(font, 9.5)
+                c.drawString(40, y, segment); y -= 15
+            y -= 3
+        c.save()
+    except Exception:
+        # Minimal valid PDF fallback; the HTML remains the canonical report.
+        payload = b"BT /F1 12 Tf 50 780 Td (ZeroWall Literature report - see report.html) Tj ET"
+        objects = [b"1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj\n", b"2 0 obj<< /Type /Pages /Kids [3 0 R] /Count 1 >>endobj\n", b"3 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>endobj\n", f"4 0 obj<< /Length {len(payload)} >>stream\n".encode() + payload + b"\nendstream endobj\n", b"5 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>endobj\n"]
+        data = bytearray(b"%PDF-1.4\n"); offsets = [0]
+        for obj in objects: offsets.append(len(data)); data.extend(obj)
+        xref = len(data); data.extend(f"xref\n0 {len(objects)+1}\n0000000000 65535 f \n".encode())
+        for offset in offsets[1:]: data.extend(f"{offset:010d} 00000 n \n".encode())
+        data.extend(f"trailer<< /Size {len(objects)+1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()); path.write_bytes(data)
+
+
+def render_offline_html_pdf(html_path: Path, pdf_path: Path, title: str, fallback_lines: list[str]) -> str:
+    try:
+        from playwright.sync_api import sync_playwright  # type: ignore
+        with sync_playwright() as runtime:
+            browser = runtime.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 1440, "height": 1000})
+            page.goto(html_path.resolve().as_uri(), wait_until="load")
+            page.pdf(path=str(pdf_path), format="A4", print_background=True, margin={"top": "10mm", "right": "9mm", "bottom": "10mm", "left": "9mm"})
+            browser.close()
+        return "playwright_chromium"
+    except Exception as exc:
+        write_report_pdf(pdf_path, title, fallback_lines)
+        return f"local_fallback:{type(exc).__name__}"
+
+
+def build_simplified_analysis(task: Task, state: dict[str, Any], papers: list[Paper]) -> None:
+    """Persist metadata-level cited-by, author, journal, and provider evidence."""
+    analysis = task.root / "analysis"; analysis.mkdir(exist_ok=True)
+    target = target_from_papers(papers)
+    target_text = paper_text(target)
+    target.raw["mineru_excerpt"] = clean_text(target_text)[:12000]
+    target_terms = sorted(title_tokens(target.raw["mineru_excerpt"]))[:200]
+    (analysis / "target_mineru_analysis.json").write_text(json.dumps({
+        "paper": target.key, "full_md": target.parsed_text_path,
+        "character_count": len(target_text), "comparison_terms": target_terms,
+        "generated_at": now(),
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    relations = []
+    journals = []
+    for paper in papers:
+        journals.append({"paper": paper.key, **journal_metadata(paper)})
+        if paper.direction == "cited-by":
+            paper.citation_relation = citation_relation(target, paper)
+            relations.append(paper.citation_relation)
+            paper.parse_status = "not_required"
+            paper.citation_contexts = []
+    (analysis / "citation_relations.json").write_text(json.dumps(relations, ensure_ascii=False, indent=2), encoding="utf-8")
+    (analysis / "journal_evidence.json").write_text(json.dumps(journals, ensure_ascii=False, indent=2), encoding="utf-8")
+    records = enrich_all_authors(task, papers)
+    author_lines = ["# 作者核验", "", "全部作者均建立基础记录；头衔、院士/会士与荣誉仅采用联网适配器返回的可追溯证据。", ""]
+    for row in records:
+        author_lines.append(f"- {row['name']}：发表时单位 {row['publication_institution'] or '未确认'}；当前职称 {row['current_title'] or '未确认'}；当前单位 {row['current_institution'] or '未确认'}；院士 {row['academician_status']}；会士 {row['fellow_status']}；置信度 {row['confidence']}。")
+    (analysis / "author_analysis.md").write_text("\n".join(author_lines) + "\n", encoding="utf-8")
+    receipts = task.mcp_receipts()
+    (analysis / "provider_evidence.json").write_text(json.dumps({"generated_at": now(), "queries": receipts}, ensure_ascii=False, indent=2), encoding="utf-8")
+    state["papers"] = [asdict(p) for p in papers]
+
+
+def simplified_report(task: Task, state: dict[str, Any], papers: list[Paper]) -> None:
+    target = target_from_papers(papers)
+    (task.root / "report-assets").mkdir(exist_ok=True)
+    cited = [paper for paper in papers if paper.direction == "cited-by"]
+    relations = [paper.citation_relation for paper in cited if paper.citation_relation]
+    authors = [row for paper in papers for row in paper.author_records]
+    years: dict[str, int] = {}
+    countries: dict[str, int] = {}
+    journals: dict[str, int] = {}
+    for paper in cited:
+        years[paper.year or "未知"] = years.get(paper.year or "未知", 0) + 1
+        journals[paper.journal or "未知"] = journals.get(paper.journal or "未知", 0) + 1
+        for country in paper.countries or ["未知"]: countries[country] = countries.get(country, 0) + 1
+    top = sorted(cited, key=lambda p: max(p.cited_by_counts.values(), default=0), reverse=True)[:20]
+    target_excerpt = clean_text(paper_text(target))[:1800]
+    self_counts: dict[str, int] = {}
+    for relation in relations:
+        status = clean_text(relation.get("self_citation")) or "unknown"
+        self_counts[status] = self_counts.get(status, 0) + 1
+    verified_authors = [row for row in authors if row.get("current_title") or row.get("honors") or row.get("academician_status") == "confirmed" or row.get("fellow_status") == "confirmed"][:12]
+    esc = html_lib.escape
+    def bars(values: dict[str, int]) -> str:
+        maximum = max(values.values(), default=1)
+        return "".join(f'<div class="bar"><span>{esc(k)}</span><i style="width:{max(4, int(v/maximum*100))}%"></i><b>{v}</b></div>' for k, v in sorted(values.items(), key=lambda x: x[1], reverse=True)[:12])
+    cards = "".join(f'<article><h3>{esc(p.title)}</h3><p>{esc(p.journal or "期刊未确认")} · {esc(p.year or "年份未确认")}</p><p>DOI: {esc(p.doi or "未提供")} · PDF: {esc(pdf_status_label(p.pdf_status))}</p></article>' for p in top)
+    author_cards = "".join(f'<article><h3>{esc(str(a.get("name") or ""))}</h3><p>{esc(str(a.get("current_title") or "职称未确认"))} · {esc(str(a.get("current_institution") or a.get("publication_institution") or "单位未确认"))}</p><p>院士：{esc(str(a.get("academician_status") or "not_found"))} · 会士：{esc(str(a.get("fellow_status") or "not_found"))} · 置信度：{esc(str(a.get("confidence") or ""))}</p></article>' for a in verified_authors)
+    html = f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(target.title)}</title><style>
+    :root{{--ink:#193247;--muted:#627281;--paper:#fff;--line:#d9e2e8;--teal:#0d7a73;--gold:#c88725}}*{{box-sizing:border-box}}body{{margin:0;font:15px/1.65 Arial,"Microsoft YaHei",sans-serif;color:var(--ink);background:#edf2f4}}header{{background:#173448;color:white;padding:54px max(6vw,32px) 42px}}header h1{{max-width:1100px;font-size:34px;line-height:1.25;margin:0 0 14px}}header p{{max-width:900px;color:#dce8ed}}main{{max-width:1200px;margin:auto;background:var(--paper);padding:38px max(4vw,28px)}}h2{{font-size:22px;border-bottom:2px solid var(--teal);padding-bottom:8px;margin-top:42px}}.metrics{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}}.metric{{border:1px solid var(--line);padding:16px;border-radius:6px}}.metric b{{display:block;font-size:27px;color:var(--teal)}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:24px}}.bar{{display:grid;grid-template-columns:130px 1fr 34px;align-items:center;gap:8px;margin:9px 0}}.bar i{{height:11px;background:var(--teal);display:block}}article{{border-bottom:1px solid var(--line);padding:14px 0}}article h3{{font-size:15px;margin:0}}article p{{color:var(--muted);margin:4px 0}}.note{{background:#f5f8f9;border-left:4px solid var(--gold);padding:14px}}@media(max-width:720px){{.metrics,.grid{{grid-template-columns:1fr}}header h1{{font-size:26px}}}}</style></head><body>
+    <header><h1>{esc(target.title)}</h1><p>{esc(target.journal or '期刊未确认')} · {esc(target.year or '年份未确认')} · DOI {esc(target.doi or '未提供')}</p><p>目标论文已由 MinerU 解析；被引论文仅保存并校验 PDF，引用关系来自数据库元数据，不声称定位正文引用段落。</p></header><main>
+    <section class="metrics"><div class="metric"><b>{len(cited)}</b>被引论文</div><div class="metric"><b>{sum(1 for p in papers if p.pdf_path)}</b>已保存 PDF</div><div class="metric"><b>{len(authors)}</b>作者记录</div><div class="metric"><b>{len(journals)}</b>来源期刊</div></section>
+    <h2>目标论文 MinerU 摘要</h2><p>{esc(target_excerpt or target.abstract or 'MinerU 正文摘要暂不可用。')}</p>
+    <h2>论文影响与关系</h2><p>{esc(target.abstract or '摘要未获取。')} 本报告展示可核验的 cited-by 网络、期刊格局与作者构成。</p>
+    <div class="grid"><section><h2>年度分布</h2>{bars(years)}</section><section><h2>国家分布</h2>{bars(countries)}</section><section><h2>自引关系</h2>{bars(self_counts)}</section><section><h2>期刊分布</h2>{bars(journals)}</section></div>
+    <h2>重点期刊</h2>{bars(journals)}<h2>被引论文 Top 20</h2>{cards or '<p>未检索到被引论文。</p>'}
+    <h2>重点作者</h2>{author_cards or '<p>当前没有经主要来源核验的重点作者头衔或荣誉；完整作者基础信息见 Excel。</p>'}<p>作者共 {len(authors)} 条。职称、当前单位、国家、院士/会士和荣誉的逐项证据见 Excel 的 Author Profiles 与 Author Highlights。</p>
+    <h2>证据边界</h2><div class="note">引用关系基于 OpenAlex、Crossref、Semantic Scholar、PubMed/Europe PMC 等元数据交叉记录。用途判断仅由标题、摘要和关键词推断，不是引用正文原文。未找到证据不等于事实不存在。</div>
+    </main></body></html>'''
+    (task.root / "report.html").write_text(html, encoding="utf-8")
+    summary_lines = [target.title, f"被引论文：{len(cited)}", f"已保存 PDF：{sum(1 for p in papers if p.pdf_path)}", f"作者记录：{len(authors)}", "完整交互展示与证据边界请见 report.html 和 papers.xlsx。"]
+    pdf_renderer = render_offline_html_pdf(task.root / "report.html", task.root / "report.pdf", "ZeroWall Literature", summary_lines)
+    (task.root / "report.md").write_text("# " + target.title + "\n\n" + "\n".join(f"- {x}" for x in summary_lines[1:]) + "\n", encoding="utf-8")
+    explanations = [
+        {"工作表": "说明", "用途": "解释每个工作表、字段粒度与证据边界"}, {"工作表": "Overview", "用途": "目标论文、覆盖率与主要统计"},
+        {"工作表": "Citation Relations", "用途": "目标论文与每篇被引论文的一条 cited-by 关系"}, {"工作表": "Author Profiles", "用途": "每位作者在论文发表时的基础身份"},
+        {"工作表": "Author Highlights", "用途": "当前职称、单位、院士/会士、荣誉和联网来源"}, {"工作表": "Journals & Impact", "用途": "期刊名称、卷期、出版社、ISSN 和影响指标"},
+        {"工作表": "Papers", "用途": "目标及被引论文标识、PDF 状态和路径"}, {"工作表": "Provider Evidence", "用途": "数据库和联网工具调用收据"},
+        {"工作表": "Acquisition Attempts", "用途": "每篇 PDF 的完整下载回退链"}, {"工作表": "Review Queue", "用途": "下载失败、身份冲突和作者未确认项"},
+        {"工作表": "Source Ledger", "用途": "底层来源请求审计记录"}, {"工作表": "Deduplication", "用途": "DOI、PMID、OpenAlex ID 和标题去重映射"},
+    ]
+    paper_rows = [{"方向": "目标论文" if p.direction == "target" else "被引论文", "文章题目": p.title, "引用杂志全名": p.journal, "引用杂志缩写": p.journal_abbrev, "最新影响因子": flatten_excel_value(p.journal_metric), "引文题目": p.title if p.direction == "cited-by" else "", "自引/他引": (p.citation_relation or {}).get("self_citation", ""), "引文类型": (p.citation_relation or {}).get("citation_type", ""), "Book Authors": "", "Editors": "", "Group Authors": "", "引文作者全名": "; ".join(p.authors), "引用作者所属国家": "; ".join(p.countries), "发表卷期": " ".join(x for x in (p.volume, p.issue, p.pages) if x), "DOI": p.doi, "引用关系描述": (p.citation_relation or {}).get("relation_description", ""), "判断引用用途": (p.citation_relation or {}).get("usage_judgement", ""), "PMID": p.pmid, "PDF状态": p.pdf_status, "PDF来源": p.pdf_source, "PDF路径": p.pdf_path, "SHA256": p.pdf_sha256, "MinerU状态": p.parse_status, "MinerU正文": p.parsed_text_path if p.direction == "target" else ""} for p in papers]
+    author_rows = [{"论文": p.title, **a} for p in papers for a in p.author_records]
+    highlight_rows = [{"论文": row.get("论文"), "作者": row.get("name"), "当前职称": row.get("current_title"), "当前单位": row.get("current_institution"), "当前国家": row.get("current_country"), "院士状态": row.get("academician_status"), "会士状态": row.get("fellow_status"), "荣誉": row.get("honors"), "来源": row.get("sources"), "置信度": row.get("confidence"), "冲突说明": row.get("conflicts")} for row in author_rows]
+    journal_rows = [{"论文": p.title, **journal_metadata(p)} for p in papers]
+    attempts = [{"paper": p.title, "direction": p.direction, **a} for p in papers for a in p.acquisition_attempts]
+    review = [{"类型": "PDF", "论文/作者": p.title, "状态": p.pdf_status, "原因": "完整回退链见 Acquisition Attempts"} for p in papers if not p.pdf_path] + [{"类型": "作者", "论文/作者": a.get("name"), "状态": a.get("confidence"), "原因": "; ".join(a.get("conflicts") or []) or "联网身份仍需人工复核"} for a in authors if a.get("confidence") in {"metadata_only", "web_search_candidate"}]
+    sheets = {"说明": explanations, "Summary": [{"指标": "流程状态", "数值": state.get("stage")}, {"指标": "被引论文", "数值": len(cited)}, {"指标": "已保存 PDF", "数值": sum(1 for p in papers if p.pdf_path)}, {"指标": "作者记录", "数值": len(authors)}], "Citation Relations": relations, "Author Profiles": author_rows, "Author Highlights": highlight_rows, "Journals & Impact": journal_rows, "Papers": paper_rows, "Provider Evidence": task.mcp_receipts(), "Acquisition Attempts": attempts, "Review Queue": review, "Source Ledger": task.ledger(), "Deduplication": state.get("deduplication", [])}
+    write_excel(task.root / "papers.xlsx", sheets)
+    manifest = []
+    for path in (task.root / "report.html", task.root / "report.pdf", task.root / "papers.xlsx"):
+        if path.is_file(): manifest.append({"path": path.name, "bytes": path.stat().st_size, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+    (task.root / "report_manifest.json").write_text(json.dumps({"generated_at": now(), "pdf_renderer": pdf_renderer, "files": manifest}, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def configure_matplotlib_chinese(plt: Any) -> str:
@@ -1366,6 +1598,11 @@ def pdf_status_label(status: str) -> str:
 
 def report(task: Task, state: dict[str, Any]) -> None:
     papers = [Paper(**{k: v for k, v in row.items() if k in Paper.__dataclass_fields__}) for row in state.get("papers", [])]
+    if state.get("workflow_mode") == WORKFLOW_MODE:
+        if papers:
+            simplified_report(task, state, papers)
+        (task.root / "skill_invocations.json").write_text(json.dumps(state.get("skill_invocations", []), ensure_ascii=False, indent=2), encoding="utf-8")
+        return
     targets = [paper for paper in papers if paper.direction == "target"]
     if len(targets) > 1:
         raise ValueError("任务状态包含多个 target 主文章；请为每篇文章使用独立工作目录。")
@@ -1456,22 +1693,24 @@ def run_analyze(args: argparse.Namespace) -> int:
     output = Path(args.output)
     task = Task(output); state = task.load(); client = Client(task, args.timeout)
     (task.root / "analysis").mkdir(exist_ok=True)
-    state["input"] = args.input; state["research_plan"] = {"directions": args.directions, "max_papers": args.max_papers, "download_pdfs": args.download_pdfs, "download_workers": args.download_workers, "enrich_authors": args.enrich_authors, "created_at": now()}
+    state["workflow_mode"] = WORKFLOW_MODE
+    state["input"] = args.input
+    state["research_plan"] = {"directions": "cited-by", "max_papers": args.max_papers, "all_cited_by": args.all_cited_by, "download_pdfs": args.download_pdfs, "download_workers": args.download_workers, "author_search": "all", "target_mineru_required": True, "created_at": now()}
     state["skill_invocations"] = [
         {"skill": "paper-download-pdf-cascade", "status": "configured", "entrypoint": "paper_download_bridge.py"},
         {"skill": "zerowall-tsg-literature", "status": "automatic_authorized_fallback", "credentials": "four_env_vars_required"},
-        {"skill": "mineru-document-parser", "status": "required", "result_command": "ingest-mineru"},
+        {"skill": "mineru-document-parser", "status": "required_for_target_only", "result_command": "ingest-mineru"},
         {"skill": "pubmed-literature/sci-master", "status": "required", "artifact": "analysis/provider_evidence.json"},
         {"skill": "deep-research/ARS", "status": "required", "artifacts": ["analysis/citation_analysis.md", "analysis/author_analysis.md", "analysis/synthesis.md"]},
     ]
     (task.root / "research_plan.md").write_text(
         "\n".join([
             "# Literature research plan", "", f"Input: {args.input}",
-            f"Directions: {args.directions}", f"PDF download: {'enabled' if args.download_pdfs else 'metadata only'}",
+            "Directions: cited-by only", f"Cited-paper PDF download: {'enabled' if args.download_pdfs else 'metadata only'}",
             f"Maximum related papers: {args.max_papers or 'unbounded'}", "",
             "Open-access providers are attempted first, followed by paper-download and authorized TSG when all four credentials are configured. Use --no-tsg to disable the authorized fallback.",
-            "Every acquired PDF must be submitted to mineru_parse and registered with the ingest-mineru command.",
-            "PubMed/SciMaster provider evidence and ARS/deep-research analysis are required before finalize succeeds.", "",
+            "The target PDF must be parsed with MinerU before cited-by expansion starts.",
+            "Cited-paper PDFs are downloaded and validated but are never sent to MinerU.", "",
         ]) + "\n", encoding="utf-8")
     try:
         target, candidates = client.resolve(args.input)
@@ -1490,32 +1729,26 @@ def run_analyze(args: argparse.Namespace) -> int:
     state["article_key"] = article_identity(target)
     state["article_slug"] = slug
     state["task_root"] = str(task.root.resolve())
-    target = client.enrich(target); target.author_profiles = author_profiles(target)
+    input_path = Path(args.input)
+    is_local_pdf = input_path.is_file() and input_path.suffix.lower() == ".pdf"
+    if not is_local_pdf:
+        target = client.enrich(target)
+    target.direction = "target"
     state["stage"] = "identified"; state["papers"] = [asdict(target)]; task.save(state)
-    papers = [target]
-    for direction in args.directions.split(","):
-        direction = direction.strip()
-        direction_limit = None if ((direction == "references" and args.all_references) or (direction == "cited-by" and args.all_cited_by)) else args.max_papers
-        papers.extend(client.expand_openalex(target, direction, direction_limit))
-    papers, aliases = deduplicate_papers(papers)
-    state["deduplication"] = aliases
-    state["stage"] = "expanded"; state["papers"] = [asdict(p) for p in papers]; task.save(state)
-    if args.download_pdfs:
-        workers = max(1, min(args.download_workers, 8))
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(download_paper, client, paper, not args.no_tsg): paper for paper in papers}
-            for index, future in enumerate(as_completed(futures), 1):
-                future.result(); paper = futures[future]
-                if paper.pdf_path:
-                    text = extract_pdf_text(Path(paper.pdf_path)); paper.parse_status = "text_extracted" if text else "no_text"
-                paper.author_profiles = author_profiles(paper)
-                if index % 5 == 0: state["papers"] = [asdict(p) for p in papers]; task.save(state)
-        deduplicate_pdf_hashes(papers, state.setdefault("deduplication", []))
-    state["stage"] = "mineru_pending" if any(p.pdf_path for p in papers) else "acquisition_incomplete"
-    state["papers"] = [asdict(p) for p in papers]; update_phase_status(state, papers); task.save(state); report(task, state)
+    try:
+        if is_local_pdf:
+            acquire_provided_target_pdf(task, target, input_path)
+        else:
+            download_paper(client, target, not args.no_tsg)
+            if target.pdf_path:
+                target.parse_status = "mineru_required"
+    except (OSError, ValueError) as exc:
+        state["target_error"] = str(exc)
+    state["stage"] = "target_mineru_required" if target.pdf_path else "target_pdf_unavailable"
+    state["papers"] = [asdict(target)]; update_phase_status(state, [target]); task.save(state); report(task, state)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    print(json.dumps({"task": str(task.root), "stage": state["stage"], "target": {"title": target.title, "doi": target.doi, "pmid": target.pmid, "year": target.year}, "paper_count": len(papers)}, ensure_ascii=False, indent=2))
+    print(json.dumps({"task": str(task.root), "stage": state["stage"], "target": {"title": target.title, "doi": target.doi, "pmid": target.pmid, "year": target.year}, "paper_count": 1}, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -1523,27 +1756,56 @@ def run_resume(args: argparse.Namespace) -> int:
     task = Task(args.task); state = task.load(); client = Client(task, args.timeout)
     if state.get("single_article") is False:
         print("该任务不是单篇主文章工作目录，拒绝继续。", file=sys.stderr); return 2
-    papers = [Paper(**{k: v for k, v in row.items() if k in Paper.__dataclass_fields__}) for row in state.get("papers", [])]
+    papers = papers_from_state(state)
     if not papers:
         print("No resumable papers in task state.", file=sys.stderr); return 2
-    target = next((p for p in papers if p.direction == "target"), papers[0])
+    if state.get("workflow_mode") != WORKFLOW_MODE:
+        print("Legacy task: this resume command requires migration before using the cited-by-only workflow.", file=sys.stderr); return 2
+    target = target_from_papers(papers)
     if sum(1 for paper in papers if paper.direction == "target") > 1:
         print("任务状态包含多个 target 主文章，请拆分工作目录。", file=sys.stderr); return 2
     state["single_article"] = True
     state.setdefault("article_key", article_identity(target))
     state.setdefault("article_slug", article_slug(target.title))
     state["task_root"] = str(task.root.resolve())
-    target = client.enrich(target)
-    target.author_profiles = author_profiles(target)
-    papers[0 if papers and papers[0].direction == "target" else next(i for i, p in enumerate(papers) if p.key == target.key)] = target
-    for paper in papers:
-        if paper.pdf_status in ACQUISITION_TERMINAL:
-            continue
-        download_paper(client, paper, not args.no_tsg)
-        paper.author_profiles = author_profiles(paper)
+    if target.parse_status != "mineru_parsed" or not target.parsed_text_path:
+        state["stage"] = "target_mineru_required"; update_phase_status(state, papers); task.save(state); report(task, state)
+        print(json.dumps({"task": str(task.root), "stage": state["stage"], "next": "run MinerU for the target PDF, then ingest-mineru"}, ensure_ascii=False, indent=2)); return 0
+    # MinerU's heading is authoritative for a local-PDF filename placeholder;
+    # enrich it before querying the cited-by graph.
+    if target.source == "local" or not target.doi:
+        matches = client.search_title(target.title)
+        if matches and title_score(target.title, matches[0].title) >= 0.65:
+            merge_paper(target, client.enrich(matches[0]))
+    else:
+        target = client.enrich(target)
+    papers[papers.index(next(p for p in papers if p.direction == "target"))] = target
+    if not state.get("cited_by_expanded"):
+        state["stage"] = "cited_by_expanded"
+        related = client.expand_openalex(target, "cited-by", None if state.get("research_plan", {}).get("all_cited_by") else state.get("research_plan", {}).get("max_papers", 20))
+        papers, aliases = deduplicate_papers([target, *related])
+        state["deduplication"] = aliases
+        state["cited_by_expanded"] = True
         state["papers"] = [asdict(p) for p in papers]; task.save(state)
-    state["stage"] = "mineru_pending" if any(p.pdf_path and p.parse_status != "mineru_parsed" for p in papers) else "analysis_pending"
-    state["papers"] = [asdict(p) for p in papers]; update_phase_status(state, papers); task.save(state); report(task, state)
+    state["stage"] = "acquiring"
+    should_download = bool(state.get("research_plan", {}).get("download_pdfs", True))
+    cited = [paper for paper in papers if paper.direction == "cited-by"]
+    if should_download:
+        workers = max(1, min(int(state.get("research_plan", {}).get("download_workers", 4)), 8))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(download_paper, client, paper, not args.no_tsg): paper for paper in cited if paper.pdf_status not in ACQUISITION_TERMINAL}
+            for future in as_completed(futures):
+                future.result(); futures[future].parse_status = "not_required"
+                state["papers"] = [asdict(p) for p in papers]; task.save(state)
+    else:
+        for paper in cited:
+            paper.pdf_status = "unavailable_no_authorized_source"; paper.acquisition_state = "acquisition_terminal"; paper.parse_status = "not_required"
+            paper.acquisition_attempts.append({"provider": "workflow", "skill": "zerowall-literature", "status": "skipped_by_request", "at": now()})
+    deduplicate_pdf_hashes(papers, state.setdefault("deduplication", []))
+    state["stage"] = "author_enriching"; build_simplified_analysis(task, state, papers)
+    state["stage"] = "report_building"; state["papers"] = [asdict(p) for p in papers]; task.save(state); report(task, state)
+    update_phase_status(state, papers); task.save(state)
+    finalize_analysis(task, state)
     print(json.dumps({"task": str(task.root), "stage": state["stage"], "paper_count": len(papers)}, ensure_ascii=False, indent=2))
     return 0
 
@@ -1551,7 +1813,7 @@ def run_resume(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="ZeroWall title-driven literature trail")
     sub = parser.add_subparsers(dest="command", required=True)
-    analyze = sub.add_parser("analyze"); analyze.add_argument("input"); analyze.add_argument("--output", type=Path, required=True, help="该主文章唯一的独立工作目录"); analyze.add_argument("--article-slug", help="任务元数据中的主文章短标识"); analyze.add_argument("--directions", default="references,cited-by"); analyze.add_argument("--max-papers", type=int, default=int(os.getenv("LITERATURE_MAX_RELATED_PAPERS", "40"))); analyze.add_argument("--all-references", action="store_true"); analyze.add_argument("--all-cited-by", action="store_true"); downloads = analyze.add_mutually_exclusive_group(); downloads.add_argument("--download-pdfs", dest="download_pdfs", action="store_true"); downloads.add_argument("--no-download-pdfs", dest="download_pdfs", action="store_false"); analyze.set_defaults(download_pdfs=True); analyze.add_argument("--download-workers", type=int, default=int(os.getenv("LITERATURE_DOWNLOAD_WORKERS", "4"))); analyze.add_argument("--enrich-authors", action="store_true"); analyze.add_argument("--include-target", action="store_true"); analyze.add_argument("--allow-tsg", action="store_true", help="兼容旧调用；TSG 默认自动启用"); analyze.add_argument("--no-tsg", action="store_true", help="禁用授权 TSG 回退"); analyze.add_argument("--timeout", type=float, default=30)
+    analyze = sub.add_parser("analyze"); analyze.add_argument("input"); analyze.add_argument("--output", type=Path, required=True, help="该主文章唯一的独立工作目录"); analyze.add_argument("--article-slug", help="任务元数据中的主文章短标识"); analyze.add_argument("--directions", default="cited-by", help="兼容参数；当前流程固定为 cited-by"); analyze.add_argument("--max-papers", "--top-n", dest="max_papers", type=int, default=int(os.getenv("LITERATURE_MAX_RELATED_PAPERS", "20"))); analyze.add_argument("--all-references", action="store_true", help="兼容参数；当前流程忽略参考文献"); analyze.add_argument("--all-cited-by", action="store_true"); downloads = analyze.add_mutually_exclusive_group(); downloads.add_argument("--download-pdfs", dest="download_pdfs", action="store_true"); downloads.add_argument("--no-download-pdfs", "--no-pdf-download", dest="download_pdfs", action="store_false"); analyze.set_defaults(download_pdfs=True); analyze.add_argument("--download-workers", type=int, default=int(os.getenv("LITERATURE_DOWNLOAD_WORKERS", "4"))); analyze.add_argument("--enrich-authors", action="store_true"); analyze.add_argument("--author-search", choices=("all",), default="all"); analyze.add_argument("--include-target", action="store_true"); analyze.add_argument("--allow-tsg", action="store_true", help="兼容旧调用；TSG 默认自动启用"); analyze.add_argument("--no-tsg", action="store_true", help="禁用授权 TSG 回退"); analyze.add_argument("--timeout", type=float, default=30)
     resume = sub.add_parser("resume"); resume.add_argument("task", type=Path); resume.add_argument("--allow-tsg", action="store_true", help="兼容旧调用；TSG 默认自动启用"); resume.add_argument("--no-tsg", action="store_true", help="禁用授权 TSG 回退"); resume.add_argument("--timeout", type=float, default=30)
     export = sub.add_parser("export"); export.add_argument("task", type=Path)
     ingest = sub.add_parser("ingest-mineru"); ingest.add_argument("task", type=Path); ingest.add_argument("--paper", required=True, help="paper key, DOI, or PMID"); ingest.add_argument("--run-dir", type=Path, required=True); ingest.add_argument("--task-id", default=""); ingest.add_argument("--api", default="mineru")

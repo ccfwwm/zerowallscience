@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import JSZip from 'jszip'
-import { canonicalManifest, McpEnvironmentController, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
+import { canonicalManifest, McpEnvironmentController, selectPythonHealthImports, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
 
 const roots: string[] = []
 const keys = generateKeyPairSync('ed25519')
@@ -46,6 +46,12 @@ async function environment(root: string, manifest: McpEnvironmentManifest): Prom
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
 describe('MCP environment upgrades', () => {
+  it('limits Python health imports to three representative lightweight modules', () => {
+    expect(selectPythonHealthImports(['httpx', 'scanpy', 'pandas', 'numpy', 'mcp', 'anndata'])).toEqual(['mcp', 'numpy', 'pandas'])
+    expect(selectPythonHealthImports(['httpx'])).toEqual(['httpx'])
+    expect(selectPythonHealthImports(['valid', 'bad-name'])).toEqual(['valid'])
+  })
+
   it('rejects unknown key ids and accepts a trusted keyring entry', () => {
     const manifest = signedManifest('4.1.9', 'rotated-2')
     const publicKey = keys.publicKey.export({ type: 'spki', format: 'pem' }).toString()
@@ -128,5 +134,31 @@ describe('MCP environment upgrades', () => {
       fetcher: async url => String(url).endsWith('latest.json') ? new Response(JSON.stringify(onlineManifest), { status: 200 }) : new Response(new Blob([new Uint8Array(testArchive)]), { status: 200 }), healthCheck: async () => undefined, publish: () => undefined,
     })
     await expect(controller.initialize()).resolves.toMatchObject({ phase: 'ready', currentSlot: 'b', updated: true, rollbackAvailable: true })
+  })
+
+  it('starts a user update immediately and preserves active progress during checks', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-mcp-root-')); roots.push(root)
+    const onlineManifest = signedManifest('5.13.0', 'stable-1', '1.2.0', 1)
+    let releaseHealth!: () => void
+    const healthGate = new Promise<void>(resolve => { releaseHealth = resolve })
+    const requests: string[] = []
+    const published: Array<{ phase: string; progress?: number }> = []
+    const controller = new McpEnvironmentController({
+      root, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      fetcher: async url => { requests.push(String(url)); return String(url).endsWith('latest.json') ? new Response(JSON.stringify(onlineManifest), { status: 200 }) : new Response(new Blob([new Uint8Array(testArchive)]), { status: 200 }) },
+      healthCheck: async () => await healthGate,
+      publish: status => published.push(status),
+    })
+    const started = controller.updateForUser()
+    expect(started).not.toBeInstanceOf(Promise)
+    expect(started).toMatchObject({ phase: 'checking', progress: 0 })
+    const completion = controller.initialize()
+    await new Promise(resolve => setTimeout(resolve, 10))
+    const active = controller.current()
+    await expect(controller.checkForUpdates()).resolves.toEqual(active)
+    expect(requests.filter(url => url.endsWith('latest.json'))).toHaveLength(1)
+    releaseHealth()
+    await expect(completion).resolves.toMatchObject({ phase: 'ready', environmentVersion: '1.2.0', contentRevision: 1, updated: true })
+    expect(published.some(status => status.phase === 'downloading' && (status.progress ?? 0) > 5)).toBe(true)
   })
 })
