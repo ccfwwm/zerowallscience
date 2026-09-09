@@ -148,6 +148,8 @@ class Paper:
     journal_metric: dict[str, Any] = field(default_factory=dict)
     author_records: list[dict[str, Any]] = field(default_factory=list)
     citation_relation: dict[str, Any] = field(default_factory=dict)
+    citation_sources: list[dict[str, Any]] = field(default_factory=list)
+    provider_counts: dict[str, Any] = field(default_factory=dict)
 
 
 class Task:
@@ -159,6 +161,9 @@ class Task:
         self.state_path = root / "state.json"
         self.ledger_path = root / "source_ledger.json"
         self.mcp_receipts_path = root / "mcp_receipts.jsonl"
+        self.web_search_receipts_path = root / "web_search_receipts.jsonl"
+        self.skill_receipts_path = root / "skill_receipts.jsonl"
+        self.provider_requests_path = root / "analysis" / "provider_requests.jsonl"
         self._ledger_lock = threading.Lock()
 
     def load(self) -> dict[str, Any]:
@@ -202,6 +207,92 @@ class Task:
             return [json.loads(line) for line in self.mcp_receipts_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         except (FileNotFoundError, json.JSONDecodeError):
             return []
+
+    def record_web_search(self, query: str, status: str, **meta: Any) -> None:
+        item = {"provider": "web_search", "query": clean_text(query), "status": clean_text(status), "at": now()}
+        item.update({k: v for k, v in meta.items() if v is not None})
+        with self._ledger_lock:
+            with self.web_search_receipts_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+    def web_search_receipts(self) -> list[dict[str, Any]]:
+        try:
+            return [json.loads(line) for line in self.web_search_receipts_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        except (FileNotFoundError, json.JSONDecodeError):
+            return []
+
+    def record_skill(self, skill: str, status: str, **meta: Any) -> None:
+        item = {"skill": clean_text(skill), "status": clean_text(status), "at": now()}
+        item.update({k: v for k, v in meta.items() if v is not None})
+        with self._ledger_lock:
+            with self.skill_receipts_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+    def skill_receipts(self) -> list[dict[str, Any]]:
+        try:
+            return [json.loads(line) for line in self.skill_receipts_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        except (FileNotFoundError, json.JSONDecodeError):
+            return []
+
+    def provider_requests(self) -> list[dict[str, Any]]:
+        """Return the latest state for each queued capability request.
+
+        The queue is append-only so a killed process cannot leave a partially
+        rewritten file.  Consumers see one logical row per request, while the
+        JSONL file retains the full state transition history.
+        """
+        try:
+            rows = []
+            for line in self.provider_requests_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(row, dict):
+                    rows.append(row)
+        except OSError:
+            return []
+        latest: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+        for row in rows:
+            request_id = clean_text(row.get("request_id"))
+            if not request_id:
+                continue
+            if request_id not in latest:
+                order.append(request_id)
+            latest[request_id] = row
+        return [latest[key] for key in order]
+
+    def enqueue_request(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Add one deterministic request unless it already exists."""
+        request_id = clean_text(request.get("request_id"))
+        if not request_id:
+            raise ValueError("provider request requires request_id")
+        existing = next((row for row in self.provider_requests() if row.get("request_id") == request_id), None)
+        if existing:
+            return existing
+        item = {"request_id": request_id, "status": "pending", "attempts": 0,
+                "created_at": now(), **request}
+        self.provider_requests_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._ledger_lock:
+            with self.provider_requests_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+        return item
+
+    def update_request(self, request_id: str, status: str, **meta: Any) -> dict[str, Any]:
+        """Append a request state transition and return the updated row."""
+        current = next((row for row in self.provider_requests() if row.get("request_id") == request_id), None)
+        if current is None:
+            raise ValueError(f"unknown provider request: {request_id}")
+        updated = dict(current)
+        updated.update({"status": clean_text(status), "updated_at": now(), **meta})
+        self.provider_requests_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._ledger_lock:
+            with self.provider_requests_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(updated, ensure_ascii=False) + "\n")
+        return updated
 
 
 class Client:
@@ -482,6 +573,7 @@ def identity_keys(paper: Paper) -> list[str]:
     if paper.doi: keys.append(f"doi:{normalize_doi(paper.doi)}")
     if paper.pmid: keys.append(f"pmid:{clean_text(paper.pmid)}")
     if paper.openalex_id: keys.append(f"openalex:{paper.openalex_id.rsplit('/', 1)[-1].lower()}")
+    if paper.semantic_scholar_id: keys.append(f"s2:{clean_text(paper.semantic_scholar_id).lower()}")
     if paper.title:
         token = " ".join(sorted(title_tokens(paper.title)))
         keys.append(f"title:{token}:{paper.year}")
@@ -620,9 +712,60 @@ def _load_web_search_adapter() -> Any | None:
     return module
 
 
+def extract_ingested_author_facts(evidence: list[dict[str, Any]]) -> dict[str, Any]:
+    """Normalize structured facts returned by Host tools or the model layer."""
+    facts: dict[str, Any] = {"sources": [], "source_types": [], "conflicts": []}
+    for item in evidence:
+        tool = clean_text(item.get("tool") or item.get("provider")).lower()
+        result = item.get("result") if isinstance(item.get("result"), dict) else item
+        supplied = result.get("facts") if isinstance(result, dict) and isinstance(result.get("facts"), dict) else {}
+        for key, value in supplied.items():
+            if value not in (None, "", [], {}): facts[key] = value
+        if "openalex_search_authors" in tool and isinstance(result, dict):
+            records = result.get("records") or []
+            if len(records) == 1:
+                author = records[0]
+                facts.update({
+                    "openalex_author_id": author.get("author_id", ""), "orcid": author.get("orcid", ""),
+                    "works_count": author.get("works_count"), "cited_by_count": author.get("cited_by_count"),
+                    "h_index": author.get("h_index"), "i10_index": author.get("i10_index"),
+                    "research_topics": author.get("top_topics") or facts.get("research_topics", []),
+                })
+        elif "openalex_get_author" in tool and isinstance(result, dict):
+            facts.update({key: result.get(key) for key in ("author_id", "orcid", "works_count", "cited_by_count", "h_index", "i10_index", "top_works", "counts_by_year") if result.get(key) is not None})
+        elif "pubmed_search_articles" in tool and isinstance(result, dict):
+            facts["pubmed_publication_count"] = result.get("count")
+            facts["pubmed_representative_papers"] = result.get("summaries") or []
+        if tool:
+            facts["source_types"] = list(dict.fromkeys((facts.get("source_types") or []) + [tool]))
+        for source in (result.get("sources") if isinstance(result, dict) else []) or []:
+            url = source.get("url") if isinstance(source, dict) else ""
+            if url: facts["sources"] = list(dict.fromkeys((facts.get("sources") or []) + [url]))
+    if evidence:
+        facts.setdefault("evidence_status", "searched_partial")
+        facts.setdefault("confidence", "medium")
+    return facts
+
+
 def enrich_all_authors(task: Task, papers: list[Paper]) -> list[dict[str, Any]]:
-    """Collect every author; enrich through an injected web_search adapter when configured."""
+    """Collect unique authors and merge only real, ingested evidence.
+
+    Network-capable Host tools are invoked by the skill orchestration layer;
+    this deterministic worker consumes their evidence inbox.  The legacy
+    Python adapter remains available for backwards compatibility, but an
+    absent adapter is never presented as a successful search.
+    """
     adapter = _load_web_search_adapter()
+    evidence_by_author: dict[str, list[dict[str, Any]]] = {}
+    inbox = task.root / "analysis" / "evidence_inbox.jsonl"
+    try:
+        for line in inbox.read_text(encoding="utf-8").splitlines():
+            if not line.strip(): continue
+            item = json.loads(line)
+            key = clean_text(item.get("author_key") or item.get("author") or "").lower()
+            if key: evidence_by_author.setdefault(key, []).append(item)
+    except (OSError, json.JSONDecodeError):
+        pass
     cache: dict[str, list[dict[str, Any]]] = {}
     cache_path = task.root / "analysis" / "author_search_cache.json"
     try:
@@ -630,12 +773,18 @@ def enrich_all_authors(task: Task, papers: list[Paper]) -> list[dict[str, Any]]:
     except (OSError, json.JSONDecodeError):
         pass
     all_records: list[dict[str, Any]] = []
+    seen_entities: dict[str, dict[str, Any]] = {}
     for paper in papers:
         records = _author_base_records(paper)
         for record in records:
+            entity_key = clean_text(record.get("orcid") or record.get("name")).lower()
+            entity_key = re.sub(r"\s+", " ", entity_key)
+            record["author_entity_id"] = hashlib.sha256(entity_key.encode("utf-8")).hexdigest()[:20]
+            record["evidence_status"] = "blocked_provider"
             query_base = " ".join(x for x in (record["name"], paper.title, record["publication_institution"]) if x)
             queries = [query_base, f"{record['name']} ORCID", f"{record['name']} position institution", f"{record['name']} academician fellow honors"]
             evidence: list[dict[str, Any]] = []
+            evidence.extend(evidence_by_author.get(record["author_entity_id"], []))
             for query in queries:
                 key = hashlib.sha256(query.lower().encode("utf-8")).hexdigest()
                 if key in cache:
@@ -651,7 +800,7 @@ def enrich_all_authors(task: Task, papers: list[Paper]) -> list[dict[str, Any]]:
                         task.record_mcp("web_search", "author_search", "error", query=query, error=type(exc).__name__)
                 else:
                     results = []
-                    task.record_mcp("web_search", "author_search", "skipped_no_adapter", query=query)
+                    task.record_web_search(query, "blocked_provider", author_key=entity_key, reason="native_host_search_required")
                 evidence.extend(x for x in results if isinstance(x, dict))
             if adapter is not None and callable(getattr(adapter, "extract_author_facts", None)):
                 try:
@@ -659,14 +808,24 @@ def enrich_all_authors(task: Task, papers: list[Paper]) -> list[dict[str, Any]]:
                 except Exception as exc:
                     facts = {"conflicts": [f"extract_error:{type(exc).__name__}"]}
             else:
-                facts = {}
-            for field_name in ("current_title", "current_institution", "current_country", "academician_status", "fellow_status"):
+                facts = extract_ingested_author_facts(evidence)
+            for field_name in ("current_title", "current_institution", "current_country", "academician_status", "fellow_status", "openalex_author_id", "orcid", "works_count", "cited_by_count", "h_index", "i10_index", "pubmed_publication_count", "top_works", "counts_by_year", "pubmed_representative_papers"):
                 if facts.get(field_name): record[field_name] = facts[field_name]
             for field_name in ("honors", "appointments", "research_topics", "sources", "source_types", "conflicts"):
                 values = facts.get(field_name) or []
                 if isinstance(values, str): values = [values]
                 record[field_name] = list(dict.fromkeys(record.get(field_name, []) + values))
-            record["confidence"] = facts.get("confidence") or ("web_search_candidate" if evidence else "metadata_only")
+            has_real_search = any(str(x.get("status", "ok")).lower() in {"ok", "success", "not_found_after_search", "searched_partial", "searched_verified"} for x in evidence)
+            record["evidence_status"] = facts.get("evidence_status") or ("searched_verified" if facts.get("confidence") == "high" else ("searched_partial" if has_real_search else "blocked_provider"))
+            # The normalizer always returns bookkeeping keys (empty sources,
+            # conflicts, etc.).  Those keys are not evidence and must not
+            # upgrade a blocked author to high confidence.
+            substantive_facts = {
+                key: value for key, value in facts.items()
+                if key not in {"sources", "source_types", "conflicts", "evidence_status", "confidence"}
+                and value not in (None, "", [], {})
+            }
+            record["confidence"] = facts.get("confidence") or ("high" if substantive_facts else ("medium" if has_real_search else "low"))
             record["search_evidence"] = evidence
             record["retrieved_at"] = now()
         paper.author_records = records
@@ -674,8 +833,135 @@ def enrich_all_authors(task: Task, papers: list[Paper]) -> list[dict[str, Any]]:
         all_records.extend(records)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
-    (task.root / "analysis" / "author_evidence.json").write_text(json.dumps(all_records, ensure_ascii=False, indent=2), encoding="utf-8")
-    return all_records
+    unique: dict[str, dict[str, Any]] = {}
+    for row in all_records:
+        key = row.get("author_entity_id") or clean_text(row.get("orcid") or row.get("name")).lower()
+        if key not in unique:
+            row["papers"] = [row.get("paper")] if row.get("paper") else []
+            unique[key] = row
+        else:
+            current = unique[key]
+            for field_name in ("honors", "appointments", "research_topics", "sources", "source_types", "conflicts"):
+                current[field_name] = list(dict.fromkeys((current.get(field_name) or []) + (row.get(field_name) or [])))
+            merged_evidence = (current.get("search_evidence") or []) + (row.get("search_evidence") or [])
+            current["search_evidence"] = list({json.dumps(item, ensure_ascii=False, sort_keys=True): item for item in merged_evidence}.values())
+            current["papers"] = list(dict.fromkeys((current.get("papers") or []) + ([row.get("paper")] if row.get("paper") else [])))
+    result = list(unique.values())
+    (task.root / "analysis" / "author_evidence.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    return result
+
+
+def unique_author_entities(papers: list[Paper]) -> list[dict[str, Any]]:
+    """Return one stable author entity per ORCID/name, with paper links."""
+    entities: dict[str, dict[str, Any]] = {}
+    for paper in papers:
+        if paper.direction == "target":
+            continue
+        for index, name in enumerate(paper.authors):
+            raw = (paper.raw.get("author") or [])[index] if index < len(paper.raw.get("author") or []) else {}
+            orcid = clean_text(raw.get("ORCID") or raw.get("orcid"))
+            key = clean_text(orcid or name).lower()
+            entity = entities.setdefault(key, {"author_entity_id": hashlib.sha256(key.encode("utf-8")).hexdigest()[:20], "name": clean_text(name), "orcid": orcid, "papers": [], "aliases": []})
+            entity["aliases"] = list(dict.fromkeys(entity["aliases"] + ([clean_text(name)] if clean_text(name) else [])))
+            entity["papers"].append({"paper_key": paper.key, "title": paper.title, "doi": paper.doi, "pmid": paper.pmid, "position": index + 1})
+    return list(entities.values())
+
+
+def prepare_enrichment_requests(task: Task, state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Create explicit requests for Host capability execution.
+
+    This command never claims to have executed a provider.  It emits a
+    resumable queue consumed by capability_search/capability_execute.
+    """
+    papers = papers_from_state(state)
+    target = target_from_papers(papers)
+    cited = [p for p in papers if p.direction == "cited-by"]
+    requests: list[dict[str, Any]] = []
+    def add(kind: str, tool: str, args: dict[str, Any], subject: str, *, paper_key: str = "", author_name: str = "") -> None:
+        provider = "web_search" if tool == "web_search" else ("scimaster" if tool == "search_papers" else tool.split("_", 1)[0])
+        payload = {"kind": kind, "tool": tool, "args": args, "arguments": args,
+                   "subject": subject, "paper_key": paper_key, "author_name": author_name,
+                   "query": args.get("query", ""), "provider": provider,
+                   "execution": "capability_execute_required"}
+        payload["request_id"] = hashlib.sha256(json.dumps(
+            [kind, tool, subject, args], sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:24]
+        payload["created_at"] = now()
+        requests.append(task.enqueue_request(payload))
+    if target.pmid: add("citation", "pubmed_find_related", {"pmid": target.pmid, "relation": "cited_by", "maxResults": state.get("research_plan", {}).get("max_papers", 20)}, target.key, paper_key=target.key)
+    if target.doi or target.openalex_id: add("citation", "openalex_citations", {"work_id": target.openalex_id or target.doi, "max_records": state.get("research_plan", {}).get("max_papers", 20)}, target.key, paper_key=target.key)
+    if target.pmid: add("citation", "pubmed_get_s2_citations", {"paperId": "PMID:" + target.pmid, "maxResults": state.get("research_plan", {}).get("max_papers", 20)}, target.key, paper_key=target.key)
+    pmids = [p.pmid for p in cited if p.pmid]
+    if pmids: add("metadata", "pubmed_fetch_articles", {"pmids": pmids[:200]}, "cited_papers")
+    for entity in unique_author_entities(papers):
+        for query, tool, args in (
+            (entity["name"], "openalex_search_authors", {"query": entity["name"], "max_records": 10}),
+            (entity["name"] + "[Author]", "pubmed_search_articles", {"query": entity["name"] + "[Author]", "maxResults": 20}),
+            (entity["name"], "pubmed_search_papers", {"query": entity["name"], "maxResultsPerSource": 10, "sources": ["pubmed", "europepmc", "openalex", "s2"]}),
+            (entity["name"] + " " + (entity["papers"][0]["title"] if entity["papers"] else ""), "web_search", {"query": entity["name"] + " " + (entity["papers"][0]["title"] if entity["papers"] else "")}),
+            (entity["name"] + " current position honors", "web_search", {"query": entity["name"] + " current position honors"}),
+        ):
+            add("author", tool, args, entity["author_entity_id"],
+                paper_key=(entity["papers"][0]["paper_key"] if entity["papers"] else ""), author_name=entity["name"])
+    task.root.joinpath("analysis").mkdir(exist_ok=True)
+    state["enrichment_required"] = True
+    state["enrichment_requests"] = {"count": len(task.provider_requests()), "created_at": now(), "path": str(task.provider_requests_path)}
+    state["stage"] = "author_enriching"
+    task.save(state)
+    return requests
+
+
+def _append_json_rows(path: Path, rows: list[dict[str, Any]], *, wrapper: str | None = None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        existing = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
+    except (OSError, json.JSONDecodeError):
+        existing = []
+    if wrapper:
+        destination = existing.get(wrapper, []) if isinstance(existing, dict) else []
+        existing = {wrapper: destination, "updated_at": now()}
+    else:
+        destination = existing if isinstance(existing, list) else []
+        existing = destination
+    for row in rows:
+        key = row.get("request_id")
+        if key:
+            destination[:] = [old for old in destination if old.get("request_id") != key]
+        destination.append(row)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8"); tmp.replace(path)
+
+
+def ingest_evidence(task: Task, state: dict[str, Any], request_id: str, input_path: Path) -> dict[str, Any]:
+    """Ingest one real capability result and advance the append-only queue."""
+    request = next((row for row in task.provider_requests() if row.get("request_id") == request_id), None)
+    if request is None:
+        raise ValueError(f"unknown enrichment request: {request_id}")
+    try:
+        result = json.loads(input_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid evidence JSON: {exc}") from exc
+    if isinstance(result, dict) and result.get("request_id") and result["request_id"] != request_id:
+        raise ValueError("evidence request_id does not match --request-id")
+    raw_status = clean_text(result.get("status") if isinstance(result, dict) else "") or "ok"
+    normalized = raw_status.lower()
+    status = "succeeded" if normalized in {"ok", "success", "succeeded", "complete", "completed"} else ("retryable" if normalized in {"429", "timeout", "retryable", "rate_limited"} else (normalized if normalized in {"pending", "running", "not_found_after_search", "blocked_provider"} else "failed"))
+    attempts = int(request.get("attempts") or 0) + 1
+    updated = task.update_request(request_id, status, attempts=attempts, result_status=raw_status, result_received_at=now())
+    item = {"request_id": request_id, "author_key": request.get("subject") if request.get("kind") == "author" else "", "tool": request.get("tool"), "provider": request.get("provider") or request.get("tool"), "status": raw_status, "result": result, "request": request, "ingested_at": now()}
+    evidence_dir = task.root / "analysis" / "evidence"; evidence_dir.mkdir(parents=True, exist_ok=True)
+    (evidence_dir / f"{request_id}.json").write_text(json.dumps(item, ensure_ascii=False, indent=2), encoding="utf-8")
+    inbox = task.root / "analysis" / "evidence_inbox.jsonl"
+    with inbox.open("a", encoding="utf-8") as handle: handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+    _append_json_rows(task.root / "analysis" / "provider_evidence.json", [item], wrapper="queries")
+    if request.get("tool") == "web_search":
+        task.record_web_search(request.get("args", {}).get("query", ""), status, request_id=request_id, author_key=item["author_key"], result_status=raw_status)
+    else:
+        task.record_mcp(request.get("provider") or request.get("tool", "provider"), request.get("tool", "capability_execute"), status, request_id=request_id, subject=request.get("subject"), result_status=raw_status)
+    state["last_evidence_request_id"] = request_id
+    state["enrichment_completed_count"] = sum(1 for row in task.provider_requests() if row.get("status") == "succeeded")
+    state["stage"] = "report_building" if all(row.get("status") in {"succeeded", "failed"} for row in task.provider_requests()) else "author_enriching"
+    task.save(state)
+    return item
 
 
 def deduplicate_pdf_hashes(papers: list[Paper], aliases: list[dict[str, Any]]) -> None:
@@ -1042,20 +1328,20 @@ def download_paper(client: Client, paper: Paper, allow_tsg: bool = True) -> None
                 paper.pdf_status = f"error:{type(exc).__name__}"
                 if attempt < 3: time.sleep(min(2 ** attempt, 8))
     if os.getenv("LITERATURE_DISABLE_PAPER_DOWNLOAD", "").strip().lower() not in {"1", "true", "yes"}:
-        if download_via_paper_download(client.task, paper, target,
-                                       allow_shadow=os.getenv("RESEARCH_ENABLE_SHADOW_LIBS", "").strip().lower() in {"1", "true", "yes"}):
+        shadow_setting = os.getenv("RESEARCH_ENABLE_SHADOW_LIBS", "").strip().lower()
+        shadow_enabled = shadow_setting not in {"0", "false", "no", "off"}
+        if download_via_paper_download(client.task, paper, target, allow_shadow=shadow_enabled):
             paper.acquisition_state = "acquisition_terminal"
             return
-    tsg_configured = allow_tsg and all(os.getenv(name, "").strip() for name in (
-        "TSG_PM_JSESSIONID", "TSG_SESSIONID", "TSG_SGUSER", "TSG_TSGUSER",
-    ))
-    if tsg_configured:
+    if allow_tsg:
+        # Always enter the TSG adapter after paper-download.  The adapter
+        # records a credential-missing terminal attempt itself; it must not be
+        # hidden behind a preflight branch that makes the fallback look unused.
         if download_via_tsg(client, paper, target):
             paper.acquisition_state = "acquisition_terminal"
             return
     else:
-        reason = "disabled_by_flag" if not allow_tsg else "missing_credentials"
-        paper.acquisition_attempts.append({"provider": "tsg", "skill": "zerowall-tsg-literature", "status": "skipped_missing_credentials" if reason == "missing_credentials" else "skipped_disabled", "reason": reason, "at": now()})
+        paper.acquisition_attempts.append({"provider": "tsg", "skill": "zerowall-tsg-literature", "status": "skipped_disabled", "reason": "disabled_by_flag", "at": now()})
     if download_authorized_adapter(client, paper, target):
         paper.acquisition_state = "acquisition_terminal"
         return
@@ -1064,6 +1350,62 @@ def download_paper(client: Client, paper: Paper, allow_tsg: bool = True) -> None
         has_rate_limit = any(str(item.get("status")) in {"429", "blocked_provider_rate_limit"} for item in paper.acquisition_attempts)
         has_identity_mismatch = any(str(item.get("reason")) == "metadata_mismatch" for item in paper.acquisition_attempts)
         paper.pdf_status = "blocked_provider_rate_limit" if has_rate_limit else ("blocked_identity_mismatch" if has_identity_mismatch else (paper.pdf_status if paper.pdf_status in {"blocked_ambiguous_match", "blocked_identity_mismatch"} else "unavailable_no_authorized_source"))
+
+
+def _tsg_credential(name: str) -> tuple[str, str]:
+    """Resolve one TSG cookie without ever returning it to logs.
+
+    ZeroWall normally hydrates encrypted Environment values into the Host
+    process.  The fallbacks cover older settings/export formats and Windows
+    launch environments whose key casing differs.  A browser-cookie export is
+    accepted only when its domain proves which JSESSIONID is being supplied.
+    """
+    aliases = {
+        "TSG_PM_JSESSIONID": ("TSG_PM_JSESSION_ID", "TSG_PM_JSESSION", "PM_JSESSIONID"),
+        "TSG_SESSIONID": ("TSG_USER_SESSIONID",),
+        "TSG_SGUSER": (),
+        "TSG_TSGUSER": (),
+    }
+    expected_cookie = {
+        "TSG_PM_JSESSIONID": "JSESSIONID",
+        "TSG_SESSIONID": "SESSIONID",
+        "TSG_SGUSER": "sguser",
+        "TSG_TSGUSER": "tsguser",
+    }[name]
+    upper_environment = {key.upper(): value for key, value in os.environ.items()}
+    for candidate in (name, *aliases.get(name, ())):
+        value = clean_text(upper_environment.get(candidate.upper()))
+        if not value:
+            continue
+        prefix = expected_cookie + "="
+        if value.lower().startswith(prefix.lower()):
+            value = value[len(prefix):].strip()
+        if value:
+            return value, "environment" if candidate == name else f"legacy_alias:{candidate}"
+
+    raw = os.getenv("RESEARCH_BROWSER_COOKIES", "").strip()
+    if not raw:
+        return "", "missing"
+    try:
+        exported = json.loads(raw)
+    except json.JSONDecodeError:
+        exported = None
+    rows = exported if isinstance(exported, list) else exported.get("cookies", []) if isinstance(exported, dict) else []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        cookie_name = clean_text(row.get("name"))
+        domain = clean_text(row.get("domain")).lower().lstrip(".")
+        value = clean_text(row.get("value"))
+        domain_ok = (
+            name == "TSG_PM_JSESSIONID" and domain == "pm.yuntsg.com"
+            or name == "TSG_SESSIONID" and domain == "user.tsgyun.com"
+            or name == "TSG_SGUSER" and domain.endswith("yuntsg.com")
+            or name == "TSG_TSGUSER" and domain.endswith("tsgyun.com")
+        )
+        if domain_ok and cookie_name.lower() == expected_cookie.lower() and value:
+            return value, "browser_cookie_export"
+    return "", "missing"
 
 
 def download_via_tsg(client: Client, paper: Paper, target: Path) -> bool:
@@ -1076,20 +1418,31 @@ def download_via_tsg(client: Client, paper: Paper, target: Path) -> bool:
     if not script.exists():
         paper.pdf_status = "tsg_skill_missing"
         return False
+    required_cookies = ("TSG_PM_JSESSIONID", "TSG_SESSIONID", "TSG_SGUSER", "TSG_TSGUSER")
+    resolved = {name: _tsg_credential(name) for name in required_cookies}
+    missing = [name for name, (value, _source) in resolved.items() if not value]
+    if missing:
+        paper.pdf_status = "tsg_missing_credentials"
+        credential_sources = {name: source for name, (_value, source) in resolved.items()}
+        paper.acquisition_attempts.append({"provider": "tsg", "skill": "zerowall-tsg-literature", "status": "blocked_missing_credentials", "reason": "credential_not_in_process_environment", "missing": missing, "credential_sources": credential_sources, "query": paper.title, "at": now()})
+        client.task.record_mcp("tsg", "zerowall-tsg-literature.search", "blocked_missing_credentials", paper=paper.key, query=paper.title, missing=missing, credential_sources=credential_sources)
+        return False
     try:
         spec = importlib.util.spec_from_file_location("zerowall_tsg_client", script)
         if spec is None or spec.loader is None:
             raise ImportError("cannot load TSG skill")
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
         tsg = module.TSGClient(
-            pm_jsessionid=os.getenv("TSG_PM_JSESSIONID", ""),
-            user_sessionid=os.getenv("TSG_SESSIONID", ""),
-            sguser=os.getenv("TSG_SGUSER", ""),
-            tsguser=os.getenv("TSG_TSGUSER", ""),
+            pm_jsessionid=resolved["TSG_PM_JSESSIONID"][0],
+            user_sessionid=resolved["TSG_SESSIONID"][0],
+            sguser=resolved["TSG_SGUSER"][0],
+            tsguser=resolved["TSG_TSGUSER"][0],
             timeout=client.timeout,
         )
         client.task.record_mcp("tsg", "zerowall-tsg-literature.search", "started", paper=paper.key, query=paper.doi or paper.title)
-        matches, _ = tsg.search(paper.doi or paper.title, size=20)
+        # TSG is a title search fallback. DOI/PMID are used only to verify the
+        # returned candidate and prevent identity mismatches.
+        matches, _ = tsg.search(paper.title, size=20)
         match = next((x for x in matches if paper.doi and x.doi and x.doi.lower() == paper.doi.lower()), None)
         if match is None and paper.pmid:
             match = next((x for x in matches if clean_text(x.pmid) == clean_text(paper.pmid)), None)
@@ -1237,7 +1590,37 @@ def update_phase_status(state: dict[str, Any], papers: list[Paper]) -> dict[str,
         terminal = bool(papers) and all(p.acquisition_state == "acquisition_terminal" or p.pdf_status in ACQUISITION_TERMINAL for p in papers)
         analysis_dir = Path(state.get("task_root") or ".") / "analysis"
         target_parsed = bool(target and target.parse_status == "mineru_parsed" and target.parsed_text_path)
-        author_ready = (analysis_dir / "author_evidence.json").is_file() and (analysis_dir / "author_analysis.md").is_file()
+        author_rows: list[dict[str, Any]] = []
+        try:
+            author_rows = json.loads((analysis_dir / "author_evidence.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            author_rows = []
+        strict_author_gate = int(state.get("workflow_version", 1)) >= 2
+        queue: list[dict[str, Any]] = []
+        queue_path = analysis_dir / "provider_requests.jsonl"
+        try:
+            queue = [json.loads(line) for line in queue_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            latest: dict[str, dict[str, Any]] = {}
+            for row in queue:
+                if row.get("request_id"):
+                    latest[row["request_id"]] = row
+            queue = list(latest.values())
+        except (OSError, json.JSONDecodeError):
+            queue = []
+        queue_terminal = {"succeeded", "failed", "not_found_after_search", "blocked_provider"}
+        queue_ready = bool(queue) and all(clean_text(row.get("status")) in queue_terminal for row in queue)
+        # A queue-driven task is complete only after every author has a real
+        # web-search terminal result.  This prevents an empty placeholder file
+        # from satisfying the author phase.
+        author_entities = {clean_text(row.get("subject")) for row in queue if row.get("kind") == "author"}
+        searched_entities = {clean_text(row.get("subject")) for row in queue
+                             if row.get("kind") == "author" and row.get("tool") == "web_search"
+                             and clean_text(row.get("status")) in queue_terminal}
+        author_ready = ((analysis_dir / "author_evidence.json").is_file()
+                        and (analysis_dir / "author_analysis.md").is_file()
+                        and (not state.get("enrichment_required") or (queue_ready and author_entities <= searched_entities)))
+        if strict_author_gate:
+            author_ready = bool(author_rows) and all(row.get("evidence_status") in {"searched_verified", "searched_partial", "not_found_after_search", "ambiguous_identity"} for row in author_rows) and bool(Task(Path(state.get("task_root") or ".")).web_search_receipts())
         report_ready = all((Path(state.get("task_root") or ".") / name).is_file() for name in ("report.html", "papers.xlsx"))
         state["phase_status"] = {
             "identify_target": "complete" if target else "pending",
@@ -1245,12 +1628,14 @@ def update_phase_status(state: dict[str, Any], papers: list[Paper]) -> dict[str,
             "target_mineru_parsed": "complete" if target_parsed else ("pending" if target and target.pdf_path else "blocked"),
             "cited_by_expanded": "complete" if cited or state.get("cited_by_expanded") else ("pending" if target_parsed else "blocked_on_target_mineru"),
             "acquisition_terminal": "complete" if terminal else ("in_progress" if any(p.acquisition_attempts for p in papers) else "pending"),
-            "author_enrichment": "complete" if author_ready else "pending",
+            "author_enrichment": "complete" if author_ready else ("in_progress" if queue else "pending"),
             "journal_enrichment": "complete" if (analysis_dir / "journal_evidence.json").is_file() else "pending",
             "citation_relations": "complete" if (analysis_dir / "citation_relations.json").is_file() else "pending",
-            "provider_evidence": "complete" if (analysis_dir / "provider_evidence.json").is_file() else "pending",
+            "provider_evidence": "complete" if ((analysis_dir / "provider_evidence.json").is_file() and (not state.get("enrichment_required") or queue_ready)) else ("in_progress" if queue else "pending"),
             "report_outputs": "complete" if report_ready else "pending",
         }
+        if strict_author_gate and not author_ready:
+            state["phase_status"]["author_enrichment"] = "pending"
         return state["phase_status"]
     related = [paper for paper in papers if paper.direction != "target"]
     downloaded = [paper for paper in papers if paper.pdf_path]
@@ -1469,17 +1854,31 @@ def build_simplified_analysis(task: Task, state: dict[str, Any], papers: list[Pa
         "generated_at": now(),
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     relations = []
+    provider_counts = {
+        "openalex": target.cited_by_counts.get("openalex"),
+        "semantic_scholar": target.cited_by_counts.get("semantic_scholar"),
+        "crossref": target.cited_by_counts.get("crossref"),
+        "pubmed_cited_in": target.cited_by_counts.get("pubmed_cited_in"),
+        "europepmc": target.cited_by_counts.get("europepmc"),
+    }
+    provider_counts = {key: value for key, value in provider_counts.items() if value is not None}
+    target.provider_counts = provider_counts
     journals = []
     for paper in papers:
         journals.append({"paper": paper.key, **journal_metadata(paper)})
         if paper.direction == "cited-by":
             paper.citation_relation = citation_relation(target, paper)
+            paper.citation_sources = paper.raw.get("citation_sources") or [{"provider": paper.raw.get("citation_source") or paper.source, "cited": True}]
             relations.append(paper.citation_relation)
             paper.parse_status = "not_required"
             paper.citation_contexts = []
     (analysis / "citation_relations.json").write_text(json.dumps(relations, ensure_ascii=False, indent=2), encoding="utf-8")
+    (analysis / "citation_provider_counts.json").write_text(json.dumps({"target": target.key, "counts": provider_counts, "retrieved_unique_citing_papers": len(relations), "generated_at": now()}, ensure_ascii=False, indent=2), encoding="utf-8")
     (analysis / "journal_evidence.json").write_text(json.dumps(journals, ensure_ascii=False, indent=2), encoding="utf-8")
     records = enrich_all_authors(task, papers)
+    entities = unique_author_entities(papers)
+    (analysis / "author_entities.json").write_text(json.dumps(entities, ensure_ascii=False, indent=2), encoding="utf-8")
+    (analysis / "authorships.json").write_text(json.dumps([{"author_entity_id": row.get("author_entity_id"), "paper": row.get("paper"), "name": row.get("name"), "role": row.get("role")} for row in records], ensure_ascii=False, indent=2), encoding="utf-8")
     author_lines = ["# 作者核验", "", "全部作者均建立基础记录；头衔、院士/会士与荣誉仅采用联网适配器返回的可追溯证据。", ""]
     for row in records:
         author_lines.append(f"- {row['name']}：发表时单位 {row['publication_institution'] or '未确认'}；当前职称 {row['current_title'] or '未确认'}；当前单位 {row['current_institution'] or '未确认'}；院士 {row['academician_status']}；会士 {row['fellow_status']}；置信度 {row['confidence']}。")
@@ -1583,7 +1982,9 @@ def pdf_status_label(status: str) -> str:
         "invalid_pdf_header": "PDF 无效",
         "error:HTTPError": "HTTP 错误",
         "tsg_skill_missing": "TSG 技能缺失",
+        "tsg_missing_credentials": "TSG 凭据未注入",
         "tsg_no_match": "TSG 无匹配",
+        "blocked_missing_credentials": "TSG 凭据缺失（已记录回退）",
     }
     if status in labels:
         return labels[status]
@@ -1694,6 +2095,7 @@ def run_analyze(args: argparse.Namespace) -> int:
     task = Task(output); state = task.load(); client = Client(task, args.timeout)
     (task.root / "analysis").mkdir(exist_ok=True)
     state["workflow_mode"] = WORKFLOW_MODE
+    state["workflow_version"] = 2
     state["input"] = args.input
     state["research_plan"] = {"directions": "cited-by", "max_papers": args.max_papers, "all_cited_by": args.all_cited_by, "download_pdfs": args.download_pdfs, "download_workers": args.download_workers, "author_search": "all", "target_mineru_required": True, "created_at": now()}
     state["skill_invocations"] = [
@@ -1802,6 +2204,26 @@ def run_resume(args: argparse.Namespace) -> int:
             paper.pdf_status = "unavailable_no_authorized_source"; paper.acquisition_state = "acquisition_terminal"; paper.parse_status = "not_required"
             paper.acquisition_attempts.append({"provider": "workflow", "skill": "zerowall-literature", "status": "skipped_by_request", "at": now()})
     deduplicate_pdf_hashes(papers, state.setdefault("deduplication", []))
+    # Author/citation enrichment is executed by the Host capability layer.
+    # Pause with a concrete request queue instead of silently fabricating
+    # skipped web searches from the Python process.
+    if not state.get("enrichment_requests"):
+        state["papers"] = [asdict(p) for p in papers]
+        task.save(state)
+        requests = prepare_enrichment_requests(task, state)
+        report(task, state)
+        print(json.dumps({"task": str(task.root), "stage": state["stage"], "next": "execute provider_requests.jsonl through capability_search/capability_execute", "request_count": len(requests)}, ensure_ascii=False, indent=2))
+        return 0
+    request_ids: set[str] = set()
+    try:
+        request_ids = {json.loads(line).get("request_id") for line in task.provider_requests_path.read_text(encoding="utf-8").splitlines() if line.strip()}
+        ingested_ids = {json.loads(line).get("request_id") for line in (task.root / "analysis" / "evidence_inbox.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()}
+    except (OSError, json.JSONDecodeError):
+        ingested_ids = set()
+    if request_ids - ingested_ids:
+        state["stage"] = "author_enriching"; task.save(state); report(task, state)
+        print(json.dumps({"task": str(task.root), "stage": state["stage"], "next": "ingest remaining provider evidence", "pending": len(request_ids - ingested_ids)}, ensure_ascii=False, indent=2))
+        return 0
     state["stage"] = "author_enriching"; build_simplified_analysis(task, state, papers)
     state["stage"] = "report_building"; state["papers"] = [asdict(p) for p in papers]; task.save(state); report(task, state)
     update_phase_status(state, papers); task.save(state)
@@ -1817,6 +2239,8 @@ def main(argv: list[str] | None = None) -> int:
     resume = sub.add_parser("resume"); resume.add_argument("task", type=Path); resume.add_argument("--allow-tsg", action="store_true", help="兼容旧调用；TSG 默认自动启用"); resume.add_argument("--no-tsg", action="store_true", help="禁用授权 TSG 回退"); resume.add_argument("--timeout", type=float, default=30)
     export = sub.add_parser("export"); export.add_argument("task", type=Path)
     ingest = sub.add_parser("ingest-mineru"); ingest.add_argument("task", type=Path); ingest.add_argument("--paper", required=True, help="paper key, DOI, or PMID"); ingest.add_argument("--run-dir", type=Path, required=True); ingest.add_argument("--task-id", default=""); ingest.add_argument("--api", default="mineru")
+    prepare = sub.add_parser("prepare-enrichment"); prepare.add_argument("task", type=Path)
+    ingest_evidence_parser = sub.add_parser("ingest-evidence"); ingest_evidence_parser.add_argument("task", type=Path); ingest_evidence_parser.add_argument("--request-id", required=True); ingest_evidence_parser.add_argument("--input", type=Path, required=True)
     finalize = sub.add_parser("finalize"); finalize.add_argument("task", type=Path)
     status = sub.add_parser("status"); status.add_argument("task", type=Path)
     args = parser.parse_args(argv)
@@ -1825,6 +2249,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "ingest-mineru":
         task = Task(args.task); state = task.load(); paper = ingest_mineru_result(task, state, args.paper, args.run_dir, args.task_id, args.api)
         print(json.dumps({"paper": paper.key, "parse_status": paper.parse_status, "parsed_text_path": paper.parsed_text_path}, ensure_ascii=False, indent=2)); return 0
+    if args.command == "prepare-enrichment":
+        task = Task(args.task); state = task.load(); requests = prepare_enrichment_requests(task, state)
+        print(json.dumps({"task": str(task.root), "stage": state.get("stage"), "request_count": len(requests), "path": str(task.provider_requests_path)}, ensure_ascii=False, indent=2)); return 0
+    if args.command == "ingest-evidence":
+        task = Task(args.task); state = task.load(); item = ingest_evidence(task, state, args.request_id, args.input)
+        print(json.dumps({"task": str(task.root), "request_id": args.request_id, "status": item.get("status")}, ensure_ascii=False, indent=2)); return 0
     if args.command == "finalize":
         task = Task(args.task); state = task.load()
         try:

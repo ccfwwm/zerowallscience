@@ -20,6 +20,9 @@ export const EnvironmentSettingsSchema: z<EnvironmentSettingsValue> = z.object({
 const VARIABLE_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u
 const RESERVED = new Set(['NODE_OPTIONS', 'ELECTRON_RUN_AS_NODE', 'PATH', 'PATHEXT', 'COMSPEC', 'DSH_HOME', 'ZEROWALL_USER_DATA_DIR'])
 const KEY_PREFIX = 'zerowall.environment.var.'
+// These are part of the TSG contract even when an older settings snapshot
+// did not persist the variable names alongside the encrypted values.
+const WELL_KNOWN_VARIABLES = ['TSG_PM_JSESSIONID', 'TSG_SESSIONID', 'TSG_SGUSER', 'TSG_TSGUSER'] as const
 
 export function validateEnvironmentVariableName(name: string): string {
   const value = name.trim().toUpperCase()
@@ -37,11 +40,15 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
   static inject = ['settings']
   private readonly secrets = new SecretBrokerClient()
   private readonly scope
+  private readonly hydration: Promise<void>
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallEnvironment')
     this.scope = ctx.settings.register(ENVIRONMENT_SETTINGS_NS, EnvironmentSettingsSchema)
-    void this.hydrate()
+    // Keep credential restoration observable.  A tool can be invoked
+    // immediately after Host startup, so fire-and-forget hydration otherwise
+    // races the first TSG/download request.
+    this.hydration = this.hydrate()
   }
 
   getImageModelSelection(): ImageModelSelection | undefined {
@@ -76,13 +83,21 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
 
   @Remote('listVariables')
   async listVariables(): Promise<EnvironmentVariableInfo[]> {
-    const rows = this.scope.get().variables
-    const values = await Promise.all(rows.map(async ({ name }) => ({ name, configured: (await this.secrets.get(credentialKey(name))) !== undefined })))
+    await this.hydration
+    const configuredNames = WELL_KNOWN_VARIABLES.filter(name => Boolean(process.env[name]?.trim()))
+    const names = [...new Set([...this.scope.get().variables.map(row => row.name), ...configuredNames])]
+    const values = await Promise.all(names.map(async name => ({
+      name,
+      // process.env is also a supported source: packaged launches can inject
+      // credentials before the settings snapshot is available.
+      configured: Boolean(process.env[name]?.trim()) || (await this.secrets.get(credentialKey(name))) !== undefined,
+    })))
     return values
   }
 
   @Remote('setVariable')
   async setVariable(name: string, value: string): Promise<EnvironmentVariableInfo[]> {
+    await this.hydration
     const key = validateEnvironmentVariableName(name)
     if (value.length === 0) throw new Error('环境变量值不能为空。')
     await this.secrets.set(credentialKey(key), value)
@@ -94,6 +109,7 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
 
   @Remote('deleteVariable')
   async deleteVariable(name: string): Promise<EnvironmentVariableInfo[]> {
+    await this.hydration
     const key = validateEnvironmentVariableName(name)
     await this.secrets.delete(credentialKey(key))
     delete process.env[key]
@@ -102,7 +118,8 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
   }
 
   private async hydrate(): Promise<void> {
-    for (const { name } of this.scope.get().variables) {
+    const names = [...new Set([...this.scope.get().variables.map(row => row.name), ...WELL_KNOWN_VARIABLES])]
+    for (const name of names) {
       try {
         const value = await this.secrets.get(credentialKey(name))
         if (value !== undefined) process.env[name] = value

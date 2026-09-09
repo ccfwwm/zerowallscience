@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -262,10 +263,47 @@ class LiteraturePipelineTests(unittest.TestCase):
             task = module.Task(Path(directory) / "task")
             client = module.Client(task)
             paper = module.Paper(key="doi:10.1/tsg", title="TSG paper", doi="10.1/tsg")
-            with patch.object(module, "download_via_tsg", return_value=True) as tsg, patch.object(module, "download_via_paper_download", return_value=False), patch.object(module, "download_authorized_adapter", return_value=False):
+            with patch.object(module, "download_via_tsg", return_value=True) as tsg, patch.object(module, "download_via_paper_download", return_value=False) as paper_download, patch.object(module, "download_authorized_adapter", return_value=False):
                 with patch.dict(module.os.environ, {"TSG_PM_JSESSIONID": "x", "TSG_SESSIONID": "x", "TSG_SGUSER": "x", "TSG_TSGUSER": "x"}, clear=False):
                     module.download_paper(client, paper)
             tsg.assert_called_once()
+            self.assertTrue(paper_download.call_args.kwargs["allow_shadow"])
+
+    def test_shadow_cascade_can_be_explicitly_disabled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            task = module.Task(Path(directory) / "task")
+            client = module.Client(task)
+            paper = module.Paper(key="doi:10.1/no-shadow", title="No shadow paper", doi="10.1/no-shadow")
+            with patch.object(module, "download_via_paper_download", return_value=False) as paper_download, patch.object(module, "download_via_tsg", return_value=False), patch.object(module, "download_authorized_adapter", return_value=False):
+                with patch.dict(module.os.environ, {"RESEARCH_ENABLE_SHADOW_LIBS": "0"}, clear=False):
+                    module.download_paper(client, paper)
+            self.assertFalse(paper_download.call_args.kwargs["allow_shadow"])
+
+    def test_tsg_credential_accepts_packaged_environment_and_cookie_export(self):
+        with patch.dict(module.os.environ, {"tsg_pm_jsessionid": "JSESSIONID=pm-value"}, clear=True):
+            value, source = module._tsg_credential("TSG_PM_JSESSIONID")
+            self.assertEqual(value, "pm-value")
+            self.assertEqual(source, "environment")
+        exported = json.dumps({"cookies": [
+            {"domain": ".yuntsg.com", "name": "sguser", "value": "sg-value"},
+            {"domain": "pm.yuntsg.com", "name": "JSESSIONID", "value": "pm-exported"},
+        ]})
+        with patch.dict(module.os.environ, {"RESEARCH_BROWSER_COOKIES": exported}, clear=True):
+            self.assertEqual(module._tsg_credential("TSG_PM_JSESSIONID"), ("pm-exported", "browser_cookie_export"))
+            self.assertEqual(module._tsg_credential("TSG_SGUSER"), ("sg-value", "browser_cookie_export"))
+
+    def test_missing_tsg_credential_is_a_blocked_search_attempt_not_a_silent_skip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            task = module.Task(Path(directory) / "task")
+            client = module.Client(task)
+            paper = module.Paper(key="doi:10.1/tsg", title="Exact TSG search title", doi="10.1/tsg")
+            with patch.dict(module.os.environ, {}, clear=True):
+                self.assertFalse(module.download_via_tsg(client, paper, Path(directory) / "paper.pdf"))
+            attempt = paper.acquisition_attempts[-1]
+            self.assertEqual(attempt["status"], "blocked_missing_credentials")
+            self.assertEqual(attempt["query"], paper.title)
+            self.assertIn("TSG_PM_JSESSIONID", attempt["missing"])
+            self.assertNotIn("skipped", attempt["status"])
 
     def test_finalize_rejects_missing_agent_analysis(self):
         with tempfile.TemporaryDirectory() as directory:

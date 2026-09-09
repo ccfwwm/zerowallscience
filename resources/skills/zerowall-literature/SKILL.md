@@ -15,7 +15,7 @@ description: "面向单篇论文的 cited-by 展示与作者核验流程：标�
    python scripts/literature_pipeline.py analyze "<title-or-doi-or-local-pdf>" --output literature/<slug>
    ```
 
-   标题/DOI/PMID 会先通过 Crossref、Europe PMC、OpenAlex 等元数据源解析，再按公开来源 → `paper-download` → 授权 TSG → 其他授权适配器下载目标 PDF。传入本地 PDF 时直接复制并校验，不从 PDF 提取文本。默认只取 cited-by Top 20；可用 `--top-n` 或 `--all-cited-by` 调整。`--directions` 保留为兼容参数，但新版固定为 `cited-by`。
+   标题/DOI/PMID 会先通过 Crossref、Europe PMC、OpenAlex 等元数据源解析，再按公开来源 → `paper-download` → 授权 TSG → 其他授权适配器下载目标 PDF。传入本地 PDF 时直接复制并校验；目标 PDF 仍必须交给 MinerU，不能因为本地文件而跳过目标解析。默认只取 cited-by Top 20；可用 `--top-n` 或 `--all-cited-by` 调整。`--directions` 保留为兼容参数，但新版固定为 `cited-by`。
 
 2. 检查状态：
 
@@ -39,7 +39,9 @@ description: "面向单篇论文的 cited-by 展示与作者核验流程：标�
    python scripts/literature_pipeline.py resume literature/<slug>
    ```
 
-   `resume` 只有在目标 MinerU 成功后才会查询 cited-by；绝不扩展目标论文参考文献。被引论文仅下载、哈希和记录来源，不解析正文。下载链为 PubMed/Europe PMC/PMC → OpenAlex/Crossref/Unpaywall → `paper-download` → 授权 TSG → 其他授权适配器；每次尝试、重试、限流、工作目录和最终 SHA-256 都写入收据。
+   `resume` 只有在目标 MinerU 成功后才会查询 cited-by；绝不扩展目标论文参考文献。被引论文仅下载、哈希和记录来源，不解析正文。下载链为 PubMed/Europe PMC/PMC → OpenAlex/Crossref/Unpaywall → `paper-download` → 授权 TSG → 其他授权适配器。只要前一来源未得到通过身份校验的 PDF，就必须进入下一来源；`paper-download` 失败后仍必须调用 TSG 的标题搜索。每篇论文使用独立的 `paper-download/<paper-id>/` 工作目录；每次尝试、重试、限流、工作目录和最终 SHA-256 都写入收据。ZeroWall Literature 调用 `paper-download` 时默认设置 `RESEARCH_ENABLE_SHADOW_LIBS=1` 以启用其扩展级联；可显式设置 `RESEARCH_ENABLE_SHADOW_LIBS=0` 或 `LITERATURE_DISABLE_PAPER_DOWNLOAD=1` 关闭。扩展来源仍只用于用户已授权的研究用途，并遵守其服务条款。
+
+   TSG 不在下载入口用环境变量预检静默跳过。环境服务会在 Host 启动时恢复四个 Cookie，并等待恢复完成后再返回配置；Python 侧同时接受大小写差异、旧别名和带域名的浏览器 Cookie 导出。若仍有缺失，只记录具体缺失键和 `blocked_missing_credentials`，并保留论文标题查询证据，不伪装为 `no_open_pdf`。
 
 5. 作者和期刊阶段会处理全部被引论文的全部作者。通过实时 capability/tool 目录发现 `web_search` 或等价联网能力，查询“姓名 + 论文题目/单位/ORCID/职称/院士/会士”，优先机构官网、ORCID、PubMed 和学会官网。无法核验时写“未找到可验证证据”，不从姓名或单位推断身份。作者搜索按查询缓存去重。
 

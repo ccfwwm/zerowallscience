@@ -229,15 +229,43 @@ export function registerPubmedTools(ctx, deps) {
     for (const raw of text.split('\n')) {
       const line = raw.replace(/\r$/, '')
       if (line.startsWith('PMID-')) {
-        if (current) records.push(current.fields)
+        if (current) records.push(current)
         const pmid = line.slice(6).trim()
-        current = { fields: { PMID: pmid }, lastTag: null, pmid }
+        // MEDLINE is a flat format, but author affiliations are encoded as
+        // ordered FAU/AU/AD blocks. Keep that order while parsing so an AD
+        // can be attached to the author it follows. The legacy flat fields
+        // remain intact for callers that consume article-level affiliations.
+        current = {
+          fields: { PMID: pmid },
+          authorMeta: [],
+          activeAuthor: -1,
+          activeAffiliation: -1,
+          lastTag: null,
+          pmid,
+        }
         continue
       }
       if (!current) continue
       if (/^\s{6}/.test(line)) {
         if (current.lastTag && current.fields[current.lastTag] !== undefined) {
-          current.fields[current.lastTag] += ' ' + line.trim()
+          const field = current.fields[current.lastTag]
+          if (Array.isArray(field)) field[field.length - 1] += ' ' + line.trim()
+          else current.fields[current.lastTag] += ' ' + line.trim()
+        }
+        // A wrapped AD line belongs to the most recently opened affiliation.
+        if (current.lastTag === 'AD' && current.activeAuthor >= 0 && current.activeAffiliation >= 0) {
+          const meta = current.authorMeta[current.activeAuthor]
+          if (meta && meta.affiliations[current.activeAffiliation] !== undefined) {
+            meta.affiliations[current.activeAffiliation] += ' ' + line.trim()
+          }
+        }
+        // AUID values are uncommon in MEDLINE, but can also be wrapped. Keep
+        // the continuation in the identifier value for deterministic output.
+        if (current.lastTag === 'AUID' && current.activeAuthor >= 0) {
+          const meta = current.authorMeta[current.activeAuthor]
+          if (meta && meta._lastIdentifierType && meta.identifiers[meta._lastIdentifierType] !== undefined) {
+            meta.identifiers[meta._lastIdentifierType] += ' ' + line.trim()
+          }
         }
         continue
       }
@@ -249,9 +277,36 @@ export function registerPubmedTools(ctx, deps) {
       if (!(tag in current.fields)) current.fields[tag] = val
       else if (Array.isArray(current.fields[tag])) current.fields[tag].push(val)
       else current.fields[tag] = [current.fields[tag], val]
+
+      if (tag === 'FAU') {
+        current.authorMeta.push({ affiliations: [], identifiers: {} })
+        current.activeAuthor = current.authorMeta.length - 1
+        current.activeAffiliation = -1
+      } else if (tag === 'AD' && current.activeAuthor >= 0) {
+        const meta = current.authorMeta[current.activeAuthor]
+        meta.affiliations.push(val)
+        current.activeAffiliation = meta.affiliations.length - 1
+      } else if (tag === 'AUID' && current.activeAuthor >= 0) {
+        const meta = current.authorMeta[current.activeAuthor]
+        // Typical form: "0000-0002-1825-0097 [orcid]". Preserve unknown
+        // identifier labels instead of silently dropping useful provenance.
+        const idMatch = /^(.*?)\s*\[([^\]]+)\]\s*$/.exec(val)
+        const rawId = (idMatch ? idMatch[1] : val).trim()
+        const rawType = (idMatch ? idMatch[2] : 'unknown').trim().toLowerCase()
+        const type = rawType === 'orcid' ? 'orcid' : rawType.replace(/[^a-z0-9]+/g, '_') || 'unknown'
+        if (rawId) {
+          const previous = meta.identifiers[type]
+          meta.identifiers[type] = previous ? previous + '; ' + rawId : rawId
+          meta._lastIdentifierType = type
+        }
+      } else if (tag === 'CN' && current.activeAuthor >= 0) {
+        // Collective names occasionally occur as a CN field after FAU. Keep
+        // them on the current author without changing the legacy fields map.
+        current.authorMeta[current.activeAuthor].collectiveName = val
+      }
     }
-    if (current) records.push(current.fields)
-    return records.map(articleFromFields)
+    if (current) records.push(current)
+    return records.map((record) => articleFromFields(record.fields, record.authorMeta))
   }
 
   function parseMedlineDate(dp) {
@@ -345,19 +400,33 @@ export function registerPubmedTools(ctx, deps) {
     return ids
   }
 
-  function articleFromFields(fields) {
+  function articleFromFields(fields, authorMeta = []) {
     const issn = parseIssns(fields.ISSN)
     const ids = parseArticleIds(fields.AID)
     const dp = parseMedlineDate(fields.DP)
     const authors = []
-    for (const fau of asArray(fields.FAU)) {
+    for (const [authorIndex, fau] of asArray(fields.FAU).entries()) {
       const parts = fau.split(',').map((p) => p.trim())
+      const meta = authorMeta[authorIndex] || { affiliations: [], identifiers: {} }
+      const fullName = String(fau || '').trim()
+      const author = {
+        fullName,
+        affiliations: Array.isArray(meta.affiliations) ? meta.affiliations.slice() : [],
+        identifiers: meta.identifiers && typeof meta.identifiers === 'object' ? { ...meta.identifiers } : {},
+      }
+      if (meta.collectiveName) author.collectiveName = meta.collectiveName
       if (parts.length > 1 && parts[0] && parts[1]) {
         const first = parts[1]
         const initials = (first.match(/\b[A-Z]/g) || []).join('')
-        authors.push({ lastName: parts[0], firstName: first, initials: initials || undefined })
+        authors.push({ ...author, lastName: parts[0], firstName: first, initials: initials || undefined })
       } else if (parts[0]) {
-        authors.push({ lastName: parts[0] })
+        // FAU values without a comma represent collective/group authors in
+        // PubMed records. Preserve lastName for compatibility but expose the
+        // semantically correct collectiveName as well.
+        if (!author.collectiveName && /\b(group|consortium|study|team|network)\b/i.test(parts[0])) {
+          author.collectiveName = parts[0]
+        }
+        authors.push({ ...author, lastName: parts[0] })
       }
     }
     const mesh = asArray(fields.MH).map((mh) => {
@@ -939,6 +1008,15 @@ export function registerPubmedTools(ctx, deps) {
         const j = a.journalInfo
         const authors = (a.authors || []).map((x) => (x.lastName || '') + (x.initials ? ' ' + x.initials : '')).join(', ')
         if (authors) lines.push('Authors: ' + authors)
+        // Surface the author-level metadata added by the MEDLINE parser. The
+        // JSON result remains the source of truth; this keeps the human/tool
+        // rendering useful when a caller only sees the text representation.
+        for (const author of a.authors || []) {
+          const name = author.fullName || [author.lastName, author.firstName].filter(Boolean).join(', ')
+          const affiliations = Array.isArray(author.affiliations) ? author.affiliations : []
+          if (name && affiliations.length) lines.push('  ' + name + ' — affiliation: ' + affiliations.join(' | '))
+          if (name && author.collectiveName && author.collectiveName !== name) lines.push('  ' + name + ' — collective author: ' + author.collectiveName)
+        }
         if (j && j.title) lines.push('Journal: ' + j.title + (j.volume ? ' ' + j.volume : '') + (j.issue ? '(' + j.issue + ')' : '') + (j.pages ? ':' + j.pages : '') + (getYear(a) !== 'n.d.' ? ' (' + getYear(a) + ')' : ''))
         if (a.doi) lines.push('DOI: https://doi.org/' + a.doi)
         if (a.pmcId) lines.push('PMCID: ' + a.pmcId)

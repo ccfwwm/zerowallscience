@@ -81,14 +81,17 @@ def download_with_paper_download(
     target: Path,
     work_dir: Path,
     *,
-    allow_shadow: bool = False,
+    allow_shadow: bool = True,
     timeout: float = 30.0,
 ) -> PaperDownloadResult:
     """Run paper-download's native FSM in an isolated task directory."""
     root = paper_download_root()
     if root is None:
         return PaperDownloadResult(False, "paper_download_missing", work_dir=str(work_dir))
-    work_dir = work_dir.resolve()
+    # Every paper owns a private bridge directory.  The caller may run many
+    # downloads concurrently; sharing registry/vault/log files corrupts the
+    # upstream FSM and makes later audits non-deterministic.
+    work_dir = (work_dir / _safe_slug(paper)).resolve()
     vault = work_dir / "vault"
     sources = work_dir / "sources"
     registry = work_dir / "registry"
@@ -106,8 +109,12 @@ def download_with_paper_download(
         "RESEARCH_SOURCES_PATH": str(sources),
         "RESEARCH_REGISTRY_PATH": str(registry),
     })
+    # The literature workflow opts into the extended paper-download cascade
+    # by default.  Callers can still explicitly disable it for a run.
     if allow_shadow:
         env["RESEARCH_ENABLE_SHADOW_LIBS"] = "1"
+    else:
+        env.pop("RESEARCH_ENABLE_SHADOW_LIBS", None)
     command = [sys.executable, "-m", "pipeline", "run", "--ref", slug,
                "--loop", "--max-iterations", "8", "--no-lint", "--no-doctor"]
     try:
