@@ -106,7 +106,7 @@ class LiteraturePipelineTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertTrue(captured["download_pdfs"])
         self.assertEqual(captured["directions"], "cited-by")
-        self.assertEqual(captured["max_papers"], 20)
+        self.assertIsNone(captured["max_papers"])
 
     def test_ingest_mineru_result_persists_artifacts_and_provenance(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -165,6 +165,18 @@ class LiteraturePipelineTests(unittest.TestCase):
             self.assertEqual(paper.parse_status, "mineru_required")
             self.assertTrue(Path(paper.pdf_path).is_file())
 
+    def test_pdf_paths_are_flat_and_reader_facing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            task = module.Task(Path(directory) / "task")
+            target = module.Paper(key="doi:target", title="Target title", direction="target")
+            cited = module.Paper(key="doi:cited", title="Citing title", direction="cited-by", authors=["Ada Lovelace"], year="2025")
+            target_path = module.canonical_pdf_path(task, target)
+            cited_path = module.canonical_pdf_path(task, cited)
+            self.assertEqual(target_path.parent, task.root / "downloads")
+            self.assertEqual(cited_path.parent, task.root / "downloads")
+            self.assertTrue(target_path.name.startswith("target__"))
+            self.assertTrue(cited_path.name.startswith("cited__Ada Lovelace__2025__"))
+
     def test_simplified_ingest_rejects_cited_paper(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "task"; task = module.Task(root)
@@ -198,17 +210,51 @@ class LiteraturePipelineTests(unittest.TestCase):
     def test_simplified_report_has_explanation_sheet_and_no_remote_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "task"; task = module.Task(root)
-            target = module.Paper(key="doi:target", title="Target paper", direction="target", pdf_path="target.pdf", pdf_status="provided_pdf", acquisition_state="acquisition_terminal", parse_status="mineru_parsed", parsed_text_path="full.md")
-            cited = module.Paper(key="doi:cited", title="Citing paper", direction="cited-by", pdf_status="unavailable_no_authorized_source", acquisition_state="acquisition_terminal", parse_status="not_required", authors=["Bob Jones"], citation_relation=module.citation_relation(target, module.Paper(key="doi:cited", title="Citing paper", direction="cited-by")))
+            target = module.Paper(key="doi:target", title="Target paper", direction="target", authors=["Alice Smith"], pdf_path="target.pdf", pdf_status="provided_pdf", acquisition_state="acquisition_terminal", parse_status="mineru_parsed", parsed_text_path="full.md")
+            cited = module.Paper(key="doi:cited", title="Citing paper", direction="cited-by", pdf_status="unavailable_no_authorized_source", acquisition_state="acquisition_terminal", parse_status="not_required", authors=["Alice Smith", "Bob Jones"], author_records=[{"name": "Alice Smith", "current_title": "Professor", "sources": ["https://example.org/alice"]}, {"name": "Bob Jones", "current_title": "Professor", "current_institution": "Example University", "sources": ["https://example.org/bob"]}], citation_relation=module.citation_relation(target, module.Paper(key="doi:cited", title="Citing paper", direction="cited-by")))
             state = task.load(); state.update({"workflow_mode": module.WORKFLOW_MODE, "task_root": str(root), "stage": "report_building", "papers": [module.asdict(target), module.asdict(cited)]})
             module.simplified_report(task, state, [target, cited])
             from openpyxl import load_workbook
             book = load_workbook(root / "papers.xlsx", read_only=True)
-            self.assertEqual(book.sheetnames[0], "说明")
-            book.close()
+            try:
+                self.assertEqual(book.sheetnames, ["引文列表", "作者列表"])
+                forbidden = {"PDF来源", "PDF路径", "PDF获取情况", "SHA256", "MinerU状态", "MinerU正文", "置信度", "身份状态"}
+                for sheet in book.worksheets:
+                    headers = {cell.value for cell in next(sheet.iter_rows(min_row=1, max_row=1))}
+                    self.assertTrue(forbidden.isdisjoint(headers))
+                citation_headers = {cell.value for cell in next(book["引文列表"].iter_rows(min_row=1, max_row=1))}
+                self.assertIn("PDF文件名", citation_headers)
+                workbook_text = " ".join(str(cell.value or "") for sheet in book.worksheets for row in sheet.iter_rows() for cell in row)
+                self.assertNotIn("Alice Smith", workbook_text)
+                self.assertIn("Bob Jones", workbook_text)
+            finally:
+                book.close()
             html = (root / "report.html").read_text(encoding="utf-8")
             self.assertNotIn("cdn", html.lower())
             self.assertNotIn("<script src=", html.lower())
+            for forbidden in ("MinerU", "PDF 覆盖", "PDF获取", "OpenAlex", "Semantic Scholar", "未确认", "not_found"):
+                self.assertNotIn(forbidden, html)
+            self.assertNotIn("Alice Smith", html)
+            self.assertIn("Bob Jones", html)
+            self.assertIn("目标论文引文影响与作者画像", html)
+            self.assertIn("多维引文统计", html)
+            self.assertIn("核心引文作者画像", html)
+            self.assertEqual(html.count('<section class="strip"'), 1)
+            self.assertEqual(html.count("去重后的 cited-by 引文"), 1)
+            self.assertNotIn("目标论文证据解剖", html)
+            self.assertFalse((root / "report_academic.html").exists())
+            self.assertTrue((root / "analysis" / "report_manifest.json").is_file())
+
+    def test_target_author_is_excluded_even_when_authoring_a_citing_paper(self):
+        with tempfile.TemporaryDirectory() as directory:
+            task = module.Task(Path(directory) / "task")
+            target = module.Paper(key="doi:target", title="Target", direction="target", authors=["Alice Smith"])
+            cited = module.Paper(key="doi:cited", title="Self citing follow-up", direction="cited-by", authors=["Alice Smith", "Bob Jones"])
+            entities = module.unique_author_entities([target, cited])
+            self.assertEqual([row["name"] for row in entities], ["Bob Jones"])
+            with patch.dict(module.os.environ, {"LITERATURE_WEB_SEARCH_MODULE": ""}, clear=False):
+                records = module.enrich_all_authors(task, [target, cited])
+            self.assertEqual([row["name"] for row in records], ["Bob Jones"])
 
     def test_title_analyze_acquires_only_target_before_mineru(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -256,7 +302,7 @@ class LiteraturePipelineTests(unittest.TestCase):
             state = task.load(); state.update({"workflow_mode": module.WORKFLOW_MODE, "task_root": str(root), "single_article": True, "cited_by_expanded": True, "stage": "report_building", "papers": [module.asdict(target), module.asdict(cited)]})
             module.build_simplified_analysis(task, state, [target, cited]); state["papers"] = [module.asdict(target), module.asdict(cited)]; task.save(state); module.report(task, state)
             module.finalize_analysis(task, state)
-            self.assertEqual(task.load()["stage"], "complete")
+            self.assertEqual(task.load()["stage"], "partial_complete")
 
     def test_tsg_is_enabled_by_default_but_can_be_disabled(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -267,7 +313,9 @@ class LiteraturePipelineTests(unittest.TestCase):
                 with patch.dict(module.os.environ, {"TSG_PM_JSESSIONID": "x", "TSG_SESSIONID": "x", "TSG_SGUSER": "x", "TSG_TSGUSER": "x"}, clear=False):
                     module.download_paper(client, paper)
             tsg.assert_called_once()
-            self.assertTrue(paper_download.call_args.kwargs["allow_shadow"])
+            # TSG is the first authorized fallback.  paper-download is only
+            # reached when the title search cannot acquire a verified PDF.
+            paper_download.assert_not_called()
 
     def test_shadow_cascade_can_be_explicitly_disabled(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -321,7 +369,7 @@ class LiteraturePipelineTests(unittest.TestCase):
             root = Path(directory) / "task"
             task = module.Task(root)
             analysis = root / "analysis"
-            analysis.mkdir()
+            analysis.mkdir(exist_ok=True)
             (analysis / "provider_evidence.json").write_text('{"queries":[{"provider":"OpenAlex","status":"ok"}]}', encoding="utf-8")
             for name in ("citation_analysis.md", "author_analysis.md", "synthesis.md"):
                 (analysis / name).write_text(f"# {name}\n\n" + "Verified evidence with source identifiers and explicit limitations. " * 2, encoding="utf-8")
