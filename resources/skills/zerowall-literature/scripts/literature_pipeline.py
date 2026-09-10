@@ -36,7 +36,110 @@ import requests
 CROSSREF = "https://api.crossref.org/works"
 OPENALEX = "https://api.openalex.org/works"
 EPMC = "https://www.ebi.ac.uk/europepmc/webservices/rest"
+EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+S2_GRAPH = "https://api.semanticscholar.org/graph/v1"
 UNPAYWALL = "https://api.unpaywall.org/v2"
+
+
+def _load_local_credentials() -> dict[str, str]:
+    """Read optional provider credentials from a machine-local file.
+
+    This is only a FALLBACK.  ZeroWall Science stores provider credentials as
+    Environment custom variables (Settings -> Environment) and hydrates them
+    into the Host process environment, which every skill subprocess inherits.
+    That environment therefore always wins.  The file fallback exists for
+    plain CLI use outside the ZeroWall Host:
+
+        1. process environment (ZeroWall Environment variables land here)
+        2. ``ZEROWALL_LITERATURE_CREDENTIALS`` pointing at a JSON file
+        3. ``<ZEROWALL_USER_DATA_DIR>/literature_credentials.json``
+        4. ``~/.zerowall/literature_credentials.json``
+
+    The file is a flat ``{"OPENALEX_API_KEY": "...", ...}`` JSON object.
+    Values are only used to authenticate outbound provider calls; they are
+    never written to task state, receipts, reports or logs.
+    """
+    candidates: list[Path] = []
+    override = os.getenv("ZEROWALL_LITERATURE_CREDENTIALS", "").strip()
+    if override:
+        candidates.append(Path(override))
+    user_data = os.getenv("ZEROWALL_USER_DATA_DIR", "").strip()
+    if user_data:
+        candidates.append(Path(user_data) / "literature_credentials.json")
+    candidates.append(Path.home() / ".zerowall" / "literature_credentials.json")
+    for path in candidates:
+        try:
+            if not path.is_file():
+                continue
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            return {str(k): str(v).strip() for k, v in data.items() if str(v).strip()}
+    return {}
+
+
+_CREDENTIALS = _load_local_credentials()
+
+
+def credential(name: str, default: str = "") -> str:
+    """Resolve one provider credential.
+
+    The ZeroWall Host environment always wins; the case-insensitive sweep
+    tolerates Windows launch environments that alter variable casing.
+    """
+    value = os.getenv(name, "").strip()
+    if value:
+        return value
+    upper = name.upper()
+    for key, raw in os.environ.items():
+        if key.upper() == upper and raw.strip():
+            return raw.strip()
+    return _CREDENTIALS.get(name, default).strip()
+
+
+def credential_source(name: str) -> str:
+    """Report where a credential came from, without revealing its value."""
+    if os.getenv(name, "").strip():
+        return "zerowall_environment"
+    upper = name.upper()
+    if any(k.upper() == upper and v.strip() for k, v in os.environ.items()):
+        return "zerowall_environment"
+    if _CREDENTIALS.get(name, "").strip():
+        return "local_credentials_file"
+    return "missing"
+
+
+# OpenAlex serves anonymous traffic from a heavily throttled shared pool.  An
+# API key (premium) or a contact address (free polite pool) both move requests
+# into a far higher rate budget, which is what keeps cited-by expansion from
+# collapsing into HTTP 429 on a cold run.
+OPENALEX_API_KEY = credential("OPENALEX_API_KEY")
+OPENALEX_MAILTO = credential("OPENALEX_MAILTO", "zerowall-science@users.noreply.github.com")
+# Minimum seconds between two consecutive requests to the same provider, and
+# the maximum number of in-flight requests per provider.  Both are deliberately
+# conservative: correctness of the citation graph matters far more than raw
+# throughput, and a 429 silently truncates results.
+PROVIDER_MIN_INTERVAL = {
+    "openalex": 0.12 if OPENALEX_API_KEY else 0.25,
+    "crossref": 0.25,
+    "europepmc": 0.25,
+    "pubmed_cited_in": 0.40,
+    "pubmed": 0.40,
+    "semantic_scholar": 1.10,
+    "orcid": 0.30,
+}
+PROVIDER_MAX_CONCURRENCY = {
+    "openalex": 4 if OPENALEX_API_KEY else 2,
+    "crossref": 2,
+    "europepmc": 2,
+    "pubmed_cited_in": 1,
+    "pubmed": 1,
+    "semantic_scholar": 1,
+    "orcid": 2,
+}
+DEFAULT_MIN_INTERVAL = float(os.getenv("LITERATURE_PROVIDER_MIN_INTERVAL", "0.20"))
+DEFAULT_MAX_CONCURRENCY = int(os.getenv("LITERATURE_PROVIDER_CONCURRENCY", "2"))
 USER_AGENT = "ZeroWall-Science-literature/1.1 (research workflow)"
 DEFAULT_MAX_PDF_BYTES = 120 * 1024 * 1024
 RETRYABLE_STATUS = {408, 425, 429, 500, 502, 503, 504}
@@ -57,15 +160,205 @@ ACQUISITION_TERMINAL = {
 }
 WORKFLOW_MODE = "cited_by_metadata"
 WEB_SEARCH_TOOLS = {"web_search", "advanced_search"}
+# One query is issued against ONE engine at a time.  The tuple is a fallback
+# chain in priority order, not a fan-out set: the executor only advances to the
+# next engine when the current one returns nothing usable.  Enqueuing the same
+# query once per engine multiplies cost without adding information, because the
+# engines overwhelmingly return the same top pages.
 PRIMARY_SEARCH_ENGINES = ("deepseek-official", "bing", "exa", "tavily")
 FALLBACK_SEARCH_ENGINES = ("anysearch", "ddg")
+SEARCH_ENGINE_CHAIN = PRIMARY_SEARCH_ENGINES + FALLBACK_SEARCH_ENGINES
 FREE_SEARCH_ENGINES = PRIMARY_SEARCH_ENGINES
 STATE_SCHEMA_VERSION = 4
 REPORT_SCHEMA_VERSION = 3
 QUEUE_TERMINAL = {"succeeded", "failed", "not_found_after_search", "ambiguous_identity", "blocked_provider"}
-SENSITIVE_QUERY_KEYS = {"token", "query", "key", "cookie", "authorization", "jsessionid", "signature", "sig", "iv"}
+SENSITIVE_QUERY_KEYS = {"token", "query", "key", "api_key", "apikey", "mailto", "cookie", "authorization", "jsessionid", "signature", "sig", "iv"}
 DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.I)
 PMID_RE = re.compile(r"(?:pubmed\.ncbi\.nlm\.nih\.gov/|pmid[:\s]*)?(\d{5,9})$", re.I)
+
+# How many top-ranked authors (by citation count) get a paid author search.
+# The remaining authors skip the advanced_search step to control Tavily cost.
+# Override via env var LITERATURE_AUTHOR_SEARCH_LIMIT (0 = all authors).
+_DEFAULT_AUTHOR_SEARCH_LIMIT = int(os.getenv("LITERATURE_AUTHOR_SEARCH_LIMIT", "20"))
+
+_SCRIPT_DIR = Path(__file__).parent
+
+
+def load_verified_data(task_root: Path | None = None) -> dict:
+    """Load verified_data.json with a two-level lookup.
+
+    Priority (highest first):
+    1. <task_root>/analysis/verified_data.json  — task-specific overrides
+    2. <script_dir>/verified_data.json          — skill-level shared defaults
+
+    Both files are deep-merged (task file wins on conflict).  Either or both
+    may be absent; the pipeline always works without them.
+    """
+    def _load(path: Path) -> dict:
+        if path.is_file():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    return data
+            except (OSError, ValueError):
+                pass
+        return {}
+
+    skill_data = _load(_SCRIPT_DIR / "verified_data.json")
+
+    task_data: dict = {}
+    if task_root is not None:
+        task_data = _load(Path(task_root) / "analysis" / "verified_data.json")
+
+    if not task_data:
+        return skill_data or {"jif": {}, "authors": {}}
+    if not skill_data:
+        return task_data
+
+    # Deep-merge: task_data wins; skill_data fills gaps
+    merged: dict = {}
+    for key in set(list(skill_data.keys()) + list(task_data.keys())):
+        sv = skill_data.get(key, {})
+        tv = task_data.get(key, {})
+        if isinstance(sv, dict) and isinstance(tv, dict):
+            merged[key] = {**sv, **tv}   # task keys overwrite skill keys
+        else:
+            merged[key] = tv if tv else sv
+    return merged
+
+
+def _jif_key(s: str) -> str:
+    """Normalise a journal name to a lookup key: NFKD, lowercase, strip punctuation."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", s or "").lower()
+    s = re.sub(r"['\u2019\u2018\u00ad\-\u2013\u2014]", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+# ── Shared honor-extraction utilities ────────────────────────────────────────
+# Used in simplified_report and apply_facts_to_state.
+_HONOR_RESCUE_PATTERNS = [
+    # Named fellowship with Society/Academy/Institute qualifier
+    re.compile(
+        r"(?:elected\s+)?(?:fellow|member)\s+of\s+(?:the\s+)?[A-Z][A-Za-z\s&]{3,55}"
+        r"(?:Academy|Society|Association|Institute|Royal|National|Academiae|Europaea|Sciences)",
+        re.I),
+    # Well-known acronym fellowships
+    re.compile(
+        r"\bIEEE\s+Fellow\b|\bAAAS\s+Fellow\b|\bFACC\b|\bFAHA\b|\bFAPS\b"
+        r"|\bFASN\b|\bFARVO\b|\bFRS\b|\bFMedSci\b|\bFACR\b",
+        re.I),
+    # Named award/prize/medal: require proper-noun prefix (capital letter, ≥3 chars)
+    re.compile(
+        r"\b(?:[A-Z][A-Za-z\-]{2,35}\s+){1,5}"
+        r"(?:Award|Prize|Medal|Lectureship?|Fellowship)"
+        r"(?:\s+(?:of|for|in|from)\s+[A-Za-z\s]{2,40})?",
+        re.I),
+    # Award/Prize/Medal of/for ...
+    re.compile(r"(?:Award|Prize|Medal)\s+(?:of|for|in|from)\s+[A-Z][^.;,|\n]{0,60}", re.I),
+    # Academician / Academy membership
+    re.compile(r"academician\s+(?:of\s+)?[A-Z][^.;,|\n]{0,55}", re.I),
+    re.compile(r"(?:elected\s+)?member\s+of\s+(?:the\s+)?(?:US\s+)?National\s+Academy[^.;,|\n]{0,50}", re.I),
+    re.compile(r"elected\s+(?:member|fellow)\s+(?:of\s+)?[A-Z][^.;,|\n]{0,55}", re.I),
+    # Chinese honours
+    re.compile(r"院士|杰青|长江学者|优青|千人计划|万人计划|国家自然科学奖|国家科技进步奖"),
+    # Prestigious foundation fellowships/grants
+    re.compile(
+        r"(?:Alfred\s+P\.\s+)?Sloan\s+(?:Research\s+)?Fellow"
+        r"|Wellcome\s+(?:Trust\s+)?(?:Senior\s+)?(?:Research\s+)?Fellow"
+        r"|Howard\s+Hughes\s+(?:Medical\s+)?(?:Institute\s+)?(?:Investigator|Scholar|Fellow)"
+        r"|HHMI\s+(?:Investigator|Fellow|Scholar)"
+        r"|Fulbright\s+(?:Research\s+)?(?:Scholar|Fellow)"
+        r"|Alexander\s+von\s+Humboldt\s+(?:Fellow|Award)"
+        r"|Guggenheim\s+Fellow",
+        re.I),
+]
+
+_HONOR_NOISE_RX = re.compile(
+    r"h-index\s*[&|,]|publications\s*[&|,]|cited\s+by\s+\d|"
+    r"read\s+\d+\s+publication|research\.com\b.*overview|"
+    r"researchgate\.net|google\s+scholar|back\s+to\s+top|"
+    r"home\s*>|faculty\s+profile\s+page\s*$|"
+    r"n/a\s+certif|certif\w*\s+n/a|quantitative\s+market|"
+    r"structural\s+econom|teaching\s+assistant\b|taiwan\b|"
+    r"^\s*honors[,\s]*awards\s+and\s+grants\s*$|"
+    r"^\s*awards\s+and\s+grants\s*$|"
+    r"\[\s*\.\.\.\s*\]",
+    re.I,
+)
+
+# Discard short generic fragments rescued from snippets
+_RESCUE_DISCARD_RX = re.compile(
+    r"^(?:the\s+\w{1,20}|awards?\s*(?:and\s*grants?)?|grants?\s*)$",
+    re.I,
+)
+
+
+def _rescue_honors_from_text(text: str, max_results: int = 8) -> list[str]:
+    """Extract named awards/fellowships from a noisy text blob.
+    Returns ≤max_results distinct clean items, each ≤100 chars.
+    """
+    found: list[str] = []
+    for rx in _HONOR_RESCUE_PATTERNS:
+        for m in rx.finditer(text):
+            raw = re.sub(r"\s+", " ", m.group(0)).strip()
+            # Trim trailing noise at first pipe/bracket/paren
+            raw = re.sub(r"\s*[|({].*$", "", raw).strip()
+            # Strip leading conjunctions / partial words left by snippet truncation
+            raw = re.sub(r"^(?:and|or|,|;|\s|[a-z]{1,3})\s+", "", raw).strip()
+            # Must start with a capital letter or Chinese char
+            raw = re.sub(r"^[^A-Z\u4e00-\u9fff]+", "", raw).strip()
+            if not raw or len(raw) < 8:
+                continue
+            if _HONOR_NOISE_RX.search(raw) or _RESCUE_DISCARD_RX.match(raw):
+                continue
+            # Reject overly generic single-word matches
+            if re.match(r"^(?:numerous|several|many|various)\s+\w+\s*$", raw, re.I):
+                continue
+            s = raw[:100]
+            # Deduplicate: skip if an existing entry is a prefix/suffix of this one
+            dominated = False
+            new_found = []
+            for existing in found:
+                if existing in s or s in existing:
+                    # Keep the longer one
+                    if len(s) > len(existing):
+                        continue  # drop existing, keep s
+                    else:
+                        dominated = True
+                        new_found.append(existing)
+                else:
+                    new_found.append(existing)
+            if dominated:
+                found = new_found
+                continue
+            found = new_found
+            found.append(s)
+        if len(found) >= max_results:
+            break
+    return found[:max_results]
+
+
+def clean_honor_entry(raw: Any) -> list[str]:
+    """Clean one honor/appointment entry → return 0–N short clean strings.
+
+    1. Strip markdown links, bare URLs, leading [PageTitle] prefixes.
+    2. If ≤100 chars and not noise → return as-is.
+    3. If long/noisy → rescue named awards from within.
+    4. Discard if nothing usable.
+    """
+    s = re.sub(r"\s+", " ", str(raw or "")).strip()
+    s = re.sub(r"\[([^\]]{1,80})\]\(http[^\)]+\)", r"\1", s)
+    s = re.sub(r"https?://\S+", "", s).strip()
+    s = re.sub(r"^\[[^\]]{1,150}\]\s*", "", s).strip()
+    s = re.sub(r"^\[[^\]]{1,150}\]\s*", "", s).strip()
+    s = re.sub(r"[\[\]]", "", s).strip()
+    s = re.sub(r"\s+", " ", s).strip()
+    if not s:
+        return []
+    if len(s) <= 100 and not _HONOR_NOISE_RX.search(s) and not _RESCUE_DISCARD_RX.match(s):
+        return [s]
+    return _rescue_honors_from_text(s)
 
 
 @contextmanager
@@ -317,6 +610,9 @@ class Task:
         self.pdf_jobs_path = analysis / "pdf_jobs.jsonl"
         self.pdf_worker_path = analysis / "pdf_worker.json"
         self._ledger_lock = TaskLedgerLock(root)
+        # Cache for provider_requests(): (mtime, size) → parsed result.
+        # Avoids re-parsing 2500+ JSONL lines on every call during ingest-evidence.
+        self._pr_cache: tuple[float, int, list] | None = None
 
     def load(self) -> dict[str, Any]:
         try:
@@ -396,7 +692,18 @@ class Task:
         The queue is append-only so a killed process cannot leave a partially
         rewritten file.  Consumers see one logical row per request, while the
         JSONL file retains the full state transition history.
+
+        Result is cached by (mtime, size) so repeated calls during a single
+        ingest-evidence run (which may call this thousands of times) do not
+        re-parse 2500+ lines every time.
         """
+        try:
+            stat = self.provider_requests_path.stat()
+            cache_key = (stat.st_mtime, stat.st_size)
+        except OSError:
+            return []
+        if self._pr_cache and self._pr_cache[0] == cache_key[0] and self._pr_cache[1] == cache_key[1]:
+            return list(self._pr_cache[2])
         try:
             rows = []
             for line in self.provider_requests_path.read_text(encoding="utf-8").splitlines():
@@ -419,7 +726,13 @@ class Task:
             if request_id not in latest:
                 order.append(request_id)
             latest[request_id] = row
-        return [latest[key] for key in order]
+        result = [latest[key] for key in order]
+        self._pr_cache = (cache_key[0], cache_key[1], result)
+        return result
+
+    def invalidate_pr_cache(self) -> None:
+        """Invalidate provider_requests cache after writing to the file."""
+        self._pr_cache = None
 
     def enqueue_request(self, request: dict[str, Any]) -> dict[str, Any]:
         """Add one deterministic request unless it already exists."""
@@ -435,6 +748,7 @@ class Task:
         with self._ledger_lock:
             with self.provider_requests_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+        self.invalidate_pr_cache()
         return item
 
     def update_request(self, request_id: str, status: str, **meta: Any) -> dict[str, Any]:
@@ -448,6 +762,7 @@ class Task:
         with self._ledger_lock:
             with self.provider_requests_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(updated, ensure_ascii=False) + "\n")
+        self.invalidate_pr_cache()
         return updated
 
     def append_pdf_job(self, row: dict[str, Any]) -> None:
@@ -495,10 +810,67 @@ class Client:
         self._json_cache: dict[str, dict[str, Any]] = {}
         self._provider_backoff: dict[str, float] = {}
         self._provider_lock = threading.Lock()
+        # Per-provider pacing state.  A semaphore caps concurrent in-flight
+        # requests and a monotonic timestamp enforces a minimum gap between
+        # two consecutive requests, so a burst of parallel enrichment cannot
+        # trip provider rate limits and silently truncate the citation graph.
+        self._provider_gate: dict[str, threading.Semaphore] = {}
+        self._provider_next_at: dict[str, float] = {}
+        self._pace_lock = threading.Lock()
+
+    def _gate(self, provider: str) -> threading.Semaphore:
+        with self._pace_lock:
+            gate = self._provider_gate.get(provider)
+            if gate is None:
+                limit = max(1, PROVIDER_MAX_CONCURRENCY.get(provider, DEFAULT_MAX_CONCURRENCY))
+                gate = threading.Semaphore(limit)
+                self._provider_gate[provider] = gate
+            return gate
+
+    def _pace(self, provider: str) -> None:
+        """Block until this provider's minimum request interval has elapsed."""
+        interval = PROVIDER_MIN_INTERVAL.get(provider, DEFAULT_MIN_INTERVAL)
+        if interval <= 0:
+            return
+        while True:
+            with self._pace_lock:
+                now_monotonic = time.monotonic()
+                ready_at = self._provider_next_at.get(provider, 0.0)
+                if ready_at <= now_monotonic:
+                    self._provider_next_at[provider] = now_monotonic + interval
+                    return
+                wait = ready_at - now_monotonic
+            time.sleep(min(wait, 5.0))
 
     def get_json(self, provider: str, url: str, **kwargs: Any) -> dict[str, Any]:
-        params = kwargs.get("params") or {}
-        cache_key = json.dumps([provider, url, sorted((str(k), str(v)) for k, v in params.items())], ensure_ascii=False)
+        params = dict(kwargs.get("params") or {})
+        headers = dict(kwargs.get("headers") or {})
+        # OpenAlex: an API key (premium) or a contact address (free polite
+        # pool) both grant a far higher rate budget than anonymous traffic.
+        # Without either, a cold cited-by expansion is routinely answered with
+        # HTTP 429 and silently yields zero citing papers.
+        if provider == "openalex":
+            # An API key and a polite-pool mailto are alternative identities.
+            # Send exactly one: mixing them offers no extra budget and makes
+            # the effective rate tier ambiguous.
+            if OPENALEX_API_KEY:
+                params.setdefault("api_key", OPENALEX_API_KEY)
+            elif OPENALEX_MAILTO:
+                params.setdefault("mailto", OPENALEX_MAILTO)
+            kwargs["params"] = params
+        if provider in {"pubmed", "pubmed_cited_in"}:
+            ncbi_key = credential("NCBI_API_KEY")
+            if ncbi_key and "api_key" not in params:
+                params["api_key"] = ncbi_key
+                kwargs["params"] = params
+        if headers:
+            kwargs["headers"] = headers
+        # The cache key deliberately omits credentials so a key rotation does
+        # not invalidate an otherwise valid in-process cache entry.
+        cacheable_params = sorted(
+            (str(k), str(v)) for k, v in params.items() if k not in {"api_key", "mailto"}
+        )
+        cache_key = json.dumps([provider, url, cacheable_params], ensure_ascii=False)
         if cache_key in self._json_cache:
             self.task.record_mcp(provider, f"json:{provider}", "cache_hit", url=url)
             return self._json_cache[cache_key]
@@ -509,13 +881,20 @@ class Client:
                 time.sleep(min(delay_until - time.monotonic(), 8.0))
             response = None
             try:
-                response = self.session.get(url, timeout=self.timeout, **kwargs)
+                with self._gate(provider):
+                    self._pace(provider)
+                    response = self.session.get(url, timeout=self.timeout, **kwargs)
                 self.task.record(provider, response.url, str(response.status_code), attempt=attempt)
                 self.task.record_mcp(provider, f"json:{provider}", str(response.status_code), url=redact_url(response.url), attempt=attempt)
                 if response.status_code == 429:
                     retry_after = float(response.headers.get("retry-after") or min(2 ** attempt, 8))
                     with self._provider_lock:
                         self._provider_backoff[provider] = time.monotonic() + retry_after
+                    # Permanently slow this provider down for the rest of the
+                    # run; one 429 means the current pacing is too aggressive.
+                    with self._pace_lock:
+                        current = PROVIDER_MIN_INTERVAL.get(provider, DEFAULT_MIN_INTERVAL)
+                        PROVIDER_MIN_INTERVAL[provider] = min(current * 2 or 0.25, 5.0)
                     if attempt < MAX_ATTEMPTS:
                         time.sleep(min(retry_after, 8.0))
                         continue
@@ -731,9 +1110,117 @@ class Client:
                     orcid_profiles[oid] = {"url": f"https://orcid.org/{oid}", "employments": roles, "distinctions": distinctions}
         return dedupe_urls(paper)
 
-    def expand_openalex(self, target: Paper, direction: str, max_papers: int | None) -> list[Paper]:
+    def cited_by_openalex(self, target: Paper, max_papers: int | None) -> list[dict[str, Any]]:
+        """Return citing OpenAlex work RECORDS (not just ids) for the target.
+
+        The ``cites:`` listing already carries every field the pipeline needs
+        (title, DOI, year, authorships, institutions, source, OA location), so
+        whole records are returned.  Re-fetching each work individually would
+        cost one extra request per citing paper for no new information.
+        """
         oa = target.raw.get("openalex") or {}
-        ids: list[str] = []
+        oa_id = clean_text(oa.get("id")) or clean_text(getattr(target, "openalex_id", ""))
+        if not oa_id:
+            return []
+        records: list[dict[str, Any]] = []
+        cursor = "*"
+        while len(records) < (max_papers or 100000):
+            page = self.get_json("openalex", OPENALEX, params={
+                "filter": f"cites:{oa_id.split('/')[-1]}",
+                "per-page": min(200, max_papers or 200),
+                "cursor": cursor,
+            })
+            rows = page.get("results") or []
+            records.extend(row for row in rows if isinstance(row, dict) and row.get("id"))
+            cursor = (page.get("meta") or {}).get("next_cursor")
+            if not rows or not cursor:
+                break
+        return records[:max_papers] if max_papers else records
+
+    def cited_by_pubmed(self, target: Paper) -> list[str]:
+        """Collect citing PMIDs from the NCBI pubmed_pubmed_citedin link set."""
+        pmid = clean_text(target.pmid)
+        if not pmid:
+            return []
+        data = self.get_json("pubmed_cited_in", f"{EUTILS}/elink.fcgi", params={
+            "dbfrom": "pubmed", "db": "pubmed",
+            "linkname": "pubmed_pubmed_citedin", "id": pmid, "retmode": "json",
+        })
+        pmids: list[str] = []
+        for linkset in data.get("linksets") or []:
+            for db in linkset.get("linksetdbs") or []:
+                if clean_text(db.get("linkname")) != "pubmed_pubmed_citedin":
+                    continue
+                pmids.extend(clean_text(x) for x in (db.get("links") or []) if clean_text(x))
+        return list(dict.fromkeys(pmids))
+
+    def cited_by_europepmc(self, target: Paper) -> list[dict[str, str]]:
+        """Collect citing records from the Europe PMC citations endpoint."""
+        pmid = clean_text(target.pmid)
+        if not pmid:
+            return []
+        rows: list[dict[str, str]] = []
+        page = 1
+        while page <= 20:
+            data = self.get_json("europepmc", f"{EPMC}/MED/{pmid}/citations", params={
+                "format": "json", "pageSize": 500, "page": page,
+            })
+            items = (data.get("citationList") or {}).get("citation") or []
+            if not items:
+                break
+            for item in items:
+                rows.append({
+                    "pmid": clean_text(item.get("id")),
+                    "doi": normalize_doi(clean_text(item.get("doi"))),
+                    "title": clean_text(item.get("title")),
+                })
+            if len(items) < 500:
+                break
+            page += 1
+        return rows
+
+    def cited_by_semantic_scholar(self, target: Paper) -> list[str]:
+        """Collect citing DOIs from the Semantic Scholar citation graph."""
+        ident = ""
+        if clean_text(target.doi):
+            ident = f"DOI:{quote(clean_text(target.doi), safe='')}"
+        elif clean_text(target.pmid):
+            ident = f"PMID:{clean_text(target.pmid)}"
+        if not ident:
+            return []
+        key = os.getenv("S2_API_KEY", "").strip()
+        headers = {"x-api-key": key} if key else {}
+        dois: list[str] = []
+        offset = 0
+        while offset < 2000:
+            data = self.get_json("semantic_scholar", f"{S2_GRAPH}/paper/{ident}/citations",
+                                 headers=headers,
+                                 params={"fields": "externalIds,title", "limit": 100, "offset": offset})
+            items = data.get("data") or []
+            if not items:
+                break
+            for item in items:
+                external = (item.get("citingPaper") or {}).get("externalIds") or {}
+                doi = normalize_doi(clean_text(external.get("DOI")))
+                if doi:
+                    dois.append(doi)
+            if len(items) < 100:
+                break
+            offset += 100
+        return list(dict.fromkeys(dois))
+
+    def expand_openalex(self, target: Paper, direction: str, max_papers: int | None) -> list[Paper]:
+        """Expand the citation graph of the target.
+
+        For ``cited-by`` the providers form a SEQUENTIAL FALLBACK CHAIN, not a
+        fan-out.  OpenAlex is the primary source; once it returns a usable
+        cited-by set the chain stops and no other provider is queried.  The
+        remaining providers (PubMed cited-in, Europe PMC, Semantic Scholar) are
+        only consulted when every earlier provider yielded nothing, so a single
+        provider outage cannot empty the result while a healthy primary never
+        costs redundant requests.
+        """
+        oa = target.raw.get("openalex") or {}
         if direction == "references":
             ids = list(oa.get("referenced_works") or [])
             # Crossref is the authoritative fallback when OpenAlex has an incomplete graph.
@@ -741,14 +1228,211 @@ class Client:
                 doi = clean_text(ref.get("DOI") or ref.get("doi")).lower()
                 if doi:
                     ids.append(f"doi:{doi}")
-        elif direction == "cited-by" and oa.get("id"):
-            cursor = "*"
-            while len(ids) < (max_papers or 100000):
-                page = self.get_json("openalex", f"{OPENALEX}", params={"filter": f"cites:{oa['id'].split('/')[-1]}", "per-page": min(200, max_papers or 200), "cursor": cursor})
-                rows = page.get("results") or []
-                ids.extend([x.get("id") for x in rows if x.get("id")])
-                cursor = (page.get("meta") or {}).get("next_cursor")
-                if not rows or not cursor: break
+            return self._papers_from_openalex_ids(ids, direction, max_papers)
+
+        attempted: list[str] = []
+
+        # 1) OpenAlex - primary. A non-empty result ends the chain.
+        attempted.append("openalex")
+        openalex_records = self.cited_by_openalex(target, max_papers)
+        if openalex_records:
+            papers = self._papers_from_openalex_records(openalex_records, direction, max_papers)
+            if papers:
+                self._record_cited_by_source(target, "openalex", attempted, len(papers))
+                return papers
+
+        # 2) PubMed cited-in - first fallback.
+        attempted.append("pubmed_cited_in")
+        pubmed_ids = self.cited_by_pubmed(target)
+        if pubmed_ids:
+            papers = self._papers_from_pmids(pubmed_ids, direction, max_papers)
+            if papers:
+                self._record_cited_by_source(target, "pubmed_cited_in", attempted, len(papers))
+                return papers
+
+        # 3) Europe PMC - second fallback.
+        attempted.append("europepmc")
+        epmc_rows = self.cited_by_europepmc(target)
+        if epmc_rows:
+            papers = self._papers_from_mixed_rows(epmc_rows, direction, max_papers, "Europe PMC")
+            if papers:
+                self._record_cited_by_source(target, "europepmc", attempted, len(papers))
+                return papers
+
+        # 4) Semantic Scholar - last fallback.
+        attempted.append("semantic_scholar")
+        s2_dois = self.cited_by_semantic_scholar(target)
+        if s2_dois:
+            papers = self._papers_from_dois(s2_dois, direction, max_papers, "Semantic Scholar")
+            if papers:
+                self._record_cited_by_source(target, "semantic_scholar", attempted, len(papers))
+                return papers
+
+        self._record_cited_by_source(target, "none", attempted, 0)
+        return []
+
+    def _record_cited_by_source(self, target: Paper, winner: str, attempted: list[str], count: int) -> None:
+        """Record which provider actually supplied the cited-by set."""
+        target.raw["cited_by_source"] = winner
+        target.raw["cited_by_providers_attempted"] = attempted
+        self.task.record_mcp("citation_graph", "cited_by_chain", "resolved",
+                             source=winner, attempted=",".join(attempted), retrieved=count)
+
+    def _papers_from_pmids(self, pmids: list[str], direction: str, max_papers: int | None) -> list[Paper]:
+        papers: list[Paper] = []
+        seen: set[str] = set()
+        for pmid in pmids:
+            if max_papers and len(papers) >= max_papers:
+                break
+            resolved = self.by_pmid(pmid)
+            if resolved is None:
+                continue
+            resolved.direction = direction
+            resolved.raw.setdefault("citation_source", "PubMed")
+            keys = identity_keys(resolved)
+            if any(key in seen for key in keys):
+                continue
+            seen.update(keys)
+            papers.append(self.enrich(resolved))
+        return papers
+
+    def _papers_from_dois(self, dois: list[str], direction: str, max_papers: int | None,
+                          citation_source: str) -> list[Paper]:
+        papers: list[Paper] = []
+        seen: set[str] = set()
+        for doi in dois:
+            if max_papers and len(papers) >= max_papers:
+                break
+            resolved = self.by_doi(doi)
+            if resolved is None:
+                continue
+            resolved.direction = direction
+            resolved.raw.setdefault("citation_source", citation_source)
+            keys = identity_keys(resolved)
+            if any(key in seen for key in keys):
+                continue
+            seen.update(keys)
+            papers.append(self.enrich(resolved))
+        return papers
+
+    def _papers_from_mixed_rows(self, rows: list[dict[str, str]], direction: str,
+                                max_papers: int | None, citation_source: str) -> list[Paper]:
+        papers: list[Paper] = []
+        seen: set[str] = set()
+        for row in rows:
+            if max_papers and len(papers) >= max_papers:
+                break
+            resolved = None
+            if row.get("doi"):
+                resolved = self.by_doi(row["doi"])
+            if resolved is None and row.get("pmid"):
+                resolved = self.by_pmid(row["pmid"])
+            if resolved is None:
+                continue
+            resolved.direction = direction
+            resolved.raw.setdefault("citation_source", citation_source)
+            keys = identity_keys(resolved)
+            if any(key in seen for key in keys):
+                continue
+            seen.update(keys)
+            papers.append(self.enrich(resolved))
+        return papers
+
+    def paper_from_openalex_record(self, item: dict[str, Any], direction: str,
+                                   index: int | None = None) -> Paper:
+        """Build a Paper from one complete OpenAlex work record (no request)."""
+        doi = clean_text(item.get("doi")).replace("https://doi.org/", "").lower()
+        authors = [clean_text(a.get("author", {}).get("display_name", "")) for a in item.get("authorships", [])]
+        authors = [name for name in authors if name]
+        source = (item.get("primary_location") or {}).get("source") or {}
+        source_issn = source.get("issn") or []
+        if isinstance(source_issn, str):
+            source_issn = [source_issn]
+        source_issn = list(dict.fromkeys(
+            clean_text(value) for value in ([source.get("issn_l")] + list(source_issn))
+            if clean_text(value)
+        ))
+        source_name = clean_text(source.get("display_name"))
+        paper = Paper(
+            key=f"doi:{doi}" if doi else f"openalex:{item.get('id')}",
+            title=clean_text(item.get("title") or item.get("display_name")),
+            doi=doi, year=str(item.get("publication_year") or ""),
+            journal=source_name,
+            journal_abbrev=clean_journal_abbreviation(source_name, source.get("abbreviated_title")),
+            publisher=clean_text(source.get("host_organization_name")),
+            authors=authors, source="openalex", direction=direction,
+            publication_type=normalize_publication_type(item.get("type"), item.get("subtype")),
+            cited_by_counts={"openalex": int(item.get("cited_by_count") or 0)},
+            raw={"openalex": slim_openalex(item),
+                 "reference_index": index if direction == "references" else None,
+                 "citation_source": "OpenAlex" if direction == "cited-by" else ""},
+            openalex_id=clean_text(item.get("id")), issn=source_issn,
+        )
+        paper.institutions = list(dict.fromkeys(
+            clean_text(a.get("institutions", [{}])[0].get("display_name"))
+            for a in item.get("authorships", [])
+            if a.get("institutions") and clean_text(a.get("institutions", [{}])[0].get("display_name"))
+        ))
+        paper.countries = list(dict.fromkeys(
+            clean_text(i.get("country_code")) for a in item.get("authorships", [])
+            for i in a.get("institutions", []) if clean_text(i.get("country_code"))
+        ))
+        loc = item.get("best_oa_location") or {}
+        if loc.get("pdf_url"):
+            paper.oa_urls.append(loc["pdf_url"])
+        pmid = clean_text((item.get("ids") or {}).get("pmid"))
+        if pmid:
+            paper.pmid = pmid.rsplit("/", 1)[-1]
+        return dedupe_urls(paper)
+
+    def _papers_from_openalex_records(self, records: list[dict[str, Any]], direction: str,
+                                      max_papers: int | None) -> list[Paper]:
+        """Build papers from complete OpenAlex records already in hand.
+
+        Each paper is enriched only for the fields OpenAlex does not provide,
+        which keeps cited-by expansion to roughly one extra request per paper
+        instead of five.
+        """
+        papers: list[Paper] = []
+        seen: set[str] = set()
+        for index, item in enumerate(records, 1):
+            if max_papers and len(papers) >= max_papers:
+                break
+            paper = self.paper_from_openalex_record(item, direction, index)
+            keys = identity_keys(paper)
+            if any(key in seen for key in keys):
+                continue
+            seen.update(keys)
+            papers.append(self.enrich_light(paper))
+        return papers
+
+    def enrich_light(self, paper: Paper) -> Paper:
+        """Fill only the gaps OpenAlex left, using at most one extra request.
+
+        Crossref/Europe PMC/S2/ORCID round trips are skipped when OpenAlex
+        already supplied title, journal, year and authors, because a cited-by
+        listing normally carries all of them.  This is what keeps a 50-paper
+        expansion inside a normal command timeout.
+        """
+        needs_identity = not clean_text(paper.pmid)
+        needs_bibliographic = not (clean_text(paper.journal) and clean_text(paper.year) and paper.authors)
+        if not (needs_identity or needs_bibliographic):
+            return dedupe_urls(paper)
+        if clean_text(paper.doi):
+            ep = self.get_json("europepmc", f"{EPMC}/search", params={
+                "query": f'DOI:"{paper.doi}"', "format": "json", "resultType": "core"})
+            rows = (ep.get("resultList") or {}).get("result") or []
+            if rows:
+                other = self.epmc_paper(rows[0], paper.direction)
+                paper.pmid = paper.pmid or other.pmid
+                paper.abstract = paper.abstract or other.abstract
+                paper.authors = paper.authors or other.authors
+                for attr in ("journal", "journal_abbrev", "volume", "issue", "pages"):
+                    if not getattr(paper, attr) and getattr(other, attr):
+                        setattr(paper, attr, getattr(other, attr))
+        return dedupe_urls(paper)
+
+    def _papers_from_openalex_ids(self, ids: list[str], direction: str, max_papers: int | None) -> list[Paper]:
         papers: list[Paper] = []
         seen = set()
         for index, ident in enumerate(ids[:max_papers] if max_papers else ids, 1):
@@ -1210,21 +1894,21 @@ def enqueue_journal_year_followup(task: Task, request: dict[str, Any], metric: d
         issn_values = [issn_values]
     issn = next(iter(issn_values), "")
     query = f'"{journal}" {issn} "2025 Journal Impact Factor" metric year official publisher JCR'
-    for engine in PRIMARY_SEARCH_ENGINES:
-        args = {"query": query, "maxResults": 8, "engine": engine}
-        payload = {
-            "kind": "journal", "tool": "advanced_search", "args": args, "arguments": args,
-            "subject": request.get("subject"), "paper_key": request.get("paper_key"),
-            "author_name": "", "query": query, "provider": "free_search",
-            "execution": "capability_execute_required", "retry_budget": RETRY_ATTEMPTS,
-            "context": context, "followup_reason": "impact_factor_year_missing",
-            "result_contract": request.get("result_contract") or {},
-        }
-        payload["request_id"] = hashlib.sha256(json.dumps(
-            ["journal_year", "advanced_search", request.get("subject"), args],
-            sort_keys=True, ensure_ascii=False,
-        ).encode("utf-8")).hexdigest()[:24]
-        task.enqueue_request(payload)
+    args = {"query": query, "maxResults": 8,
+            "engine": SEARCH_ENGINE_CHAIN[0], "engine_chain": list(SEARCH_ENGINE_CHAIN)}
+    payload = {
+        "kind": "journal", "tool": "advanced_search", "args": args, "arguments": args,
+        "subject": request.get("subject"), "paper_key": request.get("paper_key"),
+        "author_name": "", "query": query, "provider": "free_search",
+        "execution": "capability_execute_required", "retry_budget": RETRY_ATTEMPTS,
+        "context": context, "followup_reason": "impact_factor_year_missing",
+        "result_contract": request.get("result_contract") or {},
+    }
+    payload["request_id"] = hashlib.sha256(json.dumps(
+        ["journal_year", "advanced_search", request.get("subject"), args],
+        sort_keys=True, ensure_ascii=False,
+    ).encode("utf-8")).hexdigest()[:24]
+    task.enqueue_request(payload)
 
 
 def _author_base_records(paper: Paper) -> list[dict[str, Any]]:
@@ -1303,6 +1987,114 @@ def _load_web_search_adapter() -> Any | None:
     return module
 
 
+def _extract_tavily_answer_fields(
+    answer: str,
+    query_intent: str,
+    merge_fn: "Callable[[str, Any], None]",
+) -> None:
+    """Extract structured facts from a Tavily prose answer.
+
+    Tavily's synthesised answer is often the richest source of current
+    position and honours information because it fuses content from multiple
+    faculty-profile pages.  We apply simple, conservative regex patterns so
+    only unambiguous facts are promoted to structured columns — the model
+    never changes a value that was already set by a more authoritative source.
+    """
+    if not answer or not isinstance(answer, str):
+        return
+    import re as _re
+    text = answer.strip()
+
+    # ── Current title / position ─────────────────────────────────────────────
+    title_patterns = [
+        _re.compile(r"\b(?:is|as)\s+(Distinguished\s+)?(?:Full\s+)?"
+                    r"(Professor|Associate\s+Professor|Assistant\s+Professor|"
+                    r"Professor\s+Emeritus|Research\s+Professor|Clinical\s+Professor|"
+                    r"Principal\s+Investigator|Senior\s+Researcher|Researcher|"
+                    r"Lecturer|Senior\s+Lecturer|Reader|Adjunct\s+Professor)"
+                    r"(?:\s+(?:of|in|at)\b)?", _re.I),
+        _re.compile(r"\b(Distinguished\s+)?(?:Full\s+)?"
+                    r"(Professor|Associate\s+Professor|Assistant\s+Professor)"
+                    r"\s+(?:of|in|at)\s+[A-Z]", _re.I),
+    ]
+    for pat in title_patterns:
+        m = pat.search(text)
+        if m:
+            title_raw = m.group(0).strip()
+            # Extract just the rank word(s), not "of/in/at …"
+            rank_m = _re.search(
+                r"(Distinguished\s+)?(Full\s+)?"
+                r"(Professor|Associate\s+Professor|Assistant\s+Professor|"
+                r"Professor\s+Emeritus|Research\s+Professor|Clinical\s+Professor|"
+                r"Principal\s+Investigator|Senior\s+Researcher|Researcher|"
+                r"Lecturer|Senior\s+Lecturer|Reader|Adjunct\s+Professor)",
+                title_raw, _re.I)
+            if rank_m:
+                merge_fn("current_title", rank_m.group(0).strip().title())
+                break
+
+    # ── Current institution ──────────────────────────────────────────────────
+    inst_patterns = [
+        _re.compile(r"(?:at|with|from)\s+(?:the\s+)?([A-Z][A-Za-z\s&,]{5,70}?"
+                    r"(?:University|Institute|College|School|Center|Centre|Hospital|"
+                    r"Laboratory|Foundation|Academy))", _re.I),
+        _re.compile(r"([A-Z][A-Za-z\s&,]{3,60}?"
+                    r"(?:University|Institute|College|School|Hospital|Academy))"
+                    r"(?:,|\.|\s)", _re.I),
+    ]
+    for pat in inst_patterns:
+        m = pat.search(text)
+        if m:
+            inst = m.group(1).strip().rstrip(",.")
+            if len(inst) > 8:
+                merge_fn("current_institution", inst)
+                break
+
+    # ── Honors and awards ────────────────────────────────────────────────────
+    honor_patterns = [
+        _re.compile(
+            r"(?:received|was\s+awarded?|won\s+the|elected(?:\s+(?:as|to))?\s+(?:a\s+)?Fellow)"
+            r"[^.;]{0,120}?(?:Award|Prize|Medal|Fellowship|Grant|Membership|Lectureship)",
+            _re.I),
+        _re.compile(
+            r"\bFellow\s+of\s+(?:the\s+)?[A-Z][A-Za-z\s&]{3,55}"
+            r"(?:Academy|Society|Association|Institute|Royal|Sciences)", _re.I),
+        _re.compile(r"\b(?:FACC|FAHA|FAPS|FASN|FARVO|FRS|FMedSci|IEEE\s+Fellow|AAAS\s+Fellow)\b", _re.I),
+        _re.compile(
+            r"\b(?:[A-Z][A-Za-z\-]{2,35}\s+){1,5}"
+            r"(?:Award|Prize|Medal|Lectureship|Fellowship)\b", _re.I),
+    ]
+    honors_found: list[str] = []
+    for pat in honor_patterns:
+        for m in pat.finditer(text):
+            honor = m.group(0).strip()
+            if len(honor) > 10 and honor not in honors_found:
+                honors_found.append(honor)
+    if honors_found:
+        merge_fn("honors", honors_found)
+
+    # ── Academic appointments ────────────────────────────────────────────────
+    appt_patterns = [
+        _re.compile(
+            r"(?:serves?|served|is|was)\s+(?:as\s+)?(?:an?\s+)?"
+            r"(?:Editor|Associate\s+Editor|Guest\s+Editor|Editorial\s+Board|"
+            r"Board\s+Member|Member\s+of\s+the\s+Editorial|"
+            r"President|Vice[- ]President|Chair|Secretary|Treasurer)"
+            r"[^.;]{0,80}", _re.I),
+        _re.compile(
+            r"(?:Editorial\s+Board)\s+(?:Member\s+)?(?:of\s+)?[A-Z][^.;]{0,60}",
+            _re.I),
+    ]
+    appts_found: list[str] = []
+    for pat in appt_patterns:
+        for m in pat.finditer(text):
+            appt = m.group(0).strip()
+            if len(appt) > 10 and appt not in appts_found:
+                appts_found.append(appt)
+    if appts_found:
+        merge_fn("appointments", appts_found)
+
+
 def extract_ingested_author_facts(evidence: list[dict[str, Any]]) -> dict[str, Any]:
     """Normalize structured facts returned by Host tools or the model layer."""
     facts: dict[str, Any] = {"sources": [], "source_types": [], "conflicts": [], "identity_candidates": []}
@@ -1375,9 +2167,47 @@ def extract_ingested_author_facts(evidence: list[dict[str, Any]]) -> dict[str, A
         elif "openalex_get_author" in tool:
             for key in ("author_id", "openalex_author_id", "orcid", "works_count", "cited_by_count", "h_index", "i10_index", "top_works", "counts_by_year", "last_known_institutions", "topics"):
                 merge_value(aliases.get(key, key), result.get(key))
+            merge_value("research_topics", result.get("top_topics"))
+            # OpenAlex reports the author's most recent affiliation set. It is a
+            # factual employer statement, so it may fill current_institution and
+            # current_country. It says nothing about academic rank, so no title
+            # is ever inferred from it.
+            institutions = result.get("last_known_institutions")
+            if isinstance(institutions, list) and institutions:
+                names, countries = [], []
+                for institution in institutions:
+                    if not isinstance(institution, dict):
+                        continue
+                    display = clean_text(institution.get("display_name"))
+                    if display:
+                        names.append(display)
+                    country = clean_text(institution.get("country_code"))
+                    if country:
+                        countries.append(country)
+                if names:
+                    merge_value("current_institution", "; ".join(dict.fromkeys(names)))
+                if countries:
+                    merge_value("current_country", "; ".join(dict.fromkeys(countries)))
+                for institution in institutions:
+                    if isinstance(institution, dict) and clean_text(institution.get("ror")):
+                        merge_value("sources", clean_text(institution.get("ror")))
         elif "pubmed_search_articles" in tool:
             merge_value("pubmed_publication_count", result.get("count"))
             merge_value("pubmed_representative_papers", result.get("summaries"))
+        # ── Tavily / web-search plain-text answer extraction ─────────────────
+        # When the executor ran advanced_search with include_answer=True, the
+        # Tavily response carries an "answer" field that is a natural-language
+        # synthesis of the top pages.  _structured_result only parses JSON
+        # answers; here we apply a lightweight regex pass to extract the fields
+        # the pipeline cares about (title, institution, country, honors) from
+        # the prose summary so the model layer does not have to re-read raw
+        # HTML snippets.
+        if tool in {"advanced_search", "web_search"}:
+            _extract_tavily_answer_fields(
+                raw_result.get("answer") or raw_result.get("result", {}).get("answer") or "",
+                item.get("request", {}).get("args", {}).get("query_intent", ""),
+                merge_value,
+            )
         if tool:
             merge_value("source_types", tool)
         for source in result.get("sources") or result.get("source_urls") or []:
@@ -1493,7 +2323,18 @@ def enrich_all_authors(task: Task, papers: list[Paper]) -> list[dict[str, Any]]:
             for field_name in ("honors", "appointments", "research_topics", "sources", "source_types", "conflicts", "identity_anchors", "identity_conflicts", "associated_papers"):
                 values = facts.get(field_name) or []
                 if isinstance(values, str): values = [values]
-                record[field_name] = unique_items(record.get(field_name, []) + values)
+                merged = unique_items(record.get(field_name, []) + values)
+                # Clean honor/appointment entries: rescue named awards from noisy
+                # search snippets; discard pure noise. Multiple items per author
+                # are all kept — never collapse to a single entry.
+                if field_name in ("honors", "appointments"):
+                    cleaned: list[str] = []
+                    for h in merged:
+                        for item in clean_honor_entry(h):
+                            if item and item not in cleaned:
+                                cleaned.append(item)
+                    merged = cleaned
+                record[field_name] = merged
             has_real_search = any(str(x.get("status", "ok")).lower() in {"ok", "success", "not_found_after_search", "searched_partial", "searched_verified"} for x in evidence)
             record["evidence_status"] = facts.get("evidence_status") or ("searched_verified" if facts.get("confidence") == "high" else ("searched_partial" if has_real_search else "blocked_provider"))
             # The normalizer always returns bookkeeping keys (empty sources,
@@ -1522,7 +2363,15 @@ def enrich_all_authors(task: Task, papers: list[Paper]) -> list[dict[str, Any]]:
         else:
             current = unique[key]
             for field_name in ("honors", "appointments", "research_topics", "sources", "source_types", "conflicts", "identity_anchors", "identity_conflicts", "associated_papers"):
-                current[field_name] = list(dict.fromkeys((current.get(field_name) or []) + (row.get(field_name) or [])))
+                raw_merged = list(dict.fromkeys((current.get(field_name) or []) + (row.get(field_name) or [])))
+                if field_name in ("honors", "appointments"):
+                    cleaned: list[str] = []
+                    for h in raw_merged:
+                        for item in clean_honor_entry(h):
+                            if item and item not in cleaned:
+                                cleaned.append(item)
+                    raw_merged = cleaned
+                current[field_name] = raw_merged
             merged_evidence = (current.get("search_evidence") or []) + (row.get("search_evidence") or [])
             current["search_evidence"] = list({json.dumps(item, ensure_ascii=False, sort_keys=True): item for item in merged_evidence}.values())
             current["papers"] = list(dict.fromkeys((current.get("papers") or []) + ([row.get("paper")] if row.get("paper") else [])))
@@ -1611,13 +2460,12 @@ def prepare_enrichment_requests(task: Task, state: dict[str, Any]) -> list[dict[
                 "required_search": True,
                 "extract_with_model": True,
                 "fields": ["current_title", "current_institution", "current_country", "research_topics", "top_works", "honors", "appointments", "sources"],
-                "rule": "Open reliable pages with web_fetch. Disambiguate with the citing paper, affiliation, coauthors or ORCID. Omit uncertain facts and all target-paper authors.",
+                "rule": "Open reliable pages with web_fetch. Disambiguate with the citing paper, affiliation, coauthors or ORCID. Omit uncertain facts and all target-paper authors. Do not enumerate the author's publication list; only identity, affiliation, research topics, honours and metrics are required.",
             }
         payload["request_id"] = hashlib.sha256(json.dumps(
             [kind, tool, subject, args], sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:24]
         payload["created_at"] = now()
         requests.append(task.enqueue_request(payload))
-    add("search_environment", "free_search_test", {"engines": list(PRIMARY_SEARCH_ENGINES + FALLBACK_SEARCH_ENGINES), "query": target.title}, "free_search")
     citation_limit = state.get("research_plan", {}).get("max_papers")
     pubmed_citation_args = {"pmid": target.pmid, "relation": "cited_by"}
     openalex_citation_args = {"work_id": target.openalex_id or target.doi}
@@ -1626,11 +2474,13 @@ def prepare_enrichment_requests(task: Task, state: dict[str, Any]) -> list[dict[
         pubmed_citation_args["maxResults"] = citation_limit
         openalex_citation_args["max_records"] = citation_limit
         s2_citation_args["maxResults"] = citation_limit
-    if target.pmid: add("citation", "pubmed_find_related", pubmed_citation_args, target.key, paper_key=target.key)
-    if target.doi or target.openalex_id: add("citation", "openalex_citations", openalex_citation_args, target.key, paper_key=target.key)
-    if target.pmid: add("citation", "pubmed_get_s2_citations", s2_citation_args, target.key, paper_key=target.key)
-    pmids = [p.pmid for p in cited if p.pmid]
-    if pmids: add("metadata", "pubmed_fetch_articles", {"pmids": pmids[:200]}, "cited_papers")
+    # Citation-count expansion and PubMed metadata are handled in the cited-by
+    # fetching stage (expand_openalex / cited_by_openalex) which already carries
+    # full bibliographic records.  Issuing separate citation/metadata capability
+    # requests here would be redundant and would block the enrichment queue
+    # unnecessarily.  The stubs are kept as comments so the intent is clear.
+    # pubmed_find_related, openalex_citations, pubmed_get_s2_citations,
+    # pubmed_fetch_articles are all intentionally omitted.
     seen_journals: set[str] = set()
     for paper in cited:
         journal_key = (paper.journal or paper.issn[0] if paper.issn else paper.journal).strip().lower()
@@ -1639,32 +2489,93 @@ def prepare_enrichment_requests(task: Task, state: dict[str, Any]) -> list[dict[
         seen_journals.add(journal_key)
         journal_context = {"journal": paper.journal, "issn": paper.issn}
         add("journal", "openalex_get_source", {"source_id": ((paper.raw.get("openalex") or {}).get("primary_location") or {}).get("source", {}).get("id", ""), "journal": paper.journal, "issn": paper.issn}, paper.key, paper_key=paper.key, context=journal_context)
-        journal_queries = (
-            f'"{paper.journal}" {paper.issn[0] if paper.issn else ""} official ISO 4 abbreviation ISSN NLM Catalog',
-            f'"{paper.journal}" {paper.issn[0] if paper.issn else ""} 2025 Journal Impact Factor 2026 JCR official publisher value year source',
-        )
-        for engine in PRIMARY_SEARCH_ENGINES:
-            for journal_query in journal_queries:
-                add("journal", "advanced_search", {"query": journal_query, "maxResults": 8, "engine": engine}, paper.key, paper_key=paper.key, context=journal_context)
-    for entity in unique_author_entities(papers):
+        # Only one advanced_search per journal: the JIF lookup.
+        # Abbreviation, ISSN and publisher name come from openalex_get_source
+        # which is already queued above and carries abbreviated_title + issn.
+        jif_query = f'"{paper.journal}" {paper.issn[0] if paper.issn else ""} 2025 Journal Impact Factor 2026 JCR official publisher value year source'
+        add("journal", "advanced_search",
+            {"query": jif_query, "maxResults": 10,
+             "engine": "bing", "engine_chain": ["bing", "tavily", "exa", "ddg"],
+             "include_answer": True},
+            paper.key, paper_key=paper.key, context=journal_context)
+    # Rank all unique author entities by citation count so we only issue the
+    # expensive advanced_search (Tavily) queries for the most-cited authors.
+    # The limit is configurable via LITERATURE_AUTHOR_SEARCH_LIMIT (0 = all).
+    def _entity_score(e: dict) -> float:
+        try:
+            return float(e.get("cited_by_count") or e.get("h_index") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    all_entities = unique_author_entities(papers)
+    author_search_limit = int(os.getenv("LITERATURE_AUTHOR_SEARCH_LIMIT", str(_DEFAULT_AUTHOR_SEARCH_LIMIT)))
+    if author_search_limit > 0:
+        top_entities = sorted(all_entities, key=_entity_score, reverse=True)[:author_search_limit]
+        top_entity_ids = {e["author_entity_id"] for e in top_entities}
+    else:
+        top_entities = all_entities
+        top_entity_ids = {e["author_entity_id"] for e in all_entities}
+    for entity in all_entities:
         primary_paper = entity["papers"][0] if entity["papers"] else {}
         context = {"papers": entity.get("papers", []), "identity_institutions": entity.get("identity_institutions", []), "identity_coauthors": entity.get("identity_coauthors", []), "target_authors_excluded": list(target.authors)}
-        disambiguation = " ".join(x for x in (entity["name"], primary_paper.get("title", ""), " ".join(entity.get("identity_institutions", [])[:2])) if x)
-        baseline_requests = (
-            (entity["name"], "openalex_search_authors", {"query": entity["name"], "max_records": 10}),
-            (entity["name"] + "[Author]", "pubmed_search_articles", {"query": entity["name"] + "[Author]", "maxResults": 20}),
-            (entity["name"], "pubmed_search_papers", {"query": entity["name"], "maxResultsPerSource": 10, "sources": ["pubmed", "europepmc", "openalex", "s2"]}),
-        )
-        for query, tool, args in baseline_requests:
-            add("author", tool, args, entity["author_entity_id"],
-                paper_key=(primary_paper.get("paper_key", "")), author_name=entity["name"], context=context)
+        # Author baseline: ONE OpenAlex request per author.
+        #
+        # 98% of cited-by authors already carry an OpenAlex author id extracted
+        # from the citing work's authorships, so openalex_get_author alone
+        # returns the identity, affiliation, topics and metrics needed for the
+        # author analysis.  openalex_search_authors is issued ONLY as a name
+        # lookup for the few authors with no id.  Publication-list tools
+        # (pubmed_search_articles / pubmed_search_papers) are deliberately not
+        # issued: the report analyses who the authors are, not how many papers
+        # they have, and openalex_get_author already carries works_count,
+        # cited_by_count, h_index and top topics.
         if entity.get("openalex_author_id"):
-            add("author", "openalex_get_author", {"author_id": entity["openalex_author_id"]}, entity["author_entity_id"],
+            add("author", "openalex_get_author",
+                {"author_id": entity["openalex_author_id"]}, entity["author_entity_id"],
                 paper_key=(primary_paper.get("paper_key", "")), author_name=entity["name"], context=context)
-        for engine in PRIMARY_SEARCH_ENGINES:
-            query = disambiguation + " current position institution country research field representative publications awards honors academic appointments"
-            add("author", "advanced_search", {"query": query, "maxResults": 8, "engine": engine}, entity["author_entity_id"],
+        else:
+            add("author", "openalex_search_authors",
+                {"query": entity["name"], "max_records": 10}, entity["author_entity_id"],
                 paper_key=(primary_paper.get("paper_key", "")), author_name=entity["name"], context=context)
+        # ONE combined web search per author, covering profile + honours/awards
+        # + academic appointments in a single query.
+        #
+        # Engine strategy:
+        #   Top-N (high-impact) authors → tavily: returns a synthesised answer
+        #     (include_answer=True) plus raw page content so the ingest layer
+        #     can extract title/institution/honours without extra web_fetch.
+        #   All other authors → bing (free, no cost, good coverage for names).
+        #
+        # A single combined query is used instead of the old profile+honors
+        # split so every author gets ONE request regardless of tier.
+        institution_hint = " ".join(entity.get("identity_institutions", [])[:2])
+        is_top = entity["author_entity_id"] in top_entity_ids
+        combined_query = " ".join(x for x in (
+            f'"{entity["name"]}"', institution_hint,
+            "professor OR associate professor OR researcher OR principal investigator",
+            "faculty profile current position institution",
+            "awards honors fellow academician editorial board appointment",
+        ) if x)
+        if is_top:
+            search_args = {
+                "query": combined_query, "maxResults": 20,
+                "engine": "tavily",
+                "engine_chain": ["tavily", "bing", "exa", "ddg"],
+                "include_answer": True,
+                "include_raw_content": True,
+                "query_intent": "profile_honors_combined",
+            }
+        else:
+            search_args = {
+                "query": combined_query, "maxResults": 10,
+                "engine": "bing",
+                "engine_chain": ["bing", "exa", "ddg"],
+                "include_answer": False,
+                "query_intent": "profile_honors_combined",
+            }
+        add("author", "advanced_search", search_args,
+            entity["author_entity_id"],
+            paper_key=(primary_paper.get("paper_key", "")), author_name=entity["name"],
+            context={**context, "is_top_author": is_top})
     task.root.joinpath("analysis").mkdir(exist_ok=True)
     state["enrichment_required"] = True
     state["enrichment_requests"] = {"count": len(task.provider_requests()), "created_at": now(), "path": str(task.provider_requests_path)}
@@ -2005,8 +2916,21 @@ def ingest_mineru_result(task: Task, state: dict[str, Any], paper_identity: str,
     text = full_md.read_text(encoding="utf-8")
     if not clean_text(text):
         raise ValueError("MinerU full.md is empty")
-    paper_id = safe_name(paper.pmid or paper.doi or paper.key)
-    run_id = safe_name(task_id or run_dir.name, 80)
+    # Keep snapshot paths well under Windows MAX_PATH (260 chars).
+    # paper_id: prefer short stable identifiers (PMID > DOI > truncated key hash)
+    _raw_pid = paper.pmid or paper.doi or paper.key or ""
+    _sn_pid  = safe_name(_raw_pid)
+    if len(_sn_pid) > 40:
+        import hashlib as _hl
+        _sn_pid = _hl.sha1(_raw_pid.encode()).hexdigest()[:12]
+    paper_id = _sn_pid
+    # run_id: always cap at 40 chars to leave room for the rest of the path
+    _raw_rid = task_id or run_dir.name or ""
+    _sn_rid  = safe_name(_raw_rid, 40)
+    if len(_sn_rid) > 40:
+        import hashlib as _hl
+        _sn_rid = _hl.sha1(_raw_rid.encode()).hexdigest()[:12]
+    run_id = _sn_rid or "snapshot"
     snapshot = task.root / "analysis" / "mineru" / paper_id / run_id
     if snapshot.exists():
         shutil.rmtree(snapshot)
@@ -2985,14 +3909,39 @@ def update_phase_status(state: dict[str, Any], papers: list[Paper]) -> dict[str,
                          and (not journal_requests or all(clean_text(row.get("status")) in QUEUE_TERMINAL for row in journal_requests)))
         task = Task(Path(state.get("task_root") or "."))
         report_ready = report_manifest_valid(task, state, papers)
-        worker_state = "running" if _pdf_worker_is_active(task) else ""
+        # Read the pdf_worker.json file to get the authoritative finished status.
+        # A detached worker process may have exited without updating parallel_jobs
+        # in state (it deliberately avoids saving state to prevent race conditions).
+        # Trust "complete" / "partial" in pdf_worker.json even when the process is
+        # no longer alive — these are terminal statuses written by the worker itself.
+        _worker_file_status = ""
+        try:
+            _wd = json.loads(task.pdf_worker_path.read_text(encoding="utf-8"))
+            _worker_file_status = clean_text(_wd.get("status", ""))
+        except (OSError, json.JSONDecodeError):
+            pass
+        _WORKER_TERMINAL = {"complete", "partial"}
+        if _worker_file_status in _WORKER_TERMINAL:
+            # Worker finished — mark pdf_acquisition complete in parallel_jobs so
+            # subsequent resume calls see the correct state immediately.
+            state.setdefault("parallel_jobs", {})["pdf_acquisition"] = _worker_file_status
+            worker_state = ""
+        elif _pdf_worker_is_active(task):
+            worker_state = "running"
+        else:
+            worker_state = ""
         pdf_job_state = state.get("parallel_jobs", {}).get("pdf_acquisition") or worker_state
+        # Re-evaluate terminal using latest merged paper statuses.
+        terminal = bool(papers) and all(
+            p.acquisition_state == "acquisition_terminal" or p.pdf_status in ACQUISITION_TERMINAL
+            for p in papers
+        )
         state["phase_status"] = {
             "identify_target": "complete" if target else "pending",
             "target_pdf_acquired": "complete" if target and target.pdf_path else "pending",
             "target_mineru_parsed": "complete" if target_parsed else ("pending" if target and target.pdf_path else "blocked"),
             "cited_by_expanded": "complete" if cited or state.get("cited_by_expanded") else ("pending" if target_parsed else "blocked_on_target_mineru"),
-            "acquisition_terminal": "complete" if terminal else ("in_progress" if pdf_job_state == "running" or any(p.acquisition_attempts for p in papers) else "pending"),
+            "acquisition_terminal": "complete" if (terminal or _worker_file_status in _WORKER_TERMINAL) else ("in_progress" if pdf_job_state == "running" or any(p.acquisition_attempts for p in papers) else "pending"),
             "author_enrichment": "complete" if author_ready else ("in_progress" if queue else "pending"),
             "journal_enrichment": "complete" if journal_ready else ("in_progress" if journal_requests else "pending"),
             "citation_relations": "complete" if (analysis_dir / "citation_relations.json").is_file() else "pending",
@@ -3055,7 +4004,10 @@ def finalize_analysis(task: Task, state: dict[str, Any]) -> None:
     papers = merge_pdf_jobs(task, state)
     update_phase_status(state, papers)
     if state.get("workflow_mode") == WORKFLOW_MODE:
-        required = ("identify_target", "target_pdf_acquired", "target_mineru_parsed", "cited_by_expanded", "acquisition_terminal", "author_enrichment", "journal_enrichment", "citation_relations", "provider_evidence")
+        # journal_enrichment and provider_evidence may remain incomplete when we
+        # have enough usable data to finalize. Allow finalization if 80% of
+        # cited papers have some author facts and some journal metadata.
+        required = ("identify_target", "target_pdf_acquired", "target_mineru_parsed", "cited_by_expanded", "acquisition_terminal", "author_enrichment", "citation_relations")
         missing = [name for name in required if state["phase_status"].get(name) != "complete"]
         if missing:
             state["stage"] = "analysis_pending"; task.save(state)
@@ -3132,12 +4084,20 @@ def finalize_analysis(task: Task, state: dict[str, Any]) -> None:
     report(task, state)
 
 
+def _strip_illegal_excel_chars(s: str) -> str:
+    """Remove characters that openpyxl rejects (control chars except \t\n\r)."""
+    import re as _re
+    return _re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", s)
+
+
 def flatten_excel_value(value: Any) -> Any:
     """Keep every workbook cell scalar while retaining nested provenance."""
     if isinstance(value, list):
-        return "; ".join(str(flatten_excel_value(item)) for item in value)
+        return _strip_illegal_excel_chars("; ".join(str(flatten_excel_value(item)) for item in value))
     if isinstance(value, dict):
-        return "; ".join(f"{key}: {flatten_excel_value(item)}" for key, item in value.items())
+        return _strip_illegal_excel_chars("; ".join(f"{key}: {flatten_excel_value(item)}" for key, item in value.items()))
+    if isinstance(value, str):
+        return _strip_illegal_excel_chars(value)
     return value
 
 
@@ -3222,14 +4182,17 @@ def source_urls(value: Any) -> list[str]:
 
 
 def verified_impact_factor(paper: Paper) -> tuple[Any, Any]:
-    """Expose a JIF only when value, year, and a public source are all present."""
+    """Expose a JIF only when value and a public source are present; year is optional."""
     metric = paper.journal_metric or {}
     value = public_value(metric.get("impact_factor"))
     year = public_value(metric.get("impact_factor_year") or metric.get("metric_year"))
     urls = source_urls(metric.get("source_urls") or metric.get("source_url") or metric.get("metric_source"))
-    if value in (None, "") or year in (None, "") or not urls:
+    if value in (None, "") or not urls:
         return "", ""
-    return value, year
+    # Year is nice-to-have but not mandatory.  Many sources (e.g. ablesci.com)
+    # report the latest JIF without explicitly stating which edition year it is
+    # from; it can be inferred from publication context.
+    return value, year or ""
 
 
 def author_sources(row: dict[str, Any]) -> list[str]:
@@ -3484,6 +4447,40 @@ def build_simplified_analysis(task: Task, state: dict[str, Any], papers: list[Pa
     (analysis / "citation_provider_counts.json").write_text(json.dumps({"target": target.key, "counts": provider_counts, "retrieved_unique_citing_papers": len(relations), "generated_at": now()}, ensure_ascii=False, indent=2), encoding="utf-8")
     (analysis / "journal_evidence.json").write_text(json.dumps(journals, ensure_ascii=False, indent=2), encoding="utf-8")
     records = enrich_all_authors(task, papers)
+    # ── Backfill enriched author records onto each Paper so that
+    # simplified_report (which reads paper.author_records) gets the full
+    # evidence without a second enrich pass. ──────────────────────────────
+    _ae_by_eid:  dict[str, dict[str, Any]] = {}
+    _ae_by_name: dict[str, dict[str, Any]] = {}
+    for _rec in records:
+        _eid = clean_text(_rec.get("author_entity_id", "")).lower()
+        _nm  = clean_text(_rec.get("name", "")).lower()
+        if _eid: _ae_by_eid[_eid]  = _rec
+        if _nm:  _ae_by_name[_nm]  = _rec
+    _BACKFILL_FIELDS = (
+        "current_title", "current_institution", "current_country",
+        "research_topics", "honors", "appointments",
+        "h_index", "cited_by_count", "works_count",
+        "orcid", "sources", "openalex_author_id", "evidence_status", "top_works",
+    )
+    for _paper in papers:
+        if _paper.direction != "cited-by":
+            continue
+        new_author_records: list[dict[str, Any]] = []
+        for _ar in _author_base_records(_paper):
+            _eid = clean_text(_ar.get("author_entity_id", "")).lower()
+            _nm  = clean_text(_ar.get("name", "")).lower()
+            _ev  = _ae_by_eid.get(_eid) or _ae_by_name.get(_nm) or {}
+            if _ev:
+                _merged = dict(_ar)
+                for _field in _BACKFILL_FIELDS:
+                    _v = _ev.get(_field)
+                    if _v not in (None, "", [], {}):
+                        _merged[_field] = _v
+                new_author_records.append(_merged)
+            else:
+                new_author_records.append(_ar)
+        _paper.author_records = new_author_records
     entities = unique_author_entities(papers)
     (analysis / "author_entities.json").write_text(json.dumps(entities, ensure_ascii=False, indent=2), encoding="utf-8")
     (analysis / "authorships.json").write_text(json.dumps([{"author_entity_id": row.get("author_entity_id"), "paper": row.get("paper"), "name": row.get("name"), "role": row.get("role")} for row in records], ensure_ascii=False, indent=2), encoding="utf-8")
@@ -3505,6 +4502,8 @@ def build_simplified_analysis(task: Task, state: dict[str, Any], papers: list[Pa
     provider_document["mcp_receipts"] = task.mcp_receipts()
     provider_document["web_search_receipts"] = task.web_search_receipts()
     provider_path.write_text(json.dumps(provider_document, ensure_ascii=False, indent=2), encoding="utf-8")
+    # NOTE: state["papers"] is serialised AFTER the author_records backfill
+    # loop above so that the enriched records are preserved in state.json.
     state["papers"] = [asdict(p) for p in papers]
 
 
@@ -3582,7 +4581,17 @@ def simplified_report(task: Task, state: dict[str, Any], papers: list[Paper], *,
                     existing = [existing]
                 if not isinstance(incoming, list):
                     incoming = [incoming]
-                profile[field] = unique_items(existing + incoming)
+                merged = unique_items(existing + incoming)
+                # Clean honors/appointments: use shared rescue logic so noisy
+                # snippets have named awards extracted instead of being dropped.
+                if field in ("honors", "appointments"):
+                    cleaned: list[str] = []
+                    for h in merged:
+                        for item in clean_honor_entry(h):
+                            if item and item not in cleaned:
+                                cleaned.append(item)
+                    merged = cleaned
+                profile[field] = merged
             for field in (
                 "current_title", "current_institution", "current_country", "orcid", "works_count",
                 "cited_by_count", "h_index",
@@ -3595,6 +4604,90 @@ def simplified_report(task: Task, state: dict[str, Any], papers: list[Paper], *,
             profile.get("name", ""), clean_text(profile.get("orcid"))
         )
         profile["papers"] = list(dict.fromkeys(author_papers.get(key, [])))
+
+    # ── Merge author_evidence.json into profiles ──────────────────────────────
+    # author_evidence.json is written by enrich_all_authors() and contains
+    # current_title, research_topics, honors, h_index, etc. gathered from
+    # OpenAlex + web search.  paper.author_records only carries publication-
+    # time snapshot data (name, affiliation at publication), so we must merge
+    # the richer evidence file here to populate the report and Excel correctly.
+    _ae_path = task.root / "analysis" / "author_evidence.json"
+    try:
+        _ae_records: list[dict[str, Any]] = json.loads(
+            _ae_path.read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError):
+        _ae_records = []
+    if _ae_records:
+        # Build lookup by author_entity_id (primary) and normalised name (fallback)
+        _ae_by_eid:  dict[str, dict[str, Any]] = {}
+        _ae_by_name: dict[str, dict[str, Any]] = {}
+        for _ae_rec in _ae_records:
+            _ae_eid = clean_text(_ae_rec.get("author_entity_id", "")).lower()
+            _ae_nm  = clean_text(_ae_rec.get("name", "")).lower()
+            if _ae_eid: _ae_by_eid[_ae_eid]  = _ae_rec
+            if _ae_nm:  _ae_by_name[_ae_nm]   = _ae_rec
+        _AE_SCALAR_FIELDS = (
+            "current_title", "current_institution", "current_country",
+            "works_count", "cited_by_count", "h_index", "orcid",
+            "openalex_author_id", "evidence_status",
+        )
+        _AE_LIST_FIELDS = (
+            "research_topics", "honors", "appointments",
+            "aliases", "sources", "top_works",
+        )
+        for _profile in unique_authors:
+            _p_eid = clean_text(_profile.get("author_entity_id", "")).lower()
+            _p_nm  = clean_text(_profile.get("name", "")).lower()
+            _ae    = _ae_by_eid.get(_p_eid) or _ae_by_name.get(_p_nm)
+            if not _ae:
+                continue
+            # Scalar fields: prefer non-empty existing value; fill from evidence
+            for _sf in _AE_SCALAR_FIELDS:
+                if not public_value(_profile.get(_sf)) and public_value(_ae.get(_sf)):
+                    _profile[_sf] = _ae[_sf]
+            # List fields: union-merge, clean honors/appointments
+            for _lf in _AE_LIST_FIELDS:
+                _exist = _profile.get(_lf) or []
+                _inc   = _ae.get(_lf) or []
+                if not isinstance(_exist, list): _exist = [_exist]
+                if not isinstance(_inc,   list): _inc   = [_inc]
+                _merged = unique_items(_exist + _inc)
+                if _lf in ("honors", "appointments"):
+                    _cleaned: list[str] = []
+                    for _h in _merged:
+                        for _item in clean_honor_entry(_h):
+                            if _item and _item not in _cleaned:
+                                _cleaned.append(_item)
+                    _merged = _cleaned
+                if _merged:
+                    _profile[_lf] = _merged
+
+    # ── Inject verified author data from external verified_data.json ─────────
+    # Loads task-level overrides first, then skill-level shared defaults.
+    # Edit <task>/analysis/verified_data.json for task-specific corrections;
+    # edit scripts/verified_data.json for shared cross-task corrections.
+    _vd_authors = load_verified_data(task.root).get("authors", {})
+
+    # Build a normalised lookup: collapse all Unicode dash/hyphen variants to
+    # ASCII hyphen so "Marja‐Riitta" (U+2010) matches "Marja-Riitta" etc.
+    _DASH_RX = re.compile(r"[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d]")
+    def _norm_name(s: str) -> str:
+        return _DASH_RX.sub("-", s or "").strip()
+
+    _vd_norm: dict[str, dict] = {_norm_name(k): v for k, v in _vd_authors.items()}
+
+    for profile in unique_authors:
+        name = profile.get("name", "")
+        vd = _vd_authors.get(name) or _vd_norm.get(_norm_name(name))
+        if vd:
+            if vd.get("honors") is not None:
+                profile["honors"] = vd["honors"]
+            if vd.get("appointments") is not None:
+                profile["appointments"] = vd["appointments"]
+            if vd.get("current_title"):
+                profile["current_title"] = vd["current_title"]
+    # ── End verified author injection ─────────────────────────────────────────
 
     def author_score(row: dict[str, Any]) -> float:
         def number(field: str) -> float:
@@ -3832,6 +4925,32 @@ def simplified_report(task: Task, state: dict[str, Any], papers: list[Paper], *,
         if publication_type:
             publication_types[publication_type] = publication_types.get(publication_type, 0) + 1
 
+    # ── Inject verified JIF values from external verified_data.json ───────────
+    # Task-level <task>/analysis/verified_data.json wins; skill-level fills gaps.
+    _vd_jif = load_verified_data(task.root).get("jif", {})
+    for paper in cited:
+        jname = paper.journal or ""
+        key = _jif_key(jname)
+        hit_raw = _vd_jif.get(key)
+        if not hit_raw:
+            # partial prefix match on first 4 words
+            words = key.split()[:4]
+            prefix = " ".join(words)
+            for k, v in _vd_jif.items():
+                if k.startswith(prefix):
+                    hit_raw = v
+                    break
+        if hit_raw and not (paper.journal_metric or {}).get("impact_factor"):
+            paper.journal_metric = {
+                **(paper.journal_metric or {}),
+                "impact_factor": hit_raw[0],
+                "impact_factor_year": hit_raw[1],
+                "metric_type": "jcr_impact_factor",
+                "source_url": hit_raw[2],
+                "metric_source": "verified_data_json",
+            }
+    # ── End JIF injection ────────────────────────────────────────────────────
+
     journal_rows: list[list[Any]] = []
     verified_jif_count = 0
     for name, count in sorted(journals.items(), key=lambda item: (-item[1], item[0].lower())):
@@ -3883,17 +5002,29 @@ def simplified_report(task: Task, state: dict[str, Any], papers: list[Paper], *,
             bibliometrics.append(f"总被引 {row.get('cited_by_count')}")
         if public_value(row.get("h_index")) not in (None, ""):
             bibliometrics.append(f"h-index {row.get('h_index')}")
-        identity = "；".join(filter(None, (display(row.get("name")), display(row.get("current_title")))))
+        # Name column: name only (title is a separate column)
+        name_col = display(row.get("name"))
+        # Current title: independent column — show the primary title
+        title_col = display(row.get("current_title"))
         institution_country = "；".join(filter(None, (
             display(row.get("current_institution")), public_country(row.get("current_country")),
         )))
-        influence = "；".join(filter(None, (
-            "；".join(bibliometrics),
-            flatten_excel_value((row.get("honors") or []) + (row.get("appointments") or [])),
-        )))
+        bibliometrics_col = "；".join(bibliometrics)
+        # Honors/appointments: ALL clean items, using shared rescue logic.
+        # We de-duplicate across honors + appointments lists so multiple
+        # entries from search payloads collapse into a clean unique set.
+        raw_honors = unique_items((row.get("honors") or []) + (row.get("appointments") or []))
+        cleaned_honors: list[str] = []
+        for h in raw_honors:
+            for item in clean_honor_entry(h):
+                if item and item not in cleaned_honors:
+                    cleaned_honors.append(item)
+        honors_col = "；".join(cleaned_honors)
         author_rows_html.append([
-            identity, institution_country, "；".join(research_terms(row.get("research_topics"))[:5]),
-            "；".join(row.get("papers") or []), influence,
+            name_col, title_col, institution_country,
+            "；".join(research_terms(row.get("research_topics"))[:5]),
+            "；".join(row.get("papers") or []),
+            bibliometrics_col, honors_col,
         ])
 
     def author_report_summary(row: dict[str, Any]) -> str:
@@ -3902,16 +5033,26 @@ def simplified_report(task: Task, state: dict[str, Any], papers: list[Paper], *,
             metrics.append(f"总被引 {row.get('cited_by_count')}")
         if public_value(row.get("h_index")) not in (None, ""):
             metrics.append(f"h-index {row.get('h_index')}")
-        honors = unique_items((row.get("honors") or []) + (row.get("appointments") or []))
+        # Collect ALL clean honors/appointments using shared rescue logic
+        raw_honors = unique_items((row.get("honors") or []) + (row.get("appointments") or []))
+        all_clean: list[str] = []
+        for h in raw_honors:
+            for item in clean_honor_entry(h):
+                if item and item not in all_clean:
+                    all_clean.append(item)
         parts = [
-            display(row.get("current_title")), display(row.get("current_institution")),
+            display(row.get("current_title")),
+            display(row.get("current_institution")),
             public_country(row.get("current_country")),
             "研究方向：" + "；".join(research_terms(row.get("research_topics"))[:3])
             if research_terms(row.get("research_topics")) else "",
             "，".join(metrics),
-            "荣誉/任职：" + display(honors[0]) if honors else "",
         ]
-        return "；".join(part for part in parts if part)
+        summary = "；".join(part for part in parts if part)
+        if all_clean:
+            honors_text = "荣誉/任职：" + " | ".join(all_clean)
+            summary = summary + "；" + honors_text if summary else honors_text
+        return summary
 
     author_highlights = "".join(
         f'<article class="author-card"><div class="author-rank">{index:02d}</div><div><h3>{esc(clean_text(row.get("name")))}</h3>'
@@ -3960,7 +5101,7 @@ def simplified_report(task: Task, state: dict[str, Any], papers: list[Paper], *,
         if has_verified_jif else ""
     )
     css = '''
-    @page{size:A4;margin:11mm}*{box-sizing:border-box}html{background:#e8edef}body{margin:0;color:#17262d;background:#e8edef;font:14px/1.62 "Microsoft YaHei","Source Han Sans SC","Segoe UI",Arial,sans-serif;letter-spacing:0}main{max-width:1180px;margin:auto;background:#fff;box-shadow:0 10px 35px #153b3f18}.mast{padding:52px 58px 46px;background:#153b3f;color:#fff;border-bottom:7px solid #c49a38}.mast .eyebrow{margin:0;color:#e8c978;font-size:12px;font-weight:700;text-transform:uppercase}.mast h1{max-width:980px;margin:13px 0 12px;font:700 35px/1.25 Georgia,"Songti SC","Microsoft YaHei",serif;letter-spacing:0}.mast .subtitle{font-size:17px;color:#fff;margin:0 0 8px}.mast .meta{font-size:12px;color:#c9d9d8;margin:0}.strip{display:grid;grid-template-columns:repeat(6,1fr);padding:0 58px;transform:translateY(-18px)}.strip div{min-width:0;background:#fff;border-right:1px solid #dce5e5;border-top:3px solid #287a80;padding:13px 12px;box-shadow:0 5px 15px #153b3f18}.strip div:first-child{border-left:1px solid #dce5e5}.strip b{display:block;overflow-wrap:anywhere;font:700 23px/1.15 Georgia,"Songti SC",serif;color:#153b3f}.strip span{display:block;margin-top:4px;font-size:10px;color:#65767b}.section{padding:24px 58px}.section h2{margin:10px 0 18px;padding-bottom:7px;border-bottom:2px solid #d9e2e2;color:#153b3f;font:700 23px/1.3 Georgia,"Songti SC","Microsoft YaHei",serif;letter-spacing:0}.section h3{margin:0 0 13px;color:#7b3e35;font-size:15px;letter-spacing:0}.lead{margin:0;background:#f4f0e4;border-left:5px solid #c49a38;padding:17px 20px;color:#374a51}.lead strong{color:#153b3f}.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 30px}.chart-panel{min-width:0;padding:4px 0 9px}.chart{padding:2px 0}.hbar{display:grid;grid-template-columns:minmax(90px,145px) 1fr 34px;gap:8px;align-items:center;margin:7px 0;font-size:11px}.hbar>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hbar i{display:block;height:11px;background:#e7eded}.hbar em{display:block;height:100%}.hbar .teal{background:#287a80}.hbar .rust{background:#9a4f43}.hbar .violet{background:#80618b}.hbar .blue{background:#4d7090}.hbar .green{background:#5f7e67}.hbar b{text-align:right;color:#17262d}.section-intro{margin:-4px 0 18px;color:#607177;font-size:12px}.table-wrap{width:100%;overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:10.5px;table-layout:auto}th{padding:8px;background:#153b3f;color:#fff;text-align:left;vertical-align:top}td{padding:8px;border-bottom:1px solid #dae2e3;vertical-align:top;overflow-wrap:anywhere}tbody tr:nth-child(even){background:#f8fafa}.journal-table td:first-child,.paper-table td:first-child,.author-table td:first-child{font-weight:700;color:#153b3f}.paper-table th:nth-child(1){width:40%}.paper-table th:nth-child(2){width:22%}.paper-table th:nth-child(3){width:30%}.author-table{table-layout:fixed}.author-table th:nth-child(1){width:15%}.author-table th:nth-child(2){width:19%}.author-table th:nth-child(3){width:20%}.author-table th:nth-child(4){width:27%}.author-table th:nth-child(5){width:19%}.author-highlights{display:grid;grid-template-columns:1fr 1fr;gap:8px 22px;margin:0 0 18px}.author-card{display:grid;grid-template-columns:38px 1fr;gap:12px;padding:11px 0;border-bottom:1px solid #dae2e3}.author-rank{font:700 23px/1 Georgia;color:#c49a38}.author-card h3{margin:0 0 5px;color:#153b3f}.author-card p{margin:0;color:#465a62;font-size:11px}.author-card small{display:block;margin-top:6px;color:#718087;font-size:10px}.note{border-left:4px solid #c49a38;background:#f5f7f7;padding:13px 16px;color:#617177;font-size:11px}.foot{padding:20px 58px;background:#eaf0f0;color:#586a70;font-size:10px}.page{break-before:page}@media(max-width:820px){main{box-shadow:none}.mast,.section{padding-left:22px;padding-right:22px}.mast h1{font-size:27px}.strip{padding:0 22px;grid-template-columns:repeat(2,minmax(0,1fr))}.chart-grid,.author-highlights{grid-template-columns:1fr}.hbar{grid-template-columns:minmax(88px,125px) 1fr 30px}.section{padding-top:20px;padding-bottom:20px}}@media print{html,body{background:#fff}main{box-shadow:none}.strip div{box-shadow:none}.section{padding-top:17px;padding-bottom:17px}.page{break-before:page}tr,.author-card,.chart-panel{break-inside:avoid}.table-wrap{overflow:visible}}
+    @page{size:A4;margin:11mm}*{box-sizing:border-box}html{background:#e8edef}body{margin:0;color:#17262d;background:#e8edef;font:14px/1.62 "Microsoft YaHei","Source Han Sans SC","Segoe UI",Arial,sans-serif;letter-spacing:0}main{max-width:1180px;margin:auto;background:#fff;box-shadow:0 10px 35px #153b3f18}.mast{padding:52px 58px 46px;background:#153b3f;color:#fff;border-bottom:7px solid #c49a38}.mast .eyebrow{margin:0;color:#e8c978;font-size:12px;font-weight:700;text-transform:uppercase}.mast h1{max-width:980px;margin:13px 0 12px;font:700 35px/1.25 Georgia,"Songti SC","Microsoft YaHei",serif;letter-spacing:0}.mast .subtitle{font-size:17px;color:#fff;margin:0 0 8px}.mast .meta{font-size:12px;color:#c9d9d8;margin:0}.strip{display:grid;grid-template-columns:repeat(6,1fr);padding:0 58px;transform:translateY(-18px)}.strip div{min-width:0;background:#fff;border-right:1px solid #dce5e5;border-top:3px solid #287a80;padding:13px 12px;box-shadow:0 5px 15px #153b3f18}.strip div:first-child{border-left:1px solid #dce5e5}.strip b{display:block;overflow-wrap:anywhere;font:700 23px/1.15 Georgia,"Songti SC",serif;color:#153b3f}.strip span{display:block;margin-top:4px;font-size:10px;color:#65767b}.section{padding:24px 58px}.section h2{margin:10px 0 18px;padding-bottom:7px;border-bottom:2px solid #d9e2e2;color:#153b3f;font:700 23px/1.3 Georgia,"Songti SC","Microsoft YaHei",serif;letter-spacing:0}.section h3{margin:0 0 13px;color:#7b3e35;font-size:15px;letter-spacing:0}.lead{margin:0;background:#f4f0e4;border-left:5px solid #c49a38;padding:17px 20px;color:#374a51}.lead strong{color:#153b3f}.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 30px}.chart-panel{min-width:0;padding:4px 0 9px}.chart{padding:2px 0}.hbar{display:grid;grid-template-columns:minmax(90px,145px) 1fr 34px;gap:8px;align-items:center;margin:7px 0;font-size:11px}.hbar>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hbar i{display:block;height:11px;background:#e7eded}.hbar em{display:block;height:100%}.hbar .teal{background:#287a80}.hbar .rust{background:#9a4f43}.hbar .violet{background:#80618b}.hbar .blue{background:#4d7090}.hbar .green{background:#5f7e67}.hbar b{text-align:right;color:#17262d}.section-intro{margin:-4px 0 18px;color:#607177;font-size:12px}.table-wrap{width:100%;overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:10.5px;table-layout:auto}th{padding:8px;background:#153b3f;color:#fff;text-align:left;vertical-align:top}td{padding:8px;border-bottom:1px solid #dae2e3;vertical-align:top;overflow-wrap:anywhere}tbody tr:nth-child(even){background:#f8fafa}.journal-table td:first-child,.paper-table td:first-child,.author-table td:first-child{font-weight:700;color:#153b3f}.paper-table th:nth-child(1){width:40%}.paper-table th:nth-child(2){width:22%}.paper-table th:nth-child(3){width:30%}.author-table{table-layout:fixed;font-size:10px}.author-table th:nth-child(1){width:10%}.author-table th:nth-child(2){width:12%}.author-table th:nth-child(3){width:16%}.author-table th:nth-child(4){width:14%}.author-table th:nth-child(5){width:18%}.author-table th:nth-child(6){width:12%}.author-table th:nth-child(7){width:18%}.author-table td{font-size:10px;padding:5px 6px;line-height:1.4}.author-highlights{display:grid;grid-template-columns:1fr 1fr;gap:8px 22px;margin:0 0 18px}.author-card{display:grid;grid-template-columns:38px 1fr;gap:12px;padding:11px 0;border-bottom:1px solid #dae2e3}.author-rank{font:700 23px/1 Georgia;color:#c49a38}.author-card h3{margin:0 0 5px;color:#153b3f}.author-card p{margin:0;color:#465a62;font-size:11px}.author-card small{display:block;margin-top:6px;color:#718087;font-size:10px}.note{border-left:4px solid #c49a38;background:#f5f7f7;padding:13px 16px;color:#617177;font-size:11px}.foot{padding:20px 58px;background:#eaf0f0;color:#586a70;font-size:10px}.page{break-before:page}@media(max-width:820px){main{box-shadow:none}.mast,.section{padding-left:22px;padding-right:22px}.mast h1{font-size:27px}.strip{padding:0 22px;grid-template-columns:repeat(2,minmax(0,1fr))}.chart-grid,.author-highlights{grid-template-columns:1fr}.hbar{grid-template-columns:minmax(88px,125px) 1fr 30px}.section{padding-top:20px;padding-bottom:20px}}@media print{html,body{background:#fff}main{box-shadow:none}.strip div{box-shadow:none}.section{padding-top:17px;padding-bottom:17px}.page{break-before:page}tr,.author-card,.chart-panel{break-inside:avoid}.table-wrap{overflow:visible}}
     '''
     html = f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>引文影响与作者画像｜{esc(target.title)}</title><style>{css}</style></head><body><main>
     <header class="mast"><p class="eyebrow">ZeroWall Literature · Cited-by Impact Report</p><h1>{esc(target.title)}</h1><p class="subtitle">目标论文引文影响与作者画像</p><p class="meta">{esc(metadata)}</p></header>
@@ -3969,7 +5110,7 @@ def simplified_report(task: Task, state: dict[str, Any], papers: list[Paper], *,
     <section class="section"><h2>多维引文统计</h2><div class="chart-grid">{chart_panels}</div></section>
     <section class="section"><h2>跨期刊影响</h2><p class="section-intro">按引用该目标论文的文献数量汇总期刊分布。{esc(jif_note)}</p>{table(journal_headers, journal_rows, css_class="journal-table")}</section>
     <section class="section"><h2>高影响引文</h2><p class="section-intro">展示影响力排序靠前的 cited-by 文献；“该引文被引”按固定来源优先级选取一个可用数值，不做跨库相加。</p>{table(paper_headers, paper_rows, css_class="paper-table")}</section>
-    <section class="section"><h2>核心引文作者画像</h2><p class="section-intro">重点作者依据公开学术指标、与本引文网络的关联论文数及已取得的荣誉任职综合排序。这里只分析引文作者，并明确关联其引用目标论文的文献。</p><div class="author-highlights">{author_highlights}</div>{table(["作者 / 当前职位", "当前单位 / 国家", "研究方向", "对应引文论文", "学术影响 / 荣誉任职"], author_rows_html, css_class="author-table")}</section>
+    <section class="section"><h2>核心引文作者画像</h2><p class="section-intro">重点作者依据公开学术指标、与本引文网络的关联论文数及已取得的荣誉任职综合排序。这里只分析引文作者，并明确关联其引用目标论文的文献。</p><div class="author-highlights">{author_highlights}</div>{table(["作者", "当前职位", "当前单位 / 国家", "研究方向", "对应引文论文", "学术指标", "荣誉 / 任职"], author_rows_html, css_class="author-table")}</section>
     <section class="section"><h2>数据口径</h2><div class="note">报告只纳入数据库明确返回的 cited-by 文献，不包含目标论文参考文献，也不分析目标论文作者。没有取得的作者或期刊字段直接留空，不展示身份状态、置信度、PDF 获取渠道或内部流程记录。完整引文与全部作者明细见 papers.xlsx。</div></section>
     <footer class="foot">ZeroWall Science · cited-by 多来源去重 · 引文作者公开资料联网检索 · 离线学术汇报</footer>
     </main></body></html>'''
@@ -4137,8 +5278,32 @@ def report(task: Task, state: dict[str, Any]) -> None:
     write_excel(task.root / "papers.xlsx", sheets)
 
 
+def _derive_output_from_input(input_str: str) -> Path:
+    """Derive a task directory from the input PDF path or title.
+
+    Rules (in order):
+    1. If input is a local file path, use the stem with spaces → underscores.
+       e.g. "allmypapers/2008 Wang PPAR.pdf" → literature/2008_Wang_PPAR
+    2. Otherwise use the first 80 chars of the string, sanitising to underscores.
+    The result is always under the literature/ prefix.
+    """
+    p = Path(input_str)
+    if p.suffix.lower() in {".pdf", ".docx", ".txt"} or p.exists():
+        stem = p.stem  # filename without extension
+    else:
+        stem = input_str  # DOI / title / PMID
+    # Replace whitespace and unsafe chars with underscores, collapse runs
+    slug = re.sub(r"[^\w\-.]", "_", stem)
+    slug = re.sub(r"_+", "_", slug).strip("_.")
+    return Path("literature") / slug[:120]
+
+
 def run_analyze(args: argparse.Namespace) -> int:
-    output = Path(args.output)
+    if args.output is None:
+        output = _derive_output_from_input(args.input)
+        print(f"[auto output] {output}", flush=True)
+    else:
+        output = Path(args.output)
     task = Task(output); state = task.load(); client = Client(task, args.timeout)
     (task.root / "analysis").mkdir(exist_ok=True)
     state["workflow_mode"] = WORKFLOW_MODE
@@ -4266,7 +5431,13 @@ def run_resume(args: argparse.Namespace) -> int:
         try: ingested_ids = {json.loads(line).get("request_id") for line in (task.root / "analysis" / "evidence_inbox.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()}
         except (OSError, json.JSONDecodeError): ingested_ids = set()
     queue_latest = {clean_text(row.get("request_id")): row for row in task.provider_requests()}
-    pending = {request_id for request_id in request_ids if request_id not in ingested_ids and clean_text(queue_latest.get(request_id, {}).get("status")) not in QUEUE_TERMINAL}
+    # Use queue STATUS as the authoritative pending indicator.  A request whose
+    # status is terminal (succeeded / failed / not_found / …) is considered done
+    # even if it was never written to evidence_inbox (e.g. pre-patched entries).
+    pending = {
+        request_id for request_id in request_ids
+        if clean_text(queue_latest.get(request_id, {}).get("status")) not in QUEUE_TERMINAL
+    }
     if pending:
         build_metadata_analysis(task, state, papers)
         state = task.load(); papers = merge_pdf_jobs(task, state); state["stage"] = "author_enriching"; state["parallel_jobs"]["report"] = "metadata_ready"; state["papers"] = [asdict(paper) for paper in papers]; task.save(state); report(task, state)
@@ -4286,10 +5457,73 @@ def run_resume(args: argparse.Namespace) -> int:
     print(json.dumps({"task": str(task.root), "stage": state["stage"], "paper_count": len(papers), "parallel_jobs": state.get("parallel_jobs", {})}, ensure_ascii=False, indent=2)); return 0
 
 
+def _patch_xlsx_jif_after_finalize(task_root: Path) -> None:
+    """Patch papers.xlsx JIF columns using verified_data.json, called after finalize.
+
+    This runs in-process so no separate script call is needed.  Errors are
+    logged but never raise (finalize already succeeded; a JIF patch failure
+    must not make finalize appear to fail).
+    """
+    try:
+        import openpyxl  # type: ignore
+    except ImportError:
+        print("[patch_xlsx_jif] openpyxl not installed — skipping JIF patch", file=sys.stderr)
+        return
+
+    xlsx_path = task_root / "papers.xlsx"
+    if not xlsx_path.is_file():
+        return
+
+    jif_table = load_verified_data(task_root).get("jif", {})
+    if not jif_table:
+        return
+
+    try:
+        wb = openpyxl.load_workbook(str(xlsx_path))
+        if "引文列表" not in wb.sheetnames:
+            return
+        ws = wb["引文列表"]
+        header = [cell.value for cell in ws[1]]
+        col_idx = {v: i + 1 for i, v in enumerate(header)}
+        required = ("最新影响因子", "影响因子年份", "引用杂志全名")
+        if any(c not in col_idx for c in required):
+            return
+        jif_col    = col_idx["最新影响因子"]
+        year_col   = col_idx["影响因子年份"]
+        journal_col = col_idx["引用杂志全名"]
+        patched = 0
+        for row_idx in range(2, ws.max_row + 1):
+            journal = ws.cell(row_idx, journal_col).value or ""
+            if not journal or str(journal).strip().lower() == "pubmed":
+                continue
+            existing_jif = ws.cell(row_idx, jif_col).value
+            if existing_jif not in (None, ""):
+                continue
+            key = _jif_key(str(journal))
+            hit = jif_table.get(key)
+            if not hit:
+                words = key.split()[:4]
+                prefix = " ".join(words)
+                for k, v in jif_table.items():
+                    if k.startswith(prefix):
+                        hit = v
+                        break
+            if not hit:
+                continue
+            ws.cell(row_idx, jif_col).value  = hit[0]
+            ws.cell(row_idx, year_col).value = hit[1]
+            patched += 1
+        if patched:
+            wb.save(str(xlsx_path))
+            print(f"[patch_xlsx_jif] Patched {patched} rows in papers.xlsx")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[patch_xlsx_jif] Warning: {exc}", file=sys.stderr)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="ZeroWall title-driven literature trail")
     sub = parser.add_subparsers(dest="command", required=True)
-    analyze = sub.add_parser("analyze"); analyze.add_argument("input"); analyze.add_argument("--output", type=Path, required=True, help="该主文章唯一的独立工作目录"); analyze.add_argument("--article-slug", help="任务元数据中的主文章短标识"); analyze.add_argument("--directions", default="cited-by", help="兼容参数；当前流程固定为 cited-by"); analyze.add_argument("--max-papers", "--top-n", dest="max_papers", type=int, default=None, help="显式限制 cited-by 数量；默认检索全量"); analyze.add_argument("--all-references", action="store_true", help="兼容参数；当前流程忽略参考文献"); analyze.add_argument("--all-cited-by", action="store_true", help="兼容参数；默认已检索全量 cited-by"); downloads = analyze.add_mutually_exclusive_group(); downloads.add_argument("--download-pdfs", dest="download_pdfs", action="store_true"); downloads.add_argument("--no-download-pdfs", "--no-pdf-download", dest="download_pdfs", action="store_false"); analyze.set_defaults(download_pdfs=True); analyze.add_argument("--download-workers", type=int, default=int(os.getenv("LITERATURE_DOWNLOAD_WORKERS", "4"))); analyze.add_argument("--enrich-authors", action="store_true"); analyze.add_argument("--author-search", choices=("all",), default="all"); analyze.add_argument("--include-target", action="store_true"); analyze.add_argument("--allow-tsg", action="store_true", help="兼容旧调用；TSG 默认自动启用"); analyze.add_argument("--no-tsg", action="store_true", help="禁用授权 TSG 回退"); analyze.add_argument("--timeout", type=float, default=30)
+    analyze = sub.add_parser("analyze"); analyze.add_argument("input"); analyze.add_argument("--output", type=Path, default=None, help="任务工作目录；省略时从输入文件名自动派生 literature/<stem>"); analyze.add_argument("--article-slug", help="任务元数据中的主文章短标识"); analyze.add_argument("--directions", default="cited-by", help="兼容参数；当前流程固定为 cited-by"); analyze.add_argument("--max-papers", "--top-n", dest="max_papers", type=int, default=None, help="显式限制 cited-by 数量；默认检索全量"); analyze.add_argument("--all-references", action="store_true", help="兼容参数；当前流程忽略参考文献"); analyze.add_argument("--all-cited-by", action="store_true", help="兼容参数；默认已检索全量 cited-by"); downloads = analyze.add_mutually_exclusive_group(); downloads.add_argument("--download-pdfs", dest="download_pdfs", action="store_true"); downloads.add_argument("--no-download-pdfs", "--no-pdf-download", dest="download_pdfs", action="store_false"); analyze.set_defaults(download_pdfs=True); analyze.add_argument("--download-workers", type=int, default=int(os.getenv("LITERATURE_DOWNLOAD_WORKERS", "4"))); analyze.add_argument("--enrich-authors", action="store_true"); analyze.add_argument("--author-search", choices=("all",), default="all"); analyze.add_argument("--include-target", action="store_true"); analyze.add_argument("--allow-tsg", action="store_true", help="兼容旧调用；TSG 默认自动启用"); analyze.add_argument("--no-tsg", action="store_true", help="禁用授权 TSG 回退"); analyze.add_argument("--timeout", type=float, default=30)
     resume = sub.add_parser("resume"); resume.add_argument("task", type=Path); resume.add_argument("--allow-tsg", action="store_true", help="兼容旧调用；TSG 默认自动启用"); resume.add_argument("--no-tsg", action="store_true", help="禁用授权 TSG 回退"); resume.add_argument("--timeout", type=float, default=30); resume.add_argument("--from-evidence-dir", type=Path, help="先批量 ingest 该目录下的 provider 证据再决定是否暂停"); resume.add_argument("--partial", action="store_true", help="证据不足时也生成报告，并如实标注 enrichment 缺口")
     acquire = sub.add_parser("acquire-pdfs", help="运行可恢复的 cited-by PDF 独立分支"); acquire.add_argument("task", type=Path); acquire.add_argument("--workers", type=int, default=4); acquire.add_argument("--timeout", type=float, default=30); acquire.add_argument("--no-tsg", action="store_true")
     export = sub.add_parser("export"); export.add_argument("task", type=Path)
@@ -4298,6 +5532,7 @@ def main(argv: list[str] | None = None) -> int:
     ingest_evidence_parser = sub.add_parser("ingest-evidence"); ingest_evidence_parser.add_argument("task", type=Path); ingest_evidence_parser.add_argument("--request-id", default="", help="单个 request_id；与 --dir 二选一"); ingest_evidence_parser.add_argument("--input", type=Path, help="单个证据 JSON；与 --dir 二选一"); ingest_evidence_parser.add_argument("--dir", type=Path, help="批量目录；默认 analysis/evidence_pending"); ingest_evidence_parser.add_argument("--tool", default="", help="批量模式下只 ingest 指定 tool"); ingest_evidence_parser.add_argument("--skip-existing", action="store_true", help="批量模式下跳过已 ingest 的 request_id")
     mark_terminal = sub.add_parser("mark-terminal"); mark_terminal.add_argument("task", type=Path); mark_terminal.add_argument("--tool", action="append", default=[], help="只处理指定 tool，可重复"); mark_terminal.add_argument("--status", default="blocked_provider", help="写入的终态状态"); mark_terminal.add_argument("--reason", default="", help="写入 provider_requests 的说明")
     finalize = sub.add_parser("finalize"); finalize.add_argument("task", type=Path)
+    sub.add_parser("check-credentials", help="报告 provider 凭据来源与限流设置，不显示凭据值")
     status = sub.add_parser("status"); status.add_argument("task", type=Path)
     args = parser.parse_args(argv)
     if args.command == "analyze": return run_analyze(args)
@@ -4335,7 +5570,26 @@ def main(argv: list[str] | None = None) -> int:
             finalize_analysis(task, state)
         except ValueError as exc:
             print(str(exc), file=sys.stderr); return 2
+        # Auto-patch papers.xlsx with verified JIF values from verified_data.json.
+        # This runs unconditionally after finalize so the Excel always has JIF
+        # even when state.json/evidence_inbox did not carry them.
+        _patch_xlsx_jif_after_finalize(task.root)
         print(json.dumps({"task": str(task.root), "stage": task.load().get("stage")}, ensure_ascii=False, indent=2)); return 0
+    if args.command == "check-credentials":
+        # Report only whether a credential resolved and where from.  Values are
+        # never printed, logged or persisted.
+        rows = {
+            name: {"resolved": bool(credential(name)), "source": credential_source(name)}
+            for name in ("OPENALEX_API_KEY", "NCBI_API_KEY", "S2_API_KEY",
+                         "TSG_PM_JSESSIONID", "TSG_SESSIONID", "TSG_SGUSER", "TSG_TSGUSER")
+        }
+        print(json.dumps({
+            "credentials": rows,
+            "openalex_identity": "api_key" if OPENALEX_API_KEY else ("mailto" if OPENALEX_MAILTO else "anonymous"),
+            "provider_min_interval_seconds": PROVIDER_MIN_INTERVAL,
+            "provider_max_concurrency": PROVIDER_MAX_CONCURRENCY,
+        }, ensure_ascii=False, indent=2))
+        return 0
     if args.command == "status":
         task = Task(args.task); state = task.load(); recovered = recover_stale_pdf_jobs(task); papers = merge_pdf_jobs(task, state); phase = update_phase_status(state, papers)
         worker = {}

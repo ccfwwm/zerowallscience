@@ -104,6 +104,54 @@ describe('ZeroWall Science Electron', () => {
     expect(bootEntries).toContain('@huanlin/dsh-plugin-better-sidebar-plugin-office')
   })
 
+  it('bridges chat copies through the trusted desktop API', async () => {
+    const probe = `ZeroWall clipboard ${Date.now()}`
+    await page.evaluate((text) => {
+      const button = document.createElement('button')
+      button.id = 'zerowall-clipboard-probe'
+      button.textContent = 'clipboard probe'
+      button.addEventListener('click', () => {
+        button.dataset.stage = 'clicked'
+        void (async () => {
+          const desktop = (window as unknown as {
+            zerowallDesktop?: { copyText?: (value: string) => Promise<boolean> }
+          }).zerowallDesktop
+          const written = await desktop?.copyText?.(text)
+          button.dataset.written = String(written)
+          button.dataset.result = JSON.stringify({ written })
+          button.dataset.stage = 'written'
+        })().catch((error: unknown) => {
+          button.dataset.error = error instanceof Error
+            ? `${error.name}: ${error.message}`
+            : String(error)
+          button.dataset.stage = 'error'
+        })
+      })
+      document.body.appendChild(button)
+    }, probe)
+
+    const button = page.locator('#zerowall-clipboard-probe')
+    await button.click()
+    await expect.poll(async () => await button.evaluate(element => ({
+      error: element.getAttribute('data-error'),
+      result: element.getAttribute('data-result'),
+    })), { timeout: 5_000 }).not.toEqual({ error: null, result: null })
+    const diagnostic = await button.evaluate(element => ({
+      error: element.getAttribute('data-error'),
+      result: element.getAttribute('data-result'),
+      stage: element.getAttribute('data-stage'),
+      written: element.getAttribute('data-written'),
+    }))
+    expect(diagnostic, JSON.stringify(diagnostic)).toMatchObject({
+      error: null,
+      result: JSON.stringify({ written: true }),
+      stage: 'written',
+      written: 'true',
+    })
+    expect(await button.getAttribute('data-error')).toBeNull()
+    await button.evaluate(element => element.remove())
+  })
+
   it('defaults to Chinese and switches between Chinese and English in Settings', async () => {
     await page.getByRole('button', { name: '设置' }).click()
     const settings = page.getByRole('dialog', { name: '设置' })

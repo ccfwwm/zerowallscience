@@ -26,6 +26,14 @@ CASES_URL = "https://user.tsgyun.com/cases/v2/getUserCasesList"
 VIEWER_URL = "https://fulltext.yuntsg.com/pdfviewer"
 ATTACH_PREFIX = "https://attach.pubtsg.com/attach/"
 
+# The pm.yuntsg.com search backend only honours the page sizes offered by the
+# web client's own dropdown. Any other value is answered with HTTP 200,
+# code=0, msg="success" and an EMPTY list -- a silent failure that is easily
+# mistaken for "no matches" or "broken authentication". Reject unsupported
+# values locally instead of reporting a bogus zero-result search.
+ALLOWED_PAGE_SIZES = (10, 20, 50)
+DEFAULT_PAGE_SIZE = 20
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -149,7 +157,15 @@ class TSGClient:
             raise RuntimeError(str(data.get("msg") or data))
         return data
 
-    def search(self, term: str, page: int = 1, size: int = 20) -> tuple[list[Article], str]:
+    def search(self, term: str, page: int = 1,
+               size: int = DEFAULT_PAGE_SIZE) -> tuple[list[Article], str]:
+        if size not in ALLOWED_PAGE_SIZES:
+            supported = ", ".join(str(x) for x in ALLOWED_PAGE_SIZES)
+            raise ValueError(
+                f"size={size} is not supported by the TSG search backend; "
+                f"use one of {supported}. Other values return a silent empty "
+                f"result set that looks like a search with no matches."
+            )
         body = {"term": term, "sort": "", "sortOrder": "", "format": "", "filter": "",
                 "impactIf": "", "impact": "", "sjr": "", "fenqu": "", "total": "",
                 "alt": "", "jabbr": "", "size": str(size), "page": str(page), "num": "",
@@ -234,7 +250,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--sguser", default=os.getenv("TSG_SGUSER"), help="sguser cookie for .yuntsg.com")
     p.add_argument("--tsguser", default=os.getenv("TSG_TSGUSER"), help="tsguser cookie for .tsgyun.com")
     sub = p.add_subparsers(dest="command", required=True)
-    s = sub.add_parser("search"); s.add_argument("term"); s.add_argument("--page", type=int, default=1); s.add_argument("--size", type=int, default=20)
+    s = sub.add_parser("search"); s.add_argument("term"); s.add_argument("--page", type=int, default=1); s.add_argument("--size", type=int, default=DEFAULT_PAGE_SIZE, choices=ALLOWED_PAGE_SIZES, help="results per page; the TSG backend only supports %s" % ", ".join(str(x) for x in ALLOWED_PAGE_SIZES))
     r = sub.add_parser("request"); r.add_argument("pmids", nargs="+")
     w = sub.add_parser("watch"); w.add_argument("--interval", type=float, default=30); w.add_argument("--timeout", type=float, default=3600)
     d = sub.add_parser("download"); d.add_argument("pmids", nargs="*")

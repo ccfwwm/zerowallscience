@@ -1,0 +1,10 @@
+{
+  "_comment": "Skill-level shared defaults for zerowall-literature. These apply to ALL tasks unless overridden by <task>/analysis/verified_data.json. Add entries here only when a JIF or author fact is correct across all tasks. For task-specific corrections, create <task>/analysis/verified_data.json instead — that file wins on conflict.",
+  "jif": {},
+  "authors": {},
+  "_meta": {
+    "description": "Shared cross-task verified data. Empty by default — task-specific files take precedence.",
+    "jif_note": "Values are JCR JIF (not CiteScore/SJR/OpenAlex). Format: [value, year_string, source_url]",
+    "updated": "2026-09-10"
+  }
+}
