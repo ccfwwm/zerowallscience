@@ -12,7 +12,7 @@ import { parse } from 'yaml'
 /** Replicate skill-filesystem's parseFrontmatter: leading `---`, body until the
  * next `---` line. */
 function frontmatterYaml(raw: string): string {
-  const normalized = raw.replaceAll('\r\n', '\n')
+  const normalized = raw.replace(/\r\n?/g, '\n')
   const lines = normalized.slice(4).split('\n')
   const out: string[] = []
   for (const line of lines) {
@@ -26,7 +26,7 @@ describe('SKILL.md frontmatter (host yaml parser)', () => {
   const raw = readFileSync(join(process.cwd(), 'SKILL.md'), 'utf8')
 
   it('starts with the frontmatter fence', () => {
-    expect(raw.startsWith('---\n') || raw.startsWith('---\r\n')).toBe(true)
+    expect(raw.replace(/\r\n?/g, '\n').startsWith('---\n')).toBe(true)
   })
 
   it('parses with the harness yaml parser', () => {

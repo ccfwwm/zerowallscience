@@ -19,8 +19,8 @@ interface Actions {
   getPublicConfig: () => Promise<AiCloudPublicView>
   gateways: () => Promise<AiCloudGatewayView[]>
   selectGateway: (baseUrl: string) => Promise<AiCloudAccountView>
-  login: (email: string, password: string) => Promise<AiCloudAccountView>
-  register: (email: string, password: string, verificationCode: string) => Promise<AiCloudAccountView>
+  login: (email: string, password: string, rememberPassword: boolean) => Promise<AiCloudAccountView>
+  register: (email: string, password: string, verificationCode: string, rememberPassword: boolean) => Promise<AiCloudAccountView>
   sendCode: (email: string) => Promise<void>
   logout: () => Promise<void>
   discoverModels: () => Promise<AiCloudAccountView>
@@ -45,6 +45,7 @@ export function AiCloudAccountButton(props: Props) {
   const [syncingModels, setSyncingModels] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberPassword, setRememberPassword] = useState(true)
   const [code, setCode] = useState('')
   const [orders, setOrders] = useState<AiCloudOrderView[]>([])
   const [activeOrder, setActiveOrder] = useState<AiCloudOrderView>()
@@ -146,7 +147,9 @@ export function AiCloudAccountButton(props: Props) {
     setBusy(true)
     setError(undefined)
     try {
-      const next = registering ? await props.register(email, password, code) : await props.login(email, password)
+      const next = registering
+        ? await props.register(email, password, code, rememberPassword)
+        : await props.login(email, password, rememberPassword)
       setAccount(next)
       setPassword('')
       setCode('')
@@ -265,6 +268,7 @@ export function AiCloudAccountButton(props: Props) {
           </div>
           <label>{props.t('account.email')}<input type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="username" /></label>
           <label>{props.t('account.password')}<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete={registering ? 'new-password' : 'current-password'} /></label>
+          <label className={css.remember}><input type="checkbox" checked={rememberPassword} onChange={event => setRememberPassword(event.target.checked)} />{props.t('account.rememberPassword')}</label>
           {registering && <label>{props.t('account.code')}<span className={css.codeRow}><input value={code} onChange={event => setCode(event.target.value)} /><button type="button" onClick={() => void sendCode()} disabled={busy || email.trim() === ''} title={props.t('account.sendCode')} aria-label={props.t('account.sendCode')}><Send size={16} /></button></span></label>}
           <p className={css.savedHint}>{props.t('account.savedHint')}</p>
           <div className={css.authActions}>
@@ -278,7 +282,10 @@ export function AiCloudAccountButton(props: Props) {
             <div className={css.balance}><span>{props.t('account.balance')}</span><strong>{formatBalance(account)}</strong></div>
             <button className={css.logoutButton} type="button" onClick={() => void logout()} disabled={busy}><LogOut size={16} />{props.t('account.logout')}</button>
           </div>
-          {usageUrl !== undefined && <a className={css.usageLink} href={usageUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} />{props.t('account.usageDetails')}</a>}
+          <div className={css.externalActions}>
+            {usageUrl !== undefined && <button className={css.externalButton} type="button" onClick={() => openExternal(usageUrl)}><ExternalLink size={15} />{props.t('account.usageDetails')}</button>}
+            <button className={css.externalButton} type="button" onClick={() => openExternal(modelPricingUrl)}><ExternalLink size={15} />{props.t('account.modelPricing')}</button>
+          </div>
           <section className={css.modelSync} aria-live="polite">
             <div><h3>{props.t('account.modelsTitle')}</h3><p>{props.t('account.modelsDescription')}</p></div>
             <button className={css.secondary} type="button" onClick={() => void syncModels()} disabled={busy || syncingModels}>
@@ -286,7 +293,7 @@ export function AiCloudAccountButton(props: Props) {
               {syncingModels ? props.t('account.modelsSyncing') : props.t('account.modelsSync')}
             </button>
           </section>
-          {account.lowBalance && <p className={css.warning}>{props.t('account.lowBalance')}</p>}
+          {(account.lowBalance || (account.balance !== undefined && account.balance <= 0)) && <p className={css.warning} role="alert">{account.balance !== undefined && account.balance <= 0 ? props.t('account.balanceEmpty') : props.t('account.lowBalance')}</p>}
           <div className={css.billingGrid}>
             <section className={css.rechargeCard}>
               <div className={css.sectionHeading}><div><h3>{props.t('account.rechargeTitle')}</h3><p>{props.t('account.rechargeDescription')}</p></div><CreditCard size={19} /></div>
@@ -361,6 +368,8 @@ function usagePageUrl(baseUrl?: string): string | undefined {
     return `${url.origin}/usage`
   } catch { return undefined }
 }
+const modelPricingUrl = 'https://hkcode.aicodeme.xyz/model-plaza?embedded=1'
+function openExternal(url: string): void { window.open(url, '_blank', 'noopener,noreferrer') }
 function message(reason: unknown): string {
   const raw = reason instanceof Error ? reason.message : String(reason)
   return raw.replace(/^zerowall\.[\w.]+ failed:\s*(?:internal:\s*)?/i, '').trim()

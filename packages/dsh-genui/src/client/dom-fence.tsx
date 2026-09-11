@@ -47,6 +47,7 @@
 import { Fragment, isValidElement, type Key, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { GenuiActionContext, type GenuiActionHandler } from './action-context.ts'
 import { renderResolvedFenceNode, type GenuiFenceContext } from './fence-render.tsx'
@@ -357,17 +358,9 @@ export function installDomFenceRenderer(
   let disposed = false
   let rafId: number | null = null
 
-  // The host's node-side session store declaration is also merged into the
-  // shared Cordis Context by dsh-session. The browser plugin receives the
-  // session-controller face at runtime, so keep this boundary explicit rather
-  // than allowing the two same-named declarations to collapse in TypeScript.
-  const browserSessions = ctx.sessions as unknown as {
-    list: { getSnapshot: () => { current?: SessionId } }
-  }
-
   const sessionIdOf = (): SessionId | undefined => {
     try {
-      return browserSessions.list.getSnapshot().current
+      return ctx.sessions.list.getSnapshot().current
     } catch {
       return undefined
     }

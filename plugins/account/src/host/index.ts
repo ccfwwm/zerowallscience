@@ -19,6 +19,7 @@ const BACKUP_BASES = ['https://code.aicodeme.xyz', 'https://code.aicodeme.cn'] a
 const DEFAULT_BASES = [PRIMARY_BASE, ...BACKUP_BASES] as const
 const SESSION_KEY = 'zerowall.ai-cloud.session'
 const LOGIN_KEY = 'zerowall.ai-cloud.login'
+const MANUAL_SIGNOUT_KEY = 'zerowall.ai-cloud.manual-signout'
 const PREFERRED_BASE_KEY = 'zerowall.ai-cloud.preferred-base'
 const KEY_PREFIX = 'zerowall.ai-cloud.group.'
 const KEYS_PATH = '/keys?page=1&page_size=1000&sort_by=created_at&sort_order=desc'
@@ -107,7 +108,7 @@ export class AiCloudClient {
     const email = required(input.email, 'Email')
     const password = required(input.password, 'Password')
     const authenticated = await this.authenticate(email, password)
-    const account = await this.finishAuthentication(authenticated.baseUrl, email, password, authenticated.accessToken)
+    const account = await this.finishAuthentication(authenticated.baseUrl, email, password, authenticated.accessToken, undefined, input.rememberPassword !== false)
     // Model discovery is part of signing in, not a UI follow-up. This keeps
     // every caller (desktop, restored sessions, and automation) on the same
     // contract while retaining a valid login when the catalog endpoint is
@@ -135,7 +136,7 @@ export class AiCloudClient {
       const login = await this.request(registered.base, '/auth/login', { method: 'POST', body: { email, password } })
       token = accessToken(login.body)
     }
-    const account = await this.finishAuthentication(registered.base, email, password, token, config)
+    const account = await this.finishAuthentication(registered.base, email, password, token, config, input.rememberPassword !== false)
     try {
       return await this.discoverModels()
     } catch {
@@ -144,6 +145,7 @@ export class AiCloudClient {
   }
 
   async current(): Promise<AiCloudAccountSnapshot> {
+    if (await this.isManuallySignedOut()) return signedOut()
     const session = await this.loadSession()
     if (session === undefined) return await this.restoreSavedLogin('signedOut')
     try {
@@ -163,8 +165,12 @@ export class AiCloudClient {
 
   async logout(): Promise<void> {
     const session = await this.loadSession()
-    if (session !== undefined) await this.clearSession(session, true)
-    else await Promise.all([this.secrets.delete(SESSION_KEY), this.secrets.delete(LOGIN_KEY)])
+    // Signing out ends the active token session but intentionally keeps the
+    // encrypted login record so the next sign-in can reuse it. A user can
+    // remove the saved password by unchecking "remember password" at login.
+    if (session !== undefined) await this.clearSession(session, false)
+    else await this.secrets.delete(SESSION_KEY)
+    await this.secrets.set(MANUAL_SIGNOUT_KEY, '1')
   }
 
   async discoverModels(): Promise<AiCloudAccountSnapshot> {
@@ -281,7 +287,7 @@ export class AiCloudClient {
     }
   }
 
-  private async finishAuthentication(baseUrl: string, email: string, password: string, accessToken: string, config?: AiCloudPublicConfig): Promise<AiCloudAccountSnapshot> {
+  private async finishAuthentication(baseUrl: string, email: string, password: string, accessToken: string, config?: AiCloudPublicConfig, rememberPassword = true): Promise<AiCloudAccountSnapshot> {
     let balance = 0
     let currency = 'CNY'
     try {
@@ -295,10 +301,10 @@ export class AiCloudClient {
       ...(config?.rechargeUrl === undefined ? {} : { rechargeUrl: config.rechargeUrl }),
       ...(config?.lowBalanceThreshold === undefined ? {} : { lowBalanceThreshold: config.lowBalanceThreshold }),
     }
-    await Promise.all([
-      this.storeSession(session),
-      this.storeLogin({ baseUrl, email, password }),
-    ])
+    await this.storeSession(session)
+    await this.secrets.delete(MANUAL_SIGNOUT_KEY)
+    if (rememberPassword) await this.storeLogin({ baseUrl, email, password })
+    else await this.secrets.delete(LOGIN_KEY)
     return snapshot(session, 'current')
   }
 
@@ -311,6 +317,7 @@ export class AiCloudClient {
   }
 
   private async restoreSavedLogin(fallback: 'signedOut' | 'authExpired'): Promise<AiCloudAccountSnapshot> {
+    if (await this.isManuallySignedOut()) return fallback === 'authExpired' ? { ...signedOut(), status: 'authExpired' } : signedOut()
     const login = await this.loadLogin()
     if (login === undefined) return fallback === 'authExpired' ? { ...signedOut(), status: 'authExpired' } : signedOut()
     try {
@@ -379,6 +386,10 @@ export class AiCloudClient {
 
   private async storeLogin(login: StoredLogin): Promise<void> {
     await this.secrets.set(LOGIN_KEY, JSON.stringify(login))
+  }
+
+  private async isManuallySignedOut(): Promise<boolean> {
+    return (await this.secrets.get(MANUAL_SIGNOUT_KEY)) === '1'
   }
 
   private async clearSession(session: StoredSession, clearLogin: boolean): Promise<void> {

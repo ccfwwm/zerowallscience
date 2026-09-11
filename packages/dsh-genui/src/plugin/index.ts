@@ -5,8 +5,7 @@
  * model the language exists, so a session without the plugin simply never
  * emits fences and nothing changes.
  *
- * The section is a convention section (order 100-199), placed after the bash
- * guidance so the model sees it among its output-format rules.
+ * The section uses the host's centrally allocated structured-output placement.
  * @module @changfenhuang/dsh-genui
  */
 
@@ -20,9 +19,6 @@ import { readFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRenderUiTool, createValidateDshUiTool } from './tool.ts'
-
-/** Convention: tool guidance uses 100–199; bash's section is 104. */
-export const GENUI_SECTION_ORDER = 105
 
 /* ---------------- lazy engine asset route ---------------- */
 
@@ -137,8 +133,9 @@ function bundledSkillProvider(): SkillProvider {
     ? resolve(moduleDirectory, '../../SKILL.md')
     : resolve(moduleDirectory, '../SKILL.md')
   const raw = readFileSync(path, 'utf8')
-  // Packaged skills may retain Windows CRLF line endings.  Normalize only
-  // the in-memory definition so frontmatter detection is platform-neutral.
+  // Package files may retain CRLF on Windows even though the repository
+  // normalizes text to LF. Normalize only the in-memory definition so the
+  // frontmatter parser and skill registry behave identically on every host.
   const normalized = raw.replace(/\r\n?/g, '\n')
   const end = normalized.indexOf('\n---\n', 4)
   if (!normalized.startsWith('---\n') || end < 0) throw new Error('genui SKILL.md has invalid frontmatter')
@@ -171,7 +168,7 @@ function bundledSkillProvider(): SkillProvider {
 export function apply(ctx: Context): void {
   ctx.systemPrompt.section({
     name: 'genui:fence',
-    order: GENUI_SECTION_ORDER,
+    order: ctx.systemPrompt.getSectionOrder('STRUCTURED_OUTPUT'),
     text: GENUI_SECTION_TEXT,
   })
   // The tools service is optional: hosts without tool access (or minimal
@@ -201,11 +198,9 @@ export function apply(ctx: Context): void {
     if (name === 'tools') tryRegister(value as { register(tool: unknown): unknown })
   })
 
-  // SkillRegistry is optional because the fence language is useful in
-  // minimal hosts too.  `ctx.inject()` would create a detached waiting fiber;
-  // the GenUI plugin could finish before that fiber registers the provider.
-  // Probe the live service and listen for its binding instead, while keeping
-  // the provider disposer owned by this plugin's fiber.
+  // SkillRegistry is optional. Probe immediately and subscribe to service
+  // binding so startup order cannot prevent GenUI from registering its
+  // bundled skill on real hosts or in minimal test hosts.
   let skillRegistered = false
   const tryRegisterSkill = (value: SkillRegistry | undefined): void => {
     if (skillRegistered || value === undefined) return

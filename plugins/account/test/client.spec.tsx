@@ -130,7 +130,7 @@ describe('AI Cloud account panel', () => {
     expect(await screen.findByRole('dialog', { name: '登录或注册' })).toBeTruthy()
   })
 
-  it('shows a usage link for the active AI Cloud gateway after sign-in', async () => {
+  it('shows billing and model pricing buttons for the active AI Cloud gateway', async () => {
     const actions = props()
     actions.getAccount.mockResolvedValue({
       status: 'signedIn', email: 'user@example.com', balance: 12, currency: 'CNY',
@@ -139,8 +139,35 @@ describe('AI Cloud account panel', () => {
     render(<AiCloudAccountButton {...actions} />)
     await waitFor(() => expect(actions.getAccount).toHaveBeenCalledOnce())
     fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
-    const link = await screen.findByRole('link', { name: '查看费用详情' })
-    expect(link.getAttribute('href')).toBe('https://hkcode.aicodeme.xyz/usage')
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    fireEvent.click(await screen.findByRole('button', { name: '查看费用详情' }))
+    fireEvent.click(screen.getByRole('button', { name: '查看模型价格' }))
+    expect(open).toHaveBeenNthCalledWith(1, 'https://hkcode.aicodeme.xyz/usage', '_blank', 'noopener,noreferrer')
+    expect(open).toHaveBeenNthCalledWith(2, 'https://hkcode.aicodeme.xyz/model-plaza?embedded=1', '_blank', 'noopener,noreferrer')
+    open.mockRestore()
+  })
+
+  it('warns clearly when the balance is zero or negative', async () => {
+    const actions = props()
+    actions.getAccount.mockResolvedValue({ status: 'signedIn', email: 'user@example.com', balance: 0, currency: 'CNY', balanceFreshness: 'current', lowBalance: false, models: [] })
+    render(<AiCloudAccountButton {...actions} />)
+    await waitFor(() => expect(actions.getAccount).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('余额已不足')
+  })
+
+  it('checks remember password by default and sends the choice with login', async () => {
+    const actions = props()
+    actions.login.mockResolvedValue({ status: 'signedIn', email: 'user@example.com', balanceFreshness: 'current', lowBalance: false, models: [] })
+    render(<AiCloudAccountButton {...actions} />)
+    fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
+    await screen.findByRole('dialog', { name: '登录或注册' })
+    const checkbox = screen.getByRole('checkbox', { name: /记住密码/ }) as HTMLInputElement
+    expect(checkbox.checked).toBe(true)
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'user@example.com' } })
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'password' } })
+    fireEvent.click(screen.getByRole('button', { name: '登录并配置模型' }))
+    await waitFor(() => expect(actions.login).toHaveBeenCalledWith('user@example.com', 'password', true))
   })
 
   it('keeps model names out of account management and renders a scannable payment order', async () => {

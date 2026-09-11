@@ -11,18 +11,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-// install.sh is intentionally exercised through a real POSIX shell.  Windows
-// packaging still ships the script, but the shell safety suite belongs to the
-// Linux/macOS CI lane where `sh` and `chmod` are available.
-const canRunPosixShell = process.platform !== 'win32' && (() => {
-  try {
-    execFileSync('sh', ['-c', 'command -v chmod >/dev/null && command -v rm >/dev/null'])
-    return true
-  } catch {
-    return false
-  }
-})()
-
 const INSTALL = join(process.cwd(), 'scripts', 'install.sh')
 const PACKAGE_SKILL = 'PACKAGE-SKILL-CONTENT-9f8e7d\n'
 
@@ -89,7 +77,7 @@ function env(): Env {
 // Each case spawns REAL shells (stub PATH + chmod + sh) at ~1s per run, so
 // the default 5000ms per-test budget can trip under a full parallel suite
 // (observed on busy machines). A suite-level timeout keeps CI deterministic.
-describe.skipIf(!canRunPosixShell)('install.sh skill sync safety', { timeout: 30_000 }, () => {
+describe.skipIf(process.platform === 'win32')('install.sh skill sync safety', { timeout: 30_000 }, () => {
   it('creates the skill file when the target does not exist', () => {
     const e = env()
     const { status, stdout } = e.run()
@@ -182,7 +170,7 @@ describe.skipIf(!canRunPosixShell)('install.sh skill sync safety', { timeout: 30
   })
 })
 
-describe.skipIf(!canRunPosixShell)('install.sh argument safety', { timeout: 30_000 }, () => {
+describe.skipIf(process.platform === 'win32')('install.sh argument safety', { timeout: 30_000 }, () => {
   it('rejects an illegal profile name before doing anything', () => {
     const e = env()
     const { status, stdout } = e.run('web; rm -rf /tmp/x')

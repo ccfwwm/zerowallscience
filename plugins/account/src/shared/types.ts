@@ -39,8 +39,8 @@ export interface AiCloudGateway {
   preferred: boolean
 }
 
-export interface AiCloudLoginRequest { email: string; password: string }
-export interface AiCloudRegisterRequest { email: string; password: string; verificationCode: string }
+export interface AiCloudLoginRequest { email: string; password: string; rememberPassword?: boolean }
+export interface AiCloudRegisterRequest { email: string; password: string; verificationCode: string; rememberPassword?: boolean }
 export interface AiCloudSendCodeRequest { email: string }
 
 export interface AiCloudPaymentOrder {

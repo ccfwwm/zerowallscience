@@ -23,7 +23,6 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
-import type {} from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -41,10 +40,6 @@ import { assetUrl } from './asset-loader.ts'
 /** Host extension surface the registry channel needs (absent on pristine). */
 type HostFenceExt = {
   registerFenceRenderer?: (lang: string, renderer: (raw: string, key: Key, context?: GenuiFenceContext) => ReactNode) => () => void
-}
-
-type BrowserSessions = {
-  scope: (id: SessionId) => Context | undefined
 }
 
 /** Add low-priority prefetch links for the lazy engine assets (mermaid/three).
@@ -67,7 +62,7 @@ export function prefetchGenuiAssets(): void {
  * routed through the scoped conversation send (queued user message). The
  * prompt asks the model to re-run render_ui so the panel updates in place. */
 function panelActionSend(ctx: Context, sessionId: SessionId): GenuiPanelInjected {
-  const scoped = (ctx.sessions as unknown as BrowserSessions).scope(sessionId)
+  const scoped = ctx.sessions.scope(sessionId)
   const conversation = scoped?.get('conversation') as IConversation | undefined
   return {
     sessionId,
@@ -101,7 +96,7 @@ function panelActionSend(ctx: Context, sessionId: SessionId): GenuiPanelInjected
  * send with an explicit panel-only directive, so the model replaces the
  * default panel with content tailored to the request. */
 function sendPanelInstruction(ctx: Context, sessionId: SessionId, instruction: string): void {
-  const scoped = (ctx.sessions as unknown as BrowserSessions).scope(sessionId)
+  const scoped = ctx.sessions.scope(sessionId)
   const conversation = scoped?.get('conversation') as IConversation | undefined
   if (conversation === undefined) return
   void conversation.send(`用户执行了 /panel 并请求：${instruction}。请只输出一个 panel:true 的 dsh-ui 围栏来更新会话面板，内容按请求定制；回复文本至多一行 10 字以内的确认（如"已更新"），不要解释、不要普通围栏。`).catch((err: unknown) => {
@@ -117,7 +112,7 @@ function sendPanelInstruction(ctx: Context, sessionId: SessionId, instruction: s
  * [genui-action] contract on both channels.
  */
 function sendInlineGenuiAction(ctx: Context, sessionId: SessionId, action: string, payload: Record<string, unknown>): void {
-  const scoped = (ctx.sessions as unknown as BrowserSessions).scope(sessionId)
+  const scoped = ctx.sessions.scope(sessionId)
   const conversation = scoped?.get('conversation') as IConversation | undefined
   if (conversation === undefined) return
   const payloadText = Object.keys(payload).length === 0

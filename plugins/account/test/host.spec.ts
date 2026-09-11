@@ -83,7 +83,22 @@ describe('AI Cloud account client', () => {
     expect(calls.find((call) => call.url.endsWith('/v1/models'))?.authorization).toBe('Bearer group-api-key')
 
     await client.logout()
-    expect(secrets.values.size).toBe(0)
+    expect(secrets.values.has('zerowall.ai-cloud.session')).toBe(false)
+    expect(secrets.values.get('zerowall.ai-cloud.login')).toContain('test-password')
+    await expect(client.current()).resolves.toEqual(expect.objectContaining({ status: 'signedOut' }))
+  })
+
+  it('removes saved credentials when rememberPassword is disabled', async () => {
+    const secrets = new MemorySecrets()
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('/auth/login')) return json({ data: { access_token: 'session-token' } })
+      if (url.endsWith('/auth/me')) return json({ data: { balance: 1 } })
+      throw new Error(`unexpected request ${url}`)
+    }
+    const client = new AiCloudClient({ secrets, fetch: fetcher, bases: ['https://code.aicodeme.xyz'] })
+    await client.login({ email: 'no-save@example.com', password: 'password', rememberPassword: false })
+    expect(secrets.values.has('zerowall.ai-cloud.login')).toBe(false)
   })
 
   it('keeps last-known models for one timed-out group while refreshing the remaining catalog', async () => {
