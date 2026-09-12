@@ -181,6 +181,12 @@ PMID_RE = re.compile(r"(?:pubmed\.ncbi\.nlm\.nih\.gov/|pmid[:\s]*)?(\d{5,9})$", 
 # Override via env var LITERATURE_AUTHOR_SEARCH_LIMIT (0 = all authors).
 _DEFAULT_AUTHOR_SEARCH_LIMIT = int(os.getenv("LITERATURE_AUTHOR_SEARCH_LIMIT", "20"))
 
+# Placeholder substituted by the request executor with the author's OpenAlex
+# canonical display name.  The name cannot be inlined at queue-build time: the
+# citing record persisted in state.papers[].raw keeps only the PubMed-style
+# abbreviation, and the canonical name lives behind an OpenAlex API call.
+CANONICAL_NAME_TOKEN = "{{CANONICAL_NAME}}"
+
 _SCRIPT_DIR = Path(__file__).parent
 
 
@@ -355,6 +361,14 @@ def clean_honor_entry(raw: Any) -> list[str]:
     s = re.sub(r"[\[\]]", "", s).strip()
     s = re.sub(r"\s+", " ", s).strip()
     if not s:
+        return []
+    # Navigation headings and generic section labels are not personal honours.
+    # Example observed in P004: "Our award" from a university site's menu.
+    if re.fullmatch(
+        r"(?:(?:our|the|my|his|her|their)\s+)?(?:award|awards|honou?rs?|"
+        r"prizes?|medals?|recognition|achievements?|news|events?)",
+        s, flags=re.I,
+    ):
         return []
     if len(s) <= 100 and not _HONOR_NOISE_RX.search(s) and not _RESCUE_DISCARD_RX.match(s):
         return [s]
@@ -734,14 +748,54 @@ class Task:
         """Invalidate provider_requests cache after writing to the file."""
         self._pr_cache = None
 
+    # Bookkeeping fields that legitimately change after a request is queued;
+    # everything else is the request's CONTENT.
+    _REQUEST_META_KEYS = ("status", "attempts", "created_at", "updated_at",
+                          "result_path", "reason", "error", "started_at",
+                          "finished_at", "provider_used", "sources", "notes")
+
     def enqueue_request(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Add one deterministic request unless it already exists."""
+        """Add one deterministic request, refreshing it when its content changed.
+
+        Deduplication used to key on ``request_id`` alone and return the old row
+        untouched.  Because ``request_id`` hashes only ``args``, any later
+        improvement to a request's payload (adding the identity block, raising
+        ``fetch_pages``, correcting the query) was silently discarded: a rebuild
+        reported the same request count while the queue still held the old
+        shape.  We therefore compare content as well; when it differs, an
+        updated row with the same ``request_id`` is appended, and the
+        last-row-wins reader picks it up.
+        """
         request_id = clean_text(request.get("request_id"))
         if not request_id:
             raise ValueError("provider request requires request_id")
         existing = next((row for row in self.provider_requests() if row.get("request_id") == request_id), None)
         if existing:
-            return existing
+            incoming = {key: value for key, value in request.items()
+                        if key not in self._REQUEST_META_KEYS}
+            current = {key: value for key, value in existing.items()
+                       if key not in self._REQUEST_META_KEYS}
+            if incoming == current:
+                return existing
+            # Content changed.  The row must be refreshed, but a refresh must not
+            # resurrect work that is already done: an earlier bug appended a
+            # fresh "pending" row over an already-succeeded request, so every
+            # rebuild silently re-opened completed author lookups (P002 showed
+            # pending -> succeeded -> pending for the same request_id, and 100
+            # finished requests were counted as outstanding).
+            if clean_text(existing.get("status")) in QUEUE_TERMINAL:
+                carried = {key: existing.get(key) for key in
+                           ("status", "attempts", "updated_at", "result_status",
+                            "result_received_at", "actual_engine", "reason", "error")
+                           if existing.get(key) not in (None, "")}
+                item = {"request_id": request_id, "status": "pending", "attempts": 0,
+                        "created_at": now(), **request, **carried}
+                self.provider_requests_path.parent.mkdir(parents=True, exist_ok=True)
+                with self._ledger_lock:
+                    with self.provider_requests_path.open("a", encoding="utf-8") as handle:
+                        handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+                self.invalidate_pr_cache()
+                return item
         item = {"request_id": request_id, "status": "pending", "attempts": 0,
                 "created_at": now(), **request}
         self.provider_requests_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1883,6 +1937,15 @@ def apply_pubmed_metadata_to_state(state: dict[str, Any], result: Any) -> list[d
 
 def enqueue_journal_year_followup(task: Task, request: dict[str, Any], metric: dict[str, Any]) -> None:
     """Queue a focused year lookup when a matched JIF lacks its metric year."""
+    # Skip followup requests when partial_enrichment is active: re-enqueueing
+    # new journal-year lookups on every resume call permanently blocks
+    # finalization because the new pending rows can never be executed.
+    try:
+        _state_partial = task.load().get("partial_enrichment")
+    except Exception:
+        _state_partial = False
+    if _state_partial:
+        return
     if metric.get("impact_factor") in (None, "") or metric.get("impact_factor_year") not in (None, ""):
         return
     context = request.get("context") or {}
@@ -1927,6 +1990,12 @@ def _author_base_records(paper: Paper) -> list[dict[str, Any]]:
         records.append({
             "name": clean_text(name), "original_name": clean_text(name), "role": role,
             "author_position": index + 1,
+            # OpenAlex is the only source that carries the author's canonical
+            # display name ("William R. Bishai") next to the PubMed-style
+            # abbreviation printed on the paper ("Bishai WR").  It costs no
+            # extra request: it is already inside the citing work's authorships.
+            "canonical_display_name": clean_text(oa_author.get("display_name")),
+            "author_alternate_names": [clean_text(x) for x in (oa_author.get("display_name_alternatives") or []) if clean_text(x)][:8],
             "paper": paper.key, "publication_institution": "; ".join(dict.fromkeys(affiliations or oa_institutions or paper.institutions)),
             "publication_country": "; ".join(dict.fromkeys(oa_countries or paper.countries)), "current_title": "",
             "current_institution": "", "current_country": "", "orcid": orcid,
@@ -2218,6 +2287,14 @@ def extract_ingested_author_facts(evidence: list[dict[str, Any]]) -> dict[str, A
                 merge_value("sources", clean_text(url))
         for url in source_urls(raw_result):
             merge_value("sources", url)
+        # profile_sources = accepted pages (identity-confirmed); thread through
+        for url in (result.get("profile_sources") or []):
+            if clean_text(url).startswith(("http://", "https://")):
+                merge_value("profile_sources", clean_text(url))
+        # profile_cache_dir = local HTML cache for this request; keep newest non-empty value
+        _pcd = clean_text(result.get("profile_cache_dir"))
+        if _pcd and not facts.get("profile_cache_dir"):
+            facts["profile_cache_dir"] = _pcd
     if evidence:
         facts.setdefault("evidence_status", "searched_partial")
     # Confidence is an internal bookkeeping value only. It is deliberately
@@ -2236,14 +2313,62 @@ def enrich_all_authors(task: Task, papers: list[Paper]) -> list[dict[str, Any]]:
     adapter = _load_web_search_adapter()
     evidence_by_author: dict[str, list[dict[str, Any]]] = {}
     inbox = task.root / "analysis" / "evidence_inbox.jsonl"
+    # The inbox is append-only history: every author_profile result ever
+    # ingested stays in it, including results produced before the identity,
+    # page-subject and country gates were tightened.  Replaying all of it
+    # resurrects known mis-attributions (a Taiwanese orthopaedic surgeon's board
+    # memberships, another professor's academician title, a site-navigation
+    # label read as an award) no matter how often the stored evidence is
+    # cleaned.  So author_profile evidence is accepted only for request_ids the
+    # CURRENT queue still lists, and only the newest result per request_id.
+    # A rebuilt query mints a new request_id but the ledger intentionally keeps
+    # the old row.  Only the LAST profile request for each author entity is live;
+    # otherwise an obsolete query remains eligible forever and can overwrite a
+    # newer page-derived title during report generation.
+    latest_profile_by_subject: dict[str, str] = {}
+    for row in task.provider_requests():
+        request_id = clean_text(row.get("request_id"))
+        if not request_id or ((row.get("args") or {}).get("query_intent") != "author_profile"):
+            continue
+        subject = clean_text(row.get("subject") or row.get("author_name")).lower()
+        if subject:
+            latest_profile_by_subject[subject] = request_id
+    live_profile_requests = set(latest_profile_by_subject.values())
+    newest_by_request: dict[str, dict[str, Any]] = {}
     try:
         for line in inbox.read_text(encoding="utf-8").splitlines():
             if not line.strip(): continue
             item = json.loads(line)
             key = clean_text(item.get("author_key") or item.get("author") or "").lower()
-            if key: evidence_by_author.setdefault(key, []).append(item)
+            if not key:
+                continue
+            request = item.get("request") or {}
+            intent = clean_text((request.get("args") or {}).get("query_intent"))
+            if intent == "author_profile":
+                request_id = clean_text(item.get("request_id") or request.get("request_id"))
+                if request_id not in live_profile_requests:
+                    continue
+                newest_by_request[request_id] = item
+                continue
+            evidence_by_author.setdefault(key, []).append(item)
     except (OSError, json.JSONDecodeError):
         pass
+    # One author can hold SEVERAL live profile requests, because improving the
+    # query (dropping the "professor" bias, adding "faculty profile") mints a new
+    # request_id while the previous one stays in the queue.  ``merge_value`` is
+    # first-write-wins, so replaying them in file order let a superseded result
+    # decide the reported title: the newest run read "Full professor in the
+    # school of chemistry..." straight off the faculty page, yet the report still
+    # showed the older run's vocabulary label.  Profile evidence is therefore
+    # ordered newest-first per author before it is merged.
+    def _profile_recency(item: dict[str, Any]) -> str:
+        return clean_text(item.get("ingested_at")) or clean_text(
+            (item.get("result") or {}).get("executed_at"))
+
+    for item in sorted(newest_by_request.values(), key=_profile_recency, reverse=True):
+        key = clean_text(item.get("author_key") or item.get("author") or "").lower()
+        if key:
+            evidence_by_author.setdefault(key, []).insert(0, item)
     cache: dict[str, list[dict[str, Any]]] = {}
     cache_path = task.root / "analysis" / "author_search_cache.json"
     try:
@@ -2320,7 +2445,11 @@ def enrich_all_authors(task: Task, papers: list[Paper]) -> list[dict[str, Any]]:
                 facts = extract_ingested_author_facts(evidence)
             for field_name in ("current_title", "current_institution", "current_country", "academician_status", "fellow_status", "openalex_author_id", "orcid", "works_count", "cited_by_count", "h_index", "i10_index", "pubmed_publication_count", "top_works", "counts_by_year", "pubmed_representative_papers"):
                 if facts.get(field_name): record[field_name] = facts[field_name]
-            for field_name in ("honors", "appointments", "research_topics", "sources", "source_types", "conflicts", "identity_anchors", "identity_conflicts", "associated_papers"):
+            # profile_cache_dir: keep first non-empty value (per-request; authors may
+            # share a name key across re-runs — take the newest via profile evidence ordering)
+            if facts.get("profile_cache_dir") and not record.get("profile_cache_dir"):
+                record["profile_cache_dir"] = facts["profile_cache_dir"]
+            for field_name in ("honors", "appointments", "research_topics", "sources", "source_types", "conflicts", "identity_anchors", "identity_conflicts", "associated_papers", "profile_sources"):
                 values = facts.get(field_name) or []
                 if isinstance(values, str): values = [values]
                 merged = unique_items(record.get(field_name, []) + values)
@@ -2362,7 +2491,7 @@ def enrich_all_authors(task: Task, papers: list[Paper]) -> list[dict[str, Any]]:
             unique[key] = row
         else:
             current = unique[key]
-            for field_name in ("honors", "appointments", "research_topics", "sources", "source_types", "conflicts", "identity_anchors", "identity_conflicts", "associated_papers"):
+            for field_name in ("honors", "appointments", "research_topics", "sources", "source_types", "conflicts", "identity_anchors", "identity_conflicts", "associated_papers", "profile_sources"):
                 raw_merged = list(dict.fromkeys((current.get(field_name) or []) + (row.get(field_name) or [])))
                 if field_name in ("honors", "appointments"):
                     cleaned: list[str] = []
@@ -2372,12 +2501,36 @@ def enrich_all_authors(task: Task, papers: list[Paper]) -> list[dict[str, Any]]:
                                 cleaned.append(item)
                     raw_merged = cleaned
                 current[field_name] = raw_merged
+            # profile_cache_dir: keep first non-empty value across duplicate records
+            if not current.get("profile_cache_dir") and row.get("profile_cache_dir"):
+                current["profile_cache_dir"] = row["profile_cache_dir"]
             merged_evidence = (current.get("search_evidence") or []) + (row.get("search_evidence") or [])
             current["search_evidence"] = list({json.dumps(item, ensure_ascii=False, sort_keys=True): item for item in merged_evidence}.values())
             current["papers"] = list(dict.fromkeys((current.get("papers") or []) + ([row.get("paper")] if row.get("paper") else [])))
     result = list(unique.values())
     (task.root / "analysis" / "author_evidence.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
+
+
+def _better_display_name(candidate: str, current: str) -> bool:
+    """True when ``candidate`` is a fuller rendering of the same author name.
+
+    OpenAlex publishes "William R. Bishai" while the citing paper prints
+    "Bishai WR".  A web query needs the former: the abbreviation matches no
+    faculty page.  A longer name with more space-separated word tokens wins;
+    equal-length names keep whichever arrived first so entity identity stays
+    stable across runs.
+    """
+    candidate, current = clean_text(candidate), clean_text(current)
+    if not candidate:
+        return False
+    if not current:
+        return True
+    if candidate.lower() == current.lower():
+        return False
+    candidate_tokens = len(re.findall(r"[A-Za-z\u4e00-\u9fff]+", candidate))
+    current_tokens = len(re.findall(r"[A-Za-z\u4e00-\u9fff]+", current))
+    return candidate_tokens > current_tokens
 
 
 def unique_author_entities(papers: list[Paper]) -> list[dict[str, Any]]:
@@ -2423,11 +2576,130 @@ def unique_author_entities(papers: list[Paper]) -> list[dict[str, Any]]:
             entity = matching
             if not entity.get("openalex_author_id") and clean_text(record.get("openalex_author_id")):
                 entity["openalex_author_id"] = clean_text(record.get("openalex_author_id"))
+            # Keep the richest canonical name seen for this entity.  The name
+            # printed on the paper is an abbreviation, so a value shaped like
+            # "William R. Bishai" always beats "Bishai WR"; this is what the
+            # enrichment queue searches with.
+            candidate_name = clean_text(record.get("canonical_display_name"))
+            if candidate_name and _better_display_name(candidate_name, entity.get("display_name", "")):
+                entity["display_name"] = candidate_name
+            entity["alternate_names"] = list(dict.fromkeys(
+                (entity.get("alternate_names") or []) + list(record.get("author_alternate_names") or [])))[:12]
             entity["aliases"] = list(dict.fromkeys(entity["aliases"] + ([clean_text(name)] if clean_text(name) else [])))
             entity["papers"].append({"paper_key": paper.key, "title": paper.title, "doi": paper.doi, "pmid": paper.pmid, "position": index + 1})
             entity["identity_institutions"] = sorted(set(entity.get("identity_institutions") or []) | institutions)
             entity["identity_coauthors"] = sorted(set(entity.get("identity_coauthors") or []) | coauthors)
     return entities
+
+
+# ISO country codes as they appear in OpenAlex authorships, mapped to the name a
+# profile query should use.  Searching "Hongyan Ma hospital China" stays in the
+# right country, while the bare name matched a Missouri civil engineer.
+COUNTRY_NAMES = {
+    "CN": "China", "US": "USA", "CA": "Canada", "GB": "UK", "UK": "UK",
+    "TW": "Taiwan", "JP": "Japan", "KR": "South Korea", "SG": "Singapore",
+    "HK": "Hong Kong", "MO": "Macau", "DE": "Germany", "FR": "France",
+    "ES": "Spain", "IT": "Italy", "NL": "Netherlands", "BE": "Belgium",
+    "CH": "Switzerland", "AT": "Austria", "SE": "Sweden", "NO": "Norway",
+    "DK": "Denmark", "FI": "Finland", "PL": "Poland", "PT": "Portugal",
+    "GR": "Greece", "TR": "Turkey", "IL": "Israel", "SA": "Saudi Arabia",
+    "AE": "UAE", "EG": "Egypt", "SY": "Syria", "IR": "Iran", "IQ": "Iraq",
+    "JO": "Jordan", "LB": "Lebanon", "IN": "India", "PK": "Pakistan",
+    "BD": "Bangladesh", "TH": "Thailand", "VN": "Vietnam", "MY": "Malaysia",
+    "ID": "Indonesia", "PH": "Philippines", "AU": "Australia", "NZ": "New Zealand",
+    "BR": "Brazil", "AR": "Argentina", "MX": "Mexico", "CL": "Chile",
+    "CO": "Colombia", "PE": "Peru", "ZA": "South Africa", "NG": "Nigeria",
+    "KE": "Kenya", "RU": "Russia", "UA": "Ukraine", "CZ": "Czech Republic",
+    "HU": "Hungary", "RO": "Romania", "IE": "Ireland", "IS": "Iceland",
+}
+
+
+def _country_phrase(codes: list[str]) -> str:
+    """The single best country name for a query, or '' when unknown."""
+    for code in codes:
+        name = COUNTRY_NAMES.get(clean_text(code).upper())
+        if name:
+            return name
+    return ""
+
+
+def _load_author_identity_hints(task: Task) -> dict[str, dict[str, Any]]:
+    """Map author_entity_id -> known identity, from already-collected evidence.
+
+    ``unique_author_entities`` only sees what the citing record exposes, and
+    for PubMed-sourced papers that is just an abbreviation plus, sometimes, an
+    institution.  The OpenAlex author id and the paper's affiliation were
+    already fetched during the cited-by stage and persisted in
+    ``analysis/author_evidence.json``, so reading them back here lets the queue
+    carry a real identity WITHOUT any new network call.
+
+    Without this, every queue rebuild re-issued id-less requests and the
+    canonical-name resolution had nothing to resolve.
+    """
+    hints: dict[str, dict[str, Any]] = {}
+    for name in ("author_evidence.json", "author_entities.json"):
+        path = task.root / "analysis" / name
+        if not path.is_file():
+            continue
+        try:
+            rows = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            entity_id = clean_text(row.get("author_entity_id"))
+            if not entity_id:
+                continue
+            slot = hints.setdefault(entity_id, {"institutions": [],
+                                                "institution_counts": {}})
+            for key in ("openalex_author_id", "orcid", "display_name", "canonical_display_name"):
+                value = clean_text(row.get(key))
+                if value and not slot.get(key):
+                    slot[key] = value
+            # Country and research direction were already collected here but
+            # never reached the query.  They are the sharpest disambiguators for
+            # common names: "Hongyan Ma" alone matched a Missouri civil engineer
+            # when the author works at a Shandong hospital, whereas
+            # "Hongyan Ma" hospital China keeps the search in the right place.
+            for key in ("publication_country", "current_country"):
+                value = clean_text(row.get(key))
+                if value:
+                    slot.setdefault("countries", [])
+                    if value not in slot["countries"]:
+                        slot["countries"].append(value)
+            topics = row.get("research_topics")
+            if isinstance(topics, str):
+                topics = [x for x in re.split(r"\s*[;,]\s*", topics) if x]
+            if isinstance(topics, list):
+                slot.setdefault("topics", [])
+                for topic in topics:
+                    topic = clean_text(topic)
+                    if topic and topic not in slot["topics"]:
+                        slot["topics"].append(topic)
+            for key in ("identity_institutions", "current_institution", "publication_institution"):
+                raw = row.get(key)
+                values = raw if isinstance(raw, list) else [x for x in re.split(r"\s*;\s*", clean_text(raw)) if x]
+                for value in values:
+                    value = clean_text(value)
+                    if not value:
+                        continue
+                    slot["institution_counts"][value] = slot["institution_counts"].get(value, 0) + 1
+                    if value not in slot["institutions"]:
+                        slot["institutions"].append(value)
+    # Rank affiliations by how often they appear across the author's evidence.
+    # A single paper can carry a secondary or historical affiliation ("Illinois
+    # College" for Steven M. Dudek), and searching that name matched an English
+    # lecturer at a different campus instead of the UIC pulmonologist, so the
+    # most frequently attested institution is used first.
+    for slot in hints.values():
+        counts = slot.get("institution_counts") or {}
+        if counts:
+            slot["institutions"] = sorted(slot["institutions"],
+                                          key=lambda name: (-counts.get(name, 0), len(name)))
+    return hints
 
 
 def prepare_enrichment_requests(task: Task, state: dict[str, Any]) -> list[dict[str, Any]]:
@@ -2448,6 +2720,11 @@ def prepare_enrichment_requests(task: Task, state: dict[str, Any]) -> list[dict[
                    "execution": "capability_execute_required", "retry_budget": RETRY_ATTEMPTS}
         if context:
             payload["context"] = context
+        # The executor reads identity from the request TOP level.  It was being
+        # nested inside ``args``, so the OpenAlex id / paper affiliation never
+        # reached the resolver and every query searched an abbreviation.
+        if isinstance(args.get("identity"), dict):
+            payload["identity"] = args["identity"]
         if kind == "journal":
             payload["result_contract"] = {
                 "required_search": True,
@@ -2507,6 +2784,22 @@ def prepare_enrichment_requests(task: Task, state: dict[str, Any]) -> list[dict[
         except (TypeError, ValueError):
             return 0.0
     all_entities = unique_author_entities(papers)
+    # Backfill identity (OpenAlex id, ORCID, canonical name, affiliation) from
+    # evidence already on disk so the queue is actionable on a rebuild.
+    identity_hints = _load_author_identity_hints(task)
+    for entity in all_entities:
+        hint = identity_hints.get(clean_text(entity.get("author_entity_id")))
+        if not hint:
+            continue
+        for key in ("openalex_author_id", "orcid", "display_name"):
+            if not clean_text(entity.get(key)) and clean_text(hint.get(key)):
+                entity[key] = clean_text(hint[key])
+        if not entity.get("identity_institutions") and hint.get("institutions"):
+            entity["identity_institutions"] = list(hint["institutions"])
+        if not entity.get("identity_countries") and hint.get("countries"):
+            entity["identity_countries"] = list(hint["countries"])
+        if not entity.get("identity_topics") and hint.get("topics"):
+            entity["identity_topics"] = list(hint["topics"])
     author_search_limit = int(os.getenv("LITERATURE_AUTHOR_SEARCH_LIMIT", str(_DEFAULT_AUTHOR_SEARCH_LIMIT)))
     if author_search_limit > 0:
         top_entities = sorted(all_entities, key=_entity_score, reverse=True)[:author_search_limit]
@@ -2536,43 +2829,102 @@ def prepare_enrichment_requests(task: Task, state: dict[str, Any]) -> list[dict[
             add("author", "openalex_search_authors",
                 {"query": entity["name"], "max_records": 10}, entity["author_entity_id"],
                 paper_key=(primary_paper.get("paper_key", "")), author_name=entity["name"], context=context)
-        # ONE combined web search per author, covering profile + honours/awards
-        # + academic appointments in a single query.
+        # ── Author web search: canonical name, two focused queries ───────────
         #
-        # Engine strategy:
-        #   Top-N (high-impact) authors → tavily: returns a synthesised answer
-        #     (include_answer=True) plus raw page content so the ingest layer
-        #     can extract title/institution/honours without extra web_fetch.
-        #   All other authors → bing (free, no cost, good coverage for names).
+        # The name printed on a citing paper is often a PubMed-style
+        # ABBREVIATION ("Bishai WR", "Dudek SM").  Such a string matches no
+        # faculty page, so searching it wastes the query and leaves
+        # current_title / honors / appointments empty.  When the citing work
+        # supplied an OpenAlex author id we therefore search the canonical
+        # display name ("William R. Bishai", "Steven M. Dudek") and keep the
+        # abbreviation only as an identity anchor.
         #
-        # A single combined query is used instead of the old profile+honors
-        # split so every author gets ONE request regardless of tier.
-        institution_hint = " ".join(entity.get("identity_institutions", [])[:2])
+        # Two SHORT queries beat one long boolean query.  Measured on the P002
+        # regression set: a query stuffed with "OR associate professor OR
+        # researcher OR ... academician" returned generic institution pages and
+        # a COVID landing page for William Bishai, while
+        #   "<full name>" <institution> professor
+        # returned his own Johns Hopkins profile page directly.
+        #
+        # The institution must be the one on the PAPER, not OpenAlex's
+        # last_known_institutions.  The latter is where the author works today:
+        # for P002's "Hung YJ" it produced "Northwestern University professor"
+        # and fetched a different Hung entirely, while the paper record's
+        # Tri-Service General Hospital matched position 7 exactly.
+        #
+        # The bridge returns no synthesised answer (its `content` field is
+        # always empty) and Tavily caps `sources` at ~2 rows, so the queue also
+        # asks the executor to OPEN the returned pages with
+        # fetch_profile_pages / query_intent and extract the fields there.
+        institution_hint = " ".join(entity.get("identity_institutions", [])[:1])
+        printed_name = entity["name"]
+        # Country and research direction focus the search on the right person.
+        # Common names are the failure mode that costs the most profile facts:
+        # P004's "Hongyan Ma" (a Shandong hospital researcher) returned a
+        # Missouri civil engineer, and "Yong Han" returned a Korean
+        # gastroenterologist.  Both pages were discarded by the identity gate,
+        # so the query is where the fix belongs.
+        country_phrase = _country_phrase(entity.get("identity_countries") or [])
+        topic_phrase = ""
+        for topic in (entity.get("identity_topics") or []):
+            topic_clean = clean_text(topic)
+            # Topics from OpenAlex are phrases like "Cancer research"; a short
+            # one keeps the query from turning into a long boolean string.
+            if topic_clean and 3 <= len(topic_clean) <= 40 and len(topic_clean.split()) <= 4:
+                topic_phrase = topic_clean
+                break
+        # OpenAlex's canonical display name is NOT persisted into
+        # state.papers[].raw (the citing record keeps only the abbreviation),
+        # so it cannot be inlined here without a network call on every queue
+        # build.  We therefore emit a token the executor resolves from the
+        # author id, falling back to the printed name when no id exists.
+        search_name = (clean_text(entity.get("display_name"))
+                       or clean_text(entity.get("canonical_display_name")))
+        if not _better_display_name(search_name, printed_name):
+            search_name = ""
+        name_token = search_name or CANONICAL_NAME_TOKEN
         is_top = entity["author_entity_id"] in top_entity_ids
-        combined_query = " ".join(x for x in (
-            f'"{entity["name"]}"', institution_hint,
-            "professor OR associate professor OR researcher OR principal investigator",
-            "faculty profile current position institution",
-            "awards honors fellow academician editorial board appointment",
+        # ONE short query.  P002 measurement: a second "awards honors fellow
+        # editorial board" query added no verified facts (honours are usually
+        # on the same profile page) while doubling wall-clock and spend, so the
+        # single query asks for the profile and the extractor reads honours and
+        # appointments off that page.  No rank word is baked into the query: the
+        # person may be a resident, engineer or director, and "professor" biased
+        # results towards other people who are.
+        profile_query = " ".join(x for x in (
+            f'"{name_token}"', institution_hint, "faculty profile",
+            country_phrase, topic_phrase,
         ) if x)
         if is_top:
-            search_args = {
-                "query": combined_query, "maxResults": 20,
-                "engine": "tavily",
-                "engine_chain": ["tavily", "bing", "exa", "ddg"],
-                "include_answer": True,
-                "include_raw_content": True,
-                "query_intent": "profile_honors_combined",
-            }
+            # Top-20 authors get one paid Tavily query each.  Tavily is the only
+            # engine here that charges per call, so it is rationed deliberately.
+            engine, chain, max_results = "tavily", ["tavily"], 8
         else:
-            search_args = {
-                "query": combined_query, "maxResults": 10,
-                "engine": "bing",
-                "engine_chain": ["bing", "exa", "ddg"],
-                "include_answer": False,
-                "query_intent": "profile_honors_combined",
-            }
-        add("author", "advanced_search", search_args,
+            # Ordinary authors are pinned to deepseek-official.  Measurement on
+            # P004 found institutional/publisher profile pages there, whereas
+            # bing returned content farms and only two rows.  Keep one engine and
+            # one query per author: extra fan-out added latency without verified
+            # profile facts.
+            engine, chain, max_results = "deepseek-official", ["deepseek-official"], 8
+        add("author", "advanced_search", {
+            "query": profile_query, "maxResults": max_results,
+            "engine": engine, "engine_chain": chain,
+            "include_answer": True, "include_raw_content": is_top,
+            "fetch_profile_pages": True,
+            "fetch_pages": 4 if is_top else 3,
+            "query_intent": "author_profile",
+            "identity": {
+                "canonical_name": search_name,
+                "printed_name": printed_name,
+                "aliases": list(entity.get("aliases") or [])[:6],
+                "openalex_author_id": clean_text(entity.get("openalex_author_id")),
+                "orcid": clean_text(entity.get("orcid")),
+                "institutions": entity.get("identity_institutions", [])[:3],
+                "country": country_phrase,
+                "country_codes": entity.get("identity_countries", [])[:3],
+                "topics": entity.get("identity_topics", [])[:3],
+            },
+        },
             entity["author_entity_id"],
             paper_key=(primary_paper.get("paper_key", "")), author_name=entity["name"],
             context={**context, "is_top_author": is_top})
@@ -2776,6 +3128,67 @@ def mark_requests_terminal(task: Task, state: dict[str, Any], *, tools: tuple[st
     state["enrichment_completed_count"] = sum(1 for row in task.provider_requests() if row.get("status") == "succeeded")
     task.save(state)
     return {"marked": len(touched), "status": status, "detail": touched[:40]}
+
+
+def reconcile_queue_with_inbox(task: Task, state: dict[str, Any]) -> dict[str, Any]:
+    """Restore queue rows whose results were already ingested but whose status regressed.
+
+    The queue is append-only and read last-row-wins.  A rebuild used to append a
+    fresh ``pending`` row for a request that had already succeeded, which silently
+    discarded the completed work: P002 held ``pending -> succeeded -> pending`` for
+    the same ``request_id``, so 100 finished lookups counted as outstanding and the
+    task could never reach report_building.
+
+    ``enqueue_request`` now refuses to reopen a terminal row, but queues written
+    before that fix are already inconsistent.  This repairs them from the
+    authoritative record: the evidence inbox, which is only written when a real
+    result was ingested.
+    """
+    inbox = task.root / "analysis" / "evidence_inbox.jsonl"
+    if not inbox.is_file():
+        return {"task": str(task.root), "repaired": 0, "checked": 0}
+    authoritative: dict[str, str] = {}
+    try:
+        for line in inbox.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            request_id = clean_text(item.get("request_id"))
+            if not request_id:
+                continue
+            raw = clean_text(item.get("status")).lower()
+            status = ("succeeded" if raw in {"ok", "success", "succeeded", "complete", "completed"}
+                      else (raw if raw in QUEUE_TERMINAL else "failed"))
+            authoritative[request_id] = status          # last row wins
+    except OSError:
+        return {"task": str(task.root), "repaired": 0, "checked": 0}
+
+    rows = task.provider_requests()
+    repairs: list[dict[str, Any]] = []
+    for row in rows:
+        request_id = clean_text(row.get("request_id"))
+        if not request_id or clean_text(row.get("status")) in QUEUE_TERMINAL:
+            continue
+        known = authoritative.get(request_id)
+        if not known:
+            continue
+        task.update_request(
+            request_id, known,
+            attempts=int(row.get("attempts") or 0),
+            result_status=clean_text(row.get("result_status")) or known,
+            reconciled_from="evidence_inbox",
+        )
+        repairs.append({"request_id": request_id, "tool": row.get("tool"), "status": known})
+    if repairs:
+        state["enrichment_completed_count"] = sum(
+            1 for row in task.provider_requests() if row.get("status") == "succeeded")
+        task.save(state)
+    return {"task": str(task.root), "checked": len(rows),
+            "authoritative": len(authoritative), "repaired": len(repairs),
+            "detail": repairs[:40]}
 
 
 def deduplicate_pdf_hashes(papers: list[Paper], aliases: list[dict[str, Any]]) -> None:
@@ -3171,6 +3584,27 @@ def download_via_paper_download(task: Task, paper: Paper, target: Path,
 
 def download_paper(client: Client, paper: Paper, allow_tsg: bool = True) -> None:
     paper.acquisition_state = "candidate"
+    # Wall-clock budget for ONE paper.  The cascade below (open-access URLs →
+    # TSG → paper-download → authorized adapter) each carry their own retry
+    # loop, so without a shared deadline a single hard-to-source paper can hold
+    # a worker thread for 15+ minutes and stall the whole branch.  Exceeding the
+    # budget is a normal terminal outcome, not an error.
+    try:
+        budget = float(os.getenv("LITERATURE_PDF_PAPER_BUDGET_SECONDS", "300"))
+    except ValueError:
+        budget = 300.0
+    deadline = time.monotonic() + max(30.0, budget)
+
+    def out_of_budget(stage: str) -> bool:
+        if time.monotonic() < deadline:
+            return False
+        paper.acquisition_attempts.append({
+            "provider": "workflow", "skill": "zerowall-literature",
+            "status": "paper_budget_exhausted", "stage": stage,
+            "budget_seconds": round(max(30.0, budget), 1), "at": now(),
+        })
+        return True
+
     urls = list(paper.oa_urls)
     email = os.getenv("UNPAYWALL_EMAIL")
     if paper.doi and email:
@@ -3188,6 +3622,8 @@ def download_paper(client: Client, paper: Paper, allow_tsg: bool = True) -> None
             paper.acquisition_attempts.append({"provider": "local", "skill": "zerowall-literature", "status": "already_present", "path": str(target), "at": now()})
             return
     for url in urls:
+        if out_of_budget("open_access"):
+            break
         for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
                 response = client.session.get(url, timeout=client.timeout, stream=True, allow_redirects=True)
@@ -3222,6 +3658,8 @@ def download_paper(client: Client, paper: Paper, allow_tsg: bool = True) -> None
     # title.  Missing credentials, no matches and provider errors are explicit
     # receipts; none of them silently bypasses this stage.
     for attempt in range(1, MAX_ATTEMPTS + 1):
+        if out_of_budget("tsg"):
+            break
         if download_via_tsg(client, paper, target):
             paper.acquisition_state = "acquisition_terminal"
             return
@@ -3243,6 +3681,8 @@ def download_paper(client: Client, paper: Paper, allow_tsg: bool = True) -> None
     shadow_setting = os.getenv("RESEARCH_ENABLE_SHADOW_LIBS", "").strip().lower()
     shadow_enabled = shadow_setting not in {"0", "false", "no", "off"}
     for attempt in range(1, MAX_ATTEMPTS + 1):
+        if out_of_budget("paper_download"):
+            break
         if download_via_paper_download(client.task, paper, target, allow_shadow=shadow_enabled, attempt=attempt):
             paper.acquisition_state = "acquisition_terminal"
             return
@@ -3901,9 +4341,15 @@ def update_phase_status(state: dict[str, Any], papers: list[Paper]) -> dict[str,
             # must not block the cited-by author phase.
             target_keys = {clean_text(p.key) for p in papers if p.direction == "target"}
             scoped_rows = [row for row in author_rows if clean_text(row.get("paper")) not in target_keys]
-            author_ready = (bool(scoped_rows)
-                            and all(row.get("evidence_status") in allowed_author_status for row in scoped_rows)
-                            and ((bool(Task(Path(state.get("task_root") or ".")).web_search_receipts()) and multi_engine_ready) or partial_enrichment))
+            # 0-author edge case: when no cited-by papers have authors to enrich,
+            # scoped_rows is empty.  With partial_enrichment accepted, there is
+            # nothing to fetch, so the phase is trivially complete.
+            if not scoped_rows and partial_enrichment:
+                author_ready = True
+            else:
+                author_ready = (bool(scoped_rows)
+                                and all(row.get("evidence_status") in allowed_author_status for row in scoped_rows)
+                                and ((bool(Task(Path(state.get("task_root") or ".")).web_search_receipts()) and multi_engine_ready) or partial_enrichment))
         journal_requests = [row for row in queue if row.get("kind") == "journal"]
         journal_ready = ((analysis_dir / "journal_evidence.json").is_file()
                          and (not journal_requests or all(clean_text(row.get("status")) in QUEUE_TERMINAL for row in journal_requests)))
@@ -4425,12 +4871,14 @@ def build_simplified_analysis(task: Task, state: dict[str, Any], papers: list[Pa
         "generated_at": now(),
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     relations = []
+    provider_counts = {}
+    _cbc = target.cited_by_counts if isinstance(target.cited_by_counts, dict) else {}
     provider_counts = {
-        "openalex": target.cited_by_counts.get("openalex"),
-        "semantic_scholar": target.cited_by_counts.get("semantic_scholar"),
-        "crossref": target.cited_by_counts.get("crossref"),
-        "pubmed_cited_in": target.cited_by_counts.get("pubmed_cited_in"),
-        "europepmc": target.cited_by_counts.get("europepmc"),
+        "openalex": _cbc.get("openalex"),
+        "semantic_scholar": _cbc.get("semantic_scholar"),
+        "crossref": _cbc.get("crossref"),
+        "pubmed_cited_in": _cbc.get("pubmed_cited_in"),
+        "europepmc": _cbc.get("europepmc"),
     }
     provider_counts = {key: value for key, value in provider_counts.items() if value is not None}
     target.provider_counts = provider_counts
@@ -4630,11 +5078,11 @@ def simplified_report(task: Task, state: dict[str, Any], papers: list[Paper], *,
         _AE_SCALAR_FIELDS = (
             "current_title", "current_institution", "current_country",
             "works_count", "cited_by_count", "h_index", "orcid",
-            "openalex_author_id", "evidence_status",
+            "openalex_author_id", "evidence_status", "profile_cache_dir",
         )
         _AE_LIST_FIELDS = (
             "research_topics", "honors", "appointments",
-            "aliases", "sources", "top_works",
+            "aliases", "sources", "top_works", "profile_sources",
         )
         for _profile in unique_authors:
             _p_eid = clean_text(_profile.get("author_entity_id", "")).lower()
@@ -4789,10 +5237,30 @@ def simplified_report(task: Task, state: dict[str, Any], papers: list[Paper], *,
 
     author_columns = [
         "姓名", "别名", "ORCID", "对应引文论文", "当前职位", "当前单位", "当前国家", "研究方向", "代表论文", "发文量",
-        "总被引", "h-index", "荣誉/奖项/学术任职", "作者介绍", "核验来源链接",
+        "总被引", "h-index", "荣誉/奖项/学术任职", "作者介绍", "HTML缓存目录",
     ]
     author_rows: list[dict[str, Any]] = []
     for profile in sorted(unique_authors, key=author_score, reverse=True):
+        # 作者介绍: profile_sources (identity-confirmed page URLs) first,
+        # then other source URLs; each link on its own line for readability.
+        _intro_links: list[str] = []
+        for _url in (profile.get("profile_sources") or []):
+            _u = clean_text(_url)
+            if _u.startswith(("http://", "https://")) and _u not in _intro_links:
+                _intro_links.append(_u)
+        for _url in author_sources(profile):
+            if _url not in _intro_links:
+                _intro_links.append(_url)
+        _intro_cell = "\n".join(_intro_links)
+        # HTML缓存目录: make the absolute path relative to the task root so
+        # the spreadsheet travels with the analysis folder.
+        _cache_abs = clean_text(profile.get("profile_cache_dir"))
+        _cache_rel = ""
+        if _cache_abs:
+            try:
+                _cache_rel = str(Path(_cache_abs).relative_to(task.root))
+            except ValueError:
+                _cache_rel = _cache_abs  # already relative or different drive
         row = {
             "姓名": profile.get("name", ""),
             "别名": flatten_excel_value(public_value(profile.get("aliases"))),
@@ -4807,8 +5275,8 @@ def simplified_report(task: Task, state: dict[str, Any], papers: list[Paper], *,
             "总被引": public_value(profile.get("cited_by_count")),
             "h-index": public_value(profile.get("h_index")),
             "荣誉/奖项/学术任职": flatten_excel_value(public_value((profile.get("honors") or []) + (profile.get("appointments") or []))),
-            "作者介绍": author_intro(profile),
-            "核验来源链接": "; ".join(author_sources(profile)),
+            "作者介绍": _intro_cell,
+            "HTML缓存目录": _cache_rel,
         }
         author_rows.append({column: row.get(column, "") for column in author_columns})
     write_excel(
@@ -4846,10 +5314,28 @@ def simplified_report(task: Task, state: dict[str, Any], papers: list[Paper], *,
             )
         return "".join(rows)
 
-    def chart_panel(title: str, values: dict[str, int], *, chronological: bool = False, tone: str = "teal") -> str:
+    def chart_panel(
+        title: str,
+        values: dict[str, int],
+        *,
+        chronological: bool = False,
+        tone: str = "teal",
+        empty_note: str = "",
+    ) -> str:
+        """Render one statistic panel.
+
+        A dimension with no verifiable data still keeps its section so every
+        report carries the same structure; the gap is stated explicitly instead
+        of silently dropping the heading.
+        """
         body = chart_bars(values, chronological=chronological, tone=tone)
         if not body:
-            return ""
+            if not empty_note:
+                return ""
+            return (
+                f'<section class="chart-panel"><h3>{esc(title)}</h3>'
+                f'<p class="chart-empty">{esc(empty_note)}</p></section>'
+            )
         return f'<section class="chart-panel"><h3>{esc(title)}</h3><div class="chart">{body}</div></section>'
 
     def table(headers: list[str], rows: list[list[Any]], *, css_class: str = "") -> str:
@@ -5087,21 +5573,29 @@ def simplified_report(task: Task, state: dict[str, Any], papers: list[Paper], *,
     overview = "，".join(part for part in overview_parts if part) + "。"
 
     chart_panels = "".join(filter(None, (
-        chart_panel("年度引文分布", years, chronological=True, tone="teal"),
-        chart_panel("主要引用期刊", journals, tone="rust"),
-        chart_panel("引文作者国家 / 地区", countries, tone="violet"),
-        chart_panel("引文作者当前机构", institutions, tone="blue"),
-        chart_panel("引文作者职位构成", position_groups, tone="rust"),
-        chart_panel("引文作者研究方向", topic_counts, tone="green"),
-        chart_panel("自引 / 他引构成", self_citation_counts, tone="violet"),
-        chart_panel("引文类型", publication_types, tone="blue"),
+        chart_panel("年度引文分布", years, chronological=True, tone="teal",
+                    empty_note="引文发表年份暂无可核验数据。"),
+        chart_panel("主要引用期刊", journals, tone="rust",
+                    empty_note="引用期刊名称暂无可核验数据。"),
+        chart_panel("引文作者国家 / 地区", countries, tone="violet",
+                    empty_note="引文作者所在国家 / 地区暂无可核验数据。"),
+        chart_panel("引文作者当前机构", institutions, tone="blue",
+                    empty_note="引文作者当前机构暂无可核验数据。"),
+        chart_panel("引文作者职位构成", position_groups, tone="rust",
+                    empty_note="引文作者当前职位未取得可核验事实，按取证规则留空而不做推断。"),
+        chart_panel("引文作者研究方向", topic_counts, tone="green",
+                    empty_note="引文作者研究方向暂无可核验数据。"),
+        chart_panel("自引 / 他引构成", self_citation_counts, tone="violet",
+                    empty_note="自引 / 他引关系暂无可核验判定结果。"),
+        chart_panel("引文类型", publication_types, tone="blue",
+                    empty_note="引文类型暂无可核验数据。"),
     )))
     jif_note = (
         f"其中 {verified_jif_count} 本期刊取得了期刊身份、JIF 数值、指标年份和来源页面一致的最新影响因子。"
         if has_verified_jif else ""
     )
     css = '''
-    @page{size:A4;margin:11mm}*{box-sizing:border-box}html{background:#e8edef}body{margin:0;color:#17262d;background:#e8edef;font:14px/1.62 "Microsoft YaHei","Source Han Sans SC","Segoe UI",Arial,sans-serif;letter-spacing:0}main{max-width:1180px;margin:auto;background:#fff;box-shadow:0 10px 35px #153b3f18}.mast{padding:52px 58px 46px;background:#153b3f;color:#fff;border-bottom:7px solid #c49a38}.mast .eyebrow{margin:0;color:#e8c978;font-size:12px;font-weight:700;text-transform:uppercase}.mast h1{max-width:980px;margin:13px 0 12px;font:700 35px/1.25 Georgia,"Songti SC","Microsoft YaHei",serif;letter-spacing:0}.mast .subtitle{font-size:17px;color:#fff;margin:0 0 8px}.mast .meta{font-size:12px;color:#c9d9d8;margin:0}.strip{display:grid;grid-template-columns:repeat(6,1fr);padding:0 58px;transform:translateY(-18px)}.strip div{min-width:0;background:#fff;border-right:1px solid #dce5e5;border-top:3px solid #287a80;padding:13px 12px;box-shadow:0 5px 15px #153b3f18}.strip div:first-child{border-left:1px solid #dce5e5}.strip b{display:block;overflow-wrap:anywhere;font:700 23px/1.15 Georgia,"Songti SC",serif;color:#153b3f}.strip span{display:block;margin-top:4px;font-size:10px;color:#65767b}.section{padding:24px 58px}.section h2{margin:10px 0 18px;padding-bottom:7px;border-bottom:2px solid #d9e2e2;color:#153b3f;font:700 23px/1.3 Georgia,"Songti SC","Microsoft YaHei",serif;letter-spacing:0}.section h3{margin:0 0 13px;color:#7b3e35;font-size:15px;letter-spacing:0}.lead{margin:0;background:#f4f0e4;border-left:5px solid #c49a38;padding:17px 20px;color:#374a51}.lead strong{color:#153b3f}.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 30px}.chart-panel{min-width:0;padding:4px 0 9px}.chart{padding:2px 0}.hbar{display:grid;grid-template-columns:minmax(90px,145px) 1fr 34px;gap:8px;align-items:center;margin:7px 0;font-size:11px}.hbar>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hbar i{display:block;height:11px;background:#e7eded}.hbar em{display:block;height:100%}.hbar .teal{background:#287a80}.hbar .rust{background:#9a4f43}.hbar .violet{background:#80618b}.hbar .blue{background:#4d7090}.hbar .green{background:#5f7e67}.hbar b{text-align:right;color:#17262d}.section-intro{margin:-4px 0 18px;color:#607177;font-size:12px}.table-wrap{width:100%;overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:10.5px;table-layout:auto}th{padding:8px;background:#153b3f;color:#fff;text-align:left;vertical-align:top}td{padding:8px;border-bottom:1px solid #dae2e3;vertical-align:top;overflow-wrap:anywhere}tbody tr:nth-child(even){background:#f8fafa}.journal-table td:first-child,.paper-table td:first-child,.author-table td:first-child{font-weight:700;color:#153b3f}.paper-table th:nth-child(1){width:40%}.paper-table th:nth-child(2){width:22%}.paper-table th:nth-child(3){width:30%}.author-table{table-layout:fixed;font-size:10px}.author-table th:nth-child(1){width:10%}.author-table th:nth-child(2){width:12%}.author-table th:nth-child(3){width:16%}.author-table th:nth-child(4){width:14%}.author-table th:nth-child(5){width:18%}.author-table th:nth-child(6){width:12%}.author-table th:nth-child(7){width:18%}.author-table td{font-size:10px;padding:5px 6px;line-height:1.4}.author-highlights{display:grid;grid-template-columns:1fr 1fr;gap:8px 22px;margin:0 0 18px}.author-card{display:grid;grid-template-columns:38px 1fr;gap:12px;padding:11px 0;border-bottom:1px solid #dae2e3}.author-rank{font:700 23px/1 Georgia;color:#c49a38}.author-card h3{margin:0 0 5px;color:#153b3f}.author-card p{margin:0;color:#465a62;font-size:11px}.author-card small{display:block;margin-top:6px;color:#718087;font-size:10px}.note{border-left:4px solid #c49a38;background:#f5f7f7;padding:13px 16px;color:#617177;font-size:11px}.foot{padding:20px 58px;background:#eaf0f0;color:#586a70;font-size:10px}.page{break-before:page}@media(max-width:820px){main{box-shadow:none}.mast,.section{padding-left:22px;padding-right:22px}.mast h1{font-size:27px}.strip{padding:0 22px;grid-template-columns:repeat(2,minmax(0,1fr))}.chart-grid,.author-highlights{grid-template-columns:1fr}.hbar{grid-template-columns:minmax(88px,125px) 1fr 30px}.section{padding-top:20px;padding-bottom:20px}}@media print{html,body{background:#fff}main{box-shadow:none}.strip div{box-shadow:none}.section{padding-top:17px;padding-bottom:17px}.page{break-before:page}tr,.author-card,.chart-panel{break-inside:avoid}.table-wrap{overflow:visible}}
+    @page{size:A4;margin:11mm}*{box-sizing:border-box}html{background:#e8edef}body{margin:0;color:#17262d;background:#e8edef;font:14px/1.62 "Microsoft YaHei","Source Han Sans SC","Segoe UI",Arial,sans-serif;letter-spacing:0}main{max-width:1180px;margin:auto;background:#fff;box-shadow:0 10px 35px #153b3f18}.mast{padding:52px 58px 46px;background:#153b3f;color:#fff;border-bottom:7px solid #c49a38}.mast .eyebrow{margin:0;color:#e8c978;font-size:12px;font-weight:700;text-transform:uppercase}.mast h1{max-width:980px;margin:13px 0 12px;font:700 35px/1.25 Georgia,"Songti SC","Microsoft YaHei",serif;letter-spacing:0}.mast .subtitle{font-size:17px;color:#fff;margin:0 0 8px}.mast .meta{font-size:12px;color:#c9d9d8;margin:0}.strip{display:grid;grid-template-columns:repeat(6,1fr);padding:0 58px;transform:translateY(-18px)}.strip div{min-width:0;background:#fff;border-right:1px solid #dce5e5;border-top:3px solid #287a80;padding:13px 12px;box-shadow:0 5px 15px #153b3f18}.strip div:first-child{border-left:1px solid #dce5e5}.strip b{display:block;overflow-wrap:anywhere;font:700 23px/1.15 Georgia,"Songti SC",serif;color:#153b3f}.strip span{display:block;margin-top:4px;font-size:10px;color:#65767b}.section{padding:24px 58px}.section h2{margin:10px 0 18px;padding-bottom:7px;border-bottom:2px solid #d9e2e2;color:#153b3f;font:700 23px/1.3 Georgia,"Songti SC","Microsoft YaHei",serif;letter-spacing:0}.section h3{margin:0 0 13px;color:#7b3e35;font-size:15px;letter-spacing:0}.lead{margin:0;background:#f4f0e4;border-left:5px solid #c49a38;padding:17px 20px;color:#374a51}.lead strong{color:#153b3f}.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 30px}.chart-panel{min-width:0;padding:4px 0 9px}.chart{padding:2px 0}.chart-empty{margin:0;padding:13px 15px;border-left:3px solid #c49a38;background:#f7f4eb;color:#65767b;font-size:12px}.hbar{display:grid;grid-template-columns:minmax(90px,145px) 1fr 34px;gap:8px;align-items:center;margin:7px 0;font-size:11px}.hbar>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hbar i{display:block;height:11px;background:#e7eded}.hbar em{display:block;height:100%}.hbar .teal{background:#287a80}.hbar .rust{background:#9a4f43}.hbar .violet{background:#80618b}.hbar .blue{background:#4d7090}.hbar .green{background:#5f7e67}.hbar b{text-align:right;color:#17262d}.section-intro{margin:-4px 0 18px;color:#607177;font-size:12px}.table-wrap{width:100%;overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:10.5px;table-layout:auto}th{padding:8px;background:#153b3f;color:#fff;text-align:left;vertical-align:top}td{padding:8px;border-bottom:1px solid #dae2e3;vertical-align:top;overflow-wrap:anywhere}tbody tr:nth-child(even){background:#f8fafa}.journal-table td:first-child,.paper-table td:first-child,.author-table td:first-child{font-weight:700;color:#153b3f}.paper-table th:nth-child(1){width:40%}.paper-table th:nth-child(2){width:22%}.paper-table th:nth-child(3){width:30%}.author-table{table-layout:fixed;font-size:10px}.author-table th:nth-child(1){width:10%}.author-table th:nth-child(2){width:12%}.author-table th:nth-child(3){width:16%}.author-table th:nth-child(4){width:14%}.author-table th:nth-child(5){width:18%}.author-table th:nth-child(6){width:12%}.author-table th:nth-child(7){width:18%}.author-table td{font-size:10px;padding:5px 6px;line-height:1.4}.author-highlights{display:grid;grid-template-columns:1fr 1fr;gap:8px 22px;margin:0 0 18px}.author-card{display:grid;grid-template-columns:38px 1fr;gap:12px;padding:11px 0;border-bottom:1px solid #dae2e3}.author-rank{font:700 23px/1 Georgia;color:#c49a38}.author-card h3{margin:0 0 5px;color:#153b3f}.author-card p{margin:0;color:#465a62;font-size:11px}.author-card small{display:block;margin-top:6px;color:#718087;font-size:10px}.note{border-left:4px solid #c49a38;background:#f5f7f7;padding:13px 16px;color:#617177;font-size:11px}.foot{padding:20px 58px;background:#eaf0f0;color:#586a70;font-size:10px}.page{break-before:page}@media(max-width:820px){main{box-shadow:none}.mast,.section{padding-left:22px;padding-right:22px}.mast h1{font-size:27px}.strip{padding:0 22px;grid-template-columns:repeat(2,minmax(0,1fr))}.chart-grid,.author-highlights{grid-template-columns:1fr}.hbar{grid-template-columns:minmax(88px,125px) 1fr 30px}.section{padding-top:20px;padding-bottom:20px}}@media print{html,body{background:#fff}main{box-shadow:none}.strip div{box-shadow:none}.section{padding-top:17px;padding-bottom:17px}.page{break-before:page}tr,.author-card,.chart-panel{break-inside:avoid}.table-wrap{overflow:visible}}
     '''
     html = f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>引文影响与作者画像｜{esc(target.title)}</title><style>{css}</style></head><body><main>
     <header class="mast"><p class="eyebrow">ZeroWall Literature · Cited-by Impact Report</p><h1>{esc(target.title)}</h1><p class="subtitle">目标论文引文影响与作者画像</p><p class="meta">{esc(metadata)}</p></header>
@@ -5385,24 +5879,39 @@ def run_resume(args: argparse.Namespace) -> int:
     if target.parse_status != "mineru_parsed" or not target.parsed_text_path:
         state["stage"] = "target_mineru_required"; update_phase_status(state, papers); task.save(state); report(task, state)
         print(json.dumps({"task": str(task.root), "stage": state["stage"], "next": "run MinerU for the target PDF, then ingest-mineru"}, ensure_ascii=False, indent=2)); return 0
-    if target.source == "local" or not target.doi:
-        matches = client.search_title(target.title)
-        if matches and title_score(target.title, matches[0].title) >= 0.65: merge_paper(target, client.enrich(matches[0]))
-    else:
-        target = client.enrich(target)
-    target_index = next(i for i, paper in enumerate(papers) if paper.direction == "target")
-    papers[target_index] = target
-    if not state.get("cited_by_expanded"):
-        state["stage"] = "cited_by_expanded"
-        related = client.expand_openalex(target, "cited-by", None if state.get("research_plan", {}).get("all_cited_by") else state.get("research_plan", {}).get("max_papers", 20))
-        papers, aliases = deduplicate_papers([target, *related]); state["deduplication"] = aliases; state["cited_by_expanded"] = True
+    # When partial_enrichment=True and cited_by_expanded is already done, skip
+    # the expensive network calls (title-search, OpenAlex enrich, cited-by
+    # expansion) and also skip prepare_enrichment_requests.  Re-running those
+    # steps would (a) stall on slow network, and (b) append new "pending" rows
+    # whose request_ids differ from the already-executed rows (because paper
+    # metadata may have been patched for acquisition_terminal), permanently
+    # blocking finalization.
+    _partial_resume = state.get("partial_enrichment") and state.get("cited_by_expanded")
+    if not _partial_resume:
+        if target.source == "local" or not target.doi:
+            matches = client.search_title(target.title)
+            if matches and title_score(target.title, matches[0].title) >= 0.65: merge_paper(target, client.enrich(matches[0]))
+        else:
+            target = client.enrich(target)
+        target_index = next(i for i, paper in enumerate(papers) if paper.direction == "target")
+        papers[target_index] = target
+        if not state.get("cited_by_expanded"):
+            state["stage"] = "cited_by_expanded"
+            related = client.expand_openalex(target, "cited-by", None if state.get("research_plan", {}).get("all_cited_by") else state.get("research_plan", {}).get("max_papers", 20))
+            papers, aliases = deduplicate_papers([target, *related]); state["deduplication"] = aliases; state["cited_by_expanded"] = True
     state["papers"] = [asdict(paper) for paper in papers]; state.setdefault("parallel_jobs", {})
     state["parallel_jobs"].setdefault("author_enrichment", "pending"); state["parallel_jobs"].setdefault("journal_enrichment", "pending"); state["parallel_jobs"].setdefault("report", "metadata_ready")
     task.save(state)
     # Reconcile deterministic requests on every resume. This adds newly
     # required engines/direct author lookups during an idempotent migration
     # without duplicating any existing request_id.
-    requests = prepare_enrichment_requests(task, state)
+    # Skip when partial_enrichment=True (cited_by already expanded): changed
+    # paper metadata would generate different request_ids that can never be
+    # fulfilled, permanently blocking finalization.
+    if _partial_resume:
+        requests = task.provider_requests()
+    else:
+        requests = prepare_enrichment_requests(task, state)
     state = task.load(); papers = merge_pdf_jobs(task, state)
     state["parallel_jobs"]["author_enrichment"] = "running"; state["parallel_jobs"]["journal_enrichment"] = "running"; state["stage"] = "author_enriching"; state["papers"] = [asdict(paper) for paper in papers]; task.save(state)
     # Launch the independent PDF branch after the queue exists.  Author and
@@ -5425,7 +5934,11 @@ def run_resume(args: argparse.Namespace) -> int:
     evidence_dir = getattr(args, "from_evidence_dir", None)
     if evidence_dir is None and (task.root / "analysis" / "evidence_pending").is_dir():
         evidence_dir = task.root / "analysis" / "evidence_pending"
-    if evidence_dir and (request_ids - ingested_ids):
+    # When partial_enrichment=True (fast-finalize path) skip evidence_pending
+    # ingestion entirely.  ingest_evidence → enqueue_journal_year_followup
+    # appends new "pending" rows on every call, regenerating the exact rows
+    # we just marked terminal and permanently blocking finalization.
+    if not _partial_resume and evidence_dir and (request_ids - ingested_ids):
         summary = ingest_evidence_dir(task, state, Path(evidence_dir), skip_existing=True); state = task.load(); papers = merge_pdf_jobs(task, state); state["papers"] = [asdict(paper) for paper in papers]; task.save(state)
         print(json.dumps({"task": str(task.root), "batch_ingest": summary}, ensure_ascii=False, indent=2))
         try: ingested_ids = {json.loads(line).get("request_id") for line in (task.root / "analysis" / "evidence_inbox.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()}
@@ -5434,10 +5947,21 @@ def run_resume(args: argparse.Namespace) -> int:
     # Use queue STATUS as the authoritative pending indicator.  A request whose
     # status is terminal (succeeded / failed / not_found / …) is considered done
     # even if it was never written to evidence_inbox (e.g. pre-patched entries).
-    pending = {
-        request_id for request_id in request_ids
-        if clean_text(queue_latest.get(request_id, {}).get("status")) not in QUEUE_TERMINAL
-    }
+    # When partial_enrichment=True, only consider requests that are in the
+    # CURRENT queue_latest (last-row-wins view) and still non-terminal.
+    # This prevents stale orphan pending rows written before a metadata patch
+    # (e.g. acquisition_terminal fix changing paper.key/subject) from
+    # permanently blocking finalization.
+    if state.get("partial_enrichment"):
+        pending = {
+            request_id for request_id, row in queue_latest.items()
+            if clean_text(row.get("status")) not in QUEUE_TERMINAL
+        }
+    else:
+        pending = {
+            request_id for request_id in request_ids
+            if clean_text(queue_latest.get(request_id, {}).get("status")) not in QUEUE_TERMINAL
+        }
     if pending:
         build_metadata_analysis(task, state, papers)
         state = task.load(); papers = merge_pdf_jobs(task, state); state["stage"] = "author_enriching"; state["parallel_jobs"]["report"] = "metadata_ready"; state["papers"] = [asdict(paper) for paper in papers]; task.save(state); report(task, state)
@@ -5529,8 +6053,10 @@ def main(argv: list[str] | None = None) -> int:
     export = sub.add_parser("export"); export.add_argument("task", type=Path)
     ingest = sub.add_parser("ingest-mineru"); ingest.add_argument("task", type=Path); ingest.add_argument("--paper", required=True, help="paper key, DOI, or PMID"); ingest.add_argument("--run-dir", type=Path, required=True); ingest.add_argument("--task-id", default=""); ingest.add_argument("--api", default="mineru")
     prepare = sub.add_parser("prepare-enrichment"); prepare.add_argument("task", type=Path)
+    rebuild_authors = sub.add_parser("rebuild-author-requests", help="安全重建作者请求：保留已成功和非作者请求，使用当前实体 OpenAlex ID 重新生成待处理作者请求"); rebuild_authors.add_argument("task", type=Path)
     ingest_evidence_parser = sub.add_parser("ingest-evidence"); ingest_evidence_parser.add_argument("task", type=Path); ingest_evidence_parser.add_argument("--request-id", default="", help="单个 request_id；与 --dir 二选一"); ingest_evidence_parser.add_argument("--input", type=Path, help="单个证据 JSON；与 --dir 二选一"); ingest_evidence_parser.add_argument("--dir", type=Path, help="批量目录；默认 analysis/evidence_pending"); ingest_evidence_parser.add_argument("--tool", default="", help="批量模式下只 ingest 指定 tool"); ingest_evidence_parser.add_argument("--skip-existing", action="store_true", help="批量模式下跳过已 ingest 的 request_id")
     mark_terminal = sub.add_parser("mark-terminal"); mark_terminal.add_argument("task", type=Path); mark_terminal.add_argument("--tool", action="append", default=[], help="只处理指定 tool，可重复"); mark_terminal.add_argument("--status", default="blocked_provider", help="写入的终态状态"); mark_terminal.add_argument("--reason", default="", help="写入 provider_requests 的说明")
+    reconcile = sub.add_parser("reconcile-queue", help="用 evidence_inbox 的既有结果修复被重建回滚为 pending 的队列状态"); reconcile.add_argument("task", type=Path)
     finalize = sub.add_parser("finalize"); finalize.add_argument("task", type=Path)
     sub.add_parser("check-credentials", help="报告 provider 凭据来源与限流设置，不显示凭据值")
     status = sub.add_parser("status"); status.add_argument("task", type=Path)
@@ -5547,11 +6073,62 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "prepare-enrichment":
         task = Task(args.task); state = task.load(); requests = prepare_enrichment_requests(task, state)
         print(json.dumps({"task": str(task.root), "stage": state.get("stage"), "request_count": len(requests), "path": str(task.provider_requests_path)}, ensure_ascii=False, indent=2)); return 0
+    if args.command == "rebuild-author-requests":
+        task = Task(args.task); state = task.load()
+        # Keep succeeded / running / skipped journal + non-author requests
+        old_queue = task.provider_requests()
+        preserved = [r for r in old_queue if r.get("kind") != "author" or r.get("status") in ("succeeded", "running", "skipped")]
+        preserved_ids = {r["request_id"] for r in preserved}
+        # Generate fresh author requests with current entity OpenAlex IDs
+        papers = papers_from_state(state)
+        target = target_from_papers(papers)
+        all_entities = unique_author_entities(papers)
+        identity_hints = _load_author_identity_hints(task)
+        for entity in all_entities:
+            hint = identity_hints.get(clean_text(entity.get("author_entity_id")))
+            if hint:
+                for key in ("openalex_author_id", "orcid", "display_name"):
+                    if not clean_text(entity.get(key)) and clean_text(hint.get(key)):
+                        entity[key] = clean_text(hint[key])
+                if not entity.get("identity_institutions") and hint.get("institutions"):
+                    entity["identity_institutions"] = list(hint["institutions"])
+                if not entity.get("identity_countries") and hint.get("countries"):
+                    entity["identity_countries"] = list(hint["countries"])
+                if not entity.get("identity_topics") and hint.get("topics"):
+                    entity["identity_topics"] = list(hint["topics"])
+        new_author_requests = []
+        for entity in all_entities:
+            primary_paper = entity["papers"][0] if entity["papers"] else {}
+            context = {"papers": entity.get("papers", []), "identity_institutions": entity.get("identity_institutions", []), "identity_coauthors": entity.get("identity_coauthors", []), "target_authors_excluded": list(target.authors)}
+            if entity.get("openalex_author_id"):
+                args = {"author_id": entity["openalex_author_id"]}
+                tool = "openalex_get_author"
+            else:
+                args = {"query": entity["name"], "max_records": 10}
+                tool = "openalex_search_authors"
+            payload = {"kind": "author", "tool": tool, "args": args, "arguments": args, "subject": entity["author_entity_id"], "paper_key": primary_paper.get("paper_key", ""), "author_name": entity["name"], "query": args.get("query", ""), "provider": tool.split("_", 1)[0], "execution": "capability_execute_required", "retry_budget": 5}
+            if context:
+                payload["context"] = context
+            if isinstance(args.get("identity"), dict):
+                payload["identity"] = args["identity"]
+            payload["result_contract"] = {"required_search": True, "extract_with_model": True, "fields": ["current_title", "current_institution", "current_country", "research_topics", "top_works", "honors", "appointments", "sources"], "rule": "Open reliable pages with web_fetch. Disambiguate with the citing paper, affiliation, coauthors or ORCID. Omit uncertain facts and all target-paper authors. Do not enumerate the author's publication list; only identity, affiliation, research topics, honours and metrics are required."}
+            payload["request_id"] = hashlib.sha256(json.dumps(["author", tool, entity["author_entity_id"], args], sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:24]
+            payload["created_at"] = now()
+            if payload["request_id"] not in preserved_ids:
+                new_author_requests.append(payload)
+        # Backup old queue, write new combined queue
+        backup_path = task.provider_requests_path.with_suffix(".jsonl.bak")
+        if task.provider_requests_path.exists():
+            import shutil; shutil.copy2(task.provider_requests_path, backup_path)
+        combined = preserved + new_author_requests
+        task.provider_requests_path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in combined) + "\n", encoding="utf-8")
+        task.invalidate_pr_cache()
+        print(json.dumps({"task": str(task.root), "preserved": len(preserved), "new_author": len(new_author_requests), "total": len(combined), "backup": str(backup_path), "openalex_get_author": sum(1 for r in new_author_requests if r.get("tool") == "openalex_get_author"), "openalex_search_authors": sum(1 for r in new_author_requests if r.get("tool") == "openalex_search_authors")}, ensure_ascii=False, indent=2)); return 0
     if args.command == "ingest-evidence":
         task = Task(args.task); state = task.load()
         if args.dir or (not args.request_id and not args.input):
             directory = args.dir or (task.root / "analysis" / "evidence_pending")
-            summary = ingest_evidence_dir(task, state, directory, only=args.tool, skip_existing=True)
+            summary = ingest_evidence_dir(task, state, directory, only=args.tool, skip_existing=bool(args.skip_existing))
             resume_args = argparse.Namespace(task=task.root, timeout=30, partial=False, no_tsg=False, from_evidence_dir=None)
             resume_code = run_resume(resume_args)
             summary["resume_exit_code"] = resume_code
@@ -5560,6 +6137,10 @@ def main(argv: list[str] | None = None) -> int:
             print("ingest-evidence requires --request-id and --input, or --dir", file=sys.stderr); return 2
         item = ingest_evidence(task, state, args.request_id, args.input)
         print(json.dumps({"task": str(task.root), "request_id": args.request_id, "status": item.get("status")}, ensure_ascii=False, indent=2)); return 0
+    if args.command == "reconcile-queue":
+        task = Task(args.task); state = task.load()
+        summary = reconcile_queue_with_inbox(task, state)
+        print(json.dumps(summary, ensure_ascii=False, indent=2)); return 0
     if args.command == "mark-terminal":
         task = Task(args.task); state = task.load()
         summary = mark_requests_terminal(task, state, tools=tuple(args.tool), status=args.status, reason=args.reason)

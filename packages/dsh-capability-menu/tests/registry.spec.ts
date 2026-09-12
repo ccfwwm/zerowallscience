@@ -262,8 +262,10 @@ describe('meta-registry', () => {
     presets = [{ id: 'coding-plus' }]
     await ctx.capability.refresh()
 
-    // One request from the tools pass + one from the skills pass.
-    expect(requested.get('coding-plus')).toBe(2)
+    // The explicit refresh must cover both the tools and skills passes. An
+    // overlapping eager mount-time refresh may observe the preset as well, so
+    // the exact call count is intentionally not part of this contract.
+    expect(requested.get('coding-plus')).toBeGreaterThanOrEqual(2)
     // Native tools stay cataloged under the built-in pseudo-server.
     const builtIn = ctx.capability.search({ server: 'built-in', maxResults: 100 })
     expect(builtIn.map(summary => summary.id)).toContain('bash')

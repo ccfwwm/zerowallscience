@@ -7,9 +7,10 @@ via the ZeroWall Host free-search bridge.
 
 Engine strategy
 ---------------
-- bing first (free, no key needed, stable)
-- tavily as fallback (paid per query — only used when bing returns nothing)
-- deepseek-official as last resort
+- deepseek-official first (measured: the only engine returning institutional
+  profile pages for these queries; bing returned content farms)
+- tavily as fallback (billed per query)
+- bing as last resort
 Sequential fallback: stop at first engine that has real results.
 NO fan-out / parallel per-engine queries.
 
@@ -48,9 +49,12 @@ import requests
 BRIDGE    = "http://127.0.0.1:62705"
 ENDPOINT  = "/api/dsh-free-search-settings/raw-search"
 
-# bing is free and reliable; tavily is accurate but paid-per-query.
-# Sequential: stop at first engine that returns real content.
-ENGINE_CHAIN = ["bing", "tavily", "deepseek-official"]
+# Engine policy is shared with the main executor (see profile_search.py):
+# ordinary authors use deepseek-official, which measured as the only engine
+# returning institutional profile pages for scholar queries; bing returned
+# content farms and only 2 rows.  tavily is billed per call, so it is a fallback
+# here rather than the default.
+ENGINE_CHAIN = ["deepseek-official", "tavily", "bing"]
 
 # Throttle: bing needs ≥0.3s; tavily needs ≥0.6s to be safe.
 # We use 0.4s as a middle ground (≈2.5 req/s, well within bing limits).
@@ -323,7 +327,7 @@ def author_score(rec: dict) -> float:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Search titles/honors for top-N cited-by authors (bing-first, tavily fallback)")
+        description="Search titles/honors for top-N cited-by authors (deepseek-official first, tavily fallback)")
     parser.add_argument("task", help="Task directory, e.g. literature/wang-2008-ppar-cilostazol")
     parser.add_argument("--workers", type=int, default=3,
                         help="Parallel workers (default 3; keep low for bing rate limits)")

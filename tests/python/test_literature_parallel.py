@@ -79,7 +79,8 @@ class LiteratureParallelTests(unittest.TestCase):
             task, state, _target, cited = self._task(Path(directory) / "task")
             cited[1].authors.append("Author 0")
             state["papers"] = [module.asdict(_target), *[module.asdict(p) for p in cited]]; task.save(state)
-            requests = module.prepare_enrichment_requests(task, state)
+            with patch.dict(module.os.environ, {"LITERATURE_AUTHOR_SEARCH_LIMIT": "1"}):
+                requests = module.prepare_enrichment_requests(task, state)
             expected = {e["author_entity_id"] for e in module.unique_author_entities([_target, *cited])}
             author_requests = [r for r in requests if r.get("kind") == "author"]
             self.assertEqual({r["subject"] for r in author_requests}, expected)
@@ -89,12 +90,15 @@ class LiteratureParallelTests(unittest.TestCase):
             self.assertEqual(set(groups), expected)
             self.assertEqual(set(grouped_ids), {r["request_id"] for r in author_requests})
             self.assertEqual(len(grouped_ids), len(set(grouped_ids)))
+            engines_by_subject = {}
             for subject in expected:
                 engines = {
                     row["args"].get("engine") for row in author_requests
                     if row["subject"] == subject and row["tool"] == "advanced_search"
                 }
-                self.assertEqual(engines, {"deepseek-official", "bing", "exa", "tavily"})
+                self.assertEqual(len(engines), 1)
+                engines_by_subject[subject] = next(iter(engines))
+            self.assertEqual(set(engines_by_subject.values()), {"deepseek-official", "tavily"})
 
     def test_state_revision_is_monotonic_across_task_instances(self):
         with tempfile.TemporaryDirectory() as directory:

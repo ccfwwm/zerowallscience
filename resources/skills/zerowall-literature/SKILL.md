@@ -161,14 +161,56 @@ python scripts/auto_execute_requests.py literature/<task> --dry-run
 
 | 层级 | 条件 | 引擎 | maxResults | include_answer |
 |---|---|---|---|---|
-| Top-N | cited_by_count 排名前 20 | **tavily** | 20 | True + raw_content |
-| 其余 | 全部其他作者 | **bing** | 10 | False |
+| Top-N | cited_by_count 排名前 20 | **tavily**（每人 1 次） | 8 | True + raw_content |
+| 其余 | 全部其他作者 | **deepseek-official**（每人 1 次） | 8 | False |
 
 - Top-N 默认 20，可通过环境变量 `LITERATURE_AUTHOR_SEARCH_LIMIT` 调整（0 = 全部用 tavily）
-- 回退链：tavily → bing → exa → ddg（顺序回退，有结果即停）
+- 每位作者**一条查询、一个引擎**，不做多引擎并发（实测多引擎只增加耗时与 Tavily 费用）
+- 查询不写死职称词（不再拼接 `professor`），否则结果会偏向同名的教授而漏掉住院医师、工程师等真实身份
 - 期刊 JIF 回退链：bing → tavily → exa → ddg
 
 **荣誉和头衔**：结果自动经 `_extract_tavily_answer_fields` 提取 title/institution/honors/appointments，写入作者结构化字段；一位作者可拥有多项荣誉和多个头衔，全部保留，不截断。只显示联网取得的事实，不通过 h-index 或机构类型推断头衔。
+
+**画像页抓取与提取（通用，不针对任何站点）**：
+
+- **不写死职位**：`current_title` 取页面自己的措辞。优先级为「页面声明字段（`职称：`/`职务：`/`Position:`/`Title:`）→ 页面首部职称短语 → 内置词表兜底」。词表只用于常见职称的双语归一，任何未被词表收录的职位（如「医学人工智能平台主管兼首席算法科学家」）按原文输出。
+- **排除履历与他人职称**：`个人经历/教育经历/Employment History` 段落内的旧职位（如「浙江大学博士后」）与导师职称（`合作导师：刘玉生教授`）被降权或排除，避免把过去岗位或他人身份当作现职。
+- **中英文双语页**：同一份主页的中英文版本合并阅读；当页面以中文为主时，本地语言职称（`副教授`）优先于英文镜像里的资格描述（`Supervisor of Doctorate Candidates`）。
+- **荣誉/奖项/学术任职按栏目通用识别**：中文按 `荣誉称号/获奖情况/奖励/人才称号/社会兼职/学术兼职/学术任职` 等栏目标题与 `获…奖`、`入选…计划`、`担任…委员` 等句式；英文按 `Honors and Awards / Awards / Professional Service / Editorial Board / Committees / Leadership` 等栏目标题与 `recipient of`、`elected fellow of`、`serves as` 等句式。栏目归属决定字段分类（荣誉 vs 任职），条目本身不必包含 `Award`/`Editor` 等头词，否则中文条目会被全部丢弃。
+- **整页扫描**：三道身份闸门通过后，荣誉与任职扫描**整页**而非姓名附近窗口——这些栏目常位于长主页底部。
+- **编码**：服务器未声明 charset 时按探测编码解码（不再默认 ISO-8859-1），否则中文页面全部变乱码，姓名与职称都无法命中。HTML 转文本保留块级换行，避免 `荣誉奖励` 与 `学术任职` 两个栏目被压成一行而串段。
+- **语言镜像发现**：本地语言页面不印罗马化姓名时，从**该页面自身**的 `<link rel="alternate" hreflang>`、语言切换链接解析其他语言版本用于身份校验（仅在同域内），不假设任何固定 URL 形式。
+- **SSL / 请求头**：抓取使用浏览器 UA 与常规导航头。Windows 上 `curl` 直连此类站点可能报 `CRYPT_E_REVOCATION_OFFLINE`（吊销服务器离线，非站点故障）；诊断时用 `curl --ssl-no-revoke`，Python 侧 `requests/httpx` 保持证书校验即可正常访问，**不要**用 `-k`/`verify=False` 关闭校验。
+
+**画像页原始网页落盘（可离线复跑）**：抓取的每个候选页都保存到 `analysis/profile_pages/<request_id>/`，含原始 HTML（UTF-8）与同名 `.json` 边车（URL、抓取时间、字节数、作者、机构、`url_rank`、语言镜像关系）。同一 URL 再次需要时直接读本地文件，不再联网（实测：首抓 1.08s，二次 0.00s，字节完全一致）。**被身份闸门拒绝的页面同样保存**，判定写入证据的 `profile_page_audit`（`accepted` / `rejected_identity` / `rejected_page_subject` / `rejected_offtarget` / `empty_body`），便于事后人工核对与离线重抽取，无需重新检索。
+
+**结构化职位来源的实测边界（不要重复试错）**：
+
+| 来源 | Top-20 实测 | 结论 |
+|---|---|---|
+| OpenAlex author 对象 | 0/20 提供职位 | 对象中**根本没有** role/position/title 字段，只有机构；永不用于推断职称 |
+| ORCID `/employments` | 13/20 有记录，仅 2/20 填了 `role-title` | 仅作**兜底**：页面未取到职位时才查，且 `organization` 必须与文献机构一致才采纳（实测 2 条中 1 条雇主与引文机构冲突，属同名/旧任职） |
+
+因此职位仍以**机构主页原文**为主来源，ORCID 只补极少数空缺，且受机构一致性约束。
+
+**同一作者的多版查询**：改进查询（如去掉 `professor` 偏置、加 `faculty profile`）会生成新的 `request_id`，而账本按追加保留旧行。执行器与报告都只认**每位作者最新的一条** `author_profile` 请求：否则旧查询会被重复执行，且报告合并时（先写入者优先）旧结果会盖掉新抓到的页面原文职位。
+
+**身份校验（三道闸门，缺一不可）**：搜索命中的页面必须依次通过以下检查才允许贡献职位、荣誉或任职，否则整页丢弃、字段留空：
+
+1. **姓名/机构/ORCID 命中**（`profile_identity_ok`）
+2. **页面主体是该作者**（`profile_is_about_person`）：作者全名必须真实出现，且出现在页面前部（标题/导航/正文开头约 1200 字符内），或紧邻职位词；出现在参考文献、论文列表语境中的姓名不算
+3. **国家/机构不冲突**（`profile_offtarget`）
+
+第 2 道闸门针对实测到的两类误配：科室介绍页只在正文提到姓氏（把台湾骨科医师的学会理事写给了山东作者）、他人主页的合作者论文列表里出现姓名（把「中科院院士」写给了共同作者）。同理，`Our award` 这类栏目标题词被识别为通用标签而丢弃，不作为个人荣誉。
+
+**证据重放边界**：`analysis/evidence_inbox.jsonl` 是追加式历史。`finalize` 重放时，`author_profile` 证据只接受**当前队列仍存在的 request_id**，且每个 request_id 只取最新一条。否则收紧闸门前产生的旧误配会在每次重新生成报告时复活，清理存量数据也无效。
+
+作者画像执行器随技能分发：
+
+```text
+python scripts/run_provider_requests.py literature/<task> --workers 8 --timeout 20
+```
+
 
 **期刊 JIF**：对每个引用期刊执行 `openalex_get_source`（自动完成），再用内置 JCR 表查 JIF（自动完成）；表中未收录的期刊仅在结果空白时才触发 advanced_search。只有指标值、指标年份和来源页面齐全时才写入。CiteScore、SJR 和 OpenAlex 平均被引不能冒充 JIF。
 

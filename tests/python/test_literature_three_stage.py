@@ -120,7 +120,7 @@ class LiteratureThreeStageTests(unittest.TestCase):
         self.assertEqual(len(entities), 2)
         self.assertNotEqual(entities[0]["author_entity_id"], entities[1]["author_entity_id"])
 
-    def test_prepare_enrichment_requests_covers_pubmed_and_authors_without_references(self):
+    def test_prepare_enrichment_requests_avoids_redundant_citation_calls_and_covers_authors(self):
         with tempfile.TemporaryDirectory() as directory:
             task, state = self._state_with_target_and_cited(Path(directory) / "task")
             requests = self._prepare(task, state)
@@ -130,14 +130,14 @@ class LiteratureThreeStageTests(unittest.TestCase):
                 row for row in requests
                 if row["kind"] == "author" or row["kind"].startswith("author_")
             ]
-            self.assertIn("pubmed_find_related", tools)
-            self.assertIn("openalex_citations", tools)
-            self.assertIn("pubmed_get_s2_citations", tools)
-            self.assertIn("pubmed_fetch_articles", tools)
-            self.assertIn("pubmed_search_articles", tools)
+            self.assertNotIn("pubmed_find_related", tools)
+            self.assertNotIn("openalex_citations", tools)
+            self.assertNotIn("pubmed_get_s2_citations", tools)
+            self.assertNotIn("pubmed_fetch_articles", tools)
+            self.assertNotIn("pubmed_search_articles", tools)
             self.assertIn("advanced_search", tools)
-            self.assertIn("free_search_test", tools)
-            self.assertGreaterEqual(len(author_requests), 12)  # 2 authors x 3 metadata + 3 web engines
+            self.assertIn("openalex_search_authors", tools)
+            self.assertEqual(len(author_requests), 4)  # 2 authors x OpenAlex baseline + one web search
             expected_subjects = {
                 row["author_entity_id"]
                 for row in module.unique_author_entities(
@@ -153,7 +153,11 @@ class LiteratureThreeStageTests(unittest.TestCase):
                 if row["kind"] == "journal" and row["tool"] == "advanced_search"
             )
             self.assertIn("journal_abbrev", journal_search["result_contract"]["fields"])
-            self.assertIn("ISO 4 abbreviation", journal_search["query"])
+            self.assertIn("Journal Impact Factor", journal_search["query"])
+            self.assertTrue(any(
+                row["kind"] == "journal" and row["tool"] == "openalex_get_source"
+                for row in requests
+            ))
 
     def test_ingest_evidence_writes_provider_specific_receipts(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -299,10 +303,16 @@ class LiteratureThreeStageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             task, state = self._state_with_target_and_cited(Path(directory) / "task")
             task.save(state)
-            request = next(
-                row for row in self._prepare(task, state)
-                if row["kind"] == "metadata" and row["tool"] == "pubmed_fetch_articles"
-            )
+            request = task.enqueue_request({
+                "request_id": "pubmed-fetch-200",
+                "kind": "metadata",
+                "tool": "pubmed_fetch_articles",
+                "provider": "pubmed",
+                "subject": "pmid:200",
+                "paper_key": "pmid:200",
+                "args": {"pmids": ["200"]},
+                "arguments": {"pmids": ["200"]},
+            })
             result = Path(directory) / "pubmed-fetch.json"
             result.write_text(json.dumps({
                 "status": "ok",
