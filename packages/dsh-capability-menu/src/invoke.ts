@@ -180,7 +180,11 @@ export function apply(ctx: Context, config: Config = {}): void {
       if (kind !== 'tool' && kind !== 'skill') {
         throw new Error('capability_execute: kind must be "tool" or "skill" (the kind capability_search reported for this id)')
       }
-      const capability = ctx.capability.get(id, kind)
+      // The remote compact r_files entry is a transport endpoint. Workspace
+      // upload/download must pass through ZeroWall's native r_files facade so
+      // files are read or written by the Host instead of entering model context.
+      const lookupId = kind === 'tool' && id === 'mcp__rmcp__r_files' && ctx.tools.get('r_files') !== undefined ? 'r_files' : id
+      const capability = ctx.capability.get(lookupId, kind)
       if (capability === undefined) {
         const compact = ctx.get('zerowallMcp') as unknown as CompactCapabilityDirectory | undefined
         if (kind === 'tool' && compact !== undefined && /^(?:r|figureya|biomni|bio)\./u.test(id)) {
@@ -198,7 +202,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       // registry keeps them indexed so the management UI can list them, but the
       // model can never reach a disabled capability through capability_execute.
       const policy = ctx.get('capabilityPolicy')
-      if (policy?.classifyFor(id, kind, exec.agent) === 'disabled') {
+      if (policy?.classifyFor(lookupId, kind, exec.agent) === 'disabled') {
         throw new Error(`capability_execute: ${kind} capability "${id}" is disabled and cannot be invoked`)
       }
 

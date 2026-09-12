@@ -189,7 +189,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     } as never)
     ctx.tools.register(defineTool({
       name: 'r_files',
-      description: 'Access rdatalinux project files through the compact file facade. upload_workspace and download_workspace transfer files inside the Host without putting base64 in the conversation; other exact actions are forwarded to the remote r_files tool.',
+      description: 'Access rdatalinux project files through the compact file facade. Use download_workspace to save a remote project or FigureYa artifact into the current local workspace without confirmation or base64 in the conversation. upload_workspace requires confirm=true. Other exact actions are forwarded to the remote r_files tool.',
       parameters: {
         action: { type: 'string', required: true },
         arguments: { type: 'json' },
@@ -220,7 +220,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
           }
           return nested.value as Record<string, JsonValue>
         }
-        if (args.confirm !== true) throw new Error(`${args.action === 'upload_workspace' ? 'Uploading' : 'Downloading'} a workspace file requires confirm=true.`)
+        if (args.action === 'upload_workspace' && args.confirm !== true) throw new Error('Uploading a workspace file requires confirm=true.')
         if (typeof args.project_id !== 'string' || typeof args.local_path !== 'string' || typeof args.remote_path !== 'string') throw new Error(`project_id, local_path, and remote_path are required for ${args.action}.`)
         const sessionCwd = exec.agent?.session.header.cwd
         if (typeof sessionCwd !== 'string' || sessionCwd.trim() === '') throw new Error('The current session has no workspace directory.')
@@ -254,18 +254,19 @@ export class ZeroWallMcpService extends TypertRemoteService {
           return { projectId: args.project_id, localPath: requested, remotePath: args.remote_path, name: basename(source), bytes: bytes.length, sha256, remote: nested.value as JsonValue }
         }
 
-        const manifestResult = await service.ctx.tools.execute({
+        const resolvedResult = await service.ctx.tools.execute({
           signal: exec.signal,
-          callId: ToolCallId(`r-download-manifest-${Date.now()}`),
+          callId: ToolCallId(`r-download-resolve-${Date.now()}`),
           name: remoteName,
-          arguments: { action: 'r.get.file.manifest', arguments: { project_id: args.project_id, path: args.remote_path } },
+          arguments: { action: 'r.resolve.file', arguments: { project_id: args.project_id, path: args.remote_path } },
           parent: exec.token,
           agent: exec.agent,
         })
-        const manifestPayload = service.compactPayload(manifestResult, 'rdatalinux file manifest')
-        const manifest = manifestPayload.manifest !== null && typeof manifestPayload.manifest === 'object' && !Array.isArray(manifestPayload.manifest)
-          ? manifestPayload.manifest as Record<string, JsonValue>
-          : manifestPayload
+        const resolvedPayload = service.compactPayload(resolvedResult, 'rdatalinux file resolver')
+        const resolvedRemotePath = typeof resolvedPayload.path === 'string' && resolvedPayload.path.trim() !== '' ? resolvedPayload.path : args.remote_path
+        const manifest = resolvedPayload.manifest !== null && typeof resolvedPayload.manifest === 'object' && !Array.isArray(resolvedPayload.manifest)
+          ? resolvedPayload.manifest as Record<string, JsonValue>
+          : resolvedPayload
         const expectedBytes = Number(manifest.bytes)
         const expectedSha256 = typeof manifest.sha256 === 'string' ? manifest.sha256.toLowerCase() : ''
         if (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0 || expectedBytes > RDATALINUX_UPLOAD_MAX_BYTES) throw new Error('The remote file must be between 0 bytes and 100 MiB.')
@@ -277,7 +278,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
             signal: exec.signal,
             callId: ToolCallId(`r-download-chunk-${Date.now()}-${offset}`),
             name: remoteName,
-            arguments: { action: 'r.read.file.chunk', arguments: { project_id: args.project_id, path: args.remote_path, offset, length: Math.min(4_194_304, expectedBytes - offset) } },
+            arguments: { action: 'r.read.file.chunk', arguments: { project_id: args.project_id, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset) } },
             parent: exec.token,
             agent: exec.agent,
           })
@@ -306,7 +307,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
         }
         await writeFile(source, bytes)
-        return { projectId: args.project_id, localPath: requested, remotePath: args.remote_path, name: basename(source), bytes: bytes.length, sha256 }
+        return { projectId: args.project_id, localPath: requested, requestedRemotePath: args.remote_path, remotePath: resolvedRemotePath, name: basename(source), bytes: bytes.length, sha256 }
       },
     }) as any)
     this.recordsReady = this.seedBundledServers().then(() => {

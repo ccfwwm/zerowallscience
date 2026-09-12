@@ -79,7 +79,9 @@ describe('rdatalinux workspace upload bridge', () => {
         parameters: { action: { type: 'string', required: true }, arguments: { type: 'json', required: true } },
         output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
         execute: async (args: any) => {
-          const structuredContent = args.action === 'r.get.file.manifest'
+          const structuredContent = args.action === 'r.resolve.file'
+            ? { path: 'figureya/run-1/module-source/FigureYa123/example.png', manifest: { path: 'figureya/run-1/module-source/FigureYa123/example.png', bytes: bytes.length, sha256, mime_type: 'image/png' } }
+            : args.action === 'r.get.file.manifest'
             ? { path: args.arguments.path, bytes: bytes.length, sha256, mime_type: 'image/png' }
             : { path: args.arguments.path, offset: args.arguments.offset, bytes: bytes.length, eof: true, data_base64: bytes.toString('base64') }
           return { content: [{ type: 'text', text: JSON.stringify(structuredContent) }], structuredContent }
@@ -89,13 +91,13 @@ describe('rdatalinux workspace upload bridge', () => {
         signal: new AbortController().signal,
         callId: ToolCallId('workspace-download'),
         name: 'r_files',
-        arguments: { action: 'download_workspace', project_id: 'study-1', remote_path: 'figureya/run-1/plot.png', local_path: 'outputs/plot.png', confirm: true },
+        arguments: { action: 'download_workspace', project_id: 'study-1', remote_path: 'module-source/FigureYa123/example.png', local_path: 'outputs/plot.png' },
         agent: { session: { header: { cwd: root } } } as any,
       })
       expect(result.isError).toBe(false)
       expect(readFileSync(join(root, 'outputs', 'plot.png'))).toEqual(bytes)
       expect(JSON.stringify(result.isError ? {} : result.value)).not.toContain('data_base64')
-      expect((result.isError ? undefined : result.value)).toMatchObject({ localPath: 'outputs/plot.png', remotePath: 'figureya/run-1/plot.png', bytes: bytes.length, sha256 })
+      expect((result.isError ? undefined : result.value)).toMatchObject({ localPath: 'outputs/plot.png', requestedRemotePath: 'module-source/FigureYa123/example.png', remotePath: 'figureya/run-1/module-source/FigureYa123/example.png', bytes: bytes.length, sha256 })
     } finally {
       await ctx.fiber.dispose()
     }

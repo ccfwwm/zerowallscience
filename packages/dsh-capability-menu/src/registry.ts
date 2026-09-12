@@ -52,7 +52,7 @@ export const BUILT_IN_SERVER = 'built-in'
  * control plane (`capability_search`/`capability_execute`, always Resident) and the
  * reserved Code Mode presentation transport (`run_code`).
  */
-export const CATALOG_EXCLUDED_TOOLS: ReadonlySet<string> = new Set(['capability_search', 'capability_execute', 'run_code'])
+export const CATALOG_EXCLUDED_TOOLS: ReadonlySet<string> = new Set(['capability_search', 'capability_execute', 'run_code', 'mcp__rmcp__r_files'])
 
 /** Capability-stable origin metadata used by search filters and detail views. */
 export interface CapabilityOrigin {
