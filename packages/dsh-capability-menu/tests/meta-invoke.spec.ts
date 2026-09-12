@@ -334,4 +334,23 @@ describe('capability-menu-invoke', () => {
     expect(received).toEqual([{ id: 'figureya.generate.multi.volcano', args: { project_id: 'p' } }])
     expect((result.value as { detail: { target: string } }).detail.target).toBe('mcp__rmcp__r_figureya_run')
   })
+
+  it('normalizes legacy workspace action ids to the native r_files facade', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-workspace-action-'))
+    const ctx = await setup(home)
+    let received: unknown
+    ctx.tools.register(defineTool({
+      name: 'r_files',
+      description: 'workspace file facade',
+      parameters: { action: { type: 'string', required: true }, project_id: { type: 'string' }, remote_path: { type: 'string' }, local_path: { type: 'string' } },
+      output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+      async execute(args) { received = args; return { ok: true } },
+    }))
+    await ctx.capability.refresh()
+    const result = await runTool(ctx, 'capability_execute', {
+      id: 'download_workspace', kind: 'tool', args: { project_id: 'study-1', remote_path: 'figure.png', local_path: 'figure.png' },
+    })
+    expect(result.isError).toBe(false)
+    expect(received).toEqual({ action: 'download_workspace', project_id: 'study-1', remote_path: 'figure.png', local_path: 'figure.png' })
+  })
 })

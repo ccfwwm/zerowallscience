@@ -183,7 +183,10 @@ export function apply(ctx: Context, config: Config = {}): void {
       // The remote compact r_files entry is a transport endpoint. Workspace
       // upload/download must pass through ZeroWall's native r_files facade so
       // files are read or written by the Host instead of entering model context.
-      const lookupId = kind === 'tool' && id === 'mcp__rmcp__r_files' && ctx.tools.get('r_files') !== undefined ? 'r_files' : id
+      // Older capability-search responses exposed the action as the id itself;
+      // accept those two action ids and normalize them to the facade below.
+      const workspaceAction = kind === 'tool' && (id === 'download_workspace' || id === 'upload_workspace') ? id : undefined
+      const lookupId = kind === 'tool' && (id === 'mcp__rmcp__r_files' || workspaceAction !== undefined) && ctx.tools.get('r_files') !== undefined ? 'r_files' : id
       const capability = ctx.capability.get(lookupId, kind)
       if (capability === undefined) {
         const compact = ctx.get('zerowallMcp') as unknown as CompactCapabilityDirectory | undefined
@@ -240,6 +243,9 @@ export function apply(ctx: Context, config: Config = {}): void {
             },
           }
         }
+        const forwardedArgs = workspaceAction === undefined
+          ? args.args
+          : { ...(args.args !== null && typeof args.args === 'object' && !Array.isArray(args.args) ? args.args as Record<string, JsonValue> : {}), action: workspaceAction }
         // Nested execution through the official pipeline. The parent token marks
         // this as a transport sub-dispatch so code-mode collapse rules treat it
         // like a nested SDK call, and `tools/result` observers can attribute the
@@ -247,7 +253,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         const result = await ctx.tools.execute({
           callId: ToolCallId(`${exec.callId}:meta:${id}`),
           name: capability.name,
-          arguments: args.args,
+          arguments: forwardedArgs,
           signal: exec.signal,
           parent: exec.token,
           agent: exec.agent,
