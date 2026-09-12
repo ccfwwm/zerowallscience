@@ -29,7 +29,7 @@ export const BUILT_IN_SERVER = 'built-in';
  * control plane (`capability_search`/`capability_execute`, always Resident) and the
  * reserved Code Mode presentation transport (`run_code`).
  */
-export const CATALOG_EXCLUDED_TOOLS = new Set(['capability_search', 'capability_execute', 'run_code']);
+export const CATALOG_EXCLUDED_TOOLS = new Set(['capability_search', 'capability_execute', 'run_code', 'mcp__rmcp__r_files']);
 /** Validate and default the registry configuration. */
 export const Config = z.object({
     summaryMaxChars: z.number().default(160),

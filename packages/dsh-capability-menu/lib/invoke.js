@@ -127,7 +127,14 @@ export function apply(ctx, config = {}) {
             if (kind !== 'tool' && kind !== 'skill') {
                 throw new Error('capability_execute: kind must be "tool" or "skill" (the kind capability_search reported for this id)');
             }
-            const capability = ctx.capability.get(id, kind);
+            // The remote compact r_files entry is a transport endpoint. Workspace
+            // upload/download must pass through ZeroWall's native r_files facade so
+            // files are read or written by the Host instead of entering model context.
+            // Older capability-search responses exposed the action as the id itself;
+            // accept those two action ids and normalize them to the facade below.
+            const workspaceAction = kind === 'tool' && (id === 'download_workspace' || id === 'upload_workspace') ? id : undefined;
+            const lookupId = kind === 'tool' && (id === 'mcp__rmcp__r_files' || workspaceAction !== undefined) && ctx.tools.get('r_files') !== undefined ? 'r_files' : id;
+            const capability = ctx.capability.get(lookupId, kind);
             if (capability === undefined) {
                 const compact = ctx.get('zerowallMcp');
                 if (kind === 'tool' && compact !== undefined && /^(?:r|figureya|biomni|bio)\./u.test(id)) {
@@ -145,7 +152,7 @@ export function apply(ctx, config = {}) {
             // registry keeps them indexed so the management UI can list them, but the
             // model can never reach a disabled capability through capability_execute.
             const policy = ctx.get('capabilityPolicy');
-            if (policy?.classifyFor(id, kind, exec.agent) === 'disabled') {
+            if (policy?.classifyFor(lookupId, kind, exec.agent) === 'disabled') {
                 throw new Error(`capability_execute: ${kind} capability "${id}" is disabled and cannot be invoked`);
             }
             // Tool: forward to the underlying tool execution (an MCP server call or a
@@ -183,6 +190,9 @@ export function apply(ctx, config = {}) {
                         },
                     };
                 }
+                const forwardedArgs = workspaceAction === undefined
+                    ? args.args
+                    : { ...(args.args !== null && typeof args.args === 'object' && !Array.isArray(args.args) ? args.args : {}), action: workspaceAction };
                 // Nested execution through the official pipeline. The parent token marks
                 // this as a transport sub-dispatch so code-mode collapse rules treat it
                 // like a nested SDK call, and `tools/result` observers can attribute the
@@ -190,7 +200,7 @@ export function apply(ctx, config = {}) {
                 const result = await ctx.tools.execute({
                     callId: ToolCallId(`${exec.callId}:meta:${id}`),
                     name: capability.name,
-                    arguments: args.args,
+                    arguments: forwardedArgs,
                     signal: exec.signal,
                     parent: exec.token,
                     agent: exec.agent,
