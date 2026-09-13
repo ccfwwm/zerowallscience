@@ -147,8 +147,28 @@
       config:
         zeroWallDefaults: true
         tools:
-          on-demand: ['server:rmcp', 'server:zerowall_managed_bio_tools']
-          resident: ['*']
+          # Keep the model-facing surface small. MCP capabilities remain
+          # discoverable through capability_search/execute and are loaded only
+          # for the current task instead of serializing every schema on every
+          # request.
+          on-demand: ['server:*:*', 'server:rmcp', 'server:zerowall_managed_bio_tools']
+          resident:
+            - capability_search
+            - capability_execute
+            - structured_output
+            - ask_user_question
+            - bash
+            - read
+            - write
+            - edit
+            - glob
+            - grep
+            - pwsh
+            - terminal_read
+            - terminal_send
+            - terminal_create
+            - terminal_wait_for
+            - todo_write
         skills:
           on-demand: ['*']
           resident: [genui]

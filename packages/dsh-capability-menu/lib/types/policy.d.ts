@@ -125,7 +125,7 @@ export interface MatchTarget {
 /**
  * Classify a capability against compiled rules. Priority (hit stops the walk):
  * disabled-exact > disabled-wildcard > resident-exact > on-demand-exact >
- * resident-wildcard > on-demand-wildcard > default (resident). `disabled` is a
+ * on-demand server-wildcard > resident-wildcard > on-demand id-wildcard > default (resident). `disabled` is a
  * control decision, so it beats an explicit `resident` rule. Within
  * resident/on-demand an exact name beats a wildcard, so the management UI can
  * pin a single capability to a class even when a broader wildcard rule says

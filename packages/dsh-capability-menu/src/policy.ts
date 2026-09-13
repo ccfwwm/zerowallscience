@@ -223,7 +223,7 @@ function ruleMatches(rule: PolicyRule, target: MatchTarget): boolean {
 /**
  * Classify a capability against compiled rules. Priority (hit stops the walk):
  * disabled-exact > disabled-wildcard > resident-exact > on-demand-exact >
- * resident-wildcard > on-demand-wildcard > default (resident). `disabled` is a
+ * on-demand server-wildcard > resident-wildcard > on-demand id-wildcard > default (resident). `disabled` is a
  * control decision, so it beats an explicit `resident` rule. Within
  * resident/on-demand an exact name beats a wildcard, so the management UI can
  * pin a single capability to a class even when a broader wildcard rule says
@@ -251,11 +251,16 @@ export function classify(
   for (const rule of compiled.onDemand) {
     if (!rule.wildcard && ruleMatches(rule, target)) return 'on-demand'
   }
+  // A server-wide on-demand rule is the explicit escape hatch used to keep
+  // entire MCP backends out of the native request surface.
+  for (const rule of compiled.onDemand) {
+    if (rule.wildcard && rule.target === 'server' && ruleMatches(rule, target)) return 'on-demand'
+  }
   for (const rule of compiled.resident) {
     if (rule.wildcard && ruleMatches(rule, target)) return 'resident'
   }
   for (const rule of compiled.onDemand) {
-    if (rule.wildcard && ruleMatches(rule, target)) return 'on-demand'
+    if (rule.wildcard && rule.target === 'id' && ruleMatches(rule, target)) return 'on-demand'
   }
   return 'resident'
 }
@@ -356,7 +361,12 @@ export function projectAssemblyTools(
   assembly: PromptAssembly,
   service: CapabilityPolicyService,
 ): PromptAssembly {
-  const kept = assembly.tools.filter(tool => service.isResidentTool(tool.name))
+  const seen = new Set<string>()
+  const kept = assembly.tools.filter(tool => {
+    if (!service.isResidentTool(tool.name) || seen.has(tool.name)) return false
+    seen.add(tool.name)
+    return true
+  })
   if (kept.length === assembly.tools.length) return assembly
   return { ...assembly, tools: kept }
 }

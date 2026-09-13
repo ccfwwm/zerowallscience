@@ -8,6 +8,21 @@ import { serverNameOf } from '../src/registry.ts'
 import * as registry from '../src/registry.ts'
 import * as policy from '../src/policy.ts'
 
+describe('MCP exposure policy', () => {
+  it('keeps MCP wildcard rules on-demand despite a resident wildcard', () => {
+    const rules = policy.compileSet({ resident: ['*'], 'on-demand': ['server:*:*'] })
+    expect(policy.classify(rules, {
+      id: 'mcp__rmcp__r_runtime', name: 'mcp__rmcp__r_runtime',
+      server: 'rmcp', kind: 'tool', ruleKind: 'tool',
+    })).toBe('on-demand')
+  })
+
+  it('keeps native tools resident when MCP wildcard is enabled', () => {
+    const rules = policy.compileSet({ resident: ['bash'], 'on-demand': ['server:*:*'] })
+    expect(policy.classify(rules, { id: 'bash', name: 'bash', kind: 'tool', ruleKind: 'tool' })).toBe('resident')
+  })
+})
+
 async function setup(config: policy.Config = {}, registryConfig: registry.Config = {}): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
