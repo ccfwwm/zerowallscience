@@ -3,7 +3,7 @@ import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
-import { lstat, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { ToolCallId, type ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -40,6 +40,7 @@ export const RDATALINUX_R_MCP_AUTHORIZATION_ENV = 'R_PLATFORM_MCP_AUTHORIZATION'
 const ENVIRONMENT_SECRET_PREFIX = 'zerowall.environment.var.'
 const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 30_000
 const RDATALINUX_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
+const FIGUREYA_MODULE_MAX_BYTES = 250 * 1024 * 1024
 
 function figureyaSourceRequest(moduleId: unknown, sourcePath: unknown, remotePath: unknown): { moduleId: string; path: string } | undefined {
   if (typeof moduleId === 'string' && moduleId.trim() !== '') {
@@ -203,7 +204,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     } as never)
     ctx.tools.register(defineTool({
       name: 'r_files',
-      description: 'Access rdatalinux files through the compact file facade. download_workspace saves a remote project artifact or a server-installed FigureYa source/example file into the current local workspace without confirmation or base64 in the conversation. FigureYa source downloads accept module_id plus source_path, or an /opt/rdatalinux-figureya/current/... remote_path, and do not require project_id. upload_workspace requires confirm=true.',
+      description: 'Access rdatalinux files through the compact file facade. download_workspace saves a remote project artifact or a server-installed FigureYa source/example file into the current local workspace without confirmation or base64 in the conversation. download_figureya_module saves every FigureYa module artifact (PNG, HTML, README, R/Rmd, CSV/JSON, and other manifest files) into a workspace directory and returns local paths plus checksums. FigureYa source downloads accept module_id plus source_path, or an /opt/rdatalinux-figureya/current/... remote_path, and do not require project_id. upload_workspace requires confirm=true.',
       parameters: {
         action: { type: 'string', required: true },
         arguments: { type: 'json' },
@@ -222,7 +223,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
         const remoteName = 'mcp__rmcp__r_files'
         const nestedValues = args.arguments !== null && typeof args.arguments === 'object' && !Array.isArray(args.arguments) ? args.arguments : {}
         const values = { ...args, ...nestedValues } as typeof args
-        if (args.action !== 'upload_workspace' && args.action !== 'download_workspace') {
+        if (args.action !== 'upload_workspace' && args.action !== 'download_workspace' && args.action !== 'download_figureya_module') {
           if (service.ctx.tools.get(remoteName) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before accessing project files.')
           const nested = await service.ctx.tools.execute({
             signal: exec.signal,
@@ -254,6 +255,119 @@ export class ZeroWallMcpService extends TypertRemoteService {
         const source = resolve(workspace, requested)
         const containment = relative(workspace, source)
         if (containment === '..' || containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(containment)) throw new Error('local_path escapes the current workspace.')
+        if (args.action === 'download_figureya_module') {
+          if (typeof values.module_id !== 'string' || values.module_id.trim() === '') throw new Error('module_id is required for download_figureya_module.')
+          const moduleId = values.module_id.trim()
+          const targetRoot = source
+          const isOutsideWorkspace = (candidate: string): boolean => {
+            const candidateRelative = relative(workspace, candidate)
+            return candidateRelative === '..' || candidateRelative.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(candidateRelative)
+          }
+          const ensureWorkspaceDirectory = async (directory: string): Promise<void> => {
+            if (isOutsideWorkspace(directory)) throw new Error('FigureYa artifact path resolves outside the current workspace.')
+            const components = relative(workspace, directory).split(/[\\/]/u).filter(Boolean)
+            let current = workspace
+            for (const component of components) {
+              current = join(current, component)
+              try {
+                const info = await lstat(current)
+                if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('FigureYa artifact directories must not be symbolic links.')
+              } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+                await mkdir(current)
+              }
+              const resolvedDirectory = await realpath(current)
+              if (isOutsideWorkspace(resolvedDirectory)) throw new Error('FigureYa artifact path resolves outside the current workspace.')
+            }
+          }
+          await ensureWorkspaceDirectory(targetRoot)
+          const catalogTool = 'mcp__rmcp__r_figureya_catalog'
+          if (service.ctx.tools.get(catalogTool) === undefined) throw new Error('rdatalinux FigureYa catalog tool is not active; reload the connection before downloading a module.')
+          const callCatalog = async (action: string, actionArguments: Record<string, JsonValue>): Promise<Record<string, JsonValue>> => {
+            const result = await service.ctx.tools.execute({ signal: exec.signal, callId: ToolCallId(`figureya-module-${Date.now()}-${Math.random().toString(16).slice(2)}`), name: catalogTool, arguments: { action, arguments: actionArguments }, parent: exec.token, agent: exec.agent })
+            return service.compactPayload(result, `FigureYa ${action}`)
+          }
+          const listing = await callCatalog('figureya.list.files', { module_id: moduleId })
+          const rawEntries: JsonValue[] = []
+          const collectEntries = (value: JsonValue): void => {
+            if (Array.isArray(value)) { for (const item of value) collectEntries(item); return }
+            if (value === null || typeof value !== 'object') return
+            const object = value as Record<string, JsonValue>
+            if (typeof object.path === 'string' || typeof object.remote_path === 'string' || typeof object.relative_path === 'string' || typeof object.name === 'string') { rawEntries.push(object); return }
+            for (const key of ['files', 'artifacts', 'list_files', 'manifest']) collectEntries(object[key] ?? null)
+          }
+          collectEntries(listing.files ?? listing)
+          if (rawEntries.length === 0) throw new Error(`FigureYa module ${moduleId} contains no downloadable files.`)
+          const seen = new Set<string>()
+          const files: Array<{ path: string; localPath: string; mimeType?: string; bytes: number; sha256: string }> = []
+          let totalBytes = 0
+          for (const raw of rawEntries) {
+            if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue
+            const item = raw as Record<string, JsonValue>
+            const remotePath = [item.path, item.remote_path, item.relative_path, item.name].find(value => typeof value === 'string' && value.trim() !== '')
+            if (typeof remotePath !== 'string') continue
+            const normalizedPath = remotePath.trim().replaceAll('\\', '/').replace(/^\/+/u, '')
+            if (normalizedPath === '' || normalizedPath.split('/').some(part => part === '..' || part === '.')) throw new Error(`FigureYa manifest contains an unsafe path: ${remotePath}`)
+            if (seen.has(normalizedPath)) continue
+            seen.add(normalizedPath)
+            const localModulePath = normalizedPath.startsWith(`${moduleId}/`) ? normalizedPath.slice(moduleId.length + 1) : normalizedPath
+            if (localModulePath === '') throw new Error(`FigureYa manifest contains an unsafe path: ${remotePath}`)
+            const fileManifest = await callCatalog('figureya.source.file.manifest', { module_id: moduleId, path: normalizedPath })
+            const manifest = fileManifest.manifest !== null && typeof fileManifest.manifest === 'object' && !Array.isArray(fileManifest.manifest) ? fileManifest.manifest as Record<string, JsonValue> : fileManifest
+            const expectedBytes = Number(manifest.bytes ?? item.bytes ?? item.size)
+            const expectedSha256 = typeof manifest.sha256 === 'string' ? manifest.sha256.toLowerCase() : typeof item.sha256 === 'string' ? item.sha256.toLowerCase() : ''
+            if (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0 || expectedBytes > RDATALINUX_UPLOAD_MAX_BYTES) throw new Error(`FigureYa file ${normalizedPath} exceeds the 100 MiB per-file limit.`)
+            if (!/^[a-f0-9]{64}$/u.test(expectedSha256)) throw new Error(`FigureYa file ${normalizedPath} has no valid SHA-256.`)
+            totalBytes += expectedBytes
+            if (totalBytes > FIGUREYA_MODULE_MAX_BYTES) throw new Error('The FigureYa module exceeds the 250 MiB total artifact limit.')
+            const destination = resolve(targetRoot, localModulePath)
+            const destinationContainment = relative(targetRoot, destination)
+            if (destinationContainment === '..' || destinationContainment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(destinationContainment)) throw new Error(`FigureYa manifest contains an unsafe path: ${normalizedPath}`)
+            const destinationParent = dirname(destination)
+            await ensureWorkspaceDirectory(destinationParent)
+            const part = `${destination}.part`
+            try {
+              const existing = await lstat(destination)
+              if (existing.isSymbolicLink() || !existing.isFile()) throw new Error(`FigureYa destination is not a regular file: ${normalizedPath}`)
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+            }
+            try {
+              await lstat(part)
+              throw new Error(`FigureYa temporary file already exists: ${normalizedPath}.part`)
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+            }
+            try {
+              let offset = 0
+              const chunks: Buffer[] = []
+              while (offset < expectedBytes) {
+                const chunk = await callCatalog('figureya.read.source.file.chunk', {
+                  module_id: moduleId,
+                  path: typeof fileManifest.path === 'string' ? fileManifest.path : normalizedPath,
+                  offset,
+                  length: Math.min(4_194_304, expectedBytes - offset),
+                  internal_host_download: true,
+                })
+                if (typeof chunk.data_base64 !== 'string' || chunk.data_base64 === '') throw new Error(`The FigureYa file chunk at offset ${offset} has no data.`)
+                const bytes = Buffer.from(chunk.data_base64, 'base64')
+                if (bytes.length < 1 || offset + bytes.length > expectedBytes) throw new Error(`The FigureYa file chunk at offset ${offset} has an invalid length.`)
+                chunks.push(bytes)
+                offset += bytes.length
+              }
+              const bytes = Buffer.concat(chunks)
+              const sha256 = createHash('sha256').update(bytes).digest('hex')
+              if (bytes.length !== expectedBytes || sha256 !== expectedSha256) throw new Error(`The downloaded FigureYa file ${normalizedPath} does not match its manifest.`)
+              await writeFile(part, bytes)
+              await rename(part, destination)
+              files.push({ path: normalizedPath, localPath: relative(workspace, destination).replaceAll('\\', '/'), ...(typeof manifest.mime_type === 'string' ? { mimeType: manifest.mime_type } : typeof manifest.mimeType === 'string' ? { mimeType: manifest.mimeType } : {}), bytes: bytes.length, sha256 })
+            } finally {
+              await unlink(part).catch(() => undefined)
+            }
+          }
+          if (files.length === 0) throw new Error(`FigureYa module ${moduleId} manifest contains no downloadable files.`)
+          return { moduleId, localRoot: relative(workspace, targetRoot).replaceAll('\\', '/'), files, totalBytes }
+        }
         if (args.action === 'upload_workspace') {
           if (service.ctx.tools.get(remoteName) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before uploading project files.')
           const info = await lstat(source)
@@ -311,7 +425,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
             name: downloadTool,
             arguments: sourceRequest === undefined
               ? { action: 'r.read.file.chunk', arguments: { project_id: values.project_id, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset) } }
-              : { action: 'figureya.read.source.file.chunk', arguments: { module_id: sourceRequest.moduleId, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset) } },
+              : { action: 'figureya.read.source.file.chunk', arguments: { module_id: sourceRequest.moduleId, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset), internal_host_download: true } },
             parent: exec.token,
             agent: exec.agent,
           })

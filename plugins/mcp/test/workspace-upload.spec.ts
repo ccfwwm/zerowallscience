@@ -159,6 +159,87 @@ describe('rdatalinux workspace upload bridge', () => {
     }
   })
 
+  it('downloads every server-installed FigureYa module file through the compact catalog contract', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-figureya-module-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.DSH_HOME = join(root, 'harness')
+    process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+    const moduleId = 'FigureYa999Complete'
+    const contents = new Map<string, Buffer>([
+      [`${moduleId}/plot.png`, Buffer.from([0x89, 0x50, 0x4e, 0x47])],
+      [`${moduleId}/report.html`, Buffer.from('<h1>FigureYa report</h1>')],
+      [`${moduleId}/README.md`, Buffer.from('# FigureYa introduction\n')],
+      [`${moduleId}/${moduleId}.R`, Buffer.from('plot(1:3)\n')],
+      [`${moduleId}/${moduleId}.Rmd`, Buffer.from('---\ntitle: FigureYa\n---\n')],
+      [`${moduleId}/data/example.csv`, Buffer.from('gene,value\nTP53,1\n')],
+      [`${moduleId}/data/schema.json`, Buffer.from('{"type":"object"}\n')],
+    ])
+    const manifests = [...contents.entries()].map(([path, bytes]) => ({
+      path,
+      bytes: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      mime_type: path.endsWith('.png') ? 'image/png' : path.endsWith('.html') ? 'text/html' : path.endsWith('.json') ? 'application/json' : 'text/plain',
+    }))
+    const forwarded: any[] = []
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(ZeroWallMcpService)
+      ctx.tools.register(defineTool({
+        name: 'mcp__rmcp__r_figureya_catalog',
+        description: 'FigureYa compact catalog fixture',
+        parameters: { action: { type: 'string', required: true }, arguments: { type: 'json' } },
+        output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+        execute: async (args: any) => {
+          forwarded.push(args)
+          const path = args.arguments?.path as string | undefined
+          const bytes = path === undefined ? undefined : contents.get(path)
+          const manifest = path === undefined ? undefined : manifests.find(item => item.path === path)
+          const structuredContent = args.action === 'figureya.list.files'
+            ? { module_id: moduleId, files: manifests }
+            : args.action === 'figureya.source.file.manifest'
+            ? manifest
+            : bytes === undefined
+            ? undefined
+            : { path, offset: args.arguments.offset, bytes: bytes.length, total_bytes: bytes.length, eof: true, data_base64: bytes.toString('base64') }
+          if (structuredContent === undefined) throw new Error(`Unexpected FigureYa fixture action: ${args.action}`)
+          // Exercise the wrapper form emitted by some compact MCP transports.
+          return { content: [{ type: 'text', text: JSON.stringify(structuredContent) }], value: { content: [{ type: 'text', text: JSON.stringify(structuredContent) }] } }
+        },
+      }))
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal,
+        callId: ToolCallId('figureya-module-download'),
+        name: 'r_files',
+        arguments: { action: 'download_figureya_module', module_id: moduleId, local_path: `figureya/${moduleId}` },
+        agent: { session: { header: { cwd: root } } } as any,
+      })
+      expect(result.isError).toBe(false)
+      for (const [path, bytes] of contents) expect(readFileSync(join(root, 'figureya', moduleId, path.slice(moduleId.length + 1)))).toEqual(bytes)
+      const value = result.isError ? undefined : result.value as any
+      expect(value).toMatchObject({ moduleId, localRoot: `figureya/${moduleId}`, totalBytes: [...contents.values()].reduce((total, bytes) => total + bytes.length, 0) })
+      expect(value.files).toHaveLength(contents.size)
+      expect(value.files).toEqual(expect.arrayContaining([
+        expect.objectContaining({ path: `${moduleId}/plot.png`, localPath: `figureya/${moduleId}/plot.png`, mimeType: 'image/png' }),
+        expect.objectContaining({ path: `${moduleId}/report.html`, mimeType: 'text/html' }),
+        expect.objectContaining({ path: `${moduleId}/README.md` }),
+        expect.objectContaining({ path: `${moduleId}/${moduleId}.R` }),
+        expect.objectContaining({ path: `${moduleId}/${moduleId}.Rmd` }),
+        expect.objectContaining({ path: `${moduleId}/data/example.csv` }),
+        expect.objectContaining({ path: `${moduleId}/data/schema.json`, mimeType: 'application/json' }),
+      ]))
+      expect(JSON.stringify(value)).not.toContain('data_base64')
+      expect(existsSync(join(root, 'figureya', moduleId, 'plot.png.part'))).toBe(false)
+      expect(forwarded.map(item => item.action)).toContain('figureya.list.files')
+      expect(forwarded.every(item => item.action === 'figureya.list.files' || item.action === 'figureya.source.file.manifest' || item.action === 'figureya.read.source.file.chunk')).toBe(true)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('rejects a download path outside the workspace before creating directories', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-r-download-boundary-'))
     roots.push(root)
