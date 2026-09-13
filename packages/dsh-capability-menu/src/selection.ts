@@ -1,5 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session'
 import { createScope, scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { CapabilityPolicyService } from './policy.ts'
@@ -14,6 +15,7 @@ declare module '@deepseek-ai/dsh-session/types' {
 
 interface Selection { tools: Set<string>; disabled: Set<string>; onDemand: Set<string> }
 type Tier = 'resident' | 'on-demand' | 'disabled'
+const LEGACY_R_FILES_TOOL = 'mcp__rmcp__r_files'
 
 /** One durable selection per session, applied to both schema projection and execution. */
 export function createSelections(ctx: Context, policy: CapabilityPolicyService) {
@@ -38,6 +40,11 @@ export function createSelections(ctx: Context, policy: CapabilityPolicyService) 
   }
   const visible = (name: string, agent?: Agent): boolean => {
     if (policy.isDisabledTool(name)) return false
+    // Old conversation turns can retain this transport-qualified name after
+    // the compact surface moved workspace transfers to the native r_files
+    // facade. A scoped shadow forwards those calls without publishing the old
+    // name in new model request schemas.
+    if (name === LEGACY_R_FILES_TOOL && agent !== undefined && restrictions.has(agent)) return true
     if (policy.metaTools().includes(name)) return true
     if (agent === undefined) return policy.isResidentTool(name)
     const state = get(agent)
@@ -61,6 +68,22 @@ export function createSelections(ctx: Context, policy: CapabilityPolicyService) 
     prior?.dispose()
     const scope = prior === undefined ? createScope(ctx, agent) : undefined
     const scoped = prior?.ctx ?? scope!.ctx
+    if (prior === undefined) {
+      const facade = ctx.tools.get('r_files')
+      if (facade !== undefined) {
+        scoped.tools.register({
+          ...facade,
+          name: LEGACY_R_FILES_TOOL,
+          description: 'Compatibility-only workspace file forwarding endpoint.',
+          async execute(args, exec) {
+            return facade.execute(args, {
+              ...exec,
+              callId: ToolCallId(`${exec.callId}:compat:r-files`),
+            })
+          },
+        })
+      }
+    }
     restrictions.set(agent, { ctx: scoped, allow, dispose: scoped.tools.restrict({ allow }), disposeScope: prior?.disposeScope ?? scope!.dispose })
   }
   const update = (agent: Agent, changes: readonly { name: string; kind: 'tool' | 'skill'; tier: Tier }[]) => {

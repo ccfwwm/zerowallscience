@@ -72,6 +72,38 @@ it('keeps the first request small and executes an exact capability without legac
   console.log(JSON.stringify({ catalogTools: 172, catalogSchemaBytes: Buffer.byteLength(JSON.stringify(ctx.tools.schemas())), initialSchemaBytes: Buffer.byteLength(JSON.stringify(before.tools)), enabledSchemaBytes: Buffer.byteLength(JSON.stringify(enabled.tools)) }))
 })
 
+it('forwards stale direct rmcp file calls to the native facade without publishing the alias', async () => {
+  const ctx = new Context()
+  roots.push(ctx)
+  await ctx.plugin(SystemPrompt)
+  await ctx.plugin(ToolRuntime)
+  await ctx.plugin(SkillRegistry)
+  await ctx.plugin(registry, { catalogFile: '' })
+  await ctx.plugin(policy, { zeroWallDefaults: true })
+  await ctx.plugin(invoke)
+  await ctx.plugin(search)
+  let received: unknown
+  ctx.tools.register(defineTool({
+    name: 'r_files',
+    description: 'native workspace bridge',
+    parameters: { action: { type: 'string', required: true }, local_path: { type: 'string' } },
+    output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    async execute(args) { received = args; return { ok: true } },
+  }))
+  const owner = agent(ctx)
+  const assembly = await ctx.systemPrompt.assemble({ scope: owner })
+  expect(assembly.tools.some(tool => tool.name === 'mcp__rmcp__r_files')).toBe(false)
+  const result = await ctx.tools.execute({
+    agent: owner,
+    name: 'mcp__rmcp__r_files',
+    arguments: { action: 'download_workspace', local_path: 'figure.png' },
+    callId: ToolCallId('legacy-r-files'),
+    signal: new AbortController().signal,
+  })
+  expect(result.isError, JSON.stringify(result)).toBe(false)
+  expect(received).toEqual({ action: 'download_workspace', local_path: 'figure.png' })
+})
+
 it('hides a historical skill catalog from the request while retaining its log', async () => {
   const ctx = new Context()
   roots.push(ctx)

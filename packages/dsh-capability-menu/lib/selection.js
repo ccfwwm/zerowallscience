@@ -1,6 +1,8 @@
+import { ToolCallId } from '@deepseek-ai/dsh-llm';
 import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session';
 import { createScope, scopeParentOf } from '@deepseek-ai/dsh-scope';
 export const SELECTION_EVENT = 'zerowall/capabilities/selection';
+const LEGACY_R_FILES_TOOL = 'mcp__rmcp__r_files';
 /** One durable selection per session, applied to both schema projection and execution. */
 export function createSelections(ctx, policy) {
     ;
@@ -31,6 +33,12 @@ export function createSelections(ctx, policy) {
     const visible = (name, agent) => {
         if (policy.isDisabledTool(name))
             return false;
+        // Old conversation turns can retain this transport-qualified name after
+        // the compact surface moved workspace transfers to the native r_files
+        // facade. A scoped shadow forwards those calls without publishing the old
+        // name in new model request schemas.
+        if (name === LEGACY_R_FILES_TOOL && agent !== undefined && restrictions.has(agent))
+            return true;
         if (policy.metaTools().includes(name))
             return true;
         if (agent === undefined)
@@ -58,6 +66,22 @@ export function createSelections(ctx, policy) {
         prior?.dispose();
         const scope = prior === undefined ? createScope(ctx, agent) : undefined;
         const scoped = prior?.ctx ?? scope.ctx;
+        if (prior === undefined) {
+            const facade = ctx.tools.get('r_files');
+            if (facade !== undefined) {
+                scoped.tools.register({
+                    ...facade,
+                    name: LEGACY_R_FILES_TOOL,
+                    description: 'Compatibility-only workspace file forwarding endpoint.',
+                    async execute(args, exec) {
+                        return facade.execute(args, {
+                            ...exec,
+                            callId: ToolCallId(`${exec.callId}:compat:r-files`),
+                        });
+                    },
+                });
+            }
+        }
         restrictions.set(agent, { ctx: scoped, allow, dispose: scoped.tools.restrict({ allow }), disposeScope: prior?.disposeScope ?? scope.dispose });
     };
     const update = (agent, changes) => {

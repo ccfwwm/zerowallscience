@@ -41,6 +41,20 @@ const ENVIRONMENT_SECRET_PREFIX = 'zerowall.environment.var.'
 const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 30_000
 const RDATALINUX_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
 
+function figureyaSourceRequest(moduleId: unknown, sourcePath: unknown, remotePath: unknown): { moduleId: string; path: string } | undefined {
+  if (typeof moduleId === 'string' && moduleId.trim() !== '') {
+    const path = typeof sourcePath === 'string' && sourcePath.trim() !== '' ? sourcePath.trim() : typeof remotePath === 'string' ? remotePath.trim() : ''
+    return { moduleId: moduleId.trim(), path }
+  }
+  if (typeof remotePath !== 'string') return undefined
+  const normalized = remotePath.trim().replaceAll('\\', '/')
+  const absolute = /^\/opt\/rdatalinux-figureya\/current\/([^/]+)\/(.+)$/u.exec(normalized)
+  const relative = /^(FigureYa[^/]+)\/(.+)$/u.exec(normalized)
+  const match = absolute ?? relative
+  if (match?.[1] === undefined || match[2] === undefined) return undefined
+  return { moduleId: match[1], path: `${match[1]}/${match[2]}` }
+}
+
 /** Resolve the AI Cloud group secret key without accepting arbitrary providers. */
 export function aiCloudCredentialKey(provider: string): string | undefined {
   const match = /^zerowall-ai-cloud-([1-9]\d*)(?:-(?:responses|messages|completions))?$/u.exec(provider)
@@ -189,11 +203,13 @@ export class ZeroWallMcpService extends TypertRemoteService {
     } as never)
     ctx.tools.register(defineTool({
       name: 'r_files',
-      description: 'Access rdatalinux project files through the compact file facade. Use download_workspace to save a remote project or FigureYa artifact into the current local workspace without confirmation or base64 in the conversation. upload_workspace requires confirm=true. Other exact actions are forwarded to the remote r_files tool.',
+      description: 'Access rdatalinux files through the compact file facade. download_workspace saves a remote project artifact or a server-installed FigureYa source/example file into the current local workspace without confirmation or base64 in the conversation. FigureYa source downloads accept module_id plus source_path, or an /opt/rdatalinux-figureya/current/... remote_path, and do not require project_id. upload_workspace requires confirm=true.',
       parameters: {
         action: { type: 'string', required: true },
         arguments: { type: 'json' },
         project_id: { type: 'string' },
+        module_id: { type: 'string' },
+        source_path: { type: 'string' },
         local_path: { type: 'string' },
         remote_path: { type: 'string' },
         confirm: { type: 'boolean' },
@@ -202,15 +218,17 @@ export class ZeroWallMcpService extends TypertRemoteService {
         schema: { type: 'object', additionalProperties: true },
         render: (_args: unknown, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      async execute(args: { action: string; arguments?: Record<string, JsonValue>; project_id?: string; local_path?: string; remote_path?: string; confirm?: boolean }, exec: any) {
+      async execute(args: { action: string; arguments?: JsonValue; project_id?: string; module_id?: string; source_path?: string; local_path?: string; remote_path?: string; confirm?: boolean }, exec: any) {
         const remoteName = 'mcp__rmcp__r_files'
-        if (service.ctx.tools.get(remoteName) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before accessing project files.')
+        const nestedValues = args.arguments !== null && typeof args.arguments === 'object' && !Array.isArray(args.arguments) ? args.arguments : {}
+        const values = { ...args, ...nestedValues } as typeof args
         if (args.action !== 'upload_workspace' && args.action !== 'download_workspace') {
+          if (service.ctx.tools.get(remoteName) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before accessing project files.')
           const nested = await service.ctx.tools.execute({
             signal: exec.signal,
             callId: ToolCallId(`r-files-${Date.now()}`),
             name: remoteName,
-            arguments: { action: args.action, arguments: args.arguments ?? {} },
+            arguments: { action: args.action, arguments: nestedValues },
             parent: exec.token,
             agent: exec.agent,
           })
@@ -220,17 +238,24 @@ export class ZeroWallMcpService extends TypertRemoteService {
           }
           return nested.value as Record<string, JsonValue>
         }
-        if (args.action === 'upload_workspace' && args.confirm !== true) throw new Error('Uploading a workspace file requires confirm=true.')
-        if (typeof args.project_id !== 'string' || typeof args.local_path !== 'string' || typeof args.remote_path !== 'string') throw new Error(`project_id, local_path, and remote_path are required for ${args.action}.`)
+        if (args.action === 'upload_workspace' && values.confirm !== true) throw new Error('Uploading a workspace file requires confirm=true.')
+        const sourceRequest = args.action === 'download_workspace' ? figureyaSourceRequest(values.module_id, values.source_path, values.remote_path) : undefined
+        if (typeof values.local_path !== 'string' || (args.action === 'upload_workspace' && (typeof values.project_id !== 'string' || typeof values.remote_path !== 'string'))
+          || (args.action === 'download_workspace' && sourceRequest === undefined && (typeof values.project_id !== 'string' || typeof values.remote_path !== 'string'))) {
+          throw new Error(sourceRequest === undefined
+            ? `project_id, local_path, and remote_path are required for ${args.action}. Server FigureYa sources may omit project_id when module_id/source_path or an /opt/rdatalinux-figureya/current/... remote_path is provided.`
+            : `local_path is required for ${args.action}.`)
+        }
         const sessionCwd = exec.agent?.session.header.cwd
         if (typeof sessionCwd !== 'string' || sessionCwd.trim() === '') throw new Error('The current session has no workspace directory.')
         const workspace = await realpath(resolve(sessionCwd))
-        const requested = String(args.local_path ?? '').trim()
+        const requested = String(values.local_path ?? '').trim()
         if (requested === '' || isAbsolute(requested)) throw new Error('local_path must be a relative path inside the current workspace.')
         const source = resolve(workspace, requested)
         const containment = relative(workspace, source)
         if (containment === '..' || containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(containment)) throw new Error('local_path escapes the current workspace.')
         if (args.action === 'upload_workspace') {
+          if (service.ctx.tools.get(remoteName) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before uploading project files.')
           const info = await lstat(source)
           if (!info.isFile() || info.isSymbolicLink()) throw new Error('local_path must be a regular, non-symbolic-link file.')
           const resolvedSource = await realpath(source)
@@ -243,7 +268,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
             signal: exec.signal,
             callId: ToolCallId(`r-upload-workspace-${Date.now()}`),
             name: remoteName,
-            arguments: { action: 'r.upload.file', arguments: { project_id: args.project_id, path: args.remote_path, data_base64: bytes.toString('base64'), confirm: true } },
+            arguments: { action: 'r.upload.file', arguments: { project_id: values.project_id, path: values.remote_path, data_base64: bytes.toString('base64'), confirm: true } },
             parent: exec.token,
             agent: exec.agent,
           })
@@ -251,19 +276,25 @@ export class ZeroWallMcpService extends TypertRemoteService {
             const message = nested.content.map((block: ContentBlock) => block.type === 'text' ? block.text : '').filter(Boolean).join('\n')
             throw new Error(message || 'rdatalinux R MCP upload failed.')
           }
-          return { projectId: args.project_id, localPath: requested, remotePath: args.remote_path, name: basename(source), bytes: bytes.length, sha256, remote: nested.value as JsonValue }
+          return { projectId: values.project_id!, localPath: requested, remotePath: values.remote_path!, name: basename(source), bytes: bytes.length, sha256, remote: nested.value as JsonValue }
         }
 
+        const downloadTool = sourceRequest === undefined ? remoteName : 'mcp__rmcp__r_figureya_catalog'
+        if (service.ctx.tools.get(downloadTool) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before downloading files.')
         const resolvedResult = await service.ctx.tools.execute({
           signal: exec.signal,
           callId: ToolCallId(`r-download-resolve-${Date.now()}`),
-          name: remoteName,
-          arguments: { action: 'r.resolve.file', arguments: { project_id: args.project_id, path: args.remote_path } },
+          name: downloadTool,
+          arguments: sourceRequest === undefined
+            ? { action: 'r.resolve.file', arguments: { project_id: values.project_id, path: values.remote_path } }
+            : { action: 'figureya.source.file.manifest', arguments: { module_id: sourceRequest.moduleId, path: sourceRequest.path } },
           parent: exec.token,
           agent: exec.agent,
         })
         const resolvedPayload = service.compactPayload(resolvedResult, 'rdatalinux file resolver')
-        const resolvedRemotePath = typeof resolvedPayload.path === 'string' && resolvedPayload.path.trim() !== '' ? resolvedPayload.path : args.remote_path
+        const resolvedRemotePath = typeof resolvedPayload.path === 'string' && resolvedPayload.path.trim() !== ''
+          ? resolvedPayload.path
+          : sourceRequest?.path ?? values.remote_path ?? ''
         const manifest = resolvedPayload.manifest !== null && typeof resolvedPayload.manifest === 'object' && !Array.isArray(resolvedPayload.manifest)
           ? resolvedPayload.manifest as Record<string, JsonValue>
           : resolvedPayload
@@ -277,8 +308,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
           const chunkResult = await service.ctx.tools.execute({
             signal: exec.signal,
             callId: ToolCallId(`r-download-chunk-${Date.now()}-${offset}`),
-            name: remoteName,
-            arguments: { action: 'r.read.file.chunk', arguments: { project_id: args.project_id, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset) } },
+            name: downloadTool,
+            arguments: sourceRequest === undefined
+              ? { action: 'r.read.file.chunk', arguments: { project_id: values.project_id, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset) } }
+              : { action: 'figureya.read.source.file.chunk', arguments: { module_id: sourceRequest.moduleId, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset) } },
             parent: exec.token,
             agent: exec.agent,
           })
@@ -307,7 +340,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
         }
         await writeFile(source, bytes)
-        return { projectId: args.project_id, localPath: requested, requestedRemotePath: args.remote_path, remotePath: resolvedRemotePath, name: basename(source), bytes: bytes.length, sha256 }
+        return sourceRequest === undefined
+          ? { projectId: values.project_id!, localPath: requested, requestedRemotePath: values.remote_path!, remotePath: resolvedRemotePath, name: basename(source), bytes: bytes.length, sha256 }
+          : { moduleId: sourceRequest.moduleId, sourcePath: resolvedRemotePath, localPath: requested, name: basename(source), bytes: bytes.length, sha256 }
       },
     }) as any)
     this.recordsReady = this.seedBundledServers().then(() => {

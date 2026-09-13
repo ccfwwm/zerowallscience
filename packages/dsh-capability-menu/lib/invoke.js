@@ -8,6 +8,24 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { isModelInvocable, renderSkillContent } from '@deepseek-ai/dsh-skill';
 import { MCP_ID_PREFIX } from "./registry.js";
+function normalizeCompactToolArguments(name, value) {
+    if (!/^mcp__rmcp__(?:r_|biomni_)/u.test(name) || value === null || typeof value !== 'object' || Array.isArray(value))
+        return value;
+    const source = value;
+    if (typeof source.action !== 'string')
+        return value;
+    const nested = source.arguments !== null && typeof source.arguments === 'object' && !Array.isArray(source.arguments)
+        ? source.arguments
+        : {};
+    const { action, arguments: _arguments, query, detail, limit, ...flattened } = source;
+    return {
+        action,
+        arguments: { ...flattened, ...nested },
+        ...(query === undefined ? {} : { query }),
+        ...(detail === undefined ? {} : { detail }),
+        ...(limit === undefined ? {} : { limit }),
+    };
+}
 export const name = 'capability-menu-invoke';
 export const inject = ['capability', 'capabilityPolicy', 'tools', 'skills'];
 /** Validate and default the tool configuration. */
@@ -191,7 +209,7 @@ export function apply(ctx, config = {}) {
                     };
                 }
                 const forwardedArgs = workspaceAction === undefined
-                    ? args.args
+                    ? normalizeCompactToolArguments(capability.name, args.args)
                     : { ...(args.args !== null && typeof args.args === 'object' && !Array.isArray(args.args) ? args.args : {}), action: workspaceAction };
                 // Nested execution through the official pipeline. The parent token marks
                 // this as a transport sub-dispatch so code-mode collapse rules treat it

@@ -18,6 +18,23 @@ interface CompactCapabilityDirectory {
   executeCompactCapability(id: string, args: unknown, exec: ToolRunContext): Promise<{ target: string; content: ContentBlock[]; value: unknown }>
 }
 
+function normalizeCompactToolArguments(name: string, value: unknown): unknown {
+  if (!/^mcp__rmcp__(?:r_|biomni_)/u.test(name) || value === null || typeof value !== 'object' || Array.isArray(value)) return value
+  const source = value as Record<string, JsonValue>
+  if (typeof source.action !== 'string') return value
+  const nested = source.arguments !== null && typeof source.arguments === 'object' && !Array.isArray(source.arguments)
+    ? source.arguments as Record<string, JsonValue>
+    : {}
+  const { action, arguments: _arguments, query, detail, limit, ...flattened } = source
+  return {
+    action,
+    arguments: { ...flattened, ...nested },
+    ...(query === undefined ? {} : { query }),
+    ...(detail === undefined ? {} : { detail }),
+    ...(limit === undefined ? {} : { limit }),
+  }
+}
+
 export const name = 'capability-menu-invoke'
 export const inject = ['capability', 'capabilityPolicy', 'tools', 'skills']
 
@@ -244,7 +261,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           }
         }
         const forwardedArgs = workspaceAction === undefined
-          ? args.args
+          ? normalizeCompactToolArguments(capability.name, args.args)
           : { ...(args.args !== null && typeof args.args === 'object' && !Array.isArray(args.args) ? args.args as Record<string, JsonValue> : {}), action: workspaceAction }
         // Nested execution through the official pipeline. The parent token marks
         // this as a transport sub-dispatch so code-mode collapse rules treat it

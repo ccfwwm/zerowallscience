@@ -103,6 +103,62 @@ describe('rdatalinux workspace upload bridge', () => {
     }
   })
 
+  it('downloads a server-installed FigureYa file without a project id', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-figureya-source-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.DSH_HOME = join(root, 'harness')
+    process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+    const bytes = Buffer.from('---\ntitle: Prognostic\n---\n')
+    const sha256 = createHash('sha256').update(bytes).digest('hex')
+    const forwarded: any[] = []
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(ZeroWallMcpService)
+      ctx.tools.register(defineTool({
+        name: 'mcp__rmcp__r_files',
+        description: 'project files fixture',
+        parameters: { action: { type: 'string', required: true }, arguments: { type: 'json' } },
+        output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+        execute: async () => ({ ok: true }),
+      }))
+      ctx.tools.register(defineTool({
+        name: 'mcp__rmcp__r_figureya_catalog',
+        description: 'FigureYa source fixture',
+        parameters: { action: { type: 'string', required: true }, arguments: { type: 'json' } },
+        output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+        execute: async (args: any) => {
+          forwarded.push(args)
+          const structuredContent = args.action === 'figureya.source.file.manifest'
+            ? { module_id: 'FigureYa128Prognostic', path: 'FigureYa128Prognostic/FigureYa128Prognostic.Rmd', bytes: bytes.length, sha256, mime_type: 'application/octet-stream' }
+            : { offset: args.arguments.offset, bytes: bytes.length, eof: true, data_base64: bytes.toString('base64') }
+          return { content: [{ type: 'text', text: JSON.stringify(structuredContent) }], structuredContent }
+        },
+      }))
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal,
+        callId: ToolCallId('figureya-source-download'),
+        name: 'r_files',
+        arguments: {
+          action: 'download_workspace',
+          remote_path: '/opt/rdatalinux-figureya/current/FigureYa128Prognostic/FigureYa128Prognostic.Rmd',
+          local_path: 'figureya/FigureYa128Prognostic.Rmd',
+        },
+        agent: { session: { header: { cwd: root } } } as any,
+      })
+      expect(result.isError).toBe(false)
+      expect(readFileSync(join(root, 'figureya', 'FigureYa128Prognostic.Rmd'))).toEqual(bytes)
+      expect(forwarded.map(item => item.action)).toEqual(['figureya.source.file.manifest', 'figureya.read.source.file.chunk'])
+      expect(JSON.stringify(result.isError ? {} : result.value)).not.toContain('data_base64')
+      expect((result.isError ? undefined : result.value)).toMatchObject({ moduleId: 'FigureYa128Prognostic', bytes: bytes.length, sha256 })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('rejects a download path outside the workspace before creating directories', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-r-download-boundary-'))
     roots.push(root)

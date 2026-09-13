@@ -353,4 +353,27 @@ describe('capability-menu-invoke', () => {
     expect(result.isError).toBe(false)
     expect(received).toEqual({ action: 'download_workspace', project_id: 'study-1', remote_path: 'figure.png', local_path: 'figure.png' })
   })
+
+  it('nests flattened compact MCP arguments before dispatch', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-compact-args-'))
+    const ctx = await setup(home)
+    let received: unknown
+    ctx.tools.register(defineTool({
+      name: 'mcp__rmcp__r_figureya_catalog',
+      description: 'FigureYa compact catalog',
+      parameters: { action: { type: 'string', required: true }, arguments: { type: 'json' } },
+      output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+      async execute(args) { received = args; return { ok: true } },
+    }))
+    await ctx.capability.refresh()
+    const result = await runTool(ctx, 'capability_execute', {
+      id: 'mcp__rmcp__r_figureya_catalog', kind: 'tool',
+      args: { action: 'read_source', module_id: 'FigureYa128Prognostic', path: 'FigureYa128Prognostic.Rmd' },
+    })
+    expect(result.isError).toBe(false)
+    expect(received).toEqual({
+      action: 'read_source',
+      arguments: { module_id: 'FigureYa128Prognostic', path: 'FigureYa128Prognostic.Rmd' },
+    })
+  })
 })
