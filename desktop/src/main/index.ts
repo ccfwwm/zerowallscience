@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { appendFile, cp, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
-import { dirname, extname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
 import updaterPackage from 'electron-updater'
@@ -74,6 +74,30 @@ async function migrateLegacyUserData(): Promise<void> {
       const code = (error as NodeJS.ErrnoException).code
       if (code !== 'ENOENT' && code !== 'EEXIST') throw error
     }
+  }
+}
+
+/** Move the user-visible managed runtime to its product name once, while
+ * keeping the old directory intact as a rollback/source of truth. */
+async function migrateLegacyPythonRoot(userData: string, target: string): Promise<void> {
+  const legacy = join(userData, 'mcp-environments')
+  if (resolve(legacy) === resolve(target)) return
+  try { await stat(legacy) } catch { return }
+  try { await stat(target); return } catch { /* first launch after rename */ }
+  await cp(legacy, target, { recursive: true, force: false, errorOnExist: false })
+  const currentPath = join(target, 'current.json')
+  try {
+    const record = JSON.parse(await readFile(currentPath, 'utf8')) as Record<string, unknown>
+    const rewrite = (value: unknown): unknown => {
+      if (typeof value !== 'string') return value
+      const rel = relative(resolve(legacy), resolve(value))
+      return rel === '..' || rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(rel) ? value : join(target, rel)
+    }
+    if (record.root !== undefined) record.root = rewrite(record.root)
+    if (record.rollbackRoot !== undefined) record.rollbackRoot = rewrite(record.rollbackRoot)
+    await writeFile(currentPath, `${JSON.stringify(record, null, 2)}\n`, 'utf8')
+  } catch {
+    // A corrupt legacy record is handled by the normal signed installer.
   }
 }
 
@@ -270,8 +294,11 @@ app.whenReady().then(async () => {
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null)
   const userData = app.getPath('userData')
   await migrateLegacyUserData()
-  const mcpEnvironmentRoot = join(userData, 'mcp-environments')
+  const mcpEnvironmentRoot = join(userData, 'zerowall-python')
+  await migrateLegacyPythonRoot(userData, mcpEnvironmentRoot)
   await mkdir(mcpEnvironmentRoot, { recursive: true })
+  process.env.ZEROWALL_PYTHON_ROOT = mcpEnvironmentRoot
+  // Compatibility for older bundled plugins and already-running sessions.
   process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = mcpEnvironmentRoot
   // Do not block the entire desktop when the OS credential provider is not
   // available (for example, a packaged smoke run in a headless profile).
@@ -329,7 +356,7 @@ app.whenReady().then(async () => {
   await mkdir(dirname(mcpEnvironmentLogPath), { recursive: true })
   mcpEnvironment = new McpEnvironmentController({
     root: mcpEnvironmentRoot,
-    manifestUrl: process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/mcp-environments/windows-x64/latest.json',
+    manifestUrl: process.env.ZEROWALL_PYTHON_MANIFEST ?? process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python/windows-x64/latest.json',
     publicKey: process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? MCP_ENVIRONMENT_PUBLIC_KEY,
     publicKeys: MCP_ENVIRONMENT_KEYRING,
     diagnosticPath: mcpEnvironmentLogPath,

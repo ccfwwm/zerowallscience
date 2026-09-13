@@ -5,7 +5,7 @@ export const RESIDENT_TOOLS = [
     'capability_search', 'capability_execute', 'structured_output',
     'ask_user_question', 'bash', 'read', 'write', 'edit', 'glob', 'grep',
     'pwsh', 'terminal_read', 'terminal_send', 'terminal_create',
-    'terminal_wait_for', 'todo_write',
+    'terminal_wait_for', 'todo_write', 'python',
 ];
 export function defaultTier(name, kind) {
     if (kind === 'skill')

@@ -23,21 +23,21 @@ const MAX_TIMEOUT = 10 * 60_000
 const R_DEFAULT_TIMEOUT = 60_000
 
 function environmentRoot(): string | undefined {
-  const value = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
+  const value = process.env.ZEROWALL_PYTHON_ROOT?.trim() ?? process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
   return value === undefined || value === '' ? undefined : resolve(value)
 }
 
 export async function resolveManagedPython(): Promise<{ executable: string; root: string; sitePackages: string; overlayPath: string }> {
   const root = environmentRoot()
-  if (root === undefined) throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: MCP environment root is not configured.')
+  if (root === undefined) throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python root is not configured.')
   let current: CurrentRecord
   try {
     current = JSON.parse(await readFile(join(root, 'current.json'), 'utf8')) as CurrentRecord
   } catch {
-    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: MCP environment is not installed or current.json is unreadable.')
+    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python is not installed or current.json is unreadable.')
   }
   if (current.health !== 'ready' || typeof current.root !== 'string' || current.root.trim() === '') {
-    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: MCP Python environment is not healthy. Retry initialization.')
+    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python is not healthy. Retry initialization.')
   }
   const installRoot = resolve(current.root)
   const manifest = current.manifest ?? JSON.parse(await readFile(join(installRoot, 'manifest.json'), 'utf8')) as Manifest
@@ -45,7 +45,7 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
   const relativeSitePackages = manifest.python?.relativeSitePackages
   if (typeof relativeExecutable !== 'string' || relativeExecutable.trim() === '' || isAbsolute(relativeExecutable)
     || typeof relativeSitePackages !== 'string' || relativeSitePackages.trim() === '' || isAbsolute(relativeSitePackages)) {
-    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: manifest does not contain a safe Python executable.')
+    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python manifest does not contain a safe executable.')
   }
   const executable = resolve(installRoot, relativeExecutable)
   const sitePackages = resolve(installRoot, relativeSitePackages)
@@ -60,11 +60,11 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
   }
   const info = await lstat(executable).catch(() => undefined)
   if (info === undefined || !info.isFile() || info.isSymbolicLink()) {
-    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: managed Python executable is missing.')
+    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python executable is missing.')
   }
   const siteInfo = await lstat(sitePackages).catch(() => undefined)
   if (siteInfo === undefined || !siteInfo.isDirectory() || siteInfo.isSymbolicLink()) {
-    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: managed Python site-packages is missing.')
+    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python site-packages is missing.')
   }
   return { executable, root: installRoot, sitePackages, overlayPath }
 }
@@ -140,7 +140,7 @@ async function runR(args: RArgs, exec: { signal: AbortSignal; agent?: { session:
 export function apply(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'python',
-    description: 'Execute Python code using the signed, healthy Python environment bundled with ZeroWall Science. The environment includes mcp, numpy, pandas, and httpx. Use the current session workspace unless workdir is explicitly needed.',
+    description: 'Execute Python in the signed ZeroWall Python runtime (科研默认环境，含科学计算、文献、Office 和生物信息学依赖). Uses the current session workspace unless workdir is explicitly needed.',
     parameters: {
       code: { type: 'string', required: true, description: 'Python source code to execute.' },
       description: { type: 'string', required: true, description: 'Short explanation of the computation.' },

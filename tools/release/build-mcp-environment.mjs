@@ -16,7 +16,7 @@ if (!environmentVersion) throw new Error('ZEROWALL_MCP_ENVIRONMENT_VERSION is re
 const pythonVersion = process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12'
 const pythonRuntime = pythonVersion.match(/^\d+\.\d+/u)?.[0] ?? pythonVersion
 // Keep the previous desktop-version field as a compatibility alias for
-// clients released before the MCP environment was decoupled from the app.
+// clients released before the managed runtime was renamed to ZeroWall Python.
 // New clients use environmentVersion exclusively; the alias is signed with
 // the manifest and never affects environment identity or update matching.
 const legacyApplicationVersion = (process.env.ZEROWALL_MCP_LEGACY_VERSION ?? '').trim()
@@ -163,7 +163,7 @@ for (const name of ['requirements-mcp.txt', 'requirements-base.txt', 'requiremen
   const path = join(root, 'resources', 'python', name)
   try { zip.file(`python/${name}`, await readFile(path)) } catch { /* optional layer may be absent in older checkouts */ }
 }
-const archiveName = `zerowall-mcp-windows-x64-${environmentVersion}.zip`
+const archiveName = `zerowall-python-windows-x64-${environmentVersion}.zip`
 const archive = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 9 } })
 const archivePath = join(output, archiveName)
 await writeFile(archivePath, archive)
@@ -173,9 +173,9 @@ for (const path of stagingFiles) {
   const rel = relative(staging, path).replaceAll('\\', '/')
   sourceHashes[rel] = createHash('sha256').update(rel === 'sci/dist/mcp.cjs' ? patchedSciMcp : await readFile(path)).digest('hex')
 }
-const baseUrl = (process.env.ZEROWALL_MCP_ENVIRONMENT_BASE_URL ?? 'https://zerowall.chengxunkeji.cn/stable/mcp-environments/windows-x64').replace(/\/$/u, '')
+const baseUrl = (process.env.ZEROWALL_PYTHON_BASE_URL ?? process.env.ZEROWALL_MCP_ENVIRONMENT_BASE_URL ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python/windows-x64').replace(/\/$/u, '')
 const manifest = {
-  schema: 2, environmentVersion, ...(legacyApplicationVersion ? { version: legacyApplicationVersion } : {}), contentRevision, environmentId: 'claude-science-mcp', platform: 'win32', architecture: 'x64',
+  schema: 2, environmentVersion, ...(legacyApplicationVersion ? { version: legacyApplicationVersion } : {}), contentRevision, environmentId: 'zerowall-python', platform: 'win32', architecture: 'x64',
   archiveUrl: `${baseUrl}/${environmentVersion}/${archiveName}`, archiveSha256, archiveSize: archive.byteLength,
   python: { version: pythonVersion, relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/site-packages', modules: managedPythonModules, layers: ['base', 'science', 'managed-compatible', 'mineru-optional'], dependencyManifests: ['python/requirements-base.txt', 'python/requirements-science.txt', 'python/requirements-science.lock', 'python/requirements-managed-compatible.lock', 'python/requirements-mineru.txt'], supportsZeroWallTool: true },
   pythonHealth: { imports: managedPythonModules, optionalLayers: { mineru: ['mineru'] }, bioServer: 'bio-tools/run_server.py mcp_bio', ketcherServer: 'ketcher-chemistry/server.js' },

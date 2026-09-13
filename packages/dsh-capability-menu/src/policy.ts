@@ -11,7 +11,6 @@ import { createSelections } from './selection.ts'
 import { defaultConfig } from './defaults.ts'
 import z from '@deepseek-ai/schemastery'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
-import { renderToolsSdk, renderToolsSdkPy } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { isUserInvocable, renderSkillContent } from '@deepseek-ai/dsh-skill'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -581,16 +580,20 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
   ctx.on('system-prompt/assemble', async (_assembly: PromptAssembly, context, next) => {
     const resolved = await next()
     const agent = context.scope !== undefined && 'session' in context.scope ? context.scope as Agent : undefined
-    const sdk = resolved.sections.find(section => section.name === 'tools:sdk' && section.text.length > 0)
-    const sections = sdk === undefined ? resolved.sections : resolved.sections.map(section => {
-      if (section !== sdk) return section
-      const schemas = ctx.tools.schemas(agent).filter(tool => service.isVisibleTool(tool.name, agent) && tool.name !== 'run_code')
-        .map(tool => ({ ...tool, description: tool.description.slice(0, 900), output: ctx.tools.get(tool.name, agent)!.output.schema }))
-      return { ...section, text: (ctx.get('codeRuntime')?.language === 'python' ? renderToolsSdkPy : renderToolsSdk)(schemas) }
-    })
-    const projected = { ...resolved, tools: resolved.tools
-      .filter(tool => tool.name === 'run_code' || service.isVisibleTool(tool.name, agent))
-      .map(tool => ({ ...tool, description: tool.description.slice(0, 900) })), sections }
+    // Tool schemas already live in the request's `tools` payload. Rendering
+    // the same schemas into `tools:sdk` duplicated every description in the
+    // system prompt on every turn. Keep a short compatibility marker instead.
+    const sections = resolved.sections.map(section => section.name === 'tools:sdk'
+      ? { ...section, text: 'Tool schemas are supplied in the request tools payload. Call visible tools by their exact names; use capability_search for on-demand capabilities.' }
+      : section)
+    const seenTools = new Set<string>()
+    const projectedTools = resolved.tools.filter(tool => tool.name === 'run_code' || service.isVisibleTool(tool.name, agent)).filter(tool => {
+      if (seenTools.has(tool.name)) return false
+      seenTools.add(tool.name)
+      return true
+    }).map(tool => ({ ...tool, description: tool.description.slice(0, 900) }))
+    const projected = { ...resolved, tools: projectedTools,
+      sections }
     const catalogPath = ctx.capability.catalogPath?.()
     // Skip the pointer when there is nothing On-demand to browse: an empty
     // hint wastes ~77 tokens of context and points at an empty file.
@@ -601,7 +604,8 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
         `Use capability_search for on-demand tools and skills listed in ${catalogPath}, then call capability_execute with one exact id. Disabled capabilities require a settings change.`,
       ].join('\n'),
     }
-    return { ...projected, sections: [...projected.sections, pointer] }
+    const withoutPointer = projected.sections.filter(section => section.name !== pointer.name)
+    return { ...projected, sections: [...withoutPointer, pointer] }
   })
 
   ctx.provide('capabilityPolicy', service)

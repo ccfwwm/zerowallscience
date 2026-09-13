@@ -1,4 +1,4 @@
-# Unified Python environment
+# ZeroWall Python environment
 
 ZeroWall Science uses one managed Python profile for MCP servers and bundled
 Skills. The dependency inputs are layered so the runtime can stay small while
@@ -12,7 +12,8 @@ the literature and document workflows share the same interpreter:
 | `resources/python/requirements-mcp.txt` | Compatibility entry point used by the MCP environment builder |
 
 The managed Windows runtime is built from the requirements inputs into
-`mcp-environment-staging/bio-tools/python`. The packaging manifest must list
+`mcp-environment-staging/bio-tools/python`, then installed under
+`%APPDATA%\\zerowall-science\\zerowall-python`. The packaging manifest must list
 the modules used by health checks and include the `resources/skills` tree. A
 profile migration should be performed in this order:
 

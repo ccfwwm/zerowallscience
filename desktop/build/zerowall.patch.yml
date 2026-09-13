@@ -169,6 +169,7 @@
             - terminal_create
             - terminal_wait_for
             - todo_write
+            - python
         skills:
           on-demand: ['*']
           resident: [genui]

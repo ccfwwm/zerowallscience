@@ -6,10 +6,13 @@ import { resolveManagedPython } from '../src/host/index.js'
 
 const roots: string[] = []
 const previous = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
+const previousPython = process.env.ZEROWALL_PYTHON_ROOT
 
 afterEach(async () => {
   if (previous === undefined) delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
   else process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = previous
+  if (previousPython === undefined) delete process.env.ZEROWALL_PYTHON_ROOT
+  else process.env.ZEROWALL_PYTHON_ROOT = previousPython
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
 
@@ -19,6 +22,14 @@ describe('managed Python runtime', () => {
     roots.push(root)
     process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = root
     await expect(resolveManagedPython()).rejects.toThrow(/^PYTHON_ENVIRONMENT_UNAVAILABLE:/u)
+  })
+
+  it('prefers the ZeroWall Python root over the legacy compatibility variable', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-python-preferred-'))
+    roots.push(root)
+    process.env.ZEROWALL_PYTHON_ROOT = root
+    process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = join(root, 'legacy')
+    await expect(resolveManagedPython()).rejects.toThrow(/ZeroWall Python root is not configured|ZeroWall Python is not installed/u)
   })
 
   it('resolves only the manifest-relative executable inside the ready environment', async () => {

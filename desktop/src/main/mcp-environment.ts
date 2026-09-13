@@ -14,7 +14,7 @@ export interface McpEnvironmentManifest {
   /** @deprecated old releases used the desktop app version here. */
   version?: string
   contentRevision?: number
-  environmentId: 'claude-science-mcp'
+  environmentId: 'claude-science-mcp' | 'zerowall-python'
   platform: 'win32'
   architecture: 'x64'
   archiveUrl: string
@@ -106,7 +106,7 @@ export class McpEnvironmentController {
 
   async pythonInfo(query = ''): Promise<McpPythonInfo> {
     const current = await readCurrent(this.options.root)
-    if (!current?.root || current.health !== 'ready') return { ready: false, packages: [], message: '科研 MCP 环境尚未就绪。' }
+    if (!current?.root || current.health !== 'ready') return { ready: false, packages: [], message: 'ZeroWall Python 尚未就绪。' }
     try {
       const manifest = await this.readInstalledManifest(current.root)
       const executable = join(current.root, manifest.python.relativeExecutable)
@@ -136,7 +136,7 @@ export class McpEnvironmentController {
     const normalized = spec.trim()
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*(?:\[[A-Za-z0-9_,.-]+\])?(?:[=<>!~]=?[A-Za-z0-9.*+!<>=~.-]+)?$/u.test(normalized)) throw new Error('包名格式不安全，仅支持 PyPI 包名及版本约束。')
     const current = await readCurrent(this.options.root)
-    if (!current?.root || current.health !== 'ready') throw new Error('科研 MCP 环境尚未就绪。')
+    if (!current?.root || current.health !== 'ready') throw new Error('ZeroWall Python 尚未就绪。')
     const manifest = await this.readInstalledManifest(current.root)
     const requestedName = pythonPackageName(normalized)
     const core = new Set((manifest.dependencies?.corePackages ?? []).map(pkg => pkg.name.toLowerCase().replaceAll('_', '-')))
@@ -187,7 +187,7 @@ export class McpEnvironmentController {
 
   private async pythonContext(): Promise<{ root: string; executable: string; sitePackages: string; overlayPath: string; manifest: McpEnvironmentManifest }> {
     const current = await readCurrent(this.options.root)
-    if (!current?.root || current.health !== 'ready') throw new Error('科研 MCP 环境尚未就绪。')
+    if (!current?.root || current.health !== 'ready') throw new Error('ZeroWall Python 尚未就绪。')
     const manifest = await this.readInstalledManifest(current.root)
     const overlayPath = pythonOverlayPath(this.options.root, manifest)
     await mkdir(overlayPath, { recursive: true })
@@ -217,10 +217,10 @@ export class McpEnvironmentController {
   private async install(): Promise<McpEnvironmentStatus> {
     let requestedManifest: McpEnvironmentManifest | undefined
     try {
-      if (process.platform !== 'win32' || process.arch !== 'x64') return this.set({ phase: 'unavailable', message: 'Managed scientific MCP environments are currently available on Windows x64 only.' })
-      if (this.options.publicKey.trim() === '') throw new Error('The MCP environment verification key is not configured.')
+      if (process.platform !== 'win32' || process.arch !== 'x64') return this.set({ phase: 'unavailable', message: 'ZeroWall Python 当前仅支持 Windows x64。' })
+      if (this.options.publicKey.trim() === '') throw new Error('The ZeroWall Python verification key is not configured.')
       await this.cleanupTemporaryInstallations()
-      this.set({ phase: 'checking', progress: 0, message: '正在检查科研 MCP 环境' })
+      this.set({ phase: 'checking', progress: 0, message: '正在检查 ZeroWall Python' })
       const manifest = await this.fetchManifest()
       requestedManifest = manifest
       await this.migrateLegacyCurrent(manifest)
@@ -242,10 +242,10 @@ export class McpEnvironmentController {
         status.onlineEnvironmentVersion = environmentVersion(manifest); status.onlineContentRevision = contentRevision(manifest); status.updateAvailable = false; status.lastCheckedAt = new Date().toISOString()
         return this.set(status)
       }
-      this.set({ phase: 'downloading', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), progress: 5, message: '正在同步科研 MCP 环境' })
+      this.set({ phase: 'downloading', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), progress: 5, message: '正在同步 ZeroWall Python' })
       const fetcher = this.options.fetcher ?? fetch
       const archiveResponse = await fetcher(manifest.archiveUrl, { cache: 'no-store' })
-      if (!archiveResponse.ok) throw new Error(`MCP environment archive returned HTTP ${archiveResponse.status}.`)
+      if (!archiveResponse.ok) throw new Error(`ZeroWall Python archive returned HTTP ${archiveResponse.status}.`)
       const current = await readCurrent(this.options.root)
       const currentSlot = current?.slot === 'a' || current?.slot === 'b' ? current.slot : undefined
       const targetSlot: 'a' | 'b' = currentSlot === 'a' ? 'b' : 'a'
@@ -254,17 +254,17 @@ export class McpEnvironmentController {
       const archivePath = join(this.options.root, `.download-${process.pid}-${Date.now()}.zip`)
       try {
         const downloaded = await this.downloadArchiveWithProgress(archiveResponse, manifest, archivePath)
-        this.set({ phase: 'verifying', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), progress: 70, message: '正在验证科研 MCP 环境' })
-        if (downloaded.byteLength !== manifest.archiveSize || downloaded.sha256 !== manifest.archiveSha256) throw new Error('MCP environment archive hash or size is invalid.')
+        this.set({ phase: 'verifying', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), progress: 70, message: '正在验证 ZeroWall Python' })
+        if (downloaded.byteLength !== manifest.archiveSize || downloaded.sha256 !== manifest.archiveSha256) throw new Error('ZeroWall Python archive hash or size is invalid.')
         await rm(temporary, { recursive: true, force: true })
         await mkdir(temporary, { recursive: true })
-        this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: targetSlot, progress: 80, message: '正在安装科研 MCP 环境' })
+        this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: targetSlot, progress: 80, message: '正在安装 ZeroWall Python' })
         let lastInstallProgress = 80
         await extractZipInWorker(archivePath, temporary, (completed, total) => {
           const progress = total === 0 ? 91 : Math.min(91, 80 + Math.floor((completed / total) * 11))
           if (progress <= lastInstallProgress) return
           lastInstallProgress = progress
-          this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: targetSlot, progress, message: `正在安装科研 MCP 环境 ${completed} / ${total}` })
+          this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: targetSlot, progress, message: `正在安装 ZeroWall Python ${completed} / ${total}` })
         })
         this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: targetSlot, progress: 92, message: '正在校验 Python 与科研服务' })
         await this.verifyHealth(temporary, manifest)
@@ -338,7 +338,7 @@ export class McpEnvironmentController {
             lastProgress = progress
             const receivedMb = (received / 1024 / 1024).toFixed(1)
             const totalMb = (manifest.archiveSize / 1024 / 1024).toFixed(1)
-            this.set({ phase: 'downloading', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), progress, message: `正在下载科研环境 ${receivedMb} MB / ${totalMb} MB` })
+            this.set({ phase: 'downloading', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), progress, message: `正在下载 ZeroWall Python ${receivedMb} MB / ${totalMb} MB` })
           }
         }
       }
@@ -349,8 +349,8 @@ export class McpEnvironmentController {
   }
 
   private async fetchManifest(): Promise<McpEnvironmentManifest> {
-    if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('托管科研 MCP 环境仅支持 Windows x64。')
-    if (this.options.publicKey.trim() === '') throw new Error('MCP environment verification key is not configured.')
+    if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('ZeroWall Python 仅支持 Windows x64。')
+    if (this.options.publicKey.trim() === '') throw new Error('ZeroWall Python verification key is not configured.')
     const response = await (this.options.fetcher ?? fetch)(this.options.manifestUrl, { cache: 'no-store' })
     if (!response.ok) throw new Error(`MCP environment manifest returned HTTP ${response.status}.`)
     const manifest = validateManifest(await response.json())
@@ -475,7 +475,7 @@ export class McpEnvironmentController {
 export function validateManifest(value: unknown): McpEnvironmentManifest {
   if (value === null || typeof value !== 'object') throw new Error('MCP environment manifest must be an object.')
   const item = value as Record<string, unknown>
-  if (item.schema !== 2 || item.environmentId !== 'claude-science-mcp' || item.platform !== 'win32' || item.architecture !== 'x64') throw new Error('MCP environment manifest identity or target is invalid.')
+  if (item.schema !== 2 || !['claude-science-mcp', 'zerowall-python'].includes(String(item.environmentId)) || item.platform !== 'win32' || item.architecture !== 'x64') throw new Error('ZeroWall Python manifest identity or target is invalid.')
   if ((typeof item.environmentVersion !== 'string' || item.environmentVersion.trim() === '') && (typeof item.version !== 'string' || item.version.trim() === '')) throw new Error('MCP environment manifest field environmentVersion is required.')
   for (const key of ['archiveUrl', 'archiveSha256']) if (typeof item[key] !== 'string' || item[key] === '') throw new Error(`MCP environment manifest field ${key} is required.`)
   if (!String(item.archiveUrl).startsWith('https://')) throw new Error('MCP environment archive URL must use HTTPS.')

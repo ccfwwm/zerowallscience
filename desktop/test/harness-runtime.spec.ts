@@ -36,6 +36,7 @@ describe('Harness runtime boundary', () => {
     expect(options.env?.ZEROWALL_USER_SKILLS).toBe('C:/data/harness/zerowall-skills/enabled')
     expect(options.env?.ZEROWALL_RESEARCH_DB).toBe('C:/data/research/zerowall-research.sqlite')
     expect(options.env?.ZEROWALL_MCP_ENVIRONMENT_ROOT).toBe('C:/data/mcp-environments')
+    expect(options.env?.ZEROWALL_PYTHON_ROOT).toBe('C:/data/mcp-environments')
     expect(options.env?.ZEROWALL_DISABLE_DEFAULT_MCP).toBe('1')
     expect(options.env?.CUSTOM_API_KEY).toBe('test-key-reference')
     expect(options.env?.ZEROWALL_BUNDLED_SKILLS).toBe('C:/app/resources/skills')

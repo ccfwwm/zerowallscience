@@ -168,6 +168,29 @@ describe('capability-menu-policy plugin', () => {
     expect(names).not.toContain('mcp__km__search')
   })
 
+  it('does not duplicate tools or serialize full schemas into tools:sdk', async () => {
+    const ctx = await setup({ tools: { resident: ['duplicate'], 'on-demand': ['mcp__km__search'] } })
+    registerTool(ctx, 'duplicate', 'A very detailed schema description')
+    registerTool(ctx, 'capability_search')
+    registerTool(ctx, 'capability_execute')
+    registerTool(ctx, 'mcp__km__search')
+    const assembly = await ctx.systemPrompt.assemble()
+    expect(new Set(assembly.tools.map(tool => tool.name)).size).toBe(assembly.tools.length)
+    const sdk = assembly.sections.find(section => section.name === 'tools:sdk')
+    expect(sdk === undefined || sdk.text).not.toContain('A very detailed schema description')
+  })
+
+  it('keeps one capability catalog pointer across repeated assembly', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-policy-repeat-'))
+    const catalogFile = `${home}/capability-catalog.yaml`
+    const ctx = await setup({ tools: { 'on-demand': ['mcp__km__search'] } }, { catalogFile })
+    registerTool(ctx, 'capability_search')
+    registerTool(ctx, 'capability_execute')
+    registerTool(ctx, 'mcp__km__search')
+    const assembly = await ctx.systemPrompt.assemble()
+    expect(assembly.sections.filter(section => section.name === 'capability-menu-catalog')).toHaveLength(0)
+  })
+
   it('keeps every tool when the resident list is empty (default resident)', async () => {
     // With no explicit resident list, every non-meta tool defaults to Resident.
     const ctx = await setup({})

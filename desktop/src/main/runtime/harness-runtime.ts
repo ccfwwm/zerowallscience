@@ -61,6 +61,7 @@ export function buildHarnessSpawnOptions(
       ZEROWALL_USER_SKILLS: options.userSkillsPath,
       DSH_BUNDLED_SKILL_DIR: options.bundledSkillsPath,
       ZEROWALL_RESEARCH_DB: options.researchDbPath,
+      ZEROWALL_PYTHON_ROOT: options.mcpEnvironmentRoot,
       ZEROWALL_MCP_ENVIRONMENT_ROOT: options.mcpEnvironmentRoot,
       ZEROWALL_BUNDLED_SKILLS: options.bundledSkillsPath,
       // The desktop shell seeds managed MCP records for the Settings page,

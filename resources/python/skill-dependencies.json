@@ -3,7 +3,7 @@
   "platform": "win32",
   "architecture": "x64",
   "python": "3.12",
-  "generatedAt": "2026-09-09T09:05:15.238Z",
+  "generatedAt": "2026-09-13T08:08:58.083Z",
   "summary": {
     "ready": 92,
     "managed": 19,
@@ -5470,21 +5470,27 @@
         "__future__",
         "argparse",
         "concurrent",
+        "contextlib",
         "csv",
+        "ctypes",
         "dataclasses",
         "datetime",
         "difflib",
+        "fcntl",
         "fitz",
         "hashlib",
         "html",
         "importlib",
         "json",
+        "literature_pipeline",
         "matplotlib",
         "mimetypes",
+        "msvcrt",
         "openpyxl",
         "os",
         "paper_download_bridge",
         "pathlib",
+        "playwright",
         "pypdf",
         "re",
         "reportlab",
@@ -5496,12 +5502,20 @@
         "threading",
         "time",
         "typing",
-        "urllib"
+        "unicodedata",
+        "urllib",
+        "xml"
       ],
       "requirements": [
         {
           "name": "__future__",
           "import": "__future__",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "ctypes",
+          "import": "ctypes",
           "status": "optional",
           "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
         },
@@ -5512,14 +5526,32 @@
           "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
         },
         {
+          "name": "fcntl",
+          "import": "fcntl",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
           "name": "pymupdf",
           "import": "fitz",
           "status": "managed"
         },
         {
+          "name": "literature_pipeline",
+          "import": "literature_pipeline",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
           "name": "matplotlib",
           "import": "matplotlib",
           "status": "managed"
+        },
+        {
+          "name": "msvcrt",
+          "import": "msvcrt",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
         },
         {
           "name": "openpyxl",
@@ -5529,6 +5561,12 @@
         {
           "name": "paper_download_bridge",
           "import": "paper_download_bridge",
+          "status": "optional",
+          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
+        },
+        {
+          "name": "playwright",
+          "import": "playwright",
           "status": "optional",
           "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
         },
