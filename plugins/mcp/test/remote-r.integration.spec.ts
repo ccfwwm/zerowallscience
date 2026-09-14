@@ -33,6 +33,8 @@ describe.runIf(Boolean(process.env.R_PLATFORM_MCP_AUTHORIZATION))('compact R MCP
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
+      const configured = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')
+      if (configured !== undefined && !configured.enabled) await ctx.zerowallMcp.update({ id: configured.id, changes: { enabled: true } })
       await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')?.runtimeState, { timeout: 20_000, interval: 100 }).toBe('active')
       const server = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')
       expect(server?.runtimeState, server?.runtimeError).toBe('active')
@@ -45,6 +47,8 @@ describe.runIf(Boolean(process.env.R_PLATFORM_MCP_AUTHORIZATION))('compact R MCP
       expect(server?.tools).toContain('mcp__rmcp__r_figureya_artifacts')
       expect(server?.tools.some(name => /(?:rplatform__|rbioagent__|rplotfigure__)/u.test(name))).toBe(false)
       expect(ctx.tools.schemas().map(schema => schema.name)).toContain('mcp__rmcp__r_runtime')
+      expect(ctx.tools.get('mcp__rmcp__r_files')).toBeDefined()
+      expect(ctx.tools.schemas().map(schema => schema.name)).not.toContain('mcp__rmcp__r_files')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -67,6 +71,8 @@ describe.runIf(Boolean(process.env.R_PLATFORM_MCP_AUTHORIZATION))('compact R MCP
       await ctx.plugin(capabilityInvoke)
       await ctx.plugin(capabilitySearch)
       await ctx.plugin(ZeroWallMcpService)
+      const configured = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')
+      if (configured !== undefined && !configured.enabled) await ctx.zerowallMcp.update({ id: configured.id, changes: { enabled: true } })
       await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')?.runtimeState, { timeout: 20_000, interval: 100 }).toBe('active')
       const searched = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('compact-search'), name: 'capability_search', arguments: { query: 'FigureYa', kind: 'tool', max_results: 5 }, agent })
       expect(searched.isError, JSON.stringify(searched.content)).toBe(false)

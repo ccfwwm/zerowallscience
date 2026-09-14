@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { McpServerRecord } from '@zerowallscience/research-store'
-import { aiCloudCredentialKey, providerCredentialNames, redactError, resolveMcpConfig, resolveStdioLaunch } from '../src/host/index.js'
+import { aiCloudCredentialKey, managedEnvironmentFileSignature, managedEnvironmentRecord, providerCredentialNames, redactError, resolveMcpConfig, resolveStdioLaunch } from '../src/host/index.js'
 
 const base: McpServerRecord = {
   id: 'mcp-1', name: 'Tools', serverName: 'tools', transport: 'stdio', enabled: true,
@@ -81,5 +84,27 @@ describe('ZeroWall MCP config boundary', () => {
     expect(providerCredentialNames('openai-custom')).toContain('OPENAI_API_KEY')
     expect(providerCredentialNames('my-lab-gateway')).toContain('MY_LAB_GATEWAY_API_KEY')
     expect(providerCredentialNames('deepseek-official')).toContain('LLM_API_KEY')
+  })
+
+  it('caches the large managed environment record until current.json changes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-environment-cache-'))
+    const prior = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
+    process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = root
+    try {
+      writeFileSync(join(root, 'current.json'), JSON.stringify({ health: 'ready', environmentVersion: '1.0.0' }))
+      const firstSignature = managedEnvironmentFileSignature()
+      const first = managedEnvironmentRecord(firstSignature)
+      expect(managedEnvironmentRecord(firstSignature)).toBe(first)
+
+      writeFileSync(join(root, 'current.json'), JSON.stringify({ health: 'ready', environmentVersion: '1.0.0', contentRevision: 2 }))
+      const secondSignature = managedEnvironmentFileSignature()
+      expect(secondSignature).not.toBe(firstSignature)
+      expect(managedEnvironmentRecord(secondSignature)).not.toBe(first)
+      expect(managedEnvironmentRecord(secondSignature)?.contentRevision).toBe(2)
+    } finally {
+      if (prior === undefined) delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
+      else process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = prior
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
