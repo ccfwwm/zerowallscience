@@ -37,6 +37,12 @@ export interface HarnessRuntimeOptions {
 
 export type HarnessChildProcess = ChildProcess & { stdin: Writable; stdout: Readable; stderr: Readable }
 
+// Runtime snapshots are sent to the renderer for diagnostics. Keep this
+// diagnostic ring bounded so a noisy long-lived Harness cannot retain every
+// stdout/stderr line until the desktop process itself runs out of memory.
+const MAX_RUNTIME_LOG_LINES = 2_000
+const MAX_PARTIAL_OUTPUT_BYTES = 1_048_576
+
 export function buildHarnessArguments(port: number, patchPath: string): string[] {
   // Electron owns the renderer window.  The DSH web bundle opens the user's
   // default browser by default, which is both unnecessary and unreliable in
@@ -248,7 +254,8 @@ export class HarnessRuntime {
   private writeChunk(source: string, chunk: Buffer): void {
     const buffered = `${this.outputBuffers.get(source) ?? ''}${chunk.toString('utf8')}`
     const lines = buffered.split(/\r?\n/)
-    this.outputBuffers.set(source, lines.pop() ?? '')
+    const partial = lines.pop() ?? ''
+    this.outputBuffers.set(source, partial.length > MAX_PARTIAL_OUTPUT_BYTES ? partial.slice(-MAX_PARTIAL_OUTPUT_BYTES) : partial)
     const captureUrl = (line: string): void => {
       const match = /dsh web:\s+(https?:\/\/\S+)/u.exec(line)
       if (match?.[1] === undefined || !match[1].includes('?token=')) return

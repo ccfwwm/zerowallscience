@@ -826,7 +826,11 @@ export class ZeroWallMcpService extends TypertRemoteService {
     // Default MCP records are enabled by policy. Their reconciliation is
     // started asynchronously by the Host, so enabling them here does not
     // block the desktop UI boot and keeps the MCP tab populated immediately.
-    const defaultEnabled = true
+    // Bundled MCP records are discoverable from Settings but must not start
+    // remote handshakes or stdio servers during Host boot. A user can enable
+    // an individual connection explicitly; this prevents reconnect/tools-list
+    // churn from retaining generations in a long-lived Harness process.
+    const defaultEnabled = false
     const marker = defaultMcpMarkerPath()
     let markerVersion = 0
     try {
@@ -882,11 +886,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
         }
       }
     }
-    if (markerVersion < 7) {
-      // Built-in MCP connections are enabled by product policy. Older 5.3/5.4
-      // installs could retain the temporary deferred-boot disabled flag; move
-      // those managed records back to the normal enabled state. User-created
-      // connections use different names and are intentionally untouched.
+    if (markerVersion < 8) {
+      // Older releases enabled every bundled connection at boot. Disable only
+      // those exact managed records once; user-created connections remain
+      // untouched and can still be enabled explicitly from Settings.
       const defaultServerNames = new Set([
         RDATALINUX_SERVER_NAME,
         'huagongshe',
@@ -895,8 +898,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
         'zerowall_managed_ketcher',
       ])
       for (const server of projects.listMcpServers()) {
-        if (defaultServerNames.has(server.serverName) && !server.enabled) {
-          projects.updateMcpServer(server.id, { enabled: true })
+        if (defaultServerNames.has(server.serverName) && server.enabled) {
+          projects.updateMcpServer(server.id, { enabled: false })
         }
       }
     }
@@ -940,7 +943,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       projects.createMcpServer({ name: 'Sci', serverName: 'zerowall_managed_scimaster', transport: 'stdio', enabled: defaultEnabled, command: 'zerowall-managed:scimaster', cwd: '', failOnStartupError: false })
     }
     await mkdir(dirname(marker), { recursive: true })
-    await writeFile(marker, '{"version":7}\n', 'utf8')
+    await writeFile(marker, '{"version":8}\n', 'utf8')
   }
 
   private projects() {

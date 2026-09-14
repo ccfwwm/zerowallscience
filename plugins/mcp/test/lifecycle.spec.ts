@@ -169,7 +169,11 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
-      expect((await ctx.zerowallMcp.list()).every(item => item.runtimeState === 'starting' || item.runtimeState === 'blocked')).toBe(true)
+      const seeded = await ctx.zerowallMcp.list()
+      expect(seeded.filter(item => item.serverName.startsWith('zerowall_managed_')).every(item => item.runtimeState === 'disabled')).toBe(true)
+      for (const item of seeded.filter(item => item.serverName.startsWith('zerowall_managed_'))) {
+        await ctx.zerowallMcp.update({ id: item.id, changes: { enabled: true } })
+      }
       await expect.poll(async () => (await ctx.zerowallMcp.list()).filter(item => item.serverName.startsWith('zerowall_managed_')).every(item => item.runtimeState === 'blocked'), { timeout: 10_000, interval: 25 }).toBe(true)
       mkdirSync(environmentStore, { recursive: true })
       writeFileSync(join(environmentStore, 'current.json'), JSON.stringify({ version: '4.1.10', root: installed, health: 'ready' }))
@@ -200,13 +204,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect(servers).toHaveLength(5)
       expect(servers.map(server => server.name)).toEqual(expect.arrayContaining(['Sci', 'Bio Tools', 'Ketcher Chemistry', 'rmcp', '化工社 AIchem']))
       expect(servers.find(server => server.serverName === 'zerowall_filesystem')).toBeUndefined()
-      expect(servers.every(server => server.runtimeState === 'starting' || server.runtimeState === 'blocked')).toBe(true)
-      await expect.poll(async () => Object.fromEntries((await ctx.zerowallMcp.list()).map(server => [server.serverName, server.runtimeState])), { timeout: 10_000, interval: 25 })
-        .toMatchObject({
-          zerowall_managed_bio_tools: 'blocked',
-          zerowall_managed_ketcher: 'blocked',
-          zerowall_managed_scimaster: 'blocked',
-        })
+      expect(servers.every(server => server.runtimeState === 'disabled')).toBe(true)
     } finally {
       await ctx.fiber.dispose()
     }
