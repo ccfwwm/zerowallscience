@@ -1,0 +1,29 @@
+diff --git a/lib/client.js b/lib/client.js
+index 6816c296..94028302 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -576,6 +576,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** Simplified Chinese dictionary (the key-set source of truth). */
+ 		const zh = {
++			"section.title": "外观",
+ 			"skin.title": "皮肤",
+ 			"skin.default": "默认",
+ 			"skin.abyss": "沉静蓝",
+@@ -643,6 +644,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** English dictionary, checked complete against the zh key set. */
+ 		const en = {
++			"section.title": "Theme",
+ 			"skin.title": "Skins",
+ 			"skin.default": "Default",
+ 			"skin.abyss": "Deep Blue",
+@@ -4947,7 +4949,7 @@ window.__ModuleLoader__.load({
+ 				name: "settings.section",
+ 				id: "dream-skin",
+ 				order: 10,
+-				label: "Theme / 外观",
++				label: () => localeT("section.title"),
+ 				locale: SETTINGS_NS,
+ 				children: { "settings.dreamSkin.item": {
+ 					kind: "list",

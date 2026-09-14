@@ -1,6 +1,0 @@
-node_modules/
-*.tgz
-*.log
-.DS_Store
-coverage/
-dist/

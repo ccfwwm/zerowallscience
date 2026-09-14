@@ -1272,12 +1272,12 @@ function normalizeMcpServer(input: CreateMcpServerInput): Omit<McpServerRecord, 
     if (parsed.username !== '' || parsed.password !== '') throw new Error('MCP HTTP URL must not contain credentials.')
     if (parsed.search !== '' || parsed.hash !== '') throw new Error('MCP HTTP URL must not contain a query string or fragment.')
   }
-  const toolCallTimeoutMs = positiveInteger(input.toolCallTimeoutMs ?? 60_000, 'MCP tool timeout')
+  const toolCallTimeoutMs = positiveInteger(input.toolCallTimeoutMs ?? 300_000, 'MCP tool timeout')
   const reconnect = {
     enabled: input.reconnect?.enabled ?? true,
-    initialDelayMs: positiveInteger(input.reconnect?.initialDelayMs ?? 500, 'MCP reconnect initial delay'),
-    maxDelayMs: positiveInteger(input.reconnect?.maxDelayMs ?? 30_000, 'MCP reconnect maximum delay'),
-    maxAttempts: positiveInteger(input.reconnect?.maxAttempts ?? 10, 'MCP reconnect attempts'),
+    initialDelayMs: positiveInteger(input.reconnect?.initialDelayMs ?? 5_000, 'MCP reconnect initial delay'),
+    maxDelayMs: positiveInteger(input.reconnect?.maxDelayMs ?? 60_000, 'MCP reconnect maximum delay'),
+    maxAttempts: positiveInteger(input.reconnect?.maxAttempts ?? 2, 'MCP reconnect attempts'),
   }
   if (reconnect.maxDelayMs < reconnect.initialDelayMs) throw new Error('MCP reconnect maximum delay must not be lower than the initial delay.')
   const stdio = input.transport === 'stdio'

@@ -764,7 +764,7 @@ async function checkMcpServer(command: string, args: string[], cwd: string): Pro
       child.kill()
       const exitTimer = setTimeout(() => settle(error), 2_000); exitTimer.unref()
     }
-    const timer = setTimeout(() => finish(new Error(`MCP server health check timed out: ${args.at(-1) ?? command}`)), 15_000)
+    const timer = setTimeout(() => finish(new Error(`MCP server health check timed out: ${args.at(-1) ?? command}`)), 120_000)
     child.once('error', error => finish(error))
     child.once('exit', code => { if (!finishing) finish(new Error(`MCP server exited before health check completed (${code ?? 'unknown'}): ${args.at(-1) ?? command}`)) })
     child.stderr.resume()

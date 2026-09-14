@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
@@ -128,6 +129,37 @@ describe("listSessions filters archived sessions", () => {
       ok: false,
       error: "stored session failed validation",
     });
+  });
+
+  it("inspectSessionActivity skips listEvents for a large on-disk session", async () => {
+    const require = createRequire(import.meta.url);
+    const slog = require("../src/dsh/session-log.cjs") as {
+      projectKey: (cwd: string) => string;
+      clearSessionLogCache: () => void;
+    };
+    slog.clearSessionLogCache();
+    const dshHome = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-home-snew-"));
+    const previous = process.env.DSH_HOME;
+    process.env.DSH_HOME = dshHome;
+    try {
+      const cwd = "C:\\work";
+      const sessionId = "s-fat";
+      const dir = path.join(dshHome, "sessions", slog.projectKey(cwd), encodeURIComponent(sessionId));
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "session.jsonl.zstd"), Buffer.alloc(2048, 1));
+      const listEvents = vi.fn(async () => {
+        throw new Error("listEvents should not run for a large used session");
+      });
+      const ops = makeOps([], [], listEvents);
+      await expect(
+        ops.inspectSessionActivity(sessionId, cwd, { version: 0, id: sessionId, createdAt: 1, cwd }),
+      ).resolves.toEqual({ ok: true, lastUserMessageTime: 1 });
+      expect(listEvents).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.DSH_HOME;
+      else process.env.DSH_HOME = previous;
+      slog.clearSessionLogCache();
+    }
   });
 
   it("keeps everything when nothing is archived", async () => {
@@ -434,5 +466,38 @@ describe("/session switch reports the session name", () => {
     const body = String(sendTextMessage.mock.calls[0]?.[1]);
     expect(body).toContain("已切换到会话 最新会话（session-new） — C:\\work");
     expect(body).toContain("Agent");
+  });
+
+  it("keeps the current scope when switching after list current", async () => {
+    const anyBridge = bridge as unknown as {
+      state: {
+        ensureUser(u: string, c: string): { userId: string; cwd: string; sessionId: string; silent: boolean };
+        getUser(u: string): { userId: string; cwd: string; sessionId: string };
+      };
+      ops: {
+        listSessions(): Promise<Array<{ header: { id: string; createdAt: number; cwd?: string } }>>;
+        lastUserMessageTime(id: string, cwd?: string, header?: unknown): Promise<number | undefined>;
+        readSessionTitle(id: string): Promise<string | undefined>;
+      };
+      handleSessionCommand(
+        u: string,
+        cmd: { kind: "list"; scope?: "current" } | { kind: "switch"; index: number; scope?: "current" },
+      ): Promise<void>;
+    };
+    anyBridge.ops.listSessions = async () => [
+      { header: { id: "other-new", createdAt: 300, cwd: "D:\\other" } },
+      { header: { id: "current-new", createdAt: 200, cwd: "C:\\work" } },
+      { header: { id: "current-old", createdAt: 100, cwd: "C:\\work" } },
+    ];
+    anyBridge.ops.lastUserMessageTime = async () => undefined;
+    anyBridge.ops.readSessionTitle = async (id: string) => id;
+    const user = anyBridge.state.ensureUser("u1", "C:\\work");
+
+    await anyBridge.handleSessionCommand("u1", { kind: "list", scope: "current" });
+    await anyBridge.handleSessionCommand("u1", { kind: "switch", index: 1 });
+
+    expect(user.sessionId).toBe("current-new");
+    expect(user.cwd).toBe("C:\\work");
+    expect(String(sendTextMessage.mock.calls[1]?.[1])).toContain("current-new");
   });
 });

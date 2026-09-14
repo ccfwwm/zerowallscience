@@ -49,9 +49,27 @@ const DARK: DiagramPalette = {
   link: '#6a95d8',
 }
 
+/** Native SVG paint values keep inherited host tokens live across theme changes. */
+export function hostPalette(): DiagramPalette {
+  const accent = 'var(--dsw-alias-state-business-primary, #4f8ef7)'
+  return {
+    paper: 'var(--dsw-alias-bg-layer-2, #ffffff)',
+    paper2: 'var(--dsw-alias-bg-layer-3, #f5f5f5)',
+    ink: 'var(--dsw-alias-label-primary, #2d3142)',
+    muted: 'var(--dsw-alias-label-secondary, #4f5d75)',
+    soft: 'var(--dsw-alias-label-tertiary, #7a8399)',
+    rule: 'var(--dsw-alias-border-l2, rgba(45,49,66,0.12))',
+    accent,
+    accentTint: `color-mix(in srgb, ${accent} 10%, transparent)`,
+    link: accent,
+  }
+}
+
 /** Resolve the active palette from variant + optional theme overrides. */
 export function resolvePalette(variant: GenuiDiagramVariant | undefined, theme: GenuiDiagramTheme | undefined): DiagramPalette {
-  const base = variant === 'dark' ? DARK : LIGHT
+  // No explicit variant -> follow the host theme; an explicit variant keeps the
+  // editorial skin (that is what the field is for).
+  const base = variant === undefined ? hostPalette() : variant === 'dark' ? DARK : LIGHT
   if (theme === undefined) return base
   return {
     paper: theme.paper ?? base.paper,
@@ -75,7 +93,7 @@ export function nodeTreatment(type: string | undefined, p: DiagramPalette): { fi
     case 'input': return { fill: inkAt(p.muted, 0.10), stroke: p.soft }
     case 'optional': return { fill: inkAt(p.ink, 0.02), stroke: inkAt(p.ink, 0.20), dashed: true }
     case 'security': return { fill: inkAt(p.accent, 0.05), stroke: inkAt(p.accent, 0.50), dashed: true }
-    default: return { fill: '#ffffff', stroke: p.ink }
+    default: return { fill: p.paper, stroke: p.ink }
   }
 }
 
@@ -88,8 +106,9 @@ export function edgeStroke(kind: string | undefined, p: DiagramPalette): string 
   }
 }
 
-/** Helper: a color at a given opacity (accepts #hex and rgba() strings). */
+/** Apply opacity while retaining live host-token references. */
 export function inkAt(color: string, opacity: number): string {
+  if (color.startsWith('var(')) return `color-mix(in srgb, ${color} ${opacity * 100}%, transparent)`
   if (color.startsWith('#')) {
     const hex = color.slice(1)
     const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex

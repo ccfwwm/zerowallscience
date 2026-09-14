@@ -7,6 +7,10 @@ import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import JSZip from 'jszip'
 import * as XLSX from 'xlsx'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
+import type {} from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-client-file-upload'
+import type { FileUploadReceiptId } from '@deepseek-ai/dsh-client-file-upload'
+import type { FileAttachmentRef as NativeFileRef } from '@deepseek-ai/dsh-attachment'
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -305,6 +309,36 @@ export class ZeroWallFilesService extends TypertRemoteService {
       },
     }))
   }
+  /** Parse only bytes admitted for this exact Agent by the native receipt service. */
+  @Remote('prepareNative') async prepareNative(input: { sessionId: string; receiptId: string }): Promise<PreparedFile> {
+    const agent = this.ctx.get('agents')?.get(SessionId(input.sessionId))
+    const ref = agent === undefined ? undefined : this.ctx.get('fileUploads')?.resolve(agent, input.receiptId as FileUploadReceiptId)
+    if (ref === undefined) throw new Error('File was not uploaded for this session.')
+    if (ref.bytes > MAX_FILE_BYTES) throw new Error('File exceeds the parser size limit.')
+    const path = this.ctx.get('attachments')?.fileHostPath(ref)
+    if (path === undefined) throw new Error('Original file is not available to the local parser.')
+    const bytes = await readFile(path)
+    if (bytes.length !== ref.bytes || 'sha256:' + digest(bytes) !== String(ref.attachmentId)) throw new Error('Native file failed integrity validation.')
+    return prepareUploadedFile({ sessionId: input.sessionId, name: ref.name, data: bytes.toString('base64') })
+  }
+
+  /** Host-only enrichment after receipt validation; wire callers cannot forge parser metadata. */
+  async enrichNative(sessionId: string, ref: NativeFileRef): Promise<NativeFileRef> {
+    const attachmentId = String(ref.attachmentId).replace(/^sha256:/u, 'file-sha256:')
+    let parsed: PreparedFile
+    try {
+      const stored = await this.authorized(sessionId, attachmentId)
+      const kind = stored.mineruExtraction?.state === 'done' ? 'mineru' : 'local'
+      const extraction = kind === 'mineru' ? stored.mineruExtraction : stored.localExtraction
+      if (extraction?.state !== 'done') return ref
+      parsed = await this.inspect({ sessionId, attachmentId, view: 'parsed', kind })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ref
+      throw error
+    }
+    return { ...ref, ...(parsed.parser === undefined ? {} : { parser: parsed.parser }), ...(parsed.status === undefined ? {} : { status: parsed.status }), ...(parsed.textChars === undefined ? {} : { textChars: parsed.textChars }), ...(parsed.content === undefined ? {} : { content: parsed.content }), ...(parsed.preview === undefined ? {} : { preview: parsed.preview }) }
+  }
+
   @Remote('prepare') async prepare(input: { sessionId: string; name: string; mediaType?: string; data: string }): Promise<PreparedFile> {
     return prepareUploadedFile(input)
   }

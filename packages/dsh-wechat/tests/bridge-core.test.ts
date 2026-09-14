@@ -9,10 +9,12 @@ import fs from "node:fs";
 import {
   parseHelpCommand,
   parseModelCommand,
+  splitProviderModelTarget,
   parseNextCommand,
   parsePermCommand,
   parsePresetCommand,
   parseReasoningCommand,
+  parsePnCardReply,
   parseRejectPermissionCommand,
   parseRejectQuestionCommand,
   parseSessionCommand,
@@ -66,6 +68,10 @@ describe("slash parsers", () => {
   it("reject parsers match aliases", () => {
     expect(parseRejectQuestionCommand("/rq")).toEqual({ kind: "reject-question" });
     expect(parseRejectQuestionCommand("/reject-question")).toEqual({ kind: "reject-question" });
+    expect(parsePnCardReply("P1=/rq")).toEqual({ index: 1, rest: "/rq" });
+    expect(parsePnCardReply("P2 = 1")).toEqual({ index: 2, rest: "1" });
+    expect(parsePnCardReply("p1- /rp")).toEqual({ index: 1, rest: "/rp" });
+    expect(parsePnCardReply("1")).toBeNull();
     expect(parseRejectPermissionCommand("/rp")).toEqual({ kind: "reject-permission" });
     expect(parseRejectPermissionCommand("/reject-permission")).toEqual({ kind: "reject-permission" });
   });
@@ -93,6 +99,8 @@ describe("slash parsers", () => {
     expect(parseSessionCommand("/s new")).toEqual({ kind: "new" });
     expect(parseSessionCommand("/session status")).toEqual({ kind: "status" });
     expect(parseSessionCommand("/session switch 3")).toEqual({ kind: "switch", index: 3 });
+    expect(parseSessionCommand("/s switch current 3")).toEqual({ kind: "switch", index: 3, scope: "current" });
+    expect(parseSessionCommand("/s switch current")).toBeNull();
     expect(parseSessionCommand("/s switch abc")).toBeNull();
     expect(parseSessionCommand("/session")).toBeNull();
   });
@@ -112,9 +120,44 @@ describe("slash parsers", () => {
     expect(parseModelCommand("/model list")).toEqual({ kind: "list" });
     expect(parseModelCommand("/model list deepseek")).toEqual({ kind: "list", provider: "deepseek" });
     expect(parseModelCommand("/model switch deepseek/deepseek-chat")).toEqual({ kind: "switch", target: "deepseek/deepseek-chat" });
+    expect(parseModelCommand("/model switch openrouter/inclusionai/ling-3.0-flash-fin:free")).toEqual({
+      kind: "switch",
+      target: "openrouter/inclusionai/ling-3.0-flash-fin:free",
+    });
     expect(parseModelCommand("/model status")).toEqual({ kind: "status" });
-    expect(parseModelCommand("/model switch deepseek")).toBeNull();
+    // Missing `/` still parses so the handler can print usage instead of
+    // forwarding `/model` as an unknown command.
+    expect(parseModelCommand("/model switch deepseek")).toEqual({ kind: "switch", target: "deepseek" });
+    expect(parseModelCommand("/model switch")).toEqual({ kind: "switch", target: "" });
     expect(parseModelCommand("/model")).toBeNull();
+  });
+
+  it("splitProviderModelTarget keeps slashes inside the model id", () => {
+    const providers = [
+      { id: "openrouter", name: "OpenRouter" },
+      { id: "deepseek", name: "DeepSeek" },
+      { id: "open", name: "Open" },
+    ];
+    expect(splitProviderModelTarget("openrouter/inclusionai/ling-3.0-flash-fin:free", providers)).toEqual({
+      provider: "openrouter",
+      model: "inclusionai/ling-3.0-flash-fin:free",
+    });
+    expect(splitProviderModelTarget("deepseek/deepseek-chat", providers)).toEqual({
+      provider: "deepseek",
+      model: "deepseek-chat",
+    });
+    expect(splitProviderModelTarget("OpenRouter/foo/bar", providers)).toEqual({
+      provider: "openrouter",
+      model: "foo/bar",
+    });
+    // Longest prefix wins over a shorter id that also matches.
+    expect(splitProviderModelTarget("openrouter/x", providers)).toEqual({
+      provider: "openrouter",
+      model: "x",
+    });
+    expect(splitProviderModelTarget("ling-3.0-flash-fin:free", providers)).toBeNull();
+    expect(splitProviderModelTarget("unknown/foo", providers)).toBeNull();
+    expect(splitProviderModelTarget("openrouter/", providers)).toBeNull();
   });
 
   it("parsePermCommand", () => {
@@ -200,6 +243,7 @@ describe("isBypassSlashCommand", () => {
     expect(isBypassSlashCommand("/preset list")).toBe(true);
     expect(isBypassSlashCommand("/p switch build")).toBe(true);
     expect(isBypassSlashCommand("/model list")).toBe(true);
+    expect(isBypassSlashCommand("/model switch ling-3.0-flash-fin:free")).toBe(true);
     expect(isBypassSlashCommand("/perm status")).toBe(true);
     expect(isBypassSlashCommand("/permission list")).toBe(true);
     expect(isBypassSlashCommand("/reasoning switch high")).toBe(true);
@@ -211,10 +255,7 @@ describe("isBypassSlashCommand", () => {
     expect(isBypassSlashCommand("/reject-permission")).toBe(false);
     expect(isBypassSlashCommand("/rq")).toBe(false);
     expect(isBypassSlashCommand("/reject-question")).toBe(false);
-    // /stop is intentionally NOT in the bypass set: it lives in the
-    // question-card priority branch (stop-agent + reject-question) and
-    // changing that behaviour is out of scope for the bypass fix.
-    expect(isBypassSlashCommand("/stop")).toBe(false);
+    expect(isBypassSlashCommand("/stop")).toBe(true);
     // Plain text and unrecognized commands stay as card answers.
     expect(isBypassSlashCommand("")).toBe(false);
     expect(isBypassSlashCommand("hello")).toBe(false);

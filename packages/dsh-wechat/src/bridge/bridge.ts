@@ -36,6 +36,7 @@ import { AgentStore, type BridgeContext } from "../dsh/sessions.js";
 import { DshOps } from "../dsh/ops.js";
 import type { ModelSelection } from "../dsh/ops.js";
 import type { Agent, AskUserQuestionAnswer, AskUserQuestionItem } from "../dsh/types.js";
+import { sessionEvents } from "../dsh/types.js";
 import {
   MAX_OUTBOUND_QUEUE,
   StateStore,
@@ -55,11 +56,14 @@ import {
   renderProjectionSection,
   parseEnterCommand,
   parseModelCommand,
+  splitProviderModelTarget,
   parseNextCommand,
   parseNotifyCommand,
   parsePermCommand,
   parsePresetCommand,
   parseReasoningCommand,
+  parseAllPnCardReplies,
+  parsePnCardReply,
   parseRejectPermissionCommand,
   parseRejectQuestionCommand,
   parseSessionCommand,
@@ -279,6 +283,12 @@ export class WeChatDSHBridge {
   private readonly pendingQuestions = new Map<string, PendingQuestion[]>();
   /** Pending approval cards per user (rpcId-keyed). */
   private readonly pendingApprovals = new Map<string, PendingApproval[]>();
+  /**
+   * Card rpcIds already pushed to WeChat in full, per user. Prevents a
+   * re-send when the user switches into the card's session after it was
+   * already delivered (the card is always re-viewable via /history).
+   */
+  private readonly pushedCardRpcIds = new Map<string, Set<string>>();
   private readonly silentBuffers = new Map<string, string[]>();
   /** One global queue and budget: dsh-wechat intentionally serves one peer. */
   private outboundCache: CachedMessage[] = [];
@@ -288,14 +298,6 @@ export class WeChatDSHBridge {
   private outboundSerial: Promise<void> = Promise.resolve();
   /** Per-agent model overrides set by `/model switch` / `/reasoning` (applied via agent/request). */
   private readonly modelOverrides = new Map<string, ModelOverride>();
-  /**
-   * Sessions whose pending cards were only *notified* (not shown) to a user
-   * because they belonged to a non-current session. Keyed by user id; the
-   * set holds session ids with pending cards the user has been told about.
-   * Clearing happens when the user switches into the session and the cards
-   * are flushed (or reported gone).
-   */
-  private readonly notifiedCardSessions = new Map<string, Set<string>>();
   /** Dedup for cross-session turn/end notifications (userId -> sessionIds already notified this turn). */
   private readonly notifiedCrossSessionTurns = new Map<string, Set<string>>();
   /** Last assistant text per session (for cross-session completion preview). */
@@ -307,6 +309,18 @@ export class WeChatDSHBridge {
    * activity (cold after restart) fall back to their creation time.
    */
   private readonly lastActivityBySession = new Map<string, number>();
+  /**
+   * The most recent numbered session list per WeChat user. Keeping the exact
+   * ids (rather than only its scope) lets a following shorthand `/s switch
+   * <n>` select the row the user actually saw, even if recency changes before
+   * the switch arrives. Explicit `/s switch current <n>` bypasses this
+   * ephemeral snapshot and resolves the current scope afresh.
+   */
+  private readonly lastSessionListByUser = new Map<string, {
+    scope?: "current";
+    cwd: string;
+    sessionIds: string[];
+  }>();
   /**
    * Per-session message-source tracking for the dynamic WeChat surface
    * prompt: the most recent user-message origin per session ("wechat" when
@@ -470,7 +484,7 @@ export class WeChatDSHBridge {
     if (!text || !this.commandsCtx) return false;
     const name = parseCommandName(text);
     if (!name) return false;
-    if (name === "rp" || name === "rq" || name === "stop") return false;
+    if (name === "rq" || name === "rp") return false;
     return true;
   }
 
@@ -500,7 +514,7 @@ export class WeChatDSHBridge {
     if (!this.commandsCtx || !text) return false;
     const name = parseCommandName(text);
     if (!name) return false;
-    if (name === "rp" || name === "rq" || name === "stop") return false;
+    if (name === "rq" || name === "rp") return false;
     // Local whitelist commands (`/s`, `/session`, `/workspace`, …) own
     // their own handlers and must not resume the bound DSH session just
     // to look up a native definition. A corrupt binding would otherwise
@@ -911,7 +925,7 @@ export class WeChatDSHBridge {
     this.typingTickets.clear();
     this.pendingQuestions.clear();
     this.pendingApprovals.clear();
-    this.notifiedCardSessions.clear();
+    this.pushedCardRpcIds.clear();
     this.notifiedCrossSessionTurns.clear();
     try {
       this.state.clearUsers();
@@ -1141,31 +1155,37 @@ export class WeChatDSHBridge {
       text !== "" &&
       (isBypassSlashCommand(text) || this.isBypassableNativeCommand(text));
 
-    // Pending approval cards for the CURRENT session: the next text is
-    // (almost always) a decision. Cards of other sessions do not capture
-    // messages — the user must switch into that session first (a notice
-    // was sent when the card arrived). A recognized non-card slash
-    // command bypasses this branch.
-    const approvals = (this.pendingApprovals.get(userId) ?? []).filter(
-      (c) => c.sessionId === user.sessionId,
-    );
-    if (!bypassCard && approvals.length > 0) {
+    // Answerable cards: current session always; other sessions only while
+    // the decision gate is on. A lone background card must not swallow a
+    // bare reply — those need `P{n}=`. `/rq` closes current-session cards;
+    // `P1=/rq` closes that numbered card (question or approval).
+    const approvals = this.answerableApprovals(userId);
+    const questions = this.answerableQuestions(userId);
+    const current = this.pendingCardsForCurrentSession(userId);
+    const pn = text ? parsePnCardReply(text) : null;
+    const isClose = text !== null && text !== "" && this.isCardCloseCommand(text);
+
+    if (!bypassCard && isClose) {
+      await this.rejectCurrentSessionCards(userId);
+      return;
+    }
+    if (!bypassCard && pn !== null && text) {
+      await this.handlePnReplies(userId, text);
+      return;
+    }
+
+    if (!bypassCard && approvals.length > 0 && (pn !== null || current.approvals.length > 0)) {
       if (text === null || text === "") {
-        await this.sendReply(userId, "⚠️ 当前有权限卡待处理，请用文本回复（1 允许一次 / 2 拒绝，多张卡用 P1=1 P2=2）。");
+        await this.sendReply(userId, `⚠️ 当前有权限卡待处理。回复 1（允许一次）/ 2（拒绝）；其它会话用 P1=1；关闭用 /rq（当前会话）或 P1=/rq。`);
         return;
       }
       await this.handleApprovalReply(userId, text);
       return;
     }
 
-    // Pending question cards for the CURRENT session: same policy. Slash
-    // commands also bypass.
-    const questions = (this.pendingQuestions.get(userId) ?? []).filter(
-      (c) => c.sessionId === user.sessionId,
-    );
-    if (!bypassCard && questions.length > 0) {
+    if (!bypassCard && questions.length > 0 && current.questions.length > 0) {
       if (text === null || text === "") {
-        await this.sendReply(userId, "⚠️ 当前有提问卡待处理，请用文本回复（数字或自定义文字，例如 `Q1=1` 或 `Q1-我的想法`）。");
+        await this.sendReply(userId, `⚠️ 当前有提问卡待处理。当前会话直接回复；其它会话用 P1=…；关闭用 /rq（当前会话）或 P1=/rq。`);
         return;
       }
       await this.handleQuestionReply(userId, text);
@@ -1238,15 +1258,9 @@ export class WeChatDSHBridge {
         return;
       }
 
-      const rp = parseRejectPermissionCommand(text);
-      if (rp) {
-        await this.rejectAllApprovals(userId);
-        return;
-      }
-
       const rq = parseRejectQuestionCommand(text);
       if (rq) {
-        await this.rejectPendingQuestion(userId);
+        await this.rejectCurrentSessionCards(userId);
         return;
       }
 
@@ -1299,7 +1313,10 @@ export class WeChatDSHBridge {
       }
       // Invalid /history attempt (e.g. /history abc) — show usage instead of forwarding.
       if (isHistoryCommandAttempt(text)) {
-        await this.sendReply(userId, `⚠️ 用法: /history [数量]（1-${HISTORY_MAX}，默认 5）例如 /history 10`);
+        await this.sendReply(
+          userId,
+          `⚠️ 用法: /history [all] [数量]（1-${HISTORY_MAX}，默认 5）例如 /history 10 或 /history all`,
+        );
         return;
       }
 
@@ -1443,10 +1460,13 @@ export class WeChatDSHBridge {
 
     if (event.type === "turn/end") {
       void (async () => {
+        // Task completion notices follow their own gate (notifyTaskEvents);
+        // the decision-card gate no longer covers them.
+        if (!this.notifyTaskEventsEnabled()) return;
         const recipients = await this.resolveCrossSessionRecipients(sessionId);
         for (const r of recipients) {
           if (r.userId === user.userId) continue;
-          if (!this.shouldNotifyCrossSession(r.userId)) continue;
+          if (!this.notifyTaskEventsEnabled()) continue;
           const ctx = await this.sessionContextLabel(sessionId);
           const preview = this.lastAssistantTextBySession.get(sessionId);
           const suffix = preview ? "\n> " + preview.slice(0, 80) + (preview.length > 80 ? "…" : "") : "";
@@ -1617,10 +1637,9 @@ export class WeChatDSHBridge {
     list.push(card);
     this.pendingApprovals.set(userId, list);
     const userState = this.state.getUser(userId);
-    if (userState?.sessionId === sessionId) {
-      void this.sendApprovalCard(userId, card, list.length).catch(() => {});
-    } else if (this.shouldNotifyCrossSession(userId)) {
-      void this.notifyCardPending(userId, sessionId).catch(() => {});
+    if (userState?.sessionId === sessionId || this.shouldNotifyCrossSession(userId)) {
+      this.markCardPushed(userId, rpcId);
+      void this.sendApprovalCard(userId, card).catch(() => {});
     }
 
     const gui = Promise.resolve()
@@ -1698,10 +1717,9 @@ export class WeChatDSHBridge {
     list.push(card);
     this.pendingQuestions.set(userId, list);
     const userState = this.state.getUser(userId);
-    if (userState?.sessionId === sessionId) {
-      void this.sendQuestionCard(userId, card, questions, list.length).catch(() => {});
-    } else if (this.shouldNotifyCrossSession(userId)) {
-      void this.notifyCardPending(userId, sessionId).catch(() => {});
+    if (userState?.sessionId === sessionId || this.shouldNotifyCrossSession(userId)) {
+      this.markCardPushed(userId, rpcId);
+      void this.sendQuestionCard(userId, card, questions).catch(() => {});
     }
 
     type QuestionWinner =
@@ -1781,10 +1799,9 @@ export class WeChatDSHBridge {
         list.push(card);
         this.pendingApprovals.set(userId, list);
         const userState = this.state.getUser(userId);
-        if (userState?.sessionId === sessionId) {
-          void this.sendApprovalCard(userId, card, list.length).catch(() => {});
-        } else if (this.shouldNotifyCrossSession(userId)) {
-          void this.notifyCardPending(userId, sessionId).catch(() => {});
+        if (userState?.sessionId === sessionId || this.shouldNotifyCrossSession(userId)) {
+          this.markCardPushed(userId, frame.rpcId);
+          void this.sendApprovalCard(userId, card).catch(() => {});
         }
         break;
       }
@@ -1830,10 +1847,9 @@ export class WeChatDSHBridge {
         list.push(card);
         this.pendingQuestions.set(userId, list);
         const userState = this.state.getUser(userId);
-        if (userState?.sessionId === sessionId) {
-          void this.sendQuestionCard(userId, card, questions, list.length).catch(() => {});
-        } else if (this.shouldNotifyCrossSession(userId)) {
-          void this.notifyCardPending(userId, sessionId).catch(() => {});
+        if (userState?.sessionId === sessionId || this.shouldNotifyCrossSession(userId)) {
+          this.markCardPushed(userId, frame.rpcId);
+          void this.sendQuestionCard(userId, card, questions).catch(() => {});
         }
         break;
       }
@@ -1863,77 +1879,47 @@ export class WeChatDSHBridge {
     const record = sessions.find((r) => r.header.id === sessionId);
     const workspace = record?.header.cwd?.split(/[\\/]/).pop() ?? "?";
     const title = record
-      ? (await this.ops.readSessionTitle(sessionId)) ?? sessionId.slice(0, 8)
+      ? (await this.ops.readSessionTitle(sessionId, record.header.cwd, record.header)) ?? sessionId.slice(0, 8)
       : sessionId.slice(0, 8);
     return `📂 ${workspace} · 💬 ${title}`;
   }
 
-  /** Send one mirrored approval card with its session provenance header. */
-  private async sendApprovalCard(userId: string, card: PendingApproval, count: number): Promise<void> {
+  /**
+   * Send one mirrored approval card with its session provenance header.
+   * The P{n} number is the card's index across answerable approvals
+   * (current session, plus other sessions while the decision gate is on).
+   */
+  private async sendApprovalCard(userId: string, card: PendingApproval): Promise<void> {
     const context = await this.sessionContextLabel(card.sessionId);
-    const note = this.isBoundSession(card.sessionId)
+    const { index, total } = this.pnOfCard(userId, "approval", card.rpcId);
+    const currentId = this.state.getUser(userId)?.sessionId;
+    const note = currentId && card.sessionId === currentId
       ? ""
-      : `\n\n（会话 ${card.sessionId.slice(0, 12)} — 未绑定微信，可直接在此处理）`;
-    await this.sendReply(userId, `${context}\n${formatApprovalCard(card, count, count)}${note}`);
+      : `\n\n（来自其他会话 — 回复 P${index}=1 允许 / P${index}=2 拒绝；P${index}=/rq 关闭此卡。直接打字会发给当前会话。）`;
+    await this.sendReply(userId, `${context}\n${formatApprovalCard(card, index, total)}${note}`);
   }
 
-  /** Send one mirrored question card with its session provenance header. */
+  /**
+   * Send one mirrored question card with its session provenance header.
+   * The P{n} number is the card's index across answerable questions;
+   * multi-card replies use `P{n}=` to pick the card.
+   */
   private async sendQuestionCard(
     userId: string,
     card: PendingQuestion,
     questions: AskUserQuestionItem[],
-    count: number,
   ): Promise<void> {
     const context = await this.sessionContextLabel(card.sessionId);
-    const header = count > 1 ? `❓ 提问卡 ${count}/${count}` : "❓ 提问";
-    await this.sendReply(userId, `${header}\n${context}\n${formatQuestionForWeChat(questions)}`);
-  }
-
-  /**
-   * Tell the user a non-current session has pending cards, once per session
-   * (a burst of cards for the same session yields a single notice). The
-   * notice names the session; switching into it flushes the cards.
-   *
-   * The dedupe mark is only set when the notice can actually be delivered:
-   * right after a restart there is no context token yet (the bridge cannot
-   * push until the user sends the first message), and marking the session
-   * anyway would swallow every later notice for it.
-   */
-  private async notifyCardPending(userId: string, sessionId: string): Promise<void> {
-    const notified = this.notifiedCardSessions.get(userId) ?? new Set<string>();
-    if (notified.has(sessionId)) return;
-    if (!this.botReady()) return;
-    notified.add(sessionId);
-    this.notifiedCardSessions.set(userId, notified);
-    const context = await this.sessionContextLabel(sessionId);
-    const approvals = (this.pendingApprovals.get(userId) ?? []).filter((c) => c.sessionId === sessionId).length;
-    const questions = (this.pendingQuestions.get(userId) ?? []).filter((c) => c.sessionId === sessionId).length;
-    const kinds = [
-      approvals > 0 ? `${approvals} 张权限卡` : "",
-      questions > 0 ? `${questions} 张提问卡` : "",
-    ].filter(Boolean).join("、");
-    await this.sendReply(
-      userId,
-      `${context}\n🔔 有 ${kinds}待处理，发送 /session switch <编号> 切换到该会话后查看。`,
-    );
-  }
-
-  /**
-   * Drop the notified mark for (userId, sessionId) once no cards are pending
-   * for that session — so the next batch of cards produces a fresh WeChat
-   * notification. Burst dedupe within a single batch is preserved: this only
-   * clears when the last card of a session is removed (any path: GUI/WeChat
-   * resolve, timeout, /rp, /rq). Called from removeApprovalCard /
-   * removeQuestionCard so every removal path is covered automatically.
-   */
-  private clearNotifiedIfNoPending(userId: string, sessionId: string): void {
-    const approvals = (this.pendingApprovals.get(userId) ?? [])
-      .filter((c) => c.sessionId === sessionId).length;
-    const questions = (this.pendingQuestions.get(userId) ?? [])
-      .filter((c) => c.sessionId === sessionId).length;
-    if (approvals === 0 && questions === 0) {
-      this.notifiedCardSessions.get(userId)?.delete(sessionId);
-    }
+    const { index, total } = this.pnOfCard(userId, "question", card.rpcId);
+    const header = total > 1 ? `❓ 提问卡 ${index}/${total}` : "❓ 提问";
+    const currentId = this.state.getUser(userId)?.sessionId;
+    const foreign = currentId && card.sessionId !== currentId
+      ? `\n\n（来自其他会话 — 回复 P${index}=… 指定本卡，例如 P${index}=1；P${index}=/rq 关闭此卡。直接打字会发给当前会话。）`
+      : "";
+    const tip = !foreign && total > 1
+      ? `\n\n此卡编号 P${index}：回复 P${index}=… 指定本卡；P${index}=/rq 关闭此卡。`
+      : "";
+    await this.sendReply(userId, `${header}\n${context}\n${formatQuestionForWeChat(questions)}${foreign}${tip}`);
   }
 
   /**
@@ -1974,6 +1960,7 @@ export class WeChatDSHBridge {
   }
 
   private async notifyCrossSessionTurnEnd(sessionId: string): Promise<void> {
+    if (!this.notifyTaskEventsEnabled()) return;
     const recipients = await this.resolveCrossSessionRecipients(sessionId);
     if (recipients.length === 0) return;
     const context = await this.sessionContextLabel(sessionId);
@@ -1982,7 +1969,7 @@ export class WeChatDSHBridge {
     const body = context + "\n✅ 任务已完成" + previewSuffix + "\n发送 /session switch <编号> 切换查看。";
     for (const user of recipients) {
       if (user.sessionId === sessionId) continue;
-      if (!this.shouldNotifyCrossSession(user.userId)) continue;
+      if (!this.notifyTaskEventsEnabled()) continue;
       if (!this.botReady()) continue;
       const set = this.notifiedCrossSessionTurns.get(user.userId) ?? new Set<string>();
       if (set.has(sessionId)) continue;
@@ -1994,6 +1981,7 @@ export class WeChatDSHBridge {
   }
 
   private async notifyCrossSessionError(sessionId: string, error: unknown): Promise<void> {
+    if (!this.notifyTaskEventsEnabled()) return;
     const recipients = await this.resolveCrossSessionRecipients(sessionId);
     if (recipients.length === 0) return;
     const context = await this.sessionContextLabel(sessionId);
@@ -2001,7 +1989,7 @@ export class WeChatDSHBridge {
     const body = context + "\n⚠️ 任务报错: " + msg + "\n发送 /session switch <编号> 查看。";
     for (const user of recipients) {
       if (user.sessionId === sessionId) continue;
-      if (!this.shouldNotifyCrossSession(user.userId)) continue;
+      if (!this.notifyTaskEventsEnabled()) continue;
       if (!this.botReady()) continue;
       void this.sendReply(user.userId, body).catch(() => {});
     }
@@ -2018,30 +2006,43 @@ export class WeChatDSHBridge {
 
   /**
    * After the user switches into `sessionId`, flush any pending cards for
-   * it: show them if still pending, or — only when the user was notified
-   * about this session earlier — say they are gone (timeout / handled in
-   * the GUI). Ordinary switches without a notification stay silent.
+   * it that were NOT already pushed in full on arrival (a card pushed for
+   * a non-current session must not repeat on switch; /history re-shows
+   * everything on demand).
    */
   private async flushPendingCardsForSession(userId: string, sessionId: string): Promise<void> {
-    const wasNotified = this.notifiedCardSessions.get(userId)?.has(sessionId) ?? false;
     const approvals = (this.pendingApprovals.get(userId) ?? []).filter((c) => c.sessionId === sessionId);
     const questions = (this.pendingQuestions.get(userId) ?? []).filter((c) => c.sessionId === sessionId);
 
-    if (approvals.length > 0 || questions.length > 0) {
-      for (const card of approvals) {
-        void this.sendApprovalCard(userId, card, approvals.length).catch(() => {});
+    const unseenApprovals = approvals.filter((c) => !this.isCardPushed(userId, c.rpcId));
+    const unseenQuestions = questions.filter((c) => !this.isCardPushed(userId, c.rpcId));
+    if (unseenApprovals.length > 0 || unseenQuestions.length > 0) {
+      for (const card of unseenApprovals) {
+        this.markCardPushed(userId, card.rpcId);
+        void this.sendApprovalCard(userId, card).catch(() => {});
       }
-      for (const card of questions) {
-        void this.sendQuestionCard(userId, card, card.items, questions.length).catch(() => {});
+      for (const card of unseenQuestions) {
+        this.markCardPushed(userId, card.rpcId);
+        void this.sendQuestionCard(userId, card, card.items).catch(() => {});
       }
-    } else if (wasNotified) {
-      await this.sendReply(userId, "ℹ️ 该会话的待处理卡片已在其他端处理或超时。");
     }
 
-    // Clear the notice either way: the user has now been shown the cards
-    // (or told they are gone); a new card will notify again.
-    this.notifiedCardSessions.get(userId)?.delete(sessionId);
     this.clearCrossSessionTurnNotified(userId, sessionId);
+  }
+
+  /** Push every still-pending card that has not yet been shown on WeChat. */
+  private async flushUnseenCardsForUser(userId: string): Promise<void> {
+    const approvals = (this.pendingApprovals.get(userId) ?? []).filter((c) => !this.isCardPushed(userId, c.rpcId));
+    const questions = (this.pendingQuestions.get(userId) ?? []).filter((c) => !this.isCardPushed(userId, c.rpcId));
+    if (approvals.length === 0 && questions.length === 0) return;
+    for (const card of approvals) {
+      this.markCardPushed(userId, card.rpcId);
+      void this.sendApprovalCard(userId, card).catch(() => {});
+    }
+    for (const card of questions) {
+      this.markCardPushed(userId, card.rpcId);
+      void this.sendQuestionCard(userId, card, card.items).catch(() => {});
+    }
   }
 
   /**
@@ -2061,10 +2062,6 @@ export class WeChatDSHBridge {
     return this.resolveUserForAgent(sessionId)?.userId;
   }
 
-  private isBoundSession(sessionId: string): boolean {
-    return this.userForAgent(sessionId) !== undefined;
-  }
-
   /** Pending cards that belong to the user's *current* bound session. */
   private pendingCardsForCurrentSession(userId: string): {
     approvals: PendingApproval[];
@@ -2078,30 +2075,132 @@ export class WeChatDSHBridge {
     };
   }
 
+  /**
+   * Cards the user may answer from WeChat right now.
+   * Gate off → current session only (unseen background cards stay silent).
+   * Gate on  → every pending card (they were / will be pushed in full).
+   */
+  private answerableApprovals(userId: string): PendingApproval[] {
+    if (this.shouldNotifyCrossSession(userId)) return this.pendingApprovals.get(userId) ?? [];
+    return this.pendingCardsForCurrentSession(userId).approvals;
+  }
+
+  private answerableQuestions(userId: string): PendingQuestion[] {
+    if (this.shouldNotifyCrossSession(userId)) return this.pendingQuestions.get(userId) ?? [];
+    return this.pendingCardsForCurrentSession(userId).questions;
+  }
+
+  /**
+   * Global P{n} order: questions first, then approvals. One namespace so a
+   * plan card labelled P1 is not intercepted as a permission reply.
+   */
+  private answerableCards(userId: string): Array<
+    { kind: "question"; card: PendingQuestion } | { kind: "approval"; card: PendingApproval }
+  > {
+    return [
+      ...this.answerableQuestions(userId).map((card) => ({ kind: "question" as const, card })),
+      ...this.answerableApprovals(userId).map((card) => ({ kind: "approval" as const, card })),
+    ];
+  }
+
+  private pnOfCard(userId: string, kind: "question" | "approval", rpcId: string): { index: number; total: number } {
+    const all = this.answerableCards(userId);
+    const idx = all.findIndex((c) => c.kind === kind && c.card.rpcId === rpcId);
+    return { index: idx >= 0 ? idx + 1 : all.length, total: all.length };
+  }
+
   // ─── Approval replies ───
 
-  private async handleApprovalReply(userId: string, text: string): Promise<void> {
-    const all = this.pendingApprovals.get(userId) ?? [];
-    // Only the user's current session's cards are answerable from WeChat;
-    // cards of other sessions are flushed when the user switches into them.
-    const userState = this.state.getUser(userId);
-    const list = userState?.sessionId
-      ? all.filter((c) => c.sessionId === userState.sessionId)
-      : all;
-    if (list.length === 0) {
-      if (all.length > 0) {
-        await this.sendReply(userId, "💬 当前会话没有待处理的权限卡（其他会话的卡切换过去后查看）。");
+  /** Background task completion/error notice gate (decision cards only follow `crossSessionNotify`). */
+  private notifyTaskEventsEnabled(): boolean {
+    return this.config.notifyTaskEvents === true;
+  }
+
+  /** Record that the card's full content was pushed to WeChat for this user. */
+  private markCardPushed(userId: string, rpcId: string): void {
+    if (!rpcId) return;
+    const set = this.pushedCardRpcIds.get(userId) ?? new Set<string>();
+    set.add(rpcId);
+    this.pushedCardRpcIds.set(userId, set);
+  }
+
+  /** Whether the card's full content was already pushed to WeChat for this user. */
+  private isCardPushed(userId: string, rpcId: string): boolean {
+    return this.pushedCardRpcIds.get(userId)?.has(rpcId) ?? false;
+  }
+
+  /** Drop the pushed marker when the card leaves the pending table. */
+  private unmarkCardPushed(userId: string, rpcId: string): void {
+    this.pushedCardRpcIds.get(userId)?.delete(rpcId);
+  }
+
+  private isCardCloseCommand(text: string): boolean {
+    return parseRejectQuestionCommand(text) !== null || parseRejectPermissionCommand(text) !== null;
+  }
+
+  /** Route every `P{n}=` in the line onto the globally numbered card. */
+  private async handlePnReplies(userId: string, text: string): Promise<void> {
+    const parts = parseAllPnCardReplies(text);
+    const all = this.answerableCards(userId);
+    if (parts.length === 0) return;
+    if (all.length === 0) {
+      await this.sendReply(userId, "✅ 当前没有待处理卡片。");
+      return;
+    }
+    for (const part of parts) {
+      if (part.index < 1 || part.index > all.length) {
+        await this.sendReply(userId, `⚠️ 卡片编号超出范围（1-${all.length}）。`);
+        continue;
       }
+      const target = all[part.index - 1]!;
+      if (this.isCardCloseCommand(part.rest)) {
+        if (target.kind === "question") await this.rejectOneQuestion(userId, target.card, part.index);
+        else await this.rejectOneApproval(userId, target.card, part.index);
+        continue;
+      }
+      if (target.kind === "question") {
+        await this.answerOneQuestion(userId, target.card, part.rest);
+      } else {
+        const { decisions, warnings } = parseApprovalReply(part.rest, [target.card]);
+        await this.applyApprovalDecisions(userId, [target.card], decisions, warnings);
+      }
+    }
+  }
+
+  private async handleApprovalReply(userId: string, text: string): Promise<void> {
+    const list = this.answerableApprovals(userId);
+    if (list.length === 0) {
       return;
     }
 
-    // Priority commands.
-    if (parseRejectPermissionCommand(text)) {
-      await this.rejectAllApprovals(userId);
+    const pn = parsePnCardReply(text);
+    if (pn) {
+      if (pn.index < 1 || pn.index > list.length) {
+        await this.sendReply(userId, `⚠️ 卡片编号超出范围（1-${list.length}）。`);
+        return;
+      }
+    } else {
+      const currentId = this.state.getUser(userId)?.sessionId;
+      const local = currentId ? list.filter((c) => c.sessionId === currentId) : [];
+      if (local.length === 0) {
+        await this.sendReply(userId, `⚠️ 其它会话的权限卡请用 P1=1 / P2=2 指定编号；关闭用 P1=/rq。直接打字会发给当前会话。`);
+        return;
+      }
+      const { decisions, warnings } = parseApprovalReply(text, local);
+      await this.applyApprovalDecisions(userId, local, decisions, warnings);
       return;
     }
 
     const { decisions, warnings } = parseApprovalReply(text, list);
+    await this.applyApprovalDecisions(userId, list, decisions, warnings);
+  }
+
+  private async applyApprovalDecisions(
+    userId: string,
+    list: PendingApproval[],
+    decisions: Array<{ rpcId: string; reply: "once" | "reject" }>,
+    warnings: string[],
+  ): Promise<void> {
     const snapshot = [...list];
     for (const decision of decisions) {
       const entry = snapshot.find((c) => c.rpcId === decision.rpcId);
@@ -2117,7 +2216,7 @@ export class WeChatDSHBridge {
       void this.sendReply(userId, `⚠️ ${warning}`).catch(() => {});
     }
     if (decisions.length === 0) {
-      await this.sendReply(userId, "⚠️ 无法识别的权限回复。回复 1（允许一次）/ 2（拒绝），多张卡用 P1=1 P2=2，或 /rp 全部拒绝。");
+      await this.sendReply(userId, "⚠️ 无法识别的权限回复。回复 1（允许一次）/ 2（拒绝）；其它会话用 P1=1；关闭用 /rq 或 P1=/rq。");
     }
   }
 
@@ -2142,82 +2241,60 @@ export class WeChatDSHBridge {
     const entry = list.find((c) => c.rpcId === rpcId);
     if (!entry) return;
     clearTimeout(entry.timer);
-    const sessionId = entry.sessionId;
+    this.unmarkCardPushed(userId, rpcId);
     const next = list.filter((c) => c.rpcId !== rpcId);
     if (next.length > 0) this.pendingApprovals.set(userId, next);
     else this.pendingApprovals.delete(userId);
-    this.clearNotifiedIfNoPending(userId, sessionId);
   }
 
-  /** `/rp` — reject every pending approval card of the current session. */
-  private async rejectAllApprovals(userId: string): Promise<void> {
-    const all = this.pendingApprovals.get(userId) ?? [];
-    const userState = this.state.getUser(userId);
-    const list = userState?.sessionId
-      ? all.filter((c) => c.sessionId === userState.sessionId)
-      : all;
-    if (list.length === 0) {
-      await this.sendReply(userId, "✅ 当前会话没有待处理的权限卡。");
+  private async rejectOneApproval(userId: string, entry: PendingApproval, index: number): Promise<void> {
+    this.removeApprovalCard(userId, entry.rpcId);
+    const receipt = await this.respondApproval(entry, "rejected");
+    if (index <= 0) return;
+    if (!receipt.accepted) {
+      await this.sendReply(userId, `ℹ️ 权限请求 ${entry.toolName} 已在其他端处理。`);
       return;
     }
-    for (const entry of [...list]) {
-      this.removeApprovalCard(userId, entry.rpcId);
-      const receipt = await this.respondApproval(entry, "rejected");
-      if (!receipt.accepted) {
-        void this.sendReply(userId, `ℹ️ 权限请求 ${entry.toolName} 已在其他端处理。`).catch(() => {});
-      }
-    }
-    await this.sendReply(userId, `✅ 已拒绝 ${list.length} 张权限卡。`);
+    await this.sendReply(userId, `✅ 已关闭权限卡 P${index}（${entry.toolName}）。`);
   }
 
   // ─── Question replies ───
 
   private async handleQuestionReply(userId: string, text: string): Promise<void> {
-    const all = this.pendingQuestions.get(userId) ?? [];
-    // Only the current session's questions are answerable from WeChat.
-    const userState = this.state.getUser(userId);
-    const list = userState?.sessionId
-      ? all.filter((c) => c.sessionId === userState.sessionId)
-      : all;
+    const list = this.answerableQuestions(userId);
     if (list.length === 0) {
-      if (all.length > 0) {
-        await this.sendReply(userId, "💬 当前会话没有待处理的提问卡（其他会话的卡切换过去后查看）。");
-      }
       return;
     }
 
-    // Priority commands.
-    if (parseRejectQuestionCommand(text)) {
-      await this.rejectPendingQuestion(userId);
-      return;
-    }
-    if (parseStopCommand(text)) {
-      await this.rejectPendingQuestion(userId);
-      const userState = this.state.getUser(userId);
-      const agent = userState ? this.agents.get(userState) : undefined;
-      agent?.cancel("user-stop");
-      await this.sendReply(userId, "🛑 已停止任务并拒绝问题。");
-      return;
-    }
-
-    // Select the target card: single card → whole text; multiple cards → P{n}= prefix.
-    let entry = list[0]!;
-    let answerText = text;
-    const cardMatch = text.trim().match(/^P(\d+)\s*[:=]\s*([\s\S]*)$/);
-    if (list.length > 1) {
-      if (!cardMatch) {
-        await this.sendReply(userId, `⚠️ 有 ${list.length} 张提问卡待处理。请用 P1=… 指定卡片（内容用 Qn= 语法），或 /rq 全部拒绝。`);
-        return;
-      }
-      const index = parseInt(cardMatch[1]!, 10);
-      if (index < 1 || index > list.length) {
+    const pn = parsePnCardReply(text);
+    let entry: PendingQuestion;
+    let answerText: string;
+    if (pn) {
+      if (pn.index < 1 || pn.index > list.length) {
         await this.sendReply(userId, `⚠️ 卡片编号超出范围（1-${list.length}）。`);
         return;
       }
-      entry = list[index - 1]!;
-      answerText = cardMatch[2]!;
+      entry = list[pn.index - 1]!;
+      answerText = pn.rest;
+    } else {
+      const currentId = this.state.getUser(userId)?.sessionId;
+      const local = currentId ? list.filter((c) => c.sessionId === currentId) : [];
+      if (local.length === 0) {
+        await this.sendReply(userId, `⚠️ 其它会话的提问卡请用 P1=… 指定编号；关闭用 P1=/rq。直接打字会发给当前会话。`);
+        return;
+      }
+      if (local.length > 1) {
+        await this.sendReply(userId, `⚠️ 有 ${local.length} 张提问卡待处理。请用 P1=… 指定卡片；关闭用 /rq（当前会话）或 P1=/rq。`);
+        return;
+      }
+      entry = local[0]!;
+      answerText = text;
     }
 
+    await this.answerOneQuestion(userId, entry, answerText);
+  }
+
+  private async answerOneQuestion(userId: string, entry: PendingQuestion, answerText: string): Promise<void> {
     const parsed = parseQuestionReply(answerText, entry.items);
     this.removeQuestionCard(userId, entry.rpcId);
     for (const warning of parsed.warnings) {
@@ -2242,26 +2319,54 @@ export class WeChatDSHBridge {
     return { accepted: true };
   }
 
-  /** `/rq` — reject every pending question card of the current session. */
-  private async rejectPendingQuestion(userId: string): Promise<void> {
-    const all = this.pendingQuestions.get(userId) ?? [];
-    const userState = this.state.getUser(userId);
-    const list = userState?.sessionId
-      ? all.filter((c) => c.sessionId === userState.sessionId)
-      : all;
-    if (list.length === 0) {
-      await this.sendReply(userId, "✅ 当前会话没有待处理的问题卡。");
+  /** `/rq` — close pending cards of the current session only. */
+  private async rejectCurrentSessionCards(userId: string): Promise<void> {
+    const { approvals, questions } = this.pendingCardsForCurrentSession(userId);
+    if (approvals.length === 0 && questions.length === 0) {
+      await this.sendReply(userId, "✅ 当前会话没有待处理卡片。");
       return;
     }
-    for (const entry of [...list]) {
-      this.removeQuestionCard(userId, entry.rpcId);
-      if (entry.settled) continue;
+    let closed = 0;
+    for (const entry of [...questions]) {
+      await this.rejectOneQuestion(userId, entry, 0);
+      closed++;
+    }
+    for (const entry of [...approvals]) {
+      await this.rejectOneApproval(userId, entry, 0);
+      closed++;
+    }
+    await this.sendReply(userId, `✅ 已关闭当前会话 ${closed} 张卡片。`);
+  }
+
+  /** `P{n}=/rq` — close that globally numbered card. */
+  private async rejectCardByPn(userId: string, index: number): Promise<void> {
+    const all = this.answerableCards(userId);
+    if (index < 1 || index > all.length) {
+      await this.sendReply(userId, all.length > 0 ? `⚠️ 卡片编号超出范围（1-${all.length}）。` : "✅ 当前没有待处理卡片。");
+      return;
+    }
+    const target = all[index - 1]!;
+    if (target.kind === "question") await this.rejectOneQuestion(userId, target.card, index);
+    else await this.rejectOneApproval(userId, target.card, index);
+  }
+
+  private async rejectOneQuestion(userId: string, entry: PendingQuestion, index: number): Promise<void> {
+    this.removeQuestionCard(userId, entry.rpcId);
+    if (!entry.settled) {
       entry.settled = true;
-      if (entry.cancelWechat) {
+      const planKeep = this.planKeepPlanningAnswer(entry.items);
+      if (planKeep && entry.settleWechat) {
+        // Web UI closing a plan-review card selects "Keep planning" rather
+        // than aborting the ask. Mirror that so the model gets the same
+        // "revise the plan and present it again" tool error.
+        entry.settleWechat(planKeep);
+      } else if (entry.cancelWechat) {
         try {
-          const err = Object.assign(new Error("ask_user_question was aborted before the user answered"), {
+          // Match Web composer's X: user closed the card (`ASK_CANCELLED`),
+          // not a turn abort (`ASK_ABORTED`).
+          const err = Object.assign(new Error("the user cancelled ask_user_question"), {
             name: "UserQuestionError",
-            code: "ASK_ABORTED",
+            code: "ASK_CANCELLED",
           });
           entry.cancelWechat(err);
         } catch {
@@ -2269,7 +2374,31 @@ export class WeChatDSHBridge {
         }
       }
     }
-    await this.sendReply(userId, `✅ 已拒绝 ${list.length} 张提问卡。`);
+    if (index > 0) await this.sendReply(userId, `✅ 已关闭提问卡 P${index}。`);
+  }
+
+  /**
+   * Plan-mode `exit_plan_mode` review: dismissing the card is "Keep planning",
+   * not an aborted ask. Detect via host intent, else the well-known review id.
+   */
+  private planKeepPlanningAnswer(items: AskUserQuestionItem[]): AskUserQuestionAnswer | undefined {
+    if (items.length === 0) return undefined;
+    const answers: AskUserQuestionAnswer["answers"] = [];
+    let matched = false;
+    for (const item of items) {
+      const approve = item.intent?.kind === "plan-review" ? item.intent.approve : undefined;
+      const isReview = item.intent?.kind === "plan-review" || item.id === "plan-review";
+      if (!isReview) {
+        answers.push({ id: item.id, selected: [] });
+        continue;
+      }
+      matched = true;
+      const keep =
+        item.options?.find((o) => (approve ? o.label !== approve : /keep planning/i.test(o.label)))?.label
+        ?? "Keep planning";
+      answers.push({ id: item.id, selected: [keep] });
+    }
+    return matched ? { answers } : undefined;
   }
 
   private removeQuestionCard(userId: string, rpcId: string): void {
@@ -2278,11 +2407,10 @@ export class WeChatDSHBridge {
     const entry = list.find((c) => c.rpcId === rpcId);
     if (!entry) return;
     clearTimeout(entry.timer);
-    const sessionId = entry.sessionId;
+    this.unmarkCardPushed(userId, rpcId);
     const next = list.filter((c) => c.rpcId !== rpcId);
     if (next.length > 0) this.pendingQuestions.set(userId, next);
     else this.pendingQuestions.delete(userId);
-    this.clearNotifiedIfNoPending(userId, sessionId);
   }
 
   // ─── Slash command handlers ───
@@ -2290,17 +2418,32 @@ export class WeChatDSHBridge {
   private async handleNotifyCommand(userId: string, cmd: NotifyCommand): Promise<void> {
     if (cmd.kind === "status") {
       const on = this.shouldNotifyCrossSession(userId) ? "on" : "off";
-      await this.sendReply(userId, `🔔 跨会话通知: ${on}（已完成/报错/卡片，单用户）\n切换: /notify on|off`);
+      const task = this.notifyTaskEventsEnabled() ? "on" : "off";
+      await this.sendReply(
+        userId,
+        `🔔 跨会话决策推送: ${on}（任意会话的权限/提问卡整卡推送，微信直接回复）\n后台任务完成/报错提醒: ${task}\n切换决策推送: /notify on|off\n切换任务提醒: /notify tasks on|off`,
+      );
       return;
     }
     if (cmd.kind === "on") {
       this.persistEditable({ crossSessionNotify: true });
-      await this.sendReply(userId, "✅ 跨会话通知已开启。");
+      await this.sendReply(userId, "✅ 跨会话决策推送已开启。后台权限/提问卡会整卡推到微信，直接回复即可。");
+      await this.flushUnseenCardsForUser(userId);
       return;
     }
     if (cmd.kind === "off") {
       this.persistEditable({ crossSessionNotify: false });
-      await this.sendReply(userId, "🔕 跨会话通知已关闭。");
+      await this.sendReply(userId, "🔕 跨会话决策推送已关闭。仅当前会话的卡可在微信回复。");
+      return;
+    }
+    if (cmd.kind === "tasks-on") {
+      this.persistEditable({ notifyTaskEvents: true });
+      await this.sendReply(userId, "✅ 后台任务完成/报错提醒已开启。");
+      return;
+    }
+    if (cmd.kind === "tasks-off") {
+      this.persistEditable({ notifyTaskEvents: false });
+      await this.sendReply(userId, "🔕 后台任务完成/报错提醒已关闭。");
       return;
     }
   }
@@ -2476,6 +2619,7 @@ export class WeChatDSHBridge {
    * (the next user message will create one — this method does not mint).
    */
   private async switchUserWorkspace(user: UserState, workspacePath: string): Promise<string> {
+    this.lastSessionListByUser.delete(user.userId);
     user.cwd = workspacePath;
     user.cwdExplicit = true;
     user.sessionId = "";
@@ -2502,65 +2646,101 @@ export class WeChatDSHBridge {
     if (!sessionId) {
       return `${head}\n💬 该工作区暂无会话，发送消息将创建`;
     }
-    return `${head}\n💬 已恢复会话: ${await this.formatSessionLabel(sessionId)}`;
+    return `${head}\n💬 已恢复会话: ${await this.formatSessionLabel(sessionId, path)}`;
   }
 
   /**
    * WeChat-facing session label: cleaned title (id prefix fallback) + full id.
    */
-  private async formatSessionLabel(sessionId: string): Promise<string> {
-    const raw = (await this.ops.readSessionTitle(sessionId)) ?? sessionId.slice(0, 12);
+  private async formatSessionLabel(sessionId: string, cwd?: string): Promise<string> {
+    const raw = (await this.ops.readSessionTitle(sessionId, cwd)) ?? sessionId.slice(0, 12);
     return `${cleanSessionTitle(raw)}（${sessionId}）`;
+  }
+
+  /**
+   * Resolve the same recency-ordered session set for both `/s list` and
+   * `/s switch`. `scope` is explicit on the command so `list current` cannot
+   * accidentally be paired with the unfiltered switch list.
+   */
+  private async listRecentSessions(user: UserState, scope?: "current") {
+    const sessions = await this.ops.listSessions();
+    const scoped = scope === "current"
+      ? sessions.filter((record) => record.header.cwd === user.cwd)
+      : sessions;
+
+    // Cold-start recency: avoid inspecting every complete session log. Live
+    // agents / projection cache / a newest-first tail read are sufficient.
+    await Promise.all(
+      scoped.map(async (record) => {
+        if (this.lastActivityBySession.has(record.header.id)) return;
+        const time = await this.ops.lastUserMessageTime(record.header.id, record.header.cwd, record.header);
+        if (time !== undefined) this.lastActivityBySession.set(record.header.id, time);
+      }),
+    );
+
+    return [...scoped].sort((a, b) => this.sessionActivityTime(b) - this.sessionActivityTime(a));
+  }
+
+  /**
+   * Resolve a shorthand switch against the exact rows from the last list.
+   * Return `undefined` when the snapshot is unavailable or no longer valid;
+   * the caller then falls back to a fresh all-session list.
+   */
+  private async sessionsFromLastList(user: UserState) {
+    const snapshot = this.lastSessionListByUser.get(user.userId);
+    if (!snapshot || snapshot.sessionIds.length === 0) return undefined;
+    if (snapshot.scope === "current" && snapshot.cwd !== user.cwd) return undefined;
+
+    const current = await this.ops.listSessions();
+    const byId = new Map(current.map((record) => [record.header.id, record]));
+    const rows = snapshot.sessionIds
+      .map((id) => byId.get(id))
+      .filter((record): record is NonNullable<typeof record> => record !== undefined);
+    return rows.length === snapshot.sessionIds.length ? rows : undefined;
   }
 
   private async handleSessionCommand(userId: string, cmd: SessionCommand): Promise<void> {
     const user = this.ensureBoundUser(userId);
     switch (cmd.kind) {
       case "list": {
-        const sessions = await this.ops.listSessions();
-        if (sessions.length === 0) {
-          await this.sendReply(userId, "💬 暂无会话。发送消息即可创建第一个会话。");
+        // Both display and switching use this same scoped, recency-ordered
+        // source. `/s list current` advertises the explicit scoped switch
+        // form so its row numbers cannot be interpreted against all sessions.
+        const allRecent = await this.listRecentSessions(user, cmd.scope);
+        this.lastSessionListByUser.set(user.userId, {
+          scope: cmd.scope,
+          cwd: user.cwd,
+          sessionIds: allRecent.map((record) => record.header.id),
+        });
+        const recent = allRecent.slice(0, 20);
+        if (recent.length === 0) {
+          await this.sendReply(
+            userId,
+            cmd.scope === "current"
+              ? `💬 当前工作目录（${user.cwd}）下暂无会话。发送消息即可创建第一个会话。`
+              : "💬 暂无会话。发送消息即可创建第一个会话。",
+          );
           return;
         }
-        // `/s list current` narrows to sessions of the current working
-        // directory; plain `/s list` shows every session.
-        const scoped = cmd.scope === "current"
-          ? sessions.filter((r) => r.header.cwd === user.cwd)
-          : sessions;
-        if (scoped.length === 0) {
-          await this.sendReply(userId, `💬 当前工作目录（${user.cwd}）下暂无会话。发送消息即可创建第一个会话。`);
-          return;
-        }
-        // Cold-start recency recovery: sessions without an in-memory activity
-        // record (e.g. right after a restart) read their last user-prompt
-        // time from the raw log, in parallel; results are cached afterwards.
-        await Promise.all(
-          scoped.map(async (r) => {
-            if (this.lastActivityBySession.has(r.header.id)) return;
-            const t = await this.ops.lastUserMessageTime(r.header.id);
-            if (t !== undefined) this.lastActivityBySession.set(r.header.id, t);
-          }),
-        );
-        const recent = scoped
-          .sort((a, b) => this.sessionActivityTime(b) - this.sessionActivityTime(a))
-          .slice(0, 20);
         const lines = [cmd.scope === "current"
-          ? `💬 最近会话（${user.cwd}，/session switch <编号> 切换）`
+          ? `💬 最近会话（${user.cwd}，/session switch current <编号> 切换）`
           : "💬 最近会话（按最近活动排序，/session switch <编号> 切换）"];
-        // Pass each row's already-known cwd so we don't re-query the
-        // session roster per line. Reads run in parallel; session-log.cjs
-        // caches by (path, size, mtime) so a second `/s list` is a stat.
-        const [titles, presetIds, presets] = await Promise.all([
-          Promise.all(recent.map((r) => this.ops.readSessionTitle(r.header.id))),
-          Promise.all(recent.map((r) => this.ops.resolveSessionPreset(r.header.id, r.header.cwd))),
+        // One log fold per displayed row (title + live preset). A second
+        // `/s list` is a stat: session-log.cjs caches by (path, size, mtime).
+        const [facts, presets] = await Promise.all([
+          Promise.all(recent.map((r) => this.ops.readSessionListFacts(r.header.id, r.header.cwd, r.header))),
           this.ops.listPresets(),
         ]);
         for (let i = 0; i < recent.length; i++) {
           const record = recent[i]!;
+          const row = facts[i];
           const marker = record.header.id === user.sessionId ? " ◀ 当前" : "";
-          const title = cleanSessionTitle(titles[i] ?? record.header.id.slice(0, 12));
+          const title = cleanSessionTitle(row?.title ?? record.header.id.slice(0, 12));
+          if (row?.lastUserMessageTime !== undefined) {
+            this.lastActivityBySession.set(record.header.id, row.lastUserMessageTime);
+          }
           const when = this.formatRelativeTime(this.sessionActivityTime(record));
-          const presetId = presetIds[i];
+          const presetId = row?.preset;
           const presetLabel = presetId
             ? (presets.find((p) => p.id === presetId)?.name ?? presetId)
             : undefined;
@@ -2575,14 +2755,29 @@ export class WeChatDSHBridge {
         return;
       }
       case "switch": {
-        const sessions = await this.ops.listSessions();
-        const recent = sessions.sort((a, b) => this.sessionActivityTime(b) - this.sessionActivityTime(a));
+        // An explicit scope is resolved afresh. For the shorthand form, first
+        // use the exact rows from the latest `/s list` (so `/s list current`
+        // followed by `/s switch <n>` keeps working), then fall back to the
+        // historical all-session list when no snapshot exists.
+        const recent = cmd.scope !== undefined
+          ? await this.listRecentSessions(user, cmd.scope)
+          : (await this.sessionsFromLastList(user)) ?? await this.listRecentSessions(user);
+        if (recent.length === 0) {
+          await this.sendReply(
+            userId,
+            cmd.scope === "current"
+              ? `⚠️ 当前工作目录（${user.cwd}）下暂无会话。`
+              : "⚠️ 暂无可切换的会话。",
+          );
+          return;
+        }
         const index = cmd.index;
         if (index < 1 || index > recent.length) {
           await this.sendReply(userId, `⚠️ 编号超出范围（1-${recent.length}）。`);
           return;
         }
         const record = recent[index - 1]!;
+        this.lastSessionListByUser.delete(user.userId);
         user.sessionId = record.header.id;
         if (record.header.cwd) {
           user.cwd = record.header.cwd;
@@ -2594,7 +2789,7 @@ export class WeChatDSHBridge {
         // session. A corrupt target stays bound so `/s new` can mint a
         // replacement instead of silently swapping ids on switch.
         const { agent } = await this.agents.ensure(user);
-        const label = await this.formatSessionLabel(record.header.id);
+        const label = await this.formatSessionLabel(record.header.id, record.header.cwd);
         await this.sendReply(
           userId,
           agent
@@ -2614,7 +2809,7 @@ export class WeChatDSHBridge {
         // NOT blank — staying on it would lock the user out of every later
         // message (resume fails, binding never changes).
         if (user.sessionId) {
-          const current = await this.ops.inspectSessionActivity(user.sessionId);
+          const current = await this.ops.inspectSessionActivity(user.sessionId, user.cwd);
           if (current.ok && current.lastUserMessageTime === undefined) {
             const agent = this.agents.get(user);
             await this.sendReply(userId, `✅ 已在空白会话（${user.sessionId.slice(0, 12)}）${agent ? `，Agent ${agent.status}` : ""}。`);
@@ -2670,6 +2865,7 @@ export class WeChatDSHBridge {
     userId: string,
     wording?: { success: string },
   ): Promise<void> {
+    this.lastSessionListByUser.delete(user.userId);
     user.sessionId = "";
     this.state.update(user.userId, { sessionId: "" });
     const { agent } = await this.agents.ensure(user);
@@ -2696,7 +2892,7 @@ export class WeChatDSHBridge {
       .filter((r) => r.header.cwd === cwd && r.header.id !== excludeId)
       .sort((a, b) => b.header.createdAt - a.header.createdAt);
     for (const record of sessions) {
-      const activity = await this.ops.inspectSessionActivity(record.header.id);
+      const activity = await this.ops.inspectSessionActivity(record.header.id, record.header.cwd, record.header);
       if (activity.ok && activity.lastUserMessageTime === undefined) return record.header.id;
     }
     return undefined;
@@ -2743,7 +2939,7 @@ export class WeChatDSHBridge {
         const saved = await this.ops.saveDefaultPreset(preset.id);
         // Apply to the live session only while it has produced nothing.
         const agent = this.agents.get(user);
-        const empty = agent ? (agent as { session?: { events?: unknown[] } }).session?.events?.length === 0 : true;
+        const empty = agent ? sessionEvents(agent.session).length === 0 : true;
         let applied = "";
         if (agent && empty) {
           const ok = await this.ops.recomposeAgent(
@@ -2768,7 +2964,7 @@ export class WeChatDSHBridge {
         const defaultLabel = (await this.resolvePresetLabel(defaultId)) ?? "（未设置）";
         const lines = [`🤖 默认 Preset: ${defaultLabel}`];
         const liveId = user.sessionId
-          ? await this.ops.resolveSessionPreset(user.sessionId)
+          ? await this.ops.resolveSessionPreset(user.sessionId, user.cwd)
           : undefined;
         if (liveId && liveId !== defaultId) {
           const liveLabel = (await this.resolvePresetLabel(liveId)) ?? liveId;
@@ -2905,10 +3101,12 @@ export class WeChatDSHBridge {
   // ─── History ──────────────────────────────────────────────────────────────
 
   /**
-   * `/history [N]` — show the most recent N conversation entries of the
-   * current session (default 5, max 20). Each entry is rendered as
-   * `序号 [时间] 角色: 文本摘要`, oldest→newest, with per-entry truncation
-   * at 300 chars to stay within WeChat limits.
+   * `/history [all] [N]` — show the most recent N conversation entries of
+   * the current session (default 5, max 20). Default lists only human and
+   * assistant turns; `all` also includes synthesized system injections
+   * (compaction checkpoints, plugin context, goal rounds). Each entry is
+   * Each entry is its own block (`角色 · 时间` then the original body),
+   * oldest→newest, so it reads closer to a live WeChat message than a dump.
    */
   private async handleHistoryCommand(userId: string, cmd: HistoryCommand, user: UserState): Promise<void> {
     if (!user.sessionId) {
@@ -2916,9 +3114,11 @@ export class WeChatDSHBridge {
       return;
     }
     const count = Math.max(1, Math.min(cmd.count, HISTORY_MAX));
-    let entries: Array<{ role: "user" | "assistant"; text: string; time: number }>;
+    let entries: Array<{ role: "user" | "assistant" | "system"; text: string; time: number }>;
     try {
-      entries = await this.ops.getSessionHistory(user.sessionId, count);
+      entries = await this.ops.getSessionHistory(user.sessionId, count, {
+        includeSystem: cmd.includeSystem,
+      });
     } catch (err) {
       console.warn(`[dsh-wechat] getSessionHistory failed: ${String(err)}`);
       await this.sendReply(userId, `⚠️ 读取历史失败：${String(err)}`);
@@ -2941,9 +3141,9 @@ export class WeChatDSHBridge {
         }
       }
       const lines: string[] = [`📜 最近 ${entries.length} 条历史${entries.length >= HISTORY_MAX && count >= HISTORY_MAX ? "（最多展示 20 条）" : ""}`];
-      lines.push("");
       entries.forEach((e, i) => {
-        const roleLabel = e.role === "user" ? "你" : "助手";
+        const roleLabel =
+          e.role === "user" ? "👤 你" : e.role === "system" ? "⚙️ 系统" : "🤖 助手";
         const when = e.time ? this.formatRelativeTime(e.time) : "未知时间";
         const keepFull = i === lastAssistantIdx;
         const body = keepFull
@@ -2951,25 +3151,27 @@ export class WeChatDSHBridge {
           : e.text.length > HISTORY_TEXT_LIMIT
             ? e.text.slice(0, HISTORY_TEXT_LIMIT - 1) + "…"
             : e.text;
-        const compact = body.replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
-        lines.push(`${i + 1}. [${when}] ${roleLabel}: ${compact}`);
+        lines.push(`${roleLabel} · ${when}\n${body.trimEnd()}`);
       });
-      lines.push("", `提示: /history [1-${HISTORY_MAX}] 查看不同条数（默认 5）`);
-      await this.sendReply(userId, lines.join("\n"));
+      lines.push(`提示: /history all 含系统消息；/history [1-${HISTORY_MAX}] 换条数（默认 5）`);
+      await this.sendReply(userId, lines.join("\n\n"));
     }
     await this.resendPendingCardsForHistory(userId);
   }
 
-  /** After `/history`, re-send every still-pending card of the current session in full. */
+  /** After `/history`, re-send every still-answerable card in full. */
   private async resendPendingCardsForHistory(userId: string): Promise<void> {
-    const { approvals, questions } = this.pendingCardsForCurrentSession(userId);
+    const approvals = this.answerableApprovals(userId);
+    const questions = this.answerableQuestions(userId);
     if (approvals.length === 0 && questions.length === 0) return;
-    await this.sendReply(userId, "⏳ 当前会话有待处理卡片，完整内容如下（直接回复即可）：");
+    const sessions = new Set([...approvals, ...questions].map((c) => c.sessionId)).size;
+    const scope = sessions > 1 ? "（可能跨会话）" : "";
+    await this.sendReply(userId, `⏳ 当前有 ${approvals.length + questions.length} 张待处理卡片${scope}，完整内容如下（直接回复即可，多卡请用 P{n}=… 指定编号）：`);
     for (const card of approvals) {
-      await this.sendApprovalCard(userId, card, approvals.length);
+      await this.sendApprovalCard(userId, card);
     }
     for (const card of questions) {
-      await this.sendQuestionCard(userId, card, card.items, questions.length);
+      await this.sendQuestionCard(userId, card, card.items);
     }
   }
 
@@ -3002,17 +3204,40 @@ export class WeChatDSHBridge {
         return;
       }
       case "switch": {
-        const [provider, model] = cmd.target.split("/");
+        const target = cmd.target.trim();
+        if (!target) {
+          await this.sendReply(
+            userId,
+            "⚠️ 用法: /model switch <提供商>/<模型id>。模型 id 可含 /，例如 /model switch openrouter/inclusionai/foo:free",
+          );
+          return;
+        }
         const providers = this.ops.listProviders();
-        const matchedProvider = providers.find((p) => p.id === provider || p.name === provider);
+        const split = splitProviderModelTarget(target, providers);
+        if (!split) {
+          const hint = providers.map((p) => p.id).join(", ") || "(无)";
+          if (!target.includes("/")) {
+            await this.sendReply(
+              userId,
+              `⚠️ 用法: /model switch <提供商>/<模型id>。可用提供商: ${hint}`,
+            );
+          } else {
+            await this.sendReply(
+              userId,
+              `⚠️ 未知提供商: ${target.slice(0, target.indexOf("/"))}。可用: ${hint}`,
+            );
+          }
+          return;
+        }
+        const matchedProvider = providers.find((p) => p.id === split.provider);
         if (!matchedProvider) {
-          await this.sendReply(userId, `⚠️ 未知提供商: ${provider}。可用: ${providers.map((p) => p.id).join(", ")}`);
+          await this.sendReply(userId, `⚠️ 未知提供商: ${split.provider}。可用: ${providers.map((p) => p.id).join(", ")}`);
           return;
         }
         const models = await this.ops.listModels(matchedProvider.id);
-        const matchedModel = models.find((m) => m.id === model || m.name === model);
+        const matchedModel = models.find((m) => m.id === split.model || m.name === split.model);
         if (!matchedModel) {
-          await this.sendReply(userId, `⚠️ 未知模型: ${model}。用 /model list ${matchedProvider.id} 查看可用模型。`);
+          await this.sendReply(userId, `⚠️ 未知模型: ${split.model}。用 /model list ${matchedProvider.id} 查看可用模型。`);
           return;
         }
         // Apply to the live agent (via agent/request) and as the new default.
@@ -3166,14 +3391,17 @@ export class WeChatDSHBridge {
     }
   }
 
-  /** `current()` with a guard: session events may be absent on some shapes. */
+  /**
+   * `current()` with a guard. The host reads the Session's `permissions`
+   * projection (`current(session: Session)`), so the live Session must be
+   * passed; a session without that projection still degrades to `undefined`.
+   */
   private safeCurrent(
-    service: { current(events: readonly { type: string; data?: unknown }[]): string },
+    service: { current(session: unknown): string },
     agent: Agent,
   ): string | undefined {
     try {
-      const events = agent.session?.events ?? [];
-      return service.current(events);
+      return service.current(agent.session);
     } catch {
       return undefined;
     }
@@ -3241,7 +3469,7 @@ export class WeChatDSHBridge {
   /**
    * Color marker for boolean toggles on /status. Each field has its own
    * semantic — `on` for 静默模式 means "we stop forwarding to WeChat"
-   * (warning), `on` for 跨会话通知 means "extra delivery is enabled"
+   * (warning), `on` for 跨会话决策推送 means "extra delivery is enabled"
    * (good). The colored glyph is field-specific; this helper just
    * annotates an explicit `value` with `🟢` / `🔴`. iLink text items
    * have no `<font color>` support — emoji glyphs are the only
@@ -3258,7 +3486,7 @@ export class WeChatDSHBridge {
 
     // 会话标题（sessionQuery 投影），无标题时退回 id 前 12 位。
     const sessionLabel = user.sessionId
-      ? (await this.ops.readSessionTitle(user.sessionId)) ?? user.sessionId.slice(0, 12)
+      ? (await this.ops.readSessionTitle(user.sessionId, user.cwd)) ?? user.sessionId.slice(0, 12)
       : "（未绑定）";
 
     // 实际生效的模型：本会话 override（/model switch）> 会话最近请求记录 >
@@ -3289,7 +3517,7 @@ export class WeChatDSHBridge {
 
     const crossEffective = this.shouldNotifyCrossSession(user.userId) ? "on" : "off";
     const presetLines = await this.formatStatusPresetLines(user);
-    const pendingLine = this.formatPendingStatusLine(user.userId);
+    const pendingLines = this.formatPendingStatusLines(user.userId);
     const agentLabel = agent
       ? agent.status === "running"
         ? this.paintBadge("running", "positive")
@@ -3300,7 +3528,7 @@ export class WeChatDSHBridge {
       `• 工作区: ${user.cwd}`,
       `• 会话: ${sessionLabel}`,
       `• Agent: ${agentLabel}`,
-      ...(pendingLine ? [pendingLine] : []),
+      ...pendingLines,
       presetLines.sessionLine,
       `• 模型: ${active?.provider && active?.model ? `${active.provider}/${active.model}${effortSuffix}` : "（默认）"}`,
       ...(contextLabel ? [contextLabel] : []),
@@ -3312,8 +3540,9 @@ export class WeChatDSHBridge {
       `• 静默模式: ${this.paintBadge(this.isSilent() ? "on" : "off", this.isSilent() ? "warning" : "positive")}`,
       `• 微信提示词: ${this.paintBadge(this.config.surfacePromptEnabled ? "on" : "off", this.config.surfacePromptEnabled ? "positive" : "neutral")}`,
       `• 繁忙投递: ${this.ops.busyEnter() === "steer" ? this.paintBadge("steer（插话）", "positive") : this.paintBadge("queue（排队）", "neutral")}`,
-      // 跨会话通知 on = extra notifications enabled (good); off = quiet (also fine, neutral).
-      `• 跨会话通知: ${this.paintBadge(crossEffective, crossEffective === "on" ? "positive" : "neutral")}`,
+      // 跨会话决策推送 on = extra delivery enabled (good); off = quiet (neutral).
+      `• 跨会话决策推送: ${this.paintBadge(crossEffective, crossEffective === "on" ? "positive" : "neutral")}`,
+      `• 任务完成提醒: ${this.paintBadge(this.notifyTaskEventsEnabled() ? "on" : "off", this.notifyTaskEventsEnabled() ? "positive" : "neutral")}`,
     ];
 
     // Session-level projection registry (`ctx.sessionProjections`). One
@@ -3347,15 +3576,31 @@ export class WeChatDSHBridge {
     return lines.join("\n");
   }
 
-  /** `/status` row for unanswered cards of the current session; omitted when none. */
-  private formatPendingStatusLine(userId: string): string | undefined {
-    const { approvals, questions } = this.pendingCardsForCurrentSession(userId);
+  /** `/status` rows for unanswered cards, split into current vs other sessions. */
+  private formatPendingStatusLines(userId: string): string[] {
+    const currentId = this.state.getUser(userId)?.sessionId;
+    const approvals = this.pendingApprovals.get(userId) ?? [];
+    const questions = this.pendingQuestions.get(userId) ?? [];
+    const currentA = currentId ? approvals.filter((c) => c.sessionId === currentId) : [];
+    const currentQ = currentId ? questions.filter((c) => c.sessionId === currentId) : [];
+    const crossA = currentId ? approvals.filter((c) => c.sessionId !== currentId) : approvals;
+    const crossQ = currentId ? questions.filter((c) => c.sessionId !== currentId) : questions;
+    const lines: string[] = [];
+    const current = this.formatPendingParts(currentQ.length, currentA.length);
+    if (current) lines.push(`🔴 • 待处理(当前): ${current}`);
+    const cross = this.formatPendingParts(crossQ.length, crossA.length);
+    if (cross) {
+      const hint = this.shouldNotifyCrossSession(userId) ? "用 P{n}= 回复" : "/session switch 后查看";
+      lines.push(`🔴 • 待处理(跨会话): ${cross}（${hint}）`);
+    }
+    return lines;
+  }
+
+  private formatPendingParts(questions: number, approvals: number): string | undefined {
     const parts: string[] = [];
-    if (questions.length > 0) parts.push(`${questions.length} 张提问卡`);
-    if (approvals.length > 0) parts.push(`${approvals.length} 张权限卡`);
-    if (parts.length === 0) return undefined;
-    // Red marker — reader's eye should jump to "needs answer" rows.
-    return `🔴 • 待处理: ${parts.join(" · ")}`;
+    if (questions > 0) parts.push(`${questions} 张提问卡`);
+    if (approvals > 0) parts.push(`${approvals} 张权限卡`);
+    return parts.length > 0 ? parts.join(" · ") : undefined;
   }
 
   /**
@@ -3375,7 +3620,7 @@ export class WeChatDSHBridge {
     if (!user.sessionId) {
       return { defaultLine, sessionLine: "• 当前会话 Preset: （未绑定）" };
     }
-    const liveId = await this.ops.resolveSessionPreset(user.sessionId);
+    const liveId = await this.ops.resolveSessionPreset(user.sessionId, user.cwd);
     const liveLabel = liveId
       ? ((await this.resolvePresetLabel(liveId)) ?? liveId)
       : "（无记录）";

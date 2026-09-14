@@ -1,6 +1,6 @@
 {
   "name": "dsh-wechat",
-  "version": "0.8.0",
+  "version": "0.9.6",
   "description": "Bridge WeChat (iLink bot) to DeepSeek Harness (DSH)",
   "type": "module",
   "files": [
@@ -24,7 +24,7 @@
   "scripts": {
     "build": "tsc && node scripts/copy-client.mjs",
     "dev": "tsc --watch",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build && npm test"
   },
@@ -35,7 +35,8 @@
     "vitest": "^4.1.8"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.0.0",
+    "dsh": ">=0.1.5-rc.1"
   },
   "dsh": {
     "client": {

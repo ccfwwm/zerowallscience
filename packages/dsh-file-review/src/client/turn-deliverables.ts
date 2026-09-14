@@ -1,0 +1,286 @@
+/**
+ * Turn-scoped produced-file definition and readers. Client-only and
+ * model-free: Native and PTC settlements use this plugin's validated durable
+ * Host marker, never transient Client presentation data or the closing prose.
+ */
+import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type {
+  ConversationMatch,
+  ConversationNodeDefinition,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
+import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
+import type {} from '@deepseek-ai/dsh-tools/types'
+import type { ProducedFileDiff, ProducedFileReview } from '../change-types.ts'
+import { markerFromContent, type PtcFileReviewMarker } from '../ptc-marker.ts'
+
+export type { ProducedFileDiff, ProducedFileReview } from '../change-types.ts'
+
+interface ProducedPath {
+  readonly seq: number
+  readonly path: string
+  readonly diffs: readonly ProducedFileDiff[]
+  readonly complete?: false | undefined
+}
+
+/** Immutable produced-file facts published against one Turn. */
+export interface DeliverablesTurnData {
+  readonly produced: readonly ProducedPath[]
+}
+
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+  interface ConversationTurnDataMap {
+    /** Successful mutation paths accumulated in this Turn. */
+    deliverables: DeliverablesTurnData
+  }
+}
+
+interface DeliverablesState extends DeliverablesTurnData {
+  readonly turn: number
+  readonly calls: ReadonlyMap<
+    string,
+    {
+      readonly step: number
+    }
+  >
+  readonly subCalls: ReadonlySet<string>
+}
+
+type ConversationEvent = ConversationMatch['event']
+
+function dispatchMarker(event: ConversationEvent): PtcFileReviewMarker | null {
+  if (event.type !== 'tool/ptc-dispatch') return null
+  const data = event.data as unknown as Record<string, unknown>
+  if (
+    data.isError !== false ||
+    typeof data.rootCallId !== 'string' ||
+    data.rootCallId === '' ||
+    typeof data.subCallId !== 'string' ||
+    data.subCallId === '' ||
+    !Array.isArray(data.content)
+  )
+    return null
+  return markerFromContent(data.content, {
+    rootCallId: data.rootCallId,
+    subCallId: data.subCallId,
+  })
+}
+
+function nativeResultMarker(event: ConversationEvent): PtcFileReviewMarker | null {
+  if (event.type !== 'tool/result') return null
+  const callId = event.data.message.source.callId
+  const result = event.data.message.content[0]
+  if (typeof callId !== 'string' || callId === '' || !Array.isArray(result?.content)) return null
+  return markerFromContent(result.content, { rootCallId: callId, subCallId: callId })
+}
+
+/**
+ * Files and review hunks available at one closing Assistant boundary.
+ * @param data - engine-published Deliverables data for one Turn.
+ * @param seq - closing Assistant seq; later Tool settlements are excluded.
+ * @returns Produced files in first-seen order with same-path hunks appended in settlement order.
+ */
+export function reviewsForClosing(
+  data: Readonly<DeliverablesTurnData> | undefined,
+  seq = Number.POSITIVE_INFINITY,
+): readonly ProducedFileReview[] {
+  if (data === undefined) return []
+  const reviews: Array<{ path: string; diffs: ProducedFileDiff[]; complete?: false }> = []
+  const byPath = new Map<string, { path: string; diffs: ProducedFileDiff[]; complete?: false }>()
+  for (const produced of data.produced) {
+    if (produced.seq > seq) continue
+    const review = byPath.get(produced.path)
+    if (review === undefined) {
+      const created = {
+        path: produced.path,
+        diffs: [...produced.diffs],
+        ...(produced.complete === false ? { complete: false as const } : {}),
+      }
+      byPath.set(produced.path, created)
+      reviews.push(created)
+    } else {
+      review.diffs.push(...produced.diffs)
+      if (produced.complete === false) review.complete = false
+    }
+  }
+  return reviews
+}
+
+/**
+ * Files produced by one Turn data value.
+ *
+ * The source is the Host marker derived from mutation-tool presentation and
+ * filesystem snapshots, not the closing prose. A mutation is recognized by
+ * render intent, never by tool name, so a new mutation tool joins by declaring
+ * what it does. Reads and failed calls contribute nothing; successful deletes
+ * are included when their mutation intent names a path. Paths keep first-seen
+ * order and appear once, so a file written and then edited in the same turn is
+ * one entry.
+ *
+ * The Conversation Location index owns turn membership before this function
+ * runs, so paths cannot spill across turns and this derivation does not infer
+ * boundaries from neighboring presentation Nodes.
+ * @param data - engine-published Deliverables data for one Turn.
+ * @param seq - closing Assistant seq; later Tool settlements are excluded.
+ * @returns Produced paths in first-seen order; empty when the turn wrote nothing.
+ */
+export function producedForClosing(
+  data: Readonly<DeliverablesTurnData> | undefined,
+  seq = Number.POSITIVE_INFINITY,
+): readonly string[] {
+  if (data === undefined) return []
+  const paths: string[] = []
+  const seen = new Set<string>()
+  for (const produced of data.produced) {
+    if (produced.seq > seq || seen.has(produced.path)) continue
+    seen.add(produced.path)
+    paths.push(produced.path)
+  }
+  return paths
+}
+
+/**
+ * Claim the turn-tail chain only when its closing turn produced files.
+ * @param owner - Turn-tail owner currency for the closing assistant.
+ * @returns Produced-file reviews as the component's match, or null to decline before mount.
+ */
+export function selectProducedFiles(
+  owner: TurnTailOwnerProps,
+): readonly ProducedFileReview[] | null {
+  const reviews = reviewsForClosing(owner.turn.data.get('deliverables'), owner.seq)
+  return reviews.length === 0 ? null : reviews
+}
+
+/** Turn-local successful mutation accumulator; it publishes no view Node. */
+export const deliverablesDefinition: ConversationNodeDefinition<DeliverablesState> = {
+  kind: 'deliverables',
+  match: (event) => {
+    if (event.type === 'turn/start') return { id: String(event.data.turn), role: 'start' }
+    if (event.type === 'tool/call') return { id: String(event.data.turn), role: 'update' }
+    if (event.type === 'tool/result' && isAppendSurfaceEvent(event)) {
+      return { id: String(event.data.turn), role: 'update' }
+    }
+    const marker = dispatchMarker(event)
+    if (marker !== null) return { id: String(marker.turn), role: 'update' }
+    return null
+  },
+  start: (_context, match) => {
+    if (match.event.type !== 'turn/start') throw new Error('deliverables start requires turn/start')
+    return { turn: match.event.data.turn, calls: new Map(), subCalls: new Set(), produced: [] }
+  },
+  update: (context, match) => {
+    if (match.event.type === 'tool/call') {
+      if (typeof match.event.data.callId !== 'string' || match.event.data.callId === '') {
+        return context.state
+      }
+      const calls = new Map(context.state.calls)
+      calls.set(match.event.data.callId, {
+        step: match.event.data.step,
+      })
+      return { ...context.state, calls }
+    }
+    if (match.event.type === 'tool/result') {
+      const result = match.event.data.message.content[0]
+      if (result.isError === true) return context.state
+      const callId = match.event.data.message.source.callId
+      if (typeof callId !== 'string' || callId === '') return context.state
+      const call = context.state.calls.get(callId)
+      if (call === undefined) return context.state
+      const captured = nativeResultMarker(match.event)
+      if (captured === null || captured.turn !== context.state.turn || captured.step !== call.step)
+        return context.state
+      const files = captured.files
+      const additions = files.map((file) => ({
+        seq: match.event.seq,
+        path: file.path,
+        diffs: file.diffs,
+        ...(file.diffs.length === 0 ? { complete: false as const } : {}),
+      }))
+      return additions.length === 0
+        ? context.state
+        : { ...context.state, produced: [...context.state.produced, ...additions] }
+    }
+    const marker = dispatchMarker(match.event)
+    const root = marker === null ? undefined : context.state.calls.get(marker.rootCallId)
+    if (
+      marker === null ||
+      marker.turn !== context.state.turn ||
+      root === undefined ||
+      root.step !== marker.step ||
+      context.state.subCalls.has(marker.subCallId)
+    )
+      return context.state
+    const subCalls = new Set(context.state.subCalls)
+    subCalls.add(marker.subCallId)
+    return {
+      ...context.state,
+      subCalls,
+      produced: [
+        ...context.state.produced,
+        ...marker.files.map((file) => ({
+          seq: match.event.seq,
+          path: file.path,
+          diffs: file.diffs,
+          ...(file.diffs.length === 0 ? { complete: false as const } : {}),
+        })),
+      ],
+    }
+  },
+  buildLocationData: (context, scope) =>
+    scope !== 'turn' || context.state === undefined
+      ? null
+      : {
+          kind: 'turn',
+          turn: context.state.turn,
+          key: 'deliverables',
+          value: { produced: context.state.produced },
+        },
+}
+
+/**
+ * Trailing path segment, the part that identifies the file at a glance.
+ * @param path - Slash- or backslash-separated path.
+ * @returns The final segment, or the whole string when separator-free.
+ */
+export function basename(path: string): string {
+  const at = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+  return at === -1 ? path : path.slice(at + 1)
+}
+
+/**
+ * File-mention vocabulary over one turn's produced paths, for the closing
+ * message's prose: an inline-code token opens the file it names. A token
+ * resolves by exact path, or by being exactly the basename of exactly one
+ * produced path — a basename two paths share stays inert rather than
+ * guessing, so a mention link can never open the wrong file or 404.
+ * @param paths - The turn's produced paths (tool order, already deduped).
+ * @param openFile - The chat view's file opener.
+ * @param label - Localizes the accessible open-label for a resolved path.
+ * @returns The resolver MarkdownText consumes; the full path rides `title`,
+ * the same disambiguator the row's chips carry.
+ */
+export function producedFileMentions(
+  paths: readonly string[],
+  openFile: (path: string) => void,
+  label: (path: string) => string,
+): MarkdownFileMentions {
+  return {
+    resolve(value) {
+      const path = paths.includes(value) ? value : onlyPathWithBasename(paths, value)
+      if (path === undefined) return undefined
+      return {
+        open: () => {
+          openFile(path)
+        },
+        label: label(path),
+        title: path,
+      }
+    },
+  }
+}
+
+/** The single produced path whose basename is exactly `value`, else undefined. */
+function onlyPathWithBasename(paths: readonly string[], value: string): string | undefined {
+  const matches = paths.filter((path) => basename(path) === value)
+  return matches.length === 1 ? matches[0] : undefined
+}

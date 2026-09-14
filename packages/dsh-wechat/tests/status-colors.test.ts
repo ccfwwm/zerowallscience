@@ -6,8 +6,8 @@
  * Each field has its own polarity:
  *   - 静默模式 on = we stop forwarding → 🔴 warning
  *     静默模式 off = normal delivery     → 🟢 good
- *   - 跨会话通知 on  = extra notifications on → 🟢
- *     跨会话通知 off = off                  → ⚪ neutral
+ *   - 跨会话决策推送 on  = extra notifications on → 🟢
+ *     跨会话决策推送 off = off                  → ⚪ neutral
  *   - Agent running      → 🟢 positive
  *     Agent idle         → ⚪ neutral
  *     Agent 未加载       → 🔴 warning
@@ -24,6 +24,9 @@ import fs from "node:fs";
 
 const sendTextMessage = vi.fn().mockResolvedValue(undefined);
 const sendMediaMessage = vi.fn().mockResolvedValue(undefined);
+
+/** Last argument `permissionPresets.current()` received (host contract: the Session). */
+let permissionCurrentArg: unknown;
 
 vi.mock("../src/weixin/send.js", () => ({
   sendTextMessage: (...args: unknown[]) => sendTextMessage(...args),
@@ -77,7 +80,18 @@ function makeBridge(opts: BridgeOpts = {}) {
   };
   const permissionService = agentOpts.permission
     ? {
-        current: (_events: unknown[]) => agentOpts.permission!,
+        // Mirror the host contract (`current(session: Session)`): the host
+        // folds `sessionProjections.stateOf(session, "permissions")`, so an
+        // event array throws there. Recording the argument lets a test also
+        // assert which shape the bridge passes.
+        current: (session: unknown) => {
+          permissionCurrentArg = session;
+          const shape = session as { header?: unknown } | null;
+          if (shape === null || typeof shape !== "object" || Array.isArray(shape) || shape.header === undefined) {
+            throw new Error("permission: permissions session projection is not registered");
+          }
+          return agentOpts.permission!;
+        },
         names: [agentOpts.permission!],
       }
     : undefined;
@@ -153,16 +167,17 @@ describe("/status — emoji color markers", () => {
     expect(text).toContain("• 静默模式: 🟢 off");
   });
 
-  it("跨会话通知 on is good green", async () => {
+  it("跨会话决策推送 on is good green", async () => {
     const bridge = makeBridge({ crossNotify: true });
     const text = await runStatus(bridge);
-    expect(text).toContain("• 跨会话通知: 🟢 on");
+    expect(text).toContain("• 跨会话决策推送: 🟢 on");
   });
 
-  it("跨会话通知 off is neutral (not a warning state)", async () => {
+  it("跨会话决策推送 off is neutral (not a warning state)", async () => {
     const bridge = makeBridge({ crossNotify: false });
     const text = await runStatus(bridge);
-    expect(text).toContain("• 跨会话通知: ⚪ off");
+    expect(text).toContain("• 跨会话决策推送: ⚪ off");
+    expect(text).toContain("• 任务完成提醒: ⚪ off");
   });
 
   it("微信提示词 on is good green, off is neutral", async () => {
@@ -207,6 +222,17 @@ describe("/status — emoji color markers", () => {
     expect(safe).not.toContain("🔴 safe-read-only");
   });
 
+  it("权限 row passes the live Session to permissionPresets.current (not an event array)", async () => {
+    permissionCurrentArg = undefined;
+    const bridge = makeBridge({ agent: { agentStatus: "idle", permission: "workspace-write" } });
+
+    const text = await runStatus(bridge);
+
+    expect(text).toContain("• 权限: workspace-write");
+    expect(Array.isArray(permissionCurrentArg)).toBe(false);
+    expect(permissionCurrentArg).toMatchObject({ id: "wx-1", header: { agentPreset: "std" } });
+  });
+
   it("pending cards row is prefixed with a red marker", async () => {
     const bridge = makeBridge({ agent: { agentStatus: "idle" } });
     const pending = (bridge as unknown as {
@@ -217,7 +243,7 @@ describe("/status — emoji color markers", () => {
     ]);
 
     const text = await runStatus(bridge);
-    expect(text).toContain("🔴 • 待处理: 1 张提问卡");
+    expect(text).toContain("🔴 • 待处理(当前): 1 张提问卡");
   });
 
   it("pending row is omitted when no cards are queued", async () => {

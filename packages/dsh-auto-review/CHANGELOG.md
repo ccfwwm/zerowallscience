@@ -2,6 +2,101 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.12.4] - 2026-09-12
+
+### Fixed
+
+- Correct the host-capability documentation that claimed a later harness line could stamp the `ignorable` envelope marker from `Session.append`. **No published line can**, and the code was right all along. Verified three ways: the host source (`packages/core/session/src/index.ts:710-738` — the optional third parameter is `SurfaceIntent`, accepted for surface event types only, and the envelope is assembled from `{ type, seq, time, data }` plus `surfaceOp`/`sourceEventSeqs` alone), every relevant published tarball (`0.1.0-rc.2/3/6/7/8`, `0.1.1-rc.1/2`, `0.1.2-alpha.2–alpha.5`, `0.1.2-rc.1`, `0.1.3-alpha.2`, `0.1.5-rc.1`, `0.1.5-rc.2` — all build the same envelope), and a live append against the host's own built `Session` on the `0.1.5-rc.2` line, which returns keys `["type","seq","time","data"]` with `ignorable` undefined. The marker is reachable only through the seed/restore path, i.e. it is written by the harness that owns the log, never by a plugin appending to it. `isUnmarkedHostVersion` returning `true` for the whole published 0.1.x range is therefore accurate and not an over-reach; it is now pinned by a test so a future "narrow the bound" change cannot silently become the log pollution the guard exists to prevent. Reported with the opposite diagnosis on issue #38.
+- Rewrite the `auditDisabledNotice` (EN + ZH), the `warnUnmarkedAuditHost` warning, the `allowUnmarkedAudit` config doc, and the AGENTS.md audit bullet so they no longer say the host "predates" the marker or that unmarked events break resume only "on stricter harness builds". The unmarked event is refused by `validateStoredEvents` on **every** validating harness, reached from the ordinary local jsonl load path — and `allowUnmarkedAudit: true` is now stated as what it is: a switch that makes those sessions unloadable, not a compatibility workaround. The previous wording led a user to recommend it publicly as safe on `0.1.5-rc.2`.
+- Add a regression test that calls the installed peer's real `Session.append` with `{ ignorable: true }` on an out-of-tree type and asserts the returned envelope carries no marker, plus a table test over every published 0.1.x version string.
+
+## [0.12.3] - 2026-09-12
+
+### Changed
+
+- Rename the four translated READMEs to `README-<lang>.md`. npm selects the package-page readme as the first markdown file matching its `{README,README.*}` glob (`@npmcli/package-json`, publish path), and that glob order puts `README.<lang>.md` ahead of `README.md` — so npm was serving the Simplified-Chinese file for this package too (measured on 15/15 sampled packages of the family). The new names sit outside the glob, so the English source is served again. No content changed apart from the language-switcher link each translation holds to its siblings, and the repo readme gate still passes. Takes effect with the next release; an already-published version cannot gain a corrected readme retroactively.
+- Pin the `@deepseek-ai/dsh-*` dev/test dependencies to the published `0.1.5-rc.2` line and record `0.1.5-rc.2` in `dshWorkshop.compatibility.dshVersions`; the monthly Compat workflow now runs against `0.1.5-rc.2`. The peer range `>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0` is unchanged, so no supported host line is dropped.
+
+## [0.12.2] - 2026-09-10
+
+### Changed
+
+- Pin the `@deepseek-ai/dsh-*` dev/test dependencies to the published `0.1.5-rc.1` line and record `0.1.5-rc.1` in `dshWorkshop.compatibility.dshVersions`; the monthly Compat workflow now runs against `0.1.5-rc.1`. The peer range `>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0` is unchanged, so no supported host line is dropped.
+
+### Docs
+
+- Refresh the five-language README compatibility baseline to `dsh-v0.1.5-rc.1` (verified 2026-09-10).
+
+## [0.12.1] - 2026-09-09
+
+### Fixed
+
+- Runtime `dependencies`: all 15 `@deepseek-ai/dsh-*` pins moved from `0.1.2-rc.1` to `0.1.5-alpha.1`. Installing the `0.12.0` tarball into a `dsh@0.1.5-alpha.1` web profile hoisted that pinned `0.1.2-rc.1` tree (`dsh-session-persistence-jsonl`, `dsh-app-boot`, `dsh-tool-fs`, …) over the CLI's own `0.1.5-alpha.1` tree, and the next `dsh web` died at boot with `failed to import loader entry session-persistence-jsonl (@deepseek-ai/dsh-session-persistence-jsonl): The requested module '@deepseek-ai/dsh-session-persistence' does not provide an export named 'DEFAULT_PREPARED_SESSION_CACHE_SIZE'`. The runtime pins now follow the alpha line the published CLI installs, so a profile install no longer shadows the host tree. Reproduced and re-verified with `pnpm pack` + `dsh plugin --profile web add <tgz>` + `dsh web` against a scratch `DSH_HOME`: the pre-fix tarball crashes at boot, the fixed tarball boots and serves.
+- `pnpm-lock.yaml` refreshed for the new pins (`pnpm install --no-frozen-lockfile`).
+
+### Changed
+
+- Peer ranges stay the dual-line `>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0` and `dshWorkshop.compatibility.dshVersions` still lists `0.1.2-rc.1`, `0.1.3-alpha.2`, and `0.1.5-alpha.1`: the plugin's code keeps feature-detecting both published host lines; only the *installed* runtime dependency pins follow the alpha line.
+
+### Docs
+
+- Five-language READMEs: the Harness row now states runtime deps `0.1.5-alpha.1` and why the pins follow the alpha line.
+- `AGENTS.md` and the `pnpm-workspace.yaml` pin comment: the stale "runtime `dependencies` stay on the published `0.1.2-rc.1` line" statements replaced with the alpha-line pin.
+
+## [0.12.0] - 2026-09-09
+
+### Fixed
+
+- dsh-eval session artifacts (`traces/*.session.jsonl`) are replayable on the 0.1.3+/V3 line again: the header line now emits the seed vocabulary of the header's own format version — `isSeeded` (and never the retired V0 `seedLength`) for V2/V3, `seedLength` for V0 — so the harness format catalog reads the artifact as a current header instead of refusing it as malformed. Previously a V3 artifact carried `version: 3` without `isSeeded` (and `seedLength` whenever an inherited count was present), which the persistence reader rejects.
+- `src/eval/trace.ts`: the traced system prompt is read from the last non-empty `system/message` surface node on the 0.1.5 line (the prompt moved into the message history as surface node zero) while `request/header.header.system` remains the source on the 0.1.2/0.1.3 lines, so the prompt-baseline assertions keep working on both published lines.
+- `scripts/check-host-versions.mjs`: the peer-range parser now splits `||` unions and judges every segment, so the dual-line peers (`>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0`) are recognized; the alpha-line check accepts an alpha peer segment in addition to the dev pins. The gate previously exited 1 with `no rc-pinned @deepseek-ai/dsh-* peers found`, which made the `host-compat` CI job permanently red.
+- `src/eval/report.ts`: the Markdown footer no longer claims unconditional replayability; it states the line-specific header vocabulary.
+
+### Changed
+
+- Dev pins moved to `@deepseek-ai/dsh@0.1.5-alpha.1` (every `@deepseek-ai/dsh-*` devDependency that publishes the line; `@deepseek-ai/dsh-agent-spine-demo` stays on `0.1.1-rc.2`), including the new `@deepseek-ai/dsh-session-format-catalog@0.1.5-alpha.1` used by the artifact-replay tests; peer ranges are the dual-line `>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0`; runtime `dependencies` stay on the published `0.1.2-rc.1` line.
+- `src/audit.ts`: `0.1.5-alpha.1` joins the known-unmarked host lines (V3 format; `Session.append` still has no marker channel), so session-log audit stays fail-closed there.
+- `dshWorkshop.compatibility.dshVersions` now lists `0.1.5-alpha.1`; `.github/workflows/compat.yml` profile pins moved from the unsupported `0.1.1-rc.2` (below the peer floor) to `0.1.5-alpha.1`.
+
+### Tests
+
+- New `test/eval/session-artifact.spec.ts` (L6/U6): the rendered artifact replays through `@deepseek-ai/dsh-session-format-catalog` (`readHeader` + `createRestore().finish()`), a V0-line header stays readable with its seed semantics, and malformed V3 fixtures (missing `isSeeded`, retired `seedLength`, non-boolean `isSeeded`), a newer-format header, a V3 body behind a V2 header, and an unmarked unknown `autoReview/*` event are refused instead of silently misread.
+- `test/eval/runner.spec.ts` asserts the runner's own artifact header against the installed format catalog; `test/audit.spec.ts` covers the `0.1.5-alpha.1` version line.
+
+### Docs
+
+- Five-language READMEs: the Harness row now names `dsh-v0.1.5-alpha.1` (verified 2026-09-09), the dev pin `0.1.5-alpha.1`, and the dual-line peer range; the `allowUnmarkedAudit` row and the session-log bullet list `0.1.5-alpha.1` among the non-stamping lines.
+- `AGENTS.md`: corrected the stale test-peer statement and the host-version gate description (compound `||` peer ranges and the alpha peer segment).
+
+## [0.11.0] - 2026-09-08
+
+### Changed
+
+- Migrate the dev pins from `@deepseek-ai/dsh@0.1.2-rc.1` to `@deepseek-ai/dsh@0.1.3-alpha.2` (all 15 `@deepseek-ai/dsh-*` devDependencies; `@deepseek-ai/dsh-agent-spine-demo` stays on `0.1.1-rc.2`). Dual-line runtime compatibility is preserved: the runtime `dependencies` and the `>=0.1.2-rc.1 <0.2.0` peer range stay on the published rc line, the trace fold reads stream timing from `assistant/chunk` (0.1.2) or the message's timed `stream` (0.1.3, including the new `assistant/attempt` settlement records), and the session-artifact renderer feature-detects the removed `packChunkRuns` export.
+- Test fixtures now stamp headers with the host line's `SESSION_FORMAT_VERSION` (0 on 0.1.2, 2 on 0.1.3) instead of the literal `0`, and the fake-session header carries `isSeeded`; the reviewer/isolation suites pass on both published lines (278/278 each).
+- `src/audit.ts`: `0.1.3-alpha.2` joins the known-unmarked host lines (its `Session.append` still assembles the envelope without the `ignorable` marker, and `autoReview/*` is still absent from `KNOWN_SESSION_EVENT_TYPES` — verified against the published tarball), so session-log audit stays fail-closed on the alpha line; unit tests cover both lines.
+- `scripts/check-host-versions.mjs`: the `0.1.3-alpha.2` stay-behind exemption is removed — the migrated dev pins now cover the newest alpha line natively.
+- `dshWorkshop.compatibility.dshVersions` and the five-language READMEs now state both supported host lines (`0.1.2-rc.1` and `0.1.3-alpha.2`).
+
+## [0.10.6] - 2026-09-07
+
+### Fixed
+
+- Dual-line session-log compatibility for dsh-eval: the trace folds derive per-step stream timing from `assistant/chunk` (0.1.2 line) or the message's timed `stream` records (0.1.3 line), and the session-artifact renderer feature-detects the 0.1.2-only `packChunkRuns` export; both published host lines keep their existing behavior.
+- The host-version gate now carries a documented stay-behind for `@deepseek-ai/dsh@0.1.3-alpha.2` (whose session vocabulary dropped `assistant/chunk`/`packChunkRuns`) until the dev pins migrate; the shipped pins stay on the published rc line.
+
+### Docs
+
+- Fix the DSH plugin badge URL: shields.io rejects the four-segment static badge form with "404 badge not found"; the label now uses the documented double-dash form (`dsh--plugin`), rendering identically; no behavior change.
+
+
+## [0.10.5] - 2026-09-07
+
+### Docs
+
+- Refresh the five-language README support-version wording: the verified GitHub tag `dsh-v0.1.3-alpha.1` now leads the compatibility claim, while npm `0.1.2-rc.1` stays the published dependency-pin line (peers `>=0.1.2-rc.1 <0.2.0`); no behavior change.
+
+
 ## [0.10.4] - 2026-09-05
 
 ### Fixed

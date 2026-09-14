@@ -18,7 +18,9 @@ export type RejectPermissionCommand = { kind: "reject-permission" };
 export type NotifyCommand =
   | { kind: "status" }
   | { kind: "on" }
-  | { kind: "off" };
+  | { kind: "off" }
+  | { kind: "tasks-on" }
+  | { kind: "tasks-off" };
 
 export type SlashCommand =
   | HelpCommand
@@ -78,10 +80,12 @@ export function parseStopCommand(text: string): StopCommand | null {
 }
 
 /**
- * Parse `/notify` (aliases `/watch`, `/notice`) — cross-session notification toggle.
- *   /notify          → status
- *   /notify status   → status
- *   /notify on|off   → on/off (also enable/disable)
+ * Parse `/notify` (aliases `/watch`, `/notice`) — cross-session decision
+ * push, plus an independent task-event toggle:
+ *   /notify                → status
+ *   /notify status         → status
+ *   /notify on|off         → decision-card gate
+ *   /notify tasks on|off   → background turn/end + error notices
  */
 export function parseNotifyCommand(text: string): NotifyCommand | null {
   const trimmed = text.trim().toLowerCase();
@@ -91,6 +95,12 @@ export function parseNotifyCommand(text: string): NotifyCommand | null {
   if (!rest || rest === "status") return { kind: "status" };
   if (rest === "on" || rest === "enable" || rest === "enabled") return { kind: "on" };
   if (rest === "off" || rest === "disable" || rest === "disabled") return { kind: "off" };
+  const tasks = rest.match(/^tasks?\s+(on|off|enable|enabled|disable|disabled)$/);
+  if (tasks) {
+    const value = tasks[1]!;
+    if (value === "on" || value === "enable" || value === "enabled") return { kind: "tasks-on" };
+    return { kind: "tasks-off" };
+  }
   return null;
 }
 
@@ -111,6 +121,30 @@ export function parseRejectQuestionCommand(text: string): RejectQuestionCommand 
     return { kind: "reject-question" };
   }
   return null;
+}
+
+/**
+ * Parse a `P{n}=…` / `P{n}:…` / `P{n}-…` prefix that addresses one pending
+ * card by its WeChat number. Used so a lone cross-session card cannot
+ * swallow a bare reply meant for the current session, and so `P1=/rq`
+ * closes that card instead of being forwarded as chat.
+ */
+export function parsePnCardReply(text: string): { index: number; rest: string } | null {
+  return parseAllPnCardReplies(text)[0] ?? null;
+}
+
+/** Every `P{n}=` / `P{n}-` segment in the line, in order. */
+export function parseAllPnCardReplies(text: string): Array<{ index: number; rest: string }> {
+  const trimmed = text.trim();
+  const re = /P(\d+)\s*[:=\-]\s*([\s\S]*?)(?=P\d+\s*[:=\-]|$)/gi;
+  const out: Array<{ index: number; rest: string }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(trimmed)) !== null) {
+    const index = parseInt(m[1]!, 10);
+    if (!Number.isFinite(index) || index < 1) continue;
+    out.push({ index, rest: (m[2] ?? "").trim() });
+  }
+  return out;
 }
 
 /** Parse `/reject-permission` (alias `/rp`). */
@@ -192,7 +226,7 @@ export type WorkspaceCommand =
 
 export type SessionCommand =
   | { kind: "list"; scope?: "current" }
-  | { kind: "switch"; index: number }
+  | { kind: "switch"; index: number; scope?: "current" }
   | { kind: "new" }
   | { kind: "status" };
 
@@ -248,7 +282,11 @@ export function parseWorkspaceCommand(text: string): WorkspaceCommand | null {
 
 /**
  * Parse `/session` (alias `/s`):
- *   list [current] | switch <n> | new | status
+ *   list [current] | switch [current] <n> | new | status
+ *
+ * `switch current <n>` selects the same current-working-directory scope as
+ * `list current`; the explicit scope keeps the command deterministic instead
+ * of relying on a hidden "last list" state.
  */
 export function parseSessionCommand(text: string): SessionCommand | null {
   const trimmed = text.trim();
@@ -266,6 +304,10 @@ export function parseSessionCommand(text: string): SessionCommand | null {
     case "status":
       return { kind: sub };
     case "switch": {
+      const scoped = rest.match(/^current\s+(\d+)$/);
+      if (scoped) {
+        return { kind: "switch", index: parseInt(scoped[1]!, 10), scope: "current" };
+      }
       if (!/^\d+$/.test(rest)) return null;
       return { kind: "switch", index: parseInt(rest, 10) };
     }
@@ -299,6 +341,11 @@ export function parsePresetCommand(text: string): PresetCommand | null {
 /**
  * Parse `/model`:
  *   list [provider] | switch <provider/model> | status
+ *
+ * `switch` keeps the rest of the line intact — OpenRouter-style model ids
+ * contain `/` (`inclusionai/ling-3.0-flash-fin:free`), so the provider
+ * split happens later against the known provider list. A missing target
+ * still parses so the handler can print usage instead of forwarding.
  */
 export function parseModelCommand(text: string): ModelCommand | null {
   const trimmed = text.trim();
@@ -312,9 +359,37 @@ export function parseModelCommand(text: string): ModelCommand | null {
     case "list":
       return { kind: "list", ...(rest ? { provider: rest } : {}) };
     case "switch":
-      if (!rest || !rest.includes("/")) return null;
       return { kind: "switch", target: rest };
   }
+}
+
+/**
+ * Split `provider/model` after a known provider id or name. Model ids may
+ * themselves contain `/`, so this is not `split("/")[0]`.
+ *
+ * Longest matching prefix wins (`foo-bar/x` beats `foo` if both exist).
+ * Returns null when no known provider owns the first segment.
+ */
+export function splitProviderModelTarget(
+  target: string,
+  providers: ReadonlyArray<{ id: string; name?: string }>,
+): { provider: string; model: string } | null {
+  const trimmed = target.trim();
+  if (!trimmed.includes("/")) return null;
+  let best: { provider: string; model: string; len: number } | null = null;
+  for (const p of providers) {
+    const keys = [p.id, p.name].filter((k): k is string => typeof k === "string" && k.length > 0);
+    for (const key of keys) {
+      const prefix = `${key}/`;
+      if (!trimmed.startsWith(prefix)) continue;
+      const model = trimmed.slice(prefix.length);
+      if (!model) continue;
+      if (!best || key.length > best.len) {
+        best = { provider: p.id, model, len: key.length };
+      }
+    }
+  }
+  return best ? { provider: best.provider, model: best.model } : null;
 }
 
 /**
@@ -407,30 +482,52 @@ export function parseEnterCommand(text: string): EnterCommand | null {
 export const HISTORY_DEFAULT = 5;
 export const HISTORY_MAX = 20;
 
-export type HistoryCommand = { kind: "history"; count: number };
+export type HistoryCommand = { kind: "history"; count: number; includeSystem: boolean };
 
 /**
- * Parse `/history [N]` — view recent conversation history.
- *   /history        → 5 (default)
- *   /history 10     → 10
- *   /history 30     → 20 (clamped to HISTORY_MAX)
+ * Parse `/history [all] [N]` — view recent conversation history.
+ *   /history            → 5 human+assistant turns (default)
+ *   /history 10         → 10
+ *   /history all        → 5, including synthesized system injections
+ *   /history all 10     → 10, including system
+ *   /history 10 all     → same as `all 10`
+ *   /history 30         → 20 (clamped to HISTORY_MAX)
  *
- * Returns null for: invalid number (non-integer, <=0, NaN), extra
- * trailing garbage that is not a number, or non-history prefix.
- * The caller detects a leading `/history` with an invalid arg and
- * replies with usage instead of forwarding to the agent.
+ * Returns null for: invalid tokens, non-integer / <=0 counts, extra
+ * trailing garbage, or a non-history prefix. The caller detects a
+ * leading `/history` with an invalid arg and replies with usage
+ * instead of forwarding to the agent.
  */
 export function parseHistoryCommand(text: string): HistoryCommand | null {
   const trimmed = text.trim();
   const m = trimmed.match(/^\/history(?:\s+(.*))?$/i);
   if (!m) return null;
   const rest = (m[1] ?? "").trim();
-  if (!rest) return { kind: "history", count: HISTORY_DEFAULT };
-  // Only a single integer token is allowed; anything else is invalid.
-  if (!/^\d+$/.test(rest)) return null;
-  const n = parseInt(rest, 10);
+  if (!rest) return { kind: "history", count: HISTORY_DEFAULT, includeSystem: false };
+
+  const tokens = rest.split(/\s+/);
+  let includeSystem = false;
+  let countToken: string | undefined;
+  for (const token of tokens) {
+    if (/^all$/i.test(token)) {
+      if (includeSystem) return null;
+      includeSystem = true;
+      continue;
+    }
+    if (/^\d+$/.test(token)) {
+      if (countToken !== undefined) return null;
+      countToken = token;
+      continue;
+    }
+    return null;
+  }
+
+  if (countToken === undefined) {
+    return { kind: "history", count: HISTORY_DEFAULT, includeSystem };
+  }
+  const n = parseInt(countToken, 10);
   if (!Number.isFinite(n) || n <= 0) return null;
-  return { kind: "history", count: Math.min(n, HISTORY_MAX) };
+  return { kind: "history", count: Math.min(n, HISTORY_MAX), includeSystem };
 }
 
 /**
@@ -452,10 +549,8 @@ export function isHistoryCommandAttempt(text: string): boolean {
  * answer (questions) or rejects it as "unrecognized reply" (approvals),
  * dropping the user's real intent.
  *
- * Card-specific commands (`/rp`, `/rq`) are intentionally excluded so
- * they keep their existing card semantics. `/stop` is also excluded: it
- * lives in `handleQuestionReply`'s priority branch (stop-agent +
- * reject-question) and a behaviour change is out of scope. `/help` is
+ * Card-specific commands (`/rq`, leftover `/rp`) are intentionally
+ * excluded so they keep card semantics. `/help` is
  * included: its only effect is "print the help text", which
  * `handleMessage` already handles; the card handlers' two duplicate
  * `parseHelpCommand` branches become dead code once `/help` bypasses.
@@ -478,7 +573,8 @@ export function isBypassSlashCommand(text: string): boolean {
     parseReasoningCommand(text) !== null ||
     parseEnterCommand(text) !== null ||
     parseNotifyCommand(text) !== null ||
-    parseHistoryCommand(text) !== null
+    parseHistoryCommand(text) !== null ||
+    parseStopCommand(text) !== null
   );
 }
 
@@ -533,7 +629,7 @@ export function formatHelp(
     "• /help (h, ?) — 显示帮助",
     "• /status — 当前会话、工作区、Agent、待处理卡、默认/当前会话 Preset、模型状态",
     "• /workspace (ws) — list | status | switch <路径|编号> | add <路径>",
-    "• /session (s) — list [current] | switch <编号> | new | status",
+    "• /session (s) — list [current] | switch [current] <编号> | new | status",
     "• /preset (p) — list | switch <名称|编号> | status（默认 preset，与 GUI 同步；status 看全局默认，不是当前会话）",
     "• /model — list [提供商] | switch <提供商/模型> | status",
     "• /perm (permission) — status | list | switch <名称|编号> | default [名称|编号]（会话权限实时切换；默认写入 DSH 设置，与 GUI 同步）",
@@ -541,12 +637,11 @@ export function formatHelp(
     "• /enter (busy) — queue|steer|status 繁忙时消息投递（排队/插话，与 DSH 设置「繁忙时 Enter 键行为」同步）",
     "• /silent on|off (sl) — 静默模式：只发送每轮最终回复",
     "• /surface on|off|status (wxprompt) — 微信渠道提示词注入开关（默认关；正文在设置页编辑）",
-    "• /notify on|off|status (watch) — 跨会话通知：完成/报错/卡片（默认关闭）",
-    "• /history [数量] — 查看最近历史消息（默认 5 条，最多 20 条）；有待处理卡时会完整重发",
+    "• /notify on|off|status (watch) — 跨会话决策推送：权限/提问卡整卡（默认关闭）；/notify tasks on|off 后台任务完成/报错提醒",
+    "• /history [all] [数量] — 查看最近历史（默认 5 条，最多 20 条；默认只看你和助手，all 含压缩/注入等系统消息）；有待处理卡时会完整重发",
     "• /stop — 中断当前任务",
     "• /next — 继续发送因微信限制被缓存的消息",
-    "• /rp — 拒绝所有待处理权限卡（微信端）",
-    "• /rq — 拒绝所有待处理的问题卡（微信端）",
+    "• /rq — 关闭当前会话的待处理卡；其它会话用 P1=/rq",
   ];
   if (nativeCommands && nativeCommands.length > 0) {
     lines.push("", "── DSH 原生命令（当前 profile 已注册）──");

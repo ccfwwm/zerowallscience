@@ -23,6 +23,7 @@ import type { KeyboardEvent } from 'react'
 import { IconTriangleRightFill14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CapabilityPolicyRemote, CapabilitySnapshot, CapabilityRow, CatalogDocs, SkillFileEntry, ToolDetail } from './store.ts'
 import { loadSnapshot, unwrap } from './store.ts'
+import { BUILT_IN_SERVER } from '../constants.ts'
 
 /** Props injected by the settings.section registration (see index.ts). */
 export interface CapabilitySectionInjected {
@@ -212,9 +213,6 @@ interface Grouped {
   skills: CapabilityRow[]
 }
 
-/** The reserved server key grouping harness-native (non-MCP) tools. */
-const BUILT_IN_SERVER = 'built-in'
-
 /** Skills whose source root lives inside the current project. */
 const PROJECT_SOURCES = new Set(['project-dsh', 'project-agents'])
 
@@ -309,7 +307,10 @@ export function CapabilitySection(props: CapabilitySectionProps): JSX.Element {
       lists[to] = [...lists[to], ...ids]
       const nextLists: Record<string, string[]> = {}
       for (const cls of CLASS_KEYS) nextLists[cls] = lists[cls]
-      await remote.updateConfig({ [key]: nextLists })
+      // Unwrap like every other remote call: a rejected write (e.g. the
+      // server's meta-tool fail-loud check) must surface as an error, not be
+      // misread below as "overridden by a higher-priority rule".
+      unwrap(await remote.updateConfig({ [key]: nextLists }), 'capabilityPolicy.updateConfig')
       if (request !== generation.current) return
       const next = await loadSnapshot(remote)
       if (request !== generation.current) return

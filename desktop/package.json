@@ -27,11 +27,11 @@
     "dsh-auto-review": "workspace:*",
     "@changfenhuang/dsh-genui": "workspace:*",
     "dsh-better-sidebar-icons": "workspace:*",
-    "dsh-file-review-tab": "workspace:*",
+    "dsh-file-review": "workspace:*",
     "dsh-wechat": "workspace:*",
     "dsh-better-sidebar": "workspace:^",
-    "@huanlin/dsh-plugin-better-sidebar-plugin-office": "github:HuanLinOTO/dsh-plugin-better-sidebar-plugin-office#443d861f44aa8391d6869bd85ce6d1306e09c606",
-    "dsh-dream-skin": "8.30.1",
+    "@huanlin/dsh-plugin-better-sidebar-plugin-office": "github:HuanLinOTO/dsh-plugin-better-sidebar-plugin-office#3b881c9d002109444368b1a28d371663390b156b",
+    "dsh-dream-skin": "9.13.1",
     "@zerowallscience/dsh-ppt-runtime": "workspace:^",
     "@zerowallscience/plugin-account": "workspace:^",
     "@zerowallscience/plugin-ai-cloud": "workspace:^",
@@ -53,7 +53,7 @@
     "@zerowallscience/plugin-runs": "workspace:^",
     "@zerowallscience/plugin-secrets": "workspace:^",
     "@zerowallscience/plugin-skills": "workspace:^",
-    "dsh-free-search": "0.4.24",
+    "dsh-free-search": "0.4.28",
     "@zerowallscience/research-store": "workspace:^"
   },
   "devDependencies": {

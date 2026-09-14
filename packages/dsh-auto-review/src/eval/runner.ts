@@ -24,7 +24,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { SessionId, packChunkRuns } from '@deepseek-ai/dsh-session'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionHeader, SessionEvent } from '@deepseek-ai/dsh-session'
 import { sessionEvents } from '../session-events.ts'
 import type { ResolvedConfig } from '../config.ts'
@@ -36,6 +36,15 @@ import { collectTrace } from './trace.ts'
 import type { CaseTrace } from './trace.ts'
 import { isEvalReviewFailure, runEvalReview } from './review.ts'
 import type { EvalReviewConfig } from './review.ts'
+
+// Dual-line session-persistence vocabulary: the 0.1.2 log packs chunk runs
+// into the canonical v1 JSONL rows, while the 0.1.3 line dropped the chunk
+// events entirely (its v2 catalog stores raw events). Feature-detect the
+// 0.1.2-only export at load so the artifact renderer works on either line.
+const sessionModule = await import('@deepseek-ai/dsh-session') as unknown as {
+  packChunkRuns?: (events: readonly SessionEvent[]) => readonly unknown[]
+}
+const packChunkRuns = sessionModule.packChunkRuns
 
 /** One case's terminal status. */
 export type CaseStatus = 'pass' | 'fail' | 'error' | 'cancelled'
@@ -177,7 +186,19 @@ export async function resolvePromptBaselines(suite: EvalSuite, suiteDir?: string
   return map
 }
 
-/** Serialize one session header as the persistence-backend header line. */
+/**
+ * Serialize one session header as the persistence-backend header line.
+ *
+ * The physical header vocabulary is line-specific: the 0.1.2 (V0) line
+ * records the inherited prefix length as `seedLength` and has no `isSeeded`,
+ * while the V2/V3 lines require `isSeeded` and reject any unknown key — so a
+ * V3 header must never carry `seedLength` (the seed cut is derived from the
+ * log's `session/end-seed` marker instead). Emit the keys of the header's own
+ * format version so an artifact written on one line stays readable on it.
+ * @param header - the session header.
+ * @param inheritedEventCount - the inherited prefix length (V0 `seedLength`).
+ * @returns the header-line record.
+ */
 export function sessionHeaderLine(header: SessionHeader, inheritedEventCount?: unknown): Record<string, unknown> {
   return {
     type: 'session',
@@ -186,7 +207,9 @@ export function sessionHeaderLine(header: SessionHeader, inheritedEventCount?: u
     createdAt: header.createdAt,
     ...(header.cwd !== undefined ? { cwd: header.cwd } : {}),
     ...(header.parentSession !== undefined ? { parentSession: header.parentSession } : {}),
-    ...(inheritedEventCount !== undefined ? { seedLength: inheritedEventCount } : {}),
+    ...(header.version >= 2
+      ? { isSeeded: header.isSeeded === true }
+      : inheritedEventCount !== undefined ? { seedLength: inheritedEventCount } : {}),
     ...(header.origin !== undefined ? { origin: header.origin } : {}),
     delegationDepth: header.delegationDepth ?? 0,
     ...(header.agentPreset !== undefined ? { agentPreset: header.agentPreset } : {}),
@@ -202,9 +225,10 @@ export function sessionHeaderLine(header: SessionHeader, inheritedEventCount?: u
  * @returns the artifact text.
  */
 export function renderSessionArtifact(header: SessionHeader, events: readonly SessionEvent[], inheritedEventCount?: unknown): string {
+  const rows = packChunkRuns === undefined ? events : packChunkRuns(events)
   const records = [
     JSON.stringify(sessionHeaderLine(header, inheritedEventCount)),
-    ...packChunkRuns(events).map(record => JSON.stringify(record)),
+    ...rows.map(record => JSON.stringify(record)),
   ]
   return `${records.join('\n')}\n`
 }

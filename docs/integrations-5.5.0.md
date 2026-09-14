@@ -12,7 +12,7 @@ Capability enabling is intentionally unlimited in this release; the model still 
 
 `dsh-auto-review` owns operation approval, defaults off, uses Chinese reports, and delegates failures to human approval. `plugins/reviewer` retains answer and citation verification with its existing settings and events. These are independent functions and switches, as requested.
 
-`dsh-file-review-tab` adapts upstream 0.6.0 while retaining its package identity, fileReview service and Better Sidebar entry. A single lifecycle capture and PTC adapter record changes. File operations remain workspace-contained, reject symlinks and files over 16 MiB, compare Windows writable bits, and preserve CRLF during hunk operations.
+`dsh-file-review` adapts upstream 0.6.0 while retaining its package identity, fileReview service and Better Sidebar entry. A single lifecycle capture and PTC adapter record changes. File operations remain workspace-contained, reject symlinks and files over 16 MiB, compare Windows writable bits, and preserve CRLF during hunk operations.
 
 Managed MCP connection fields are read-only in both the editor and Host API. The enabled switch remains editable. Credentials remain in Environment settings.
 

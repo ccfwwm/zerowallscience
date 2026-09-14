@@ -29,8 +29,8 @@
   },
   "zerowall": {
     "dsh": {
-      "min": "0.1.2-rc.1",
-      "max": "0.1.2-rc.1"
+      "min": "0.1.5-rc.2",
+      "max": "0.1.5-rc.2"
     },
     "requiredServices": [
       "settings",

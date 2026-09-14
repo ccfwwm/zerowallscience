@@ -72,7 +72,7 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
         alwaysBundle: [
           /^@zerowallscience\/plugin-/,
           /^@daweifu\/capability-menu(?:\/|$)/,
-          /^dsh-file-review-tab(?:\/|$)/,
+          /^dsh-file-review(?:\/|$)/,
           /^lucide-react(?:\/|$)/,
           /^qrcode(?:\/|$)/,
           /^zod(?:\/|$)/,

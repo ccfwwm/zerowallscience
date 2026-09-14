@@ -1,0 +1,14 @@
+diff --git a/lib/client.js b/lib/client.js
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -436,2 +436,3 @@
+ 		const zh = {
++			"section.title": "外观",
+ 			"skin.title": "皮肤",
+@@ -487,2 +488,3 @@
+ 		const en = {
++			"section.title": "Theme",
+ 			"skin.title": "Skins",
+@@ -3453,1 +3455,1 @@
+-				label: "Theme / 外观",
++				label: () => localeT("section.title"),

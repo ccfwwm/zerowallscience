@@ -1,12 +1,12 @@
 version: 1
 id: zerowall-stable
 channel: stable
-dsh: 0.1.2-rc.1
+dsh: 0.1.5-rc.2
 plugins:
   - 'dsh-dream-skin'
   - 'dsh-better-sidebar'
   - 'dsh-better-sidebar-icons'
-  - 'dsh-file-review-tab'
+  - 'dsh-file-review'
   - '@huanlin/dsh-plugin-better-sidebar-plugin-office'
   - 'dsh-wechat'
   - '@daweifu/capability-menu'

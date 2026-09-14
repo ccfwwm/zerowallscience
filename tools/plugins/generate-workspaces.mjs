@@ -45,7 +45,7 @@ const externalClientDependencies = {
   // ZeroWall compatibility changes are reproducible without overwriting the
   // custom host integration with a remote package snapshot.
   'dsh-better-sidebar': 'workspace:^',
-  'dsh-dream-skin': '8.30.1',
+  'dsh-dream-skin': '9.13.1',
 }
 
 const dshDependencies = {
@@ -96,7 +96,7 @@ const npmDependencies = {
   base: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0' },
   projects: { '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   account: { qrcode: '^1.5.4', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
-  files: { 'dsh-office-tools': 'github:kw78/dsh-office-tools#30d063323e01d506a56ea89f4b2925a3a686a9fc', jszip: '3.10.1', 'pdf-lib': '^1.17.1', 'pdfjs-dist': '^4.10.38', xlsx: '^0.18.5', 'fast-xml-parser': '^5.11.0', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
+  files: { 'dsh-office-tools': 'github:kw78/dsh-office-tools#d92ac3863ece6248a5f8c1e4aa1958a60b8aaccb', jszip: '3.10.1', 'pdf-lib': '^1.17.1', 'pdfjs-dist': '^4.10.38', xlsx: '^0.18.5', 'fast-xml-parser': '^5.11.0', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
   images: { sharp: '^0.35.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
   'image-dup': { jimp: '^1.6.1', 'pdf-lib': '^1.17.1', sharp: '^0.35.3', 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },
   mcp: { '@zerowallscience/plugin-secrets': 'workspace:^', '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
@@ -209,7 +209,7 @@ for (const plugin of plugins) {
       } : {}),
     },
     zerowall: {
-      dsh: { min: '0.1.2-rc.1', max: '0.1.2-rc.1' },
+      dsh: { min: '0.1.5-rc.2', max: '0.1.5-rc.2' },
       requiredServices: plugin.requiredServices ?? [],
       optionalServices: plugin.optionalServices ?? [],
       capabilities: plugin.capabilities,
@@ -243,14 +243,14 @@ for (const plugin of plugins) {
     ],
     dependencies: {
     ...dshDependencies,
-    ...(plugin.id === 'files' ? { '@deepseek-ai/dsh-fs': 'workspace:^', 'dsh-office-tools': 'github:kw78/dsh-office-tools#30d063323e01d506a56ea89f4b2925a3a686a9fc' } : {}),
+    ...(plugin.id === 'files' ? { '@deepseek-ai/dsh-fs': 'workspace:^', 'dsh-office-tools': 'github:kw78/dsh-office-tools#d92ac3863ece6248a5f8c1e4aa1958a60b8aaccb' } : {}),
       ...(plugin.client ? externalClientDependencies : {}),
       ...Object.fromEntries((plugin.dependencies ?? []).map(id => [`@zerowallscience/plugin-${id}`, 'workspace:^'])),
       ...(plugin.id === 'base'
         ? {
             ...Object.fromEntries(plugins.filter(candidate => candidate.remote).map(candidate => [`@zerowallscience/plugin-${candidate.id}`, 'workspace:^'])),
             '@daweifu/capability-menu': 'workspace:*',
-            'dsh-file-review-tab': 'workspace:*',
+            'dsh-file-review': 'workspace:*',
           }
         : {}),
       ...(npmDependencies[plugin.id] ?? {}),

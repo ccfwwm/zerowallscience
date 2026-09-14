@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "harness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
-    "branch": "zerowall-dsh-rc1",
-    "commit": "a697cab15b3ab619cdff36ee33b81468b5fc613a",
+    "branch": "codex/zerowall-dsh-015rc2",
+    "commit": "20a36ec1e0514ccf34d2a9e21633ae052bc3569f",
     "upstreamRepository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "upstreamCommit": "a66e4702047846cdaa10c66c9d3df3951f5ea70d",
-    "tag": "dsh-v0.1.2-rc.1",
-    "version": "0.1.2-rc.1",
+    "tag": "dsh-v0.1.5-rc.2",
+    "version": "0.1.5-rc.2",
     "source": "deepseek-harness",
     "packagedCli": "resources/app.asar/node_modules/@deepseek-ai/dsh/lib/bin.js",
     "kernelPackages": [
@@ -31,17 +31,17 @@
       "@deepseek-ai/dsh-subprocess",
       "@deepseek-ai/dsh-workspace"
     ],
-    "packageCount": 274
+    "packageCount": 297
   },
   "profiles": {
     "development": {
       "path": "profiles/generated/development.yml",
-      "dsh": "0.1.2-rc.1",
+      "dsh": "0.1.5-rc.2",
       "plugins": [
         "dsh-dream-skin",
         "dsh-better-sidebar",
         "dsh-better-sidebar-icons",
-        "dsh-file-review-tab",
+        "dsh-file-review",
         "@huanlin/dsh-plugin-better-sidebar-plugin-office",
         "dsh-wechat",
         "@daweifu/capability-menu",
@@ -75,12 +75,12 @@
     },
     "preview": {
       "path": "profiles/generated/preview.yml",
-      "dsh": "0.1.2-rc.1",
+      "dsh": "0.1.5-rc.2",
       "plugins": [
         "dsh-dream-skin",
         "dsh-better-sidebar",
         "dsh-better-sidebar-icons",
-        "dsh-file-review-tab",
+        "dsh-file-review",
         "@huanlin/dsh-plugin-better-sidebar-plugin-office",
         "dsh-wechat",
         "@daweifu/capability-menu",
@@ -114,12 +114,12 @@
     },
     "stable": {
       "path": "profiles/generated/stable.yml",
-      "dsh": "0.1.2-rc.1",
+      "dsh": "0.1.5-rc.2",
       "plugins": [
         "dsh-dream-skin",
         "dsh-better-sidebar",
         "dsh-better-sidebar-icons",
-        "dsh-file-review-tab",
+        "dsh-file-review",
         "@huanlin/dsh-plugin-better-sidebar-plugin-office",
         "dsh-wechat",
         "@daweifu/capability-menu",
@@ -155,7 +155,7 @@
   "thirdPartyPlugins": [
     {
       "package": "dsh-dream-skin",
-      "version": "8.30.1",
+      "version": "9.13.1",
       "owner": "third-party",
       "source": "desktop/package.json",
       "loadOrder": 1,
@@ -178,16 +178,16 @@
       "productionPath": "resources/app.asar/node_modules/dsh-better-sidebar-icons"
     },
     {
-      "package": "dsh-file-review-tab",
+      "package": "dsh-file-review",
       "version": "workspace:*",
       "owner": "third-party",
       "source": "desktop/package.json",
       "loadOrder": 4,
-      "productionPath": "resources/app.asar/node_modules/dsh-file-review-tab"
+      "productionPath": "resources/app.asar/node_modules/dsh-file-review"
     },
     {
       "package": "@huanlin/dsh-plugin-better-sidebar-plugin-office",
-      "version": "github:HuanLinOTO/dsh-plugin-better-sidebar-plugin-office#443d861f44aa8391d6869bd85ce6d1306e09c606",
+      "version": "github:HuanLinOTO/dsh-plugin-better-sidebar-plugin-office#3b881c9d002109444368b1a28d371663390b156b",
       "owner": "third-party",
       "source": "desktop/package.json",
       "loadOrder": 5,
@@ -227,7 +227,7 @@
     },
     {
       "package": "dsh-free-search",
-      "version": "0.4.24",
+      "version": "0.4.28",
       "owner": "third-party",
       "source": "desktop/package.json",
       "loadOrder": 19,

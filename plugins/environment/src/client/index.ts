@@ -1,9 +1,12 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type {} from '@deepseek-ai/dsh-client-locale/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { ImageModelSelection, EnvironmentVariableInfo } from '../shared/types.js'
 import { EnvironmentSection } from './section.js'
 import { unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
+import { en, NS, zh } from './locales.js'
 
 export const inject = [
   'slots', 'locale', 'remote', 'remote.session', 'settingsScope',
@@ -11,6 +14,8 @@ export const inject = [
 ]
 
 export function apply(ctx: ClientContext): void {
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'zerowall: environment dictionaries')
+  const t = ctx.locale.bind(NS)
   const remote = ctx.remote as any
   const sessionRemote = ctx.get('remote.session') ?? remote?.session
   const environmentRemote = ctx.get('remote.zerowallEnvironment') ?? remote?.zerowallEnvironment
@@ -21,7 +26,7 @@ export function apply(ctx: ClientContext): void {
   const reviewerScope = ctx.settingsScope.bind<any>({ namespace: 'zerowall-reviewer' })
   ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'zerowall-environment', order: 25,
-    label: '环境配置',
+    label: () => t('title'), locale: NS,
     inject: () => ({
       reviewerScope,
       environmentRemote,

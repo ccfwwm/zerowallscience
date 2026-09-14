@@ -4,10 +4,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import type { GenuiEChart } from '../src/client/spec'
-import { EChartNode } from '../src/client/EChartNode.tsx'
+import { EChartNode, SERIES_FALLBACK } from '../src/client/EChartNode.tsx'
 import { createChart } from '../src/client/echarts-lazy.ts'
 
-vi.mock('../src/client/echarts-lazy.ts', () => ({ createChart: vi.fn() }))
+vi.mock('../src/client/echarts-lazy.ts', async () => {
+  // Keep the real preset→engine mapping so the mock stays honest about which
+  // bundle a preset needs (progressive disclosure).
+  const actual = await vi.importActual<typeof import('../src/client/echarts-lazy.ts')>('../src/client/echarts-lazy.ts')
+  return { createChart: vi.fn(), CORE_PRESETS: actual.CORE_PRESETS }
+})
 beforeEach(() => { vi.mocked(createChart).mockReset() })
 
 afterEach(() => {
@@ -18,9 +23,21 @@ function fakeInstance() {
   return { setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn() }
 }
 
+describe('EChartNode: series palette', () => {
+  it('keeps eight distinct fallback hues (host tokens may be absent)', () => {
+    // The regression: every slot fell back to the single accent colour, so a
+    // multi-series chart came out entirely blue.
+    expect(SERIES_FALLBACK.length).toBeGreaterThanOrEqual(6)
+    expect(new Set(SERIES_FALLBACK).size).toBe(SERIES_FALLBACK.length)
+  })
+})
+
 describe('EChartNode: preset rendering', () => {
   it('renders data-genui-echart container for each preset', async () => {
-    for (const preset of ['bar', 'line', 'area', 'pie', 'scatter'] as const) {
+    for (const preset of [
+      'bar', 'line', 'area', 'pie', 'scatter',
+      'radar', 'gauge', 'funnel', 'treemap', 'sankey', 'graph', 'heatmap', 'bigline',
+    ] as const) {
       vi.mocked(createChart).mockImplementation(() => Promise.resolve(fakeInstance()))
       const node: GenuiEChart = { type: 'echart', preset, data: [{ label: 'a', value: 1 }] }
       const { container, unmount } = render(<EChartNode node={node} />)

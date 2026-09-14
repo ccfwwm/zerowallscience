@@ -7,8 +7,8 @@ packages:
   - deepseek-harness
   - deepseek-harness/vendor/*
   - deepseek-harness/packages/*/*
-  - deepseek-harness/native/landlock-run
-  - deepseek-harness/native/landlock-run/packages/*
+  - deepseek-harness/native/system
+  - deepseek-harness/native/system/packages/*
   - deepseek-harness/apps/*
   - deepseek-harness/website
   - deepseek-harness/examples
@@ -30,7 +30,7 @@ overrides:
   '@electron/get': '5.1.0'
   'react': '18.2.0'
   'react-dom': '18.2.0'
-  '@deepseek-ai/dsh-llm-pi-ai>@earendil-works/pi-ai': '0.84.2'
+  '@deepseek-ai/dsh-llm-pi-ai>@earendil-works/pi-ai': '0.85.1'
   '@deepseek-ai/cosmokit': 'link:deepseek-harness/vendor/cosmokit'
   '@deepseek-ai/schemastery': 'link:deepseek-harness/vendor/schemastery'
 
@@ -57,10 +57,12 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - '@earendil-works/pi-ai@0.84.2'
   - dsh-better-sidebar@0.18.0
-  - dsh-dream-skin@8.30.1
+  - dsh-dream-skin@9.13.1
+  - dsh-free-search@0.4.28
 
 patchedDependencies:
-  dsh-free-search@0.4.24: patches/dsh-free-search@0.4.24.patch
+  dsh-dream-skin@9.13.1: patches/dsh-dream-skin@9.13.1.patch
+  dsh-free-search@0.4.28: patches/dsh-free-search@0.4.28.patch
 
 packageExtensions:
   'dsh-office-tools@*':

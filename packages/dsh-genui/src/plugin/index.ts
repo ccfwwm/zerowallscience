@@ -28,9 +28,9 @@ import { createRenderUiTool, createValidateDshUiTool } from './tool.ts'
  * This route serves them from the plugin's own package directory through the
  * host webserver service — the longest-prefix rule lets it win over the
  * generic `/plugins` bundle route, and no host source change is needed. The
- * service is optional at this plugin's start time (same ordering reality as
- * the tools registry), so registration probes immediately AND on the
- * `internal/service` event, exactly like the tools registration below.
+ * service is optional at this plugin's start time, so a dependency fiber owns
+ * the registration and follows the webserver through late binding, replacement,
+ * and plugin reloads.
  */
 
 /** Route prefix under /plugins; anything under it is this plugin's asset. */
@@ -94,16 +94,26 @@ export const GENUI_SECTION_TEXT = `You can render interactive UI components INSI
 
 The spec is a white-listed component tree rendered inline where the fence sits. Only these \`type\` values; the \`genui\` skill, when available, carries the full content→component mapping and per-component field details:
 
-- 布局: text · row · col · grid · card · divider · spacer
+- 布局: text · row · col · grid · card · divider · spacer · hero（封面块：超大数字 + 标题 + tone 渐变底色，一条回答最多一个）
 - 展示: badge · stat · progress · list · table · keyvalue · avatar · audio · video · timeline · file-tree · breadcrumb · callout · steps · diff · json · code · copy
-- 图表: chart {"type":"chart","kind":"bars|line|donut","data":[{"label":"...","value":n,"color":"#hex?"}],"series":[...]?}（series 仅 bars；未知扩展字段可通过校验，但原生 chart repair/render 会忽略） · echart (preset|option) · plot (函数图)
+- 图表: chart {"kind":"bars|line|donut","data":[{"label":"...","value":n}],"series":[{"label":"...","data":[...]}]?,"horizontal":true?,"stacked":true?}（series：bars 分组/堆叠 / line 多序列；horizontal 横向柱） · echart (preset: bar/line/area/pie/scatter/radar/gauge/funnel/treemap/sankey/graph/heatmap/bigline，或 option 直通) · plot (函数图)
 - 交互: button · input · textarea · select · checkbox · switch · slider · radio · submit · quiz · link · tabs · accordion
 - 高级: mermaid (flowchart/sequence/class/gantt/pie/er/state/journey) · diagram (编辑级架构/流程图，27 种 kind) · scene3d (3D WebGL)
 
+**默认就该出 UI**：出现下列情况至少出一个围栏：
+- ≥3 条并列要点 → \`list\`；数字对比 → \`table\`；指标/进度/状态 → \`stat\`/\`progress\`/\`badge\`
+- 步骤/时间线 → \`steps\`/\`timeline\`/\`mermaid\`；架构/流程 → \`diagram\` 或 \`mermaid\`；风险/结论 → \`callout\`；代码/改动 → \`code\`/\`diff\`/\`json\`
+- 行内富文本：\`text\`/\`list\`/表格文本列/\`keyvalue\`/\`callout\` 里可写 \`code\`、**加粗**、==高亮==、[文字](url)：重点留在句中，不必为一个词单起组件。
+- 默认无卡 ≠ 少用组件：硬触发照常出组件，**组件多不是问题**——判据是每个组件承载不同信息、有焦点与层次、同一批数据不重复表达。卡片只用于并排项与数据对象；单段文字用「标题 + 正文 + 间距」。
+
+**发回答前最后自检一次**：这段内容里有没有 ≥3 条并列要点、任何对比、任何数字/指标、任何步骤或流程？有就先转成组件再开口。**状态汇报、进度说明、提交与改动清单同样算**——不要因为它是"说明文"就用纯文字写。这一条踩过的坑：连续几条汇报全靠文字，一条围栏都没发。
+- 趋势/占比 → \`chart\`（≤8 点）或 \`echart\`（多序列/要交互时）；配色默认跟随主题，只有语义需要时才用 \`palette\` / \`card.accent\`；排版用 grid 子节点的 \`"span":2\` 跨列做宽窄混排（bento），不要一列方块堆到底；数据多时给 \`table\`/\`chart\`/\`list\` 配一个 \`input\`(id) + \`filter\` 绑定，读者能就地筛选，不用再问一遍
+
+**字段速查**（完整见 genui skill）：\`stat\` \`{"label","value","delta"?}\` · \`table\` \`{"columns","rows","types"?,"total"?,"details"?,"filter"?,"export"?}\` · \`callout\` \`{"tone","title","content"}\` · \`progress\` \`{"value","variant"?,"target"?}\`
+
 Rules:
-- 触发: 结构化表达优于纯文本时主动用（要点、强调、对比、流程、步骤、状态、数据、演示），纯问答与一句话不套 UI；一个主题一个主组件，每次 3–8 个组件，同一数据不重复出现。
 - JSON 严格: 坏围栏降级为代码块；≥3 节点或含 table 的围栏发出前调用 validate_dsh_ui，❌ 修好再发（若附「已自动修复」JSON 照抄即可）。
-- 规模: ≤200 节点、嵌套≤8 层（超出被截断）；3D mesh 1–5；plot 给合理 xMin/xMax。
+- 规模: ≤200 节点、嵌套≤8 层（超出被截断）；一条回答 3–8 个组件，一个主题一个主组件；3D mesh 1–5；plot 给合理 xMin/xMax。
 - LOCAL-FIRST + actions: UI 能自己做的状态变化（判卷、判题、重置、展开、选中）就地完成，零往返；action 只用于必须模型参与的事。交互组件带 "action":"name"，交互以 [genui-action] name + 组件数据回传，届时重渲染更新 UI；无 action 的按钮禁用。
 - Durable state: 交互状态按「会话+内容指纹」持久化——刷新/重放恢复；重渲染相同内容保留，新内容重置。
 - 卷子模式: 每题一个 radio（group+answer+explanation）+ 一个 submit（groups 全列），本地判分。
@@ -119,6 +129,7 @@ Rules:
 // plugin — hosts without tool access keep the fence channel working. Cordis
 // inject entries are hard requirements, so the registry is probed at runtime
 // instead (see apply).
+export const name = '@changfenhuang/dsh-genui'
 export const inject = ['systemPrompt']
 
 const BUNDLED_SKILL_RANK = 600
@@ -171,31 +182,14 @@ export function apply(ctx: Context): void {
     order: ctx.systemPrompt.getSectionOrder('STRUCTURED_OUTPUT'),
     text: GENUI_SECTION_TEXT,
   })
-  // The tools service is optional: hosts without tool access (or minimal
-  // compositions) keep the fence channel; only when the registry exists does
-  // the render_ui tool join the model's tool set. `reflect.get(name, false)`
-  // is cordis's non-throwing optional service lookup (the proxy's own trap
-  // uses it) — property access without inject would throw instead.
-  //
-  // Start-up ordering: this plugin injects only `systemPrompt`, so cordis
-  // starts it EARLY — before the tools provider (which injects deeper
-  // dependencies) has bound its service. A one-shot probe at apply time
-  // therefore misses the registry on real hosts (the fence section lands,
-  // the tool never registers). Fix: probe immediately AND subscribe to
-  // `internal/service` (emitted by cordis on every service binding), so the
-  // registration lands the moment `tools` appears, whatever the order.
-  let registered = false
-  const tryRegister = (value: { register(tool: unknown): unknown } | undefined): void => {
-    if (registered) return
-    const tools = value ?? ctx.reflect.get('tools', false) as { register(tool: unknown): unknown } | undefined
-    if (tools === undefined) return
-    tools.register(createRenderUiTool())
-    tools.register(createValidateDshUiTool())
-    registered = true
-  }
-  tryRegister(undefined)
-  ctx.on('internal/service', (name: string, value: unknown) => {
-    if (name === 'tools') tryRegister(value as { register(tool: unknown): unknown })
+  // Hosts without tool access keep the fence channel. The dependency fiber
+  // starts whenever tools becomes available and unloads its registrations
+  // before either the service or this plugin is replaced.
+  ctx.inject(['tools'], (toolsCtx) => {
+    toolsCtx.effect(function* () {
+      yield toolsCtx.tools.register(createRenderUiTool())
+      yield toolsCtx.tools.register(createValidateDshUiTool())
+    }, 'dsh-genui: model tools')
   })
 
   // SkillRegistry is optional. Probe immediately and subscribe to service
@@ -213,18 +207,13 @@ export function apply(ctx: Context): void {
     if (name === 'skills') tryRegisterSkill(value as SkillRegistry | undefined)
   })
 
-  // Lazy-engine asset route: same optional-probe pattern as the tools
-  // registry — the webserver service may bind after this plugin starts.
-  let assetsRegistered = false
-  const tryRegisterAssets = (value: { register(route: unknown): unknown } | undefined): void => {
-    if (assetsRegistered) return
-    const webServer = value ?? ctx.reflect.get('webServer', false) as { register(route: unknown): unknown } | undefined
-    if (webServer === undefined) return
-    webServer.register({ kind: 'prefix', path: ASSET_ROUTE_PATH, handler: serveGenuiAsset })
-    assetsRegistered = true
-  }
-  tryRegisterAssets(undefined)
-  ctx.on('internal/service', (name: string, value: unknown) => {
-    if (name === 'webServer') tryRegisterAssets(value as { register(route: unknown): unknown })
+  // webServer.register returns a raw disposer, so an explicit effect binds the
+  // route to the dependency fiber instead of leaving it in the host route table.
+  ctx.inject(['webServer'], (webCtx) => {
+    const webServer = webCtx.reflect.get('webServer') as { register(route: unknown): () => void }
+    webCtx.effect(
+      () => webServer.register({ kind: 'prefix', path: ASSET_ROUTE_PATH, handler: serveGenuiAsset }),
+      'dsh-genui: asset route',
+    )
   })
 }

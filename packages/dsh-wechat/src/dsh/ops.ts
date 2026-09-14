@@ -4,7 +4,8 @@
  * checks — no runtime imports of `@deepseek-ai/*` packages.
  */
 
-import type { Agent } from "./types.js";
+import type { Agent, AgentSession } from "./types.js";
+import { sessionEvents } from "./types.js";
 import type { SessionProjectionService } from "./types.js";
 import type { BridgeContext } from "./sessions.js";
 
@@ -108,6 +109,21 @@ export interface SessionQuery {
   }>;
 }
 
+/** Listing facts folded from a session log without a full `listEvents` inspect. */
+export interface SessionListFacts {
+  preset?: string;
+  title?: string;
+  lastUserMessageTime?: number;
+}
+
+/** Durable projection-cache snapshot used as a zero-I/O listing hint. */
+interface ProjectionCacheService {
+  cachedSnapshot(
+    header: SessionHeader,
+    inheritedEventCount: number,
+  ): { values?: Record<string, unknown> } | undefined;
+}
+
 /**
  * Outcome of reading a session log for "has the user spoken?" checks.
  * `ok: false` means the log could not be validated (corrupt persistence);
@@ -118,7 +134,8 @@ export type SessionLogActivity =
   | { ok: false; error: string };
 
 export interface HistoryEntry {
-  role: "user" | "assistant";
+  /** `system` is a synthesized user-role message (compact / plugin / goal / recall). */
+  role: "user" | "assistant" | "system";
   text: string;
   time: number;
 }
@@ -142,20 +159,21 @@ export interface AgentDefaultModelService {
   saveSelection(next: ModelSelection): Promise<void>;
 }
 
-/** One session event as consumed by the permission fold (structural shape). */
-export interface SessionEventLike {
-  readonly type: string;
-  readonly data?: unknown;
-}
-
 /** Minimal structural surface of the `permissionPresets` service (dsh-permission-presets). */
 export interface PermissionPresetsService {
   /** Advertised preset names, in table declaration order. */
   readonly names: readonly string[];
   /** Preset selected as the default for future sessions (settings-first). */
   readonly defaultPreset: string;
-  /** Effective preset for a session's event log, or `custom` when nothing matches. */
-  current(events: readonly SessionEventLike[]): string;
+  /**
+   * Effective preset for one session, or `custom` when nothing matches.
+   * The host folds `sessionProjections.stateOf(session, "permissions")`
+   * (host signature `current(session: Session): string`, since
+   * dsh 0.1.2-alpha.2), so this face takes the live Session — an event
+   * array makes the host throw `permission: permissions session
+   * projection is not registered`.
+   */
+  current(session: unknown): string;
   /** Switch one session's permission preset (records events + writes knobs). */
   set(session: unknown, name: string): void;
   /** Resolve a preset's knob bundle. */
@@ -272,15 +290,15 @@ export class DshOps {
     }
   }
 
-  async readSessionTitle(sessionId: string): Promise<string | undefined> {
-    const query = this.get<SessionQuery>("sessionQuery");
-    if (!query) return undefined;
-    try {
-      const snapshot = await query.readTitle(sessionId);
-      return snapshot?.title;
-    } catch {
-      return undefined;
-    }
+  /**
+   * Latest `session/title` text. Does not call host `readTitle()` (that
+   * inspects the complete validated log). Live events / projection cache /
+   * the raw-log fold used by `/s list` are enough for WeChat labels.
+   */
+  async readSessionTitle(sessionId: string, cwd?: string, header?: SessionHeader): Promise<string | undefined> {
+    if (!sessionId) return undefined;
+    const facts = await this.readSessionListFacts(sessionId, cwd, header);
+    return facts.title;
   }
 
   /**
@@ -313,30 +331,95 @@ export class DshOps {
    * @returns the preset id, or undefined when the session has none on
    *   record (no header value, no switch events, no readable log).
    */
-  async resolveSessionPreset(sessionId: string, cwd?: string): Promise<string | undefined> {
+  async resolveSessionPreset(sessionId: string, cwd?: string, header?: SessionHeader): Promise<string | undefined> {
     if (!sessionId) return undefined;
-    let resolvedCwd = typeof cwd === "string" && cwd.length > 0 ? cwd : undefined;
-    if (!resolvedCwd) {
-      // Fallback for callers that only have the id (`/status`). The
-      // roster header is enough to locate the log; we do not walk
-      // events here.
-      const query = this.get<SessionQuery>("sessionQuery");
-      if (!query) return undefined;
-      try {
-        const all = await query.listSessions();
-        resolvedCwd = all.find((r) => r.header.id === sessionId)?.header.cwd;
-      } catch {
-        resolvedCwd = undefined;
-      }
-    }
-    if (!resolvedCwd) return undefined;
-    // Defer to the CJS helper for the actual frame scan + event walk.
-    // The helper catches its own errors and returns `undefined`, so a
-    // missing log or a corrupt frame degrades gracefully (the bridge
-    // renders "no preset" rather than a wrong preset).
+    const facts = await this.readSessionListFacts(sessionId, cwd, header);
+    return facts.preset;
+  }
+
+  private async sessionLog(): Promise<{
+    readSessionRecency: (cwd: string, sessionId: string, root?: string) => number | undefined;
+    readSessionListFacts: (cwd: string, sessionId: string, root?: string) => SessionListFacts;
+    readSessionRuntimePreset: (cwd: string, sessionId: string, root?: string) => string | undefined;
+    readSessionUsedHint: (
+      cwd: string,
+      sessionId: string,
+      root?: string,
+    ) => { status: "used"; time?: number } | { status: "blank" } | { status: "unknown" };
+  } | undefined> {
     try {
-      const runtime = await import("./session-log.cjs");
-      return runtime.readSessionRuntimePreset(resolvedCwd, sessionId, undefined);
+      return await import("./session-log.cjs");
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Walk a live agent's in-memory log newest-first. `found: true` means
+   * the session is attached (even when it has no user prompt).
+   */
+  private liveListFacts(sessionId: string): { found: boolean; facts: SessionListFacts } {
+    try {
+      const agents = this.get<{
+        get(id: string): {
+          session?: AgentSession;
+        } | undefined;
+      }>("agents");
+      const session = agents?.get(sessionId)?.session;
+      if (!session) return { found: false, facts: {} };
+      // A live Session object is not enough: 0.1.5 always has one, but
+      // the log is only readable via snapshotEvents() (or the legacy
+      // `events` array). Without either, fall through to disk.
+      if (typeof session.snapshotEvents !== "function" && !Array.isArray(session.events)) {
+        return { found: false, facts: {} };
+      }
+      const events = sessionEvents(session);
+      const facts: SessionListFacts = {};
+      if (typeof session?.header?.agentPreset === "string" && session.header.agentPreset.length > 0) {
+        facts.preset = session.header.agentPreset;
+      }
+      for (const ev of events) {
+        if (!ev || typeof ev !== "object") continue;
+        if (ev.type === "agent-preset/selected") {
+          const data = ev.data as { agentPreset?: unknown } | undefined;
+          if (typeof data?.agentPreset === "string" && data.agentPreset.length > 0) {
+            facts.preset = data.agentPreset;
+          }
+        } else if (ev.type === "session/title") {
+          const data = ev.data as { title?: unknown } | undefined;
+          if (typeof data?.title === "string" && data.title.length > 0) {
+            facts.title = data.title;
+          }
+        } else if (ev.type === "user/message" && typeof ev.time === "number") {
+          const data = ev.data as { source?: { kind?: string } } | undefined;
+          const kind = data?.source?.kind;
+          if (!kind || kind === "user") facts.lastUserMessageTime = ev.time;
+        }
+      }
+      return { found: true, facts };
+    } catch {
+      return { found: false, facts: {} };
+    }
+  }
+
+  /** Zero-I/O listing hint from the host projection cache (same source as the GUI sidebar). */
+  private cachedListHint(header: SessionHeader | undefined): SessionListFacts | undefined {
+    if (!header) return undefined;
+    const cache = this.get<ProjectionCacheService>("sessionProjectionCache");
+    if (!cache || typeof cache.cachedSnapshot !== "function") return undefined;
+    try {
+      const snap = cache.cachedSnapshot(header, 0);
+      const values = snap?.values;
+      if (!values) return undefined;
+      const hint: SessionListFacts = {};
+      const meta = values.sessionListMetadata;
+      if (meta && typeof meta === "object") {
+        const lastPromptAt = (meta as { lastPromptAt?: unknown }).lastPromptAt;
+        if (typeof lastPromptAt === "number") hint.lastUserMessageTime = lastPromptAt;
+      }
+      const title = values.title;
+      if (typeof title === "string" && title.length > 0) hint.title = title;
+      return hint;
     } catch {
       return undefined;
     }
@@ -347,8 +430,39 @@ export class DshOps {
    * `user/message` landed. Distinguishes a true blank session (readable,
    * never spoken to) from a corrupt / unreadable log — `/s new` must not
    * treat the latter as "already blank".
+   *
+   * With `cwd`, `/s new` can skip `listEvents()` for sessions that are
+   * obviously used (live log, projection cache, or an artifact larger
+   * than a blank header). Full inspect remains the authority for small
+   * unknown files and for callers that only have an id.
    */
-  async inspectSessionActivity(sessionId: string): Promise<SessionLogActivity> {
+  async inspectSessionActivity(
+    sessionId: string,
+    cwd?: string,
+    header?: SessionHeader,
+  ): Promise<SessionLogActivity> {
+    const live = this.liveListFacts(sessionId);
+    if (live.found) {
+      return { ok: true, lastUserMessageTime: live.facts.lastUserMessageTime };
+    }
+    const cachedPrompt = this.cachedListHint(header)?.lastUserMessageTime;
+    if (cachedPrompt !== undefined) {
+      return { ok: true, lastUserMessageTime: cachedPrompt };
+    }
+    if (typeof cwd === "string" && cwd.length > 0) {
+      const runtime = await this.sessionLog();
+      if (runtime) {
+        try {
+          const hint = runtime.readSessionUsedHint(cwd, sessionId, undefined);
+          if (hint.status === "used") {
+            return { ok: true, lastUserMessageTime: hint.time ?? header?.createdAt ?? 1 };
+          }
+          if (hint.status === "blank") return { ok: true };
+        } catch {
+          // fall through to listEvents
+        }
+      }
+    }
     const query = this.get<SessionQuery>("sessionQuery");
     // No query service: we cannot prove corruption. Treat as a readable
     // empty log so `/s new` keeps the historical "already blank" path
@@ -368,15 +482,77 @@ export class DshOps {
   }
 
   /**
-   * Time of the session's last user-prompt event (`user/message`), read from
-   * the raw log. Used to recover recency after a restart, when the in-memory
-   * activity map is empty; undefined when the log holds no user prompt or
-   * cannot be read (callers that need to tell those apart use
-   * {@link inspectSessionActivity}).
+   * Time of the session's last user-prompt event (`user/message`).
+   *
+   * `/s list` calls this for every visible session on a cold start, so this
+   * must not `listEvents()` (that inspects the complete validated log).
+   * Prefer the live in-memory log, then the GUI's projection-cache hint,
+   * then a newest-first tail read of the raw artifact. `cwd` comes from
+   * the roster header; without it we fall back to {@link inspectSessionActivity}.
    */
-  async lastUserMessageTime(sessionId: string): Promise<number | undefined> {
+  async lastUserMessageTime(
+    sessionId: string,
+    cwd?: string,
+    header?: SessionHeader,
+  ): Promise<number | undefined> {
+    const live = this.liveListFacts(sessionId);
+    if (live.found) return live.facts.lastUserMessageTime;
+    const cached = this.cachedListHint(header)?.lastUserMessageTime;
+    if (cached !== undefined) return cached;
+    if (typeof cwd === "string" && cwd.length > 0) {
+      const runtime = await this.sessionLog();
+      if (!runtime) return undefined;
+      try {
+        // `undefined` here means "no prompt in the cheap tail" (or blank),
+        // not "try the full inspect". `/s list` falls back to createdAt.
+        return runtime.readSessionRecency(cwd, sessionId, undefined);
+      } catch {
+        return undefined;
+      }
+    }
     const activity = await this.inspectSessionActivity(sessionId);
     return activity.ok ? activity.lastUserMessageTime : undefined;
+  }
+
+  /**
+   * Title + live preset + recency for one displayed `/s list` row. One
+   * raw-log fold replaces a `readTitle` inspect plus a second preset scan.
+   */
+  async readSessionListFacts(sessionId: string, cwd?: string, header?: SessionHeader): Promise<SessionListFacts> {
+    const live = this.liveListFacts(sessionId);
+    if (live.found) {
+      return {
+        ...this.cachedListHint(header),
+        ...live.facts,
+      };
+    }
+    const hint = this.cachedListHint(header) ?? {};
+    let resolvedCwd = typeof cwd === "string" && cwd.length > 0 ? cwd : undefined;
+    if (!resolvedCwd) {
+      const query = this.get<SessionQuery>("sessionQuery");
+      if (query) {
+        try {
+          resolvedCwd = (await query.listSessions()).find((r) => r.header.id === sessionId)?.header.cwd;
+        } catch {
+          resolvedCwd = undefined;
+        }
+      }
+    }
+    if (!resolvedCwd) return hint;
+    const runtime = await this.sessionLog();
+    if (!runtime) return hint;
+    try {
+      const facts = runtime.readSessionListFacts(resolvedCwd, sessionId, undefined);
+      return {
+        ...hint,
+        ...facts,
+        lastUserMessageTime: facts.lastUserMessageTime ?? hint.lastUserMessageTime,
+        title: facts.title ?? hint.title,
+        preset: facts.preset ?? hint.preset,
+      };
+    } catch {
+      return hint;
+    }
   }
 
   // ─── History ──────────────────────────────────────────────────────────────
@@ -416,41 +592,83 @@ export class DshOps {
   }
 
   /**
-   * Retrieve the most recent `limit` conversation entries (user + assistant)
-   * for `sessionId`, ordered oldest→newest.
+   * Classify one `user/message` payload as a genuine human turn or a
+   * synthesized system injection.
+   *
+   * The host attributes synthesized user-role messages through
+   * `source.kind` — `plugin` (context injections / compaction
+   * checkpoints), `goal` (goal rounds), `session-reference` (recalls),
+   * `agent-message` (relays). The GUI sidebar lists only `kind === "user"`
+   * (session-turn-outline). Legacy payloads without a source stay human
+   * so nothing real is hidden. Nested `data.message.source` is accepted
+   * alongside the host's flat `data.source`.
+   */
+  private userMessageRole(data: unknown): "user" | "system" {
+    if (!data || typeof data !== "object") return "user";
+    const d = data as Record<string, unknown>;
+    const direct = (d.source as { kind?: unknown } | undefined)?.kind;
+    const nested = ((d.message as Record<string, unknown> | undefined)?.source as { kind?: unknown } | undefined)?.kind;
+    const kind = direct ?? nested;
+    return kind === undefined || kind === "user" ? "user" : "system";
+  }
+
+  /** Fold chronological history entries out of surface or raw-log events. */
+  private historyEntries(
+    events: readonly { type: string; time?: number; data?: unknown }[],
+  ): HistoryEntry[] {
+    const entries: HistoryEntry[] = [];
+    for (const ev of events) {
+      if (ev.type !== "user/message" && ev.type !== "assistant/message") continue;
+      const text = this.extractHistoryText(ev.data);
+      if (!text) continue;
+      const role = ev.type === "user/message" ? this.userMessageRole(ev.data) : "assistant" as const;
+      entries.push({ role, text, time: typeof ev.time === "number" ? ev.time : Date.now() });
+    }
+    return entries;
+  }
+
+  private takeHistoryWindow(entries: HistoryEntry[], cap: number, includeSystem: boolean): HistoryEntry[] {
+    const visible = includeSystem ? entries : entries.filter((e) => e.role !== "system");
+    return visible.slice(-cap);
+  }
+
+  /**
+   * Retrieve the most recent `limit` conversation entries for `sessionId`,
+   * ordered oldest→newest.
    *
    * Strategy:
-   *  1. Try in-memory `agent.session.events` via `ctx.get("agents")` — fast,
-   *     no I/O, survives even when `sessionQuery` is unavailable.
-   *  2. Fall back to persisted `sessionQuery.listEvents(sessionId)` — works
-   *     after restart or when agent is not live.
+   *  1. Try in-memory `session.snapshotEvents()` (0.1.5) or the legacy
+   *     `session.events` array via `ctx.get("agents")` — fast, no I/O,
+   *     survives even when `sessionQuery` is unavailable.
+   *  2. Fall back to persisted `sessionQuery.readSession(sessionId)` (full
+   *     raw log with `data`). `listEvents` is metadata-only since 0.1.2
+   *     and cannot reconstruct text.
    *
-   * Filters to `user/message` (role=user) and `assistant/message`
-   * (role=assistant). Other event types (tool results, system, etc.) are
-   * ignored to keep the WeChat view concise.
+   * Folds `user/message` and `assistant/message`. Synthesized user-role
+   * messages (see {@link userMessageRole}) are tagged `system` and omitted
+   * unless `includeSystem` is set. Other event types (tool results, true
+   * `system/message`, etc.) stay out of the WeChat view.
    *
    * Returns `[]` on any error or when no history exists — caller renders
    * a friendly empty-state message.
    */
-  async getSessionHistory(sessionId: string, limit: number): Promise<HistoryEntry[]> {
+  async getSessionHistory(
+    sessionId: string,
+    limit: number,
+    opts?: { includeSystem?: boolean },
+  ): Promise<HistoryEntry[]> {
     const cap = Math.max(1, Math.min(limit, 20));
+    const includeSystem = opts?.includeSystem === true;
     // 1) In-memory fast path
     try {
-      const agents = this.get<{ get(id: string): { session?: { events?: readonly { type: string; time?: number; data?: unknown }[] } } | undefined }>("agents");
+      const agents = this.get<{ get(id: string): { session?: AgentSession } | undefined }>("agents");
       const agent = agents?.get(sessionId);
-      const events = agent?.session?.events;
-      if (Array.isArray(events) && events.length > 0) {
-        const entries: HistoryEntry[] = [];
-        for (const ev of events) {
-          if (ev.type !== "user/message" && ev.type !== "assistant/message") continue;
-          const text = this.extractHistoryText(ev.data);
-          if (!text) continue;
-          const role = ev.type === "user/message" ? "user" as const : "assistant" as const;
-          entries.push({ role, text, time: typeof ev.time === "number" ? ev.time : Date.now() });
-        }
+      const events = sessionEvents(agent?.session);
+      if (events.length > 0) {
+        const entries = this.takeHistoryWindow(this.historyEntries(events), cap, includeSystem);
         if (entries.length > 0) {
           // events are already in chronological order (ascending seq)
-          return entries.slice(-cap);
+          return entries;
         }
       }
     } catch {
@@ -469,15 +687,7 @@ export class DshOps {
       } else {
         records = await query.listEvents(sessionId);
       }
-      const entries: HistoryEntry[] = [];
-      for (const r of records) {
-        if (r.type !== "user/message" && r.type !== "assistant/message") continue;
-        const text = this.extractHistoryText(r.data);
-        if (!text) continue;
-        const role = r.type === "user/message" ? "user" as const : "assistant" as const;
-        entries.push({ role, text, time: typeof r.time === "number" ? r.time : Date.now() });
-      }
-      return entries.slice(-cap);
+      return this.takeHistoryWindow(this.historyEntries(records), cap, includeSystem);
     } catch {
       return [];
     }

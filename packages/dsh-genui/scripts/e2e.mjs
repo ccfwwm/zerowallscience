@@ -22,6 +22,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
+import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import { createWriteStream, rmSync } from 'node:fs'
 import { mkdtemp, mkdir, copyFile, rm, writeFile, appendFile } from 'node:fs/promises'
@@ -236,6 +237,11 @@ try {
         { type: 'diff', diffs: [{ path: 'smoke.txt', oldText: 'before', newText: 'after' }] },
         { type: 'code', lang: 'text', code: 'primitive smoke' },
         { type: 'json', value: { answer: 42 } },
+        { type: 'table', columns: ['数值校验'], rows: [['103'], [86], ['25']] },
+        { type: 'text', content: '表格后续文字' },
+        { type: 'badge', label: '颜色校验', tone: 'success' },
+        { type: 'progress', value: 70 },
+        { type: 'callout', title: '提示颜色校验', tone: 'success', content: '颜色应正常显示' },
       ] })
       pre.appendChild(code)
       host.append(label, pre)
@@ -250,7 +256,93 @@ try {
     }
     await rendered.locator('.md-code-block button').click()
     await page.waitForFunction(async () => await navigator.clipboard.readText() === 'primitive smoke')
+    const table = rendered.locator('table').filter({ has: page.getByRole('button', { name: '数值校验' }) })
+    await table.getByRole('button', { name: '数值校验' }).click()
+    assert.deepEqual(await table.locator('tbody td').allTextContents(), ['25', '86', '103'])
+    await table.getByRole('button', { name: '数值校验' }).click()
+    assert.deepEqual(await table.locator('tbody td').allTextContents(), ['103', '86', '25'])
+    await page.waitForFunction(() => [...document.querySelectorAll('[data-primitives-smoke] [class*="reveal"]')]
+      .every(element => getComputedStyle(element).animationName === 'none'))
+    await table.scrollIntoViewIfNeeded()
+    const beforeHover = await table.boundingBox()
+    await table.hover()
+    assert.deepEqual(await table.boundingBox(), beforeHover, '悬停不移动表格')
+    const position = await table.evaluate(element => {
+      const reveal = element.closest('[class*="reveal"]')
+      const following = reveal.nextElementSibling
+      const before = [element.getBoundingClientRect().y, following.getBoundingClientRect().y]
+      reveal.remove()
+      following.before(reveal)
+      return { before, after: [element.getBoundingClientRect().y, following.getBoundingClientRect().y], animations: reveal.getAnimations().length }
+    })
+    assert.deepEqual(position.after, position.before, '重新插入已显示表格不重播位移动画')
+    assert.equal(position.animations, 0)
+    const colors = await rendered.evaluate(element => {
+      const background = selector => getComputedStyle(element.querySelector(selector)).backgroundColor
+      const fill = element.querySelector('[class*="track"] > [class*="fill"]')
+      return { badge: background('[class*="badge"]'), callout: background('[class*="calloutSuccess"]'), fill: getComputedStyle(fill).backgroundImage, width: fill.style.width }
+    })
+    for (const color of [colors.badge, colors.callout]) {
+      assert.ok(color !== 'transparent' && color !== 'rgba(0, 0, 0, 0)', `语义颜色无效: ${color}`)
+    }
+    assert.notEqual(colors.fill, 'none')
+    assert.equal(colors.width, '70%')
+    log(`排序、颜色、悬停和节点重新插入验证通过：${JSON.stringify({ position, colors })}`)
     if (pageErrors.length > 0) throw new Error(`组件渲染异常: ${pageErrors.join(' | ')}`)
+    // Exercise the installed SVG without remounting it when the host changes theme.
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.evaluate(() => {
+      const fixture = document.createElement('div')
+      fixture.setAttribute('data-diagram-smoke', '')
+      fixture.style.width = '320px'
+      const host = document.createElement('div')
+      host.className = 'md-code-block'
+      const label = document.createElement('div')
+      label.textContent = 'dsh-ui'
+      const pre = document.createElement('pre')
+      pre.textContent = JSON.stringify({ items: [{ type: 'diagram', kind: 'architecture', title: '主题验收', nodes: [
+        { id: 'a', label: '入口', type: 'focal', x: 40, y: 40, w: 128, h: 64 },
+        { id: 'b', label: '服务', type: 'backend', x: 40, y: 144, w: 128, h: 64 },
+        { id: 'c', label: '存储', type: 'store', x: 40, y: 248, w: 128, h: 64 },
+      ], edges: [] }] })
+      host.append(label, pre)
+      fixture.append(host)
+      document.body.prepend(fixture)
+    })
+    const diagram = page.locator('[data-diagram-smoke] [data-genui-diagram]')
+    await diagram.waitFor({ state: 'visible' })
+    const originalSvg = await diagram.locator('svg').elementHandle()
+    for (const mode of ['light', 'dark', 'light']) {
+      await page.emulateMedia({ colorScheme: mode })
+      await page.waitForFunction(dark => document.body.hasAttribute('data-ds-dark-theme') === dark, mode === 'dark')
+      const result = await diagram.evaluate(element => {
+        const svg = element.querySelector('svg')
+        const text = [...svg.querySelectorAll('text')].find(t => t.textContent === '服务')
+        const probe = document.createElement('span')
+        probe.style.backgroundColor = 'var(--dsw-alias-bg-layer-2)'
+        probe.style.color = 'var(--dsw-alias-label-primary)'
+        element.append(probe)
+        const expected = { paper: getComputedStyle(probe).backgroundColor, ink: getComputedStyle(probe).color }
+        probe.remove()
+        const rect = svg.getBoundingClientRect()
+        return {
+          expected, paper: getComputedStyle(svg).backgroundColor, ink: getComputedStyle(text).fill,
+          node: getComputedStyle(text.parentElement.querySelectorAll('rect')[1]).fill,
+          clipped: [...svg.querySelectorAll('text')].filter(t => {
+            const box = t.getBoundingClientRect()
+            return box.left < rect.left - 1 || box.right > rect.right + 1 || box.bottom > rect.bottom + 1
+          }).map(t => t.textContent),
+        }
+      })
+      assert.equal(result.paper, result.expected.paper, `${mode}: diagram follows host background`)
+      assert.equal(result.ink, result.expected.ink, `${mode}: diagram follows host text`)
+      assert.equal(result.node, result.expected.paper, `${mode}: backend node follows theme`)
+      assert.deepEqual(result.clipped, [], `${mode}: narrow diagram legend remains visible`)
+      assert.ok(await originalSvg.evaluate(el => el.isConnected), 'theme changes must not remount the diagram')
+      await diagram.screenshot({ path: join(artifactsDir, `diagram-${mode}.png`) })
+    }
+    log('图表深浅主题往返切换、节点配色及窄图例验证通过')
+
     log('smoke 模式：安装、激活、Diff/Code/JSON 真实渲染及复制均通过')
     await browser.close()
     await cleanup()

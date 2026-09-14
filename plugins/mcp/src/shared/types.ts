@@ -1,6 +1,6 @@
 import type { McpReconnectPolicy, McpServerRecord, McpTransport } from '@zerowallscience/research-store/types'
 
-export type McpRuntimeState = 'disabled' | 'starting' | 'blocked' | 'active' | 'error'
+export type McpRuntimeState = 'disabled' | 'idle' | 'starting' | 'blocked' | 'active' | 'error'
 
 export interface McpServerDto extends McpServerRecord {
   runtimeState: McpRuntimeState

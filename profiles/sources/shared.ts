@@ -2,7 +2,7 @@ export const bundledPlugins = [
   'dsh-dream-skin',
   'dsh-better-sidebar',
   'dsh-better-sidebar-icons',
-  'dsh-file-review-tab',
+  'dsh-file-review',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
   'dsh-wechat',
   '@daweifu/capability-menu',

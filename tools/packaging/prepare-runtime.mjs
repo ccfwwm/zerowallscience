@@ -21,7 +21,7 @@ const zerowallPackageRoots = [
   // parent-first lookup from introducing a second version into the ASAR.
   resolve(root, 'packages/dsh-better-sidebar'),
   resolve(root, 'packages/dsh-wechat'),
-  resolve(root, 'packages/dsh-file-review-tab'),
+  resolve(root, 'packages/dsh-file-review'),
   resolve(root, 'packages/dsh-capability-menu'),
   resolve(root, 'packages/dsh-auto-review'),
   resolve(root, 'packages/dsh-genui'),
@@ -34,7 +34,7 @@ const desktopRuntimeSeeds = [
   '@deepseek-ai/dsh-web-frontend',
   'dsh-better-sidebar',
   'dsh-better-sidebar-icons',
-  'dsh-file-review-tab',
+  'dsh-file-review',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
   'dsh-wechat',
   '@daweifu/capability-menu',
@@ -193,7 +193,7 @@ async function copyRuntimePackage(package_, targetRoot) {
     return
   }
 
-  if (['dsh-better-sidebar-icons', 'dsh-file-review-tab', 'dsh-wechat', '@daweifu/capability-menu', 'dsh-auto-review', 'dsh-free-search'].includes(manifest.name)) {
+  if (['dsh-better-sidebar-icons', 'dsh-file-review', 'dsh-wechat', '@daweifu/capability-menu', 'dsh-auto-review', 'dsh-free-search'].includes(manifest.name)) {
     // These upstream plugins publish compiled lib/dist plus their bundle patch
     // and (for icons) the SVG asset directory. Keep the package boundary and
     // exclude repository-only tests/docs through the common runtime filter.

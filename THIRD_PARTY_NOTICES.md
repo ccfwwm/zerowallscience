@@ -19,7 +19,7 @@ The 5.9.0 desktop adapts the following pinned plugins. Their original LICENSE fi
 | `packages/dsh-wechat` | pan17/dsh-wechat `a755e5c0f7901b700bd85cb4053a34753e9ac8c4` | MIT |
 | `packages/dsh-capability-menu` | PKUfudawei/dsh-capability-menu `41f3db99f131893ab9e4e82b97e941593dd56e47` | Apache-2.0 |
 | `packages/dsh-auto-review` | PerryLink/dsh-auto-review `6940bd3ad6454aa91eccbe7e4c661b6835cdb7b8` | Apache-2.0 |
-| `packages/dsh-file-review-tab` | left0ver/dsh-file-review `d0d82d3ae223ab2fbb2e1ff826788947ec800b36` | MIT |
+| `packages/dsh-file-review` | left0ver/dsh-file-review `d0d82d3ae223ab2fbb2e1ff826788947ec800b36` | MIT |
 
 | Internal package | Upstream | Fixed revision | License |
 | --- | --- | --- | --- |

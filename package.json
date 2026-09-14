@@ -22,7 +22,7 @@
     "dsh:build:zerowall": "node tools/dsh/build-zerowall.mjs",
     "store:bundle": "pnpm --filter @zerowallscience/research-store run bundle",
     "sidebar-icons:bundle": "pnpm --filter dsh-better-sidebar-icons run build",
-    "file-review:bundle": "pnpm --filter dsh-file-review-tab run build",
+    "file-review:bundle": "pnpm --filter dsh-file-review run build",
     "plugins:typert": "node tools/plugins/generate-typert.mjs",
     "wechat:bundle": "pnpm --filter dsh-wechat run build && pnpm --filter @daweifu/capability-menu run build && pnpm --filter dsh-auto-review run build",
     "genui:bundle": "pnpm --filter @changfenhuang/dsh-genui run build",

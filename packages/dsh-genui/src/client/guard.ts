@@ -21,10 +21,10 @@
 import type { GenuiFileTreeNode, GenuiList, GenuiNode, GenuiPlot, GenuiPlotSeries, GenuiScene3D, GenuiSpec, GenuiDiagram, GenuiDiagramTheme, GenuiDiagramKind } from './spec.ts'
 import { wrapSingleComponentRoot } from './spec.ts'
 import {
-  BADGE_TONES, BUTTON_TONES, CALLOUT_TONES, CHART_KINDS, COMPONENT_SCHEMAS, DIAGRAM_EDGE_KINDS,
-  DIAGRAM_KINDS, DIAGRAM_NODE_TYPES, DIAGRAM_ROUTES, DIAGRAM_VARIANTS, ECHART_PRESETS, FILE_TYPES,
-  GENUI_NATIVE_TYPES, GENUI_SPEC_SCHEMA, INPUT_TYPES, MEDIA_ASPECT_RATIOS, MESH_SHAPES, PLOT_KINDS,
-  TEXT_SIZES,
+  BADGE_TONES, BUTTON_TONES, CALLOUT_TONES, CARD_TONES, CHART_KINDS, COMPONENT_SCHEMAS, HERO_TONES,
+  DIAGRAM_EDGE_KINDS, DIAGRAM_KINDS, DIAGRAM_NODE_TYPES, DIAGRAM_ROUTES, DIAGRAM_VARIANTS,
+  ECHART_PRESETS, FILE_TYPES, GENUI_NATIVE_TYPES, GENUI_SPEC_SCHEMA, INPUT_TYPES,
+  MEDIA_ASPECT_RATIOS, MESH_SHAPES, PLOT_KINDS, PROGRESS_VARIANTS, TABLE_CELL_TYPES, TEXT_SIZES,
 } from './genui-runtime/schema.ts'
 import type { ComponentFieldKind, ComponentRecordSchema, ComponentSchema } from './genui-runtime/schema.ts'
 import { normalizeGenuiSpec } from './genui-runtime/normalize.ts'
@@ -209,7 +209,41 @@ function repairItems(list: unknown, ctx: RepairCtx, depth: number): GenuiNode[] 
   return out
 }
 
+/** Optional explicit palette: up to 12 validated colour values. */
+function paletteValues(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined
+  const out: string[] = []
+  for (const item of v.slice(0, 12)) {
+    const value = color(item)
+    if (value === undefined) continue
+    out.push(value)
+  }
+  return out.length > 0 ? out : undefined
+}
+
+/** Optional `stat.spark` series: finite numbers only, 2..60 points. */
+function sparkValues(v: unknown): number[] | undefined {
+  if (!Array.isArray(v)) return undefined
+  const out: number[] = []
+  for (const item of v.slice(0, 60)) {
+    const n = typeof item === 'number' ? item : Number(item)
+    if (!Number.isFinite(n)) return undefined
+    out.push(n)
+  }
+  return out.length >= 2 ? out : undefined
+}
+
+/** Layout hints are component-agnostic: `span` survives repair on ANY node
+ *  (the renderer applies it inside a grid). Kept out of the per-case switches
+ *  so a new component type cannot forget it. */
 function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | null {
+  const node = repairNodeFields(value, ctx, depth)
+  if (node === null) return null
+  const span = int(obj(value)?.span, 2, 12)
+  return span === undefined ? node : ({ ...node, span } as GenuiNode)
+}
+
+function repairNodeFields(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | null {
   if (depth > GENUI_LIMITS.maxDepth) return null
   const v = obj(value)
   if (v === undefined) return null
@@ -231,7 +265,13 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       return { type: 'grid', cols: int(v.cols, 1, GENUI_LIMITS.maxGridCols) ?? 1, items: repairItems(v.items, ctx, depth + 1) }
     }
     case 'card': {
-      return { type: 'card', items: repairItems(v.items, ctx, depth + 1), ...opt('title', str(v.title, GENUI_LIMITS.maxString)) }
+      return {
+        type: 'card',
+        items: repairItems(v.items, ctx, depth + 1),
+        ...opt('title', str(v.title, GENUI_LIMITS.maxString)),
+        ...opt('tone', enu(v.tone, CARD_TONES)),
+        ...opt('accent', color(v.accent)),
+      }
     }
     case 'button': {
       const label = str(v.label, GENUI_LIMITS.maxString)
@@ -316,16 +356,40 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       if (label === undefined) return null
       return { type: 'badge', label, ...opt('tone', enu(v.tone, BADGE_TONES)), ...opt('icon', str(v.icon, 64)) }
     }
+    case 'hero': {
+      const title = str(v.title, GENUI_LIMITS.maxString)
+      if (title === undefined) return null
+      return {
+        type: 'hero', title,
+        ...opt('subtitle', str(v.subtitle, GENUI_LIMITS.maxString)),
+        ...opt('value', str(v.value, 128)),
+        ...opt('label', str(v.label, GENUI_LIMITS.maxString)),
+        ...opt('delta', str(v.delta, 64)),
+        ...opt('spark', sparkValues(v.spark)),
+        ...opt('tone', enu(v.tone, HERO_TONES)),
+      }
+    }
     case 'stat': {
       const label = str(v.label, GENUI_LIMITS.maxString)
       const value = str(v.value, 128)
       if (label === undefined || value === undefined) return null
-      return { type: 'stat', label, value, ...opt('delta', str(v.delta, 64)) }
+      return {
+        type: 'stat', label, value,
+        ...opt('delta', str(v.delta, 64)),
+        ...opt('spark', sparkValues(v.spark)),
+        ...opt('size', v.size === 'hero' ? 'hero' as const : undefined),
+      }
     }
     case 'progress': {
       const value = num(v.value, 0, 100)
       if (value === undefined) return null
-      return { type: 'progress', value, ...opt('label', str(v.label, GENUI_LIMITS.maxString)), ...opt('valueLabel', str(v.valueLabel, 64)) }
+      return {
+        type: 'progress', value,
+        ...opt('label', str(v.label, GENUI_LIMITS.maxString)),
+        ...opt('valueLabel', str(v.valueLabel, 64)),
+        ...opt('variant', enu(v.variant, PROGRESS_VARIANTS)),
+        ...opt('target', num(v.target, 0, 100)),
+      }
     }
     case 'divider': return { type: 'divider' }
     case 'spacer': return { type: 'spacer' }
@@ -337,7 +401,7 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
     case 'list': {
       const items = repairListItems(v.items, GENUI_LIMITS.maxListItems, ctx, depth + 1)
       if (items === undefined) return null
-      return { type: 'list', items }
+      return { type: 'list', items, ...opt('filter', str(v.filter, 64)) }
     }
     case 'table': {
       let rawCols = v.columns as unknown
@@ -359,7 +423,36 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       const columns = repairStrings(rawCols, GENUI_LIMITS.maxTableCols, 128)
       const rows = repairRows(rawRows, GENUI_LIMITS.maxTableRows, GENUI_LIMITS.maxTableCols)
       if (columns === undefined || rows === undefined) return null
-      return { type: 'table', columns, rows }
+      // Optional per-column cell types; unknown entries degrade to 'text'.
+      const rawTypes = Array.isArray(v.types) ? v.types : undefined
+      const types = rawTypes === undefined
+        ? undefined
+        : columns.map((_c, i) => {
+          const raw = rawTypes[i]
+          return typeof raw === 'string' && (TABLE_CELL_TYPES as readonly string[]).includes(raw)
+            ? raw as typeof TABLE_CELL_TYPES[number]
+            : 'text'
+        })
+      // Master-detail payload: positionally aligned with `rows`. Entries that
+      // repair to nothing stay null so the renderer never shows an empty
+      // expander; extra entries beyond the row count are dropped.
+      const rawDetails = Array.isArray(v.details) ? v.details : undefined
+      const details = rawDetails === undefined
+        ? undefined
+        : rows.map((_row, i) => {
+          const entry = repairItems(rawDetails[i], ctx, depth + 1)
+          return entry.length === 0 ? null : entry
+        })
+      return {
+        type: 'table', columns, rows,
+        ...opt('types', types),
+        ...opt('total', v.total === true ? true : undefined),
+        ...opt('export', v.export === true ? true : undefined),
+        ...opt('filter', str(v.filter, 64)),
+        ...opt('filterColumn', int(v.filterColumn, 0, GENUI_LIMITS.maxTableCols - 1)),
+        ...opt('sortField', str(v.sortField, 64)),
+        ...opt('details', details !== undefined && details.some(d => d !== null) ? details : undefined),
+      }
     }
     case 'chart': {
       const data = repairChartData(v.data, GENUI_LIMITS.maxChartPoints)
@@ -368,7 +461,15 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       // alone; a series-only chart gets an empty data array (the renderer
       // reads `series` in that case).
       if (data === undefined && series === undefined) return null
-      return { type: 'chart', data: data ?? [], ...opt('kind', enu(v.kind, CHART_KINDS)), ...opt('series', series) }
+      return {
+        type: 'chart', data: data ?? [],
+        ...opt('kind', enu(v.kind, CHART_KINDS)),
+        ...opt('series', series),
+        ...opt('horizontal', v.horizontal === true ? true : undefined),
+        ...opt('stacked', v.stacked === true ? true : undefined),
+        ...opt('filter', str(v.filter, 64)),
+        ...opt('palette', paletteValues(v.palette)),
+      }
     }
     case 'tabs': {
       const tabs = repairTabs(v.tabs, ctx, depth)
@@ -541,6 +642,16 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       const series = v.series !== undefined && Array.isArray(v.series)
         ? repairSeries(v.series, GENUI_LIMITS.maxPlotSeries, GENUI_LIMITS.maxChartPoints)
         : undefined
+      // sankey / graph edges: `from`/`to` must be strings, `value` a number.
+      const links = Array.isArray(v.links)
+        ? v.links.slice(0, GENUI_LIMITS.maxChartPoints).flatMap(entry => {
+          const e = obj(entry)
+          const from = e === undefined ? undefined : str(e.from, 64)
+          const to = e === undefined ? undefined : str(e.to, 64)
+          if (from === undefined || to === undefined) return []
+          return [{ from, to, ...opt('value', num(e!.value, 0, 1e9)) }]
+        })
+        : undefined
       // Full option: depth-bounded pass-through (the model writes the ECharts
       // option object; the guard walks it to cap nesting but does not
       // validate ECharts semantics — that is echarts' own job).
@@ -553,8 +664,9 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
         sanitized === undefined || typeof sanitized !== 'object' || sanitized === null || Array.isArray(sanitized)
           ? undefined
           : sanitized as Record<string, unknown>
-      // At least one of preset+data or option must be present.
-      if (option === undefined && data === undefined && series === undefined) return null
+      // At least one of preset+data, links or option must be present.
+      if (option === undefined && data === undefined && series === undefined
+        && (links === undefined || links.length === 0)) return null
       return {
         type: 'echart',
         ...opt('title', str(v.title, GENUI_LIMITS.maxString)),
@@ -562,6 +674,8 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
         ...opt('preset', enu(v.preset, ECHART_PRESETS)),
         ...opt('data', data),
         ...opt('series', series),
+        ...opt('links', links !== undefined && links.length > 0 ? links : undefined),
+        ...opt('palette', paletteValues(v.palette)),
         ...opt('option', option),
       }
     }
@@ -947,7 +1061,11 @@ function repairDiagram(v: unknown): GenuiDiagram | null {
   const zones = repairDiagramZones(o.zones)
   if (zones === undefined) return null
   return {
-    type: 'diagram', kind, nodes, edges, zones,
+    // `zones` is optional: emitting `zones: []` made every diagram node differ
+    // from its input for no reason (and broke the "gallery survives the guard
+    // unchanged" contract).
+    type: 'diagram', kind, nodes, edges,
+    ...opt('zones', zones.length > 0 ? zones : undefined),
     ...opt('variant', enu(o.variant, DIAGRAM_VARIANTS)),
     ...opt('title', str(o.title, 256)),
     ...opt('theme', repairDiagramTheme(o.theme)),
@@ -1480,19 +1598,29 @@ function validateChartNode(v: Record<string, unknown>, at: string, errors: strin
     errors.push(`${at}.kind must be bars, line, or donut`)
   }
   const kind = v.kind === undefined ? 'bars' : v.kind
-  if (Array.isArray(v.data) && v.data.length === 0) errors.push(`${at}.data must not be empty`)
-  if (Array.isArray(v.series)) {
-    if (v.series.length === 0) errors.push(`${at}.series must not be empty`)
-    if (kind === 'line' || kind === 'donut') errors.push(`${at}.series is only supported for bars`)
-    for (let index = 0; index < v.series.length; index++) {
-      const series = obj(v.series[index])
-      if (series !== undefined && Array.isArray(series.data) && series.data.length === 0) {
+  const series = Array.isArray(v.series) ? v.series : undefined
+  // Grouped bars legitimately carry `data: []` and keep every point in
+  // `series`; only an empty data array with NO series is undrawable.
+  if (Array.isArray(v.data) && v.data.length === 0 && (series === undefined || series.length === 0)) {
+    errors.push(`${at}.data must not be empty`)
+  }
+  if (series !== undefined) {
+    if (series.length === 0) errors.push(`${at}.series must not be empty`)
+    // A line chart accepts `series` (one line per entry); the donut is a
+    // share-of-total shape and stays single-series.
+    if (kind === 'donut') errors.push(`${at}.series is only supported for bars and line`)
+    for (let index = 0; index < series.length; index++) {
+      const entry = obj(series[index])
+      if (entry !== undefined && Array.isArray(entry.data) && entry.data.length === 0) {
         errors.push(`${at}.series[${index}].data must not be empty`)
       }
     }
   }
-  if ((kind === 'line' || kind === 'donut') && v.data === undefined) {
-    errors.push(`${at}.data is required for ${kind}`)
+  if (kind === 'donut' && v.data === undefined) {
+    errors.push(`${at}.data is required for donut`)
+  }
+  if (kind === 'line' && v.data === undefined && (series === undefined || series.length === 0)) {
+    errors.push(`${at}.data is required for line (or provide series)`)
   }
   validateChartData(v.data, `${at}.data`, errors)
   validateChartSeries(v.series, `${at}.series`, errors)
@@ -1581,6 +1709,10 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
       isStr('text')
       isStr('value')
       break
+    case 'hero':
+      if (typeof v.title !== 'string') errors.push(`${at}: type 'hero' requires title (string)`)
+      isStr('subtitle')
+      break
     case 'stat':
       if (typeof v.label !== 'string') errors.push(`${at}: type 'stat' requires label (string)`)
       if (typeof v.value !== 'string') errors.push(`${at}: type 'stat' requires value (string)`)
@@ -1612,6 +1744,12 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
     case 'table':
       if (!Array.isArray(v.columns)) errors.push(`${at}: type 'table' requires columns (array)`)
       if (!Array.isArray(v.rows)) errors.push(`${at}: type 'table' requires rows (array)`)
+      if (v.types !== undefined && !Array.isArray(v.types)) {
+        errors.push(`${at}.types must be an array of column cell types`)
+      }
+      if (v.details !== undefined && !Array.isArray(v.details)) {
+        errors.push(`${at}.details must be an array aligned with rows`)
+      }
       validateTableRows(v.rows, `${at}.rows`, errors)
       break
     case 'chart':
@@ -1690,8 +1828,12 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
       break
 
     case 'echart':
-      if (v.option === undefined && v.data === undefined && v.series === undefined) {
-        errors.push(`${at}: type 'echart' requires option, data, or series`)
+      // `links` alone is a valid payload: the sankey/graph presets are driven
+      // by edges only. Missing it here rejected the whole fence as
+      // un-renderable (the render gate turns any error into "render nothing").
+      if (v.option === undefined && v.data === undefined && v.series === undefined
+        && (!Array.isArray(v.links) || v.links.length === 0)) {
+        errors.push(`${at}: type 'echart' requires option, data, series, or links`)
       }
       isNum('height')
       break

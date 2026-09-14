@@ -52,7 +52,7 @@ export type TraceTurnEnd =
 
 /** One collected request header: the model-visible prompt and tool catalog. */
 export interface TraceRequestHeader {
-  /** The rendered system prompt text, when the request had one. */
+  /** The rendered system prompt text (the last non-empty `system/message` node on the 0.1.5 line, `request/header.header.system` on the 0.1.2/0.1.3 lines), when the request had one. */
   readonly system?: string
   /** The assembled tool schemas (the request-time tool catalog). */
   readonly tools: readonly TraceToolSchema[]
@@ -76,9 +76,9 @@ export interface TraceStep {
   readonly step: number
   /** The `step/start` wall-clock time, when the log has it. */
   readonly startMs?: number
-  /** The first `assistant/chunk` wall-clock time (time-to-first-token base). */
+  /** The first stream-delta wall-clock time (time-to-first-token base): `assistant/chunk` on the 0.1.2 line, the message's timed stream on the 0.1.3 line. */
   readonly firstTokenMs?: number
-  /** The last `assistant/chunk` wall-clock time. */
+  /** The last stream-delta wall-clock time (same dual-line source as `firstTokenMs`). */
   readonly lastTokenMs?: number
   /** The `step/end` wall-clock time, when the step completed. */
   readonly endMs?: number
@@ -201,19 +201,31 @@ export function collectTrace(sessionId: SessionId, events: readonly SessionEvent
   let usage: TraceTokenUsage | undefined
   let turnEnd: TraceTurnEnd | undefined
   let requestHeader: TraceRequestHeader | undefined
+  // Dual-line system prompt: the 0.1.2/0.1.3 lines carry the rendered prompt
+  // on `request/header.header.system`; the 0.1.5 line removed that field and
+  // represents the prompt as surface node zero (a `system/message` event).
+  // An empty node clears the older text, matching the host's effective-prompt
+  // rule, so only the latest non-empty text survives the fold.
+  let systemPrompt: string | undefined
   let lastSeq = firstSeq - 1
   for (const event of events) {
     if (event.seq < firstSeq) continue
     lastSeq = event.seq
+    // Dual-line stream timing: the 0.1.2 log exposes per-delta timing as
+    // `assistant/chunk`; the 0.1.3 line dropped that event (its committed
+    // messages carry an exact timed `stream` instead, and `assistant/attempt`
+    // records settled attempts that carry no timing). Fold the 0.1.2 shape
+    // here so the trace works against either published host line.
+    if ((event.type as string) === 'assistant/chunk') {
+      const chunk = event as unknown as { data: { turn: number; step: number } }
+      const step = stepOf(chunk.data.turn, chunk.data.step)
+      if (step.firstTokenMs === undefined) step.firstTokenMs = event.time
+      step.lastTokenMs = event.time
+      continue
+    }
     switch (event.type) {
       case 'step/start': {
         stepOf(event.data.turn, event.data.step).startMs = event.time
-        break
-      }
-      case 'assistant/chunk': {
-        const step = stepOf(event.data.turn, event.data.step)
-        if (step.firstTokenMs === undefined) step.firstTokenMs = event.time
-        step.lastTokenMs = event.time
         break
       }
       case 'step/end': {
@@ -259,16 +271,39 @@ export function collectTrace(sessionId: SessionId, events: readonly SessionEvent
           const step = stepOf(event.data.turn, event.data.step)
           step.outputTokens = (step.outputTokens ?? 0) + event.data.usage.outputTokens
         }
+        // 0.1.3 line: the message's exact timed stream carries the per-step
+        // timing the 0.1.2 line exposed as `assistant/chunk` deltas.
+        const timed = event.data as { stream?: readonly { time0?: number; dt?: readonly number[] }[] }
+        const stream = timed.stream
+        if (stream !== undefined && stream.length > 0) {
+          const step = stepOf(event.data.turn, event.data.step)
+          const first = stream[0]?.time0
+          const lastRecord = stream[stream.length - 1]
+          const last = lastRecord !== undefined && lastRecord.time0 !== undefined
+            ? lastRecord.time0 + (lastRecord.dt?.[lastRecord.dt.length - 1] ?? 0)
+            : undefined
+          if (first !== undefined && step.firstTokenMs === undefined) step.firstTokenMs = first
+          if (last !== undefined) step.lastTokenMs = last
+        }
         break
       }
       case 'turn/end': {
         turnEnd = copyTurnEnd(event.data.reason)
         break
       }
+      case 'system/message': {
+        const text = contentText(event.data.message.content as readonly { type: string }[])
+        systemPrompt = text === '' ? undefined : text
+        break
+      }
       case 'request/header': {
         const header = event.data.header
+        // Read the retired 0.1.3 field structurally: the installed 0.1.5 type
+        // no longer declares it, while the 0.1.2/0.1.3 peers still write it.
+        const legacySystem = (header as { system?: unknown }).system
+        const system = typeof legacySystem === 'string' ? legacySystem : systemPrompt
         requestHeader = {
-          ...(header.system !== undefined ? { system: header.system } : {}),
+          ...(system !== undefined ? { system } : {}),
           tools: (header.tools ?? []).map(tool => {
             const schema = tool as { name?: string; description?: string }
             return {

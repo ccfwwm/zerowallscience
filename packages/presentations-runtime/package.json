@@ -6,13 +6,30 @@
   "main": "./lib/index.mjs",
   "types": "./lib/types/index.d.ts",
   "exports": {
-    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.mjs" },
-    "./tools": { "types": "./lib/types/tools.d.ts", "default": "./lib/tools.mjs" },
-    "./runtime": { "types": "./lib/types/runtime.d.ts", "default": "./lib/runtime.mjs" },
-    "./schemas": { "types": "./lib/types/schemas.d.ts", "default": "./lib/schemas.mjs" }
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.mjs"
+    },
+    "./tools": {
+      "types": "./lib/types/tools.d.ts",
+      "default": "./lib/tools.mjs"
+    },
+    "./runtime": {
+      "types": "./lib/types/runtime.d.ts",
+      "default": "./lib/runtime.mjs"
+    },
+    "./schemas": {
+      "types": "./lib/types/schemas.d.ts",
+      "default": "./lib/schemas.mjs"
+    }
   },
   "license": "MIT",
-  "files": ["lib", "preset", "LICENSE", "PROVENANCE.md"],
+  "files": [
+    "lib",
+    "preset",
+    "LICENSE",
+    "PROVENANCE.md"
+  ],
   "dependencies": {
     "fflate": "0.8.3",
     "fontkit": "2.0.4",

@@ -195,7 +195,7 @@ export function McpConnectionsButton(props: Props) {
     // During the first remote handshake the list may briefly be unavailable;
     // converge in the background so the tab does not stay on “new connection”
     // or appear empty after the rest of Settings has already mounted.
-    const timer = window.setInterval(() => { void refresh() }, 10_000)
+    const timer = window.setInterval(() => { void refresh() }, 30 * 60_000)
     return () => window.clearInterval(timer)
   }, [hasStartingServer, open, refresh, servers.length])
 
@@ -284,7 +284,7 @@ export function McpConnectionsButton(props: Props) {
       const input = inputFromDraft(draft, props.t)
       const saved = selectedId === NEW_SERVER
         ? await createMcpServer(input)
-        : await updateMcpServer(selectedId, managedConnection ? { enabled: input.enabled } : input)
+        : await updateMcpServer(selectedId, managedConnection ? { enabled: input.enabled, toolCallTimeoutMs: input.toolCallTimeoutMs, reconnect: input.reconnect, failOnStartupError: input.failOnStartupError } : input)
       await refresh(saved.id)
     } catch (reason) {
       setError(message(reason))
@@ -386,7 +386,7 @@ export function McpConnectionsButton(props: Props) {
           {selected?.runtimeError && <p className={css.error} role="alert">{selected.runtimeError}</p>}
           {(selected?.missingEnvironmentVariables.length ?? 0) > 0 && <p className={css.warning}>{props.t('mcp.missing', { names: selected?.missingEnvironmentVariables.join(', ') ?? '' })}</p>}
           {error && <p className={css.error} role="alert">{error}</p>}
-          {managedConnection && <p className={css.warning}>此托管连接由“环境配置”管理；本页仅显示状态、工具和通用诊断。</p>}
+          {managedConnection && <p className={css.warning}>{props.t('mcp.managedHelp')}</p>}
           {selected !== undefined && <section className={css.toolsCard} aria-label={props.t('mcp.availableTools')}>
             <div className={css.toolsHeading}><strong>{props.t('mcp.availableTools')}</strong><span>{selected.tools.length}</span></div>
             {selected.tools.length === 0
@@ -415,7 +415,8 @@ export function McpConnectionsButton(props: Props) {
           {selected !== undefined && <div className={css.settingRow}>
             <Toggle checked={draft.enabled} onChange={checked => setDraft({ ...draft, enabled: checked })} label={props.t('mcp.enabled')} />
           </div>}
-          <fieldset className={css.form} disabled={managedConnection}>
+          <div className={css.form}>
+            <fieldset disabled={managedConnection} className={css.form}>
             <div className={css.twoColumns}>
               <Field label={props.t('common.name')}><input value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} placeholder="Literature tools" /></Field>
               <Field label={props.t('mcp.namespace')}><input value={draft.serverName} onChange={event => setDraft({ ...draft, serverName: event.target.value })} placeholder="literature" /></Field>
@@ -435,6 +436,7 @@ export function McpConnectionsButton(props: Props) {
               <Field label="URL"><input value={draft.url} onChange={event => setDraft({ ...draft, url: event.target.value })} placeholder="https://mcp.example.com/api" /></Field>
               <Field label={props.t('mcp.headerReferences')}><textarea rows={3} value={draft.headerRefs} onChange={event => setDraft({ ...draft, headerRefs: event.target.value })} placeholder="Authorization=ZEROWALL_MCP_AUTHORIZATION" /></Field>
             </>}
+            </fieldset>
             <div className={css.threeColumns}>
               <Field label={props.t('mcp.toolTimeout')}><input type="number" min="1" step="1000" value={draft.toolCallTimeoutMs} onChange={event => setDraft({ ...draft, toolCallTimeoutMs: event.target.value })} /></Field>
               <Field label={props.t('mcp.initialRetry')}><input type="number" min="1" value={draft.reconnectInitialDelayMs} onChange={event => setDraft({ ...draft, reconnectInitialDelayMs: event.target.value })} /></Field>
@@ -445,9 +447,9 @@ export function McpConnectionsButton(props: Props) {
               <Field label={props.t('mcp.attempts')}><input className={css.shortInput} type="number" min="1" value={draft.reconnectMaxAttempts} onChange={event => setDraft({ ...draft, reconnectMaxAttempts: event.target.value })} /></Field>
               <Toggle checked={draft.failOnStartupError} onChange={checked => setDraft({ ...draft, failOnStartupError: checked })} label={props.t('mcp.strictStartup')} />
             </div>
-          </fieldset>
+          </div>
           <footer className={css.footer}>
-            {!managedConnection && <button className={css.saveButton} type="button" onClick={() => void save()} disabled={busy}><Save size={17} /><span>{selected === undefined ? props.t('common.create') : props.t('common.save')}</span></button>}
+            {<button className={css.saveButton} type="button" onClick={() => void save()} disabled={busy}><Save size={17} /><span>{selected === undefined ? props.t('common.create') : props.t('common.save')}</span></button>}
           </footer>
         </main>
       </div>
@@ -585,8 +587,8 @@ function Toggle({ checked, onChange, label }: { checked: boolean, onChange: (che
 function emptyDraft(): Draft {
   return {
     name: '', serverName: '', transport: 'stdio', enabled: false, command: '', args: '', cwd: '', envRefs: '', url: '', headerRefs: '',
-    toolCallTimeoutMs: '60000', failOnStartupError: false, reconnectEnabled: true,
-    reconnectInitialDelayMs: '500', reconnectMaxDelayMs: '30000', reconnectMaxAttempts: '10',
+    toolCallTimeoutMs: '300000', failOnStartupError: false, reconnectEnabled: true,
+    reconnectInitialDelayMs: '5000', reconnectMaxDelayMs: '60000', reconnectMaxAttempts: '2',
   }
 }
 
@@ -640,7 +642,7 @@ function inputFromDraft(draft: Draft, t: TranslateNS<typeof NS>): McpServerInput
 }
 
 function statusText(status: McpRuntimeState, t: TranslateNS<typeof NS>): string {
-  return ({ active: t('mcp.status.active'), starting: t('mcp.status.starting'), blocked: t('mcp.status.blocked'), error: t('mcp.status.error'), disabled: t('mcp.status.disabled') })[status]
+  return ({ idle: t('mcp.status.idle'), active: t('mcp.status.active'), starting: t('mcp.status.starting'), blocked: t('mcp.status.blocked'), error: t('mcp.status.error'), disabled: t('mcp.status.disabled') })[status]
 }
 
 function message(reason: unknown): string {
@@ -674,8 +676,8 @@ function validateImportedServer(value: unknown, index: number): McpServerInput {
     name: String(value.name ?? '').trim(), serverName: String(value.serverName ?? '').trim(), transport,
     enabled: value.enabled === true, command: String(value.command ?? ''), args: Array.isArray(value.args) ? value.args.filter((item): item is string => typeof item === 'string') : [],
     cwd: String(value.cwd ?? ''), envRefs: stringRecord(value.envRefs), url: String(value.url ?? ''), headerRefs: stringRecord(value.headerRefs),
-    toolCallTimeoutMs: integer(value.toolCallTimeoutMs, 60000), failOnStartupError: value.failOnStartupError === true,
-    reconnect: { enabled: reconnect.enabled !== false, initialDelayMs: integer(reconnect.initialDelayMs, 500), maxDelayMs: integer(reconnect.maxDelayMs, 30000), maxAttempts: integer(reconnect.maxAttempts, 10) },
+    toolCallTimeoutMs: integer(value.toolCallTimeoutMs, 300000), failOnStartupError: value.failOnStartupError === true,
+    reconnect: { enabled: reconnect.enabled !== false, initialDelayMs: integer(reconnect.initialDelayMs, 5000), maxDelayMs: integer(reconnect.maxDelayMs, 60000), maxAttempts: integer(reconnect.maxAttempts, 2) },
   }
 }
 

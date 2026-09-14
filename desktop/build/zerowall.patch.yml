@@ -123,7 +123,7 @@
       name: 'dsh-better-sidebar-icons'
 
     - id: file-review-tab
-      name: 'dsh-file-review-tab'
+      name: 'dsh-file-review'
 
     # Office viewers extend Better Sidebar and must mount after its service.
     - id: better-sidebar-office
@@ -151,8 +151,9 @@
           # discoverable through capability_search/execute and are loaded only
           # for the current task instead of serializing every schema on every
           # request.
-          on-demand: ['server:*:*', 'server:rmcp', 'server:zerowall_managed_bio_tools']
+          on-demand: ['mcp__*', 'server:*:*', 'server:rmcp', 'server:zerowall_managed_bio_tools']
           resident:
+            - mcp_connect
             - capability_search
             - capability_execute
             - structured_output
@@ -179,7 +180,7 @@
     - id: auto-review
       name: 'dsh-auto-review'
       config:
-        allowUnmarkedAudit: true
+        allowUnmarkedAudit: false
         enableByDefault: false
         language: zh
         fallbackPolicy: delegate

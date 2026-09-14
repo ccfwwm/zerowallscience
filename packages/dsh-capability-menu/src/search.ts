@@ -178,16 +178,22 @@ export function apply(ctx: Context, config: Config = {}): void {
         return { mode: 'detail' as const, result: bounded as unknown as JsonValue }
       }
 
+      // Filter Disabled BEFORE applying the result cap: a Disabled hit inside
+      // the top-N would otherwise consume a slot and hide a matching Resident
+      // capability ranked below it (the extreme case being an all-Disabled
+      // top-N returning nothing). Over-fetch — the registry imposes no upper
+      // bound and already ranks the whole catalog — then slice.
+      const limit = Math.max(1, Math.min(Number.isFinite(requestedMax) ? requestedMax! : maxResults, 12))
       const results = ctx.capability.search({
         query,
         kind,
         server,
         tag,
-        maxResults: Math.max(1, Math.min(Number.isFinite(requestedMax) ? requestedMax! : maxResults, 12)),
+        maxResults: Number.MAX_SAFE_INTEGER,
         scope,
       })
       const summaries: JsonValue[] = []
-      for (const result of results) {
+      for (const result of results.filter(result => !isDisabled(result.id, result.kind)).slice(0, limit)) {
         const disabled = isDisabled(result.id, result.kind)
         if (disabled) continue
         const summary = { id: result.id, kind: result.kind, name: result.name, ...(result.server === undefined ? {} : { server: result.server }), summary: result.summary.slice(0, 350), status: 'available' }

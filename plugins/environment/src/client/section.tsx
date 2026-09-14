@@ -4,8 +4,12 @@ import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { EnvironmentVariableInfo, ImageGenerationQuality, ImageModelSelection } from '../shared/types.js'
 import css from './section.module.css'
 import { LiteratureSettings } from './LiteratureSettings.js'
+import type { EnvironmentTranslate } from './locales.js'
+import { LocalizedError, messageFromError, renderMessage, type LocalizedMessage } from './messages.js'
+import type {} from '@deepseek-ai/dsh-client-locale/client'
 
 interface Props extends PropsRuntime<'settings.section'> {
+  t: EnvironmentTranslate
   reviewerScope: SettingsScope<any>
   environmentRemote: any
   accountRemote: any
@@ -22,7 +26,7 @@ const SCI_MASTER_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/home'
 
 type LoadState = 'loading' | 'ready' | 'unavailable' | 'error'
 
-export function EnvironmentSection({ reviewerScope, environmentRemote, accountRemote, mcpRemote, mineruRemote, pubmedRemote, unwrap, modelCatalog }: Props) {
+export function EnvironmentSection({ reviewerScope, environmentRemote, accountRemote, mcpRemote, mineruRemote, pubmedRemote, unwrap, modelCatalog, t }: Props) {
   const [reviewer, setReviewerValue] = useState(() => reviewerScope.getSnapshot().value ?? defaultReviewer)
   const [catalogGroups, setCatalogGroups] = useState<any[]>([])
   const [imageModels, setImageModels] = useState<any[]>([])
@@ -32,7 +36,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const [newName, setNewName] = useState('')
   const [newValue, setNewValue] = useState('')
   const [sciKey, setSciKey] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState<LocalizedMessage>('')
   const [status, setStatus] = useState<Record<string, LoadState>>({ account: 'loading', catalog: 'loading', variables: 'loading', image: 'loading', mcp: 'loading' })
   const [image, setImage] = useState<ImageModelSelection>({ providerId: '', groupId: '', modelId: '' })
   const [imageQuality, setImageQuality] = useState<ImageGenerationQuality>('medium')
@@ -40,11 +44,11 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const [mineruToken, setMineruToken] = useState('')
   const [chemConfigured, setChemConfigured] = useState(false)
   const [chemKey, setChemKey] = useState('')
-  const [chemConnection, setChemConnection] = useState('')
+  const [chemConnection, setChemConnection] = useState<LocalizedMessage>('')
   const [rdatalinuxConfigured, setRdatalinuxConfigured] = useState(false)
   const [rdatalinuxEndpoint, setRdatalinuxEndpoint] = useState('http://103.217.185.141:8099/r-platform/mcp')
   const [rdatalinuxAuthorization, setRdatalinuxAuthorization] = useState('')
-  const [rdatalinuxConnection, setRdatalinuxConnection] = useState('')
+  const [rdatalinuxConnection, setRdatalinuxConnection] = useState<LocalizedMessage>('')
   const [tsgValues, setTsgValues] = useState<Record<string, string>>({})
   const [trailValues, setTrailValues] = useState<Record<string, string>>({})
 
@@ -64,7 +68,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       }
     }
     void load('account', async () => {
-      if (accountRemote?.current === undefined) throw new Error('账户服务不可用')
+      if (accountRemote?.current === undefined) throw new LocalizedError('accountUnavailable')
       const snapshot = await unwrap(accountRemote.current()) as any
       if (cancelled) return
       const rows = Array.isArray(snapshot?.models) ? snapshot.models : []
@@ -75,12 +79,12 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       if (!cancelled) setCatalogGroups(Array.isArray(value?.groups) ? value.groups : [])
     })
     void load('variables', async () => {
-      if (environmentRemote?.listVariables === undefined) throw new Error('环境变量服务不可用')
+      if (environmentRemote?.listVariables === undefined) throw new LocalizedError('variablesUnavailable')
       const value = await unwrap(environmentRemote.listVariables())
       if (!cancelled) setVariables(Array.isArray(value) ? value : [])
     })
     void load('image', async () => {
-      if (environmentRemote?.getImageModelSelection === undefined) throw new Error('生图配置服务不可用')
+      if (environmentRemote?.getImageModelSelection === undefined) throw new LocalizedError('imageUnavailable')
       const value = await unwrap(environmentRemote.getImageModelSelection()) as ImageModelSelection | undefined
       if (!cancelled && value) setImage(value)
     })
@@ -91,7 +95,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       if (!cancelled && ['auto', 'low', 'medium', 'high'].includes(value)) setImageQuality(value)
     })
     void load('mcp', async () => {
-      if (mcpRemote?.getSciMasterCredentialStatus === undefined) throw new Error('MCP 服务不可用')
+      if (mcpRemote?.getSciMasterCredentialStatus === undefined) throw new LocalizedError('mcpUnavailable')
       const value = await unwrap(mcpRemote.getSciMasterCredentialStatus()) as any
       if (!cancelled) setSciConfigured(value?.configured === true)
     })
@@ -100,12 +104,12 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       if (!cancelled) setChemConfigured(value?.configured === true)
     })
     void load('rdatalinux', async () => {
-      if (mcpRemote?.getRdatalinuxCredentialStatus === undefined) throw new Error('MCP 服务不可用')
+      if (mcpRemote?.getRdatalinuxCredentialStatus === undefined) throw new LocalizedError('mcpUnavailable')
       const value = await unwrap(mcpRemote.getRdatalinuxCredentialStatus()) as any
       if (!cancelled) { setRdatalinuxConfigured(value?.configured === true); setRdatalinuxEndpoint(value?.endpoint ?? 'http://103.217.185.141:8099/r-platform/mcp') }
     })
     void load('mineru', async () => {
-      if (mineruRemote?.getConfigStatus === undefined) throw new Error('MinerU 服务不可用')
+      if (mineruRemote?.getConfigStatus === undefined) throw new LocalizedError('mineruUnavailable')
       const value = await unwrap(mineruRemote.getConfigStatus())
       if (!cancelled && value) setMineru(value)
     })
@@ -131,7 +135,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     const groups = new Map<string, { providerId: string; groupId: string; label: string; models: any[] }>()
     for (const model of imageModels) {
       const key = `${model.providerId}${VALUE_SEPARATOR}${model.groupId}`
-      const group = groups.get(key) ?? { providerId: model.providerId, groupId: model.groupId, label: model.groupName ?? model.groupId, models: [] }
+      const group: { providerId: string; groupId: string; label: string; models: any[] } = groups.get(key) ?? { providerId: model.providerId, groupId: model.groupId, label: model.groupName ?? model.groupId, models: [] }
       group.models.push(model)
       groups.set(key, group)
     }
@@ -141,7 +145,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const run = async (action: () => Promise<void>) => {
     setBusy(true)
     setError('')
-    try { await action() } catch (value) { setError(value instanceof Error ? value.message : String(value)) } finally { setBusy(false) }
+    try { await action() } catch (value) { setError(messageFromError(value)) } finally { setBusy(false) }
   }
   const setReviewer = async (field: string, value: unknown) => run(async () => { await reviewerScope.set(field, value) })
   const selectReviewerModel = (value: string) => {
@@ -163,7 +167,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const tsgKeys = ['TSG_PM_JSESSIONID', 'TSG_SESSIONID', 'TSG_SGUSER', 'TSG_TSGUSER']
   const saveTsg = async () => run(async () => {
     const entries = Object.entries(tsgValues).filter(([, value]) => value.trim())
-    if (entries.length === 0) throw new Error('请输入至少一个云图书馆配置项。')
+    if (entries.length === 0) throw new LocalizedError('tsgRequired')
     let next = variables
     for (const [name, value] of entries) next = await unwrap(environmentRemote.setVariable(name, value))
     setVariables(next)
@@ -182,7 +186,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   ]
   const saveTrail = async () => run(async () => {
     const entries = Object.entries(trailValues).filter(([, value]) => value.trim())
-    if (entries.length === 0) throw new Error('请输入至少一个文献流水线配置项。')
+    if (entries.length === 0) throw new LocalizedError('pipelineRequired')
     let next = variables
     for (const [name, value] of entries) next = await unwrap(environmentRemote.setVariable(name, value))
     setVariables(next)
@@ -202,12 +206,12 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   }
   const saveRdatalinux = () => void run(async () => {
     const key = rdatalinuxAuthorization.trim().replace(/^Bearer\s+/iu, '')
-    if (!key) throw new Error('请输入 rdatalinux MCP key。')
+    if (!key) throw new LocalizedError('rmcpRequired')
     const value = await unwrap(mcpRemote.setRdatalinuxAuthorization(`Bearer ${key}`)) as any
     setRdatalinuxConfigured(true)
     setRdatalinuxAuthorization('')
-    if (value?.runtimeState === 'active') setRdatalinuxConnection(`已连接 · ${(value.tools ?? []).length} 个工具`)
-    else setRdatalinuxConnection(value?.runtimeError ? `检测失败：${value.runtimeError}` : '凭据已保存，连接待重试')
+    if (value?.runtimeState === 'active') setRdatalinuxConnection({ key: 'connectedTools', params: { count: (value.tools ?? []).length } })
+    else setRdatalinuxConnection(value?.runtimeError ? { key: 'testFailed', params: { error: value.runtimeError } } : { key: 'credentialSaved' })
   })
   const saveImageQuality = (value: ImageGenerationQuality) => {
     setImageQuality(value)
@@ -216,91 +220,91 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     })
   }
   const saveMineru = async (changes: Record<string, unknown>) => run(async () => { const value = await unwrap(mineruRemote.updateConfig(changes)); setMineru(value) })
-  const statusText = (key: string, ready = '已加载') => status[key] === 'loading' ? '正在加载…' : status[key] === 'error' || status[key] === 'unavailable' ? '服务暂不可用' : ready
+  const statusText = (key: string, ready = t('loaded')) => status[key] === 'loading' ? t('loading') : status[key] === 'error' || status[key] === 'unavailable' ? t('unavailable') : ready
 
   return <section className={css.root}>
     <header className={css.header}>
-      <div><span className={css.eyebrow}>ZeroWall Science</span><h2>环境配置</h2></div>
-      <span className={css.securityNote}>敏感值仅保存在本机安全存储中</span>
+      <div><span className={css.eyebrow}>ZeroWall Science</span><h2>{t('title')}</h2></div>
+      <span className={css.securityNote}>{t('securityNote')}</span>
     </header>
-    {error ? <p className={css.error} role="alert">{error}</p> : null}
+    {error ? <p className={css.error} role="alert">{renderMessage(error, t)}</p> : null}
     <div className={css.grid}>
-      <LiteratureSettings remote={pubmedRemote} unwrap={unwrap} />
+      <LiteratureSettings remote={pubmedRemote} unwrap={unwrap} t={t} />
       <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>智慧云图书馆（TSG）</h3><p>填写浏览器中导出的四个 Cookie，凭据保存在本机安全存储，并按 TSG 域名使用。</p></div><span className={tsgKeys.every(key => variables.some(variable => variable.name === key && variable.configured)) ? css.statusGood : css.status}>{tsgKeys.filter(key => variables.some(variable => variable.name === key && variable.configured)).length}/4 已配置</span></div>
-        <div className={css.formGrid}>{tsgKeys.map(key => <label className={css.field} key={key}><span>{key}</span><input className={css.control} type="password" autoComplete="off" placeholder={variables.some(variable => variable.name === key && variable.configured) ? '已配置，留空保持不变' : '输入配置值'} value={tsgValues[key] ?? ''} onChange={event => setTsgValues(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
-        <div className={css.footer}><span>用于检索、申请、状态轮询和授权 PDF 下载。</span><button className={css.primaryButton} type="button" disabled={busy || Object.values(tsgValues).every(value => !value.trim())} onClick={() => void saveTsg()}>保存 TSG 配置</button></div>
+        <div className={css.cardHeader}><div><h3>{t('tsgTitle')}</h3><p>{t('tsgDescription')}</p></div><span className={tsgKeys.every(key => variables.some(variable => variable.name === key && variable.configured)) ? css.statusGood : css.status}>{tsgKeys.filter(key => variables.some(variable => variable.name === key && variable.configured)).length}{t('tsgCountSuffix')}</span></div>
+        <div className={css.formGrid}>{tsgKeys.map(key => <label className={css.field} key={key}><span>{key}</span><input className={css.control} type="password" autoComplete="off" placeholder={variables.some(variable => variable.name === key && variable.configured) ? t('keepValue') : t('enterValue')} value={tsgValues[key] ?? ''} onChange={event => setTsgValues(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
+        <div className={css.footer}><span>{t('tsgUsage')}</span><button className={css.primaryButton} type="button" disabled={busy || Object.values(tsgValues).every(value => !value.trim())} onClick={() => void saveTsg()}>{t('saveTsg')}</button></div>
       </article>
       <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>文献流水线</h3><p>标题检索、引用追踪、公开全文、PDF 解析和报告输出使用的可选配置。</p></div><span className={trailKeys.every(key => variables.some(variable => variable.name === key && variable.configured)) ? css.statusGood : css.status}>{trailKeys.filter(key => variables.some(variable => variable.name === key && variable.configured)).length}/{trailKeys.length} 已配置</span></div>
-        <div className={css.formGrid}>{trailKeys.map(key => <label className={css.field} key={key}><span>{key}</span><input className={css.control} type={key === 'UNPAYWALL_EMAIL' ? 'email' : ['S2_API_KEY', 'RESEARCH_BROWSER_COOKIES'].includes(key) ? 'password' : 'text'} autoComplete="off" placeholder={variables.some(variable => variable.name === key && variable.configured) ? '已配置，留空保持不变' : '可选配置'} value={trailValues[key] ?? ''} onChange={event => setTrailValues(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
-        <div className={css.footer}><span>凭据仍由用户自有适配器管理；任务记录来源、哈希和失败原因。</span><button className={css.primaryButton} type="button" disabled={busy || Object.values(trailValues).every(value => !value.trim())} onClick={() => void saveTrail()}>保存流水线配置</button></div>
+        <div className={css.cardHeader}><div><h3>{t('pipelineTitle')}</h3><p>{t('pipelineDescription')}</p></div><span className={trailKeys.every(key => variables.some(variable => variable.name === key && variable.configured)) ? css.statusGood : css.status}>{trailKeys.filter(key => variables.some(variable => variable.name === key && variable.configured)).length}/{trailKeys.length} {t('configured')}</span></div>
+        <div className={css.formGrid}>{trailKeys.map(key => <label className={css.field} key={key}><span>{key}</span><input className={css.control} type={key === 'UNPAYWALL_EMAIL' ? 'email' : ['S2_API_KEY', 'RESEARCH_BROWSER_COOKIES'].includes(key) ? 'password' : 'text'} autoComplete="off" placeholder={variables.some(variable => variable.name === key && variable.configured) ? t('keepValue') : t('optionalSetting')} value={trailValues[key] ?? ''} onChange={event => setTrailValues(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
+        <div className={css.footer}><span>{t('pipelineNote')}</span><button className={css.primaryButton} type="button" disabled={busy || Object.values(trailValues).every(value => !value.trim())} onClick={() => void saveTrail()}>{t('savePipeline')}</button></div>
       </article>
       <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>Reviewer</h3><p>审核使用设置中的模型目录，不单独维护供应商。</p></div><span className={css.status}>{statusText('catalog', '模型目录已同步')}</span></div>
+        <div className={css.cardHeader}><div><h3>Reviewer</h3><p>{t('reviewerDescription')}</p></div><span className={css.status}>{statusText('catalog', t('catalogSynced'))}</span></div>
         <div className={css.formGrid}>
-          <label className={css.checkboxField}><input type="checkbox" checked={reviewer.autoReview === true} disabled={busy} onChange={event => void setReviewer('autoReview', event.target.checked)} /><span>启用自动审核</span></label>
-          <label className={css.field}><span>审核模型模式</span><select className={css.control} value={reviewer.modelMode ?? 'follow-session'} disabled={busy} onChange={event => void setReviewer('modelMode', event.target.value)}><option value="follow-session">跟随当前对话模型</option><option value="fixed">固定审核模型</option></select></label>
+          <label className={css.checkboxField}><input type="checkbox" checked={reviewer.autoReview === true} disabled={busy} onChange={event => void setReviewer('autoReview', event.target.checked)} /><span>{t('autoReview')}</span></label>
+          <label className={css.field}><span>{t('reviewMode')}</span><select className={css.control} value={reviewer.modelMode ?? 'follow-session'} disabled={busy} onChange={event => void setReviewer('modelMode', event.target.value)}><option value="follow-session">{t('followSession')}</option><option value="fixed">{t('fixedModel')}</option></select></label>
           {reviewer.modelMode === 'fixed' ? <>
-            <label className={`${css.field} ${css.fullWidth}`}><span>审核模型</span><select className={css.control} value={reviewerModelIsKnown ? reviewerModelValue : ''} disabled={busy || reviewerModels.length === 0} onChange={event => selectReviewerModel(event.target.value)}><option value="">请选择模型</option>{!reviewerModelIsKnown && reviewer.provider && reviewer.model ? <option value={reviewerModelValue}>{reviewer.provider} / {reviewer.model}（当前配置）</option> : null}{catalogGroups.map((group: any) => <optgroup key={group.id} label={group.name ?? group.id}>{(Array.isArray(group.models) ? group.models : []).map((model: any) => <option key={`${group.id}${VALUE_SEPARATOR}${model.id}`} value={`${group.id}${VALUE_SEPARATOR}${model.id}`}>{model.name ?? model.id}</option>)}</optgroup>)}</select></label>
-            <label className={css.field}><span>推理强度</span><select className={css.control} value={reviewer.reasoningEffort ?? ''} disabled={busy || reviewerEfforts.length === 0} onChange={event => void setReviewer('reasoningEffort', event.target.value)}><option value="">跟随模型默认{selectedReviewerModel?.reasoning?.defaultEffort ? `（${selectedReviewerModel.reasoning.defaultEffort}）` : ''}</option>{reviewer.reasoningEffort && !reviewerEfforts.some((effort: any) => effort.id === reviewer.reasoningEffort) ? <option value={reviewer.reasoningEffort}>{reviewer.reasoningEffort}（当前配置）</option> : null}{reviewerEfforts.map((effort: any) => <option key={effort.id} value={effort.id}>{effort.name ?? effort.id}</option>)}</select><small>{reviewerEfforts.length === 0 ? '当前模型未声明可选推理强度' : '可按模型目录提供的能力选择'}</small></label>
+            <label className={`${css.field} ${css.fullWidth}`}><span>{t('reviewModel')}</span><select className={css.control} value={reviewerModelIsKnown ? reviewerModelValue : ''} disabled={busy || reviewerModels.length === 0} onChange={event => selectReviewerModel(event.target.value)}><option value="">{t('selectModel')}</option>{!reviewerModelIsKnown && reviewer.provider && reviewer.model ? <option value={reviewerModelValue}>{reviewer.provider} / {reviewer.model}{t('currentConfig')}</option> : null}{catalogGroups.map((group: any) => <optgroup key={group.id} label={group.name ?? group.id}>{(Array.isArray(group.models) ? group.models : []).map((model: any) => <option key={`${group.id}${VALUE_SEPARATOR}${model.id}`} value={`${group.id}${VALUE_SEPARATOR}${model.id}`}>{model.name ?? model.id}</option>)}</optgroup>)}</select></label>
+            <label className={css.field}><span>{t('reasoningEffort')}</span><select className={css.control} value={reviewer.reasoningEffort ?? ''} disabled={busy || reviewerEfforts.length === 0} onChange={event => void setReviewer('reasoningEffort', event.target.value)}><option value="">{t('modelDefault')}{selectedReviewerModel?.reasoning?.defaultEffort ? `（${selectedReviewerModel.reasoning.defaultEffort}）` : ''}</option>{reviewer.reasoningEffort && !reviewerEfforts.some((effort: any) => effort.id === reviewer.reasoningEffort) ? <option value={reviewer.reasoningEffort}>{reviewer.reasoningEffort}{t('currentConfig')}</option> : null}{reviewerEfforts.map((effort: any) => <option key={effort.id} value={effort.id}>{effort.name ?? effort.id}</option>)}</select><small>{reviewerEfforts.length === 0 ? t('noEfforts') : t('chooseEffort')}</small></label>
           </> : null}
         </div>
       </article>
 
       <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>rdatalinux rmcp</h3><p>R、Biomni 和绘图工具共用此 MCP 连接。端点固定，凭据仅保存在本机凭据保险库。</p></div><span className={rdatalinuxConfigured ? css.statusGood : css.status}>{statusText('rdatalinux', rdatalinuxConfigured ? '已配置' : '未配置')}</span></div>
+        <div className={css.cardHeader}><div><h3>rdatalinux rmcp</h3><p>{t('rmcpDescription')}</p></div><span className={rdatalinuxConfigured ? css.statusGood : css.status}>{statusText('rdatalinux', rdatalinuxConfigured ? t('configured') : t('notConfigured'))}</span></div>
         <label className={css.field}><span>Endpoint</span><input className={css.control} value={rdatalinuxEndpoint} readOnly /></label>
-        <div className={css.keyRow}><input className={css.control} type="password" placeholder="输入 MCP key（无需填写 Bearer）" value={rdatalinuxAuthorization} onChange={event => setRdatalinuxAuthorization(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !rdatalinuxAuthorization.trim() || !mcpRemote?.setRdatalinuxAuthorization} onClick={saveRdatalinux}>保存 Key</button><button className={css.secondaryButton} type="button" disabled={busy || !rdatalinuxConfigured || !mcpRemote?.clearRdatalinuxAuthorization} onClick={() => void run(async () => { await unwrap(mcpRemote.clearRdatalinuxAuthorization()); setRdatalinuxConfigured(false); setRdatalinuxConnection('') })}>清除</button><button className={css.secondaryButton} type="button" disabled={busy || !mcpRemote?.list} onClick={() => void run(async () => { const rows = await unwrap(mcpRemote.list()); const record = rows.find((row: any) => row.serverName === 'rmcp'); if (!record) throw new Error('尚未初始化 rmcp 连接。'); const value = await unwrap(mcpRemote.reload(record.id)); if (value.runtimeState !== 'active') throw new Error(value.runtimeError || 'rmcp 连接不可用'); setRdatalinuxConnection(`已连接 · ${(value.tools ?? []).length} 个工具`) })}>检测连接</button></div>
-        {rdatalinuxConnection ? <p className={css.muted} role="status">{rdatalinuxConnection}</p> : null}
+        <div className={css.keyRow}><input className={css.control} type="password" placeholder={t('enterMcpKey')} value={rdatalinuxAuthorization} onChange={event => setRdatalinuxAuthorization(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !rdatalinuxAuthorization.trim() || !mcpRemote?.setRdatalinuxAuthorization} onClick={saveRdatalinux}>{t('saveKey')}</button><button className={css.secondaryButton} type="button" disabled={busy || !rdatalinuxConfigured || !mcpRemote?.clearRdatalinuxAuthorization} onClick={() => void run(async () => { await unwrap(mcpRemote.clearRdatalinuxAuthorization()); setRdatalinuxConfigured(false); setRdatalinuxConnection('') })}>{t('clear')}</button><button className={css.secondaryButton} type="button" disabled={busy || !mcpRemote?.list} onClick={() => void run(async () => { const rows = await unwrap(mcpRemote.list()); const record = rows.find((row: any) => row.serverName === 'rmcp'); if (!record) throw new LocalizedError('rmcpMissing'); const value = await unwrap(mcpRemote.reload(record.id)); if (value.runtimeState !== 'active') throw new Error(value.runtimeError || t('rmcpUnavailable')); setRdatalinuxConnection({ key: 'connectedTools', params: { count: (value.tools ?? []).length } }) })}>{t('testConnection')}</button></div>
+        {rdatalinuxConnection ? <p className={css.muted} role="status">{renderMessage(rdatalinuxConnection, t)}</p> : null}
       </article>
 
       <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>MinerU 文档解析</h3><p>Token 仅保存在本机安全存储中；无 Token 时使用本地快速解析，不会远程上传。</p></div><span className={mineru.tokenConfigured && mineru.available ? css.statusGood : css.status}>{statusText('mineru', !mineru.available ? '工具未激活' : mineru.tokenConfigured ? 'Token 已配置' : '本地解析')}</span></div>
-        <div className={`${css.keyRow} ${css.mineruTokenRow}`}><input className={css.control} type="password" placeholder="输入 MinerU Token" value={mineruToken} onChange={event => setMineruToken(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !mineruToken.trim() || mineruRemote?.setToken === undefined} onClick={() => void run(async () => { const value = await unwrap(mineruRemote.setToken(mineruToken)); setMineru(value); setMineruToken('') })}>保存 Token</button><button className={css.secondaryButton} type="button" disabled={busy || !mineru.tokenConfigured || mineruRemote?.clearToken === undefined} onClick={() => void run(async () => setMineru(await unwrap(mineruRemote.clearToken()))) }>清除</button></div>
+        <div className={css.cardHeader}><div><h3>{t('mineruTitle')}</h3><p>{t('mineruDescription')}</p></div><span className={mineru.tokenConfigured && mineru.available ? css.statusGood : css.status}>{statusText('mineru', !mineru.available ? t('toolsInactive') : mineru.tokenConfigured ? t('tokenConfigured') : t('localParsing'))}</span></div>
+        <div className={`${css.keyRow} ${css.mineruTokenRow}`}><input className={css.control} type="password" placeholder={t('enterMineruToken')} value={mineruToken} onChange={event => setMineruToken(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !mineruToken.trim() || mineruRemote?.setToken === undefined} onClick={() => void run(async () => { const value = await unwrap(mineruRemote.setToken(mineruToken)); setMineru(value); setMineruToken('') })}>{t('saveToken')}</button><button className={css.secondaryButton} type="button" disabled={busy || !mineru.tokenConfigured || mineruRemote?.clearToken === undefined} onClick={() => void run(async () => setMineru(await unwrap(mineruRemote.clearToken()))) }>{t('clear')}</button></div>
         <div className={css.formGrid}>
           <label className={css.field}><span>API Base URL</span><input className={css.control} value={mineru.apiBaseUrl ?? ''} onChange={event => setMineru((current: any) => ({ ...current, apiBaseUrl: event.target.value }))} onBlur={() => void saveMineru({ apiBaseUrl: mineru.apiBaseUrl })} /></label>
-          <label className={css.field}><span>解析模式</span><select className={css.control} value={mineru.mode ?? 'auto'} onChange={event => void saveMineru({ mode: event.target.value })}><option value="auto">自动</option><option value="precision">Precision</option><option value="agent">Agent</option></select></label>
-          <label className={css.field}><span>模型版本</span><select className={css.control} value={mineru.modelVersion ?? 'vlm'} onChange={event => void saveMineru({ modelVersion: event.target.value })}><option value="vlm">vlm</option><option value="pipeline">pipeline</option><option value="MinerU-HTML">MinerU-HTML</option></select></label>
-          <label className={css.field}><span>语言包</span><input className={css.control} value={mineru.language ?? 'ch'} onChange={event => setMineru((current: any) => ({ ...current, language: event.target.value }))} onBlur={() => void saveMineru({ language: mineru.language })} /></label>
-          <label className={css.checkboxField}><input type="checkbox" checked={mineru.enableTable !== false} disabled={busy} onChange={event => void saveMineru({ enableTable: event.target.checked })} /><span>提取表格</span></label>
-          <label className={css.checkboxField}><input type="checkbox" checked={mineru.enableFormula !== false} disabled={busy} onChange={event => void saveMineru({ enableFormula: event.target.checked })} /><span>提取公式</span></label>
-          <label className={css.checkboxField}><input type="checkbox" checked={mineru.isOcr === true} disabled={busy} onChange={event => void saveMineru({ isOcr: event.target.checked })} /><span>启用 OCR</span></label>
-          <label className={css.field}><span>超时（毫秒）</span><input className={css.control} type="number" min={10000} max={3600000} step={1000} value={mineru.timeoutMs ?? 600000} onChange={event => setMineru((current: any) => ({ ...current, timeoutMs: Number(event.target.value) }))} onBlur={() => void saveMineru({ timeoutMs: mineru.timeoutMs })} /></label>
-          <label className={css.field}><span>轮询间隔（毫秒）</span><input className={css.control} type="number" min={500} max={60000} step={100} value={mineru.pollIntervalMs ?? 3000} onChange={event => setMineru((current: any) => ({ ...current, pollIntervalMs: Number(event.target.value) }))} onBlur={() => void saveMineru({ pollIntervalMs: mineru.pollIntervalMs })} /></label>
-          <label className={css.field}><span>每日额度</span><input className={css.control} type="number" min={1} max={5000} value={mineru.dailyLimit ?? 5000} onChange={event => setMineru((current: any) => ({ ...current, dailyLimit: Number(event.target.value) }))} onBlur={() => void saveMineru({ dailyLimit: mineru.dailyLimit })} /></label>
+          <label className={css.field}><span>{t('parsingMode')}</span><select className={css.control} value={mineru.mode ?? 'auto'} onChange={event => void saveMineru({ mode: event.target.value })}><option value="auto">{t('auto')}</option><option value="precision">Precision</option><option value="agent">Agent</option></select></label>
+          <label className={css.field}><span>{t('modelVersion')}</span><select className={css.control} value={mineru.modelVersion ?? 'vlm'} onChange={event => void saveMineru({ modelVersion: event.target.value })}><option value="vlm">vlm</option><option value="pipeline">pipeline</option><option value="MinerU-HTML">MinerU-HTML</option></select></label>
+          <label className={css.field}><span>{t('languagePack')}</span><input className={css.control} value={mineru.language ?? 'ch'} onChange={event => setMineru((current: any) => ({ ...current, language: event.target.value }))} onBlur={() => void saveMineru({ language: mineru.language })} /></label>
+          <label className={css.checkboxField}><input type="checkbox" checked={mineru.enableTable !== false} disabled={busy} onChange={event => void saveMineru({ enableTable: event.target.checked })} /><span>{t('extractTables')}</span></label>
+          <label className={css.checkboxField}><input type="checkbox" checked={mineru.enableFormula !== false} disabled={busy} onChange={event => void saveMineru({ enableFormula: event.target.checked })} /><span>{t('extractFormulas')}</span></label>
+          <label className={css.checkboxField}><input type="checkbox" checked={mineru.isOcr === true} disabled={busy} onChange={event => void saveMineru({ isOcr: event.target.checked })} /><span>{t('enableOcr')}</span></label>
+          <label className={css.field}><span>{t('timeout')}</span><input className={css.control} type="number" min={10000} max={3600000} step={1000} value={mineru.timeoutMs ?? 600000} onChange={event => setMineru((current: any) => ({ ...current, timeoutMs: Number(event.target.value) }))} onBlur={() => void saveMineru({ timeoutMs: mineru.timeoutMs })} /></label>
+          <label className={css.field}><span>{t('pollInterval')}</span><input className={css.control} type="number" min={500} max={60000} step={100} value={mineru.pollIntervalMs ?? 3000} onChange={event => setMineru((current: any) => ({ ...current, pollIntervalMs: Number(event.target.value) }))} onBlur={() => void saveMineru({ pollIntervalMs: mineru.pollIntervalMs })} /></label>
+          <label className={css.field}><span>{t('dailyLimit')}</span><input className={css.control} type="number" min={1} max={5000} value={mineru.dailyLimit ?? 5000} onChange={event => setMineru((current: any) => ({ ...current, dailyLimit: Number(event.target.value) }))} onBlur={() => void saveMineru({ dailyLimit: mineru.dailyLimit })} /></label>
         </div>
-        <div className={`${css.keyRow} ${css.mineruActionsRow}`}><button className={css.secondaryButton} type="button" disabled={busy || mineruRemote?.testConnection === undefined} onClick={() => void run(async () => { await unwrap(mineruRemote.testConnection()) })}>检测连接</button><a className={css.helpLink} href="https://mineru.net/apiManage/token" target="_blank" rel="noreferrer">打开 MinerU 获取 Token ↗</a></div>
+        <div className={`${css.keyRow} ${css.mineruActionsRow}`}><button className={css.secondaryButton} type="button" disabled={busy || mineruRemote?.testConnection === undefined} onClick={() => void run(async () => { await unwrap(mineruRemote.testConnection()) })}>{t('testConnection')}</button><a className={css.helpLink} href="https://mineru.net/apiManage/token" target="_blank" rel="noreferrer">{t('getMineruToken')}</a></div>
       </article>
 
       <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>SciMaster</h3><p>用于科研写作和 MCP 服务连接。</p></div><span className={sciConfigured ? css.statusGood : css.status}>{status.mcp === 'loading' ? '正在加载…' : sciConfigured ? '已配置' : '未配置'}</span></div>
-        <div className={css.keyRow}><input className={css.control} type="password" placeholder="输入 SciMaster API Key" value={sciKey} onChange={event => setSciKey(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !sciKey.trim() || mcpRemote?.setSciMasterApiKey === undefined} onClick={() => void saveSci()}>保存 Key</button><button className={css.secondaryButton} type="button" disabled={busy || !sciConfigured || mcpRemote?.clearSciMasterApiKey === undefined} onClick={() => void run(async () => { await unwrap(mcpRemote.clearSciMasterApiKey()); setSciConfigured(false) })}>清除</button></div>
-        <a className={css.helpLink} href={SCI_MASTER_KEY_URL} target="_blank" rel="noreferrer">打开 SciMaster 获取 API Key ↗</a>
+        <div className={css.cardHeader}><div><h3>SciMaster</h3><p>{t('sciDescription')}</p></div><span className={sciConfigured ? css.statusGood : css.status}>{status.mcp === 'loading' ? t('loading') : sciConfigured ? t('configured') : t('notConfigured')}</span></div>
+        <div className={css.keyRow}><input className={css.control} type="password" placeholder={t('enterSciKey')} value={sciKey} onChange={event => setSciKey(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !sciKey.trim() || mcpRemote?.setSciMasterApiKey === undefined} onClick={() => void saveSci()}>{t('saveKey')}</button><button className={css.secondaryButton} type="button" disabled={busy || !sciConfigured || mcpRemote?.clearSciMasterApiKey === undefined} onClick={() => void run(async () => { await unwrap(mcpRemote.clearSciMasterApiKey()); setSciConfigured(false) })}>{t('clear')}</button></div>
+        <a className={css.helpLink} href={SCI_MASTER_KEY_URL} target="_blank" rel="noreferrer">{t('getSciKey')}</a>
       </article>
 
       <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>化工社 AIchem</h3><p>化合物、反应与投料计算。公开查询无需 Token，个人反应库与保存操作需要授权。</p></div><span className={chemConfigured ? css.statusGood : css.status}>{statusText('chem', chemConfigured ? 'Token 已配置' : '公开查询')}</span></div>
+        <div className={css.cardHeader}><div><h3>{t('chemTitle')}</h3><p>{t('chemDescription')}</p></div><span className={chemConfigured ? css.statusGood : css.status}>{statusText('chem', chemConfigured ? t('tokenConfigured') : t('publicQueries'))}</span></div>
         <div className={css.keyRow}>
-          <input className={css.control} aria-label="化工社 API Token" type="password" placeholder="输入化工社 API Token" value={chemKey} onChange={event => setChemKey(event.target.value)} autoComplete="off" />
-          <button className={css.primaryButton} type="button" disabled={busy || !chemKey.trim() || !mcpRemote?.setHuagongsheApiKey} onClick={() => void run(async () => { const value = await unwrap(mcpRemote.setHuagongsheApiKey(chemKey)); setChemConfigured(true); setChemKey(''); setChemConnection(value.runtimeState === 'active' ? '已连接' : 'Token 已保存，连接待重试') })}>保存 Token</button>
-          <button className={css.secondaryButton} type="button" disabled={busy || !chemConfigured} onClick={() => void run(async () => { await unwrap(mcpRemote.clearHuagongsheApiKey()); setChemConfigured(false); setChemConnection('') })}>清除</button>
-          <button className={css.secondaryButton} type="button" disabled={busy || !mcpRemote?.list} onClick={() => void run(async () => { const rows = await unwrap(mcpRemote.list()); const record = rows.find((row: any) => row.serverName === 'huagongshe'); if (!record) throw new Error('尚未添加化工社连接，请保存 Token 或在 MCP 设置中添加官方连接。'); const value = await unwrap(mcpRemote.reload(record.id)); if (value.runtimeState !== 'active') throw new Error(value.runtimeError || '化工社连接不可用'); setChemConnection(`已连接 · ${value.tools.length} 个工具`) })}>检测连接</button>
+          <input className={css.control} aria-label={t('chemToken')} type="password" placeholder={t('enterChemToken')} value={chemKey} onChange={event => setChemKey(event.target.value)} autoComplete="off" />
+          <button className={css.primaryButton} type="button" disabled={busy || !chemKey.trim() || !mcpRemote?.setHuagongsheApiKey} onClick={() => void run(async () => { const value = await unwrap(mcpRemote.setHuagongsheApiKey(chemKey)); setChemConfigured(true); setChemKey(''); setChemConnection({ key: value.runtimeState === 'active' ? 'connected' : 'tokenSaved' }) })}>{t('saveToken')}</button>
+          <button className={css.secondaryButton} type="button" disabled={busy || !chemConfigured} onClick={() => void run(async () => { await unwrap(mcpRemote.clearHuagongsheApiKey()); setChemConfigured(false); setChemConnection('') })}>{t('clear')}</button>
+          <button className={css.secondaryButton} type="button" disabled={busy || !mcpRemote?.list} onClick={() => void run(async () => { const rows = await unwrap(mcpRemote.list()); const record = rows.find((row: any) => row.serverName === 'huagongshe'); if (!record) throw new LocalizedError('chemMissing'); const value = await unwrap(mcpRemote.reload(record.id)); if (value.runtimeState !== 'active') throw new Error(value.runtimeError || t('chemUnavailable')); setChemConnection({ key: 'connectedTools', params: { count: value.tools.length } }) })}>{t('testConnection')}</button>
         </div>
-        <a className={css.helpLink} href="https://huagongshe.com/mcp-guide" target="_blank" rel="noreferrer">获取 API Token 与接入说明 ↗</a>
-        {chemConnection ? <p className={css.muted} role="status">{chemConnection}</p> : null}
+        <a className={css.helpLink} href="https://huagongshe.com/mcp-guide" target="_blank" rel="noreferrer">{t('getChemToken')}</a>
+        {chemConnection ? <p className={css.muted} role="status">{renderMessage(chemConnection, t)}</p> : null}
       </article>
 
       <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>生图模型</h3><p>只显示账户模型目录中明确支持生图的候选项。</p></div><span className={css.status}>{statusText('account', '候选模型已同步')}</span></div>
-        <label className={css.field}><span>当前生图模型</span><select className={css.control} value={imageModelIsKnown ? imageModelValue : ''} disabled={busy || status.account !== 'ready'} onChange={event => { const [providerId = '', groupId = '', modelId = ''] = event.target.value.split(VALUE_SEPARATOR); saveImageSelection({ providerId, groupId, modelId }) }}><option value="">自动选择</option>{!imageModelIsKnown && imageModelValue ? <option value={imageModelValue}>{image.providerId} / {image.modelId}（当前配置）</option> : null}{imageGroups.map(group => <optgroup key={`${group.providerId}${VALUE_SEPARATOR}${group.groupId}`} label={group.label}>{group.models.map((model: any) => <option key={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}`} value={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}`}>{model.modelId}{model.name && model.name !== model.modelId ? ` · ${model.name}` : ''}</option>)}</optgroup>)}</select></label>
-        <label className={css.field}><span>默认质量</span><select className={css.control} value={imageQuality} disabled={busy} onChange={event => saveImageQuality(event.target.value as ImageGenerationQuality)}><option value="auto">自动</option><option value="low">低</option><option value="medium">中（推荐）</option><option value="high">高</option></select><small>未在工具中指定 quality 时使用；默认是 medium。</small></label>
+        <div className={css.cardHeader}><div><h3>{t('imageTitle')}</h3><p>{t('imageDescription')}</p></div><span className={css.status}>{statusText('account', t('imageSynced'))}</span></div>
+        <label className={css.field}><span>{t('currentImageModel')}</span><select className={css.control} value={imageModelIsKnown ? imageModelValue : ''} disabled={busy || status.account !== 'ready'} onChange={event => { const [providerId = '', groupId = '', modelId = ''] = event.target.value.split(VALUE_SEPARATOR); saveImageSelection({ providerId, groupId, modelId }) }}><option value="">{t('autoSelect')}</option>{!imageModelIsKnown && imageModelValue ? <option value={imageModelValue}>{image.providerId} / {image.modelId}{t('currentConfig')}</option> : null}{imageGroups.map(group => <optgroup key={`${group.providerId}${VALUE_SEPARATOR}${group.groupId}`} label={group.label}>{group.models.map((model: any) => <option key={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}`} value={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}`}>{model.modelId}{model.name && model.name !== model.modelId ? ` · ${model.name}` : ''}</option>)}</optgroup>)}</select></label>
+        <label className={css.field}><span>{t('defaultQuality')}</span><select className={css.control} value={imageQuality} disabled={busy} onChange={event => saveImageQuality(event.target.value as ImageGenerationQuality)}><option value="auto">{t('auto')}</option><option value="low">{t('low')}</option><option value="medium">{t('medium')}</option><option value="high">{t('high')}</option></select><small>{t('qualityNote')}</small></label>
       </article>
 
       <article className={`${css.card} ${css.variablesCard}`}>
-        <div className={css.cardHeader}><div><h3>自定义变量</h3><p>变量可供 Host、MCP 和允许继承环境的子进程使用。</p></div><span className={css.status}>{statusText('variables', `${variables.length} 个变量`)}</span></div>
-        <div className={css.variableList}>{variables.length === 0 ? <span className={css.muted}>暂无变量</span> : variables.map(variable => <div className={css.variableRow} key={variable.name}><code>{variable.name}</code><span>{variable.configured ? '已配置' : '未配置'}</span><button className={css.textButton} type="button" disabled={busy} onClick={() => void run(async () => setVariables(await unwrap(environmentRemote.deleteVariable(variable.name))))}>删除</button></div>)}</div>
-        <div className={css.variableForm}><input className={css.control} placeholder="变量名，例如 SCI_KEY" value={newName} onChange={event => setNewName(event.target.value)} /><input className={css.control} type="password" placeholder="变量值" value={newValue} onChange={event => setNewValue(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !newName.trim() || !newValue} onClick={() => void saveVariable()}>添加变量</button></div>
+        <div className={css.cardHeader}><div><h3>{t('variablesTitle')}</h3><p>{t('variablesDescription')}</p></div><span className={css.status}>{statusText('variables', t('variableCount', { count: variables.length }))}</span></div>
+        <div className={css.variableList}>{variables.length === 0 ? <span className={css.muted}>{t('noVariables')}</span> : variables.map(variable => <div className={css.variableRow} key={variable.name}><code>{variable.name}</code><span>{variable.configured ? t('configured') : t('notConfigured')}</span><button className={css.textButton} type="button" disabled={busy} onClick={() => void run(async () => setVariables(await unwrap(environmentRemote.deleteVariable(variable.name))))}>{t('delete')}</button></div>)}</div>
+        <div className={css.variableForm}><input className={css.control} placeholder={t('variableName')} value={newName} onChange={event => setNewName(event.target.value)} /><input className={css.control} type="password" placeholder={t('variableValue')} value={newValue} onChange={event => setNewValue(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !newName.trim() || !newValue} onClick={() => void saveVariable()}>{t('addVariable')}</button></div>
       </article>
     </div>
   </section>

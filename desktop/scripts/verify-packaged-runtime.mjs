@@ -91,9 +91,9 @@ const requiredArchivePaths = [
   'node_modules/dsh-better-sidebar-icons/lib/index.js',
   'node_modules/dsh-better-sidebar-icons/lib/client.js',
   'node_modules/dsh-better-sidebar-icons/icons/default_file.svg',
-  'node_modules/dsh-file-review-tab/lib/index.js',
-  'node_modules/dsh-file-review-tab/lib/client.js',
-  'node_modules/dsh-file-review-tab/cordis.patch.yml',
+  'node_modules/dsh-file-review/lib/index.js',
+  'node_modules/dsh-file-review/lib/client.js',
+  'node_modules/dsh-file-review/cordis.patch.yml',
   'node_modules/dsh-wechat/dist/index.js',
   'node_modules/dsh-wechat/dist/client.js',
   'node_modules/@daweifu/capability-menu/lib/index.js',
@@ -686,7 +686,7 @@ async function verifyPluginInventory(url) {
     'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
     'skills', 'reviewer', 'research', 'pubmed', 'execution', 'python', 'runs', 'publications', 'presentations',
   ].map(name => `@zerowallscience/plugin-${name}`)
-  expected.push('dsh-free-search', 'dsh-wechat', 'dsh-file-review-tab', 'dsh-auto-review', '@daweifu/capability-menu', '@daweifu/capability-menu/policy', '@daweifu/capability-menu/search', '@daweifu/capability-menu/invoke', '@changfenhuang/dsh-genui')
+  expected.push('dsh-free-search', 'dsh-wechat', 'dsh-file-review', 'dsh-auto-review', '@daweifu/capability-menu', '@daweifu/capability-menu/policy', '@daweifu/capability-menu/search', '@daweifu/capability-menu/invoke', '@changfenhuang/dsh-genui')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
   const missing = expected.filter(name => !byModule.has(name))
   if (missing.length > 0) throw new Error(`Packaged Host plugin inventory is missing: ${missing.join(', ')}`)
@@ -1101,7 +1101,7 @@ function readArchiveFile(path) {
 
 async function verifySourceRuntimePolicy() {
   const upstream = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'deepseek-harness', 'upstream.json'), 'utf8'))
-  if (upstream.version !== '0.1.2-rc.1' || upstream.tag !== 'dsh-v0.1.2-rc.1') {
+  if (upstream.version !== '0.1.5-rc.2' || upstream.tag !== 'dsh-v0.1.5-rc.2') {
     throw new Error(`Pinned DSH must be rc.1; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
   }
   const sourceDsh = JSON.parse(await readFile(resolve(repositoryRoot, 'deepseek-harness', 'package.json'), 'utf8'))

@@ -60,27 +60,187 @@ function assertFileTreeLayout(container: HTMLElement): void {
   // 1 root + 1 + 2 + 1 + 3 + 2 + 1 = 11 rows in the issue example.
   expect(rows).toHaveLength(11)
 
-  // Indentation is an inline padding-left (depth * 16px) on each row, so it
-  // survives even a stylesheet failure and grows with nesting depth.
+  // Indentation is an inline padding-left (4px + depth * 14px) on each row, so
+  // it survives even a stylesheet failure and grows with nesting depth.
   const paddingLefts = rows.map(row => row.style.paddingLeft)
-  expect(paddingLefts).toContain('0px')
-  expect(paddingLefts).toContain('16px')
+  expect(paddingLefts).toContain('4px')
+  expect(paddingLefts).toContain('18px')
   expect(paddingLefts).toContain('32px')
-  expect(paddingLefts).toContain('48px')
-  expect(paddingLefts).toContain('64px')
+  expect(paddingLefts).toContain('46px')
+  expect(paddingLefts).toContain('60px')
 
-  // Glyphs are inline text content (▾/▸ for dirs, · for files), so they too
-  // survive a stylesheet failure.
-  const icons = Array.from(container.querySelectorAll<HTMLElement>('[class*="ftIcon"]'))
+  // Every row carries an inline glyph: an inline SVG folder/file (no CSS
+  // dependency) plus a text chevron for directories.
+  const icons = Array.from(container.querySelectorAll<HTMLElement>('[class*="ftGlyph"]'))
   expect(icons).toHaveLength(rows.length)
-  const glyphs = icons.map(icon => icon.textContent ?? '')
-  expect(glyphs).toContain('▾')
-  expect(glyphs).toContain('·')
+  expect(container.querySelectorAll('[class*="ftGlyph"] svg')).toHaveLength(rows.length)
+  const chevrons = Array.from(container.querySelectorAll<HTMLElement>('[class*="ftChevron"]'))
+    .map(node => node.textContent ?? '')
+  expect(chevrons).toContain('▸')
+  // Depth rails: one absolutely-positioned guide per nesting level.
+  expect(container.querySelectorAll('[class*="ftGuide"]').length).toBeGreaterThan(0)
 
   // The issue's deepest path is present and collapsible, not clipped away.
   expect(container.textContent).toContain('client.js')
   expect(container.textContent).toContain('README.md')
 }
+
+describe('host isolation contract', () => {
+  // The plugin must never restyle the host: styles are confined to the fence
+  // subtree. A bare element selector (`pre {}`, `button {}`) or a `:global`
+  // block would reach the host's own UI.
+  for (const file of ['GenuiBlock.module.css', 'PlotBlock.module.css']) {
+    it(`${file} stays scoped to its own classes`, () => {
+      const raw = readFileSync(join(process.cwd(), 'src/client', file), 'utf8')
+      expect(raw).not.toContain(':global')
+      // Keyframe stops (`0%`, `from`, `to`) are not selectors.
+      const src = raw.replace(/@keyframes[^{]*\{(?:[^{}]*\{[^}]*\}\s*)*\}/g, '')
+      const offenders: string[] = []
+      for (const match of src.matchAll(/(?:^|\n)([^\n{}/][^\n{]*?)\{/g)) {
+        const selector = (match[1] ?? '').trim()
+        if (selector === '' || selector.startsWith('@') || selector.startsWith('/*')) continue
+        for (const part of selector.split(',').map(p => p.trim())) {
+          if (part === '') continue
+          // Scoping rule: every selector must be ANCHORED by one of our module
+          // classes somewhere. `.table th`, `.card > :last-child` and
+          // `body[data-ds-dark-theme] .panel` are all contained; a bare
+          // `pre { }` or `body { }` would reach the host.
+          if (!/\./.test(part)) {
+            offenders.push(selector.slice(0, 60))
+            break
+          }
+        }
+      }
+      expect(offenders).toEqual([])
+    })
+  }
+})
+
+describe('component design contract (measured defects)', () => {
+  const css = () => readFileSync(join(process.cwd(), 'src/client/GenuiBlock.module.css'), 'utf8')
+
+  it('keeps every control and marker visible in light mode', () => {
+    const c = css()
+    // Measured: the pending step marker had a 4%-black border and a page-coloured
+    // fill (invisible ring); inputs sat on the page colour with the same 4% border.
+    const step = /\.stepMarker \{([^}]*)\}/.exec(c)!
+    expect(step[1]).toMatch(/background: var\(--dsl-g-surface\)/)
+    expect(step[1]).toMatch(/border: 1px solid var\(--dsl-g-border-surface\)/)
+    for (const rule of ['\.input, \.select', '\.textarea']) {
+      const block = new RegExp(`${rule} \\{([^}]*)\\}`).exec(c)!
+      expect(block[1]).toMatch(/background: var\(--dsl-g-surface\)/)
+      expect(block[1]).toMatch(/border: 1px solid var\(--dsl-g-border-surface\)/)
+    }
+  })
+
+  it('reserves the media box before the bytes arrive', () => {
+    // Measured 213x0: an unloaded <img> collapsed and the card looked broken.
+    expect(css()).toMatch(/img\.mediaPlayer \{[^}]*aspect-ratio: 16 \/ 9/)
+    expect(css()).toMatch(/img\.mediaPlayer \{[^}]*object-fit: cover/)
+  })
+
+  it('gives quiz options a selection affordance from the start', () => {
+    // Measured 16x0 (empty inline span): the options read as plain grey bars.
+    const marker = /\.quizMarker \{([^}]*)\}/.exec(css())!
+    expect(marker[1]).toMatch(/display: inline-block/)
+    expect(marker[1]).toMatch(/width: 14px/)
+  })
+
+  it('resets box-sizing inside the block (select vs input grew 26px apart)', () => {
+    expect(css()).toMatch(/\.block \*, \.block \*::before, \.block \*::after,[\s\S]{0,120}?box-sizing: border-box/)
+  })
+
+  it('themes mermaid from host tokens, not a stock palette', () => {
+    const core = readFileSync(join(process.cwd(), 'src/client/mermaid-core.ts'), 'utf8')
+    // Stock themes drew grey boxes with sharp corners next to rounded host UI.
+    expect(core).toMatch(/theme: 'base'/)
+    expect(core).toMatch(/themeVariables: \{/)
+    expect(core).toMatch(/--dsw-alias-bg-layer-2/)
+    expect(core).toMatch(/rx: 8px; ry: 8px/)
+  })
+})
+
+describe('surface elevation contract', () => {
+  it('puts cards on the elevated host layer, not the page layer', () => {
+    const css = readFileSync(join(process.cwd(), 'src/client/GenuiBlock.module.css'), 'utf8')
+    // Dark theme: page 21,21,23 → layer-1 35,35,36 (only 14 units: "a black
+    // box") → layer-2 44,44,46. Cards, stats and callouts must sit on layer-2.
+    const card = /\.card \{([^}]*)\}/.exec(css)
+    expect(card, '.card rule must exist').not.toBeNull()
+    expect(card![1]).toMatch(/background: var\(--dsl-g-surface\)/)
+    const stat = /\.stat \{([^}]*)\}/.exec(css)
+    expect(stat![1]).toMatch(/background: var\(--dsl-g-surface\)/)
+    const callout = /\.callout \{([^}]*)\}/.exec(css)
+    expect(callout![1]).toMatch(/background: var\(--dsl-g-surface\)/)
+  })
+
+  it('gives surfaces a visible outline and a lift (light theme has no layers)', () => {
+    const css = readFileSync(join(process.cwd(), 'src/client/GenuiBlock.module.css'), 'utf8')
+    // Light theme maps every bg layer to white and its border-l1 is 4% black —
+    // a card there would be invisible without border-l2 + a shadow.
+    expect(css).toMatch(/--dsl-g-shadow-card:/)
+    expect(css).toMatch(/--dsl-g-surface: color-mix\(in srgb, var\(--dsw-alias-label-primary\) 10%/)
+    expect(css).toMatch(/--dsl-g-border-surface: color-mix\(in srgb, var\(--dsw-alias-label-primary\) 12%/)
+    for (const rule of ['card', 'stat', 'callout', 'hero', 'accordion']) {
+      const block = new RegExp(`\\.${rule} \\{([^}]*)\\}`).exec(css)
+      expect(block, `.${rule} must exist`).not.toBeNull()
+      // Outline + surface tint are DERIVED from the theme's label colour: the
+      // light theme maps every layer to white, so host layer/border tokens
+      // alone cannot separate a card from the page.
+      expect(block![1], `.${rule} needs a visible outline`).toMatch(/border: 1px solid var\(--dsl-g-border-surface\)/)
+      expect(block![1], `.${rule} needs a lift`).toMatch(/box-shadow: var\(--dsl-g-shadow-card\)/)
+    }
+  })
+})
+
+describe('design-standard contract (research-driven)', () => {
+  const css = () => readFileSync(join(process.cwd(), 'src/client/GenuiBlock.module.css'), 'utf8')
+
+  it('separates adjacent surfaces by the documented minimum', () => {
+    // design-reference.md: light surfaces need a >=4% lightness step OR a
+    // shadow of at least `0 1px 3px rgba(0,0,0,0.10)`. Our light step is a 10%
+    // label tint (255 -> ~231 = 9.4%) and the shadow carries the documented
+    // first layer.
+    expect(css()).toMatch(/--dsl-g-surface: color-mix\(in srgb, var\(--dsw-alias-label-primary\) 10%/)
+    expect(css()).toMatch(/--dsl-g-shadow-card: 0 1px 3px rgba\(0, 0, 0, 0\.10\)/)
+  })
+
+  it('keeps dark elevation as a small overlay, not a light-mode tint', () => {
+    // Dark communicates elevation with the layer step plus a ~4% overlay;
+    // drop shadows are nearly invisible on dark surfaces.
+    const dark = /body\[data-ds-dark-theme\] \.block,[\s\S]{0,200}?--dsl-g-surface: color-mix\(in srgb, var\(--dsw-alias-label-primary\) 4%/.exec(css())
+    expect(dark, 'dark override must use a 4% overlay').not.toBeNull()
+  })
+
+  it('makes a card title a heading, not a 12.5px uppercase label', () => {
+    // The defect: the card title was SMALLER than the card body (12.5 vs
+    // 14.5px) and uppercase, so every card read as a grey label block.
+    const title = /\.cardTitle \{([^}]*)\}/.exec(css())
+    expect(title).not.toBeNull()
+    expect(title![1]).toMatch(/font-size: var\(--dsl-g-font-h3\)/)
+    expect(title![1]).not.toMatch(/text-transform: uppercase/)
+    expect(title![1]).toMatch(/text-transform: none/)
+  })
+
+  it('reserves uppercase tracking for eyebrows only', () => {
+    const c = css()
+    expect(c).toMatch(/\.heroLabel \{[^}]*text-transform: uppercase/)
+    expect(c).toMatch(/\.heroLabel \{[^}]*letter-spacing: 0\.1em/)
+  })
+})
+
+describe('bento card layout contract', () => {
+  it('lets a card absorb the row height and centre its graphic', () => {
+    const css = readFileSync(join(process.cwd(), 'src/client/GenuiBlock.module.css'), 'utf8')
+    // A short card next to a tall one used to pin its content to the top and
+    // leave a dead block underneath; the last child must absorb the slack and
+    // the graphic shapes must centre inside it.
+    expect(css).toMatch(/\.card > :last-child \{[^}]*flex: 1 1 auto/)
+    const centring = /\.card > \.chart,[\s\S]{0,120}?justify-content: center/
+    expect(css).toMatch(centring)
+    expect(css).toMatch(/\.gridSpan \{[^}]*display: flex/)
+  })
+})
 
 describe('GenUI file-tree layout (issue #28)', () => {
   it.skipIf(!hasFenceRegistry)('renders rows, indent and glyphs through the MarkdownText fence harness', () => {
