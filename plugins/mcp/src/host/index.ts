@@ -2,7 +2,7 @@ import type { Context, Fiber } from '@deepseek-ai/cordis'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { lstat, mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { homedir } from 'node:os'
@@ -145,6 +145,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private readonly recordsReady: Promise<void>
   private operation: Promise<void> = Promise.resolve()
   private environmentPoller: NodeJS.Timeout | undefined
+  private environmentFileSignature = ''
   private environmentSignature = ''
   private environmentRefreshInFlight = false
   private readonly secrets = new SecretBrokerClient()
@@ -218,6 +219,11 @@ export class ZeroWallMcpService extends TypertRemoteService {
       output: {
         schema: { type: 'object', additionalProperties: true },
         render: (_args: unknown, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }],
+      },
+      isConcurrencySafe(args: unknown) {
+        if (args === null || typeof args !== 'object' || Array.isArray(args)) return false
+        const action = (args as { action?: unknown }).action
+        return typeof action === 'string' && /(?:^catalog$|list|read|manifest|resolve|inspect|status)/iu.test(action)
       },
       async execute(args: { action: string; arguments?: JsonValue; project_id?: string; module_id?: string; source_path?: string; local_path?: string; remote_path?: string; confirm?: boolean }, exec: any) {
         const remoteName = 'mcp__rmcp__r_files'
@@ -792,7 +798,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
     if (this.environmentPoller !== undefined || process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim() === '') return
     // The initial reconcile already reads current.json. Record that generation
     // as the baseline instead of immediately starting every MCP server twice.
-    this.environmentSignature = managedEnvironmentSignature()
+    this.environmentFileSignature = managedEnvironmentFileSignature()
+    this.environmentSignature = managedEnvironmentSignature(managedEnvironmentRecord(this.environmentFileSignature))
     const configuredInterval = Number(process.env.ZEROWALL_MCP_ENVIRONMENT_POLL_MS)
     const interval = Number.isFinite(configuredInterval) && configuredInterval >= 100 ? configuredInterval : MCP_ENVIRONMENT_POLL_INTERVAL_MS
     this.environmentPoller = setInterval(() => { void this.pollEnvironment() }, interval)
@@ -800,7 +807,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   private async pollEnvironment(): Promise<void> {
     if (this.environmentRefreshInFlight) return
-    const record = managedEnvironmentRecord()
+    const fileSignature = managedEnvironmentFileSignature()
+    if (fileSignature === this.environmentFileSignature) return
+    this.environmentFileSignature = fileSignature
+    const record = managedEnvironmentRecord(fileSignature)
     const signature = managedEnvironmentSignature(record)
     if (signature === this.environmentSignature) return
     this.environmentSignature = signature
@@ -1182,10 +1192,34 @@ export function resolveStdioLaunch(record: Pick<McpServerRecord, 'command' | 'ar
 function isManagedMcp(serverName: string): boolean { return serverName === 'zerowall_managed_bio_tools' || serverName === 'zerowall_managed_ketcher' || serverName === 'zerowall_managed_scimaster' }
 
 type ManagedEnvironmentRecord = { root?: string; health?: string; version?: string; environmentVersion?: string; contentRevision?: number; archiveSha256?: string; mode?: string; manifest?: { python?: { version?: string; relativeSitePackages?: string } } }
-function managedEnvironmentRecord(): ManagedEnvironmentRecord | undefined {
+let managedEnvironmentCache: { path: string; fileSignature: string; record: ManagedEnvironmentRecord | undefined } | undefined
+
+function managedEnvironmentPath(): string | undefined {
   const root = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
-  if (!root) return undefined
-  try { return JSON.parse(readFileSync(join(root, 'current.json'), 'utf8')) as ManagedEnvironmentRecord } catch { return undefined }
+  return root ? join(root, 'current.json') : undefined
+}
+
+/** Cheap identity for the atomically replaced environment state file. */
+export function managedEnvironmentFileSignature(): string {
+  const path = managedEnvironmentPath()
+  if (path === undefined) return 'disabled'
+  try {
+    const info = statSync(path, { bigint: true })
+    return `${path}:${info.size}:${info.mtimeNs}`
+  } catch {
+    return `${path}:missing`
+  }
+}
+
+/** Parse the multi-megabyte environment record at most once per file generation. */
+export function managedEnvironmentRecord(fileSignature = managedEnvironmentFileSignature()): ManagedEnvironmentRecord | undefined {
+  const path = managedEnvironmentPath()
+  if (path === undefined) return undefined
+  if (managedEnvironmentCache?.path === path && managedEnvironmentCache.fileSignature === fileSignature) return managedEnvironmentCache.record
+  let record: ManagedEnvironmentRecord | undefined
+  try { record = JSON.parse(readFileSync(path, 'utf8')) as ManagedEnvironmentRecord } catch { record = undefined }
+  managedEnvironmentCache = { path, fileSignature, record }
+  return record
 }
 
 function managedEnvironmentSignature(record = managedEnvironmentRecord()): string {

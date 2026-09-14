@@ -45,6 +45,28 @@ export interface McpEnvironmentControllerOptions {
   publish(status: McpEnvironmentStatus): void
 }
 
+/** Small durable diagnostic projection; full skill inventories stay in current.json and IPC. */
+export function mcpEnvironmentDiagnostic(status: McpEnvironmentStatus): Record<string, unknown> {
+  return {
+    phase: status.phase,
+    environmentVersion: status.environmentVersion,
+    contentRevision: status.contentRevision,
+    currentSlot: status.currentSlot,
+    updated: status.updated,
+    rollbackAvailable: status.rollbackAvailable,
+    progress: status.progress,
+    message: status.message,
+    onlineEnvironmentVersion: status.onlineEnvironmentVersion,
+    onlineContentRevision: status.onlineContentRevision,
+    updateAvailable: status.updateAvailable,
+    updateRequired: status.updateRequired,
+    lastCheckedAt: status.lastCheckedAt,
+    lastUpdateError: status.lastUpdateError,
+    python: status.python,
+    skillAuditSummary: status.skillAudit?.summary,
+  }
+}
+
 export const MCP_ENVIRONMENT_KEYRING: Record<string, string> = {
   'stable-1': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAu8wAGfgRWqQBdIGcbkwPlBq01SjgEMybgNh3xVv0ej4=\n-----END PUBLIC KEY-----`,
   'stable-2': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAUvKwSI31zGGut3nRi4kRqZGg8eBJskIrfa8Xmp/7VJw=\n-----END PUBLIC KEY-----`,

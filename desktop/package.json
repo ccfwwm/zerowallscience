@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "5.20.4",
+  "version": "5.20.5",
   "description": "ZeroWall Science 4.3 local-first scientific research workbench with the DSH better-sidebar workbench.",
   "private": true,
   "type": "module",

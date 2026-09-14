@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import JSZip from 'jszip'
-import { canonicalManifest, extractZipInWorker, McpEnvironmentController, selectPythonHealthImports, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
+import { canonicalManifest, extractZipInWorker, mcpEnvironmentDiagnostic, McpEnvironmentController, selectPythonHealthImports, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
 
 const roots: string[] = []
 const keys = generateKeyPairSync('ed25519')
@@ -46,6 +46,21 @@ async function environment(root: string, manifest: McpEnvironmentManifest): Prom
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
 describe('MCP environment upgrades', () => {
+  it('keeps the durable status log compact while preserving the skill summary', () => {
+    const diagnostic = mcpEnvironmentDiagnostic({
+      phase: 'ready',
+      environmentVersion: '1.3.0',
+      skillAudit: {
+        summary: { ready: 1, managed: 2, optional: 3, external: 4, incompatible: 5 },
+        skills: Array.from({ length: 200 }, (_, index) => ({ name: `skill-${index}`, path: `skill-${index}`, status: 'ready' as const, detectedImports: [], requirements: [] })),
+      },
+    })
+
+    expect(diagnostic).toMatchObject({ phase: 'ready', environmentVersion: '1.3.0', skillAuditSummary: { ready: 1 } })
+    expect(diagnostic).not.toHaveProperty('skillAudit')
+    expect(JSON.stringify(diagnostic).length).toBeLessThan(1_000)
+  })
+
   it('extracts archives off the main thread and reports file progress', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-mcp-worker-')); roots.push(root)
     const archivePath = join(root, 'environment.zip')

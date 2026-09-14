@@ -13,7 +13,7 @@ import { secureWindow } from './security.js'
 import { resolveDesktopIdentity } from './identity.js'
 import { findDesktopWorkspaceRoot, resolveDesktopIconPath, resolveDesktopResourcePath } from './paths.js'
 import { stopBeforeExit } from './shutdown.js'
-import { McpEnvironmentController, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
+import { mcpEnvironmentDiagnostic, McpEnvironmentController, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
 import { DesktopUpdateController, isUpdateCheckDue, UPDATE_CHECK_INTERVAL_MS } from './updater.js'
 import { resolveRevealPath } from './reveal-path.js'
@@ -361,7 +361,7 @@ app.whenReady().then(async () => {
     publicKeys: MCP_ENVIRONMENT_KEYRING,
     diagnosticPath: mcpEnvironmentLogPath,
     publish: status => {
-      void appendFile(mcpEnvironmentLogPath, `${JSON.stringify({ timestamp: new Date().toISOString(), ...status })}\n`, 'utf8').catch(() => undefined)
+      void appendFile(mcpEnvironmentLogPath, `${JSON.stringify({ timestamp: new Date().toISOString(), ...mcpEnvironmentDiagnostic(status) })}\n`, 'utf8').catch(() => undefined)
       const window = mainWindow
       if (window !== undefined && !window.isDestroyed()) window.webContents.send('desktop:mcp-environment:status-changed', status)
     },
