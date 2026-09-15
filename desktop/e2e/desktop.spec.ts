@@ -18,6 +18,8 @@ const rendererOutput: string[] = []
 
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'zerowall-electron-e2e-')); roots.push(root)
+  mkdirSync(join(root, 'appdata'), { recursive: true })
+  mkdirSync(join(root, 'localappdata'), { recursive: true })
   const packaged = await locatePackagedApp(desktopRoot)
   const environment = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined))
   application = spawn(packaged.executablePath, ['--remote-debugging-port=0', `--user-data-dir=${join(root, 'chromium')}`], {
@@ -88,6 +90,73 @@ afterEach(async () => {
 })
 
 describe('ZeroWall Science Electron', () => {
+  it('starts with the built-in light appearance and no wallpaper', async () => {
+    await expect.poll(() => page.evaluate(() => ({
+      dark: document.body.getAttribute('data-ds-dark-theme'),
+      wallpaper: [...document.body.children].some(element => (element as HTMLElement).style.backgroundImage.includes('url(')),
+      composer: document.documentElement.style.getPropertyValue('--dsh-dream-skin-composer-fill'),
+      modal: document.documentElement.style.getPropertyValue('--dsh-dream-skin-modal-fill'),
+      skin: localStorage.getItem('dsh-dream-skin:skin'),
+      builtin: localStorage.getItem('dsh-dream-skin:builtin-last'),
+    }))).toMatchObject({ dark: null, wallpaper: false, composer: '100%', modal: '100%', builtin: 'light', skin: 'system' })
+    const output = join(desktopRoot, 'dist', 'verification-6.0.2')
+    mkdirSync(output, { recursive: true })
+    await page.screenshot({ path: join(output, 'default-light.png') })
+  })
+
+  it('removes the old factory painting from durable preferences and keeps custom wallpapers', async () => {
+    const patch = readFileSync(join(desktopRoot, '..', 'patches', 'dsh-dream-skin@9.13.1.patch'), 'utf8')
+    const oldImageSource = patch.match(/^-\s*\[WALLPAPER_KEY\]: ("data:image\/jpeg;base64,[^"]+")/mu)?.[1]
+    if (!oldImageSource) throw new Error('The patch must identify the removed factory painting')
+    const oldImage = JSON.parse(oldImageSource) as string
+    const setWallpaper = async (image: string, skin: string) => {
+      await page.evaluate(async ({ image, skin }) => {
+        const response = await fetch('/dream-skin/api', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ method: 'set', patch: {
+            'dsh-dream-skin:wallpaper': image,
+            'dsh-dream-skin:wallpaper-kind': 'image',
+            'dsh-dream-skin:skin': skin,
+            'dsh-dream-skin:composer-opacity': '0.4',
+            'dsh-dream-skin:modal-opacity': '0.6',
+          } }),
+        })
+        if (!response.ok) throw new Error('Failed to seed appearance fixture')
+      }, { image, skin })
+      await page.reload()
+    }
+    await setWallpaper(oldImage, 'nebula')
+    await expect.poll(() => page.evaluate(async () => {
+      const response = await fetch('/dream-skin/api', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ method: 'get' }) })
+      const state = (await response.json()).value
+      return { wallpaper: state['dsh-dream-skin:wallpaper'] ?? null, builtin: state['dsh-dream-skin:builtin-last'], composer: state['dsh-dream-skin:composer-opacity'] }
+    })).toEqual({ wallpaper: null, builtin: 'light', composer: '1' })
+    await page.reload()
+    await expect.poll(() => page.evaluate(() => ({
+      scheme: document.documentElement.style.colorScheme,
+      image: localStorage.getItem('dsh-dream-skin:wallpaper'),
+    }))).toEqual({ scheme: 'light', image: null })
+
+    const custom = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII='
+    try {
+      await setWallpaper(custom, 'abyss')
+      await expect.poll(() => page.evaluate(() => ({
+        scheme: document.documentElement.style.colorScheme,
+        image: localStorage.getItem('dsh-dream-skin:wallpaper'),
+        composer: document.documentElement.style.getPropertyValue('--dsh-dream-skin-composer-fill'),
+      }))).toEqual({ scheme: 'dark', image: custom, composer: '40%' })
+    } finally {
+      await page.evaluate(async () => {
+        await fetch('/dream-skin/api', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ method: 'set', patch: {
+          'dsh-dream-skin:wallpaper': null, 'dsh-dream-skin:wallpaper-kind': null,
+          'dsh-dream-skin:skin': 'system', 'dsh-dream-skin:builtin-last': 'light',
+          'dsh-dream-skin:composer-opacity': '1', 'dsh-dream-skin:modal-opacity': '1',
+        } }) })
+      })
+      await page.reload()
+    }
+  })
+
   it('renders relative Markdown images and loads models in a fresh workspace', async () => {
     const workspacePath = join(root, 'markdown-images')
     mkdirSync(workspacePath)

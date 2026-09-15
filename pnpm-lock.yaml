@@ -17,7 +17,7 @@ overrides:
 packageExtensionsChecksum: sha256-abmiS8QA+Bs4Jm00O277tOk+tRPKWesq7MFubCvSBJ4=
 
 patchedDependencies:
-  dsh-dream-skin@9.13.1: c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176
+  dsh-dream-skin@9.13.1: 76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380
   dsh-free-search@0.4.28: 8b49e133a15d89640dc4c7c32b1cbf492a3fc2d5310856749c31870093bd02ca
 
 importers:
@@ -3173,9 +3173,6 @@ importers:
 
   deepseek-harness/packages/client/ui-model-selection:
     devDependencies:
-      '@deepseek-ai/schemastery':
-        specifier: workspace:^
-        version: link:../../../vendor/schemastery
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -3221,6 +3218,9 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:^
         version: link:../../typert/protocol
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31
@@ -11475,7 +11475,7 @@ importers:
         version: link:../packages/dsh-better-sidebar-icons
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       dsh-file-review:
         specifier: workspace:*
         version: link:../packages/dsh-file-review
@@ -12651,7 +12651,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@18.2.0)
@@ -12808,7 +12808,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
     devDependencies:
       tsdown:
         specifier: 0.22.2
@@ -12989,7 +12989,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       dsh-file-review:
         specifier: workspace:*
         version: link:../../packages/dsh-file-review
@@ -13273,7 +13273,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@18.2.0)
@@ -13421,7 +13421,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -13566,7 +13566,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       dsh-office-tools:
         specifier: github:kw78/dsh-office-tools#d92ac3863ece6248a5f8c1e4aa1958a60b8aaccb
         version: https://codeload.github.com/kw78/dsh-office-tools/tar.gz/d92ac3863ece6248a5f8c1e4aa1958a60b8aaccb(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-agent@deepseek-harness+packages+core+agent)(@deepseek-ai/dsh-fs@deepseek-harness+packages+fs+fs)(@deepseek-ai/dsh-llm@deepseek-harness+packages+llm+llm)(@deepseek-ai/dsh-session@deepseek-harness+packages+core+session)(@deepseek-ai/dsh-tools@deepseek-harness+packages+core+tools)
@@ -13738,7 +13738,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       jimp:
         specifier: ^1.6.1
         version: 1.6.1
@@ -13904,7 +13904,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@18.2.0)
@@ -14061,7 +14061,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@18.2.0)
@@ -14221,7 +14221,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       jszip:
         specifier: 3.10.1
         version: 3.10.1
@@ -14508,7 +14508,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@18.2.0)
@@ -14665,7 +14665,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@18.2.0)
@@ -14819,7 +14819,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       jszip:
         specifier: 3.10.1
         version: 3.10.1
@@ -15248,7 +15248,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@18.2.0)
@@ -15399,7 +15399,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@18.2.0)
@@ -15550,7 +15550,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -15834,7 +15834,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@18.2.0)
@@ -15982,7 +15982,7 @@ importers:
         version: link:../../packages/dsh-better-sidebar
       dsh-dream-skin:
         specifier: 9.13.1
-        version: 9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
+        version: 9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@18.2.0)
@@ -33288,7 +33288,7 @@ snapshots:
 
   dotenv@16.4.5: {}
 
-  dsh-dream-skin@9.13.1(patch_hash=c34a36e0a0d2b819b3105625f757e8d7e9f40290792e3106f3c3fba213326176)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0):
+  dsh-dream-skin@9.13.1(patch_hash=76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0):
     optionalDependencies:
       '@deepseek-ai/cordis': link:deepseek-harness/vendor/cordis
       '@deepseek-ai/dsh-client-locale': link:deepseek-harness/packages/client/locale

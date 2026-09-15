@@ -258,6 +258,15 @@ async function verifyArchivePolicy() {
   if (dreamSkinPackages.length !== 1) throw new Error(`dsh-dream-skin must be packaged exactly once; found ${dreamSkinPackages.length}.`)
   const dreamSkinManifest = JSON.parse(readArchiveFile('node_modules/dsh-dream-skin/package.json').toString('utf8'))
   if (dreamSkinManifest.version !== desktopManifest.dependencies['dsh-dream-skin']) throw new Error(`Packaged dsh-dream-skin must be ${desktopManifest.dependencies['dsh-dream-skin']}; found ${dreamSkinManifest.version}.`)
+  const dreamSkinClient = readArchiveFile('node_modules/dsh-dream-skin/lib/client.js').toString('utf8')
+  const dreamSkinDefaults = dreamSkinClient.match(/const FACTORY_DEFAULTS = \{([\s\S]*?)\n\t\t\};/u)?.[1] ?? ''
+  if (!dreamSkinDefaults.includes('[BUILTIN_LAST_KEY]: "light"')
+    || !dreamSkinDefaults.includes('[STORAGE_KEY]: DEFAULT_SKIN')
+    || !dreamSkinDefaults.includes('[COMPOSER_OPACITY_KEY]: "1"')
+    || /\[WALLPAPER_(?:KEY|URL_KEY|GRADIENT_KEY)\]:/u.test(dreamSkinDefaults)
+    || /data:image\/jpeg;base64,[A-Za-z0-9+/=]{10000}/u.test(dreamSkinClient)) {
+    throw new Error('Dream Skin must ship the built-in light appearance with solid surfaces and no bundled wallpaper.')
+  }
   const forbiddenDreamSkinFiles = archiveFiles.filter(path => path.startsWith('node_modules/dsh-dream-skin/') && (
     /^node_modules\/dsh-dream-skin\/(?:README|LICENSE|scripts|test|tests)\b/iu.test(path)
   ))
