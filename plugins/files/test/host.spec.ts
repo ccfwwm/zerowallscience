@@ -1,9 +1,10 @@
-import { mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PDFDocument, StandardFonts } from 'pdf-lib'
-import { materializeUploadedFile, prepareUploadedFile, readUploadedFile } from '../src/host/index.js'
+import { materializeUploadedFile, prepareUploadedFile, readUploadedFile, ZeroWallFilesService } from '../src/host/index.js'
 
 const roots: string[] = []
 afterEach(async () => {
@@ -11,6 +12,36 @@ afterEach(async () => {
 })
 
 describe('uploaded file preparation', () => {
+  it.each([false, true])('parses native PDF receipts automatically (MinerU configured: %s)', async configured => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-native-pdf-')); roots.push(root)
+    const previous = process.env.DSH_HOME; process.env.DSH_HOME = root
+    try {
+      const document = await PDFDocument.create()
+      document.addPage().drawText('Native PDF local extraction', { x: 72, y: 720, font: await document.embedFont(StandardFonts.Helvetica) })
+      const bytes = Buffer.from(await document.save())
+      const sha = createHash('sha256').update(bytes).digest('hex')
+      const path = join(root, 'native.pdf'); await writeFile(path, bytes)
+      const parsedPath = join(root, 'full.md'); await writeFile(parsedPath, '# MinerU parsed PDF')
+      const ref = { attachmentId: `sha256:${sha}`, name: 'native.pdf', bytes: bytes.length }
+      const agent = {}
+      const parse = vi.fn().mockResolvedValue({ artifacts: [{ name: 'full.md', path: parsedPath }] })
+      const services = {
+        agents: { get: (id: string) => id === 'session-1' ? agent : undefined },
+        fileUploads: { resolve: (owner: unknown, receipt: string) => owner === agent && receipt === 'receipt-1' ? ref : undefined },
+        attachments: { fileHostPath: () => path },
+        zerowallMineru: { getConfigStatus: async () => ({ tokenConfigured: configured }), parse },
+      }
+      const service = Object.create(ZeroWallFilesService.prototype) as ZeroWallFilesService
+      Object.defineProperty(service, 'ctx', { value: { get: (name: keyof typeof services) => services[name], sessions: { get: () => ({}) } } })
+      const prepared = await service.prepareNative({ sessionId: 'session-1', receiptId: 'receipt-1' })
+      expect(prepared.content).toContain(configured ? 'MinerU parsed PDF' : 'Native PDF local extraction')
+      expect(parse).toHaveBeenCalledTimes(configured ? 1 : 0)
+      const enriched = await service.enrichNative('session-1', ref as never)
+      expect(enriched).toMatchObject({ attachmentId: ref.attachmentId, content: prepared.content, status: 'parsed' })
+      await expect(service.downloadOriginal({ sessionId: 'session-1', attachmentId: ref.attachmentId })).resolves.toMatchObject({ data: bytes.toString('base64') })
+      await expect(service.prepareNative({ sessionId: 'other-session', receiptId: 'receipt-1' })).rejects.toThrow('not uploaded for this session')
+    } finally { if (previous === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previous }
+  })
   it('stores a content-addressed text file and supports bounded reads', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-files-'))
     roots.push(root)

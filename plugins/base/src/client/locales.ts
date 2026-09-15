@@ -4,6 +4,11 @@ import { NS } from '../shared/client-helpers.js'
 
 /** Simplified Chinese is the product default and the key-set source of truth. */
 export const zh = {
+  'wechat.label': '微信 WebChat',
+  'wechat.online': '已连接',
+  'wechat.offline': '未连接',
+  'wechat.waiting': '等待确认',
+  'wechat.unavailable': '状态不可用',
   'github.project': 'GitHub 项目',
   'common.close': '关闭',
   'common.refresh': '刷新',
@@ -348,6 +353,11 @@ export type ZeroWallKey = keyof typeof zh
 
 /** English dictionary, kept key-identical to the Chinese source of truth. */
 export const en: Record<ZeroWallKey, string> = {
+  'wechat.label': 'WeChat',
+  'wechat.online': 'Connected',
+  'wechat.offline': 'Disconnected',
+  'wechat.waiting': 'Awaiting confirmation',
+  'wechat.unavailable': 'Status unavailable',
   'github.project': 'GitHub project',
   'common.close': 'Close',
   'common.refresh': 'Refresh',

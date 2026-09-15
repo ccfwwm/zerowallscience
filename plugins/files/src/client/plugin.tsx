@@ -14,6 +14,7 @@ interface AttachmentActionDetail {
   sessionId: string
   cwd?: string
   view?: 'original' | 'parsed'
+  complete?: (success: boolean) => void
 }
 
 interface FilesRemote {
@@ -229,14 +230,14 @@ async function openParsedAttachment(ctx: ClientContext, remote: FilesRemote, det
   }
 }
 
-async function copyAttachment(remote: FilesRemote, detail: AttachmentActionDetail): Promise<void> {
+async function copyAttachment(remote: FilesRemote, detail: AttachmentActionDetail): Promise<boolean> {
   let downloaded: UploadedFileBytes | undefined
   try {
     const response = await remote.downloadOriginal({ sessionId: detail.sessionId, attachmentId: detail.file.attachmentId })
     const file = remoteValue<UploadedFileBytes>('zerowallFiles.downloadOriginal', response)
     downloaded = file
     const desktop = (window as unknown as { zerowallDesktop?: { copyFile?(input: { name: string; mediaType: string; data: string }): Promise<boolean> } }).zerowallDesktop
-    if (await desktop?.copyFile?.({ name: file.name, mediaType: file.mediaType, data: file.data })) return
+    if (desktop?.copyFile !== undefined) return await desktop.copyFile({ name: file.name, mediaType: file.mediaType, data: file.data })
   } catch {
     // Browser clipboard fallback below preserves a useful result.
   }
@@ -245,12 +246,13 @@ async function copyAttachment(remote: FilesRemote, detail: AttachmentActionDetai
       const binary = atob(downloaded.data)
       const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
       await navigator.clipboard.write([new ClipboardItem({ [downloaded.mediaType || 'application/octet-stream']: new Blob([bytes], { type: downloaded.mediaType || 'application/octet-stream' }) })])
-      return
+      return true
     } catch {
       // Text fallback below is still preferable to dropping the action.
     }
   }
-  await navigator.clipboard.writeText(detail.file.name)
+  // A copied filename is not a copied file. Let the caller show a failure.
+  return false
 }
 
 export function apply(ctx: ClientContext): void {
@@ -271,7 +273,11 @@ export function apply(ctx: ClientContext): void {
       if (detail?.view === 'parsed') void openParsedAttachment(ctx, remote, detail)
       else void openOriginalAttachment(ctx, remote, detail)
     }
-    const copy = (event: Event): void => { void copyAttachment(remote, (event as CustomEvent<AttachmentActionDetail>).detail) }
+    const copy = (event: Event): void => {
+      event.preventDefault()
+      const detail = (event as CustomEvent<AttachmentActionDetail>).detail
+      void copyAttachment(remote, detail).then(success => detail.complete?.(success), () => detail.complete?.(false))
+    }
     window.addEventListener('zerowall:attachment-open', open)
     window.addEventListener('zerowall:attachment-copy', copy)
     const readd = (event: Event): void => {

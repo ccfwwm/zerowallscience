@@ -623,7 +623,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
     const pointer = {
       name: 'capability-menu-catalog',
       text: [
-        `Use capability_search for on-demand tools and skills listed in ${catalogPath}, then call capability_execute with one exact id. Disabled capabilities require a settings change.`,
+        'Use capability_search for bounded on-demand tool and skill summaries, then capability_execute with one exact id. Do not read the full capability catalog file into context. For MCP connection status, call mcp_connect directly without arguments; pass a server only to connect it. Disabled capabilities require a settings change.',
       ].join('\n'),
     }
     const withoutPointer = projected.sections.filter(section => section.name !== pointer.name)

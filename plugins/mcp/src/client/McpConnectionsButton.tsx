@@ -15,7 +15,7 @@ import { NS } from '@zerowallscience/plugin-base/client-helpers'
 import css from './McpConnectionsButton.module.css'
 
 type McpTransport = 'stdio' | 'streamable-http'
-type McpRuntimeState = 'disabled' | 'starting' | 'blocked' | 'active' | 'error'
+type McpRuntimeState = 'idle' | 'disabled' | 'starting' | 'blocked' | 'active' | 'error'
 
 interface ReconnectPolicy {
   enabled: boolean
@@ -173,7 +173,7 @@ export function McpConnectionsButton(props: Props) {
       setEnvironment(status)
       if (status.phase === 'ready' || status.phase === 'manual') void refresh()
     })
-  }, [getSciMasterCredentialStatus, open, refresh])
+  }, [getSciMasterCredentialStatus, getRdatalinuxCredentialStatus, open, refresh])
 
   const saveRdatalinuxAuthorization = async () => {
     if (rdatalinuxAuthorization.trim() === '') return
@@ -288,6 +288,7 @@ export function McpConnectionsButton(props: Props) {
       await refresh(saved.id)
     } catch (reason) {
       setError(message(reason))
+    } finally {
       setBusy(false)
     }
   }
@@ -301,6 +302,7 @@ export function McpConnectionsButton(props: Props) {
       await refresh(reloaded.id)
     } catch (reason) {
       setError(message(reason))
+    } finally {
       setBusy(false)
     }
   }
@@ -317,6 +319,7 @@ export function McpConnectionsButton(props: Props) {
     } catch (reason) {
       setError(message(reason))
       setDeleteTarget(undefined)
+    } finally {
       setBusy(false)
     }
   }
@@ -345,8 +348,8 @@ export function McpConnectionsButton(props: Props) {
       await refresh()
     } catch (reason) {
       setError(message(reason))
-      setBusy(false)
     } finally {
+      setBusy(false)
       if (importInput.current) importInput.current.value = ''
     }
   }

@@ -5,7 +5,7 @@ description: Search biomedical and cross-disciplinary literature, read open full
 
 # Literature and project evidence
 
-Use capability_search to discover pubmed tools and capability_execute for on-demand calls. Prefer the native pubmed tools for literature; do not repeat the same search through Bio Tools unless a distinct capability is needed.
+Use the available native PubMed tools directly. Prefer the native pubmed tools for literature; do not repeat the same search through Bio Tools unless a distinct capability is needed.
 
 - Broad search: pubmed_search_papers (PubMed, Europe PMC, OpenAlex by default; Semantic Scholar is opt-in). Report perSource failures and retain identifiers and provenance.
 - Structured PubMed queries: pubmed_search_articles. Spelling and indexing: pubmed_spell_check, pubmed_lookup_mesh.

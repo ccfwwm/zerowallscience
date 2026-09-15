@@ -31,7 +31,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Required services (cordis fiber inject). The shared ZeroWall base client
  * mounts the Typert remote contribution exactly once; this package only reads
  * the resulting namespace and must not mount it a second time. */
-export const inject = ['slots', 'locale', 'remote']
+export const inject = ['slots', 'locale', 'remote', 'remote.capabilityPolicy', 'sessions']
 
 /** Register the 能力管理 section once `settings.section` is on the ledger. */
 export async function apply(ctx: ClientContext & { slots: SlotRegistry }): Promise<() => void> {
@@ -122,44 +122,53 @@ export async function apply(ctx: ClientContext & { slots: SlotRegistry }): Promi
   // namespace is unavailable, but never register the same methods here.
   const mountError: string | undefined = undefined
   const t = ctx.locale.bind(NS) as CapabilitySectionInjected['t']
+  const policyRemote = ctx.get('remote.capabilityPolicy')
+  const sessionService = ctx.get('sessions')
   const remote = (): unknown => {
     try {
       // Resolve the mounted namespace service by its registered key; a property
       // access (`ctx.remote.capabilityPolicy`) would hit the "without inject"
       // gate because the namespace is mounted by this plugin, not injected.
-      return (ctx.get as (key: string) => unknown)('remote.capabilityPolicy')
+      return policyRemote
     } catch (error) {
       console.error('[capability-menu] ctx.get("remote.capabilityPolicy") failed:', error)
       return undefined
     }
   }
-  const injected = (): CapabilitySectionInjected & { mountError?: string; remoteKeys?: string } => {
-    const raw = remote() as CapabilitySectionInjected['remote']
-    const currentSession = () => {
-      const sessions = ctx.get('sessions') as unknown as { list: { getSnapshot(): { current?: string } } } | undefined
-      return sessions?.list.getSnapshot().current
-    }
-    const namespace = raw == null ? raw : new Proxy(raw, {
-      get(target, key) {
-        if (key === 'getConfig' || key === 'classifyAll' || key === 'getCatalogDocs' || key === 'resetDefaults') return () => Reflect.apply(target[key], target, [currentSession()])
-        if (key === 'updateConfig') return (partial: Record<string, unknown>) => Reflect.apply(target.updateConfig, target, [partial, currentSession()])
-        const value = Reflect.get(target, key)
-        return typeof value === 'function' ? value.bind(target) : value
-      },
-    })
-    const remoteKeys = namespace == null
-      ? undefined
-      : Object.keys(namespace).filter(k => ['getConfig', 'updateConfig', 'classifyAll'].includes(k)).join(',')
-    return {
-      remote: namespace as CapabilitySectionInjected['remote'],
-      subscribeSession: (listener: () => void) => {
-        const sessions = ctx.get('sessions') as unknown as { list: { subscribe(listener: () => void): () => void } } | undefined
-        return sessions?.list.subscribe(listener) ?? (() => {})
-      },
-      t,
-      ...mountError !== undefined ? { mountError } : {},
-      ...remoteKeys !== undefined ? { remoteKeys } : {},
-    }
+  const currentSession = () => {
+    const sessions = sessionService as unknown as { list: { getSnapshot(): { current?: string } } } | undefined
+    return sessions?.list.getSnapshot().current
+  }
+  // Slot injection may be evaluated more than once while Settings reconciles.
+  // Keep the namespace Proxy and injected props stable so CapabilitySection's
+  // effect cannot treat every parent render as a new remote and refetch forever.
+  const raw = remote() as CapabilitySectionInjected['remote']
+  const namespace = raw == null ? raw : new Proxy(raw, {
+    get(target, key) {
+      if (key === 'getConfig' || key === 'classifyAll' || key === 'getCatalogDocs' || key === 'resetDefaults') return () => Reflect.apply(target[key], target, [currentSession()])
+      if (key === 'updateConfig') return (partial: Record<string, unknown>) => Reflect.apply(target.updateConfig, target, [partial, currentSession()])
+      const value = Reflect.get(target, key)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  })
+  const remoteKeys = namespace == null
+    ? undefined
+    : Object.keys(namespace).filter(k => ['getConfig', 'updateConfig', 'classifyAll'].includes(k)).join(',')
+  const injected: CapabilitySectionInjected & { mountError?: string; remoteKeys?: string } = {
+    remote: namespace as CapabilitySectionInjected['remote'],
+    subscribeSession: (listener: () => void) => {
+      const sessions = sessionService as unknown as { list: { subscribe(listener: () => void): () => void } } | undefined
+      let selected = currentSession()
+      return sessions?.list.subscribe(() => {
+        const next = currentSession()
+        if (next === selected) return
+        selected = next
+        listener()
+      }) ?? (() => {})
+    },
+    t,
+    ...mountError !== undefined ? { mountError } : {},
+    ...remoteKeys !== undefined ? { remoteKeys } : {},
   }
 
   ctx.slots.inject('settings.section', () => ctx.slots.register({
@@ -168,7 +177,7 @@ export async function apply(ctx: ClientContext & { slots: SlotRegistry }): Promi
     order: 12,
     label: () => t('nav'),
     locale: NS,
-    inject: injected,
+    inject: () => injected,
   }, CapabilitySection))
 
   return () => {}

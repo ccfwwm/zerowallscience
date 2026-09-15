@@ -29,7 +29,8 @@ if (!dshEntryPath) {
 } else {
   process.argv = [process.execPath, dshEntryPath, ...dshArguments]
   try {
-    await import(pathToFileURL(dshEntryPath).href)
+    const { runCli } = await import(pathToFileURL(dshEntryPath).href)
+    await runCli()
   } catch (error) {
     report('DSH entry failed', error)
     process.exitCode = 1

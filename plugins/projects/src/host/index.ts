@@ -1,21 +1,18 @@
 import type { Context } from '@deepseek-ai/cordis'
-import { SessionId, type SessionHeader } from '@deepseek-ai/dsh-session'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { access, link, mkdir, rm, writeFile } from 'node:fs/promises'
-import { randomUUID } from 'node:crypto'
-import { dirname } from 'node:path'
+import { rm } from 'node:fs/promises'
+import { collectProjectSessionArchives, restoreSessionArchives } from './session-archives.js'
+export { collectProjectSessionArchives, restoreSessionArchives } from './session-archives.js'
 import {
-  createSessionArchive,
   parseProjectBundle,
-  parseSessionArchiveHeader,
   ResearchStore,
 } from '@zerowallscience/research-store'
 import type {
   CreateMcpServerInput,
   McpServerRecord,
   ProjectPreferencesRecord,
-  SessionArchiveV1,
   UpdateMcpServerInput,
   UpdateProjectInput,
 } from '@zerowallscience/research-store/types'
@@ -158,101 +155,6 @@ export class ZeroWallProjectsService extends TypertRemoteService {
   }
 }
 
-interface RestoredSessionArchive {
-  id: string
-  path: string
-}
-
-export async function collectProjectSessionArchives(
-  persistence: SessionPersistence,
-  rootPath: string,
-): Promise<SessionArchiveV1[]> {
-  if (!persistence.supportsRawArtifacts) throw new Error('The configured DSH session backend cannot export raw sessions.')
-  const headers = (await persistence.list())
-    .filter((header) => header.cwd === rootPath)
-    .sort((left, right) => left.createdAt - right.createdAt || String(left.id).localeCompare(String(right.id)))
-  const archives: SessionArchiveV1[] = []
-  for (const header of headers) {
-    const raw = await persistence.readRaw(header.id)
-    if (raw === undefined) throw new Error(`DSH session disappeared during export: ${String(header.id)}`)
-    const archive = createSessionArchive(raw.content)
-    if (archive.sessionId !== String(header.id)) throw new Error('DSH session export id does not match its persistence header.')
-    archives.push(archive)
-  }
-  return archives
-}
-
-export async function restoreSessionArchives(
-  persistence: SessionPersistence,
-  archives: readonly SessionArchiveV1[],
-  isLive: (id: string) => boolean = () => false,
-): Promise<RestoredSessionArchive[]> {
-  if (!persistence.supportsRawArtifacts) throw new Error('The configured DSH session backend cannot import raw sessions.')
-  const prepared = archives.map((archive) => {
-    const parsed = parseSessionArchiveHeader(archive.content)
-    const header = toSessionHeader(parsed)
-    const location = persistence.locate(header)
-    if (location === undefined || location.kind !== 'jsonl' || !location.path.toLowerCase().endsWith('.jsonl')) {
-      throw new Error('ZeroWall session import requires the plaintext JSONL DSH session backend.')
-    }
-    return { archive, header, path: location.path }
-  })
-
-  for (const entry of prepared) {
-    if (isLive(entry.archive.sessionId)) throw new Error(`DSH session is currently live: ${entry.archive.sessionId}`)
-    if (await persistence.readRaw(entry.header.id) !== undefined || await pathExists(entry.path)) {
-      throw new Error(`DSH session already exists: ${entry.archive.sessionId}`)
-    }
-  }
-
-  const restored: RestoredSessionArchive[] = []
-  try {
-    for (const entry of prepared) {
-      await publishNewSession(entry.path, entry.archive.content)
-      restored.push({ id: entry.archive.sessionId, path: entry.path })
-    }
-    return restored
-  } catch (error) {
-    await Promise.all(restored.map((entry) => rm(entry.path, { force: true })))
-    throw error
-  }
-}
-
-function toSessionHeader(header: ReturnType<typeof parseSessionArchiveHeader>): SessionHeader {
-  return {
-    version: header.version,
-    id: SessionId(header.id),
-    createdAt: header.createdAt,
-    isSeeded: header.seedLength !== undefined,
-    ...(header.cwd === undefined ? {} : { cwd: header.cwd }),
-    ...(header.parentSession === undefined ? {} : { parentSession: SessionId(header.parentSession) }),
-    ...(header.seedLength === undefined ? {} : { seedLength: header.seedLength }),
-    ...(header.origin === undefined ? {} : { origin: header.origin }),
-    delegationDepth: header.delegationDepth,
-    ...(header.agentPreset === undefined ? {} : { agentPreset: header.agentPreset }),
-  }
-}
-
-async function publishNewSession(path: string, content: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true })
-  const temporary = `${path}.${randomUUID()}.tmp`
-  try {
-    await writeFile(temporary, content, { encoding: 'utf8', flag: 'wx' })
-    await link(temporary, path)
-  } finally {
-    await rm(temporary, { force: true })
-  }
-}
-
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await access(path)
-    return true
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
-    throw error
-  }
-}
 
 export function apply(ctx: Context): void {
   ctx.plugin(ZeroWallProjectsService)

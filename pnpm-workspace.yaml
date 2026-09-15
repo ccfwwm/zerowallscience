@@ -10,6 +10,7 @@ packages:
   - deepseek-harness/native/system
   - deepseek-harness/native/system/packages/*
   - deepseek-harness/apps/*
+  - deepseek-harness/benchmarks
   - deepseek-harness/website
   - deepseek-harness/examples
   - deepseek-harness/python/sdk-runtime

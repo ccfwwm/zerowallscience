@@ -13,6 +13,8 @@ const MIB = 1024 * 1024
 const packageRoot = resolve(import.meta.dirname, '..')
 const repositoryRoot = resolve(packageRoot, '..')
 const pinnedUpstream = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'deepseek-harness', 'upstream.json'), 'utf8'))
+const pinnedIntegrations = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'integrations', 'upstream-sources.json'), 'utf8'))
+const desktopManifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
 const desktopOnly = process.argv.includes('--desktop-only')
 
 if (process.argv.includes('--audit-source')) {
@@ -29,6 +31,9 @@ const archiveEntries = listPackage(asarPath, { isPack: false })
 const archiveFiles = archiveEntries.map(normalizeArchivePath)
 const archiveEntryByPath = new Map(archiveEntries.map(entry => [normalizeArchivePath(entry), entry.replace(/^[/\\]+/, '')]))
 const archiveSet = new Set(archiveFiles)
+if (archiveFiles.some(path => path.startsWith('node_modules/@daweifu/capability-menu/'))) {
+  throw new Error('Removed capability-menu module is still in the packaged runtime.')
+}
 const packagedManifest = JSON.parse(readArchiveFile('package.json').toString('utf8'))
 const requiredArchivePaths = [
   'out/main/index.js',
@@ -96,8 +101,6 @@ const requiredArchivePaths = [
   'node_modules/dsh-file-review/cordis.patch.yml',
   'node_modules/dsh-wechat/dist/index.js',
   'node_modules/dsh-wechat/dist/client.js',
-  'node_modules/@daweifu/capability-menu/lib/index.js',
-  'node_modules/@daweifu/capability-menu/lib/client.js',
   'node_modules/dsh-auto-review/lib/index.js',
   'node_modules/dsh-auto-review/lib/client.js',
   'node_modules/dsh-free-search/lib/index.js',
@@ -107,7 +110,8 @@ const requiredArchivePaths = [
   'node_modules/@changfenhuang/dsh-genui/lib/client.js',
   'node_modules/@changfenhuang/dsh-genui/lib/assets/mermaid.js',
   'node_modules/@changfenhuang/dsh-genui/lib/assets/three.js',
-  'node_modules/@changfenhuang/dsh-genui/lib/assets/echarts.js',
+  'node_modules/@changfenhuang/dsh-genui/lib/assets/echarts-core.js',
+  'node_modules/@changfenhuang/dsh-genui/lib/assets/echarts-full.js',
   'node_modules/@changfenhuang/dsh-genui/SKILL.md',
   'node_modules/@changfenhuang/dsh-genui/cordis.patch.yml',
   'node_modules/dsh-wechat/cordis.patch.yml',
@@ -179,20 +183,25 @@ function verifyArchivePolicy() {
   const betterSidebarPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-better-sidebar/package.json'))
   if (betterSidebarPackages.length !== 1) throw new Error(`dsh-better-sidebar must be packaged exactly once; found ${betterSidebarPackages.length}.`)
   const betterSidebarManifest = JSON.parse(readArchiveFile('node_modules/dsh-better-sidebar/package.json').toString('utf8'))
-  if (betterSidebarManifest.version !== '0.18.0') throw new Error(`Packaged dsh-better-sidebar must be 0.18.0; found ${betterSidebarManifest.version}.`)
+  if (`v${betterSidebarManifest.version}` !== pinnedIntegrations.betterSidebar.tag) throw new Error(`Packaged dsh-better-sidebar must be ${pinnedIntegrations.betterSidebar.tag}; found ${betterSidebarManifest.version}.`)
   const betterSidebarClient = readArchiveFile('node_modules/dsh-better-sidebar/lib/client.js').toString('utf8')
   const betterSidebarInject = [...betterSidebarClient.matchAll(/const inject = \[[\s\S]*?\];/gu)]
     .map(match => [...match[0].matchAll(/["']([^"']+)["']/gu)].map(value => value[1]))
     .find(names => ['slots', 'sessions', 'connection', 'locale', 'modules'].every(name => names.includes(name)))
-  // Sidebar 0.19+ uses the module system and session-scoped context for its
-  // conversation bridge; it intentionally does not list conversation in the
-  // legacy inject array. Older packages still require the explicit injection.
-  if (betterSidebarManifest.version !== '0.18.0'
+  const moduleSidebar = betterSidebarClient.startsWith('window.__ModuleLoader__.load(')
+  // Current Sidebar resolves conversation lazily through ctx.get and routes
+  // draft edits through the session scope. Legacy bundles use eager injection.
+  if (!moduleSidebar
     && betterSidebarClient.includes('ctx.get("conversation")')
     && (betterSidebarInject === undefined || !betterSidebarInject.includes('conversation'))) {
     throw new Error('Packaged dsh-better-sidebar accesses conversation without declaring it in the client inject list.')
   }
-  if (betterSidebarManifest.version !== '0.18.0' && !betterSidebarClient.includes('expandedRef.current')) {
+  if (moduleSidebar) {
+    for (const marker of ['ctx.sessions.scope(sessionId)', 'conversation.input.for(actx)', 'slash/input-insert-reference']) {
+      if (!betterSidebarClient.includes(marker)) throw new Error(`Packaged dsh-better-sidebar is missing its session draft bridge: ${marker}`)
+    }
+  }
+  if (!betterSidebarClient.includes('expandedRef.current')) {
     throw new Error('Packaged dsh-better-sidebar is missing the stable expanded-directory snapshot used by file-tree refreshes.')
   }
   const presentationsClient = readArchiveFile('node_modules/@zerowallscience/plugin-presentations/lib/client.js').toString('utf8')
@@ -235,7 +244,7 @@ function verifyArchivePolicy() {
   const dreamSkinPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-dream-skin/package.json'))
   if (dreamSkinPackages.length !== 1) throw new Error(`dsh-dream-skin must be packaged exactly once; found ${dreamSkinPackages.length}.`)
   const dreamSkinManifest = JSON.parse(readArchiveFile('node_modules/dsh-dream-skin/package.json').toString('utf8'))
-  if (dreamSkinManifest.version !== '8.30.1') throw new Error(`Packaged dsh-dream-skin must be 8.30.1; found ${dreamSkinManifest.version}.`)
+  if (dreamSkinManifest.version !== desktopManifest.dependencies['dsh-dream-skin']) throw new Error(`Packaged dsh-dream-skin must be ${desktopManifest.dependencies['dsh-dream-skin']}; found ${dreamSkinManifest.version}.`)
   const forbiddenDreamSkinFiles = archiveFiles.filter(path => path.startsWith('node_modules/dsh-dream-skin/') && (
     /^node_modules\/dsh-dream-skin\/(?:README|LICENSE|scripts|test|tests)\b/iu.test(path)
   ))
@@ -243,8 +252,8 @@ function verifyArchivePolicy() {
   const freeSearchPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-free-search/package.json'))
   if (freeSearchPackages.length !== 1) throw new Error(`dsh-free-search must be packaged exactly once; found ${freeSearchPackages.length}.`)
   const freeSearchManifest = JSON.parse(readArchiveFile('node_modules/dsh-free-search/package.json').toString('utf8'))
-  if (freeSearchManifest.version !== '0.4.24' || freeSearchManifest.license !== 'MIT') {
-    throw new Error(`Packaged dsh-free-search must be MIT-licensed 0.4.24; found ${freeSearchManifest.version} (${freeSearchManifest.license}).`)
+  if (freeSearchManifest.version !== desktopManifest.dependencies['dsh-free-search'] || freeSearchManifest.license !== 'MIT') {
+    throw new Error(`Packaged dsh-free-search must be MIT-licensed ${desktopManifest.dependencies['dsh-free-search']}; found ${freeSearchManifest.version} (${freeSearchManifest.license}).`)
   }
   const freeSearchInject = freeSearchManifest.dsh?.client?.inject
   if (!Array.isArray(freeSearchInject) || !freeSearchInject.includes('slots') || !freeSearchInject.includes('commandUi')) {
@@ -267,7 +276,7 @@ function verifyArchivePolicy() {
     const packagePaths = archiveFiles.filter(path => path.endsWith(`@zerowallscience/${name}/package.json`))
     if (packagePaths.length !== 1) throw new Error(`@zerowallscience/${name} must be packaged exactly once; found ${packagePaths.length}.`)
   }
-  for (const name of ['platform-client', 'platform-host']) {
+  for (const name of ['platform-client', 'platform-host', 'plugin-wechat']) {
     if (archiveFiles.some(path => path.includes(`@zerowallscience/${name}/`))) throw new Error(`Legacy package @zerowallscience/${name} must not be packaged.`)
   }
   if (archiveFiles.some(path => path.startsWith('node_modules/@zerowallscience/plugin-web-search/'))) {
@@ -682,11 +691,14 @@ async function verifyPluginInventory(url) {
     throw new Error(`Packaged Host plugin inventory is unavailable: ${JSON.stringify(envelope)}`)
   }
   const entries = envelope.result.value.entries
+  if (entries.some(entry => String(entry?.moduleName).startsWith('@daweifu/capability-menu'))) {
+    throw new Error('Removed capability-menu module is still mounted in the Host.')
+  }
   const expected = [
     'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
     'skills', 'reviewer', 'research', 'pubmed', 'execution', 'python', 'runs', 'publications', 'presentations',
   ].map(name => `@zerowallscience/plugin-${name}`)
-  expected.push('dsh-free-search', 'dsh-wechat', 'dsh-file-review', 'dsh-auto-review', '@daweifu/capability-menu', '@daweifu/capability-menu/policy', '@daweifu/capability-menu/search', '@daweifu/capability-menu/invoke', '@changfenhuang/dsh-genui')
+  expected.push('dsh-free-search', 'dsh-wechat', 'dsh-file-review', '@changfenhuang/dsh-genui')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
   const missing = expected.filter(name => !byModule.has(name))
   if (missing.length > 0) throw new Error(`Packaged Host plugin inventory is missing: ${missing.join(', ')}`)
@@ -1102,7 +1114,7 @@ function readArchiveFile(path) {
 async function verifySourceRuntimePolicy() {
   const upstream = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'deepseek-harness', 'upstream.json'), 'utf8'))
   if (upstream.version !== '0.1.5-rc.2' || upstream.tag !== 'dsh-v0.1.5-rc.2') {
-    throw new Error(`Pinned DSH must be rc.1; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
+    throw new Error(`Pinned DSH must be rc.2; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
   }
   const sourceDsh = JSON.parse(await readFile(resolve(repositoryRoot, 'deepseek-harness', 'package.json'), 'utf8'))
   if (sourceDsh.version !== upstream.version) throw new Error(`DSH source package must be ${upstream.version}; found ${sourceDsh.version}.`)
@@ -1127,7 +1139,7 @@ async function verifySourceRuntimePolicy() {
   }
 
   const wechat = JSON.parse(await readFile(resolve(repositoryRoot, 'packages', 'dsh-wechat', 'package.json'), 'utf8'))
-  if (wechat.name !== 'dsh-wechat' || wechat.version !== '0.8.0') throw new Error(`Expected the pinned dsh-wechat snapshot; found ${wechat.name}@${wechat.version}.`)
+  if (wechat.name !== 'dsh-wechat' || wechat.version !== pinnedIntegrations.wechat.version) throw new Error(`Expected the pinned dsh-wechat snapshot; found ${wechat.name}@${wechat.version}.`)
   await access(resolve(repositoryRoot, 'packages', 'dsh-wechat', 'dist', 'index.js'))
   const stableProfile = await readFile(resolve(repositoryRoot, 'profiles', 'generated', 'stable.yml'), 'utf8')
   const desktopPatch = await readFile(resolve(repositoryRoot, 'desktop', 'build', 'zerowall.patch.yml'), 'utf8')

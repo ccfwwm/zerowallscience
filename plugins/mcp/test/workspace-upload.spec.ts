@@ -5,10 +5,13 @@ import { join } from 'node:path'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import SkillRegistry from '@deepseek-ai/dsh-skill'
+import * as capabilityRegistry from '../../../packages/dsh-capability-menu/src/registry.ts'
+import * as capabilityPolicy from '../../../packages/dsh-capability-menu/src/policy.ts'
 import { Context } from '@deepseek-ai/cordis'
 import ZeroWallProjectsService from '../../projects/src/host/index.js'
 import ZeroWallMcpService from '../src/host/index.js'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const roots: string[] = []
 afterEach(() => {
@@ -19,7 +22,7 @@ afterEach(() => {
 })
 
 describe('rdatalinux workspace upload bridge', () => {
-  it('reads a session workspace file and forwards it to the remote R MCP tool', async () => {
+  it.each([false, true])('forwards a workspace upload once with capability policy %s', async (withPolicy) => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-r-upload-'))
     roots.push(root)
     process.env.ZEROWALL_RESEARCH_DB = join(root, 'research.sqlite')
@@ -35,6 +38,13 @@ describe('rdatalinux workspace upload bridge', () => {
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
+      // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
+      let connectionChecks = 0
+      vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockImplementation(async () => {
+        // Fail a recursive dispatch deterministically instead of exhausting
+        // the test worker's heap while waiting for its timeout.
+        if (++connectionChecks > 8) throw new Error('Recursive r_files dispatch')
+      })
       ctx.tools.register(defineTool({
         name: 'mcp__rmcp__r_files',
         description: 'test remote upload',
@@ -42,14 +52,27 @@ describe('rdatalinux workspace upload bridge', () => {
         output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
         execute: async (args: any) => { forwarded.push(args); return { ok: true } },
       }))
+      const events: any[] = []
+      const owner = { ctx, id: 'upload-fixture', session: {
+        header: { cwd: root }, snapshotEvents: () => events,
+        append: (type: string, data: unknown) => events.push({ type, data }),
+      } } as any
+      if (withPolicy) {
+        await ctx.plugin(SkillRegistry)
+        await ctx.plugin(capabilityRegistry, { catalogFile: '' })
+        await ctx.plugin(capabilityPolicy, { zeroWallDefaults: true })
+        ctx.capabilityPolicy.selectTools(owner, ['r_files'])
+        await ctx.systemPrompt.assemble({ scope: owner })
+      }
       const result = await ctx.tools.execute({
         signal: new AbortController().signal,
         callId: ToolCallId('workspace-upload'),
         name: 'r_files',
         arguments: { action: 'upload_workspace', project_id: 'study-1', local_path: 'counts_raw', remote_path: 'data/raw/counts_raw', confirm: true },
-        agent: { session: { header: { cwd: root } } } as any,
+        agent: owner,
       })
-      expect(result.isError).toBe(false)
+      expect(result.isError, JSON.stringify(result)).toBe(false)
+      expect(connectionChecks).toBe(1)
       expect(forwarded).toHaveLength(1)
       expect(forwarded[0]).toMatchObject({ action: 'r.upload.file', arguments: { project_id: 'study-1', path: 'data/raw/counts_raw', confirm: true } })
       expect(Buffer.from(forwarded[0].arguments.data_base64, 'base64')).toEqual(bytes)
@@ -73,6 +96,8 @@ describe('rdatalinux workspace upload bridge', () => {
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
+      // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
+      vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
       ctx.tools.register(defineTool({
         name: 'mcp__rmcp__r_files',
         description: 'test remote download',
@@ -118,6 +143,8 @@ describe('rdatalinux workspace upload bridge', () => {
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
+      // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
+      vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
       ctx.tools.register(defineTool({
         name: 'mcp__rmcp__r_files',
         description: 'project files fixture',
@@ -188,6 +215,8 @@ describe('rdatalinux workspace upload bridge', () => {
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
+      // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
+      vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
       ctx.tools.register(defineTool({
         name: 'mcp__rmcp__r_figureya_catalog',
         description: 'FigureYa compact catalog fixture',
@@ -252,6 +281,8 @@ describe('rdatalinux workspace upload bridge', () => {
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
+      // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
+      vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
       ctx.tools.register(defineTool({
         name: 'mcp__rmcp__r_files',
         description: 'test remote boundary',

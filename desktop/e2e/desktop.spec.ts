@@ -43,7 +43,11 @@ beforeAll(async () => {
   browser = await chromium.connectOverCDP(endpoint)
   const context = browser.contexts()[0]
   if (!context) throw new Error('Electron did not expose a browser context')
-  page = await waitForMainPage(context, application, 150_000)
+  page = await waitForMainPage(context, application, 150_000).catch(error => {
+    let hostOutput = ''
+    try { hostOutput = readFileSync(join(root, 'zerowall-user-data', 'logs', 'harness.log'), 'utf8').slice(-30_000) } catch { /* Host may not have created its log yet. */ }
+    throw new Error(`${error instanceof Error ? error.message : String(error)}\nElectron diagnostics:\n${applicationOutput}\nHost diagnostics:\n${hostOutput}`)
+  })
   page.on('console', message => rendererOutput.push(`[console:${message.type()}] ${message.text()}`))
   page.on('pageerror', error => rendererOutput.push(`[pageerror] ${error.stack ?? error.message}`))
   try {
@@ -84,6 +88,34 @@ afterEach(async () => {
 })
 
 describe('ZeroWall Science Electron', () => {
+  it('keeps shortcuts compact and opens WeChat configuration from its status', async () => {
+    await page.getByRole('button', { name: '展开快捷入口', exact: true }).click()
+    const wechat = page.getByRole('button', { name: /^微信 WebChat/ })
+    await wechat.waitFor()
+    await wechat.click()
+    const settings = page.getByRole('dialog', { name: '设置' })
+    await settings.getByText('未登录', { exact: true }).first().waitFor()
+    await settings.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.getByRole('button', { name: '收起快捷入口', exact: true }).click()
+    expect(await page.getByRole('link', { name: 'GitHub 项目' }).isVisible()).toBe(false)
+    expect(await page.getByRole('button', { name: '设置', exact: true }).isVisible()).toBe(true)
+    expect(await page.getByRole('button', { name: 'AI 审查', exact: true }).count()).toBe(0)
+    await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
+    await page.getByRole('button', { name: '打开侧边栏', exact: true }).waitFor()
+    expect(await page.getByRole('button', { name: /^微信 WebChat/ }).isVisible()).toBe(false)
+    await page.getByRole('button', { name: '打开侧边栏', exact: true }).click()
+    mkdirSync(join(desktopRoot, 'dist', 'verification-6.0.0'), { recursive: true })
+    await page.screenshot({ path: join(desktopRoot, 'dist', 'verification-6.0.0', 'sidebar-compact.png') })
+  })
+
+  it('does not mount the removed capability management module', async () => {
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const settings = page.getByRole('dialog', { name: '设置' })
+    expect(await settings.getByRole('button', { name: '能力管理', exact: true }).count()).toBe(0)
+    await settings.getByRole('button', { name: '插件' }).click()
+    await settings.getByRole('tab', { name: 'Skills', exact: true }).click()
+    await settings.locator('.mc-skill').first().waitFor({ state: 'visible' })
+  })
   it('loads a direct, sandboxed, fully ZeroWall-branded Renderer', async () => {
     expect(page.url()).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/)
     expect(await page.locator('iframe').count()).toBe(0)
@@ -152,6 +184,21 @@ describe('ZeroWall Science Electron', () => {
     await button.evaluate(element => element.remove())
   })
 
+  it('copies an attachment as a persistent Windows file drop with exact bytes', async () => {
+    const content = Buffer.from('%PDF-1.7\nZeroWall file clipboard\n%%EOF')
+    const success = await page.evaluate(async data => {
+      const desktop = (window as unknown as { zerowallDesktop: { copyFile(input: { name: string; mediaType: string; data: string }): Promise<boolean> } }).zerowallDesktop
+      return desktop.copyFile({ name: '文献 attachment.pdf', mediaType: 'application/pdf', data })
+    }, content.toString('base64'))
+    expect(success).toBe(true)
+    const script = "Add-Type -AssemblyName System.Windows.Forms; [Console]::Write([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([Windows.Forms.Clipboard]::GetFileDropList()[0])))"
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, encoding: 'utf8', timeout: 15_000 })
+    expect(result.status, result.stderr).toBe(0)
+    const path = Buffer.from(result.stdout.trim(), 'base64').toString('utf8')
+    expect(path).toContain('文献 attachment.pdf')
+    expect(readFileSync(path)).toEqual(content)
+  })
+
   it('defaults to Chinese and switches between Chinese and English in Settings', async () => {
     await page.getByRole('button', { name: '设置' }).click()
     const settings = page.getByRole('dialog', { name: '设置' })
@@ -161,6 +208,19 @@ describe('ZeroWall Science Electron', () => {
     await page.getByRole('dialog', { name: 'Settings' }).waitFor({ state: 'visible' })
     await page.getByText('Language', { exact: true }).waitFor({ state: 'visible' })
 
+    const englishSettings = page.getByRole('dialog', { name: 'Settings' })
+    await englishSettings.getByRole('button', { name: 'Environment', exact: true }).click()
+    await englishSettings.getByRole('heading', { name: 'Environment', exact: true }).waitFor()
+    await englishSettings.getByRole('heading', { name: 'AIchem', exact: true }).waitFor()
+    expect(await englishSettings.getByLabel('AIchem API token', { exact: true }).getAttribute('type')).toBe('password')
+    await englishSettings.getByRole('button', { name: 'Save TSG settings', exact: true }).waitFor()
+    await englishSettings.getByText('Review model mode', { exact: true }).waitFor()
+    expect(await englishSettings.getByText('模型目录已同步', { exact: true }).count()).toBe(0)
+    const artifacts = join(desktopRoot, 'dist', 'verification-6.0.0')
+    mkdirSync(artifacts, { recursive: true })
+    await page.screenshot({ path: join(artifacts, 'environment-english.png') })
+
+    await englishSettings.getByRole('button', { name: 'General', exact: true }).click()
     await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: /English/ }).click()
     await page.getByRole('menuitem', { name: '中文' }).click()
     await page.getByRole('dialog', { name: '设置' }).waitFor({ state: 'visible' })
@@ -187,6 +247,25 @@ describe('ZeroWall Science Electron', () => {
     await settings.getByText('新建连接', { exact: true }).waitFor({ state: 'visible' })
     await settings.getByRole('button', { name: '导入' }).waitFor({ state: 'visible' })
     await settings.getByRole('button', { name: '导出' }).waitFor({ state: 'visible' })
+    await settings.getByRole('button', { name: /rmcp/ }).click()
+    expect(await settings.getByRole('checkbox', { name: '启用', exact: true }).isChecked()).toBe(true)
+    const timeout = settings.getByLabel('工具超时（毫秒）', { exact: true })
+    expect(await timeout.inputValue()).toBe('300000')
+    expect(await settings.getByLabel('重试次数', { exact: true }).inputValue()).toBe('2')
+    expect(await settings.getByLabel('URL', { exact: true }).isDisabled()).toBe(true)
+    expect(await settings.getByRole('checkbox', { name: '启用', exact: true }).isChecked()).toBe(true)
+    await timeout.fill('301000')
+    const save = settings.getByRole('button', { name: '保存', exact: true })
+    await save.click()
+    await expect.poll(() => save.isEnabled(), { timeout: 30_000 }).toBe(true)
+    await settings.getByRole('button', { name: '新建连接', exact: false }).click()
+    await settings.getByRole('button', { name: /rmcp/ }).click()
+    expect(await timeout.inputValue()).toBe('301000')
+    expect(await settings.getByRole('checkbox', { name: '启用', exact: true }).isChecked()).toBe(true)
+    await timeout.fill('300000')
+    await save.click()
+    await expect.poll(() => save.isEnabled(), { timeout: 30_000 }).toBe(true)
+    await page.screenshot({ path: join(desktopRoot, 'dist', 'verification-6.0.0', 'mcp-saved.png') })
     await settings.getByRole('tab', { name: '插件列表' }).click()
     const globalPlugins = settings.getByRole('button', { name: /^(全局插件|Global plugins)/ })
     if (await globalPlugins.getAttribute('aria-expanded') === 'false') await globalPlugins.click()
@@ -221,6 +300,10 @@ describe('ZeroWall Science Electron', () => {
     for (const viewport of [{ width: 1280, height: 900 }, { width: 720, height: 900 }]) {
       await page.setViewportSize(viewport)
       await settings.getByRole('heading', { name: '环境配置', exact: true }).scrollIntoViewIfNeeded()
+      expect(await settings.evaluate(element => {
+        const top = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)
+        return top !== null && element.contains(top) && element.parentElement?.parentElement === document.body
+      })).toBe(true)
       const rows = await settings.locator('article').evaluateAll(elements => elements.map(element => {
         const box = element.getBoundingClientRect()
         return { x: box.x, width: box.width, bottom: box.bottom, top: box.top }
@@ -249,10 +332,12 @@ describe('ZeroWall Science Electron', () => {
 
   it('opens the account surface without exposing credentials to the Renderer', async () => {
     await page.keyboard.press('Escape')
+    const expand = page.getByRole('button', { name: '展开快捷入口', exact: true })
+    if (await expand.isVisible()) await expand.click()
     await page.getByRole('button', { name: '登录AI平台' }).click()
     const account = page.getByRole('dialog', { name: '登录或注册' })
     await account.waitFor({ state: 'visible' })
-    expect(await page.getByLabel('密码').getAttribute('type')).toBe('password')
+    expect(await account.getByLabel('密码', { exact: true }).getAttribute('type')).toBe('password')
     const source = await page.evaluate(() => JSON.stringify((window as unknown as { zerowallDesktop: unknown }).zerowallDesktop))
     expect(source).not.toMatch(/credential|secret|token|password/i)
     await page.setViewportSize({ width: 390, height: 844 })

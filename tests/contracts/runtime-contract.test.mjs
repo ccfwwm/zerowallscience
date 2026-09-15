@@ -5,10 +5,10 @@ import { resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
 
-test('stable profile pins rc.1 and includes the bundled WeChat plugin', async () => {
+test('stable profile pins rc.2 and includes the bundled WeChat plugin', async () => {
   const profile = await readFile(resolve(root, 'profiles/generated/stable.yml'), 'utf8')
   assert.match(profile, /channel: stable/)
-  assert.match(profile, /dsh: 0\.1\.2-rc\.1/)
+  assert.match(profile, /dsh: 0\.1\.5-rc\.2/)
   assert.match(profile, /'dsh-wechat'/)
 })
 
@@ -36,7 +36,7 @@ test('better-sidebar contains the merged v0.18.0 compatibility changes', async (
 
 test('Dream Skin is a single pinned theme layer loaded before ZeroWall UI', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-dream-skin'], '8.30.1')
+  assert.equal(desktop.dependencies['dsh-dream-skin'], '9.13.1')
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
   assert.equal((patch.match(/\bid: dream-skin\b/gu) ?? []).length, 1)
   assert.ok(patch.indexOf('id: dream-skin') < patch.indexOf('id: better-sidebar'))
@@ -84,19 +84,19 @@ test('desktop image limits fit inside the buffered client connection carrier', a
     `base64 image envelope requires ${requiredBodyBytes} bytes but carrier allows ${maxRequestBodyBytes}`)
 })
 
-test('all ZeroWall plugins expose a manifest and rc.1 range', async () => {
-  const names = ['base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'mineru', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'wechat']
+test('all ZeroWall plugins expose a manifest and rc.2 range', async () => {
+  const names = ['base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'mineru', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'singlecell']
   for (const name of names) {
     const manifest = JSON.parse(await readFile(resolve(root, `plugins/${name}/zerowall.plugin.json`), 'utf8'))
     assert.match(manifest.name, /^@zerowallscience\/plugin-/)
-    assert.equal(manifest.dsh.min, '0.1.2-rc.1')
-    assert.equal(manifest.dsh.max, '0.1.2-rc.1')
+    assert.equal(manifest.dsh.min, '0.1.5-rc.2')
+    assert.equal(manifest.dsh.max, '0.1.5-rc.2')
   }
 })
 
 test('dsh-free-search directly replaces the removed ZeroWall search plugin', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-free-search'], '0.4.24')
+  assert.equal(desktop.dependencies['dsh-free-search'], '0.4.28')
   assert.equal(desktop.dependencies['@zerowallscience/plugin-web-search'], undefined)
 
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
@@ -114,7 +114,7 @@ test('dsh-free-search directly replaces the removed ZeroWall search plugin', asy
 test('the pinned dsh-free-search package uses current client services and has no self-updater', async () => {
   const packageRoot = resolve(root, 'desktop/node_modules/dsh-free-search')
   const manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
-  assert.equal(manifest.version, '0.4.24')
+  assert.equal(manifest.version, '0.4.28')
   assert.equal(manifest.license, 'MIT')
   assert.deepEqual(manifest.dsh.client.inject, ['slots', 'commandUi'])
 
@@ -127,7 +127,7 @@ test('the pinned dsh-free-search package uses current client services and has no
   assert.match(client, /free-search-engine/u)
 
   const lockfile = await readFile(resolve(root, 'pnpm-lock.yaml'), 'utf8')
-  assert.match(lockfile, /dsh-free-search@0\.4\.24:\s+resolution: \{integrity: sha512-LcFPNf9F3kjutaNjE7j9Dw7yGi2p0bzZ7p9vbp\/yWpoeWPFBPwIikV6nka8gfM2YTH7lsQKA\/KIpVWMJ5jV08w==\}/u)
+  assert.match(lockfile, /dsh-free-search@0\.4\.28:\s+resolution: \{integrity: sha512-USN\/rV\/Yf1LjrHWFMn8RT6MBuugu5sYCjbG\+MKgg6jd4FCqDmi47V4SnD\+8fjJ43XZHXc0D5b\+QejL2hj3WhWQ==\}/u)
 })
 
 test('dynamic client bundles use the DSH classic-script ModuleLoader contract', async () => {

@@ -18,13 +18,23 @@ interface CompactCapabilityDirectory {
   executeCompactCapability(id: string, args: unknown, exec: ToolRunContext): Promise<{ target: string; content: ContentBlock[]; value: unknown }>
 }
 
-function normalizeCompactToolArguments(name: string, value: unknown): unknown {
-  if (!/^mcp__rmcp__(?:r_|biomni_)/u.test(name) || value === null || typeof value !== 'object' || Array.isArray(value)) return value
-  const source = value as Record<string, JsonValue>
-  if (typeof source.action !== 'string') return value
-  const nested = source.arguments !== null && typeof source.arguments === 'object' && !Array.isArray(source.arguments)
-    ? source.arguments as Record<string, JsonValue>
-    : {}
+function argumentRecord(value: unknown): Record<string, JsonValue> {
+  if (value === undefined) return {}
+  let parsed: unknown = value
+  if (typeof parsed === 'string') {
+    try { parsed = JSON.parse(parsed) } catch { throw new Error('capability_execute: args must be a JSON object, not malformed JSON text') }
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('capability_execute: args must be a JSON object')
+  }
+  return parsed as Record<string, JsonValue>
+}
+
+function normalizeCompactToolArguments(name: string, value: unknown): Record<string, JsonValue> {
+  const source = argumentRecord(value)
+  if (!/^mcp__rmcp__(?:r_|biomni_)/u.test(name)) return source
+  if (typeof source.action !== 'string') return source
+  const nested = argumentRecord(source.arguments)
   const { action, arguments: _arguments, query, detail, limit, ...flattened } = source
   return {
     action,
@@ -116,7 +126,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     parameters: {
       id: { type: 'string', required: true, description: 'Capability id from capability_search, e.g. mcp__gongfeng__create_issue or frontend-design.' },
       kind: { type: 'string', enum: ['tool', 'skill'], required: true, description: 'Capability kind reported by capability_search for this id.' },
-      args: { type: 'json', description: 'Arguments forwarded to a tool; ignored for skills.' },
+      args: { type: 'json', description: 'JSON object matching the exact capability input schema. To inspect a schema, use capability_search with id and detail=true; do not execute without required arguments. Ignored for skills.' },
     },
     output: {
       schema: {
@@ -208,7 +218,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       if (capability === undefined) {
         const compact = ctx.get('zerowallMcp') as unknown as CompactCapabilityDirectory | undefined
         if (kind === 'tool' && compact !== undefined && /^(?:r|figureya|biomni|bio)\./u.test(id)) {
-          const result = await compact.executeCompactCapability(id, args.args, exec)
+          const result = await compact.executeCompactCapability(id, argumentRecord(args.args), exec)
           return {
             ok: true,
             kind: 'mcp' as const,
@@ -262,7 +272,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         }
         const forwardedArgs = workspaceAction === undefined
           ? normalizeCompactToolArguments(capability.name, args.args)
-          : { ...(args.args !== null && typeof args.args === 'object' && !Array.isArray(args.args) ? args.args as Record<string, JsonValue> : {}), action: workspaceAction }
+          : { ...argumentRecord(args.args), action: workspaceAction }
         // Nested execution through the official pipeline. The parent token marks
         // this as a transport sub-dispatch so code-mode collapse rules treat it
         // like a nested SDK call, and `tools/result` observers can attribute the

@@ -4,9 +4,9 @@ export function initialize(data) {
   runtimeAnchor = data?.anchor
 }
 
-export async function resolve(specifier, context, nextResolve) {
+export function resolve(specifier, context, nextResolve) {
   try {
-    return await nextResolve(specifier, context)
+    return nextResolve(specifier, context)
   } catch (error) {
     if (error?.code !== 'ERR_MODULE_NOT_FOUND' || !runtimeAnchor || !isBareSpecifier(specifier)) throw error
     return nextResolve(specifier, { ...context, parentURL: runtimeAnchor })

@@ -158,6 +158,7 @@ export async function prepareUploadedFile(input: { name: string; mediaType?: str
 }
 
 async function readStored(id: string): Promise<StoredFile> {
+  id = id.replace(/^sha256:/u, 'file-sha256:')
   if (!/^file-sha256:[a-f0-9]{64}$/u.test(id)) throw new Error('Invalid uploaded file reference.')
   const sha = id.slice('file-sha256:'.length); const paths = filePaths(rootPath(), sha)
   const value = JSON.parse(await readFile(paths.meta, 'utf8')) as StoredFile
@@ -319,7 +320,14 @@ export class ZeroWallFilesService extends TypertRemoteService {
     if (path === undefined) throw new Error('Original file is not available to the local parser.')
     const bytes = await readFile(path)
     if (bytes.length !== ref.bytes || 'sha256:' + digest(bytes) !== String(ref.attachmentId)) throw new Error('Native file failed integrity validation.')
-    return prepareUploadedFile({ sessionId: input.sessionId, name: ref.name, data: bytes.toString('base64') })
+    const stored = await prepareUploadedFile({ sessionId: input.sessionId, name: ref.name, data: bytes.toString('base64') })
+    try {
+      const extraction = await this.extract({ sessionId: input.sessionId, attachmentId: stored.attachmentId, mode: 'auto' })
+      if (extraction.state !== 'done') throw new Error(extraction.error ?? 'File extraction failed')
+      return await this.inspect({ sessionId: input.sessionId, attachmentId: stored.attachmentId, view: 'parsed', kind: extraction.kind })
+    } catch (error) {
+      return { ...stored, warning: error instanceof Error ? error.message : String(error) }
+    }
   }
 
   /** Host-only enrichment after receipt validation; wire callers cannot forge parser metadata. */

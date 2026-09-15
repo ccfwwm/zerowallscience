@@ -12,16 +12,6 @@ async function assemble() {
   return ctx.systemPrompt.assemble({})
 }
 
-/** The complete whitelist the slim fence section must still advertise. */
-const WHITELISTED_COMPONENT_TYPES = [
-  'text', 'row', 'col', 'grid', 'card',
-  'button', 'input', 'textarea', 'select', 'checkbox', 'switch', 'slider', 'radio', 'submit', 'quiz', 'link',
-  'badge', 'stat', 'progress', 'divider', 'spacer', 'list', 'table', 'audio', 'video',
-  'chart', 'tabs', 'accordion', 'avatar', 'plot', 'callout', 'steps',
-  'keyvalue', 'json', 'code', 'diff', 'copy',
-  'mermaid', 'scene3d', 'timeline', 'file-tree', 'breadcrumb',
-] as const
-
 describe('genui:fence section', () => {
   it('registers the dsh-ui fence language section', async () => {
     const assembly = await assemble()
@@ -29,35 +19,25 @@ describe('genui:fence section', () => {
     expect(names).toContain('genui:fence')
   })
 
-  it('teaches the fence syntax and the component vocabulary', async () => {
+  it('keeps only the minimal fence and tool guidance', async () => {
     const assembly = await assemble()
     const section = assembly.sections.find(s => s.name === 'genui:fence')
     expect(section).toBeDefined()
     const text = typeof section!.text === 'string' ? section!.text : ''
     expect(text).toContain('dsh-ui')
-    // The model must know the white-listed component types.
-    for (const type of ['text', 'card', 'grid', 'stat', 'table', 'audio', 'video', 'chart', 'tabs', 'button', 'progress', 'plot', 'callout', 'steps', 'diff', 'mermaid', 'scene3d']) {
-      expect(text).toContain(type)
-    }
-    expect(text).toContain('"kind":"bars|line|donut"')
-    expect(text).toContain('"label":"...","value":n')
-    expect(text).toContain('series：bars 分组/堆叠 / line 多序列')
+    expect(text).toContain('render_ui')
+    expect(text).toContain('genui')
+    expect(text.length).toBeLessThan(500)
   })
 
   it('keeps the full type whitelist in the slim section within the token budget', async () => {
-    // Issue #29: GENUI_SECTION_TEXT is a fixed per-request cost, so the slim
-    // section must stay compact while still listing every allowed type.
+    // The section is deliberately tiny; detailed component vocabulary lives
+    // in the on-demand genui skill.
     const assembly = await assemble()
     const section = assembly.sections.find(s => s.name === 'genui:fence')
     expect(section).toBeDefined()
     const text = typeof section!.text === 'string' ? section!.text : ''
-    // Budget: 3200 chars keeps the mixed CJK/ASCII section near ~1k tokens
-    // (CJK ≈ 1 tok/char, ASCII ≈ 0.25 tok/char) — roughly half of the
-    // original ~6.1k chars / ~2.3k tokens measured in issue #29.
-    expect(text.length).toBeLessThanOrEqual(3200)
-    for (const type of WHITELISTED_COMPONENT_TYPES) {
-      expect(text).toContain(type)
-    }
+    expect(text.length).toBeLessThan(500)
   })
 
   it('sorts the section among the tool-guidance sections', async () => {

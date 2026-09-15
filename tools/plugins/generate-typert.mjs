@@ -14,6 +14,8 @@ for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, {
   try {
     manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
   } catch { continue }
+  // Retained source is not part of ZeroWall's shipped plugin composition.
+  if (manifest.name === '@daweifu/capability-menu') continue
   if (manifest.exports?.['./remote'] === undefined) {
     await removeTypertArtifacts(packageRoot)
     continue

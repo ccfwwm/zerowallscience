@@ -46,16 +46,17 @@ export const PROJECT_BUNDLE_FORMAT = 'zerowall-science-project' as const
 export const PROJECT_BUNDLE_VERSION = 1 as const
 export const SESSION_ARCHIVE_FORMAT = 'dsh-session-jsonl' as const
 export const SESSION_ARCHIVE_VERSION = 1 as const
-export const DSH_SESSION_FORMAT_VERSION = 0 as const
+export const DSH_SESSION_FORMAT_VERSION = 3 as const
 const MAX_SESSION_ARCHIVE_BYTES = 64 * 1024 * 1024
 
 export interface SessionArchiveHeader {
-  version: typeof DSH_SESSION_FORMAT_VERSION
+  version: 0 | typeof DSH_SESSION_FORMAT_VERSION
   id: string
   createdAt: number
   cwd?: string
   parentSession?: string
   seedLength?: number
+  isSeeded?: boolean
   origin?: 'subagent'
   delegationDepth: number
   agentPreset?: string
@@ -1183,12 +1184,16 @@ export function parseSessionArchiveHeader(content: string): SessionArchiveHeader
   let parsed: unknown
   try { parsed = JSON.parse(content.slice(0, newline)) } catch { throw new Error('Session archive header must be valid JSON.') }
   const header = record(parsed, 'Session archive header')
-  const allowed = ['type', 'version', 'id', 'createdAt', 'cwd', 'parentSession', 'seedLength', 'origin', 'delegationDepth', 'agentPreset']
+  const allowed = ['type', 'version', 'id', 'createdAt', 'cwd', 'parentSession', 'seedLength', 'isSeeded', 'origin', 'delegationDepth', 'agentPreset']
   if (Object.keys(header).some((key) => !allowed.includes(key))) throw new Error('Session archive header contains unexpected fields.')
   if (header.type !== 'session') throw new Error('Session archive header type must be session.')
-  if (header.version !== DSH_SESSION_FORMAT_VERSION) throw new Error(`Unsupported DSH session format version: ${String(header.version)}`)
+  if (header.version !== 0 && header.version !== DSH_SESSION_FORMAT_VERSION) throw new Error(`Unsupported DSH session format version: ${String(header.version)}`)
+  if (header.version === 0 && header.isSeeded !== undefined) throw new Error('Legacy session headers cannot contain isSeeded.')
+  if (header.version === DSH_SESSION_FORMAT_VERSION && (typeof header.isSeeded !== 'boolean' || header.seedLength !== undefined)) {
+    throw new Error('Current session headers require isSeeded and cannot contain seedLength.')
+  }
   const result: SessionArchiveHeader = {
-    version: DSH_SESSION_FORMAT_VERSION,
+    version: header.version,
     id: nonEmptyString(header.id, 'Session archive id'),
     createdAt: nonNegativeInteger(header.createdAt, 'Session archive createdAt'),
     delegationDepth: nonNegativeInteger(header.delegationDepth, 'Session archive delegationDepth'),
@@ -1196,6 +1201,7 @@ export function parseSessionArchiveHeader(content: string): SessionArchiveHeader
   if (header.cwd !== undefined) result.cwd = nonEmptyString(header.cwd, 'Session archive cwd')
   if (header.parentSession !== undefined) result.parentSession = nonEmptyString(header.parentSession, 'Session archive parentSession')
   if (header.seedLength !== undefined) result.seedLength = nonNegativeInteger(header.seedLength, 'Session archive seedLength')
+  if (typeof header.isSeeded === 'boolean') result.isSeeded = header.isSeeded
   if (header.origin !== undefined) {
     if (header.origin !== 'subagent') throw new Error('Session archive origin is invalid.')
     result.origin = 'subagent'

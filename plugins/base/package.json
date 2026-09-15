@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-base",
-  "version": "5.20.5",
+  "version": "6.0.0",
   "description": "ZeroWall Science base domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -162,7 +162,6 @@
     "@zerowallscience/plugin-runs": "workspace:^",
     "@zerowallscience/plugin-publications": "workspace:^",
     "@zerowallscience/plugin-presentations": "workspace:^",
-    "@daweifu/capability-menu": "workspace:*",
     "dsh-file-review": "workspace:*",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0",

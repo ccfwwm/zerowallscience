@@ -13,6 +13,7 @@ export default defineConfig({
     // still render against one React instance or hooks imported by DSH UI
     // primitives will use a different dispatcher from ReactDOM.
     alias: [
+      { find: '@deepseek-ai/dsh-client-ui-chat/client', replacement: resolve(root, 'deepseek-harness/packages/client/ui-chat/src/client/index.ts') },
       { find: /^react$/u, replacement: testingLibraryRequire.resolve('react') },
       { find: /^react-dom$/u, replacement: testingLibraryRequire.resolve('react-dom') },
     ],

@@ -142,6 +142,79 @@ describe('capability-menu-invoke', () => {
     expect(isError).toBe(true)
   })
 
+  it('uses an empty JSON object when args are omitted and parses stringified compact arguments', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    const ctx = await setup(home)
+    const calls: unknown[] = []
+    const tool = 'mcp__rmcp__r_figureya_plan'
+    ctx.tools.register(defineTool({
+      name: tool,
+      description: 'FigureYa plan',
+      parameters: { action: { type: 'string' }, detail: { type: 'boolean' } },
+      output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      async execute(args) { calls.push(args); return { ok: true } },
+    }))
+    await ctx.capability.refresh()
+
+    const omitted = await runTool(ctx, 'capability_execute', { id: tool, kind: 'tool' })
+    expect(omitted.isError, JSON.stringify(omitted)).toBe(false)
+    expect(calls[0]).toEqual({})
+
+    const stringified = await runTool(ctx, 'capability_execute', {
+      id: tool,
+      kind: 'tool',
+      args: '{"action":"catalog","detail":true}',
+    })
+    expect(stringified.isError, JSON.stringify(stringified)).toBe(false)
+    expect(calls[1]).toEqual({ action: 'catalog', arguments: {}, detail: true })
+  })
+
+  it('normalizes nested compact arguments before MCP dispatch', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    const ctx = await setup(home)
+    let received: unknown
+    const tool = 'mcp__rmcp__r_figureya_plan'
+    ctx.tools.register(defineTool({
+      name: tool,
+      description: 'FigureYa plan',
+      parameters: { action: { type: 'string' }, omitted: { type: 'string' }, nested: { type: 'json' } },
+      output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      async execute(args) { received = args; return { ok: true } },
+    }))
+    await ctx.capability.refresh()
+    const result = await runTool(ctx, 'capability_execute', {
+      id: tool,
+      kind: 'tool',
+      args: '{"action":"catalog","nested":{"value":null}}',
+    })
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(received).toEqual({ action: 'catalog', arguments: { nested: { value: null } } })
+  })
+
+  it('rejects malformed or non-object args without executing a target', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    const ctx = await setup(home)
+    let executed = false
+    const tool = registerMcpTool(ctx, 'rmcp', 'r_project', 'Project', () => { executed = true; return { ok: true } })
+    await ctx.capability.refresh()
+    for (const args of ['{broken', 'null', '[]', '"text"', null, [], 3]) {
+      const result = await runTool(ctx, 'capability_execute', { id: tool, kind: 'tool', args })
+      expect(result.isError).toBe(true)
+    }
+    expect(executed).toBe(false)
+  })
+
+  it('reports required target parameters rather than a serialization failure when args are absent', async () => {
+    const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
+    const ctx = await setup(home)
+    const tool = registerMcpTool(ctx, 'rmcp', 'r_project', 'Project')
+    await ctx.capability.refresh()
+    const result = await ctx.tools.execute({ callId: ToolCallId('missing-args'), name: 'capability_execute', arguments: { id: tool, kind: 'tool' }, agent: agentStub('agent'), signal: testSignal })
+    expect(result.isError).toBe(true)
+    expect(JSON.stringify(result.content)).toContain('title')
+    expect(JSON.stringify(result.content)).not.toContain('losslessly')
+  })
+
   it('loads a skill and renders content like the skill tool', async () => {
     const home = await import('node:fs/promises').then(fs => fs.mkdtemp('/tmp/dsh-meta-invoke-'))
     // Skills must exist before the skill provider/registry load (see registry tests).

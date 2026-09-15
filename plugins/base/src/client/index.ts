@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { zerowallRemoteContributions } from './remote-contributions.generated.ts'
 import { registerZeroWallBrand } from './Brand.tsx'
 import { GithubButton } from './GithubButton.tsx'
+import { WechatStatusButton } from './WechatStatusButton.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap { zerowall: ZeroWallKey }
@@ -59,4 +60,8 @@ export async function apply(ctx: ClientContext): Promise<void> {
     name: 'sidebar.footer.action', id: 'zerowall-github', order: -100, locale: NS,
     inject: () => ({}),
   }, GithubButton))
+  ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
+    name: 'sidebar.footer.action', id: 'zerowall-wechat-status', order: -40, locale: NS,
+    inject: () => ({}),
+  }, WechatStatusButton))
 }

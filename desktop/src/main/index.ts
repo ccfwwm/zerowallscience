@@ -17,6 +17,7 @@ import { mcpEnvironmentDiagnostic, McpEnvironmentController, MCP_ENVIRONMENT_KEY
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
 import { DesktopUpdateController, isUpdateCheckDue, UPDATE_CHECK_INTERVAL_MS } from './updater.js'
 import { resolveRevealPath } from './reveal-path.js'
+import { copyWindowsFile } from './clipboard-files.js'
 import type { DesktopClipboardFile, DesktopInfo, RuntimeSnapshot } from '../shared/contracts.js'
 
 const { autoUpdater } = updaterPackage
@@ -429,11 +430,7 @@ app.whenReady().then(async () => {
     await mkdir(directory, { recursive: true })
     const path = join(directory, name)
     await writeFile(path, data, { flag: 'wx' })
-    clipboard.clear()
-    clipboard.writeText(path)
-    clipboard.writeBuffer('FileNameW', Buffer.from(`${path}\0`, 'ucs2'))
-    clipboard.writeBuffer('Preferred DropEffect', Buffer.from([5, 0, 0, 0]))
-    return true
+    return copyWindowsFile(path)
   })
   ipcMain.handle('desktop:clipboard-copy-text', (_event, value: unknown) => {
     if (typeof value !== 'string' || value.length > 2_000_000) return false

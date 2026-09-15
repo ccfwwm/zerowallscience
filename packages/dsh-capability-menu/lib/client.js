@@ -160,8 +160,6 @@ if (typeof document !== "undefined" && document.querySelector(`style[data-css-id
 	tag.textContent = CSS;
 	document.head.appendChild(tag);
 }
-/** The reserved server key grouping harness-native (non-MCP) tools. */
-const BUILT_IN_SERVER = "built-in";
 /** Skills whose source root lives inside the current project. */
 const PROJECT_SOURCES = /* @__PURE__ */ new Set(["project-dsh", "project-agents"]);
 function groupRows(rows) {
@@ -172,7 +170,7 @@ function groupRows(rows) {
 			skills.push(row);
 			continue;
 		}
-		const server = row.server ?? BUILT_IN_SERVER;
+		const server = row.server ?? "built-in";
 		const list = byServer.get(server);
 		if (list === void 0) byServer.set(server, [row]);
 		else list.push(row);
@@ -261,7 +259,7 @@ function CapabilitySection(props) {
 			lists[to] = [...lists[to], ...ids];
 			const nextLists = {};
 			for (const cls of CLASS_KEYS) nextLists[cls] = lists[cls];
-			await remote.updateConfig({ [key]: nextLists });
+			unwrap(await remote.updateConfig({ [key]: nextLists }), "capabilityPolicy.updateConfig");
 			if (request !== generation.current) return;
 			const next = await loadSnapshot(remote);
 			if (request !== generation.current) return;
@@ -475,7 +473,7 @@ function ReadyBody(props) {
 								}),
 								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 									className: "mc-server-name",
-									children: server === BUILT_IN_SERVER ? t("builtInGroup") : server
+									children: server === "built-in" ? t("builtInGroup") : server
 								}),
 								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 									className: "mc-server-count",
@@ -986,7 +984,9 @@ const NS = "settings.capability";
 const inject = [
 	"slots",
 	"locale",
-	"remote"
+	"remote",
+	"remote.capabilityPolicy",
+	"sessions"
 ];
 /** Register the 能力管理 section once `settings.section` is on the ledger. */
 async function apply(ctx) {
@@ -1075,38 +1075,45 @@ async function apply(ctx) {
 		en
 	}), "capability-menu: dictionaries");
 	const t = ctx.locale.bind(NS);
+	const policyRemote = ctx.get("remote.capabilityPolicy");
+	const sessionService = ctx.get("sessions");
 	const remote = () => {
 		try {
-			return ctx.get("remote.capabilityPolicy");
+			return policyRemote;
 		} catch (error) {
 			console.error("[capability-menu] ctx.get(\"remote.capabilityPolicy\") failed:", error);
 			return;
 		}
 	};
-	const injected = () => {
-		const raw = remote();
-		const currentSession = () => {
-			return ctx.get("sessions")?.list.getSnapshot().current;
-		};
-		const namespace = raw == null ? raw : new Proxy(raw, { get(target, key) {
-			if (key === "getConfig" || key === "classifyAll" || key === "getCatalogDocs" || key === "resetDefaults") return () => Reflect.apply(target[key], target, [currentSession()]);
-			if (key === "updateConfig") return (partial) => Reflect.apply(target.updateConfig, target, [partial, currentSession()]);
-			const value = Reflect.get(target, key);
-			return typeof value === "function" ? value.bind(target) : value;
-		} });
-		const remoteKeys = namespace == null ? void 0 : Object.keys(namespace).filter((k) => [
-			"getConfig",
-			"updateConfig",
-			"classifyAll"
-		].includes(k)).join(",");
-		return {
-			remote: namespace,
-			subscribeSession: (listener) => {
-				return ctx.get("sessions")?.list.subscribe(listener) ?? (() => {});
-			},
-			t,
-			...remoteKeys !== void 0 ? { remoteKeys } : {}
-		};
+	const currentSession = () => {
+		return sessionService?.list.getSnapshot().current;
+	};
+	const raw = remote();
+	const namespace = raw == null ? raw : new Proxy(raw, { get(target, key) {
+		if (key === "getConfig" || key === "classifyAll" || key === "getCatalogDocs" || key === "resetDefaults") return () => Reflect.apply(target[key], target, [currentSession()]);
+		if (key === "updateConfig") return (partial) => Reflect.apply(target.updateConfig, target, [partial, currentSession()]);
+		const value = Reflect.get(target, key);
+		return typeof value === "function" ? value.bind(target) : value;
+	} });
+	const remoteKeys = namespace == null ? void 0 : Object.keys(namespace).filter((k) => [
+		"getConfig",
+		"updateConfig",
+		"classifyAll"
+	].includes(k)).join(",");
+	const injected = {
+		remote: namespace,
+		subscribeSession: (listener) => {
+			const sessions = sessionService;
+			let selected = currentSession();
+			return sessions?.list.subscribe(() => {
+				const next = currentSession();
+				if (next === selected) return;
+				selected = next;
+				listener();
+			}) ?? (() => {});
+		},
+		t,
+		...remoteKeys !== void 0 ? { remoteKeys } : {}
 	};
 	ctx.slots.inject("settings.section", () => ctx.slots.register({
 		name: "settings.section",
@@ -1114,7 +1121,7 @@ async function apply(ctx) {
 		order: 12,
 		label: () => t("nav"),
 		locale: NS,
-		inject: injected
+		inject: () => injected
 	}, CapabilitySection));
 	return () => {};
 }

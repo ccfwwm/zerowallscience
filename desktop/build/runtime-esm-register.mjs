@@ -1,5 +1,5 @@
-import { register } from 'node:module'
+import { registerHooks } from 'node:module'
+import { initialize, resolve } from './runtime-esm-loader.mjs'
 
-register(new URL('./runtime-esm-loader.mjs', import.meta.url), {
-  data: { anchor: process.env.ZEROWALL_RUNTIME_ANCHOR },
-})
+initialize({ anchor: process.env.ZEROWALL_RUNTIME_ANCHOR })
+registerHooks({ resolve })

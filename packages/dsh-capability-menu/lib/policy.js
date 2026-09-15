@@ -222,30 +222,48 @@ export async function apply(ctx, config = {}) {
     let metaToolSet = new Set(metaTools);
     let toolCompiled;
     let skillCompiled;
-    const recompile = () => {
-        const toolRules = compileSet(current.tools);
-        const skillRules = compileSet(current.skills);
+    /**
+     * Compile a candidate config into rule sets without touching live state.
+     * Meta tools are the control-plane escape hatch: blocking one is a
+     * misconfiguration that must fail loud, never silently disable the surface.
+     * Throws before anything is committed when validation fails.
+     */
+    const compileConfig = (candidate, meta) => {
+        const toolRules = compileSet(candidate.tools);
+        const skillRules = compileSet(candidate.skills);
         // Normalize tool/skill rule kinds for matching.
-        toolCompiled = {
+        const tools = {
             resident: toolRules.resident.map(rule => ({ ...rule, kind: 'tool' })),
             onDemand: toolRules.onDemand.map(rule => ({ ...rule, kind: 'tool' })),
             disabled: toolRules.disabled.map(rule => ({ ...rule, kind: 'tool' })),
         };
-        skillCompiled = {
+        const skills = {
             resident: skillRules.resident.map(rule => ({ ...rule, kind: 'skill' })),
             onDemand: skillRules.onDemand.map(rule => ({ ...rule, kind: 'skill' })),
             disabled: skillRules.disabled.map(rule => ({ ...rule, kind: 'skill' })),
         };
-        // Meta tools are the control-plane escape hatch: blocking one is a
-        // misconfiguration that must fail loud, never silently disable the surface.
-        for (const name of metaTools) {
+        for (const name of meta) {
             const target = { id: name, name, server: serverNameOf(name), kind: 'tool', ruleKind: 'tool' };
-            if (anyRuleMatches(toolCompiled.disabled, target)) {
+            if (anyRuleMatches(tools.disabled, target)) {
                 throw new Error(`meta tool "${name}" cannot be disabled; remove it from tools.disabled`);
             }
         }
+        return { tools, skills };
     };
-    recompile();
+    /**
+     * Compile, then commit. Compiling first keeps a rejected update from landing
+     * half-applied: `current`, `metaTools` and the rule sets move together or not
+     * at all.
+     */
+    const applyConfig = (candidate, meta) => {
+        const compiled = compileConfig(candidate, meta);
+        current = candidate;
+        metaTools = [...meta];
+        metaToolSet = new Set(metaTools);
+        toolCompiled = compiled.tools;
+        skillCompiled = compiled.skills;
+    };
+    applyConfig(normalized, [...(normalized.metaTools ?? DEFAULT_META_TOOLS)]);
     const service = {
         selectionSource: (name, kind, agent) => selections.source(name, kind, agent),
         async resetDefaults(agent) {
@@ -303,12 +321,9 @@ export async function apply(ctx, config = {}) {
             return { ...current };
         },
         async updateConfig(partial) {
-            current = { ...current, ...partial };
-            if (partial.metaTools !== undefined) {
-                metaTools = [...(partial.metaTools ?? DEFAULT_META_TOOLS)];
-                metaToolSet = new Set(metaTools);
-            }
-            recompile();
+            // Validate first, commit second (see `applyConfig`): a rejected update
+            // leaves the live policy exactly as it was.
+            applyConfig({ ...current, ...partial }, partial.metaTools !== undefined ? [...(partial.metaTools ?? DEFAULT_META_TOOLS)] : metaTools);
             // Classification changed → the on-demand catalog on disk is stale (a
             // capability reclassified to disabled must disappear from the grep-able
             // YAML). Await the registry refresh so callers get a completion signal:
@@ -386,7 +401,7 @@ export async function apply(ctx, config = {}) {
         let changed = false;
         const messages = decision.messages.flatMap(message => {
             const source = message.source;
-            if (source.kind !== 'skill-catalog')
+            if (source?.kind !== 'skill-catalog')
                 return message;
             // GenUI is documented by the stable system-prompt section and must not
             // leave a second visible catalog/injection row in every turn.
@@ -427,7 +442,7 @@ export async function apply(ctx, config = {}) {
         const pointer = {
             name: 'capability-menu-catalog',
             text: [
-                `Use capability_search for on-demand tools and skills listed in ${catalogPath}, then call capability_execute with one exact id. Disabled capabilities require a settings change.`,
+                'Use capability_search for bounded on-demand tool and skill summaries, then capability_execute with one exact id. Do not read the full capability catalog file into context. For MCP connection status, call mcp_connect directly without arguments; pass a server only to connect it. Disabled capabilities require a settings change.',
             ].join('\n'),
         };
         const withoutPointer = projected.sections.filter(section => section.name !== pointer.name);

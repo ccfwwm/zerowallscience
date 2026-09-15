@@ -8,15 +8,30 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { isModelInvocable, renderSkillContent } from '@deepseek-ai/dsh-skill';
 import { MCP_ID_PREFIX } from "./registry.js";
+function argumentRecord(value) {
+    if (value === undefined)
+        return {};
+    let parsed = value;
+    if (typeof parsed === 'string') {
+        try {
+            parsed = JSON.parse(parsed);
+        }
+        catch {
+            throw new Error('capability_execute: args must be a JSON object, not malformed JSON text');
+        }
+    }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('capability_execute: args must be a JSON object');
+    }
+    return parsed;
+}
 function normalizeCompactToolArguments(name, value) {
-    if (!/^mcp__rmcp__(?:r_|biomni_)/u.test(name) || value === null || typeof value !== 'object' || Array.isArray(value))
-        return value;
-    const source = value;
+    const source = argumentRecord(value);
+    if (!/^mcp__rmcp__(?:r_|biomni_)/u.test(name))
+        return source;
     if (typeof source.action !== 'string')
-        return value;
-    const nested = source.arguments !== null && typeof source.arguments === 'object' && !Array.isArray(source.arguments)
-        ? source.arguments
-        : {};
+        return source;
+    const nested = argumentRecord(source.arguments);
     const { action, arguments: _arguments, query, detail, limit, ...flattened } = source;
     return {
         action,
@@ -64,7 +79,7 @@ export function apply(ctx, config = {}) {
         parameters: {
             id: { type: 'string', required: true, description: 'Capability id from capability_search, e.g. mcp__gongfeng__create_issue or frontend-design.' },
             kind: { type: 'string', enum: ['tool', 'skill'], required: true, description: 'Capability kind reported by capability_search for this id.' },
-            args: { type: 'json', description: 'Arguments forwarded to a tool; ignored for skills.' },
+            args: { type: 'json', description: 'JSON object matching the exact capability input schema. To inspect a schema, use capability_search with id and detail=true; do not execute without required arguments. Ignored for skills.' },
         },
         output: {
             schema: {
@@ -156,7 +171,7 @@ export function apply(ctx, config = {}) {
             if (capability === undefined) {
                 const compact = ctx.get('zerowallMcp');
                 if (kind === 'tool' && compact !== undefined && /^(?:r|figureya|biomni|bio)\./u.test(id)) {
-                    const result = await compact.executeCompactCapability(id, args.args, exec);
+                    const result = await compact.executeCompactCapability(id, argumentRecord(args.args), exec);
                     return {
                         ok: true,
                         kind: 'mcp',
@@ -210,7 +225,7 @@ export function apply(ctx, config = {}) {
                 }
                 const forwardedArgs = workspaceAction === undefined
                     ? normalizeCompactToolArguments(capability.name, args.args)
-                    : { ...(args.args !== null && typeof args.args === 'object' && !Array.isArray(args.args) ? args.args : {}), action: workspaceAction };
+                    : { ...argumentRecord(args.args), action: workspaceAction };
                 // Nested execution through the official pipeline. The parent token marks
                 // this as a transport sub-dispatch so code-mode collapse rules treat it
                 // like a nested SDK call, and `tools/result` observers can attribute the

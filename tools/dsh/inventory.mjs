@@ -14,8 +14,6 @@ const thirdPartyOrder = [
   'dsh-file-review',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
   'dsh-wechat',
-  '@daweifu/capability-menu',
-  'dsh-auto-review',
   '@changfenhuang/dsh-genui',
 ]
 const zeroWallOrder = [

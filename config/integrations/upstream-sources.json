@@ -1,16 +1,15 @@
 {
-  "version": "5.10.0",
+  "version": "6.0.0",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.1.5-rc.2",
-    "commit": "d5f0f8a74bd8a94fe9cd438803ba5dcc52638baf"
+    "commit": "2f80eb52123fc71a2d54fdbe6b7bbdb8ba746b66"
   },
   "betterSidebar": {
     "repository": "https://github.com/omdsh-dev/DSH-better-sidebar.git",
-    "branch": "zerowall-v0180",
-    "tag": "v0.18.0",
-    "upstreamCommit": "9e1a03452794532cda1f6ac677b72579dff48dfc",
-    "commit": "2a70faf9a145ee033d2db521d7894f9c91cc2bae",
+    "tag": "v0.19.1",
+    "upstreamCommit": "1fcf43ccbedd6e66370b7fb81df2b4dd0ef2604e",
+    "commit": "1fcf43ccbedd6e66370b7fb81df2b4dd0ef2604e",
     "source": "packages/dsh-better-sidebar"
   },
   "betterSidebarIcons": {
@@ -21,43 +20,42 @@
   "fileReviewTab": {
     "repository": "https://github.com/left0ver/dsh-file-review.git",
     "branch": "main",
-    "commit": "d0d82d3ae223ab2fbb2e1ff826788947ec800b36",
-    "version": "0.6.0",
+    "commit": "c16c7c113157f5c13cbc262b11172e1498ae31f9",
+    "version": "0.8.1",
     "license": "MIT",
     "source": "packages/dsh-file-review"
   },
   "office": {
     "repository": "https://github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office.git",
-    "branch": "adapt/v0.1.2-alpha.1",
-    "commit": "443d861f44aa8391d6869bd85ce6d1306e09c606"
+    "commit": "3b881c9d002109444368b1a28d371663390b156b"
   },
   "wechat": {
     "repository": "https://github.com/pan17/dsh-wechat.git",
     "branch": "main",
-    "commit": "a755e5c0f7901b700bd85cb4053a34753e9ac8c4",
-    "version": "0.8.0",
+    "commit": "7e3274d1e504dabe56f2873fc15bf7779c985d30",
+    "version": "0.9.6",
     "license": "MIT",
     "source": "packages/dsh-wechat"
   },
   "capabilityMenu": {
     "repository": "https://github.com/PKUfudawei/dsh-capability-menu.git",
-    "commit": "41f3db99f131893ab9e4e82b97e941593dd56e47",
+    "commit": "a13f2934e7685c436256e1d1a4bc7e719088c01c",
     "version": "0.1.2",
     "license": "Apache-2.0",
     "source": "packages/dsh-capability-menu"
   },
   "autoReview": {
     "repository": "https://github.com/PerryLink/dsh-auto-review.git",
-    "commit": "6940bd3ad6454aa91eccbe7e4c661b6835cdb7b8",
-    "version": "0.10.4",
+    "commit": "34a497ef2d4bbe1ffd271ccedc1e6bb7c27e4c9a",
+    "version": "0.12.4",
     "license": "Apache-2.0",
     "source": "packages/dsh-auto-review"
   },
   "genui": {
     "repository": "https://github.com/omdsh-dev/dsh-genui.git",
     "branch": "main",
-    "commit": "02a7264e3ad49e69cb66ef24491e0166c18f6cc6",
-    "version": "0.9.8",
+    "commit": "21ee4f42adc80452ade39fff07d40d646331caa1",
+    "version": "0.10.0",
     "license": "MIT",
     "package": "@changfenhuang/dsh-genui",
     "source": "packages/dsh-genui"

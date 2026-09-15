@@ -3,6 +3,7 @@ import { defineConfig } from 'tsdown'
 const id = '@daweifu/capability-menu'
 
 const clientConfig = defineConfig({
+  dts: false,
   entry: { client: 'src/client/index.ts' },
   format: ['cjs'],
   outDir: 'lib',
@@ -40,7 +41,8 @@ const clientConfig = defineConfig({
 // Keep it as a separate entry so the browser bundle's ModuleLoader wrapper is
 // never applied to the Typert contribution.
 const remoteConfig = defineConfig({
-  entry: { 'typert.remote-client': 'src/client/remote.ts' },
+  dts: false,
+  entry: { 'typert.remote-client': 'src/client/remote.ts', 'typert.host': 'src/typert-host.ts' },
   format: ['esm'],
   outDir: 'lib',
   clean: false,

@@ -28,3 +28,8 @@
   color: var(--dsw-alias-label-primary, var(--color-text-primary, #344054));
   font-weight: 600;
 }
+
+/* Settings must remain readable above wallpaper and the conversation composer. */
+:global([role='dialog'][aria-modal='true']:has(> nav)) {
+  background: light-dark(#ffffff, #202124) !important;
+}

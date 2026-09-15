@@ -329,7 +329,9 @@ describe('capability-menu-policy plugin', () => {
     const assembly = await ctx.systemPrompt.assemble()
     const pointer = assembly.sections.find(section => section.name === 'capability-menu-catalog')
     expect(pointer).toBeDefined()
-    expect(pointer?.text).toContain(catalogFile)
+    expect(pointer?.text).not.toContain(catalogFile)
+    expect(pointer?.text).toContain('mcp_connect directly without arguments')
+    expect(pointer?.text).toContain('Do not read the full capability catalog')
   })
 
   it('does not inject a catalog pointer when nothing is On-demand', async () => {
@@ -412,15 +414,15 @@ describe('capability-policy management surface (能力管理)', () => {
     registerTool(ctx, 'bash')
     const service = ctx.capabilityPolicy
 
-    await expect(service.updateConfig({ tools: { disabled: ['meta_search'] } }))
+    await expect(service.updateConfig({ tools: { disabled: ['capability_search'] } }))
       .rejects.toThrow(/cannot be disabled/)
 
     // Compilation happens before the commit, so the rejected config is not
     // observable anywhere: neither in getConfig nor in classification.
     expect(service.getConfig().tools?.disabled).toBeUndefined()
     expect(service.getConfig().tools?.resident).toEqual(['bash'])
-    expect(service.isDisabledTool('meta_search')).toBe(false)
-    expect(service.classifyTool('meta_search')).toBe('resident')
+    expect(service.isDisabledTool('capability_search')).toBe(false)
+    expect(service.classifyTool('capability_search')).toBe('resident')
   })
 
   it('classifyAll is not truncated by the registry maxResults default', async () => {

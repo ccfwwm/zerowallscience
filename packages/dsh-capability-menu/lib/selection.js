@@ -74,6 +74,15 @@ export function createSelections(ctx, policy) {
                     name: LEGACY_R_FILES_TOOL,
                     description: 'Compatibility-only workspace file forwarding endpoint.',
                     async execute(args, exec) {
+                        // A native facade's child call must reach the current transport.
+                        // Resolving with exec.agent would select this shadow again and
+                        // recursively re-enter r_files until the Host runs out of memory.
+                        if (exec.parent !== undefined) {
+                            const transport = ctx.tools.get(LEGACY_R_FILES_TOOL);
+                            if (transport === undefined)
+                                throw new Error('rdatalinux R MCP transport is unavailable.');
+                            return transport.execute(args, exec);
+                        }
                         return facade.execute(args, {
                             ...exec,
                             callId: ToolCallId(`${exec.callId}:compat:r-files`),

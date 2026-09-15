@@ -136,6 +136,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   static inject = ['zerowallProjects', 'tools']
 
   private readonly connecting = new Map<string, Promise<void>>()
+  private disposed = false
   private readonly fibers = new Map<string, Fiber>()
   /** Tools observed after the corresponding Fiber completed its initial sync. */
   private readonly registeredTools = new Map<string, string[]>()
@@ -206,17 +207,18 @@ export class ZeroWallMcpService extends TypertRemoteService {
     } as never)
     ctx.effect(() => ctx.tools.register(defineTool({
       name: 'mcp_connect',
-      description: 'Discover configured MCP connections without starting them. Omit server to list connections; pass one enabled server name to connect it on demand. Then use capability_search and capability_execute to find and use its tools. Disabled connections must first be enabled in Settings.',
+      description: 'Check MCP availability directly. Omit server to return all configured connections and their current status without reconnecting. Pass an enabled server name to await its existing connection or connect it once. Defaults connect in the background at startup. Do not search or read the capability catalog to check connection status.',
       parameters: { server: { type: 'string' } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       async execute(args) {
         await service.recordsReady
         if (args.server === undefined || args.server.trim() === '') {
-          return { connections: (await service.list()).map(item => ({ server: item.serverName, name: item.name, enabled: item.enabled, state: item.runtimeState })) }
+          return { connections: (await service.list()).map(item => ({ server: item.serverName, name: item.name, enabled: item.enabled, state: item.runtimeState, toolCount: item.tools.length, ...(item.runtimeError ? { error: item.runtimeError } : {}) })) }
         }
         await service.ensureConnected(args.server)
-        const record = (await service.list()).find(item => item.serverName === args.server)
-        return { server: args.server, state: record?.runtimeState, tools: record?.tools.slice(0, 40), toolCount: record?.tools.length }
+          const record = (await service.list()).find(item => item.serverName === args.server)
+          if (record === undefined) throw new Error(`MCP server disappeared during connection: ${args.server}`)
+          return { server: args.server, state: record.runtimeState, tools: record.tools.slice(0, 40), toolCount: record.tools.length }
       },
     })), 'zerowall-mcp: demand connection tool')
     ctx.tools.register(defineTool({
@@ -496,8 +498,17 @@ export class ZeroWallMcpService extends TypertRemoteService {
       // an unhandled startup rejection that terminates the whole Host.
       ctx.logger.warn(`zerowall-mcp: default connection migration failed: ${redactError(error)}`)
     })
-    // Metadata boot must not spawn remote transports or register their schemas.
+    // Bundled MCP records are enabled by product default. Start their
+    // transports asynchronously after metadata is ready so Host startup is
+    // never blocked by a slow or unavailable remote server.
     this.operation = this.recordsReady
+    void this.recordsReady.then(() => {
+      if (this.disposed) return
+      for (const record of this.projects().listMcpServers()) {
+        if (!record.enabled) continue
+        this.startConnection(record)
+      }
+    })
     // dsh-mcp-client publishes lifecycle events on the root context so that
     // the service can observe clients created in nested Cordis fibers.
     const applyStatus = (serverName: string, state: 'starting' | 'active' | 'error', error?: string): void => {
@@ -521,10 +532,12 @@ export class ZeroWallMcpService extends TypertRemoteService {
       disposeRootStatusListener()
     }, 'zerowall-mcp: lifecycle status listener')
     this.startEnvironmentRefresh()
-    ctx.effect(() => () => {
+    ctx.effect(() => async () => {
+      this.disposed = true
       if (this.environmentPoller !== undefined) clearInterval(this.environmentPoller)
       this.environmentPoller = undefined
-      void this.disposeAll()
+      await Promise.allSettled([...this.connecting.values()])
+      await this.disposeAll()
     }, 'zerowall-mcp: dispose dynamic clients')
   }
 
@@ -557,7 +570,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       {
         backend: 'bio' as const,
         target: 'mcp__zerowall_managed_bio_tools__bio_search',
-        arguments: { query: detailId === undefined ? query : '', capability_id: detailId, detail: detailId !== undefined, limit },
+        arguments: { query: detailId === undefined ? query : '', ...(detailId === undefined ? {} : { capability_id: detailId }), detail: detailId !== undefined, limit },
       },
     ].filter(request => this.ctx.tools.get(request.target) !== undefined)
     const settled = await Promise.allSettled(requests.map(async request => {
@@ -629,7 +642,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     return this.exclusive(async () => {
       if (isManagedMcpName(input.serverName)) throw new Error('This connection is managed in Environment settings.')
       const record = this.projects().createMcpServer(input as CreateMcpServerInput)
-      await this.park(record)
+      await this.reconcile(record)
       return this.dto(record)
     })
   }
@@ -645,7 +658,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
         throw new Error('Managed connection names are reserved.')
       }
       const record = this.projects().updateMcpServer(input.id, input.changes as UpdateMcpServerInput)
-      await this.park(record)
+      await this.reconcile(record)
       return this.dto(record)
     })
   }
@@ -824,6 +837,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
     try {
       await this.exclusive(async () => {
         this.convergeReadyStatuses()
+        if (this.disposed) return
+        for (const server of this.projects().listMcpServers()) {
+          if (server.enabled && isManagedMcp(server.serverName) && this.statuses.get(server.id)?.state !== 'active') this.startConnection(server)
+        }
       })
     } catch (error) {
       this.ctx.logger.warn(`zerowall-mcp: managed environment refresh failed: ${redactError(error)}`)
@@ -838,11 +855,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     // Default MCP records are enabled by policy. Their reconciliation is
     // started asynchronously by the Host, so enabling them here does not
     // block the desktop UI boot and keeps the MCP tab populated immediately.
-    // Bundled MCP records are discoverable from Settings but must not start
-    // remote handshakes or stdio servers during Host boot. A user can enable
-    // an individual connection explicitly; this prevents reconnect/tools-list
-    // churn from retaining generations in a long-lived Harness process.
-    const defaultEnabled = false
+    const defaultEnabled = true
     const marker = defaultMcpMarkerPath()
     let markerVersion = 0
     try {
@@ -898,10 +911,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
         }
       }
     }
-    if (markerVersion < 8) {
-      // Older releases enabled every bundled connection at boot. Disable only
-      // those exact managed records once; user-created connections remain
-      // untouched and can still be enabled explicitly from Settings.
+    if (markerVersion < 9) {
+      // Restore the product defaults to enabled after the deferred-connection
+      // release. User-created MCP records are left untouched.
       const defaultServerNames = new Set([
         RDATALINUX_SERVER_NAME,
         'huagongshe',
@@ -910,8 +922,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
         'zerowall_managed_ketcher',
       ])
       for (const server of projects.listMcpServers()) {
-        if (defaultServerNames.has(server.serverName) && server.enabled) {
-          projects.updateMcpServer(server.id, { enabled: false })
+        if (defaultServerNames.has(server.serverName) && !server.enabled) {
+          projects.updateMcpServer(server.id, { enabled: true })
         }
       }
     }
@@ -964,7 +976,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       }
     }
     await mkdir(dirname(marker), { recursive: true })
-    await writeFile(marker, '{"version":8}\n', 'utf8')
+    await writeFile(marker, '{"version":9}\n', 'utf8')
   }
 
   private projects() {
@@ -980,15 +992,20 @@ export class ZeroWallMcpService extends TypertRemoteService {
     return projects
   }
 
-  private async park(record: McpServerRecord): Promise<void> {
-    this.reconcileVersions.set(record.id, (this.reconcileVersions.get(record.id) ?? 0) + 1)
-    await this.disposeOne(record.id)
-    this.statuses.set(record.id, { state: record.enabled ? 'idle' : 'disabled', error: '', missingEnvironmentVariables: [] })
+  private startConnection(record: McpServerRecord): void {
+    if (this.disposed || this.connecting.has(record.id)) return
+    const pending = this.reconcile(record).catch((error: unknown) => {
+      this.ctx.logger.warn(`zerowall-mcp: default connection failed: ${redactError(error)}`)
+    }).finally(() => {
+      if (this.connecting.get(record.id) === pending) this.connecting.delete(record.id)
+    })
+    this.connecting.set(record.id, pending)
   }
 
   /** Coalesce demand for one server; inspection and polling never call this method. */
   async ensureConnected(serverName: string): Promise<void> {
     await this.recordsReady
+    if (this.disposed) throw new Error('MCP service is stopping.')
     const record = this.projects().listMcpServers().find(item => item.serverName === serverName)
     if (record === undefined || !record.enabled) throw new Error('MCP connection is disabled or unknown. Enable it in Settings first.')
     if (this.statuses.get(record.id)?.state === 'active' && this.fibers.has(record.id)) return
@@ -1003,14 +1020,18 @@ export class ZeroWallMcpService extends TypertRemoteService {
       })
       this.connecting.set(record.id, pending)
     }
-    try { await pending } finally { if (this.connecting.get(record.id) === pending) this.connecting.delete(record.id) }
+    try {
+      await pending
+      const status = this.statuses.get(record.id)
+      if (status?.state !== 'active') throw new Error(status?.error || 'MCP connection is unavailable.')
+    } finally { if (this.connecting.get(record.id) === pending) this.connecting.delete(record.id) }
   }
 
   private async reconcile(record: McpServerRecord): Promise<void> {
     const version = (this.reconcileVersions.get(record.id) ?? 0) + 1
     this.reconcileVersions.set(record.id, version)
     this.readyVersions.delete(record.id)
-    const current = (): boolean => this.reconcileVersions.get(record.id) === version
+    const current = (): boolean => !this.disposed && this.reconcileVersions.get(record.id) === version
     if (!record.enabled) {
       await this.disposeOne(record.id)
       if (current()) this.statuses.set(record.id, { state: 'disabled', error: '', missingEnvironmentVariables: [] })

@@ -43,6 +43,8 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
         customSkillDirs: [userSkillsDir],
         // DSH assigns custom roots rank 300 and bundled roots rank 600, so an
         // editable user Skill wins a same-name bundled catalog entry.
+        // User changes must invalidate the filesystem provider cache so the
+        // Settings page reflects create/import/disable operations immediately.
         watch: true,
       })
     }

@@ -22,7 +22,6 @@ const zerowallPackageRoots = [
   resolve(root, 'packages/dsh-better-sidebar'),
   resolve(root, 'packages/dsh-wechat'),
   resolve(root, 'packages/dsh-file-review'),
-  resolve(root, 'packages/dsh-capability-menu'),
   resolve(root, 'packages/dsh-auto-review'),
   resolve(root, 'packages/dsh-genui'),
   ...await pluginRoots(resolve(root, 'plugins')),
@@ -37,7 +36,6 @@ const desktopRuntimeSeeds = [
   'dsh-file-review',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
   'dsh-wechat',
-  '@daweifu/capability-menu',
   'dsh-auto-review',
   '@changfenhuang/dsh-genui',
   'dsh-free-search',
@@ -193,7 +191,7 @@ async function copyRuntimePackage(package_, targetRoot) {
     return
   }
 
-  if (['dsh-better-sidebar-icons', 'dsh-file-review', 'dsh-wechat', '@daweifu/capability-menu', 'dsh-auto-review', 'dsh-free-search'].includes(manifest.name)) {
+  if (['dsh-better-sidebar-icons', 'dsh-file-review', 'dsh-wechat', 'dsh-auto-review', 'dsh-free-search'].includes(manifest.name)) {
     // These upstream plugins publish compiled lib/dist plus their bundle patch
     // and (for icons) the SVG asset directory. Keep the package boundary and
     // exclude repository-only tests/docs through the common runtime filter.
@@ -326,6 +324,9 @@ async function pluginRoots(directory) {
   const roots = []
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue
+    // This retired local plugin is excluded by pnpm-workspace.yaml; old
+    // checkouts may still retain ignored build outputs beside its manifest.
+    if (entry.name === 'wechat') continue
     const root = resolve(directory, entry.name)
     try {
       await access(resolve(root, 'package.json'))

@@ -165,6 +165,7 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
+      "external": ["@deepseek-ai/dsh-client-ui-chat/client"],
       "inject": [
         "@deepseek-ai/dsh-api-remotes",
         "@deepseek-ai/dsh-api-session-controller",

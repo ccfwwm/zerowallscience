@@ -31,6 +31,9 @@
   disabled: false
 - id: tool-fs
   disabled: false
+  config:
+    readLimit: 200
+    readMaxBytes: 16000
 - id: tool-fs-search
   disabled: false
   config:
@@ -135,59 +138,6 @@
         # QR/login is user initiated in the packaged desktop so it cannot
         # hold the first client boot behind an external network request.
         autoStart: false
-
-    - id: capability-menu-registry
-      name: '@daweifu/capability-menu/registry'
-    - id: capability-menu-search
-      name: '@daweifu/capability-menu/search'
-    - id: capability-menu-invoke
-      name: '@daweifu/capability-menu/invoke'
-    - id: capability-menu-policy
-      name: '@daweifu/capability-menu/policy'
-      config:
-        zeroWallDefaults: true
-        tools:
-          # Keep the model-facing surface small. MCP capabilities remain
-          # discoverable through capability_search/execute and are loaded only
-          # for the current task instead of serializing every schema on every
-          # request.
-          on-demand: ['mcp__*', 'server:*:*', 'server:rmcp', 'server:zerowall_managed_bio_tools']
-          resident:
-            - mcp_connect
-            - capability_search
-            - capability_execute
-            - structured_output
-            - ask_user_question
-            - bash
-            - read
-            - write
-            - edit
-            - glob
-            - grep
-            - pwsh
-            - terminal_read
-            - terminal_send
-            - terminal_create
-            - terminal_wait_for
-            - todo_write
-            - python
-        skills:
-          on-demand: ['*']
-          resident: [genui]
-    - id: capability-menu
-      name: '@daweifu/capability-menu'
-
-    - id: auto-review
-      name: 'dsh-auto-review'
-      config:
-        allowUnmarkedAudit: false
-        enableByDefault: false
-        language: zh
-        fallbackPolicy: delegate
-        toolsPolicy:
-          overrides:
-            bash: ai
-            write: ai
 
     # GenUI renders dsh-ui fences inline and keeps its heavy engines lazy.
     - id: genui

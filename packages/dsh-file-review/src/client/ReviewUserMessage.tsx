@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-chat/client'
+import { UserStyleBubble } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { MessageImageSource } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NS } from './locales.ts'
@@ -247,6 +248,10 @@ export function ReviewUserMessage({
   renderMessageImages,
   t,
   reviewT,
+  sessionId,
+  openAttachment,
+  openParsedAttachment,
+  copyAttachment,
 }: UserMessageProps) {
   const { content, time } = node.data
   const { text, images, rest } = contentParts(content)
@@ -263,6 +268,17 @@ export function ReviewUserMessage({
       ? text
       : [countLabel, visibleText].filter((value) => value !== null && value !== '').join('\n\n')
   const showBubble = visibleText !== '' || rest.length > 0
+
+  if (projection === null) return <UserStyleBubble
+    content={content}
+    sessionId={sessionId}
+    renderMessageImages={renderMessageImages}
+    openAttachment={openAttachment}
+    openParsedAttachment={openParsedAttachment}
+    copyAttachment={copyAttachment}
+    t={t}
+    actions={value => <MessageActions text={value} time={time} t={t} />}
+  />
 
   return (
     <div className={css.reviewMessageRow} data-time-hover-root="">
