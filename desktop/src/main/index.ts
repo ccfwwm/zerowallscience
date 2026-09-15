@@ -140,8 +140,8 @@ function findWorkspaceRoot(): string {
   return findDesktopWorkspaceRoot(app.getAppPath())
 }
 
-function attachDesktopBridge(child: HarnessChildProcess): void {
-  child.on('message', (message: unknown) => {
+function attachDesktopBridge(child: HarnessChildProcess): () => void {
+  const onMessage = (message: unknown) => {
     if (!message || typeof message !== 'object') return
     const value = message as { type?: string; requestId?: string; op?: string; args?: readonly string[]; invokingDir?: string }
     if (value.type === 'zerowall:desktop:restart-runtime') {
@@ -176,7 +176,11 @@ function attachDesktopBridge(child: HarnessChildProcess): void {
       desktopPluginProcesses.delete(value.requestId as string)
       child.send({ type: 'zerowall:desktop:result', requestId: value.requestId, result: { ok: true, result: { exitCode: code, signal } } })
     })
-  })
+  }
+  child.on('message', onMessage)
+  const dispose = () => child.off('message', onMessage)
+  child.once('exit', dispose)
+  return dispose
 }
 
 function dshEntryPath(): string {
@@ -345,7 +349,11 @@ app.whenReady().then(async () => {
     logPath: join(app.getPath('logs'), 'harness.log'),
     portPath: join(userData, 'harness', 'endpoint-port.txt'),
     launchProcess: (executable, args, options) => spawn(executable, args, options) as HarnessChildProcess,
-    onChildStarted: (child) => { attachCredentialBroker(child, credentialVault); attachDesktopBridge(child) },
+    onChildStarted: (child) => {
+      const disposeCredential = attachCredentialBroker(child, credentialVault)
+      const disposeDesktop = attachDesktopBridge(child)
+      return () => { disposeCredential(); disposeDesktop() }
+    },
     onChanged: (snapshot) => {
       if (snapshot.phase === 'ready') void showHarness(snapshot).then(scheduleMcpEnvironmentUpdate)
       if (snapshot.phase === 'failed' && !quitting) dialog.showErrorBox(`${identity.productName} could not start`, snapshot.message)

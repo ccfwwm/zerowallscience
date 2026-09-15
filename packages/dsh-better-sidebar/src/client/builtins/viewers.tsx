@@ -32,7 +32,7 @@ import {
   IconPdfOutline16,
   IconHtmlOutline16,
 } from '../icons.tsx'
-import type { ComponentType } from 'react'
+import { useState, type ComponentType } from 'react'
 import type { FileViewerDescriptor, FileViewerProps } from '../service.ts'
 import { t } from '../locales.ts'
 import css from '../sidebar.module.css'
@@ -45,6 +45,12 @@ import css from '../sidebar.module.css'
  */
 const LazyTextEditor = lazyChunkComponent<FileViewerProps>('editor', (mod) => mod.TextEditor as ComponentType<FileViewerProps> | undefined)
 
+function ImageViewer({ url, title }: { url: string | undefined; title: string }): React.ReactElement {
+  const [failed, setFailed] = useState(false)
+  if (failed || url === undefined) return <div className={css.editorBinaryNotice} role="alert">{title} 无法预览，请下载文件查看。</div>
+  return <div className={css.editorImageWrap}><img className={css.editorImage} src={url} alt={title} onError={() => setFailed(true)} /></div>
+}
+
 /** The 6 built-in file viewer descriptors. */
 export function builtinViewers(): readonly FileViewerDescriptor[] {
   return [
@@ -54,11 +60,7 @@ export function builtinViewers(): readonly FileViewerDescriptor[] {
       icon: (size: number) => <IconImageOutline16 size={size} />,
       exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif'],
       fetchStrategy: 'mediaUrl',
-      component: ({ mediaUrl: url, title }) => (
-        <div className={css.editorImageWrap}>
-          <img className={css.editorImage} src={url} alt={title} />
-        </div>
-      ),
+      component: ({ mediaUrl: url, title }) => <ImageViewer url={url} title={title} />,
     },
     {
       id: 'pdf',

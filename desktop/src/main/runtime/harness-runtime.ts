@@ -31,7 +31,7 @@ export interface HarnessRuntimeOptions {
   terminateProcessTree?(pid: number, force: boolean): void
   shutdownGracePeriodMs?: number
   shutdownForcePeriodMs?: number
-  onChildStarted?(child: HarnessChildProcess): void
+  onChildStarted?(child: HarnessChildProcess): void | (() => void)
   onChanged(snapshot: RuntimeSnapshot): void
 }
 
@@ -113,6 +113,7 @@ export class HarnessRuntime {
   private authenticatedUrl?: string
   private readonly logLines: string[] = []
   private readonly outputBuffers = new Map<string, string>()
+  private disposeChildHooks?: () => void
 
   constructor(private readonly options: HarnessRuntimeOptions) {}
 
@@ -179,7 +180,7 @@ export class HarnessRuntime {
       return
     }
     this.child = child
-    this.options.onChildStarted?.(child)
+    this.disposeChildHooks = this.options.onChildStarted?.(child)
     child.stdout.on('data', (chunk: Buffer) => this.writeChunk('stdout', chunk))
     child.stderr.on('data', (chunk: Buffer) => this.writeChunk('stderr', chunk))
     child.once('error', (error) => {
@@ -211,6 +212,8 @@ export class HarnessRuntime {
   async stop(): Promise<void> {
     const child = this.child
     this.child = undefined
+    this.disposeChildHooks?.()
+    this.disposeChildHooks = undefined
     if (child !== undefined) await this.stopChild(child)
     this.logStream?.end()
     this.logStream = undefined

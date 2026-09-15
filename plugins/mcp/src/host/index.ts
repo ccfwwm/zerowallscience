@@ -39,6 +39,7 @@ export const RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL = 'zerowall.mcp.rdatalinu
 export const RDATALINUX_R_MCP_AUTHORIZATION_ENV = 'R_PLATFORM_MCP_AUTHORIZATION'
 const ENVIRONMENT_SECRET_PREFIX = 'zerowall.environment.var.'
 const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 30 * 60_000
+const MCP_FAILURE_COOLDOWN_MS = 5 * 60_000
 const RDATALINUX_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
 const FIGUREYA_MODULE_MAX_BYTES = 250 * 1024 * 1024
 
@@ -152,6 +153,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private environmentRefreshInFlight = false
   private readonly secrets = new SecretBrokerClient()
   private readonly mcpToolIndex = new Map<string, { server: string; name: string; description: string }>()
+  private readonly failureCooldownUntil = new Map<string, number>()
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallMcp')
@@ -994,7 +996,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   private startConnection(record: McpServerRecord): void {
     if (this.disposed || this.connecting.has(record.id)) return
+    const cooldown = this.failureCooldownUntil.get(record.id) ?? 0
+    if (cooldown > Date.now()) return
     const pending = this.reconcile(record).catch((error: unknown) => {
+      this.failureCooldownUntil.set(record.id, Date.now() + MCP_FAILURE_COOLDOWN_MS)
       this.ctx.logger.warn(`zerowall-mcp: default connection failed: ${redactError(error)}`)
     }).finally(() => {
       if (this.connecting.get(record.id) === pending) this.connecting.delete(record.id)
@@ -1009,6 +1014,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
     const record = this.projects().listMcpServers().find(item => item.serverName === serverName)
     if (record === undefined || !record.enabled) throw new Error('MCP connection is disabled or unknown. Enable it in Settings first.')
     if (this.statuses.get(record.id)?.state === 'active' && this.fibers.has(record.id)) return
+    const cooldown = this.failureCooldownUntil.get(record.id) ?? 0
+    if (cooldown > Date.now()) throw new Error('MCP connection is cooling down after a failed start. Retry later or reload it from Settings.')
     let pending = this.connecting.get(record.id)
     if (pending === undefined) {
       pending = this.exclusive(async () => {
@@ -1022,6 +1029,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     }
     try {
       await pending
+      this.failureCooldownUntil.delete(record.id)
       const status = this.statuses.get(record.id)
       if (status?.state !== 'active') throw new Error(status?.error || 'MCP connection is unavailable.')
     } finally { if (this.connecting.get(record.id) === pending) this.connecting.delete(record.id) }
