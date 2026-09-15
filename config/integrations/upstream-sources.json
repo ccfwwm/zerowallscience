@@ -68,5 +68,14 @@
     "adapterRepository": "https://github.com/nullptr-DZF/dsh-academic-research-skills.git",
     "adapterCommit": "a6859a3752cfe582a166ca283c10d3a45e1f9c9c",
     "source": "resources/skills"
+  },
+  "progressiveTools": {
+    "repository": "https://github.com/everclear077/dsh-progressive-tools.git",
+    "tag": "v0.4.0",
+    "commit": "47e9ea5eaeb73ca2639acdad8f5b76ff5403dd7f",
+    "version": "0.4.0",
+    "license": "MIT",
+    "source": "packages/dsh-progressive-tools",
+    "runtime": "0.1.5-rc.2"
   }
 }

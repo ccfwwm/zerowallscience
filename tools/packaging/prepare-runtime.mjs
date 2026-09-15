@@ -15,6 +15,8 @@ const desktopModules = resolve(root, 'desktop/node_modules')
 const workspaceModules = resolve(root, 'node_modules')
 const zerowallPackageRoots = [
   resolve(root, 'store'),
+  resolve(root, 'packages/dsh-progressive-tools'),
+  resolve(root, 'packages/dsh-session-notification'),
   // Keep the merged ZeroWall Sidebar as the canonical runtime package. Some
   // workspace plugins retain a stale pnpm link under their own node_modules
   // directory; treating the Sidebar as a workspace package prevents that
@@ -27,6 +29,8 @@ const zerowallPackageRoots = [
   ...await pluginRoots(resolve(root, 'plugins')),
 ]
 const desktopRuntimeSeeds = [
+  'dsh-progressive-tools',
+  '@dingyi222666/dsh-session-notification',
   // The packaged Web Host resolves its SPA entry through this package's
   // manifest at runtime; it is not reachable from the DSH library dependency
   // graph because it is an application entry rather than a library import.

@@ -36,6 +36,11 @@ if (archiveFiles.some(path => path.startsWith('node_modules/@daweifu/capability-
 }
 const packagedManifest = JSON.parse(readArchiveFile('package.json').toString('utf8'))
 const requiredArchivePaths = [
+  'node_modules/dsh-progressive-tools/lib/index.js',
+  'node_modules/dsh-progressive-tools/cordis.patch.yml',
+  'node_modules/@dingyi222666/dsh-session-notification/lib/index.js',
+  'node_modules/@dingyi222666/dsh-session-notification/lib/client.js',
+  'node_modules/@dingyi222666/dsh-session-notification/cordis.patch.yml',
   'out/main/index.js',
   'out/preload/index.cjs',
   'runtime/harness-node-entry.mjs',

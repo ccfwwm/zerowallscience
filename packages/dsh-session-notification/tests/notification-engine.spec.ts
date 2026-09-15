@@ -1,0 +1,330 @@
+/**
+ * Notification engine classification: running edges, pending edges (via the
+ * uiSession pending map), failure detection, seeding, and cleanup. The engine
+ * is dependency-injected and DOM-free, so these tests run under plain node
+ * vitest.
+ */
+import { describe, expect, it } from 'vitest'
+import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
+// dsh 0.1.3: session-list types live in the api-session-controller client.
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  NotificationEngine, truncateDetail,
+  type NotificationEnginePorts, type NotificationEvent, type PendingFacts, type SessionDetail,
+} from '../src/client/notification-service.ts'
+
+function summary(id: string, running: boolean) {
+  return { id: id as SessionId, displayTitle: `会话 ${id}`, running, blank: false, updatedAt: 0 }
+}
+
+function list(byId: Record<string, ReturnType<typeof summary>>): SessionListState {
+  return { ids: Object.keys(byId) as SessionId[], byId, current: undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined } as unknown as SessionListState
+}
+
+function detail(overrides: Partial<SessionDetail> = {}): SessionDetail {
+  return { maxTurnErrorSeq: 0, failureMessage: null, lastAgentError: null, finalText: '', ...overrides }
+}
+
+function pending(sessionId: string, kind: PendingFacts['kind'], key = 'k1', text = ''): [SessionId, PendingFacts] {
+  return [sessionId as SessionId, { key, kind, detail: text }]
+}
+
+/** One pending snapshot keyed by branded session ids (SessionId is branded in 0.1.3). */
+function pendingMap(entries: ReadonlyArray<[SessionId, PendingFacts]>): ReadonlyMap<SessionId, PendingFacts> {
+  return new Map(entries)
+}
+
+function makePorts(overrides: Partial<NotificationEnginePorts> = {}): NotificationEnginePorts & { events: NotificationEvent[] } {
+  const events: NotificationEvent[] = []
+  return {
+    detailOf: () => undefined,
+    titleOf: (id) => String(id),
+    settle: () => Promise.resolve(),
+    isSubagent: () => false,
+    hasRunningDescendants: () => false,
+    emit: (event) => { events.push(event) },
+    ...overrides,
+    events,
+  }
+}
+
+const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0))
+
+describe('NotificationEngine', () => {
+  it('raises nothing for sessions idle at seed', async () => {
+    const ports = makePorts()
+    const engine = new NotificationEngine(ports)
+    engine.seed(list({ a: summary('a', false) }))
+    await flush()
+    expect(ports.events).toEqual([])
+  })
+
+  it('notifies when a session that was running at seed finishes', async () => {
+    const ports = makePorts({ detailOf: () => detail() })
+    const engine = new NotificationEngine(ports)
+    engine.seed(list({ a: summary('a', true) }))
+    engine.observe(list({ a: summary('a', false) }))
+    await flush()
+    expect(ports.events).toEqual([{ kind: 'completed', sessionId: 'a', title: 'a', detail: '' }])
+  })
+
+  it('raises completed when a run ends without an error', async () => {
+    const ports = makePorts({ detailOf: () => detail() })
+    const engine = new NotificationEngine(ports)
+    engine.observe(list({ a: summary('a', true) }))
+    engine.observe(list({ a: summary('a', false) }))
+    await flush()
+    expect(ports.events).toEqual([{ kind: 'completed', sessionId: 'a', title: 'a', detail: '' }])
+  })
+
+  it('carries the final assistant text as the completed detail', async () => {
+    const details = new Map<string, SessionDetail>([['a', detail({ finalText: '最初的回复' })]])
+    const ports = makePorts({ detailOf: (id) => details.get(String(id)) })
+    const engine = new NotificationEngine(ports)
+    engine.observe(list({ a: summary('a', true) }))
+    details.set('a', detail({ finalText: '最终完成文本' }))
+    engine.observe(list({ a: summary('a', false) }))
+    await flush()
+    expect(ports.events).toEqual([{ kind: 'completed', sessionId: 'a', title: 'a', detail: '最终完成文本' }])
+  })
+
+  it('raises failed when a turn-error node appears during the run', async () => {
+    const details = new Map<string, SessionDetail>([['a', detail()]])
+    const ports = makePorts({ detailOf: (id) => details.get(String(id)) })
+    const engine = new NotificationEngine(ports)
+    engine.observe(list({ a: summary('a', true) }))
+    details.set('a', detail({ maxTurnErrorSeq: 12, failureMessage: 'boom' }))
+    engine.observe(list({ a: summary('a', false) }))
+    await flush()
+    expect(ports.events).toEqual([{ kind: 'failed', sessionId: 'a', title: 'a', detail: 'boom' }])
+  })
+
+  it('raises failed when a host agent-error lands during the run', async () => {
+    const details = new Map<string, SessionDetail>([['a', detail()]])
+    const ports = makePorts({ detailOf: (id) => details.get(String(id)) })
+    const engine = new NotificationEngine(ports)
+    engine.observe(list({ a: summary('a', true) }))
+    details.set('a', detail({ lastAgentError: 'loop crashed' }))
+    engine.observe(list({ a: summary('a', false) }))
+    await flush()
+    expect(ports.events).toEqual([{ kind: 'failed', sessionId: 'a', title: 'a', detail: 'loop crashed' }])
+  })
+
+  it('treats a stale pre-run agent error as not failed', async () => {
+    const ports = makePorts({ detailOf: () => detail({ lastAgentError: 'stale' }) })
+    const engine = new NotificationEngine(ports)
+    engine.observe(list({ a: summary('a', true) }))
+    engine.observe(list({ a: summary('a', false) }))
+    await flush()
+    expect(ports.events).toEqual([{ kind: 'completed', sessionId: 'a', title: 'a', detail: '' }])
+  })
+
+  it('raises question when a pending question interaction arrives', () => {
+    const ports = makePorts()
+    const engine = new NotificationEngine(ports)
+    engine.observePending(pendingMap([pending('a', 'question', 'q1', '继续吗?')]))
+    expect(ports.events).toEqual([{ kind: 'question', sessionId: 'a', title: 'a', detail: '继续吗?' }])
+  })
+
+  it('raises permission when a pending approval interaction arrives', () => {
+    const ports = makePorts()
+    const engine = new NotificationEngine(ports)
+    engine.observePending(pendingMap([pending('a', 'approval', 'a1', 'bash：run a command')]))
+    expect(ports.events).toEqual([{ kind: 'permission', sessionId: 'a', title: 'a', detail: 'bash：run a command' }])
+  })
+
+  it('re-raises when the interaction is replaced with a new key', () => {
+    const ports = makePorts()
+    const engine = new NotificationEngine(ports)
+    engine.observePending(pendingMap([pending('a', 'question', 'q1')]))
+    engine.observePending(pendingMap([pending('a', 'question', 'q2')]))
+    expect(ports.events).toEqual([
+      { kind: 'question', sessionId: 'a', title: 'a', detail: '' },
+      { kind: 'question', sessionId: 'a', title: 'a', detail: '' },
+    ])
+  })
+
+  it('raises again when a pending kind switches', () => {
+    const ports = makePorts()
+    const engine = new NotificationEngine(ports)
+    engine.observePending(pendingMap([pending('a', 'question', 'q1')]))
+    engine.observePending(pendingMap([pending('a', 'approval', 'a2')]))
+    expect(ports.events).toEqual([
+      { kind: 'question', sessionId: 'a', title: 'a', detail: '' },
+      { kind: 'permission', sessionId: 'a', title: 'a', detail: '' },
+    ])
+  })
+
+  it('raises nothing when a pending interaction leaves the map', () => {
+    const ports = makePorts()
+    const engine = new NotificationEngine(ports)
+    engine.observePending(pendingMap([pending('a', 'question', 'q1')]))
+    engine.observePending(pendingMap([]))
+    expect(ports.events).toEqual([{ kind: 'question', sessionId: 'a', title: 'a', detail: '' }])
+  })
+
+  it('skips a stale settle when a newer run armed while settling', async () => {
+    let release: (() => void) | undefined
+    const ports = makePorts({
+      detailOf: () => detail(),
+      settle: () => new Promise<void>(resolve => { release = resolve }),
+    })
+    const engine = new NotificationEngine(ports)
+    engine.observe(list({ a: summary('a', true) }))
+    engine.observe(list({ a: summary('a', false) }))
+    engine.observe(list({ a: summary('a', true) }))
+    release?.()
+    await flush()
+    expect(ports.events).toEqual([])
+  })
+
+  it('forgets sessions that leave the list', async () => {
+    const ports = makePorts({ detailOf: () => undefined })
+    const engine = new NotificationEngine(ports)
+    engine.observe(list({ a: summary('a', true) }))
+    engine.observe(list({}))
+    engine.observe(list({ a: summary('a', true) }))
+    engine.observe(list({ a: summary('a', false) }))
+    await flush()
+    // Reappearing session starts from a fresh prev: the run edge still fires.
+    expect(ports.events).toEqual([{ kind: 'completed', sessionId: 'a', title: 'a', detail: '' }])
+  })
+
+  it('stays silent for subagents by default (main-only on)', async () => {
+    const ports = makePorts({
+      detailOf: () => detail(),
+      isSubagent: (id) => String(id) === 'sub',
+    })
+    const engine = new NotificationEngine(ports)
+    engine.seed(list({ main: summary('main', true), sub: summary('sub', true) }))
+    engine.observe(list({ main: summary('main', false), sub: summary('sub', false) }))
+    await flush()
+    // Only the main session completed; the subagent run stays silent.
+    expect(ports.events).toEqual([{ kind: 'completed', sessionId: 'main', title: 'main', detail: '' }])
+  })
+
+  it('does not raise pending edges for subagents while main-only is on', () => {
+    const ports = makePorts({ isSubagent: (id) => String(id) === 'sub' })
+    const engine = new NotificationEngine(ports)
+    engine.observePending(new Map([
+      pending('main', 'question', 'q1', '继续吗?'),
+      pending('sub', 'approval', 'a1', 'bash: run'),
+    ]))
+    expect(ports.events).toEqual([{ kind: 'question', sessionId: 'main', title: 'main', detail: '继续吗?' }])
+  })
+
+  it('alerts for subagents once main-only is turned off', async () => {
+    const ports = makePorts({
+      detailOf: () => detail(),
+      isSubagent: (id) => String(id) === 'sub',
+    })
+    const engine = new NotificationEngine(ports)
+    engine.setNotificationMode('all')
+    engine.observe(list({ sub: summary('sub', true) }))
+    engine.observe(list({ sub: summary('sub', false) }))
+    await flush()
+    expect(ports.events).toEqual([{ kind: 'completed', sessionId: 'sub', title: 'sub', detail: '' }])
+  })
+
+  it('forgets tracked subagents when main-only is re-enabled mid-run', async () => {
+    const ports = makePorts({
+      detailOf: () => detail(),
+      isSubagent: (id) => String(id) === 'sub',
+    })
+    const engine = new NotificationEngine(ports)
+    engine.setNotificationMode('all')
+    engine.observe(list({ sub: summary('sub', true) }))
+    // Re-enabling the filter forgets the tracked subagent: finishing now
+    // produces no event.
+    engine.setNotificationMode('main')
+    engine.observe(list({ sub: summary('sub', false) }))
+    await flush()
+    expect(ports.events).toEqual([])
+  })
+
+  it('holds a main completion while subagents still run, then alerts once', async () => {
+    let descendantsRunning = true
+    const ports = makePorts({
+      detailOf: () => detail({ finalText: '全部完成' }),
+      hasRunningDescendants: () => descendantsRunning,
+    })
+    const engine = new NotificationEngine(ports)
+    engine.observe(list({ main: summary('main', true) }))
+    engine.observe(list({ main: summary('main', false) }))
+    await flush()
+    // The fan-out is not finished: the completion stays held.
+    expect(ports.events).toEqual([])
+    // The last descendant settles; the next list frame releases it.
+    descendantsRunning = false
+    engine.observe(list({ main: summary('main', false) }))
+    expect(ports.events).toEqual([{ kind: 'completed', sessionId: 'main', title: 'main', detail: '全部完成' }])
+  })
+
+  it('never holds a failure behind subagents', async () => {
+    const details = new Map<string, SessionDetail>([['main', detail()]])
+    const ports = makePorts({
+      detailOf: (id) => details.get(String(id)),
+      hasRunningDescendants: () => true,
+    })
+    const engine = new NotificationEngine(ports)
+    engine.observe(list({ main: summary('main', true) }))
+    details.set('main', detail({ maxTurnErrorSeq: 9, failureMessage: 'boom' }))
+    engine.observe(list({ main: summary('main', false) }))
+    await flush()
+    expect(ports.events).toEqual([{ kind: 'failed', sessionId: 'main', title: 'main', detail: 'boom' }])
+  })
+
+  it('alerts immediately when the subagent wait is off', async () => {
+    const ports = makePorts({
+      detailOf: () => detail(),
+      hasRunningDescendants: () => true,
+    })
+    const engine = new NotificationEngine(ports)
+    engine.setNotificationMode('main')
+    engine.observe(list({ main: summary('main', true) }))
+    engine.observe(list({ main: summary('main', false) }))
+    await flush()
+    expect(ports.events).toEqual([{ kind: 'completed', sessionId: 'main', title: 'main', detail: '' }])
+  })
+
+  it('releases a held completion when the wait is turned off', async () => {
+    const ports = makePorts({
+      detailOf: () => detail(),
+      hasRunningDescendants: () => true,
+    })
+    const engine = new NotificationEngine(ports)
+    engine.observe(list({ main: summary('main', true) }))
+    engine.observe(list({ main: summary('main', false) }))
+    await flush()
+    expect(ports.events).toEqual([])
+    engine.setNotificationMode('main')
+    expect(ports.events).toEqual([{ kind: 'completed', sessionId: 'main', title: 'main', detail: '' }])
+  })
+
+  it('drops a held completion when a newer run starts', async () => {
+    let descendantsRunning = true
+    const ports = makePorts({
+      detailOf: () => detail(),
+      hasRunningDescendants: () => descendantsRunning,
+    })
+    const engine = new NotificationEngine(ports)
+    engine.observe(list({ main: summary('main', true) }))
+    engine.observe(list({ main: summary('main', false) }))
+    await flush()
+    expect(ports.events).toEqual([])
+    // A new run supersedes the held completion; only the second run alerts.
+    engine.observe(list({ main: summary('main', true) }))
+    descendantsRunning = false
+    engine.observe(list({ main: summary('main', false) }))
+    await flush()
+    expect(ports.events).toEqual([{ kind: 'completed', sessionId: 'main', title: 'main', detail: '' }])
+  })
+})
+
+describe('truncateDetail', () => {
+  it('truncates long detail text', () => {
+    expect(truncateDetail('short')).toBe('short')
+    expect(truncateDetail('x'.repeat(200)).length).toBe(160)
+    expect(truncateDetail('x'.repeat(200)).endsWith('…')).toBe(true)
+  })
+})

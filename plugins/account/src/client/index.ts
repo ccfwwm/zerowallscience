@@ -1,5 +1,7 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import { AccountSection } from './account-surface.js'
 import { AiCloudAccountButton } from './AiCloudAccountButton.tsx'
 import { NS, unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 
@@ -12,6 +14,8 @@ export function apply(ctx: ClientContext): void {
     name: 'sidebar.footer.action', id: 'zerowall-ai-cloud', order: -20, locale: NS,
     inject: () => ({
       getAccount: async () => unwrapRemoteResult('zerowall.account.current', await remote.zerowallAccount.current()),
+      forgetLogin: async () => { unwrapRemoteResult('zerowall.account.forgetLogin', await remote.zerowallAccount.forgetLogin()) },
+      savedLogin: async () => unwrapRemoteResult('zerowall.account.savedLogin', await remote.zerowallAccount.savedLogin()),
       getPublicConfig: async () => unwrapRemoteResult('zerowall.account.publicConfig', await remote.zerowallAccount.publicConfig()),
       gateways: async () => unwrapRemoteResult('zerowall.account.gateways', await remote.zerowallAccount.gateways()),
       selectGateway: async (baseUrl: string) => unwrapRemoteResult('zerowall.account.selectGateway', await remote.zerowallAccount.selectGateway(baseUrl)),
@@ -28,4 +32,5 @@ export function apply(ctx: ClientContext): void {
       api,
     }),
   }, AiCloudAccountButton))
+  ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'zerowall-account', order: 20, label: () => 'AI 云平台' }, AccountSection))
 }

@@ -33,7 +33,7 @@ Use ZeroWall Environment settings for configuration. Do not create a second `.en
 - `RESEARCH_BROWSER_COOKIES`, `RESEARCH_BROWSER_PROFILE`, `RESEARCH_ANNAS_HEADFUL_BUDGET_S`
 - `RESEARCH_SKIP_END_DOCTOR`, `RESEARCH_LIBGEN_MIRRORS`, `RESEARCH_MIN_BOOK_PAGES`
 
-When invoked from `zerowall-literature`, first use its metadata resolution and task output, then use this skill's `pdf-cascade` workflow for the download/validation step when the user requests the full Paper Trail path. Keep the task directory and registry paths explicit in the result.
+For full paper-trail workflows, use metadata resolution followed by this skill's `pdf-cascade` workflow for download and validation. Keep the task directory and registry paths explicit in the result.
 
 ## Evidence and authorization
 

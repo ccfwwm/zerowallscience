@@ -8,6 +8,7 @@ import type { EnvironmentSettingsValue, EnvironmentVariableInfo, ImageGeneration
 export const name = 'zerowall-environment'
 export const ENVIRONMENT_SETTINGS_NS = 'zerowall-environment' as SettingsNamespace
 export const EnvironmentSettingsSchema: z<EnvironmentSettingsValue> = z.object({
+  retiredVariablesRemoved: z.boolean().default(false),
   variables: z.array(z.object({ name: z.string() })).default([]),
   imageModel: z.object({
     providerId: z.string().default(''),
@@ -22,7 +23,8 @@ const RESERVED = new Set(['NODE_OPTIONS', 'ELECTRON_RUN_AS_NODE', 'PATH', 'PATHE
 const KEY_PREFIX = 'zerowall.environment.var.'
 // These are part of the TSG contract even when an older settings snapshot
 // did not persist the variable names alongside the encrypted values.
-const WELL_KNOWN_VARIABLES = ['TSG_PM_JSESSIONID', 'TSG_SESSIONID', 'TSG_SGUSER', 'TSG_TSGUSER'] as const
+const WELL_KNOWN_VARIABLES: string[] = []
+const RETIRED_VARIABLES = ['TSG_PM_JSESSIONID', 'TSG_SESSIONID', 'TSG_SGUSER', 'TSG_TSGUSER', 'TSG_JSESSIONID', 'RESEARCH_SCIDB_SETTLE_MS', 'LITERATURE_OUTPUT_ROOT', 'LITERATURE_DISABLE_PAPER_DOWNLOAD', 'LITERATURE_DOWNLOAD_WORKERS', 'LITERATURE_MAX_PDF_BYTES', 'AUTHORIZED_ADAPTER_MODULE', 'AUTHORIZED_ADAPTER_ALLOWED_DOMAINS', 'ZEROWALL_PAPER_DOWNLOAD_ROOT'] as const
 
 export function validateEnvironmentVariableName(name: string): string {
   const value = name.trim().toUpperCase()
@@ -48,7 +50,7 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     // Keep credential restoration observable.  A tool can be invoked
     // immediately after Host startup, so fire-and-forget hydration otherwise
     // races the first TSG/download request.
-    this.hydration = this.hydrate()
+    this.hydration = this.removeRetiredVariables().then(() => this.hydrate())
   }
 
   getImageModelSelection(): ImageModelSelection | undefined {
@@ -107,6 +109,14 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     return await this.listVariables()
   }
 
+  @Remote('readVariable')
+  async readVariable(name: string): Promise<string | undefined> {
+    await this.hydration
+    const key = validateEnvironmentVariableName(name)
+    const value = await this.secrets.get(credentialKey(key))
+    return value ?? process.env[key]
+  }
+
   @Remote('deleteVariable')
   async deleteVariable(name: string): Promise<EnvironmentVariableInfo[]> {
     await this.hydration
@@ -127,6 +137,19 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
         // A broken OS credential entry is ignored; the UI can replace it.
       }
     }
+  }
+
+  private async removeRetiredVariables(): Promise<void> {
+    if (this.scope.get().retiredVariablesRemoved) return
+    for (const name of RETIRED_VARIABLES) {
+      try {
+        await this.secrets.delete(credentialKey(name))
+        delete process.env[name]
+      } catch { return } // Retry migration on next startup if the vault is unavailable.
+    }
+    const retired = new Set<string>(RETIRED_VARIABLES)
+    const variables = this.scope.get().variables.filter(row => !retired.has(row.name))
+    await this.scope.replace({ ...this.scope.get(), variables, retiredVariablesRemoved: true })
   }
 }
 

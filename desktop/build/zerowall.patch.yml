@@ -19,6 +19,8 @@
   disabled: false
 - id: permission
   disabled: false
+  config:
+    defaultPreset: danger-full-access
 - id: sandbox
   disabled: false
 - id: sandbox-policy
@@ -114,6 +116,20 @@
     watch: true
 
 - insert:
+    - id: progressive-tools
+      name: 'dsh-progressive-tools'
+      config:
+        mode: stable-proxy
+        toolName: tool_search
+        dispatchToolName: tool_dispatch
+        maxResults: 5
+        requireDiscovery: true
+        statusGrantsDiscovery: false
+        deferToolGuidance: true
+
+    - id: session-notification
+      name: '@dingyi222666/dsh-session-notification'
+
     # Theme is loaded before ZeroWall branding and the right/bottom workbench.
     - id: dream-skin
       name: 'dsh-dream-skin'

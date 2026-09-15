@@ -12,6 +12,7 @@ export interface ImageModelSelection {
 export type ImageGenerationQuality = 'auto' | 'low' | 'medium' | 'high'
 
 export interface EnvironmentSettingsValue {
+  retiredVariablesRemoved?: boolean
   variables: { name: string }[]
   imageModel: ImageModelSelection
   imageQuality: ImageGenerationQuality

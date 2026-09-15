@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { installCacheDiagnostics } from './cache-diagnostics.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -15,6 +16,7 @@ export const inject = ['webServer', 'systemPrompt']
 export const SCIENCE_SYSTEM_PROMPT = 'You are ZeroWall Science, a scientific workbench for R/Bioconductor, bioinformatics, literature, chemistry, and scientific figures. Use MCP tools only when needed; check connection status before calling them and report credential or connection errors clearly. Load the narrowest relevant research skill before substantive research. Read large files in short windows and return artifact paths instead of binary/base64 data. Keep credentials in Settings and preserve required approvals for external actions.'
 
 export function apply(ctx: Context): void {
+  installCacheDiagnostics(ctx)
   ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
     const assembly = await next()
     return { ...assembly, sections: assembly.sections.filter(section => section.name !== 'harness:source') }

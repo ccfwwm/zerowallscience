@@ -1,5 +1,7 @@
 # Third-Party Notices
 
+`packages/dsh-session-notification` is sourced from [dingyi222666/dsh-session-notification](https://github.com/dingyi222666/dsh-session-notification), BSD-3-Clause.
+
 ZeroWall Science first-party code is licensed separately under
 AGPL-3.0-only. This document preserves the copyright notices and license
 terms for third-party source and assets distributed with, adapted by, or
@@ -558,3 +560,7 @@ their source metadata or adjacent notices.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+## dsh-progressive-tools
+
+Version 0.4.0, MIT license. Source: https://github.com/everclear077/dsh-progressive-tools/tree/47e9ea5eaeb73ca2639acdad8f5b76ff5403dd7f. Vendored source is unchanged; ZeroWall workspace overrides bind core dependencies to its pinned DSH runtime.

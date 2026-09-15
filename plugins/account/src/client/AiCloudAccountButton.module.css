@@ -86,3 +86,7 @@
 .orderRow button { border: 0; color: #315b7d; background: transparent; cursor: pointer; font-size: 11px; }
 .emptyOrders { padding: 24px 0; color: var(--dsw-alias-label-secondary, #687078); text-align: center; font-size: 12px; }
 @media (max-width: 720px) { .backdrop { padding: 8px; } .accountCard, .billingGrid { grid-template-columns: 1fr; } .modelSync { align-items: stretch; flex-direction: column; } .modelSync .secondary { width: 100%; } .balance { text-align: left; } .orderRow { grid-template-columns: minmax(0, 1fr) auto; } .orderRow .status, .orderRow button { justify-self: start; } .authActions { grid-template-columns: 1fr; } }
+
+.embedded { padding: 20px; min-width: 0; }
+.embedded .panel { width: 100%; max-width: 960px; max-height: none; box-shadow: none; margin: 0 auto; overflow: visible; }
+.embedded .content { overflow: visible; max-height: none; }

@@ -178,10 +178,12 @@ export class McpEnvironmentController {
     return info
   }
 
-  async checkPythonPackageUpdates(): Promise<McpPythonInfo> {
+  async checkPythonPackageUpdates(names: string[] = []): Promise<McpPythonInfo> {
     const context = await this.pythonContext()
-    const result = await execute(context.executable, ['-m', 'pip', 'list', '--outdated', '--format=json', '--path', context.overlayPath], context.root, undefined, pythonEnvironment(context.overlayPath, context.sitePackages), 120_000)
-    const updates = new Map((JSON.parse(result.stdout || '[]') as Array<{ name: string; latest_version: string }>).map(item => [item.name.toLowerCase().replaceAll('_', '-'), item.latest_version]))
+    const wanted = new Set(names.map(pythonPackageName))
+    const paths = [context.overlayPath, context.sitePackages]
+    const results = await Promise.all(paths.map(path => execute(context.executable, ['-m', 'pip', 'list', '--outdated', '--format=json', '--path', path], context.root, undefined, pythonEnvironment(context.overlayPath, context.sitePackages), 120_000)))
+    const updates = new Map(results.flatMap(result => (JSON.parse(result.stdout || '[]') as Array<{ name: string; latest_version: string }>)).filter(item => wanted.size === 0 || wanted.has(pythonPackageName(item.name))).map(item => [item.name.toLowerCase().replaceAll('_', '-'), item.latest_version]))
     const info = await this.pythonInfo()
     info.packages = info.packages.map(pkg => {
       const latestVersion = pkg.source === 'overlay' ? updates.get(pkg.name.toLowerCase().replaceAll('_', '-')) : undefined
@@ -196,8 +198,8 @@ export class McpEnvironmentController {
     const available = info.packages.filter(pkg => pkg.source === 'overlay' && pkg.updateAvailable === true)
     const requested = names.length === 0 ? available.map(pkg => pkg.name) : names
     if (requested.length === 0) return info
-    const overlayNames = new Set(info.packages.filter(pkg => pkg.source === 'overlay').map(pkg => pkg.name.toLowerCase().replaceAll('_', '-')))
-    for (const name of requested) if (!overlayNames.has(pythonPackageName(name))) throw new Error(`只能更新用户扩展包：${name}`)
+    const packageNames = new Set(info.packages.map(pkg => pkg.name.toLowerCase().replaceAll('_', '-')))
+    for (const name of requested) if (!packageNames.has(pythonPackageName(name))) throw new Error(`未找到可更新的包：${name}`)
     await this.mutateOverlay(context.overlayPath, async () => {
       await execute(context.executable, ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '--upgrade', '--target', context.overlayPath, ...requested], context.root, undefined, pythonEnvironment(context.overlayPath, context.sitePackages), 180_000)
       await execute(context.executable, ['-m', 'pip', 'check'], context.root, undefined, pythonEnvironment(context.overlayPath, context.sitePackages), 60_000)

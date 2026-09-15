@@ -553,6 +553,14 @@ export function PythonEnvironmentPanel() {
     catch (reason) { setFeedback(message(reason)) }
     finally { setBusy(false) }
   }
+  const checkOne = async (name: string) => {
+    setBusy(true); setFeedback(undefined)
+    try { const next = await window.zerowallDesktop?.checkMcpPythonPackageUpdates?.([name]); if (next !== undefined) setInfo(next); setFeedback(`${name} 更新状态已检测。`) } catch (reason) { setFeedback(message(reason)) } finally { setBusy(false) }
+  }
+  const updateOne = async (name: string) => {
+    setBusy(true); setFeedback(undefined)
+    try { const next = await window.zerowallDesktop?.updateMcpPythonPackages?.([name]); if (next !== undefined) setInfo(next); setFeedback(`${name} 已更新。`) } catch (reason) { setFeedback(message(reason)) } finally { setBusy(false) }
+  }
 
   return <section className={css.pythonPanel} aria-labelledby="zerowall-python-title">
     <header className={css.header}><div><p>ZeroWall Science</p><h2 id="zerowall-python-title">Python 环境</h2></div><button className={css.iconButton} type="button" onClick={() => void load(query)} disabled={busy || environmentBusy} title="重新检测" aria-label="重新检测"><RefreshCw size={17} /></button></header>

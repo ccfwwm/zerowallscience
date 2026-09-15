@@ -27,7 +27,7 @@ export interface ZeroWallDesktopApi {
   updateMcpEnvironment?(): Promise<McpEnvironmentStatus>
   getMcpPythonInfo?(query?: string): Promise<McpPythonInfo>
   installMcpPythonPackage?(spec: string): Promise<McpPythonInfo>
-  checkMcpPythonPackageUpdates?(): Promise<McpPythonInfo>
+  checkMcpPythonPackageUpdates?(names?: string[]): Promise<McpPythonInfo>
   updateMcpPythonPackages?(names?: string[]): Promise<McpPythonInfo>
   onMcpEnvironmentStatus?(listener: (status: McpEnvironmentStatus) => void): () => void
   onUpdateStatus(listener: (status: DesktopUpdateStatus) => void): () => void

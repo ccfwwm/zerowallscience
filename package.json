@@ -1,6 +1,6 @@
 {
   "name": "zerowallscience",
-  "version": "6.0.2",
+  "version": "6.0.3",
   "description": "ZeroWall Science local-first scientific research workbench.",
   "private": true,
   "type": "module",
@@ -27,7 +27,8 @@
     "wechat:bundle": "pnpm --filter dsh-wechat run build && pnpm --filter dsh-auto-review run build",
     "genui:bundle": "pnpm --filter @changfenhuang/dsh-genui run build",
     "sidebar:bundle": "pnpm --filter dsh-better-sidebar run build",
-    "plugins:bundle": "pnpm plugins:typert && pnpm --filter @zerowallscience/plugin-* run bundle && node tools/plugins/inline-css.mjs",
+    "session-notification:bundle": "pnpm --filter @dingyi222666/dsh-session-notification run bundle",
+    "plugins:bundle": "pnpm plugins:typert && pnpm --filter @zerowallscience/plugin-* run bundle && pnpm session-notification:bundle && pnpm progressive-tools:bundle && node tools/plugins/inline-css.mjs",
     "plugins:typecheck": "pnpm --filter @zerowallscience/plugin-* run typecheck",
     "plugins:test": "pnpm --filter @zerowallscience/plugin-* run test",
     "resources:prepare": "node tools/packaging/prepare-resources.mjs",
@@ -65,7 +66,9 @@
     "package:mac:x64": "pnpm build && pnpm --filter @zerowallscience/desktop run package:mac:x64",
     "package:mac:arm64": "pnpm build && pnpm --filter @zerowallscience/desktop run package:mac:arm64",
     "package:stable:mac:x64": "pnpm build && pnpm --filter @zerowallscience/desktop run package:stable:mac:x64",
-    "package:stable:mac:arm64": "pnpm build && pnpm --filter @zerowallscience/desktop run package:stable:mac:arm64"
+    "package:stable:mac:arm64": "pnpm build && pnpm --filter @zerowallscience/desktop run package:stable:mac:arm64",
+    "progressive-tools:bundle": "pnpm --filter dsh-progressive-tools run build --skipLibCheck",
+    "progressive-tools:check": "pnpm --filter dsh-progressive-tools run typecheck --skipLibCheck && pnpm --filter dsh-progressive-tools run lint && pnpm --filter dsh-progressive-tools run test && pnpm progressive-tools:bundle && pnpm --filter dsh-progressive-tools run publint --pack false"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

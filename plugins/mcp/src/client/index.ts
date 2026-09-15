@@ -31,8 +31,8 @@ export function apply(ctx: ClientContext): void {
       clearRdatalinuxAuthorization: async () => unwrapRemoteResult('zerowall.mcp.clearRdatalinuxAuthorization', await mcpRemote.clearRdatalinuxAuthorization()),
     }),
   }, McpConnectionsButton))
-  ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
-    name: 'settings.plugins.tab', id: 'zerowall-python-environment', order: -9,
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section', id: 'zerowall-python-environment', order: 30,
     label: () => 'Python 环境', locale: NS, inject: () => ({}),
   }, PythonEnvironmentPanel))
 }

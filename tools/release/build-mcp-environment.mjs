@@ -136,9 +136,6 @@ await execFileAsync(pythonExecutable, ['-c', `import ${managedPythonImports}`], 
   windowsHide: true,
 })
 await execFileAsync(pythonExecutable, ['-m', 'pip', 'check'], { cwd: staging, env: managedPythonEnv, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
-for (const script of [join(root, 'resources', 'skills', 'zerowall-literature', 'scripts', 'literature_pipeline.py'), join(root, 'resources', 'skills', 'zerowall-literature', 'scripts', 'paper_download_bridge.py')]) {
-  await execFileAsync(pythonExecutable, ['-m', 'py_compile', script], { cwd: staging, env: managedPythonEnv, windowsHide: true })
-}
 await checkMcpServer(pythonExecutable, ['run_server.py', 'mcp_bio'], join(staging, 'bio-tools'))
 await checkMcpServer(process.execPath, ['server.js'], join(staging, 'ketcher-chemistry'))
 await checkMcpServer(process.execPath, ['dist/mcp.cjs'], join(staging, 'sci'))

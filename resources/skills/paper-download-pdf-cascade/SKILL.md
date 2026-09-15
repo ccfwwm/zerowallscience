@@ -13,4 +13,4 @@ python -m pipeline run --state candidate --limit 50
 python -m pipeline reactivate-ocr
 ```
 
-For title/DOI/PMID workflows started through `zerowall-literature`, its `scripts/paper_download_bridge.py` invokes this same cascade in an isolated registry and returns only a validated PDF.
+For title/DOI/PMID workflows, invoke this cascade in an isolated registry and return only a validated PDF.

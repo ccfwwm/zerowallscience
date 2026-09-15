@@ -40,6 +40,7 @@ export interface AiCloudGateway {
 }
 
 export interface AiCloudLoginRequest { email: string; password: string; rememberPassword?: boolean }
+export interface AiCloudSavedLogin { email: string; password: string; baseUrl: string; rememberPassword: true }
 export interface AiCloudRegisterRequest { email: string; password: string; verificationCode: string; rememberPassword?: boolean }
 export interface AiCloudSendCodeRequest { email: string }
 

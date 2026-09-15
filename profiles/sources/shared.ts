@@ -1,4 +1,6 @@
 export const bundledPlugins = [
+  'dsh-progressive-tools',
+  '@dingyi222666/dsh-session-notification',
   'dsh-dream-skin',
   'dsh-better-sidebar',
   'dsh-better-sidebar-icons',

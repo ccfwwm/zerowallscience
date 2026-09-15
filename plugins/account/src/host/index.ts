@@ -5,6 +5,7 @@ import type {
   AiCloudAccountSnapshot, AiCloudCreateOrderRequest, AiCloudGateway, AiCloudLoginRequest, AiCloudManagedModel,
   AiCloudCheckoutInfo, AiCloudGetOrderRequest, AiCloudPaymentOrder, AiCloudPublicConfig,
   AiCloudRegisterRequest, AiCloudSendCodeRequest, AiCloudVerifyOrderRequest,
+  AiCloudSavedLogin,
 } from '../shared/types.js'
 import type {} from 'zod'
 
@@ -12,6 +13,7 @@ export type {
   AiCloudAccountSnapshot, AiCloudCheckoutInfo, AiCloudCreateOrderRequest, AiCloudGateway, AiCloudGetOrderRequest,
   AiCloudLoginRequest, AiCloudManagedModel, AiCloudPaymentOrder, AiCloudPublicConfig,
   AiCloudRegisterRequest, AiCloudSendCodeRequest, AiCloudVerifyOrderRequest,
+  AiCloudSavedLogin,
 } from '../shared/types.js'
 
 const PRIMARY_BASE = 'https://hkcode.aicodeme.xyz'
@@ -82,7 +84,7 @@ export class AiCloudClient {
     const selected = this.requireBase(baseUrl)
     await this.secrets.set(PREFERRED_BASE_KEY, selected)
     const login = await this.loadLogin()
-    if (login === undefined) return signedOut(selected)
+    if (login === undefined || await this.isManuallySignedOut()) return signedOut(selected)
     const authenticated = await this.authenticate(login.email, login.password, [selected])
     const account = await this.finishAuthentication(authenticated.baseUrl, login.email, login.password, authenticated.accessToken)
     try {
@@ -171,6 +173,13 @@ export class AiCloudClient {
     if (session !== undefined) await this.clearSession(session, false)
     else await this.secrets.delete(SESSION_KEY)
     await this.secrets.set(MANUAL_SIGNOUT_KEY, '1')
+  }
+
+  async forgetLogin(): Promise<void> { await this.secrets.delete(LOGIN_KEY) }
+
+  async savedLogin(): Promise<AiCloudSavedLogin | undefined> {
+    const login = await this.loadLogin()
+    return login === undefined ? undefined : { ...login, rememberPassword: true }
   }
 
   async discoverModels(): Promise<AiCloudAccountSnapshot> {
@@ -471,6 +480,8 @@ export class ZeroWallAccountService extends TypertRemoteService {
   @Remote('login') async login(input: AiCloudLoginRequest): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.login(input)) }
   @Remote('register') async register(input: AiCloudRegisterRequest): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.register(input)) }
   @Remote('current') async current(): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.current()) }
+  @Remote('forgetLogin') forgetLogin(): Promise<void> { return this.client.forgetLogin() }
+  @Remote('savedLogin') savedLogin(): Promise<AiCloudSavedLogin | undefined> { return this.client.savedLogin() }
   @Remote('logout') async logout(): Promise<void> { await this.client.logout(); this.publish(signedOut()) }
   @Remote('discoverModels') async discoverModels(): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.discoverModels()) }
   @Remote('listOrders') listOrders(): Promise<AiCloudPaymentOrder[]> { return this.client.listOrders() }

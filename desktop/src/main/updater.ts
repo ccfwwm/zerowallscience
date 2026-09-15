@@ -82,7 +82,7 @@ export class DesktopUpdateController {
   current(): DesktopUpdateStatus { return { ...this.status } }
 
   async check(): Promise<DesktopUpdateStatus> {
-    if (!this.options.enabled) return this.current()
+    if (!this.options.enabled || ['checking', 'downloading', 'downloaded'].includes(this.status.phase)) return this.current()
     this.set({ phase: 'checking', currentVersion: this.options.currentVersion })
     try { await this.options.updater.checkForUpdates() } catch { this.fail('检查更新失败，请稍后重试。') }
     return this.current()

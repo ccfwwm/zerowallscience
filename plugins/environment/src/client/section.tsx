@@ -49,8 +49,6 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const [rdatalinuxEndpoint, setRdatalinuxEndpoint] = useState('http://103.217.185.141:8099/r-platform/mcp')
   const [rdatalinuxAuthorization, setRdatalinuxAuthorization] = useState('')
   const [rdatalinuxConnection, setRdatalinuxConnection] = useState<LocalizedMessage>('')
-  const [tsgValues, setTsgValues] = useState<Record<string, string>>({})
-  const [trailValues, setTrailValues] = useState<Record<string, string>>({})
 
   useEffect(() => {
     setReviewerValue(reviewerScope.getSnapshot().value ?? defaultReviewer)
@@ -164,34 +162,6 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       setNewValue('')
     })
   }
-  const tsgKeys = ['TSG_PM_JSESSIONID', 'TSG_SESSIONID', 'TSG_SGUSER', 'TSG_TSGUSER']
-  const saveTsg = async () => run(async () => {
-    const entries = Object.entries(tsgValues).filter(([, value]) => value.trim())
-    if (entries.length === 0) throw new LocalizedError('tsgRequired')
-    let next = variables
-    for (const [name, value] of entries) next = await unwrap(environmentRemote.setVariable(name, value))
-    setVariables(next)
-    setTsgValues({})
-  })
-  const trailKeys = [
-    'RESEARCH_VAULT_PATH', 'RESEARCH_SOURCES_PATH', 'RESEARCH_REGISTRY_PATH',
-    'RESEARCH_VAULT_LAYOUT', 'RESEARCH_CONTACT_EMAIL', 'UNPAYWALL_EMAIL', 'S2_API_KEY',
-    'RESEARCH_RTFM_DB', 'RESEARCH_ENABLE_SHADOW_LIBS', 'RESEARCH_ENABLE_NOTEBOOKLM',
-    'RESEARCH_SKIP_END_DOCTOR', 'RESEARCH_BROWSER_COOKIES', 'RESEARCH_BROWSER_PROFILE',
-    'RESEARCH_ANNAS_HEADFUL_BUDGET_S', 'RESEARCH_LIBGEN_MIRRORS', 'RESEARCH_MIN_BOOK_PAGES',
-    'RESEARCH_RG_SEARCH_GAP_S', 'RESEARCH_SCIDB_SETTLE_MS', 'RESEARCH_REQUIRE_GIT',
-    'LITERATURE_OUTPUT_ROOT', 'LITERATURE_DISABLE_PAPER_DOWNLOAD', 'LITERATURE_DOWNLOAD_WORKERS', 'LITERATURE_MAX_PDF_BYTES',
-    'AUTHORIZED_ADAPTER_MODULE', 'AUTHORIZED_ADAPTER_ALLOWED_DOMAINS',
-    'ZEROWALL_PAPER_DOWNLOAD_ROOT', 'AUTHORIZED_ADAPTER_MODULE', 'AUTHORIZED_ADAPTER_ALLOWED_DOMAINS',
-  ]
-  const saveTrail = async () => run(async () => {
-    const entries = Object.entries(trailValues).filter(([, value]) => value.trim())
-    if (entries.length === 0) throw new LocalizedError('pipelineRequired')
-    let next = variables
-    for (const [name, value] of entries) next = await unwrap(environmentRemote.setVariable(name, value))
-    setVariables(next)
-    setTrailValues({})
-  })
   const saveSci = async () => {
     if (!sciKey.trim()) return
     await run(async () => {
@@ -230,16 +200,6 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     {error ? <p className={css.error} role="alert">{renderMessage(error, t)}</p> : null}
     <div className={css.grid}>
       <LiteratureSettings remote={pubmedRemote} unwrap={unwrap} t={t} />
-      <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>{t('tsgTitle')}</h3><p>{t('tsgDescription')}</p></div><span className={tsgKeys.every(key => variables.some(variable => variable.name === key && variable.configured)) ? css.statusGood : css.status}>{tsgKeys.filter(key => variables.some(variable => variable.name === key && variable.configured)).length}{t('tsgCountSuffix')}</span></div>
-        <div className={css.formGrid}>{tsgKeys.map(key => <label className={css.field} key={key}><span>{key}</span><input className={css.control} type="password" autoComplete="off" placeholder={variables.some(variable => variable.name === key && variable.configured) ? t('keepValue') : t('enterValue')} value={tsgValues[key] ?? ''} onChange={event => setTsgValues(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
-        <div className={css.footer}><span>{t('tsgUsage')}</span><button className={css.primaryButton} type="button" disabled={busy || Object.values(tsgValues).every(value => !value.trim())} onClick={() => void saveTsg()}>{t('saveTsg')}</button></div>
-      </article>
-      <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>{t('pipelineTitle')}</h3><p>{t('pipelineDescription')}</p></div><span className={trailKeys.every(key => variables.some(variable => variable.name === key && variable.configured)) ? css.statusGood : css.status}>{trailKeys.filter(key => variables.some(variable => variable.name === key && variable.configured)).length}/{trailKeys.length} {t('configured')}</span></div>
-        <div className={css.formGrid}>{trailKeys.map(key => <label className={css.field} key={key}><span>{key}</span><input className={css.control} type={key === 'UNPAYWALL_EMAIL' ? 'email' : ['S2_API_KEY', 'RESEARCH_BROWSER_COOKIES'].includes(key) ? 'password' : 'text'} autoComplete="off" placeholder={variables.some(variable => variable.name === key && variable.configured) ? t('keepValue') : t('optionalSetting')} value={trailValues[key] ?? ''} onChange={event => setTrailValues(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
-        <div className={css.footer}><span>{t('pipelineNote')}</span><button className={css.primaryButton} type="button" disabled={busy || Object.values(trailValues).every(value => !value.trim())} onClick={() => void saveTrail()}>{t('savePipeline')}</button></div>
-      </article>
       <article className={css.card}>
         <div className={css.cardHeader}><div><h3>Reviewer</h3><p>{t('reviewerDescription')}</p></div><span className={css.status}>{statusText('catalog', t('catalogSynced'))}</span></div>
         <div className={css.formGrid}>
@@ -303,7 +263,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
 
       <article className={`${css.card} ${css.variablesCard}`}>
         <div className={css.cardHeader}><div><h3>{t('variablesTitle')}</h3><p>{t('variablesDescription')}</p></div><span className={css.status}>{statusText('variables', t('variableCount', { count: variables.length }))}</span></div>
-        <div className={css.variableList}>{variables.length === 0 ? <span className={css.muted}>{t('noVariables')}</span> : variables.map(variable => <div className={css.variableRow} key={variable.name}><code>{variable.name}</code><span>{variable.configured ? t('configured') : t('notConfigured')}</span><button className={css.textButton} type="button" disabled={busy} onClick={() => void run(async () => setVariables(await unwrap(environmentRemote.deleteVariable(variable.name))))}>{t('delete')}</button></div>)}</div>
+        <div className={css.variableList}>{variables.length === 0 ? <span className={css.muted}>{t('noVariables')}</span> : variables.map(variable => <div className={css.variableRow} key={variable.name}><code>{variable.name}</code><span>{variable.configured ? t('configured') : t('notConfigured')}</span>{variable.configured && <button className={css.textButton} type="button" disabled={busy} onClick={() => void run(async () => { const value = await unwrap(environmentRemote.readVariable(variable.name)); if (value !== undefined) await navigator.clipboard?.writeText(value) })}>查看并复制</button>}<button className={css.textButton} type="button" disabled={busy} onClick={() => void run(async () => setVariables(await unwrap(environmentRemote.deleteVariable(variable.name))))}>{t('delete')}</button></div>)}</div>
         <div className={css.variableForm}><input className={css.control} placeholder={t('variableName')} value={newName} onChange={event => setNewName(event.target.value)} /><input className={css.control} type="password" placeholder={t('variableValue')} value={newValue} onChange={event => setNewValue(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !newName.trim() || !newValue} onClick={() => void saveVariable()}>{t('addVariable')}</button></div>
       </article>
     </div>

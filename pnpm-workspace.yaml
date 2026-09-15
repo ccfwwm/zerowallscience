@@ -26,6 +26,20 @@ autoInstallPeers: false
 verifyDepsBeforeRun: false
 
 overrides:
+  'dsh-progressive-tools>@deepseek-ai/cordis': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-agent': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-agent-loop': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-llm': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-scope': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-session': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-system-prompt': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-tools': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-attachment': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-session-projection': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-session-persistence': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-settings': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-user-approval': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-code-runtime': 'workspace:*'
   'tsdown': '0.22.2'
   '@tsdown/css': '0.22.2'
   '@electron/get': '5.1.0'

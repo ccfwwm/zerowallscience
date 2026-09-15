@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import QRCode from 'qrcode/lib/browser.js'
 import { CheckCircle2, Cloud, CreditCard, ExternalLink, LogOut, RefreshCw, Send, ShieldCheck, X } from 'lucide-react'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { PropsLocale, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { NS } from '@zerowallscience/plugin-base/client-helpers'
+import { accountSurface } from './account-surface.js'
 import css from './AiCloudAccountButton.module.css'
 
 export interface AiCloudModelView { providerId: string; groupId: string; groupName: string; modelId: string; baseUrl: string }
@@ -16,6 +17,8 @@ export interface AiCloudOrderView { id: number; outTradeNo: string; status: stri
 
 interface Actions {
   getAccount: () => Promise<AiCloudAccountView>
+  forgetLogin: () => Promise<void>
+  savedLogin: () => Promise<{ email: string; password: string; baseUrl: string; rememberPassword: true } | undefined>
   getPublicConfig: () => Promise<AiCloudPublicView>
   gateways: () => Promise<AiCloudGatewayView[]>
   selectGateway: (baseUrl: string) => Promise<AiCloudAccountView>
@@ -35,6 +38,7 @@ type Props = SidebarFooterActionOwnerProps & Actions & PropsLocale<typeof NS>
 const TERMINAL = new Set(['COMPLETED', 'FAILED', 'CANCELLED', 'EXPIRED', 'REFUNDED'])
 
 export function AiCloudAccountButton(props: Props) {
+  const target = useSyncExternalStore(accountSurface.subscribe, accountSurface.getSnapshot)
   const firstCheck = useRef(false)
   const [open, setOpen] = useState(false)
   const [account, setAccount] = useState<AiCloudAccountView>()
@@ -94,7 +98,20 @@ export function AiCloudAccountButton(props: Props) {
   }, [refresh])
 
   useEffect(() => {
-    if (!open) return
+    if (!open && !target) return
+    let active = true
+    if (account?.status !== 'signedOut' && account?.status !== 'authExpired') return
+    void props.savedLogin?.().then(saved => {
+      if (!active || saved === undefined) return
+      setEmail(saved.email)
+      setPassword(saved.password)
+      setRememberPassword(true)
+    }).catch(() => undefined)
+    return () => { active = false }
+  }, [account?.status, props.savedLogin, open, target])
+
+  useEffect(() => {
+    if (!open || target) return
     const close = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       event.preventDefault()
@@ -103,10 +120,10 @@ export function AiCloudAccountButton(props: Props) {
     }
     window.addEventListener('keydown', close, true)
     return () => window.removeEventListener('keydown', close, true)
-  }, [open])
+  }, [open, target])
 
   useEffect(() => {
-    if (!open || activeOrder === undefined || TERMINAL.has(activeOrder.status.toUpperCase())) return
+    if ((!open && !target) || activeOrder === undefined || TERMINAL.has(activeOrder.status.toUpperCase())) return
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
     const poll = async () => {
@@ -130,7 +147,7 @@ export function AiCloudAccountButton(props: Props) {
     }
     timer = setTimeout(() => { void poll() }, 1800)
     return () => { cancelled = true; if (timer !== undefined) clearTimeout(timer) }
-  }, [activeOrder?.id, activeOrder?.outTradeNo, activeOrder?.status, open])
+  }, [activeOrder?.id, activeOrder?.outTradeNo, activeOrder?.status, open, target])
 
   useEffect(() => {
     let cancelled = false
@@ -151,7 +168,6 @@ export function AiCloudAccountButton(props: Props) {
         ? await props.register(email, password, code, rememberPassword)
         : await props.login(email, password, rememberPassword)
       setAccount(next)
-      setPassword('')
       setCode('')
       // Host login performs discovery as part of the authenticated operation.
       // A catalog outage must not turn a valid login into a failed UI flow;
@@ -192,6 +208,11 @@ export function AiCloudAccountButton(props: Props) {
       setAccount({ status: 'signedOut', balanceFreshness: 'current', lowBalance: false, models: [] })
       setOrders([])
       setActiveOrder(undefined)
+      const saved = await props.savedLogin?.()
+      setRegistering(false)
+      setEmail(saved?.email ?? '')
+      setPassword(saved?.password ?? '')
+      setTimeout(() => document.querySelector<HTMLInputElement>('input[autocomplete="current-password"]')?.focus(), 0)
     } catch (reason) {
       setError(message(reason))
     } finally {
@@ -247,11 +268,11 @@ export function AiCloudAccountButton(props: Props) {
     <button className={css.trigger} type="button" onClick={() => { setOpen(true); void refresh() }} title={`${props.t('account.trigger')} · ${accountStatusText}`} aria-label={props.t('account.trigger')} data-status={statusTone}>
       <span className={css.triggerIcon}><Cloud size={18} aria-hidden="true" /><i className={css.statusDot} aria-hidden="true" /></span>{props.wide && <span>{props.t('account.nav')}</span>}
     </button>
-    {open && createPortal(<div className={css.backdrop} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false) }}>
-      <section className={css.panel} role="dialog" aria-modal="true" aria-labelledby="zerowall-account-title">
+    {(open || target) && createPortal(<div className={target ? css.embedded : css.backdrop} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false) }}>
+      <section className={css.panel} role={target ? undefined : "dialog"} aria-modal={target ? undefined : true} aria-labelledby="zerowall-account-title">
         <header className={css.header}>
           <div><p>ZeroWall Science</p><h2 id="zerowall-account-title">{signedIn ? props.t('account.centerTitle') : props.t('account.title')}</h2></div>
-          <button className={css.iconButton} type="button" onClick={() => setOpen(false)} title={props.t('common.close')} aria-label={props.t('common.close')}><X size={18} /></button>
+          {!target && <button className={css.iconButton} type="button" onClick={() => setOpen(false)} title={props.t('common.close')} aria-label={props.t('common.close')}><X size={18} /></button>}
         </header>
         {error && <p className={css.error} role="alert">{error}</p>}
         {!signedIn ? <div className={css.auth}>
@@ -268,11 +289,11 @@ export function AiCloudAccountButton(props: Props) {
           </div>
           <label>{props.t('account.email')}<input type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="username" /></label>
           <label>{props.t('account.password')}<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete={registering ? 'new-password' : 'current-password'} /></label>
-          <label className={css.remember}><input type="checkbox" checked={rememberPassword} onChange={event => setRememberPassword(event.target.checked)} />{props.t('account.rememberPassword')}</label>
+          <label className={css.remember}><input type="checkbox" checked={rememberPassword} onChange={event => { const checked = event.target.checked; setRememberPassword(checked); if (!checked) void props.forgetLogin().then(() => setPassword('')).catch(reason => setError(message(reason))) }} />{props.t('account.rememberPassword')}</label>
           {registering && <label>{props.t('account.code')}<span className={css.codeRow}><input value={code} onChange={event => setCode(event.target.value)} /><button type="button" onClick={() => void sendCode()} disabled={busy || email.trim() === ''} title={props.t('account.sendCode')} aria-label={props.t('account.sendCode')}><Send size={16} /></button></span></label>}
-          <p className={css.savedHint}>{props.t('account.savedHint')}</p>
+          <p className={css.savedHint}>{rememberPassword ? '登录成功后，账号密码保存在本机安全存储；退出后自动填写。' : '不保存密码，退出后需要重新输入。'}</p>
           <div className={css.authActions}>
-            <button className={css.secondary} type="button" onClick={() => setOpen(false)}>{props.t('account.skip')}</button>
+            {!target && <button className={css.secondary} type="button" onClick={() => setOpen(false)}>{props.t('account.skip')}</button>}
             <button className={css.primary} type="button" onClick={() => void authenticate()} disabled={busy || email.trim() === '' || password === '' || (registering && code.trim() === '')}>{registering ? props.t('account.registerConfigure') : props.t('account.loginConfigure')}</button>
           </div>
         </div> : <div className={css.content}>
@@ -324,7 +345,7 @@ export function AiCloudAccountButton(props: Props) {
           </div>)}</div>
         </div>}
       </section>
-    </div>, document.body)}
+    </div>, target ?? document.body)}
   </>
 }
 

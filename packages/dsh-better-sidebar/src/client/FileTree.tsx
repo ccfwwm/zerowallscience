@@ -75,6 +75,11 @@ function isFileDrag(event: DragEvent): boolean {
   return event.dataTransfer?.types.includes('Files') ?? false
 }
 
+/** Payload consumed by the conversation composer when a workspace file is
+ * dragged from this tree. Keeping the URL scoped to the current session lets
+ * the composer download the bytes through the existing workspace fence. */
+const SIDEBAR_FILE_DRAG = 'application/x-zerowall-sidebar-file'
+
 /** How long the row's "copied" label stays after a successful write. */
 const COPIED_MS = 1200
 
@@ -720,6 +725,19 @@ export function FileTree(props: {
           data-dsh-revealed={revealedSet.has(entry.path) ? 'true' : undefined}
           style={{ paddingLeft: depth * 22 + 6 }}
           title={entry.broken ? `${entry.path} — ${t('brokenSymlink')}` : entry.path}
+          draggable={!entry.broken}
+          onDragStart={(event) => {
+            if (entry.broken) return
+            event.dataTransfer.effectAllowed = 'copy'
+            const lower = entry.name.toLowerCase()
+            const type = lower.endsWith('.png') ? 'image/png' : lower.endsWith('.jpg') || lower.endsWith('.jpeg') ? 'image/jpeg' : lower.endsWith('.webp') ? 'image/webp' : lower.endsWith('.gif') ? 'image/gif' : 'application/octet-stream'
+            event.dataTransfer.setData(SIDEBAR_FILE_DRAG, JSON.stringify({
+              url: downloadUrl({ sessionId, cwd }, entry.path),
+              name: entry.name,
+              type,
+            }))
+            event.dataTransfer.setData('text/plain', entry.name)
+          }}
           onClick={() => { onOpenFile(entry.path) }}
           onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') {
