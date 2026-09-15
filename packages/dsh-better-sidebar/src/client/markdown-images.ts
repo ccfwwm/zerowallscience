@@ -83,8 +83,19 @@ export function resolveLocalMediaDest(
   const trimmed = dest.trim()
   if (trimmed === '' || trimmed.startsWith('#')) return dest
   if (isRemoteUrl(trimmed)) return dest
-  const slash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
-  const directory = slash === -1 ? '/' : filePath.slice(0, slash + 1)
+  // Change/diff views receive repository-relative Markdown paths. Resolve
+  // those against the session workspace before resolving the image target;
+  // otherwise `report.md` is treated as `/report.md` and sibling images are
+  // routed outside the workspace fence.
+  const fileAbsolute = isAbsolutePath(filePath)
+    ? filePath
+    : scope.cwd === undefined || scope.cwd === ''
+      ? filePath
+      : `${scope.cwd.replace(/[\\/]$/u, '')}/${filePath}`
+  const fileSlash = Math.max(fileAbsolute.lastIndexOf('/'), fileAbsolute.lastIndexOf('\\'))
+  // Before the session list supplies cwd, keep the path relative so the
+  // Host can resolve it from the persisted session instead of filesystem root.
+  const directory = fileSlash === -1 ? '' : fileAbsolute.slice(0, fileSlash + 1)
   const candidate = isAbsolutePath(trimmed) ? trimmed : directory + trimmed
   // Mirrors api.ts fileUrl/mediaUrl for the /sidebar/file media route, made
   // absolute so the shared MarkdownText http(s) allowlist accepts it.

@@ -62,6 +62,17 @@ describe('rewriteLocalImageUrls', () => {
     expect(out).not.toContain('cwd=')
   })
 
+  it('resolves repository-relative markdown files against the session cwd', () => {
+    const out = rewriteLocalImageUrls('![a](figure1_forest_v2.png)', scope, 'reports/Nhanes_Reproduction_Report_v2.md', ORIGIN)
+    expect(out).toContain(`path=%2Frepo%2Freports%2Ffigure1_forest_v2.png`)
+  })
+
+  it('lets the Host resolve a relative file before the client receives cwd', () => {
+    const out = rewriteLocalImageUrls('![a](figure.png)', { sessionId: 'abc' }, 'report.md', ORIGIN)
+    expect(out).toContain('path=figure.png')
+    expect(out).not.toContain('path=%2F')
+  })
+
   it('handles windows absolute paths as local (not remote)', () => {
     const md = '![a](C:\\repo\\img.png)'
     const out = rewriteLocalImageUrls(md, scope, 'C:\\repo\\docs\\readme.md', ORIGIN)

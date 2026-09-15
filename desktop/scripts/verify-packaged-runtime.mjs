@@ -152,7 +152,7 @@ for (const path of [
   resolve(packaged.resourcesRoot, 'licenses', 'deepseek-harness.version.json'),
 ]) await access(path)
 
-verifyArchivePolicy()
+await verifyArchivePolicy()
 await verifyExternalPolicy()
 await verifySizePolicy()
 await verifyImports()
@@ -164,7 +164,7 @@ await verifyDesktopStartup()
 
 console.log(`Packaged ZeroWall ASAR runtime, package policy, and desktop EXE startup verified${desktopOnly ? ' (desktop-only).' : ' with Host startup.'}`)
 
-function verifyArchivePolicy() {
+async function verifyArchivePolicy() {
   const forbidden = archiveFiles.filter(path => path.startsWith('node_modules/') && (
     /\.(?:d\.ts|ts|tsx|mts|cts|map|pdb|tsbuildinfo)$/i.test(path)
     || hasForbiddenRuntimeDirectory(path)
@@ -185,6 +185,19 @@ function verifyArchivePolicy() {
   const betterSidebarManifest = JSON.parse(readArchiveFile('node_modules/dsh-better-sidebar/package.json').toString('utf8'))
   if (`v${betterSidebarManifest.version}` !== pinnedIntegrations.betterSidebar.tag) throw new Error(`Packaged dsh-better-sidebar must be ${pinnedIntegrations.betterSidebar.tag}; found ${betterSidebarManifest.version}.`)
   const betterSidebarClient = readArchiveFile('node_modules/dsh-better-sidebar/lib/client.js').toString('utf8')
+  // Prove the dependency build chain reached the installer, including lazy
+  // chunks; source-only tests cannot detect a stale prepared runtime.
+  for (const [archivePath, sourcePath] of [
+    ['node_modules/@zerowallscience/plugin-base/lib/index.js', 'plugins/base/lib/index.js'],
+    ['node_modules/@zerowallscience/plugin-base/lib/client.js', 'plugins/base/lib/client.js'],
+    ['node_modules/dsh-better-sidebar/lib/client-editor.js', 'packages/dsh-better-sidebar/lib/client-editor.js'],
+    ['node_modules/@deepseek-ai/dsh-client-ui-model-selection/lib/client.js', 'deepseek-harness/packages/client/ui-model-selection/lib/client.js'],
+    ['node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js', 'deepseek-harness/packages/api/session-controller/lib/index.js'],
+  ]) {
+    if (!readArchiveFile(archivePath).equals(await readFile(resolve(repositoryRoot, sourcePath)))) {
+      throw new Error(`Packaged runtime differs from its built source: ${archivePath}`)
+    }
+  }
   const betterSidebarInject = [...betterSidebarClient.matchAll(/const inject = \[[\s\S]*?\];/gu)]
     .map(match => [...match[0].matchAll(/["']([^"']+)["']/gu)].map(value => value[1]))
     .find(names => ['slots', 'sessions', 'connection', 'locale', 'modules'].every(name => names.includes(name)))
@@ -399,9 +412,12 @@ async function verifySizePolicy() {
 
 async function verifyImports() {
   const expression = `
-    await import('@deepseek-ai/dsh-mcp-client');
-    await import('@deepseek-ai/dsh-session-telemetry-otel');
-    await import('@deepseek-ai/schemastery');
+    const load = name => import(import.meta.resolve(name, process.env.ZEROWALL_RUNTIME_ANCHOR));
+    const { KNOWN_SESSION_EVENT_TYPES } = await load('@deepseek-ai/dsh-session');
+    if (!KNOWN_SESSION_EVENT_TYPES.has('zerowall/capabilities/selection')) throw new Error('Built Session catalog is missing legacy ZeroWall history.');
+    await load('@deepseek-ai/dsh-mcp-client');
+    await load('@deepseek-ai/dsh-session-telemetry-otel');
+    await load('@deepseek-ai/schemastery');
     const expectedInject = new Map([
       ['@zerowallscience/plugin-base', ['webServer']],
       ['@zerowallscience/plugin-files', ['tools']],
@@ -424,7 +440,7 @@ async function verifyImports() {
       'dsh-free-search',
       'dsh-wechat',
     ]) {
-      const module = await import(name);
+      const module = await load(name);
       const plugin = module.default ?? module;
       if (typeof plugin !== 'object' || typeof plugin.apply !== 'function') {
         throw new Error(name + ' did not preserve its Cordis plugin object during packaging.');
@@ -436,10 +452,41 @@ async function verifyImports() {
         }
       }
     }
+    const { validateStoredEvents } = await load('@deepseek-ai/dsh-session-persistence');
+    const legacy = { type: 'zerowall/capabilities/selection', seq: 52, time: 1, data: { tools: ['read'], disabled: [], onDemand: ['python'] } };
+    const restored = validateStoredEvents({ id: 'packaged-legacy-history' }, [legacy]);
+    if (JSON.stringify(restored[0]) !== JSON.stringify(legacy)) throw new Error('Legacy capability selection was changed during restoration.');
+    if (process.env.ZEROWALL_VERIFY_HISTORY_PATH) {
+      const fs = await import('node:fs/promises');
+      const path = await import('node:path');
+      const { tmpdir } = await import('node:os');
+      const { Context } = await load('@deepseek-ai/cordis');
+      const { default: Persistence } = await load('@deepseek-ai/dsh-session-persistence-jsonl');
+      const source = process.env.ZEROWALL_VERIFY_HISTORY_PATH;
+      const bytes = await fs.readFile(source);
+      const header = JSON.parse(bytes.toString('utf8').split('\\n')[0]);
+      const root = await fs.mkdtemp(path.join(tmpdir(), 'zerowall-packaged-history-'));
+      const copy = path.join(root, path.basename(path.dirname(path.dirname(source))), header.id, 'session.v3.jsonl');
+      const ctx = new Context();
+      try {
+        await fs.mkdir(path.dirname(copy), { recursive: true });
+        await fs.writeFile(copy, bytes);
+        await ctx.plugin(Persistence, { root, compression: 'none' });
+        const handle = await ctx.sessionPersistence.open(header.id, 'read');
+        try {
+          const record = await handle.read();
+          if (!record.events.some(event => event.type === legacy.type)) throw new Error('Legacy history metadata was not retained.');
+        } finally { await handle.close(); }
+        if (!(await fs.readFile(source)).equals(bytes) || !(await fs.readFile(copy)).equals(bytes)) throw new Error('History bytes changed during verification.');
+      } finally {
+        await ctx.fiber.dispose();
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    }
   `
   await runEmbeddedNode([
     '--import', pathToFileURL(resolve(asarPath, 'runtime', 'runtime-esm-register.mjs')).href,
-    '--input-type=module', '--eval', expression,
+    '--experimental-import-meta-resolve', '--input-type=module', '--eval', expression,
   ], { cwd: packaged.root })
 }
 

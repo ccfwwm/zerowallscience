@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -88,6 +88,67 @@ afterEach(async () => {
 })
 
 describe('ZeroWall Science Electron', () => {
+  it('renders relative Markdown images and loads models in a fresh workspace', async () => {
+    const workspacePath = join(root, 'markdown-images')
+    mkdirSync(workspacePath)
+    const source = '# 图片回归\n\n![Figure 2: 四分位分析](figure2_quartile_v2.png)\n'
+    writeFileSync(join(workspacePath, 'report.md'), source)
+    writeFileSync(join(workspacePath, 'figure2_quartile_v2.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=', 'base64'))
+    await page.evaluate(async (path) => {
+      const rpc = async (method: string, request: unknown) => {
+        const response = await fetch(`/api/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'client-request', rpcId: crypto.randomUUID(), method, payload: { args: { request } } }) })
+        const envelope = await response.json()
+        if (!response.ok || !envelope.result?.ok) throw new Error(`${method}: ${JSON.stringify(envelope)}`)
+        return envelope.result.value
+      }
+      const workspace = await rpc('workspace/create', { path })
+      const session = await rpc('session/create', { workspaceId: workspace.workspace.workspaceId })
+      await rpc('session/rename', { sessionId: session.sessionId, title: '图片与模型回归' })
+    }, workspacePath)
+    await page.reload()
+    await page.getByText('markdown-images', { exact: true }).first().click().catch(async (error) => {
+      console.log('Workspace diagnostics', (await page.locator('body').innerText()).slice(0, 4000))
+      throw error
+    })
+    await page.getByText('markdown-images', { exact: true }).first().hover()
+    await page.getByRole('button', { name: '在“markdown-images”中新建会话', exact: true }).click()
+    await page.getByRole('button', { name: /选择模型，当前/ }).first().waitFor({ timeout: 60_000 }).catch(async (error) => {
+      console.log('Model selector diagnostics', (await page.locator('body').innerText()).slice(0, 4000))
+      throw error
+    })
+    // The native sidebar header is deliberately hidden for an empty session.
+    // This isolated profile has no credentials; one harmless submission reveals
+    // conversation chrome without depending on a successful provider response.
+    await page.getByRole('textbox', { name: /^描述你想要构建/ }).fill('Markdown preview regression')
+    await page.getByRole('button', { name: '发送消息', exact: true }).click()
+    // Submitting a draft creates a persisted session asynchronously. Enter its
+    // history row before opening the sidebar; the draft-to-session transition
+    // otherwise disposes the guide while Playwright is trying to click it.
+    await page.getByText('Markdown preview regression', { exact: true }).first().click()
+    const stop = page.getByRole('button', { name: '停止生成', exact: true })
+    if (await stop.isVisible()) await stop.click()
+    await expect.poll(() => page.getByRole('button', { name: '停止生成', exact: true }).count()).toBe(0)
+    await page.locator('[data-sidebar-right-expand]').first().click()
+    await page.locator('[data-sidebar-right-guide-entry="files"]').click().catch(async (error) => {
+      console.log('Sidebar diagnostics', (await page.locator('body').innerText()).slice(-5000), rendererOutput.filter(line => line.startsWith('[pageerror]')).slice(-3))
+      throw error
+    })
+    const pane = page.locator('[data-sidebar-right-panel]')
+    await pane.locator('[role="button"][title$="report.md"]:visible').click({ position: { x: 8, y: 8 } }).catch(async error => {
+      mkdirSync(join(desktopRoot, 'dist', 'verification-6.0.1'), { recursive: true })
+      await page.screenshot({ path: join(desktopRoot, 'dist', 'verification-6.0.1', 'file-tree-diagnostic.png') })
+      console.log('File tree diagnostics', await pane.innerText(), rendererOutput.filter(line => line.startsWith('[pageerror]')).slice(-3))
+      throw error
+    })
+    const picture = pane.locator('img[alt="Figure 2: 四分位分析"]')
+    await picture.waitFor()
+    await picture.scrollIntoViewIfNeeded()
+    await expect.poll(() => picture.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true)
+    expect(readFileSync(join(workspacePath, 'report.md'), 'utf8')).toBe(source)
+    mkdirSync(join(desktopRoot, 'dist', 'verification-6.0.1'), { recursive: true })
+    await page.screenshot({ path: join(desktopRoot, 'dist', 'verification-6.0.1', 'markdown-images.png') })
+  })
+
   it('keeps shortcuts compact and opens WeChat configuration from its status', async () => {
     await page.getByRole('button', { name: '展开快捷入口', exact: true }).click()
     const wechat = page.getByRole('button', { name: /^微信 WebChat/ })
@@ -114,7 +175,7 @@ describe('ZeroWall Science Electron', () => {
     expect(await settings.getByRole('button', { name: '能力管理', exact: true }).count()).toBe(0)
     await settings.getByRole('button', { name: '插件' }).click()
     await settings.getByRole('tab', { name: 'Skills', exact: true }).click()
-    await settings.locator('.mc-skill').first().waitFor({ state: 'visible' })
+    await settings.locator('[aria-label="Skills 目录"] button').first().waitFor({ state: 'visible' })
   })
   it('loads a direct, sandboxed, fully ZeroWall-branded Renderer', async () => {
     expect(page.url()).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/)

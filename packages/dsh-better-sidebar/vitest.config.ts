@@ -13,6 +13,9 @@
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  // The desktop workspace links DSH sources, which have their own React
+  // installation. Render plugin and Host primitives with one React runtime.
+  resolve: { dedupe: ['react', 'react-dom'] },
   test: {
     // Bridge Node's `localStorage` accessor to jsdom's store (see the file).
     setupFiles: ['tests/setup.ts'],
