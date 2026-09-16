@@ -15,6 +15,7 @@ const thirdPartyOrder = [
   'dsh-better-sidebar-icons',
   'dsh-file-review',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
+  'dsh-zotero',
   'dsh-wechat',
   '@changfenhuang/dsh-genui',
 ]

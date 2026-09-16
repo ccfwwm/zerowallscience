@@ -1,6 +1,7 @@
 import { access, cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
+import { adaptZoteroCommand } from './adapt-zotero.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const dshRoot = resolve(root, 'deepseek-harness')
@@ -39,6 +40,7 @@ const desktopRuntimeSeeds = [
   'dsh-better-sidebar-icons',
   'dsh-file-review',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
+  'dsh-zotero',
   'dsh-wechat',
   'dsh-auto-review',
   '@changfenhuang/dsh-genui',
@@ -182,6 +184,13 @@ async function copyRuntimePackage(package_, targetRoot) {
     await copyEntry(sourceRoot, targetRoot, 'lib')
     await copyEntry(sourceRoot, targetRoot, 'prebuilds/win32-x64')
     await copyEntry(sourceRoot, targetRoot, 'LICENSE')
+    return
+  }
+
+  if (manifest.name === 'dsh-zotero') {
+    for (const entry of ['lib', 'LICENSE', 'cordis.patch.yml']) await copyEntry(sourceRoot, targetRoot, entry)
+    const commandPath = resolve(targetRoot, 'lib/command.js')
+    await writeFile(commandPath, adaptZoteroCommand(await readFile(commandPath, 'utf8')))
     return
   }
 

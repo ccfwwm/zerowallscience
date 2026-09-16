@@ -29,6 +29,12 @@
     "repository": "https://github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office.git",
     "commit": "3b881c9d002109444368b1a28d371663390b156b"
   },
+  "zotero": {
+    "repository": "https://github.com/Vncntvx/dsh-zotero.git",
+    "commit": "39caf8af04f07e7fc00775e2bb6e6d8f0ba06ece",
+    "version": "0.8.4",
+    "license": "MIT"
+  },
   "wechat": {
     "repository": "https://github.com/pan17/dsh-wechat.git",
     "branch": "main",

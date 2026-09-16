@@ -148,6 +148,9 @@
     - id: better-sidebar-office
       name: '@huanlin/dsh-plugin-better-sidebar-plugin-office'
 
+    - id: zotero
+      name: 'dsh-zotero'
+
     - id: dsh-wechat
       name: 'dsh-wechat'
       config:

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-presentations",
-  "version": "6.0.4",
+  "version": "6.0.6",
   "dsh": {
     "min": "0.1.5-rc.2",
     "max": "0.1.5-rc.2"

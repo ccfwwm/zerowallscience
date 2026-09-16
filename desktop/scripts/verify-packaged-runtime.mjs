@@ -31,11 +31,18 @@ const archiveEntries = listPackage(asarPath, { isPack: false })
 const archiveFiles = archiveEntries.map(normalizeArchivePath)
 const archiveEntryByPath = new Map(archiveEntries.map(entry => [normalizeArchivePath(entry), entry.replace(/^[/\\]+/, '')]))
 const archiveSet = new Set(archiveFiles)
+if (archiveFiles.some(path => path.includes('node_modules/@fylar/'))) {
+  throw new Error('Excluded commercial Fylar Office SDK found in the packaged runtime.')
+}
 if (archiveFiles.some(path => path.startsWith('node_modules/@daweifu/capability-menu/'))) {
   throw new Error('Removed capability-menu module is still in the packaged runtime.')
 }
 const packagedManifest = JSON.parse(readArchiveFile('package.json').toString('utf8'))
 const requiredArchivePaths = [
+  'node_modules/dsh-zotero/lib/index.js',
+  'node_modules/dsh-zotero/lib/client.js',
+  'node_modules/dsh-zotero/cordis.patch.yml',
+  'node_modules/dsh-zotero/LICENSE',
   'node_modules/dsh-progressive-tools/lib/index.js',
   'node_modules/dsh-progressive-tools/cordis.patch.yml',
   'node_modules/@dingyi222666/dsh-session-notification/lib/index.js',
@@ -633,6 +640,7 @@ async function verifyHostStartup() {
         try {
           await verifyWebBootManifest(probeUrl)
           await verifyPluginInventory(probeUrl)
+          await verifyZoteroStatus(probeUrl)
           await verifyFreeSearch(probeUrl)
           await verifyMineruStatus(probeUrl)
           await verifyPubmedStatus(probeUrl)
@@ -759,7 +767,7 @@ async function verifyPluginInventory(url) {
     'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
     'skills', 'reviewer', 'research', 'pubmed', 'execution', 'python', 'runs', 'publications', 'presentations',
   ].map(name => `@zerowallscience/plugin-${name}`)
-  expected.push('dsh-free-search', 'dsh-wechat', 'dsh-file-review', '@changfenhuang/dsh-genui')
+  expected.push('dsh-free-search', 'dsh-wechat', 'dsh-file-review', '@changfenhuang/dsh-genui', 'dsh-zotero')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
   const missing = expected.filter(name => !byModule.has(name))
   if (missing.length > 0) throw new Error(`Packaged Host plugin inventory is missing: ${missing.join(', ')}`)
@@ -813,6 +821,24 @@ async function verifyFreeSearch(url) {
   }
   if (first.value.cache !== 'miss' || second.value.cache !== 'hit') {
     throw new Error(`Packaged Host free-search cache contract failed: first=${first.value.cache}, second=${second.value.cache}.`)
+  }
+}
+
+async function verifyZoteroStatus(url) {
+  const rpcId = randomUUID()
+  const response = await fetch(authUrl(new URL(url), '/api/zotero/status'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'client-request', rpcId, method: 'zotero/status', payload: { args: {} } }),
+    signal: AbortSignal.timeout(15_000),
+  })
+  if (!response.ok) throw new Error(`Packaged Zotero status returned HTTP ${response.status}.`)
+  const envelope = await response.json()
+  const value = envelope?.result?.value
+  if (envelope?.rpcId !== rpcId || envelope?.result?.ok !== true
+    || typeof value?.connected !== 'boolean' || typeof value?.diagnosis !== 'string'
+    || value?.diagnosis === 'The Zotero service is not composed.') {
+    throw new Error(`Packaged Zotero status contract failed: ${JSON.stringify(envelope)}`)
   }
 }
 
@@ -924,7 +950,7 @@ async function verifyWebBootManifest(url) {
     '@zerowallscience/plugin-reviewer',
     '@zerowallscience/plugin-research',
     '@zerowallscience/plugin-presentations',
-    'dsh-free-search',
+    'dsh-free-search', 'dsh-zotero',
   ]
   const missing = required.filter(id => !ids.has(id))
   if (missing.length > 0) {
@@ -1015,7 +1041,7 @@ async function verifyDesktopStartup() {
       '@zerowallscience/plugin-mineru',
       '@zerowallscience/plugin-mcp', '@zerowallscience/plugin-skills', '@zerowallscience/plugin-reviewer',
       '@zerowallscience/plugin-research', '@zerowallscience/plugin-presentations',
-      'dsh-free-search',
+      'dsh-free-search', 'dsh-zotero',
       '@changfenhuang/dsh-genui',
     ]) {
       if (!ids.includes(id)) throw new Error(`Packaged desktop Web boot is missing ${id}.`)
@@ -1036,6 +1062,20 @@ async function verifyDesktopStartup() {
     }
     const fatal = browserErrors.filter(error => /Failed to load plugins|missed the module table|Cannot use import statement outside a module/iu.test(error))
     if (fatal.length > 0) throw new Error(`Packaged desktop client errors:\n${fatal.join('\n')}`)
+    const notice = page.getByRole('dialog', { name: '内测声明' })
+    await notice.waitFor({ state: 'visible', timeout: 30_000 })
+    await notice.getByRole('button', { name: '继续' }).click()
+    const credential = page.getByRole('dialog', { name: '添加一个 API Key 开始使用' })
+    const needsCredential = await credential.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false)
+    if (needsCredential) {
+      await credential.getByRole('button', { name: '稍后配置' }).click()
+      await credential.waitFor({ state: 'hidden' })
+    }
+    await page.getByRole('button', { name: /^(设置|Settings)$/ }).click()
+    const settings = page.getByRole('dialog', { name: /^(设置|Settings)$/ })
+    await settings.getByRole('button', { name: 'Zotero', exact: true }).click()
+    await settings.locator('input[value="http://127.0.0.1:23119/api"]').waitFor({ state: 'visible', timeout: 30_000 })
+    await settings.getByRole('button', { name: /^(关闭|Close)$/ }).click()
     const clientCss = await page.evaluate(() => {
       const markers = [...document.querySelectorAll('style[data-zerowall-plugin-css]')]
         .map(style => style.getAttribute('data-zerowall-plugin-css'))

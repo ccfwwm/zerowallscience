@@ -80,16 +80,18 @@ describe('attachment client actions', () => {
     state.disposers.forEach(dispose => dispose())
   })
 
-  it('falls back to text copy and removes action listeners on disposal', async () => {
+  it('reports unsupported file copy without copying the filename and removes listeners', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
     const state = context()
     apply(state.ctx)
 
+    const complete = vi.fn()
     window.dispatchEvent(new CustomEvent('zerowall:attachment-copy', {
-      detail: { file, sessionId: 'session-3' },
+      detail: { file, sessionId: 'session-3', complete },
     }))
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('paper.pdf'))
+    await waitFor(() => expect(complete).toHaveBeenCalledWith(false))
+    expect(writeText).not.toHaveBeenCalled()
 
     state.disposers.forEach(dispose => dispose())
     expect(state.unregister).toHaveBeenCalledOnce()
@@ -101,8 +103,8 @@ describe('attachment client actions', () => {
   })
 
   it('uses the registering plugin remote when the better-sidebar component scope has no remote inject', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const copyFile = vi.fn().mockResolvedValue(true)
+    ;(window as any).zerowallDesktop = { copyFile }
     const state = context()
     apply(state.ctx)
     const Viewer = state.attachmentViewer()
@@ -123,7 +125,9 @@ describe('attachment client actions', () => {
     expect(state.inspect).toHaveBeenCalledWith({ sessionId: 'session-4', attachmentId: 'attachment-1' })
     fireEvent.click(screen.getByTitle('复制文件'))
     await waitFor(() => expect(state.download).toHaveBeenCalledWith({ sessionId: 'session-4', attachmentId: 'attachment-1' }))
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('paper.pdf'))
+    await waitFor(() => expect(copyFile).toHaveBeenCalledWith({
+      name: 'paper.pdf', mediaType: 'application/pdf', data: Buffer.from('%PDF-1.7').toString('base64'),
+    }))
     state.disposers.forEach(dispose => dispose())
   })
 

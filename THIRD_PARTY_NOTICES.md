@@ -37,6 +37,18 @@ ZeroWall Science also bundles `@huanlin/dsh-plugin-better-sidebar-plugin-office@
 from [`HuanLinOTO/dsh-plugin-better-sidebar-plugin-office`](https://github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office)
 under AGPL-3.0. It provides the in-application DOCX, XLSX, and PPTX viewers.
 
+ZeroWall Science 6.0.6 also bundles the pinned Zotero DSH plugin as an
+independent DSH bundle.
+
+`tools/packaging/adapt-zotero.mjs` removes the newer `CommandDefinitionId`
+field from the packaged status command to match ZeroWall's pinned DSH command
+registry. The command name and handler are retained; upstream installed files
+are not modified.
+
+| Package | Upstream revision | License / scope |
+| --- | --- | --- |
+| `dsh-zotero@0.8.4` | [`Vncntvx/dsh-zotero`](https://github.com/Vncntvx/dsh-zotero) npm gitHead `39caf8af04f07e7fc00775e2bb6e6d8f0ba06ece` | MIT |
+
 The image duplicate detector is a first-party Host/Client rewrite that retains
 algorithm provenance while replacing the upstream dynamic-loader, arbitrary
 path, Data URL, and in-memory report boundaries. The PPT runtime is shipped as

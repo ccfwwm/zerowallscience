@@ -264,6 +264,8 @@ describe('ZeroWall Science Electron', () => {
       return Array.isArray(boot?.entries) ? boot.entries.map(entry => entry.id) : []
     })
     expect(bootEntries).toContain('@huanlin/dsh-plugin-better-sidebar-plugin-office')
+    expect(bootEntries).toContain('dsh-zotero')
+    expect(bootEntries).not.toContain('@fylar/dsh-fylar-office-editor')
   })
 
   it('bridges chat copies through the trusted desktop API', async () => {

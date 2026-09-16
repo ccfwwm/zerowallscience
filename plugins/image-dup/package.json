@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-image-dup",
-  "version": "6.0.4",
+  "version": "6.0.6",
   "description": "ZeroWall Science image-dup domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

@@ -68,6 +68,8 @@ allowBuilds:
   '@google/genai': false
   protobufjs: false
   node-addon-require-builtin: false
+  # Registry release includes compiled host/client entries; no install build needed.
+  dsh-zotero: false
 
 minimumReleaseAgeExclude:
   - '@earendil-works/pi-ai@0.84.2'
