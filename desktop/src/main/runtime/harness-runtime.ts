@@ -180,7 +180,8 @@ export class HarnessRuntime {
       return
     }
     this.child = child
-    this.disposeChildHooks = this.options.onChildStarted?.(child)
+    const disposeChildHooks = this.options.onChildStarted?.(child)
+    this.disposeChildHooks = typeof disposeChildHooks === 'function' ? disposeChildHooks : undefined
     child.stdout.on('data', (chunk: Buffer) => this.writeChunk('stdout', chunk))
     child.stderr.on('data', (chunk: Buffer) => this.writeChunk('stderr', chunk))
     child.once('error', (error) => {
