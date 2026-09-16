@@ -56,6 +56,22 @@ describe('createNativeTabRecords', () => {
     expect(records.get('tab-4')?.expanded).toEqual([])
   })
 
+  it('shares explorer expansion across editor tabs in one workspace scope', () => {
+    const records = createNativeTabRecords()
+    const otherScope = { sessionId: 's2', cwd: '/work' }
+    records.ensure({ id: 'editor-a', kind: 'editor', title: 'a.png', params: { path: '/work/a.png' }, scope })
+    records.ensure({ id: 'editor-b', kind: 'editor', title: 'b.md', params: { path: '/work/b.md' }, scope })
+    records.ensure({ id: 'editor-c', kind: 'editor', title: 'c.md', params: { path: '/work/c.md' }, scope: otherScope })
+
+    records.toggleExplorerExpanded(scope, '/work/deliverable')
+    expect(records.explorerState(scope).expanded).toEqual(['/work/deliverable'])
+    expect(records.explorerState(otherScope).expanded).toEqual([])
+
+    records.drop('editor-a')
+    expect(records.explorerState(scope).expanded).toEqual(['/work/deliverable'])
+    expect(records.explorerVersion(scope)).toBeGreaterThan(0)
+  })
+
   it('notifies subscribers and forgets a dropped record', () => {
     const records = createNativeTabRecords()
     records.ensure({ id: 'tab-5', kind: 'terminal', title: 'Terminal', params: undefined, scope })

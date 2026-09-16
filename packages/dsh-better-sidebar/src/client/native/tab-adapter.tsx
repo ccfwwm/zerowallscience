@@ -83,6 +83,16 @@ interface View {
   version: number
 }
 
+interface ExplorerState {
+  expanded: string[]
+  revealed: string[]
+  version: number
+}
+
+function explorerScopeKey(scope: SessionScope): string {
+  return `${scope.sessionId}\u0000${scope.cwd ?? ''}`
+}
+
 /** The plugin-side record registry for native tabs. */
 export interface NativeTabRecords {
   /**
@@ -116,6 +126,10 @@ export interface NativeTabRecords {
   drop(id: string): void
   /** Toggle one directory in a record's expansion set. */
   toggleExpanded(id: string, path: string): void
+  /** Shared explorer state for editor tabs in one session/workspace scope. */
+  explorerState(scope: SessionScope): { expanded: string[]; revealed: string[] }
+  toggleExplorerExpanded(scope: SessionScope, path: string): void
+  explorerVersion(scope: SessionScope): number
   /** Mint the next instance number of a kind (titles like "Terminal 2"). */
   nextInstance(kind: string): number
   /** A per-record version for `useSyncExternalStore`. */
@@ -128,11 +142,20 @@ export interface NativeTabRecords {
 export function createNativeTabRecords(): NativeTabRecords {
   const views = new Map<string, View>()
   const instances = new Map<string, number>()
+  const explorers = new Map<string, ExplorerState>()
   const listeners = new Set<() => void>()
   const notify = (): void => { for (const listener of listeners) listener() }
   const put = (id: string, view: View): void => {
     views.set(id, { ...view, version: view.version + 1 })
     notify()
+  }
+  const explorer = (scope: SessionScope): ExplorerState => {
+    const key = explorerScopeKey(scope)
+    const existing = explorers.get(key)
+    if (existing !== undefined) return existing
+    const created: ExplorerState = { expanded: [], revealed: [], version: 0 }
+    explorers.set(key, created)
+    return created
   }
   return {
     ensure({ id, kind, title, params, scope, mint }) {
@@ -196,6 +219,19 @@ export function createNativeTabRecords(): NativeTabRecords {
         : [...entry.expanded, path]
       put(id, { ...entry, expanded })
     },
+    explorerState(scope) {
+      const state = explorer(scope)
+      return { expanded: state.expanded, revealed: state.revealed }
+    },
+    toggleExplorerExpanded(scope, path) {
+      const state = explorer(scope)
+      state.expanded = state.expanded.includes(path)
+        ? state.expanded.filter(candidate => candidate !== path)
+        : [...state.expanded, path]
+      state.version += 1
+      notify()
+    },
+    explorerVersion: scope => explorer(scope).version,
     nextInstance(kind) {
       const next = (instances.get(kind) ?? 0) + 1
       instances.set(kind, next)
@@ -244,6 +280,13 @@ function useRecordVersion(records: NativeTabRecords, id: string): number {
   )
 }
 
+function useExplorerVersion(records: NativeTabRecords, scope: SessionScope): number {
+  return useSyncExternalStore(
+    listener => records.subscribe(listener),
+    () => records.explorerVersion(scope),
+  )
+}
+
 /** The current session's workspace root, live from the client session list. */
 function useSessionCwd(ctx: Context, sessionId: string): string | undefined {
   return useSyncExternalStore(
@@ -265,8 +308,10 @@ export function NativeTabBody(props: NativeBodyInjected & NativeBodyFrameworkPro
   const sessionId = props.sessionIdOf?.(info) ?? props.sessionId
   const cwd = useSessionCwd(ctx, sessionId)
   const scope = useMemo((): SessionScope => ({ sessionId, cwd }), [sessionId, cwd])
+  const explorerVersion = useExplorerVersion(records, scope)
   // `version` is not read: it only forces this render when the record changed.
   void version
+  void explorerVersion
   const derived = props.paramsOf?.(info)
   const params = derived === undefined && nativeTab.navigation.params === undefined
     ? undefined
@@ -285,6 +330,7 @@ export function NativeTabBody(props: NativeBodyInjected & NativeBodyFrameworkPro
       return minted === null ? undefined : { title: minted.tab.title, meta: minted.tab.meta }
     },
   })
+  const sharedExplorer = descriptorId === EDITOR_KIND ? records.explorerState(scope) : undefined
   useEffect(() => () => { records.drop(nativeTab.id) }, [records, nativeTab.id])
   if (descriptor === undefined) {
     // The orphaned fallback sits in the SAME native host as a live body, so
@@ -313,9 +359,12 @@ export function NativeTabBody(props: NativeBodyInjected & NativeBodyFrameworkPro
         scope,
         tab: view.tab,
         visible: nativeTab.visible,
-        expanded: view.expanded,
-        revealed: view.revealed,
-        onToggleDir: (path: string) => { records.toggleExpanded(nativeTab.id, path) },
+        expanded: sharedExplorer?.expanded ?? view.expanded,
+        revealed: sharedExplorer?.revealed ?? view.revealed,
+        onToggleDir: (path: string) => {
+          if (descriptorId === EDITOR_KIND) records.toggleExplorerExpanded(scope, path)
+          else records.toggleExpanded(nativeTab.id, path)
+        },
         onReferenceFile: (path: string, isDir: boolean) => { referenceInChat(ctx, sessionId, cwd, path, isDir) },
         onOpenDiff: (tab: SidebarTab) => {
           service.openTab({

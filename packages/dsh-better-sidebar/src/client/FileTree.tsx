@@ -204,6 +204,9 @@ export function FileTree(props: {
   const expandedRef = useRef(expanded)
   expandedRef.current = expanded
   const requestsRef = useRef(new Map<string, { controller: AbortController; generation: number }>())
+  // Opening a file can remount the editor host. A remount must reuse the
+  // cached tree; only an actual refresh tick should force new listings.
+  const lastRefreshTickRef = useRef(refreshTick)
   /** The row whose path was just copied ("copied" label replaces its button). */
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
   /** Open context menu: the row path (and whether it is a directory) plus the cursor position. */
@@ -414,6 +417,8 @@ export function FileTree(props: {
   // effect so the reload below sees the empty cache).
   useEffect(() => {
     const scopeChanged = scopeRef.current !== scopeKey
+    const refreshChanged = lastRefreshTickRef.current !== refreshTick
+    lastRefreshTickRef.current = refreshTick
     if (scopeChanged) {
       generationRef.current += 1
       for (const request of requestsRef.current.values()) request.controller.abort()
@@ -423,7 +428,7 @@ export function FileTree(props: {
       setData(dataRef.current)
     }
     if (!visible || cwd === undefined) return
-    for (const dir of new Set([cwd, ...expandedRef.current])) loadDir(dir, true)
+    for (const dir of new Set([cwd, ...expandedRef.current])) loadDir(dir, refreshChanged)
   }, [scopeKey, visible, refreshTick, cwd, loadDir])
 
   useEffect(() => {

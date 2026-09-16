@@ -840,10 +840,11 @@ export function apply(ctx: Context, input: Config): void {
           description: `Exact tool name returned by ${config.toolName}.`,
         },
         arguments: {
-          oneOf: [
-            { type: 'object', additionalProperties: true },
-            { type: 'string', description: 'JSON text encoding an object; accepted for MCP/OpenAI clients that stringify nested arguments.' },
-          ],
+          // MCP/OpenAI clients in the wild sometimes JSON-encode this nested
+          // object before sending the outer dispatch envelope. `json` keeps
+          // the wire contract permissive; execute() performs the strict
+          // object normalization before entering the real tool pipeline.
+          type: 'json',
           required: true,
           description: 'Arguments matching the selected tool parameters schema. An object is preferred; JSON text is accepted and decoded before dispatch.',
         },
