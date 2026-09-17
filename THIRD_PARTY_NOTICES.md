@@ -576,3 +576,10 @@ their source metadata or adjacent notices.
 ## dsh-progressive-tools
 
 Version 0.4.0, MIT license. Source: https://github.com/everclear077/dsh-progressive-tools/tree/47e9ea5eaeb73ca2639acdad8f5b76ff5403dd7f. Vendored source is unchanged; ZeroWall workspace overrides bind core dependencies to its pinned DSH runtime.
+
+## Zotero Harvest
+
+Source: https://github.com/Fisfzy/zotero-harvest
+Version: 0.2.0, commit 9635a4f27ba186f414d3ba23042bd12ee176cddc
+Copyright (c) 2026 Fisfzy. MIT License: packages/zotero-harvest/LICENSE.
+Adapted for the pinned DSH runtime and authenticated Zotero Local API.

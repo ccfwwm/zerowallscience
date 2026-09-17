@@ -1,5 +1,8 @@
 # DSH Progressive Tools
 
+Successful dispatch results retain the target tool's presentation metadata in
+`meta.targetMeta`, allowing result panels to reconstruct structured records on replay.
+
 [![CI](https://github.com/everclear077/dsh-progressive-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/everclear077/dsh-progressive-tools/actions/workflows/ci.yml)
 [![version](https://img.shields.io/badge/version-0.4.0-blue.svg)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)

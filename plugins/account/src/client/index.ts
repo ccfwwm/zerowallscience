@@ -5,9 +5,10 @@ import { AccountSection } from './account-surface.js'
 import { AiCloudAccountButton } from './AiCloudAccountButton.tsx'
 import { NS, unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 
-export const inject = ['slots', 'remote', 'connection', 'remote.zerowallAccount']
+export const inject = ['slots', 'locale', 'remote', 'connection', 'remote.zerowallAccount']
 
 export function apply(ctx: ClientContext): void {
+  const t = ctx.locale.bind(NS)
   const api = (ctx.get('connection') as ConnectionHandle).api
   const remote = ctx.remote as any
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
@@ -32,5 +33,5 @@ export function apply(ctx: ClientContext): void {
       api,
     }),
   }, AiCloudAccountButton))
-  ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'zerowall-account', order: 20, label: () => 'AI 云平台' }, AccountSection))
+  ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'zerowall-account', order: 20, locale: NS, label: () => t('account.settingsNav') }, AccountSection))
 }

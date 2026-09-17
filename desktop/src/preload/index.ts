@@ -1,7 +1,30 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DesktopClipboardFile, DesktopClipboardImage, DesktopInfo, DesktopUpdateStatus, McpEnvironmentStatus, McpPythonInfo } from '../shared/contracts.js'
+import type { DesktopClipboardFile, DesktopClipboardImage, DesktopInfo, DesktopUpdateStatus, McpEnvironmentStatus, McpPythonInfo, StartupStatus } from '../shared/contracts.js'
 
 contextBridge.exposeInMainWorld('zerowallDesktop', {
+  openZotero: async (url: string): Promise<boolean> => await ipcRenderer.invoke('desktop:open-zotero', url) as boolean,
+  saveTextFile: async (input: { name: string; text: string }): Promise<boolean> => await ipcRenderer.invoke('desktop:save-text-file', input) as boolean,
+  deleteSession: async (input: { sessionId: string; title: string; language: string }): Promise<boolean> => await ipcRenderer.invoke('desktop:delete-session', input) as boolean,
+  getStartupStatus: async (): Promise<StartupStatus> => await ipcRenderer.invoke('desktop:startup-status') as StartupStatus,
+  restart: async (): Promise<boolean> => await ipcRenderer.invoke('desktop:restart') as boolean,
+  openLogs: async (): Promise<string> => await ipcRenderer.invoke('desktop:open-logs') as string,
+  onStartupStatus: (listener: (status: StartupStatus) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: StartupStatus) => listener(status)
+    ipcRenderer.on('desktop:startup-status', handler)
+    return () => ipcRenderer.removeListener('desktop:startup-status', handler)
+  },
+  showNotification: async (input: { title: string; body: string; tag: string; sessionId?: string }): Promise<boolean> =>
+    await ipcRenderer.invoke('desktop:show-notification', input) as boolean,
+  onNotificationActivated: (listener: (sessionId?: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, sessionId?: string) => listener(sessionId)
+    ipcRenderer.on('desktop:notification-activated', handler)
+    return () => ipcRenderer.removeListener('desktop:notification-activated', handler)
+  },
+  onNotificationFailed: (listener: (message: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, message: string) => listener(message)
+    ipcRenderer.on('desktop:notification-failed', handler)
+    return () => ipcRenderer.removeListener('desktop:notification-failed', handler)
+  },
   info: async (): Promise<DesktopInfo> => await ipcRenderer.invoke('desktop:info') as DesktopInfo,
   chooseDirectory: async (): Promise<string | null> => await ipcRenderer.invoke('desktop:choose-directory') as string | null,
   revealPath: async (path: string): Promise<boolean> => await ipcRenderer.invoke('desktop:reveal-path', path) as boolean,

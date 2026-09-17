@@ -274,7 +274,7 @@ export function AiCloudAccountButton(props: Props) {
           <div><p>ZeroWall Science</p><h2 id="zerowall-account-title">{signedIn ? props.t('account.centerTitle') : props.t('account.title')}</h2></div>
           {!target && <button className={css.iconButton} type="button" onClick={() => setOpen(false)} title={props.t('common.close')} aria-label={props.t('common.close')}><X size={18} /></button>}
         </header>
-        {error && <p className={css.error} role="alert">{error}</p>}
+        {error && <p className={css.error} role="alert">{/credential IPC is unavailable/u.test(error) ? props.t('account.desktopRequired') : error}</p>}
         {!signedIn ? <div className={css.auth}>
           {account?.status === 'authExpired' && <p className={css.notice}>{props.t('account.authExpired')}</p>}
           <section className={css.capabilities} aria-label={props.t('account.capabilities')}>
@@ -291,7 +291,7 @@ export function AiCloudAccountButton(props: Props) {
           <label>{props.t('account.password')}<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete={registering ? 'new-password' : 'current-password'} /></label>
           <label className={css.remember}><input type="checkbox" checked={rememberPassword} onChange={event => { const checked = event.target.checked; setRememberPassword(checked); if (!checked) void props.forgetLogin().then(() => setPassword('')).catch(reason => setError(message(reason))) }} />{props.t('account.rememberPassword')}</label>
           {registering && <label>{props.t('account.code')}<span className={css.codeRow}><input value={code} onChange={event => setCode(event.target.value)} /><button type="button" onClick={() => void sendCode()} disabled={busy || email.trim() === ''} title={props.t('account.sendCode')} aria-label={props.t('account.sendCode')}><Send size={16} /></button></span></label>}
-          <p className={css.savedHint}>{rememberPassword ? '登录成功后，账号密码保存在本机安全存储；退出后自动填写。' : '不保存密码，退出后需要重新输入。'}</p>
+          <p className={css.savedHint}>{props.t(rememberPassword ? 'account.savedHint' : 'account.unsavedHint')}</p>
           <div className={css.authActions}>
             {!target && <button className={css.secondary} type="button" onClick={() => setOpen(false)}>{props.t('account.skip')}</button>}
             <button className={css.primary} type="button" onClick={() => void authenticate()} disabled={busy || email.trim() === '' || password === '' || (registering && code.trim() === '')}>{registering ? props.t('account.registerConfigure') : props.t('account.loginConfigure')}</button>

@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Preserve successful dispatched tools' presentation metadata on the root result for structured result panels and session replay.
+
 ## [0.4.0] - 2026-09-13
 
 ### Changed

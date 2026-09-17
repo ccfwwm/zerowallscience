@@ -1,4 +1,5 @@
 export const bundledPlugins = [
+  'dsh-ssh-ops',
   'dsh-progressive-tools',
   '@dingyi222666/dsh-session-notification',
   'dsh-dream-skin',
@@ -7,6 +8,7 @@ export const bundledPlugins = [
   'dsh-file-review',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
   'dsh-zotero',
+  '@dsh-external/zotero-harvest',
   'dsh-wechat',
   '@changfenhuang/dsh-genui',
   '@zerowallscience/plugin-base',

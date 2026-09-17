@@ -1,0 +1,108 @@
+{
+  "name": "dsh-ssh-ops",
+  "description": "SSH ops and database tools for DSH Web UI: connect to remote servers via SSH terminal/SFTP/tunnels, and connect to MySQL/PostgreSQL/Redis/MongoDB databases. Host half manages sessions with ssh2; client half renders the terminal and database panel.",
+  "version": "0.3.8",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/caoyiwei850/dsh-ssh-ops.git"
+  },
+  "bugs": {
+    "url": "https://github.com/caoyiwei850/dsh-ssh-ops/issues"
+  },
+  "homepage": "https://github.com/caoyiwei850/dsh-ssh-ops#readme",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "ssh",
+    "terminal",
+    "xterm",
+    "ops",
+    "sftp",
+    "database",
+    "mysql",
+    "redis",
+    "mongodb"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./typert": {
+      "default": "./lib/typert.js"
+    },
+    "./remote": {
+      "default": "./lib/remote.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "scripts",
+    "cordis.patch.yml",
+    "INSTALL.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-api-credentials-controller",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-connection"
+      ],
+      "platform": "web"
+    }
+  },
+  "dependencies": {
+    "mongodb": "^6.10.0",
+    "mysql2": "^3.11.0",
+    "pg": "^8.13.0",
+    "pg-cursor": "^2.22.0",
+    "redis": "^4.7.0",
+    "ssh2": "^1.16.0",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-credentials": "workspace:^",
+    "@deepseek-ai/dsh-storage-domain": "workspace:^",
+    "@deepseek-ai/dsh-tools": "workspace:^",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:^"
+  },
+  "peerDependenciesMeta": {},
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-credentials": "workspace:^",
+    "@deepseek-ai/dsh-storage-domain": "workspace:^",
+    "@deepseek-ai/dsh-tools": "workspace:^",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:^",
+    "@eslint/js": "^10.0.1",
+    "@xterm/addon-fit": "0.10.0",
+    "@xterm/xterm": "5.5.0",
+    "esbuild": "^0.24.2",
+    "eslint": "^10.10.0",
+    "globals": "^17.12.0",
+    "react": "^18.3.1"
+  },
+  "scripts": {
+    "gen:xterm-css": "node scripts/gen-xterm-css.mjs",
+    "build:host": "node scripts/build-host.mjs",
+    "build:client": "node scripts/build-client.mjs",
+    "build": "node scripts/gen-xterm-css.mjs && node scripts/build-host.mjs && node scripts/build-client.mjs",
+    "lint": "eslint .",
+    "bump:readme": "node scripts/bump-readme.mjs",
+    "test": "node --test test/safety.mjs test/db-safety.mjs test/db-ops.mjs test/db-hang.mjs test/ssh-legacy-kex.mjs test/ssh-banner.mjs test/hostkey.mjs test/batch.mjs test/scp.mjs test/command-snippets.mjs test/ssh-panel-command-picker.mjs test/client.mjs test/manifest.mjs test/ssh-write.mjs test/credentials.mjs test/sftp-tools.mjs test/stream-file-routes.mjs test/manual-terminal-context.mjs test/terminal-stream.mjs test/exec-cwd.mjs test/terminal-pool.mjs test/terminal-theme.mjs test/pane-selection.mjs test/profile-connection.mjs test/active-connection.mjs test/sidebar-integration.mjs test/sidebar-lifecycle.mjs test/review-regressions.mjs test/project-directory.mjs test/resource-group-collapse.mjs test/resource-card-layout.mjs",
+    "install:dev": "node scripts/install-dev.mjs",
+    "pack:release": "npm run build && node scripts/package-release.mjs"
+  }
+}

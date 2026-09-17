@@ -138,6 +138,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   private readonly connecting = new Map<string, Promise<void>>()
   private disposed = false
+  private backgroundStarted = false
   private readonly fibers = new Map<string, Fiber>()
   /** Tools observed after the corresponding Fiber completed its initial sync. */
   private readonly registeredTools = new Map<string, string[]>()
@@ -500,17 +501,34 @@ export class ZeroWallMcpService extends TypertRemoteService {
       // an unhandled startup rejection that terminates the whole Host.
       ctx.logger.warn(`zerowall-mcp: default connection migration failed: ${redactError(error)}`)
     })
-    // Bundled MCP records are enabled by product default. Start their
-    // transports asynchronously after metadata is ready so Host startup is
-    // never blocked by a slow or unavailable remote server.
     this.operation = this.recordsReady
-    void this.recordsReady.then(() => {
-      if (this.disposed) return
-      for (const record of this.projects().listMcpServers()) {
-        if (!record.enabled) continue
-        this.startConnection(record)
+    // Nested Cordis fibers created during boot join the boot barrier even
+    // without an await here. Release optional transports after UI mount.
+    const startBackground = (): void => {
+      if (this.backgroundStarted || this.disposed) return
+      this.backgroundStarted = true
+      void this.recordsReady.then(async () => {
+        const pending = this.projects().listMcpServers().map(record => record.id)
+        const worker = async (): Promise<void> => {
+          while (!this.disposed && pending.length > 0) {
+            const record = this.projects().getMcpServer(pending.shift()!)
+            if (!record?.enabled || this.statuses.get(record.id)?.state === 'active') continue
+            this.startConnection(record)
+            await this.connecting.get(record.id)
+          }
+        }
+        await Promise.all([worker(), worker()])
+      }).catch(error => ctx.logger.warn(`zerowall-mcp: background startup failed: ${redactError(error)}`))
+    }
+    if (process.env.ZEROWALL_DEFER_DEFAULT_MCP === '1' && typeof process.send === 'function') {
+      const onDesktopReady = (message: unknown): void => {
+        if (!message || typeof message !== 'object' || (message as { type?: string }).type !== 'zerowall:desktop:workbench-ready') return
+        process.off('message', onDesktopReady)
+        startBackground()
       }
-    })
+      process.on('message', onDesktopReady)
+      ctx.effect(() => () => process.off('message', onDesktopReady), 'zerowall-mcp: desktop startup gate')
+    } else startBackground()
     // dsh-mcp-client publishes lifecycle events on the root context so that
     // the service can observe clients created in nested Cordis fibers.
     const applyStatus = (serverName: string, state: 'starting' | 'active' | 'error', error?: string): void => {
@@ -823,7 +841,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   }
 
   private async pollEnvironment(): Promise<void> {
-    if (this.environmentRefreshInFlight) return
+    if (!this.backgroundStarted || this.environmentRefreshInFlight) return
     const fileSignature = managedEnvironmentFileSignature()
     if (fileSignature === this.environmentFileSignature) return
     this.environmentFileSignature = fileSignature
@@ -1363,6 +1381,4 @@ export default { apply }
 function isManagedMcpName(name: string): boolean {
   return ['rmcp', 'huagongshe', 'zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher'].includes(name)
 }
-
-
 

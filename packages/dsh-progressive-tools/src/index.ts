@@ -852,9 +852,10 @@ export function apply(ctx: Context, input: Config): void {
       output: {
         schema: proxyResultSchema,
         render: (_args, value) => proxyContent(value),
-        presentationMeta: (args) => ({
+        presentationMeta: (args, value) => ({
           protocol: 'dsh-progressive-tools/dispatch-v1',
           tool: args.name,
+          ...(isRecord(value) && value.targetMeta !== undefined ? { targetMeta: value.targetMeta } : {}),
         }),
       },
       // Parallel scheduling follows the real tool's own classifier so deferred
@@ -918,6 +919,11 @@ export function apply(ctx: Context, input: Config): void {
             tool: args.name,
             value: nested.value,
             content: nested.content as unknown as JsonValue,
+            // Nested executions omit presentation projection in the pinned
+            // runtime. Persist the target's projection on the root result.
+            ...(definition.output.presentationMeta === undefined ? {} : {
+              targetMeta: definition.output.presentationMeta(decodedArguments, nested.value),
+            }),
           } as InferValue<typeof proxyResultSchema>
         } finally {
           authorizedProxyParents.delete(exec.token)

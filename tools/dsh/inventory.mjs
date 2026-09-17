@@ -8,6 +8,7 @@ const upstream = await json('config/deepseek-harness/upstream.json')
 const desktop = await json('desktop/package.json')
 
 const thirdPartyOrder = [
+  'dsh-ssh-ops',
   'dsh-progressive-tools',
   '@dingyi222666/dsh-session-notification',
   'dsh-dream-skin',
@@ -16,6 +17,7 @@ const thirdPartyOrder = [
   'dsh-file-review',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
   'dsh-zotero',
+  '@dsh-external/zotero-harvest',
   'dsh-wechat',
   '@changfenhuang/dsh-genui',
 ]

@@ -1,0 +1,15 @@
+{
+  "name": "@dsh-external/zotero-harvest",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "files": ["lib", "LICENSE", "README.md", "README.upstream.md"],
+  "license": "MIT",
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "node --test tests/*.test.mjs" },
+  "dependencies": {
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-credentials": "workspace:*"
+  }
+}

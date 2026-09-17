@@ -33,6 +33,6 @@ export function apply(ctx: ClientContext): void {
   }, McpConnectionsButton))
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'zerowall-python-environment', order: 30,
-    label: () => 'Python 环境', locale: NS, inject: () => ({}),
+    label: () => t('mcp.pythonEnvironment'), locale: NS, inject: () => ({}),
   }, PythonEnvironmentPanel))
 }

@@ -23,7 +23,7 @@ for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, {
   // Feature packages are loaded by the client module loader, which mounts
   // their browser remote before plugin-base applies. Keep file-review out of
   // the shared assembly or its direct methods are registered twice.
-  if (manifest.name === 'dsh-file-review') continue
+  if (['dsh-file-review', 'dsh-ssh-ops'].includes(manifest.name)) continue
   const artifacts = new WorkspaceTypertGenerator(root, {
     packageRoots: ['deepseek-harness/packages', 'plugins', 'store'],
   }).generate([manifest.name], ['host'])

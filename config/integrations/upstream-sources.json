@@ -83,5 +83,19 @@
     "license": "MIT",
     "source": "packages/dsh-progressive-tools",
     "runtime": "0.1.5-rc.2"
+  },
+  "sshOps": {
+    "repository": "https://github.com/caoyiwei850/dsh-ssh-ops.git",
+    "commit": "492df49d4f5c392360a6cfa0da47e6d2016d529a",
+    "version": "0.3.8",
+    "license": "MIT",
+    "source": "packages/dsh-ssh-ops"
+  },
+  "zotero-harvest": {
+    "repository": "https://github.com/Fisfzy/zotero-harvest.git",
+    "version": "0.2.0",
+    "commit": "9635a4f27ba186f414d3ba23042bd12ee176cddc",
+    "license": "MIT",
+    "source": "packages/zotero-harvest"
   }
 }

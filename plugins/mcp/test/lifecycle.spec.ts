@@ -10,6 +10,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ZeroWallProjectsService from '../../projects/src/host/index.js'
 import ZeroWallMcpService, {
+  ZeroWallMcpService as McpServiceClass,
   RDATALINUX_R_MCP_LEGACY_URL,
   RDATALINUX_R_MCP_URL,
 } from '../src/host/index.js'
@@ -30,6 +31,40 @@ afterEach(() => {
 })
 
 describe('ZeroWall MCP Cordis lifecycle', () => {
+  it('keeps saved enabled connections out of the boot barrier until the desktop mounts', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-boot-gate-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'db.sqlite')
+    process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+    process.env.ZEROWALL_DEFER_DEFAULT_MCP = '1'
+    const send = process.send
+    process.send = (() => true) as typeof process.send
+    const ctx = new Context()
+    const starts = vi.spyOn(McpServiceClass.prototype as any, 'startConnection').mockImplementation(() => undefined)
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      ctx.zerowallProjects.createMcpServer({ name: 'saved', serverName: 'saved', transport: 'streamable-http', enabled: true, url: 'http://127.0.0.1:9/mcp' })
+      await ctx.plugin(ZeroWallMcpService)
+      expect((await ctx.zerowallMcp.list())[0]?.enabled).toBe(true)
+      expect(starts).not.toHaveBeenCalled()
+      process.emit('message', { type: 'unrelated' }, undefined)
+      expect(starts).not.toHaveBeenCalled()
+      process.emit('message', { type: 'zerowall:desktop:workbench-ready' }, undefined)
+      await new Promise(resolve => setImmediate(resolve))
+      expect(starts).toHaveBeenCalledTimes(1)
+      process.emit('message', { type: 'zerowall:desktop:workbench-ready' }, undefined)
+      await new Promise(resolve => setImmediate(resolve))
+      expect(starts).toHaveBeenCalledTimes(1)
+    } finally {
+      await ctx.fiber.dispose()
+      starts.mockRestore()
+      process.send = send
+      delete process.env.ZEROWALL_DEFER_DEFAULT_MCP
+    }
+  })
+
   it('contains a failed default migration instead of terminating Host startup', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-contained-startup-'))
     roots.push(root)
@@ -242,6 +277,3 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     }
   }, 30_000)
 })
-
-
-

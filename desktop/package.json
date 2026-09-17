@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "6.0.6",
+  "version": "6.1.0",
   "description": "ZeroWall Science 4.3 local-first scientific research workbench with the DSH better-sidebar workbench.",
   "private": true,
   "type": "module",
@@ -56,7 +56,9 @@
     "dsh-free-search": "0.4.28",
     "@zerowallscience/research-store": "workspace:^",
     "dsh-progressive-tools": "workspace:*",
-    "@dingyi222666/dsh-session-notification": "workspace:*"
+    "@dingyi222666/dsh-session-notification": "workspace:*",
+    "dsh-ssh-ops": "workspace:*",
+    "@dsh-external/zotero-harvest": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis-plugin-group": "workspace:^",

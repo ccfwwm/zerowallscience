@@ -22,7 +22,7 @@ const presetRoots = [...presetText.matchAll(/^\s+name:\s+['"]([^'"]+)['"]\s*$/gm
 const patchText = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
 const patchRoots = [...patchText.matchAll(/^\s+name:\s+['"]([^'"]+)['"]\s*$/gmu)].map(match => match[1])
 const pluginPeers = []
-for (const directory of ['packages/dsh-progressive-tools', 'packages/dsh-session-notification', 'packages/dsh-wechat', 'packages/dsh-auto-review', 'packages/dsh-file-review']) {
+for (const directory of ['packages/zotero-harvest', 'packages/dsh-ssh-ops', 'packages/dsh-progressive-tools', 'packages/dsh-session-notification', 'packages/dsh-wechat', 'packages/dsh-auto-review', 'packages/dsh-file-review']) {
   const manifest = JSON.parse(await readFile(resolve(root, directory, 'package.json'), 'utf8'))
   pluginPeers.push(...Object.keys(manifest.peerDependencies ?? {}), ...Object.keys(manifest.dependencies ?? {}))
 }

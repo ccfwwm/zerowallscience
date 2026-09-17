@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { access, mkdir, mkdtemp, readFile, readdir, stat } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
@@ -8,7 +8,9 @@ import { pathToFileURL } from 'node:url'
 import { extractFile, listPackage } from '@electron/asar'
 import { chromium } from 'playwright'
 import { locatePackagedApp } from './packaged-app.mjs'
+import { verifySettingsLocales } from './verify-settings-locales.mjs'
 
+const hostCookies = new Map()
 const MIB = 1024 * 1024
 const packageRoot = resolve(import.meta.dirname, '..')
 const repositoryRoot = resolve(packageRoot, '..')
@@ -16,6 +18,7 @@ const pinnedUpstream = JSON.parse(await readFile(resolve(repositoryRoot, 'config
 const pinnedIntegrations = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'integrations', 'upstream-sources.json'), 'utf8'))
 const desktopManifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
 const desktopOnly = process.argv.includes('--desktop-only')
+const hostOnly = process.argv.includes('--host-only')
 
 if (process.argv.includes('--audit-source')) {
   await verifySourceRuntimePolicy()
@@ -38,11 +41,25 @@ if (archiveFiles.some(path => path.startsWith('node_modules/@daweifu/capability-
   throw new Error('Removed capability-menu module is still in the packaged runtime.')
 }
 const packagedManifest = JSON.parse(readArchiveFile('package.json').toString('utf8'))
+for (const entry of ['out/main/index.js', 'out/preload/index.cjs']) {
+  if (!readArchiveFile(entry).equals(await readFile(resolve(packageRoot, entry)))) {
+    throw new Error(`Packaged ${entry} differs from the completed desktop build. Rebuild before packaging.`)
+  }
+}
 const requiredArchivePaths = [
+  'node_modules/@dsh-external/zotero-harvest/lib/index.js',
+  'node_modules/@dsh-external/zotero-harvest/lib/save/local-api.js',
+  'node_modules/@dsh-external/zotero-harvest/LICENSE',
   'node_modules/dsh-zotero/lib/index.js',
   'node_modules/dsh-zotero/lib/client.js',
+  'node_modules/dsh-zotero/lib/item-graph.js',
+  'node_modules/dsh-zotero/lib/local/detail.js',
   'node_modules/dsh-zotero/cordis.patch.yml',
   'node_modules/dsh-zotero/LICENSE',
+  'node_modules/dsh-ssh-ops/lib/index.js',
+  'node_modules/dsh-ssh-ops/lib/client.js',
+  'node_modules/dsh-ssh-ops/lib/typert.js',
+  'node_modules/dsh-ssh-ops/cordis.patch.yml',
   'node_modules/dsh-progressive-tools/lib/index.js',
   'node_modules/dsh-progressive-tools/cordis.patch.yml',
   'node_modules/@dingyi222666/dsh-session-notification/lib/index.js',
@@ -169,12 +186,13 @@ await verifyExternalPolicy()
 await verifySizePolicy()
 await verifyImports()
 verifyQuestionComposerBundle()
+verifyZoteroAdapters()
 await verifyNativeRuntime()
 await verifyDirectoryPickerWorker()
 if (!desktopOnly) await verifyHostStartup()
-await verifyDesktopStartup()
+if (!hostOnly) await verifyDesktopStartup()
 
-console.log(`Packaged ZeroWall ASAR runtime, package policy, and desktop EXE startup verified${desktopOnly ? ' (desktop-only).' : ' with Host startup.'}`)
+console.log(`Packaged ZeroWall ASAR runtime and package policy verified; startup: ${hostOnly ? 'Host' : desktopOnly ? 'Desktop' : 'Host and Desktop'}.`)
 
 async function verifyArchivePolicy() {
   const forbidden = archiveFiles.filter(path => path.startsWith('node_modules/') && (
@@ -371,6 +389,28 @@ function verifyQuestionComposerBundle() {
   }
 }
 
+function verifyZoteroAdapters() {
+  const client = readArchiveFile('node_modules/dsh-zotero/lib/client.js').toString('utf8')
+  const itemGraph = readArchiveFile('node_modules/dsh-zotero/lib/item-graph.js').toString('utf8')
+  const detail = readArchiveFile('node_modules/dsh-zotero/lib/local/detail.js').toString('utf8')
+  if (!client.includes('visit(root, key, 1)') || !client.includes('order.push(`${key}:${block.callId}`)')) {
+    throw new Error('Packaged Zotero Sources tab cannot track nested Progressive Tools calls.')
+  }
+  const dispatcher = readArchiveFile('node_modules/dsh-progressive-tools/lib/index.js').toString('utf8')
+  const conversation = readArchiveFile('node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js').toString('utf8')
+  const ssh = readArchiveFile('node_modules/dsh-ssh-ops/lib/client.js').toString('utf8')
+  if (!client.includes('function zoteroDispatch(block)') || !dispatcher.includes('targetMeta: definition.output.presentationMeta')) {
+    throw new Error('Packaged Zotero dispatcher metadata/replay adapter is missing.')
+  }
+  if (!conversation.includes('data-conversation-view') || !ssh.includes('data-zerowall-ssh-view')) {
+    throw new Error('Packaged conversation view isolation or SSH main view is missing.')
+  }
+  if (!itemGraph.includes('options.fetchAnnotationChildren ?? options.fetchChildren')
+    || !detail.includes("new URLSearchParams({ itemType: 'annotation' })")) {
+    throw new Error('Packaged Zotero annotation traversal is missing its Local API itemType filter.')
+  }
+}
+
 function hasForbiddenRuntimeDirectory(path) {
   const forbidden = new Set(['test', 'tests', '__tests__', 'example', 'examples', 'docs'])
   const segments = path.split('/')
@@ -473,6 +513,25 @@ async function verifyImports() {
         }
       }
     }
+    const { Context: HarvestContext } = await load('@deepseek-ai/cordis');
+    const { default: HarvestPrompt } = await load('@deepseek-ai/dsh-system-prompt');
+    const { default: HarvestTools } = await load('@deepseek-ai/dsh-tools');
+    const harvest = await load('@dsh-external/zotero-harvest');
+    const harvestCtx = new HarvestContext();
+    try {
+      harvestCtx.provide('sessions', {});
+      await harvestCtx.plugin(HarvestPrompt);
+      await harvestCtx.plugin(HarvestTools);
+      await harvestCtx.plugin(harvest);
+      const names = harvestCtx.tools.schemas().map(row => row.name);
+      for (const name of ['lit_fetch', 'lit_paper_detail', 'lit_save', 'lit_sufficiency_check', 'lit_download_links', 'lit_review_run']) {
+        if (!names.includes(name)) throw new Error('Packaged harvest tool missing: ' + name);
+      }
+      const definitions = [];
+      harvest.apply({ tools: { register: tool => definitions.push(tool) } });
+      const result = await definitions.find(row => row.name === 'lit_sufficiency_check').execute({ topic: 'test', collected: [] }, {});
+      if (result.sufficient !== false) throw new Error('Packaged harvest invocation failed');
+    } finally { await harvestCtx.fiber.dispose(); }
     const { validateStoredEvents } = await load('@deepseek-ai/dsh-session-persistence');
     const legacy = { type: 'zerowall/capabilities/selection', seq: 52, time: 1, data: { tools: ['read'], disabled: [], onDemand: ['python'] } };
     const restored = validateStoredEvents({ id: 'packaged-legacy-history' }, [legacy]);
@@ -597,7 +656,10 @@ async function verifyDirectoryPickerWorker() {
       })
     })
   } finally {
-    if (child.exitCode === null) child.kill('SIGTERM')
+    if (child.exitCode === null) {
+      if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+      else child.kill('SIGTERM')
+    }
   }
 }
 
@@ -615,13 +677,24 @@ async function verifyHostStartup() {
     '--patch', resolve(packaged.resourcesRoot, 'zerowall.patch.yml'),
     '--host', '127.0.0.1',
     '--port', String(port),
+    '--no-open',
   ], {
     cwd: root,
     env: hostEnvironment(root, dshEntry),
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     windowsHide: true,
   })
+  // This isolated Host has no OS vault. Match the desktop IPC contract with
+  // an empty, read-only test broker; the real broker is exercised by the
+  // packaged Desktop account checks. Never touch the user's credentials.
+  child.on('message', message => {
+    if (message?.kind !== 'zerowall-secret-request') return
+    child.send({ kind: 'zerowall-secret-response', requestId: message.requestId,
+      ok: message.operation === 'get', ...(message.operation === 'get' ? {} : { error: 'The test credential broker is read-only.' }) })
+  })
   let output = ''
+  let lastProbeError = ''
+  let freeSearchVerified = false
   child.stdout.on('data', chunk => { output += chunk.toString('utf8') })
   child.stderr.on('data', chunk => { output += chunk.toString('utf8') })
 
@@ -636,12 +709,16 @@ async function verifyHostStartup() {
       }
       if (response !== undefined && response.status >= 200 && response.status < 500) {
         const token = /https?:\/\/127\.0\.0\.1:\d+\/?\?token=([A-Za-z0-9_-]+)/u.exec(output)?.[1]
-        const probeUrl = token === undefined ? url : `${url}/?token=${token}`
+        if (token === undefined) { await new Promise(resolve => setTimeout(resolve, 250)); continue }
+        const probeUrl = `${url}/?token=${token}`
         try {
           await verifyWebBootManifest(probeUrl)
           await verifyPluginInventory(probeUrl)
           await verifyZoteroStatus(probeUrl)
-          await verifyFreeSearch(probeUrl)
+          if (!freeSearchVerified) {
+            await verifyFreeSearch(probeUrl)
+            freeSearchVerified = true
+          }
           await verifyMineruStatus(probeUrl)
           await verifyPubmedStatus(probeUrl)
           await verifySinglecellStatus(probeUrl)
@@ -651,7 +728,7 @@ async function verifyHostStartup() {
           // has settled. Keep the process alive long enough to catch a plugin
           // that briefly reports active and then fails during its apply phase.
           await new Promise(resolvePromise => setTimeout(resolvePromise, 2_000))
-          if (child.exitCode !== null) throw new Error(`Packaged Host exited after becoming ready.\n${output.slice(-12_000)}`)
+          if (child.exitCode !== null) throw new Error(`Packaged Host exited after becoming ready.\n${output.slice(-12_000).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}`)
           await verifyWebBootManifest(probeUrl)
           await verifyPluginInventory(probeUrl)
           await verifyMineruStatus(probeUrl)
@@ -660,23 +737,22 @@ async function verifyHostStartup() {
           await verifyEventWebSockets(probeUrl)
           return
         } catch (error) {
-          // The alpha.1 web surface requires a browser token exchange cookie;
-          // the desktop renderer performs that exchange itself. A raw Node
-          // probe may therefore see 401/404 even though the Host is healthy.
-          // Treat that authenticated-surface response as readiness when the
-          // child is still alive; renderer/e2e coverage exercises the session.
-          if (error instanceof Error && /Packaged Host index returned HTTP (?:401|404)\./u.test(error.message)) return
+          if (lastProbeError !== (error instanceof Error ? error.message : String(error))) console.log(`Host probe pending: ${error instanceof Error ? error.message : String(error)}`)
+          lastProbeError = error instanceof Error ? error.message : String(error)
           if (!isTransientHostProbeError(error) || child.exitCode !== null) {
             const reason = error instanceof Error ? error.stack ?? error.message : String(error)
-            throw new Error(`Packaged Host verification failed.\n${reason}\n${output.slice(-12_000)}`)
+            throw new Error(`Packaged Host verification failed.\n${reason}\n${output.slice(-12_000).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}`)
           }
         }
       }
       await new Promise(resolvePromise => setTimeout(resolvePromise, 250))
     }
-    throw new Error(`Packaged Host did not become ready.\n${output.slice(-12_000)}`)
+    throw new Error(`Packaged Host did not become ready. Last probe: ${lastProbeError}\n${output.slice(-12_000).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}`)
   } finally {
-    if (child.exitCode === null) child.kill('SIGTERM')
+    if (child.exitCode === null) {
+      if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+      else child.kill('SIGTERM')
+    }
   }
 }
 
@@ -695,10 +771,27 @@ function isTransientHostProbeError(error) {
   return false
 }
 
+async function hostFetch(input, options = {}) {
+  const url = new URL(input)
+  const token = url.searchParams.get('token')
+  if (!hostCookies.has(url.origin) && token) {
+    const exchange = new URL('/', url)
+    exchange.searchParams.set('token', token)
+    const response = await fetch(exchange, { redirect: 'manual', signal: AbortSignal.timeout(5_000) })
+    const cookie = response.headers.getSetCookie().map(value => value.split(';')[0]).filter(value => value.startsWith('dsh-auth-')).join('; ')
+    if (response.status !== 303 || !cookie) throw new Error('Host authentication exchange failed.')
+    hostCookies.set(url.origin, cookie)
+  }
+  // DSH module URLs use the raw /plugins/??specifier query. URLSearchParams
+  // serialization changes that routing syntax, so remove only a real token.
+  if (token !== null) url.searchParams.delete('token')
+  return fetch(url, { ...options, headers: { ...options.headers, Cookie: hostCookies.get(url.origin) ?? '', Origin: url.origin } })
+}
+
 function authUrl(base, path) {
   const value = new URL(path, base)
   const token = new URL(base).searchParams.get('token')
-  if (token !== null) value.searchParams.set('token', token)
+  if (token !== null && !hostCookies.has(value.origin)) value.searchParams.set('token', token)
   return value
 }
 
@@ -707,7 +800,7 @@ async function verifyEventWebSockets(url) {
   const base = new URL(url)
   base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:'
   const open = path => new Promise((resolvePromise, reject) => {
-    const socket = new WebSocket(authUrl(base, path))
+    const socket = new WebSocket(new URL(path, base), { headers: { Cookie: hostCookies.get(new URL(url).origin) ?? '', Origin: new URL(url).origin } })
     const timeout = setTimeout(() => {
       socket.close()
       reject(new Error(`Packaged Host WebSocket timed out: ${path}`))
@@ -734,16 +827,17 @@ async function verifyEventWebSockets(url) {
     socket.close(1000, 'packaged transport verification')
   })
 
-  const first = await Promise.all(['/api/events.mux', '/api/events.host'].map(open))
-  const second = await Promise.all(['/api/events.mux', '/api/events.host'].map(open))
+  // The pinned rc.2 Gateway multiplexes event streams on remote.mux.
+  const first = await Promise.all(['/api/remote.mux', '/api/remote.mux'].map(open))
+  const second = await Promise.all(['/api/remote.mux', '/api/remote.mux'].map(open))
   await Promise.all([...first, ...second].map(close))
-  const reconnected = await Promise.all(['/api/events.mux', '/api/events.host'].map(open))
+  const reconnected = await Promise.all(['/api/remote.mux', '/api/remote.mux'].map(open))
   await Promise.all(reconnected.map(close))
 }
 
 async function verifyPluginInventory(url) {
   const rpcId = randomUUID()
-  const response = await fetch(authUrl(new URL(url), '/api/pluginInventory/list'), {
+  const response = await hostFetch(authUrl(new URL(url), '/api/pluginInventory/list'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -765,9 +859,9 @@ async function verifyPluginInventory(url) {
   }
   const expected = [
     'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
-    'skills', 'reviewer', 'research', 'pubmed', 'execution', 'python', 'runs', 'publications', 'presentations',
+    'skills', 'reviewer', 'research', 'pubmed', 'singlecell', 'execution', 'python', 'runs', 'publications', 'presentations',
   ].map(name => `@zerowallscience/plugin-${name}`)
-  expected.push('dsh-free-search', 'dsh-wechat', 'dsh-file-review', '@changfenhuang/dsh-genui', 'dsh-zotero')
+  expected.push('@dsh-external/zotero-harvest', 'dsh-free-search', 'dsh-wechat', 'dsh-file-review', '@changfenhuang/dsh-genui', 'dsh-zotero')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
   const missing = expected.filter(name => !byModule.has(name))
   if (missing.length > 0) throw new Error(`Packaged Host plugin inventory is missing: ${missing.join(', ')}`)
@@ -778,7 +872,7 @@ async function verifyPluginInventory(url) {
 async function verifyFreeSearch(url) {
   const endpoint = path => authUrl(new URL(url), `/api/dsh-free-search-settings/${path}`)
   const post = async (path, body = {}) => {
-    const response = await fetch(endpoint(path), {
+    const response = await hostFetch(endpoint(path), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -826,7 +920,7 @@ async function verifyFreeSearch(url) {
 
 async function verifyZoteroStatus(url) {
   const rpcId = randomUUID()
-  const response = await fetch(authUrl(new URL(url), '/api/zotero/status'), {
+  const response = await hostFetch(authUrl(new URL(url), '/api/zotero/status'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ type: 'client-request', rpcId, method: 'zotero/status', payload: { args: {} } }),
@@ -844,7 +938,7 @@ async function verifyZoteroStatus(url) {
 
 async function verifyPubmedStatus(url) {
   const rpcId = randomUUID()
-  const response = await fetch(authUrl(new URL(url), '/api/zerowallPubmed.getConfigStatus'), {
+  const response = await hostFetch(authUrl(new URL(url), '/api/zerowallPubmed/getConfigStatus'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ type: 'client-request', rpcId, method: 'zerowallPubmed/getConfigStatus', payload: { args: {} } }),
@@ -867,7 +961,7 @@ async function verifyPubmedStatus(url) {
 
 async function verifyMineruStatus(url) {
   const rpcId = randomUUID()
-  const response = await fetch(authUrl(new URL(url), '/api/zerowallMineru.getConfigStatus'), {
+  const response = await hostFetch(authUrl(new URL(url), '/api/zerowallMineru/getConfigStatus'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -894,12 +988,12 @@ async function verifyMineruStatus(url) {
 
 async function verifySinglecellStatus(url) {
   const rpcId = randomUUID()
-  const response = await fetch(authUrl(new URL(url), '/api/zerowallSinglecell/searchGenes'), {
+  const response = await hostFetch(authUrl(new URL(url), '/api/zerowallSinglecell/searchGenes'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       type: 'client-request', rpcId, method: 'zerowallSinglecell/searchGenes',
-      payload: { args: [{ targetGenes: ['HSPA1A'], maxCandidates: 1 }] },
+      payload: { args: { request: { targetGenes: ['HSPA1A'], maxCandidates: 1 } } },
     }),
     signal: AbortSignal.timeout(10_000),
   })
@@ -915,7 +1009,7 @@ async function verifySinglecellStatus(url) {
 }
 
 async function verifyWebBootManifest(url) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+  const response = await hostFetch(url, { signal: AbortSignal.timeout(10_000) })
   if (!response.ok) throw new Error(`Packaged Host index returned HTTP ${response.status}.`)
   const html = await response.text()
   // Current DSH injects the boot graph as `globalThis["__DSH_BOOT__"]`; earlier
@@ -929,10 +1023,9 @@ async function verifyWebBootManifest(url) {
   const required = [
     '@deepseek-ai/dsh-api-gateway',
     '@deepseek-ai/dsh-api-session-controller',
-    '@deepseek-ai/dsh-api-settings-controller',
     '@deepseek-ai/dsh-api-workspace-controller',
     '@deepseek-ai/dsh-client-connection',
-    '@deepseek-ai/dsh-client-store',
+    '@deepseek-ai/dsh-client-ui-settings',
     '@deepseek-ai/dsh-client-ui-chat',
     '@deepseek-ai/dsh-client-ui-theme',
     '@deepseek-ai/dsh-client-locale',
@@ -959,7 +1052,7 @@ async function verifyWebBootManifest(url) {
   for (const id of required) {
     const entry = entries.find(candidate => candidate?.id === id)
     const pluginUrl = authUrl(new URL(url), entry.url)
-    const plugin = await fetch(pluginUrl, { signal: AbortSignal.timeout(10_000) })
+    const plugin = await hostFetch(pluginUrl, { signal: AbortSignal.timeout(10_000) })
     if (!plugin.ok) throw new Error(`Packaged client plugin ${id} returned HTTP ${plugin.status} at ${pluginUrl.href}: ${await plugin.text()}`)
   }
 }
@@ -967,6 +1060,29 @@ async function verifyWebBootManifest(url) {
 
 async function verifyDesktopStartup() {
   const root = await mkdtemp(resolve(tmpdir(), 'zerowall-packaged-desktop-'))
+  // Reproduce the upgrade failure using durable storage, not just an empty
+  // first-run profile. The optional replay file is copied, never modified.
+  const sshPath = resolve(root, 'user-data/harness/storages/ssh_ops_profiles.json')
+  await mkdir(resolve(root, 'user-data/harness/storages'), { recursive: true })
+  const sshProfile = process.env.ZEROWALL_SSH_PROFILE_REPLAY
+    ? JSON.parse(await readFile(process.env.ZEROWALL_SSH_PROFILE_REPLAY, 'utf8'))
+    : { unit: { name: 'ssh_ops_profiles', version: 1 }, global: null, tables: { profiles: {
+      '00000000-0000-4000-8000-000000000001': {
+        name: 'Saved SSH regression', host: '192.0.2.1', port: 22, username: 'test', authKind: 'key', groupId: null,
+        defaultProjectPath: null, createdAt: '2026-09-17T00:00:00Z', updatedAt: '2026-09-17T00:00:00Z',
+      },
+    }, groups: {} } }
+  await writeFile(sshPath, JSON.stringify(sshProfile))
+  if (process.env.ZEROWALL_ZOTERO_REPLAY_LOG) {
+    const rows = (await readFile(process.env.ZEROWALL_ZOTERO_REPLAY_LOG, 'utf8')).trim().split(/\r?\n/u).map(JSON.parse)
+    // Isolate the supplied history and cwd; never write into the user's profile.
+    rows[0].cwd = root
+    for (const row of rows) if (row.type === 'session/title') row.data.title = 'Zotero replay verification'
+    const project = `--${root.replace(/[:\\/]+/gu, '-')}--`
+    const dir = resolve(root, 'user-data/harness/sessions', project, rows[0].id)
+    await mkdir(dir, { recursive: true })
+    await writeFile(resolve(dir, 'session.v3.jsonl'), rows.map(row => JSON.stringify(row)).join('\n') + '\n')
+  }
   // Electron's app.getPath('appData') throws when APPDATA/LOCALAPPDATA do not
   // exist yet. Create the isolated roots so this smoke covers a clean first
   // launch instead of failing before the Harness can start.
@@ -990,7 +1106,7 @@ async function verifyDesktopStartup() {
   })
   let output = ''
   const endpoint = new Promise((resolveEndpoint, rejectEndpoint) => {
-    const timeout = setTimeout(() => rejectEndpoint(new Error(`Packaged desktop DevTools endpoint timed out.\n${output.slice(-12_000)}`)), 120_000)
+    const timeout = setTimeout(() => rejectEndpoint(new Error(`Packaged desktop DevTools endpoint timed out.\n${output.slice(-12_000).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}`)), 120_000)
     const onData = chunk => {
       output = `${output}${chunk.toString('utf8')}`.slice(-20_000)
       const match = /DevTools listening on (ws:\/\/[^\s]+)/u.exec(output)
@@ -1002,7 +1118,7 @@ async function verifyDesktopStartup() {
     child.stderr.on('data', onData)
     child.once('exit', code => {
       clearTimeout(timeout)
-      rejectEndpoint(new Error(`Packaged desktop exited before DevTools was ready (exit ${String(code)}).\n${output.slice(-12_000)}`))
+      rejectEndpoint(new Error(`Packaged desktop exited before DevTools was ready (exit ${String(code)}).\n${output.slice(-12_000).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}`))
     })
   })
   let browser
@@ -1017,7 +1133,7 @@ async function verifyDesktopStartup() {
       if (page !== undefined) break
       await new Promise(resolvePromise => setTimeout(resolvePromise, 250))
     }
-    if (page === undefined) throw new Error(`Packaged desktop did not navigate to its Host.\n${output.slice(-12_000)}`)
+    if (page === undefined) throw new Error(`Packaged desktop did not navigate to its Host.\n${output.slice(-12_000).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}`)
     const browserErrors = []
     page.on('pageerror', error => browserErrors.push(`pageerror: ${error.message}`))
     page.on('console', message => {
@@ -1057,6 +1173,12 @@ async function verifyDesktopStartup() {
       throw new Error(`Packaged desktop did not render the ZeroWall Science brand. body=${JSON.stringify(snapshot)} errors=${JSON.stringify(browserErrors.slice(-20))}\n${error.message}`)
     }
     const bodyText = await page.locator('body').innerText()
+    const startupDeadline = Date.now() + 60_000
+    while (Date.now() < startupDeadline && (await page.evaluate(() => window.zerowallDesktop.getStartupStatus())).phase !== 'ready') await new Promise(resolve => setTimeout(resolve, 200))
+    const startup = await page.evaluate(() => window.zerowallDesktop.getStartupStatus())
+    if (startup.phase !== 'ready') throw new Error(`Desktop startup failed: ${startup.message}`)
+    console.log(`Packaged startup ready in ${Date.now() - startup.startedAt} ms; saved SSH profiles: ${Object.keys(sshProfile.tables.profiles).length}; evidence: ${root}`)
+    if (await readFile(sshPath, 'utf8') !== JSON.stringify(sshProfile)) throw new Error('Startup unexpectedly rewrote saved SSH profiles.')
     if (/Failed to load plugins|missed the module table|Cannot use import statement outside a module/iu.test(bodyText)) {
       throw new Error(`Packaged desktop rendered a plugin loading error: ${bodyText.slice(0, 4_000)}`)
     }
@@ -1075,7 +1197,17 @@ async function verifyDesktopStartup() {
     const settings = page.getByRole('dialog', { name: /^(设置|Settings)$/ })
     await settings.getByRole('button', { name: 'Zotero', exact: true }).click()
     await settings.locator('input[value="http://127.0.0.1:23119/api"]').waitFor({ state: 'visible', timeout: 30_000 })
+    // Locale assertions use controlled fixture names; user-supplied names
+    // retain their original language during saved-profile replay.
+    if (!process.env.ZEROWALL_SSH_PROFILE_REPLAY) await verifySettingsLocales(page, settings, root)
     await settings.getByRole('button', { name: /^(关闭|Close)$/ }).click()
+    if (process.env.ZEROWALL_ZOTERO_REPLAY_LOG) {
+      try { await verifyConversationViews(page, root) } catch (error) {
+        await page.screenshot({ path: resolve(root, 'replay-failure.png'), fullPage: true })
+        await writeFile(resolve(root, 'replay-failure.txt'), await page.locator('body').innerText())
+        throw new Error(`${error.message}\nReplay evidence: ${root}\nBrowser errors: ${browserErrors.slice(-10).join('\n')}`)
+      }
+    }
     const clientCss = await page.evaluate(() => {
       const markers = [...document.querySelectorAll('style[data-zerowall-plugin-css]')]
         .map(style => style.getAttribute('data-zerowall-plugin-css'))
@@ -1104,6 +1236,53 @@ async function verifyDesktopStartup() {
   }
 }
 
+async function verifyConversationViews(page, root) {
+  await page.getByText(root.split(/[\\/]/u).at(-1), { exact: true }).first().click()
+  await page.getByText(root.split(/[\\/]/u).at(-1), { exact: true }).nth(1).click({ timeout: 30_000 })
+  const tabs = page.locator('[data-conversation-view]')
+  await tabs.waitFor({ state: 'visible' })
+  const composer = page.locator('[data-composer-seat]')
+  const editor = composer.locator('[contenteditable]')
+  await tabs.locator('[data-conversation-tab="chat"]').click()
+  const switchTo = async id => {
+    await tabs.locator(`[data-conversation-tab="${id}"]`).click()
+    await page.waitForFunction(id => document.querySelector('[data-conversation-view]')?.getAttribute('data-conversation-view') === id, id)
+    if (await tabs.locator('[aria-selected="true"]').count() !== 1) throw new Error(`Multiple selected main tabs: ${id}`)
+    if (await composer.isVisible()) throw new Error(`Composer still visible in ${id}`)
+  }
+  await switchTo('zotero')
+  await page.getByText('Red blood cell distribution width to albumin ratio (RAR) is associated with low cognitive performance in American older adults: NHANES 2011-2014', { exact: true }).first().waitFor({ state: 'visible' })
+  const rows = page.locator('[data-slot="conversation.view"] [role="option"][data-provenance]')
+  if (await rows.count() !== 19) throw new Error(`Expected 19 literature rows, found ${await rows.count()}`)
+  await rows.nth(1).click()
+  if (await rows.nth(1).getAttribute('aria-selected') !== 'true') throw new Error('Literature row selection failed')
+  await page.locator('[data-inspector-panel="overview"]').waitFor({ state: 'visible' })
+  await page.getByRole('button', { name: /问这篇|Ask about this/u }).click()
+  await page.waitForFunction(() => document.querySelector('[data-conversation-view]')?.getAttribute('data-conversation-view') === 'chat')
+  const draft = await editor.innerText()
+  if (!draft.includes('zotero://')) throw new Error('Source action did not populate the resident draft')
+  await switchTo('zotero')
+  await page.screenshot({ path: resolve(root, 'zotero.png'), fullPage: true })
+  await switchTo('ssh')
+  const ssh = page.locator('[data-zerowall-ssh-view]')
+  await ssh.waitFor({ state: 'visible' })
+  const box = await ssh.boundingBox()
+  if (!box || box.height < 250 || box.width < 300) throw new Error(`SSH workspace is collapsed: ${JSON.stringify(box)}`)
+  await page.screenshot({ path: resolve(root, 'ssh.png'), fullPage: true })
+  for (const id of await tabs.locator('[data-conversation-tab]').evaluateAll(elements => elements.map(el => el.getAttribute('data-conversation-tab')))) {
+    if (id !== 'chat') await switchTo(id)
+  }
+  await tabs.locator('[data-conversation-tab="chat"]').click()
+  if (await editor.innerText() !== draft) throw new Error('Chat draft lost across views')
+  await switchTo('zotero')
+  await page.reload()
+  await page.locator('[data-conversation-tab="zotero"]').waitFor({ state: 'visible' })
+  await page.locator('[data-conversation-tab="zotero"]').click()
+  await page.getByText('Red blood cell distribution width to albumin ratio (RAR) is associated with low cognitive performance in American older adults: NHANES 2011-2014', { exact: true }).first().waitFor({ state: 'visible' })
+  if (await rows.count() !== 19) throw new Error('Literature list was not restored after reload')
+  console.log(`Packaged conversation replay, tabs, SSH and draft verified. Screenshots: ${root}`)
+}
+
 function hostEnvironment(root, dshEntry) {
   return {
     ...process.env,
@@ -1122,10 +1301,10 @@ function hostEnvironment(root, dshEntry) {
 async function verifyPlaintextSessionPersistence(url, root) {
   const sessionId = randomUUID()
   const rpcId = randomUUID()
-  const response = await fetch(authUrl(new URL(url), '/api/session.create'), {
+  const response = await hostFetch(authUrl(new URL(url), '/api/session/create'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ type: 'client-request', rpcId, method: 'session.create', payload: { cwd: root, sessionId } }),
+    body: JSON.stringify({ type: 'client-request', rpcId, method: 'session/create', payload: { args: { request: { cwd: root, sessionId } } } }),
     signal: AbortSignal.timeout(10_000),
   })
   if (!response.ok) throw new Error(`Packaged Host session.create returned HTTP ${response.status}.`)
@@ -1139,7 +1318,7 @@ async function verifyPlaintextSessionPersistence(url, root) {
   while (Date.now() < deadline) {
     const files = await listDiskFiles(sessionsRoot).catch(error => error?.code === 'ENOENT' ? [] : Promise.reject(error))
     if (files.some(path => path.endsWith('session.jsonl.zstd'))) throw new Error('Packaged Host wrote a compressed session.')
-    const jsonl = files.find(path => path.endsWith('session.jsonl'))
+    const jsonl = files.find(path => path.endsWith('session.v3.jsonl'))
     if (jsonl !== undefined) {
       const firstLine = (await readFile(resolve(sessionsRoot, jsonl), 'utf8')).split('\n', 1)[0]
       if (JSON.parse(firstLine).id !== sessionId) throw new Error('Packaged Host persisted the wrong session id.')
@@ -1165,7 +1344,7 @@ async function runEmbeddedNode(arguments_, options) {
     child.once('error', reject)
     child.once('exit', (code, signal) => code === 0
       ? resolvePromise()
-      : reject(new Error(`Embedded Electron Node verification failed (${signal ?? `exit ${code}`}).\n${output.slice(-12_000)}`)))
+      : reject(new Error(`Embedded Electron Node verification failed (${signal ?? `exit ${code}`}).\n${output.slice(-12_000).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}`)))
   })
 }
 

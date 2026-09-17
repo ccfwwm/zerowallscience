@@ -8,7 +8,7 @@
  * preview button. All copy rides the standard locale seat; reads go through
  * `useStore`, business writes through the injected controller callbacks.
  */
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent } from 'react'
 import type {
   PropsLocale, PropsRuntime, PropsStore,
@@ -28,6 +28,7 @@ import css from './NotificationsSection.module.css'
 /** Injected business face: preference writes, sound preview, permission and
  *  custom-audio flows. */
 export interface NotificationsSectionInjected {
+  bindSettingsClose?: (close: (() => void) | undefined) => void
   /** Persist the browser-notification master switch (grants permission first). */
   setBrowserEnabled: (enabled: boolean) => Promise<void>
   /** Persist whether the current session also alerts. */
@@ -186,8 +187,13 @@ function VolumeSlider({ value, label, onChange }: {
 export function NotificationsSection({
   t, useStore, setBrowserEnabled, setNotifyCurrent, setNotificationMode, setSoundEnabled, setVolume, setType, testSound,
   requestPermission, testBrowserNotification, uploadCustomSound,
+  close, bindSettingsClose,
 }: NotificationsSectionProps) {
   const { settings, permission, customSounds } = useStore(state => state)
+  useEffect(() => {
+    bindSettingsClose?.(close)
+    return () => bindSettingsClose?.(undefined)
+  }, [close, bindSettingsClose])
 
   // The permission state is shown honestly: denied/unsupported explain why
   // nothing can fire, and an enabled switch without permission reads as

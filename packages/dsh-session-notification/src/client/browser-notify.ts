@@ -19,8 +19,20 @@ interface RenotifyOptions extends NotificationOptions {
 /** Tag prefix shared by every alert from this plugin. */
 export const NOTIFICATION_TAG_PREFIX = 'dsh-session-notification'
 
+interface DesktopNotificationBridge {
+  showNotification: (input: { title: string; body: string; tag: string; sessionId?: string }) => Promise<boolean>
+  onNotificationActivated: (listener: (sessionId?: string) => void) => () => void
+  onNotificationFailed: (listener: (message: string) => void) => () => void
+}
+
+export function desktopNotifications(): DesktopNotificationBridge | undefined {
+  const bridge = (globalThis as { zerowallDesktop?: DesktopNotificationBridge }).zerowallDesktop
+  return typeof bridge?.showNotification === 'function' ? bridge : undefined
+}
+
 /** The current notification permission state. */
 export function browserPermission(): BrowserPermission {
+  if (desktopNotifications()) return 'granted'
   if (typeof Notification === 'undefined') return 'unsupported'
   return Notification.permission
 }
@@ -31,6 +43,7 @@ export function browserPermission(): BrowserPermission {
  * @returns the resulting permission state.
  */
 export async function requestBrowserPermission(): Promise<BrowserPermission> {
+  if (desktopNotifications()) return 'granted'
   if (typeof Notification === 'undefined') return 'unsupported'
   let permission = Notification.permission
   if (permission === 'default') {
@@ -72,7 +85,16 @@ export function showBrowserNotification(
   title: string,
   body: string,
   tag: string = NOTIFICATION_TAG_PREFIX,
+  sessionId?: string,
+  onActivate?: () => void,
 ): boolean {
+  const desktop = desktopNotifications()
+  if (desktop) {
+    void desktop.showNotification({ title, body, tag, sessionId }).then(shown => {
+      if (!shown) console.warn('[dsh-session-notification] Desktop notification was not accepted')
+    }).catch(error => console.warn('[dsh-session-notification] Desktop notification failed', error))
+    return true
+  }
   if (typeof Notification === 'undefined') {
     console.warn('[dsh-session-notification] browser Notification API is unavailable (insecure context or unsupported browser)')
     return false
@@ -92,6 +114,7 @@ export function showBrowserNotification(
     const notification = new Notification(title, options)
     notification.onclick = () => {
       window.focus()
+      onActivate?.()
       notification.close()
     }
     return true
@@ -104,6 +127,7 @@ export function showBrowserNotification(
         const notification = new Notification(title, bareOptions)
         notification.onclick = () => {
           window.focus()
+          onActivate?.()
           notification.close()
         }
         console.warn('[dsh-session-notification] page icon was rejected; notification shown without it', error)

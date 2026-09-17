@@ -20,6 +20,15 @@ function report(label, value) {
   process.stderr.write(`[harness-node] ${label}: ${formatError(value)}\n`)
 }
 
+function failStartup(error) {
+  report('DSH entry failed', error)
+  process.send?.({ type: 'zerowall:host:failed', message: error instanceof Error ? error.message : String(error) })
+  // Failed plugins can leave servers/timers alive. exitCode alone never ends
+  // that process; give the desktop time to terminate its entire child tree.
+  process.exitCode = 1
+  setTimeout(() => process.exit(1), 1_000).unref()
+}
+
 process.on('uncaughtException', (error) => report('uncaught exception', error))
 process.on('unhandledRejection', (error) => report('unhandled rejection', error))
 
@@ -31,8 +40,8 @@ if (!dshEntryPath) {
   try {
     const { runCli } = await import(pathToFileURL(dshEntryPath).href)
     await runCli()
+    process.send?.({ type: 'zerowall:host:booted' })
   } catch (error) {
-    report('DSH entry failed', error)
-    process.exitCode = 1
+    failStartup(error)
   }
 }

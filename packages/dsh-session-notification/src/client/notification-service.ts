@@ -365,7 +365,7 @@ export interface NotificationDispatcherDeps {
   customSoundOf: (kind: NotificationType) => string | undefined
   /** Show one system notification; returns whether it was shown. */
   /** Show one system notification under the event kind's collapse tag. */
-  showBrowser: (title: string, body: string, tag: string) => boolean
+  showBrowser: (title: string, body: string, tag: string, sessionId: SessionId) => boolean
   /** The currently selected session, when one is selected. */
   currentSession: () => SessionId | undefined
   /** Whether the document is hidden (backgrounded). */
@@ -421,6 +421,6 @@ export class NotificationDispatcher {
     }
     if (!settings.browserEnabled) return
     const elsewhere = hidden || !isCurrent || settings.notifyCurrent
-    if (elsewhere) this.deps.showBrowser(title, body, `${NOTIFICATION_TAG_PREFIX}:${event.kind}`)
+    if (elsewhere) this.deps.showBrowser(title, body, `${NOTIFICATION_TAG_PREFIX}:${event.kind}`, event.sessionId)
   }
 }

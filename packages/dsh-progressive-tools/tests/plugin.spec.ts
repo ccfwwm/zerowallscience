@@ -92,6 +92,27 @@ async function execute(ctx: Context, agent: Agent, name: string, argumentsValue:
 }
 
 describe('progressive tools plugin', () => {
+  it('preserves target presentation metadata through the guarded dispatcher', async () => {
+    const { agent, ctx } = await setup()
+    const items = [{ ref: 'zotero://user/0/item/ABCD1234', title: 'Search result', creatorSummary: 'Author' }]
+    ctx.tools.register(defineTool({
+      name: 'zotero_search', description: 'Search literature', parameters: {},
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => [{ type: 'text', text: value }],
+        presentationMeta: () => ({ items }),
+      },
+      execute: async () => 'rendered search result',
+    }))
+    await assemble(ctx, agent)
+    expect((await execute(ctx, agent, 'zotero_search', {}, 'direct')).isError).toBe(true)
+    await execute(ctx, agent, 'tool_search', { query: 'zotero_search' }, 'discover-zotero')
+    const result = await execute(ctx, agent, 'tool_dispatch', { name: 'zotero_search', arguments: {} }, 'search-zotero')
+    expect(result.isError).toBe(false)
+    expect(result.content).toEqual([{ type: 'text', text: 'rendered search result' }])
+    expect(result.meta).toEqual({ protocol: 'dsh-progressive-tools/dispatch-v1', tool: 'zotero_search', targetMeta: { items } })
+  })
+
   it('uses a minimal byte-stable surface on the first assembly and dispatches discovered tools', async () => {
     const { agent, ctx } = await setup()
     const policyNames: string[] = []

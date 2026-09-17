@@ -45,7 +45,7 @@ import { createLocalSettingsScope } from './local-settings.ts'
 import { createTabCoordinator } from './tab-coordinator.ts'
 import { SoundPlayer } from './sounds.ts'
 import {
-  browserPermission, requestBrowserPermission, showBrowserNotification, NOTIFICATION_TAG_PREFIX,
+  browserPermission, requestBrowserPermission, showBrowserNotification, NOTIFICATION_TAG_PREFIX, desktopNotifications,
 } from './browser-notify.ts'
 import { MAX_CUSTOM_AUDIO_BYTES, readCustomSound, readFileAsDataUrl, writeCustomSound } from './custom-audio.ts'
 import {
@@ -87,6 +87,15 @@ export function apply(ctx: ClientContext): void {
   const scope = createLocalSettingsScope()
   const store = createNotificationsStore()
   let bound: BoundActions<typeof store> | undefined
+  let closeSettings: (() => void) | undefined
+  const openSession = (id?: string): void => {
+    closeSettings?.()
+    if (id) ctx.sessions.open(id as SessionId)
+  }
+  ctx.effect(() => desktopNotifications()?.onNotificationActivated(openSession), 'desktop notification activation')
+  ctx.effect(() => desktopNotifications()?.onNotificationFailed(message => {
+    console.warn('[dsh-session-notification]', message)
+  }), 'desktop notification failures')
 
   const currentSettings = (): NotificationSettings => {
     const snapshot = scope.getSnapshot()
@@ -120,9 +129,9 @@ export function apply(ctx: ClientContext): void {
     t: translate,
     playSound: (sound, customUrl) => { playEffective(sound, customUrl) },
     customSoundOf: (kind) => readCustomSound(kind),
-    showBrowser: (title, body, tag) => showBrowserNotification(title, body, tag),
+    showBrowser: (title, body, tag, id) => showBrowserNotification(title, body, tag, id, () => openSession(id)),
     currentSession: () => ctx.sessions.list.getSnapshot().current,
-    isHidden: () => (typeof document === 'undefined' ? false : document.visibilityState === 'hidden'),
+    isHidden: () => (typeof document === 'undefined' ? false : document.visibilityState === 'hidden' || (desktopNotifications() !== undefined && !document.hasFocus())),
   })
 
   const engine = new NotificationEngine({
@@ -231,6 +240,7 @@ export function apply(ctx: ClientContext): void {
     // First sync on mount: push the accepted scope value into the renderer's store.
     bound.adopt(scope.getSnapshot())
     return {
+      bindSettingsClose: close => { closeSettings = close },
       setBrowserEnabled: async (enabled) => {
         if (enabled) {
           let permission = browserPermission()
@@ -252,7 +262,10 @@ export function apply(ctx: ClientContext): void {
         bound?.setPermission(await requestBrowserPermission())
       },
       testBrowserNotification: () => {
-        showBrowserNotification(t('test.notification.title'), t('test.notification.body'), `${NOTIFICATION_TAG_PREFIX}:test`)
+        const id = ctx.sessions.list.getSnapshot().current
+        showBrowserNotification(t('test.notification.title'), t('test.notification.body'), `${NOTIFICATION_TAG_PREFIX}:test`, id, () => openSession(id))
+        const settings = currentSettings()
+        if (settings.soundEnabled) playEffective(settings.types.completed.sound, readCustomSound('completed'))
       },
       uploadCustomSound: async (kind, file) => {
         if (file.size > MAX_CUSTOM_AUDIO_BYTES) return

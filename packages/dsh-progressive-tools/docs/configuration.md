@@ -1,5 +1,8 @@
 # Configuration reference
 
+`stable-proxy` automatically preserves target presentation metadata under
+`meta.targetMeta`; no additional configuration or discovery grants are needed.
+
 Configuration is validated when the plugin loads. Invalid modes, names,
 limits, duplicate family IDs, empty patterns, and bindings to unknown families
 fail loudly.

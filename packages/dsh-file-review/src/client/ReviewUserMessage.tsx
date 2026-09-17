@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { UserStyleBubble } from '@deepseek-ai/dsh-client-ui-chat/client'
+import { writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MessageImageSource } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NS } from './locales.ts'
@@ -153,13 +154,7 @@ function messageClock(time: number, t: UserMessageProps['t']): string {
 }
 
 async function writeText(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard === undefined) return false
-    await navigator.clipboard.writeText(text)
-    return true
-  } catch {
-    return false
-  }
+  return writeClipboard(text)
 }
 
 function CheckIcon() {

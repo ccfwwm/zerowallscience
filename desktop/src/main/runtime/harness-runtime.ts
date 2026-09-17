@@ -31,6 +31,7 @@ export interface HarnessRuntimeOptions {
   terminateProcessTree?(pid: number, force: boolean): void
   shutdownGracePeriodMs?: number
   shutdownForcePeriodMs?: number
+  startupTimeoutMs?: number
   onChildStarted?(child: HarnessChildProcess): void | (() => void)
   onChanged(snapshot: RuntimeSnapshot): void
 }
@@ -111,6 +112,9 @@ export class HarnessRuntime {
   private launchDirectory?: string
   private url?: string
   private authenticatedUrl?: string
+  private endpoint?: string
+  private activeStart?: Promise<void>
+  private generation = 0
   private readonly logLines: string[] = []
   private readonly outputBuffers = new Map<string, string>()
   private disposeChildHooks?: () => void
@@ -121,8 +125,17 @@ export class HarnessRuntime {
     return { phase: this.phase, message: this.message, launchDirectory: this.launchDirectory, url: this.url, logs: [...this.logLines] }
   }
 
-  async start(launchDirectory: string): Promise<void> {
+  start(launchDirectory: string): Promise<void> {
+    if (this.activeStart !== undefined) return this.activeStart
+    this.activeStart = this.startOnce(launchDirectory).catch(error => {
+      this.fail(error instanceof Error ? error.message : String(error))
+    }).finally(() => { this.activeStart = undefined })
+    return this.activeStart
+  }
+
+  private async startOnce(launchDirectory: string): Promise<void> {
     await this.stop()
+    const generation = this.generation
     this.launchDirectory = launchDirectory
     this.url = undefined
     this.authenticatedUrl = undefined
@@ -158,6 +171,8 @@ export class HarnessRuntime {
       await writeFile(this.options.portPath, `${port}\n`, 'utf8').catch(() => undefined)
     }
     const url = `http://127.0.0.1:${port}`
+    if (generation !== this.generation) return
+    this.endpoint = url
     const args = [
       ...(this.options.nodeResolverPath ? ['--import', pathToFileURL(this.options.nodeResolverPath).href] : []),
       '--expose-internals',
@@ -184,33 +199,44 @@ export class HarnessRuntime {
     this.disposeChildHooks = typeof disposeChildHooks === 'function' ? disposeChildHooks : undefined
     child.stdout.on('data', (chunk: Buffer) => this.writeChunk('stdout', chunk))
     child.stderr.on('data', (chunk: Buffer) => this.writeChunk('stderr', chunk))
+    child.on('message', (message: unknown) => {
+      if (this.child !== child || !message || typeof message !== 'object') return
+      const event = message as { type?: string; message?: string }
+      if (event.type === 'zerowall:host:failed') {
+        this.fail(`核心服务启动失败：${event.message ?? '插件加载失败'}`)
+      }
+    })
     child.once('error', (error) => {
       if (this.child !== child) return
       this.child = undefined
-      this.fail(`Harness could not start: ${error.message}`)
+      if (this.phase !== 'failed') this.fail(`Harness could not start: ${error.message}`)
     })
     child.once('exit', (code, signal) => {
       if (this.child !== child) return
       this.child = undefined
-      this.fail(`Harness stopped unexpectedly (${signal ?? `exit ${String(code)}`}). Startup details: ${this.options.logPath}`)
+      if (this.phase !== 'failed') this.fail(`Harness stopped unexpectedly (${signal ?? `exit ${String(code)}`}). Startup details: ${this.options.logPath}`)
     })
 
-    const ready = await waitUntilReady(url, () => this.child === child && child.exitCode === null, process.platform === 'win32' ? 120_000 : 45_000)
+    const ready = await waitUntilReady(() => this.authenticatedUrl, () => this.child === child && child.exitCode === null && this.phase !== 'failed', this.options.startupTimeoutMs ?? (process.platform === 'win32' ? 120_000 : 45_000))
     if (this.child !== child) return
     if (!ready) {
+      // Detach before terminating so an expected exit cannot overwrite the
+      // actionable plugin failure with a generic process-exit message.
+      this.child = undefined
       await this.stopChild(child)
-      this.fail('Harness did not become ready before the startup deadline.')
+      if (this.phase !== 'failed') this.fail('启动超时：核心服务尚未完成插件加载或身份验证。请查看日志后重试。')
       return
     }
     // DSH alpha.1 protects the embedded web server with a per-run token.
     // Prefer the authenticated URL emitted by `dsh web`; the bare loopback
     // URL intentionally returns 401 and renders as a blank Electron window.
-    this.url = this.authenticatedUrl ?? url
+    this.url = this.authenticatedUrl
     this.writeLog(`[desktop] ready ${url}`)
     this.setState('ready', 'ZeroWall Science is ready.')
   }
 
   async stop(): Promise<void> {
+    this.generation++
     const child = this.child
     this.child = undefined
     this.disposeChildHooks?.()
@@ -220,6 +246,12 @@ export class HarnessRuntime {
     this.logStream = undefined
     this.url = undefined
     if (this.phase !== 'failed') this.setState('idle', 'Harness is not running.')
+  }
+
+  workbenchReady(): void {
+    if (this.phase === 'ready' && this.child?.connected) {
+      this.child.send({ type: 'zerowall:desktop:workbench-ready' }, () => undefined)
+    }
   }
 
   private async stopChild(child: HarnessChildProcess): Promise<void> {
@@ -262,14 +294,12 @@ export class HarnessRuntime {
     this.outputBuffers.set(source, partial.length > MAX_PARTIAL_OUTPUT_BYTES ? partial.slice(-MAX_PARTIAL_OUTPUT_BYTES) : partial)
     const captureUrl = (line: string): void => {
       const match = /dsh web:\s+(https?:\/\/\S+)/u.exec(line)
-      if (match?.[1] === undefined || !match[1].includes('?token=')) return
-      this.authenticatedUrl = match[1].replace(/[\])}>,.;]+$/u, '')
-      // stdout can arrive just after the HTTP readiness probe. Reload the
-      // already-created Electron window with the authenticated URL.
-      if (this.phase === 'ready' && this.url !== this.authenticatedUrl) {
-        this.url = this.authenticatedUrl
-        this.options.onChanged(this.snapshot())
-      }
+      if (match?.[1] === undefined) return
+      try {
+        const candidate = new URL(match[1].replace(/[\])}>,.;]+$/u, ''))
+        if (candidate.origin !== this.endpoint || !candidate.searchParams.get('token')) return
+        this.authenticatedUrl = candidate.href
+      } catch { /* incomplete stdout chunk */ }
     }
     // Capture a token even when the final line has not received its newline.
     captureUrl(buffered)
@@ -281,6 +311,7 @@ export class HarnessRuntime {
   }
 
   private writeLog(line: string): void {
+    line = line.replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')
     this.logLines.push(line)
     if (this.logLines.length > 200) this.logLines.splice(0, this.logLines.length - 200)
     this.logStream?.write(`${line}\n`)
@@ -342,12 +373,25 @@ async function readPreferredPort(path: string | undefined): Promise<number | und
   }
 }
 
-async function waitUntilReady(url: string, isAlive: () => boolean, timeoutMs: number): Promise<boolean> {
+async function waitUntilReady(getUrl: () => string | undefined, isAlive: () => boolean, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline && isAlive()) {
     try {
-      const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(1_000) })
-      if (response.status >= 200 && response.status < 500) return true
+      const url = getUrl()
+      if (url !== undefined) {
+        let response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(1_000) })
+        // DSH exchanges the launch token for an HttpOnly cookie and a 303
+        // redirect to /. Node fetch has no cookie jar, unlike Electron.
+        if (response.status === 303) {
+          const location = response.headers.get('location')
+          const cookie = response.headers.getSetCookie().map(value => value.split(';')[0]).filter(value => value?.startsWith('dsh-auth-')).join('; ')
+          const target = location === null ? undefined : new URL(location, url)
+          if (target?.origin === new URL(url).origin && cookie) {
+            response = await fetch(target, { headers: { Cookie: cookie }, redirect: 'manual', signal: AbortSignal.timeout(1_000) })
+          }
+        }
+        if (response.ok && (await response.text()).includes('__DSH_BOOT__')) return true
+      }
     } catch {
       // Expected while the Host is still binding.
     }

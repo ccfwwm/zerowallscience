@@ -1,5 +1,10 @@
 # Architecture
 
+After successful guarded execution, the dispatcher projects the target's
+presentation metadata into `meta.targetMeta` on its root result. This supports
+hosts that omit nested projections and preserves structured UI replay without
+changing model-facing rendered content or bypassing target execution policy.
+
 ## Runtime baseline
 
 The current checkout targets `0.1.5-rc.1`. Calls use `ToolCallId`, and replay

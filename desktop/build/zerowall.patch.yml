@@ -116,6 +116,9 @@
     watch: true
 
 - insert:
+    - id: ssh-ops
+      name: 'dsh-ssh-ops'
+
     - id: progressive-tools
       name: 'dsh-progressive-tools'
       config:
@@ -150,6 +153,9 @@
 
     - id: zotero
       name: 'dsh-zotero'
+
+    - id: zotero-harvest
+      name: '@dsh-external/zotero-harvest'
 
     - id: dsh-wechat
       name: 'dsh-wechat'

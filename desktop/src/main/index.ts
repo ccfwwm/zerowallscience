@@ -4,12 +4,14 @@ import { readFileSync } from 'node:fs'
 import { appendFile, cp, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
+import { DesktopNotifications } from './notifications.js'
 import updaterPackage from 'electron-updater'
 import { HarnessRuntime, type HarnessChildProcess } from './runtime/harness-runtime.js'
 import { attachCredentialBroker } from './credentials/broker.js'
 import { CredentialVault } from './credentials/vault.js'
 import { secureWindow } from './security.js'
+import { isZoteroOpenUrl } from './security-policy.js'
 import { resolveDesktopIdentity } from './identity.js'
 import { findDesktopWorkspaceRoot, resolveDesktopIconPath, resolveDesktopResourcePath } from './paths.js'
 import { stopBeforeExit } from './shutdown.js'
@@ -18,7 +20,8 @@ import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
 import { DesktopUpdateController, isUpdateCheckDue, UPDATE_CHECK_INTERVAL_MS } from './updater.js'
 import { resolveRevealPath } from './reveal-path.js'
 import { copyWindowsFile } from './clipboard-files.js'
-import type { DesktopClipboardFile, DesktopInfo, RuntimeSnapshot } from '../shared/contracts.js'
+import { deleteStoredSession, validSessionId } from './session-delete.js'
+import type { DesktopClipboardFile, DesktopInfo, RuntimeSnapshot, StartupStatus } from '../shared/contracts.js'
 
 const { autoUpdater } = updaterPackage
 /** Stable updates are served from the Qiniu-backed generic feed. Keeping this
@@ -33,6 +36,9 @@ let mainWindow: BrowserWindow | undefined
 let runtime: HarnessRuntime | undefined
 let tray: Tray | undefined
 let quitting = false
+let restarting = false
+let startup: StartupStatus = { phase: 'starting', progress: 5, message: '正在准备本地工作台', startedAt: Date.now() }
+let navigation: Promise<void> | undefined
 const desktopPluginProcesses = new Map<string, ReturnType<typeof spawn>>()
 
 function readPackagedChannel(): unknown {
@@ -48,12 +54,16 @@ const identity = resolveDesktopIdentity(readPackagedChannel())
 
 function configureIdentity(): void {
   app.setName(identity.productName)
+  if (process.platform === 'win32') app.setAppUserModelId(identity.channel === 'stable' ? 'com.zerowall.science' : 'com.zerowall.science.preview')
   const userDataOverride = process.env.ZEROWALL_USER_DATA_DIR
   app.setPath('userData', userDataOverride ? resolve(userDataOverride) : join(app.getPath('appData'), identity.userDataDirectory))
 }
 
 async function migrateLegacyUserData(): Promise<void> {
   const target = app.getPath('userData')
+  // Existing installations have already migrated. Recursively walking old
+  // caches and Python trees on every launch can take minutes on Windows.
+  try { await stat(join(target, 'harness')); return } catch { /* first launch */ }
   let appData: string
   try {
     appData = app.getPath('appData')
@@ -226,6 +236,8 @@ function createWindow(): BrowserWindow {
       preload: join(import.meta.dirname, '../preload/index.cjs'),
       sandbox: true,
       webSecurity: true,
+      backgroundThrottling: false,
+      autoplayPolicy: 'no-user-gesture-required',
     },
   })
   window.on('page-title-updated', (event) => {
@@ -249,6 +261,27 @@ function showMainWindow(): void {
   showWindowFromTray(window, process.platform)
 }
 
+function restartDesktop(): void {
+  if (quitting || restarting) return
+  restarting = true
+  app.quit()
+}
+
+function publishStartup(update: Partial<StartupStatus>): void {
+  startup = { ...startup, ...update }
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:startup-status', startup)
+  const line = { timestamp: new Date().toISOString(), elapsedMs: Date.now() - startup.startedAt, ...update }
+  void mkdir(app.getPath('logs'), { recursive: true }).then(() =>
+    appendFile(join(app.getPath('logs'), 'startup.log'), `${JSON.stringify(line)}\n`, 'utf8'),
+  ).catch(() => undefined)
+}
+
+async function failStartup(error: unknown): Promise<void> {
+  const message = (error instanceof Error ? error.message : String(error)).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')
+  publishStartup({ phase: 'failed', message: message.slice(0, 1800) })
+  if (!quitting && mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.getURL().startsWith('file:')) await showSplash()
+}
+
 function ensureTray(): void {
   if (tray !== undefined && !tray.isDestroyed()) return
   const source = nativeImage.createFromPath(desktopIconPath())
@@ -258,6 +291,7 @@ function ensureTray(): void {
   next.setToolTip(identity.productName)
   next.setContextMenu(Menu.buildFromTemplate([
     { label: chinese ? `显示 ${identity.productName}` : `Show ${identity.productName}`, click: showMainWindow },
+    { label: chinese ? '重启' : 'Restart', click: restartDesktop },
     { type: 'separator' },
     { label: chinese ? '退出' : 'Quit', click: () => app.quit() },
   ]))
@@ -280,27 +314,48 @@ async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
   // page, so wait for the token-bearing URL before navigating the window.
   if (!/[?&]token=/u.test(snapshot.url)) return
   const window = mainWindow ?? createWindow()
+  publishStartup({ progress: 85, message: '正在打开工作台' })
   await window.loadURL(snapshot.url)
+  // Wait for the actual shell, not just the HTML load. This also surfaces a
+  // renderer plugin failure instead of silently abandoning the startup page.
+  const deadline = Date.now() + 45_000
+  while (!window.isDestroyed() && !quitting) {
+    const mounted = await window.webContents.executeJavaScript('Boolean(document.querySelector("[data-dsh-better-sidebar], [data-zerowall-conversation], [contenteditable]"))')
+    if (mounted) break
+    if (Date.now() >= deadline) throw new Error('工作台界面加载超时，请打开日志检查客户端插件。')
+    await new Promise(resolve => setTimeout(resolve, 200))
+  }
   if (!window.isDestroyed()) {
+    publishStartup({ phase: 'ready', progress: 100, message: '工作台已就绪' })
+    runtime?.workbenchReady()
     window.show()
     window.focus()
   }
 }
 
 async function launch(): Promise<void> {
-  await showSplash()
+  publishStartup({ progress: 35, message: '正在加载核心服务与插件' })
   await runtime?.start(join(app.getPath('userData'), 'workspace'))
 }
 
 app.commandLine.appendSwitch('lang', 'zh-CN')
 configureIdentity()
+const ownsInstance = app.requestSingleInstanceLock()
+if (!ownsInstance) app.exit(0)
+app.on('second-instance', showMainWindow)
 
-app.whenReady().then(async () => {
+if (ownsInstance) app.whenReady().then(async () => {
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null)
+  ipcMain.handle('desktop:startup-status', () => startup)
+  ipcMain.handle('desktop:restart', () => { restartDesktop(); return true })
+  ipcMain.handle('desktop:open-logs', () => shell.openPath(app.getPath('logs')))
+  await showSplash()
+  publishStartup({ progress: 15, message: '正在检查用户数据' })
   const userData = app.getPath('userData')
   await migrateLegacyUserData()
   const mcpEnvironmentRoot = join(userData, 'zerowall-python')
   await migrateLegacyPythonRoot(userData, mcpEnvironmentRoot)
+  publishStartup({ progress: 25, message: '正在准备本地运行环境' })
   await mkdir(mcpEnvironmentRoot, { recursive: true })
   process.env.ZEROWALL_PYTHON_ROOT = mcpEnvironmentRoot
   // Compatibility for older bundled plugins and already-running sessions.
@@ -355,8 +410,10 @@ app.whenReady().then(async () => {
       return () => { disposeCredential(); disposeDesktop() }
     },
     onChanged: (snapshot) => {
-      if (snapshot.phase === 'ready') void showHarness(snapshot).then(scheduleMcpEnvironmentUpdate)
-      if (snapshot.phase === 'failed' && !quitting) dialog.showErrorBox(`${identity.productName} could not start`, snapshot.message)
+      if (snapshot.phase === 'ready' && navigation === undefined) {
+        navigation = showHarness(snapshot).then(scheduleMcpEnvironmentUpdate).catch(failStartup).finally(() => { navigation = undefined })
+      }
+      if (snapshot.phase === 'failed' && !quitting) void failStartup(snapshot.message)
     },
   })
   runtime = harnessRuntime
@@ -394,6 +451,30 @@ app.whenReady().then(async () => {
   }
 
   ipcMain.handle('desktop:info', (): DesktopInfo => ({ version: app.getVersion(), platform: process.platform, architecture: process.arch }))
+  const notifications = new DesktopNotifications({
+    supported: () => Notification.isSupported(),
+    create: options => new Notification(options),
+    icon: desktopIconPath(),
+    activate: sessionId => {
+      showMainWindow()
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:notification-activated', sessionId)
+    },
+    failed: message => {
+      console.warn('[desktop-notification]', message)
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:notification-failed', message)
+    },
+  })
+  ipcMain.handle('desktop:show-notification', (event, input: unknown) => {
+    const window = mainWindow
+    if (!window || window.isDestroyed() || event.sender !== window.webContents
+      || event.senderFrame !== window.webContents.mainFrame) return false
+    const snapshot = harnessRuntime.snapshot()
+    if (snapshot.phase !== 'ready' || !snapshot.url) return false
+    try {
+      if (new URL(event.senderFrame.url).origin !== new URL(snapshot.url).origin) return false
+    } catch { return false }
+    return notifications.show(input)
+  })
   ipcMain.handle('desktop:choose-directory', async () => {
     const options: OpenDialogOptions = { properties: ['openDirectory', 'createDirectory'] }
     const result = mainWindow && !mainWindow.isDestroyed()
@@ -440,10 +521,72 @@ app.whenReady().then(async () => {
     await writeFile(path, data, { flag: 'wx' })
     return copyWindowsFile(path)
   })
-  ipcMain.handle('desktop:clipboard-copy-text', (_event, value: unknown) => {
+  let deletingSession = false
+  ipcMain.handle('desktop:delete-session', async (event, input: { sessionId?: unknown; title?: unknown; language?: unknown }) => {
+    if (event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame || !validSessionId(input?.sessionId) || !runtime || deletingSession) return false
+    const window = mainWindow
+    const activeRuntime = runtime
+    const zh = input.language !== 'en'
+    const title = typeof input.title === 'string' ? input.title.slice(0, 200) : input.sessionId
+    const label = (cn: string, en: string) => zh ? cn : en
+    deletingSession = true
+    try {
+      return await deleteStoredSession({
+        root: join(userData, 'harness', 'sessions'), sessionId: input.sessionId,
+        assertIdle: async () => {
+          if (activeRuntime.snapshot().phase !== 'ready') throw new Error(label('工作台尚未就绪。', 'The workbench is not ready.'))
+          const result = await window.webContents.executeJavaScript(`(async () => {
+            const response = await fetch('/api/session/list', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ type: 'client-request', rpcId: crypto.randomUUID(), method: 'session/list', payload: { args: { _request: {} } } }) });
+            return response.json();
+          })()`)
+          if (!result?.result?.ok || !Array.isArray(result.result.value?.items)) throw new Error(label('无法检查会话状态，请重试。', 'Could not check session status. Please retry.'))
+          if (result.result.value.items.some((item: { running?: boolean }) => item.running)) throw new Error(label('请等待正在运行的任务完成后再删除会话。', 'Wait for running tasks to finish before deleting a session.'))
+        },
+        confirm: async () => (await dialog.showMessageBox(window, {
+          type: 'warning', title: label('删除会话', 'Delete session'),
+          message: label(`确定删除“${title}”？`, `Delete “${title}”?`),
+          detail: label('此会话的本地记录将移至系统回收站，工作台会刷新。工作区文件和其他会话不会删除。', 'This session’s local records will move to the Recycle Bin and the workbench will refresh. Workspace files and other sessions are kept.'),
+          buttons: [label('取消', 'Cancel'), label('删除会话', 'Delete session')], defaultId: 0, cancelId: 0, noLink: true,
+        })).response === 1,
+        stop: async () => {
+          publishStartup({ phase: 'starting', progress: 20, startedAt: Date.now(), message: label('正在删除会话并刷新工作台', 'Deleting session and refreshing the workbench') })
+          await showSplash()
+          await activeRuntime.stop()
+        },
+        trash: path => shell.trashItem(path),
+        start: () => activeRuntime.start(join(userData, 'workspace')),
+      })
+    } catch (error) {
+      await dialog.showMessageBox(window, { type: 'error', message: label('无法删除会话', 'Could not delete session'), detail: error instanceof Error ? error.message : String(error) })
+      return false
+    } finally { deletingSession = false }
+  })
+  ipcMain.handle('desktop:clipboard-copy-text', async (_event, value: unknown) => {
     if (typeof value !== 'string' || value.length > 2_000_000) return false
-    clipboard.writeText(value)
-    return true
+    try {
+      await clipboard.writeText(value)
+      return await clipboard.readText() === value
+    } catch { return false }
+  })
+  ipcMain.handle('desktop:open-zotero', async (event, url: unknown) => {
+    if (event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame || !isZoteroOpenUrl(url)) return false
+    try { await shell.openExternal(url); return true } catch {
+      await dialog.showMessageBox(mainWindow, { type: 'error', message: '无法打开 Zotero / Could not open Zotero', detail: '请确认 Zotero 已安装，并已注册 zotero:// 链接。 / Check that Zotero is installed and handles zotero:// links.' })
+      return false
+    }
+  })
+  ipcMain.handle('desktop:save-text-file', async (event, input: { name?: unknown; text?: unknown }) => {
+    if (event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame) return false
+    if (typeof input?.name !== 'string' || !/^[\w-]+\.(bib|ris|json|txt)$/.test(input.name) || typeof input.text !== 'string' || input.text.length > 2_000_000) return false
+    try {
+      let defaultPath = input.name
+      try { defaultPath = join(app.getPath('downloads'), input.name) } catch { /* Windows may not have a Downloads known-folder mapping. */ }
+      const result = await dialog.showSaveDialog(mainWindow, { defaultPath })
+      if (result.canceled || !result.filePath) return false
+      await writeFile(result.filePath, input.text, 'utf8')
+      return true
+    } catch { return false }
   })
   ipcMain.handle('desktop:clipboard-copy-image', (_event, input: { data?: unknown }) => {
     if (typeof input?.data !== 'string' || input.data.length === 0 || input.data.length > 70_000_000) return false
@@ -480,6 +623,7 @@ app.whenReady().then(async () => {
   })
 
   await launch()
+  await navigation
   // Environment updates run independently from desktop updates. Startup and
   // hourly checks both install a newer signed revision automatically. The
   // first update begins only after the authenticated workbench is visible so
@@ -495,7 +639,7 @@ app.whenReady().then(async () => {
     await writeUpdateCheckRecord(updateRecordPath, Date.now())
     await updates.check()
   }
-  const updateTimer = setTimeout(() => { void runScheduledUpdateCheck().catch(() => undefined) }, 5_000)
+  const updateTimer = setTimeout(() => { if (startup.phase === 'ready') void runScheduledUpdateCheck().catch(() => undefined) }, 15_000)
   updateTimer.unref()
   const updateInterval = setInterval(() => { void runScheduledUpdateCheck().catch(() => undefined) }, UPDATE_CHECK_INTERVAL_MS)
   updateInterval.unref()
@@ -503,7 +647,7 @@ app.whenReady().then(async () => {
     if (BrowserWindow.getAllWindows().length === 0 && runtime !== undefined) void showHarness(runtime.snapshot())
     else showMainWindow()
   })
-}).catch((error: unknown) => dialog.showErrorBox('ZeroWall Science startup failed', error instanceof Error ? error.stack ?? error.message : String(error)))
+}).catch(failStartup)
 
 app.on('before-quit', (event) => {
   if (quitting) return
@@ -513,6 +657,7 @@ app.on('before-quit', (event) => {
   void stopBeforeExit(() => activeRuntime?.stop() ?? Promise.resolve(), 6_000).finally(() => {
     tray?.destroy()
     tray = undefined
+    if (restarting) app.relaunch()
     app.exit(0)
   })
 })

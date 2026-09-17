@@ -1,7 +1,16 @@
 import { access, cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
-import { adaptZoteroCommand } from './adapt-zotero.mjs'
+import { adaptConversationClient } from './adapt-conversation.mjs'
+import { adaptSessionDelete } from './adapt-session-delete.mjs'
+import {
+  adaptZoteroClient,
+  adaptZoteroCommand,
+  adaptZoteroDetail,
+  adaptZoteroItemGraph,
+  adaptZoteroRemote,
+  adaptZoteroContract,
+} from './adapt-zotero.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const dshRoot = resolve(root, 'deepseek-harness')
@@ -16,6 +25,8 @@ const desktopModules = resolve(root, 'desktop/node_modules')
 const workspaceModules = resolve(root, 'node_modules')
 const zerowallPackageRoots = [
   resolve(root, 'store'),
+  resolve(root, 'packages/dsh-ssh-ops'),
+  resolve(root, 'packages/zotero-harvest'),
   resolve(root, 'packages/dsh-progressive-tools'),
   resolve(root, 'packages/dsh-session-notification'),
   // Keep the merged ZeroWall Sidebar as the canonical runtime package. Some
@@ -30,6 +41,7 @@ const zerowallPackageRoots = [
   ...await pluginRoots(resolve(root, 'plugins')),
 ]
 const desktopRuntimeSeeds = [
+  'dsh-ssh-ops',
   'dsh-progressive-tools',
   '@dingyi222666/dsh-session-notification',
   // The packaged Web Host resolves its SPA entry through this package's
@@ -41,6 +53,7 @@ const desktopRuntimeSeeds = [
   'dsh-file-review',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
   'dsh-zotero',
+  '@dsh-external/zotero-harvest',
   'dsh-wechat',
   'dsh-auto-review',
   '@changfenhuang/dsh-genui',
@@ -189,8 +202,18 @@ async function copyRuntimePackage(package_, targetRoot) {
 
   if (manifest.name === 'dsh-zotero') {
     for (const entry of ['lib', 'LICENSE', 'cordis.patch.yml']) await copyEntry(sourceRoot, targetRoot, entry)
-    const commandPath = resolve(targetRoot, 'lib/command.js')
-    await writeFile(commandPath, adaptZoteroCommand(await readFile(commandPath, 'utf8')))
+    const adapters = [
+      ['lib/command.js', adaptZoteroCommand],
+      ['lib/client.js', adaptZoteroClient],
+      ['lib/item-graph.js', adaptZoteroItemGraph],
+      ['lib/local/detail.js', adaptZoteroDetail],
+      ['lib/remote.js', adaptZoteroRemote],
+      ['lib/contract.js', adaptZoteroContract],
+    ]
+    for (const [entry, adapt] of adapters) {
+      const path = resolve(targetRoot, entry)
+      await writeFile(path, adapt(await readFile(path, 'utf8')))
+    }
     return
   }
 
@@ -235,6 +258,14 @@ async function copyRuntimePackage(package_, targetRoot) {
     }
     const roots = new Set(manifest.files.filter(entry => typeof entry === 'string' && !entry.startsWith('!')).map(publishRoot))
     for (const entry of roots) await copyEntry(sourceRoot, targetRoot, entry)
+    if (manifest.name === '@deepseek-ai/dsh-client-ui-conversation') {
+      const clientPath = resolve(targetRoot, 'lib/client.js')
+      await writeFile(clientPath, adaptConversationClient(await readFile(clientPath, 'utf8')))
+    }
+    if (manifest.name === '@deepseek-ai/dsh-client-ui-workspace') {
+      const clientPath = resolve(targetRoot, 'lib/client.js')
+      await writeFile(clientPath, adaptSessionDelete(await readFile(clientPath, 'utf8')))
+    }
     return
   }
 

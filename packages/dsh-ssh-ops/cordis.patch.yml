@@ -1,0 +1,5 @@
+# dsh-ssh-ops bundle patch: registers the SSH ops plugin entry.
+# Install with: dsh plugin --profile web add dsh-ssh-ops
+- insert:
+    - id: ssh-ops
+      name: 'dsh-ssh-ops'

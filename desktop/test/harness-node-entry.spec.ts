@@ -7,6 +7,16 @@ import { expect, it } from 'vitest'
 
 const execute = promisify(execFile)
 
+it('exits after a failed boot even if a plugin left a timer alive', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zerowall-cli-failure-'))
+  try {
+    const entry = join(root, 'cli.mjs')
+    await writeFile(entry, `export async function runCli() { setInterval(() => {}, 1000); throw new Error('bad saved SSH profile'); }`)
+    await expect(execute(process.execPath, [resolve('build/harness-node-entry.mjs'), entry], { windowsHide: true, timeout: 5_000 }))
+      .rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('bad saved SSH profile') })
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
 it('invokes the imported CLI once with the forwarded profile arguments', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zerowall-cli-entry-'))
   try {

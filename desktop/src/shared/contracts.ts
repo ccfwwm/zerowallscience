@@ -8,6 +8,13 @@ export interface RuntimeSnapshot {
   logs: string[]
 }
 
+export interface StartupStatus {
+  phase: 'starting' | 'failed' | 'ready'
+  progress: number
+  message: string
+  startedAt: number
+}
+
 export interface DesktopInfo {
   version: string
   platform: NodeJS.Platform
