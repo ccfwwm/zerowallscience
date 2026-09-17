@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "independent": {
+    "aeon": "Aeon >=1.4 requires scipy<1.18; the shared core pins scipy 1.18.1.",
+    "cobrapy": "Current Cobra requires pandas<3; the shared core pins pandas 3.0.5.",
+    "neurokit2": "NeuroKit2 0.2.13 requires pandas<3.",
+    "matchms": "MatchMS 0.33.1 requires scipy<1.17.",
+    "bioservices": "BioServices 1.16 requires wrapt<2; the core pins wrapt 2.4.0.",
+    "scvelo": "Full scVelo 0.3.4 algorithms need older NumPy/Pandas despite permissive metadata.",
+    "pysam": "PySAM 0.24.0 has no Windows wheel; use a supported Linux environment.",
+    "etetoolkit": "ETE4 4.4.0 has no Windows wheel; native compilation is outside this portable profile.",
+    "tiledbvcf": "Requires a separately validated platform/ABI environment.",
+    "vaex": "Requires a separately validated Windows ABI environment."
+  },
+  "heavy": ["alphafold2", "boltz", "borzoi", "chai1", "deepchem", "deeptools", "diffdock", "esm", "esmfold2", "evo2", "fair-esm2", "fluidsim", "histolab", "hugging-science", "ligandmpnn", "molecular-dynamics", "molfeat", "openfold3", "pathml", "proteinmpnn", "pufferlib", "pyhealth", "pytorch-lightning", "scgpt", "scvi-tools", "solublempnn", "stable-baselines3", "timesfm-forecasting", "torch-geometric", "torchdrug", "transformers", "pytdc"],
+  "external": ["adaptyv", "benchling-integration", "browser-use", "dnanexus-integration", "ginkgo-cloud-lab", "labarchive-integration", "latchbio-integration", "matlab", "nextflow", "omero-integration", "opentrons-integration", "protocolsio-integration", "remote-compute-modal", "remote-compute-ssh", "sc-upstream", "zerowall-rbioagent", "zerowall-rplatform", "zerowall-rplotfigure"],
+  "importAliases": {
+    "PIL": "pillow", "Bio": "biopython", "Crypto": "pycryptodome", "cv2": "opencv-python-headless", "imagehash": "imagehash", "skimage": "scikit-image", "fitz": "pymupdf", "docx": "python-docx", "pptx": "python-pptx", "bs4": "beautifulsoup4", "sklearn": "scikit-learn", "skbio": "scikit-bio", "sksurv": "scikit-survival", "yaml": "pyyaml", "umap": "umap-learn", "pdfminer": "pdfminer-six", "nrrd": "pynrrd", "bids": "pybids", "gprofiler": "gprofiler-official", "mp_api": "mp-api", "pydantic_settings": "pydantic-settings", "pyDOE3": "pydoe3", "SimpleITK": "simpleitk", "netCDF4": "netcdf4", "openslide": "openslide-python", "lightning": "lightning", "tdc": "pytdc", "omero": "omero-py"
+  }
+}

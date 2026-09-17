@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Ban, BookOpen, Boxes, Check, Database, Download, Eye, FileCheck2, FileText,
-  GitBranch, Microscope, PackageCheck, Pause, Pencil, Play, Plus, Presentation,
-  RefreshCw, Snowflake, StepForward, Wifi, X,
+  GitBranch, Microscope, PackageCheck, Pause, Play, Plus,
+  RefreshCw, Snowflake, Wifi, X,
 } from 'lucide-react'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { PropsLocale, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -33,7 +33,6 @@ interface Item {
   updatedAt?: string
 }
 interface PublicationItem extends Item { status: string }
-interface PresentationItem extends Item { status: string; slides?: unknown[] }
 export interface ResearchWorkbenchSnapshot {
   contexts: Item[]
   assets: Item[]
@@ -43,7 +42,6 @@ export interface ResearchWorkbenchSnapshot {
   decisions: Item[]
   edges: Item[]
   publications: PublicationItem[]
-  presentations: PresentationItem[]
 }
 export interface ScientificPreviewPayload { uri: string; mediaType: string; byteSize: number; base64: string }
 export interface ContextInput { projectId: string; name: string; kind: 'local' | 'wsl' | 'ssh'; config?: JsonObject }
@@ -53,7 +51,6 @@ export interface ArtifactInput { projectId: string; name: string; uri: string; m
 export interface PaperInput { projectId: string; title: string; doi?: string; uri?: string; notes?: string }
 export interface DecisionInput { projectId: string; title: string; rationale: string; status: 'proposed' | 'accepted' | 'rejected' | 'superseded' }
 export interface EdgeInput { projectId: string; fromId: string; toId: string; relation: string }
-export interface PresentationChanges { title?: string; status?: 'draft' | 'outlining' | 'designing' | 'generating' | 'paused' | 'ready' | 'failed' | 'cancelled'; outline?: Array<{ title: string; points: string[] }> }
 interface Actions {
   listProjects(): Promise<Project[]>
   load(projectId: string): Promise<ResearchWorkbenchSnapshot>
@@ -75,18 +72,11 @@ interface Actions {
   validatePublication(id: string): Promise<void>
   reproducePublication(id: string): Promise<void>
   exportPublication(id: string, uri: string): Promise<void>
-  createPresentation(projectId: string, title: string): Promise<void>
-  updatePresentation(id: string, changes: PresentationChanges): Promise<void>
-  generatePresentation(id: string): Promise<void>
-  pausePresentation(id: string): Promise<void>
-  resumePresentation(id: string): Promise<void>
-  cancelPresentation(id: string): Promise<void>
-  exportPresentation(id: string, format: 'pptx' | 'pdf', uri: string): Promise<void>
   previewFile(projectId: string, uri: string, mediaType?: string): Promise<ScientificPreviewPayload>
 }
 type Props = SidebarFooterActionOwnerProps & Actions & PropsLocale<typeof NS>
 type Tab = keyof ResearchWorkbenchSnapshot
-type EditorMode = 'contexts' | 'runs' | 'assets' | 'artifacts' | 'papers' | 'decisions' | 'edges' | 'publications' | 'presentations' | 'publication-export' | 'presentation-edit' | 'presentation-export'
+type EditorMode = 'contexts' | 'runs' | 'assets' | 'artifacts' | 'papers' | 'decisions' | 'edges' | 'publications' | 'publication-export'
 interface EditorState { mode: EditorMode; item?: Item }
 type EditorPayload =
   | { kind: 'context'; value: ContextInput }
@@ -98,18 +88,14 @@ type EditorPayload =
   | { kind: 'edge'; value: EdgeInput }
   | { kind: 'publication'; value: { projectId: string; title: string; manifest: JsonObject } }
   | { kind: 'publication-export'; value: { id: string; uri: string } }
-  | { kind: 'presentation'; value: { projectId: string; title: string } }
-  | { kind: 'presentation-edit'; value: { id: string; title: string; outline: Array<{ title: string; points: string[] }> } }
-  | { kind: 'presentation-export'; value: { id: string; format: 'pptx' | 'pdf'; uri: string } }
 
 const TABS: Array<{ id: Tab; label: ZeroWallKey; icon: typeof Database }> = [
   { id: 'contexts', label: 'research.tab.contexts', icon: Microscope }, { id: 'runs', label: 'research.tab.runs', icon: Play },
   { id: 'assets', label: 'research.tab.assets', icon: Database }, { id: 'artifacts', label: 'research.tab.artifacts', icon: Boxes },
   { id: 'papers', label: 'research.tab.papers', icon: BookOpen }, { id: 'decisions', label: 'research.tab.decisions', icon: Check },
   { id: 'edges', label: 'research.tab.edges', icon: GitBranch }, { id: 'publications', label: 'research.tab.publications', icon: FileCheck2 },
-  { id: 'presentations', label: 'research.tab.presentations', icon: Presentation },
 ]
-const EMPTY: ResearchWorkbenchSnapshot = { contexts: [], assets: [], runs: [], artifacts: [], papers: [], decisions: [], edges: [], publications: [], presentations: [] }
+const EMPTY: ResearchWorkbenchSnapshot = { contexts: [], assets: [], runs: [], artifacts: [], papers: [], decisions: [], edges: [], publications: [] }
 
 export function ResearchWorkbenchButton(props: Props) {
   const [open, setOpen] = useState(false)
@@ -171,9 +157,6 @@ export function ResearchWorkbenchButton(props: Props) {
       else if (payload.kind === 'edge') await props.createEdge(payload.value)
       else if (payload.kind === 'publication') await props.createPublication(payload.value)
       else if (payload.kind === 'publication-export') await props.exportPublication(payload.value.id, payload.value.uri)
-      else if (payload.kind === 'presentation') await props.createPresentation(payload.value.projectId, payload.value.title)
-      else if (payload.kind === 'presentation-edit') await props.updatePresentation(payload.value.id, { title: payload.value.title, outline: payload.value.outline })
-      else await props.exportPresentation(payload.value.id, payload.value.format, payload.value.uri)
     })
     setEditor(undefined)
   }
@@ -216,12 +199,6 @@ export function ResearchWorkbenchButton(props: Props) {
               {tab === 'publications' && (item.status === 'frozen' || item.status === 'failed') && <button type="button" onClick={() => void act(() => props.validatePublication(item.id))} title={props.t('research.action.validate')} aria-label={props.t('research.action.validate')}><FileCheck2 size={16} /></button>}
               {tab === 'publications' && ['frozen', 'ready', 'failed'].includes(item.status ?? '') && <button type="button" onClick={() => void act(() => props.reproducePublication(item.id))} title={props.t('research.action.reproduce')} aria-label={props.t('research.action.reproduce')}><RefreshCw size={16} /></button>}
               {tab === 'publications' && item.status === 'ready' && <button type="button" onClick={() => setEditor({ mode: 'publication-export', item })} title={props.t('research.action.export')} aria-label={props.t('research.action.export')}><Download size={16} /></button>}
-              {tab === 'presentations' && <button type="button" onClick={() => setEditor({ mode: 'presentation-edit', item })} title={props.t('research.action.edit')} aria-label={props.t('research.action.edit')}><Pencil size={16} /></button>}
-              {tab === 'presentations' && ['draft', 'failed', 'ready'].includes(item.status ?? '') && <button type="button" onClick={() => void act(() => props.generatePresentation(item.id))} title={props.t('research.action.generate')} aria-label={props.t('research.action.generate')}><StepForward size={16} /></button>}
-              {tab === 'presentations' && ['outlining', 'designing', 'generating'].includes(item.status ?? '') && <button type="button" onClick={() => void act(() => props.pausePresentation(item.id))} title={props.t('research.action.pause')} aria-label={props.t('research.action.pause')}><Pause size={16} /></button>}
-              {tab === 'presentations' && item.status === 'paused' && <button type="button" onClick={() => void act(() => props.resumePresentation(item.id))} title={props.t('research.action.resume')} aria-label={props.t('research.action.resume')}><Play size={16} /></button>}
-              {tab === 'presentations' && ['outlining', 'designing', 'generating', 'paused'].includes(item.status ?? '') && <button type="button" onClick={() => void act(() => props.cancelPresentation(item.id))} title={props.t('research.action.cancel')} aria-label={props.t('research.action.cancel')}><Ban size={16} /></button>}
-              {tab === 'presentations' && item.status === 'ready' && <button type="button" onClick={() => setEditor({ mode: 'presentation-export', item })} title={props.t('research.action.export')} aria-label={props.t('research.action.export')}><Download size={16} /></button>}
             </div></article>)}</div>
           </main></div>
         {preview && <div className={css.previewLayer}><header><div><strong>{preview.uri.split('/').pop()}</strong><span>{formatBytes(preview.byteSize)} · {preview.mediaType}</span></div><button type="button" onClick={() => setPreview(undefined)} title={props.t('research.preview.close')} aria-label={props.t('research.preview.close')}><X size={18} /></button></header><PreviewSurface payload={preview} t={props.t} /></div>}
@@ -255,8 +232,6 @@ function RecordEditor({ state, project, snapshot, t, onCancel, onSubmit }: { sta
   const [toId, setToId] = useState(nodes[1]?.id ?? nodes[0]?.id ?? '')
   const [relation, setRelation] = useState('supports')
   const [checksum, setChecksum] = useState('')
-  const [outline, setOutline] = useState('')
-  const [format, setFormat] = useState<'pptx' | 'pdf'>('pptx')
   const mode = state.mode
   const title = editorTitle(mode, t)
   const submit = async (event: FormEvent) => {
@@ -274,14 +249,11 @@ function RecordEditor({ state, project, snapshot, t, onCancel, onSubmit }: { sta
     else if (mode === 'edges') await onSubmit({ kind: 'edge', value: { projectId: project.id, fromId, toId, relation } })
     else if (mode === 'publications') await onSubmit({ kind: 'publication', value: { projectId: project.id, title: name, manifest: { reproduction: { command, workingDirectory, ...(contextId ? { executionContextId: contextId } : {}), ...(timeout ? { timeoutMs: Number(timeout) * 1000 } : {}) } } } })
     else if (mode === 'publication-export') await onSubmit({ kind: 'publication-export', value: { id: state.item!.id, uri } })
-    else if (mode === 'presentations') await onSubmit({ kind: 'presentation', value: { projectId: project.id, title: name } })
-    else if (mode === 'presentation-edit') await onSubmit({ kind: 'presentation-edit', value: { id: state.item!.id, title: name, outline: parseOutline(outline) } })
-    else await onSubmit({ kind: 'presentation-export', value: { id: state.item!.id, format, uri } })
   }
   return <div className={css.editorLayer} role="presentation"><form className={css.editorCard} onSubmit={event => void submit(event)} aria-label={title}>
     <header><h3>{title}</h3><button type="button" onClick={onCancel} title={t('common.close')} aria-label={t('common.close')}><X size={18} /></button></header>
     <div className={css.formGrid}>
-      {!['publication-export', 'presentation-export', 'edges'].includes(mode) && <label><span>{['papers', 'decisions', 'publications', 'presentations', 'presentation-edit'].includes(mode) ? t('common.title') : t('common.name')}</span><input required value={name} onChange={event => setName(event.target.value)} /></label>}
+      {!['publication-export', 'edges'].includes(mode) && <label><span>{['papers', 'decisions', 'publications'].includes(mode) ? t('common.title') : t('common.name')}</span><input required value={name} onChange={event => setName(event.target.value)} /></label>}
       {mode === 'contexts' && <><label><span>{t('research.field.kind')}</span><select value={kind} onChange={event => setKind(event.target.value as typeof kind)}><option value="local">{t('research.field.local')}</option><option value="wsl">WSL</option><option value="ssh">SSH</option></select></label>{kind === 'wsl' && <label><span>{t('research.field.distribution')}</span><input required value={distro} onChange={event => setDistro(event.target.value)} /></label>}{kind === 'ssh' && <><label><span>{t('research.field.host')}</span><input required value={host} onChange={event => setHost(event.target.value)} /></label><label><span>{t('research.field.user')}</span><input value={user} onChange={event => setUser(event.target.value)} /></label><label><span>{t('research.field.port')}</span><input type="number" min="1" max="65535" value={port} onChange={event => setPort(event.target.value)} /></label><label><span>{t('research.field.privateKeyPath')}</span><input value={privateKeyPath} onChange={event => setPrivateKeyPath(event.target.value)} /></label></>}</>}
       {mode === 'runs' && <><label><span>{t('research.field.environment')}</span><select value={contextId} onChange={event => setContextId(event.target.value)}><option value="">{t('research.field.localDefault')}</option>{snapshot.contexts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className={css.wideField}><span>{t('research.field.command')}</span><textarea required value={command} onChange={event => setCommand(event.target.value)} /></label><label className={css.wideField}><span>{t('research.field.workingDirectory')}</span><input required value={workingDirectory} onChange={event => setWorkingDirectory(event.target.value)} /></label><label><span>{t('research.field.timeout')}</span><input type="number" min="1" value={timeout} onChange={event => setTimeoutValue(event.target.value)} /></label></>}
       {mode === 'publications' && <><label><span>{t('research.field.reproductionEnvironment')}</span><select value={contextId} onChange={event => setContextId(event.target.value)}><option value="">{t('research.field.localDefault')}</option>{snapshot.contexts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className={css.wideField}><span>{t('research.field.reproductionCommand')}</span><textarea required value={command} onChange={event => setCommand(event.target.value)} /></label><label className={css.wideField}><span>{t('research.field.workingDirectory')}</span><input required value={workingDirectory} onChange={event => setWorkingDirectory(event.target.value)} /></label><label><span>{t('research.field.timeout')}</span><input type="number" min="1" value={timeout} onChange={event => setTimeoutValue(event.target.value)} /></label></>}
@@ -290,9 +262,7 @@ function RecordEditor({ state, project, snapshot, t, onCancel, onSubmit }: { sta
       {mode === 'papers' && <><label><span>DOI</span><input value={doi} onChange={event => setDoi(event.target.value)} /></label><label><span>{t('research.field.uri')}</span><input value={uri} onChange={event => setUri(event.target.value)} /></label><label className={css.wideField}><span>{t('research.field.notes')}</span><textarea value={notes} onChange={event => setNotes(event.target.value)} /></label></>}
       {mode === 'decisions' && <><label><span>{t('common.status')}</span><select value={decisionStatus} onChange={event => setDecisionStatus(event.target.value as typeof decisionStatus)}><option value="proposed">{t('research.field.proposed')}</option><option value="accepted">{t('research.field.accepted')}</option><option value="rejected">{t('research.field.rejected')}</option><option value="superseded">{t('research.field.superseded')}</option></select></label><label className={css.wideField}><span>{t('research.field.rationale')}</span><textarea required value={rationale} onChange={event => setRationale(event.target.value)} /></label></>}
       {mode === 'edges' && <><label><span>{t('research.field.from')}</span><select required value={fromId} onChange={event => setFromId(event.target.value)}>{nodes.map(item => <option key={item.id} value={item.id}>{item.name ?? item.title ?? short(item.id)}</option>)}</select></label><label><span>{t('research.field.to')}</span><select required value={toId} onChange={event => setToId(event.target.value)}>{nodes.map(item => <option key={item.id} value={item.id}>{item.name ?? item.title ?? short(item.id)}</option>)}</select></label><label className={css.wideField}><span>{t('research.field.relation')}</span><input required value={relation} onChange={event => setRelation(event.target.value)} /></label></>}
-      {mode === 'presentation-edit' && <label className={css.wideField}><span>{t('research.field.outline')}</span><textarea value={outline} onChange={event => setOutline(event.target.value)} /></label>}
-      {mode === 'presentation-export' && <label><span>{t('research.field.format')}</span><select value={format} onChange={event => setFormat(event.target.value as typeof format)}><option value="pptx">PPTX</option><option value="pdf">PDF</option></select></label>}
-      {['publication-export', 'presentation-export'].includes(mode) && <label className={css.wideField}><span>{t('research.field.destination')}</span><input required value={uri} onChange={event => setUri(event.target.value)} placeholder="file:///..." /></label>}
+      {['publication-export'].includes(mode) && <label className={css.wideField}><span>{t('research.field.destination')}</span><input required value={uri} onChange={event => setUri(event.target.value)} placeholder="file:///..." /></label>}
     </div>
     <footer><button type="button" onClick={onCancel}>{t('common.cancel')}</button><button type="submit"><Check size={16} />{t('common.save')}</button></footer>
   </form></div>
@@ -303,13 +273,7 @@ function UriFields({ uri, setUri, mediaType, setMediaType, t }: { uri: string; s
 }
 
 function editorTitle(mode: EditorMode, t: TranslateNS<typeof NS>): string {
-  return ({ contexts: t('research.editor.contexts'), runs: t('research.editor.runs'), assets: t('research.editor.assets'), artifacts: t('research.editor.artifacts'), papers: t('research.editor.papers'), decisions: t('research.editor.decisions'), edges: t('research.editor.edges'), publications: t('research.editor.publications'), presentations: t('research.editor.presentations'), 'publication-export': t('research.editor.publicationExport'), 'presentation-edit': t('research.editor.presentationEdit'), 'presentation-export': t('research.editor.presentationExport') })[mode]
-}
-function parseOutline(value: string): Array<{ title: string; points: string[] }> {
-  return value.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
-    const [title = '', points = ''] = line.split('|', 2)
-    return { title: title.trim(), points: points.split(';').map(point => point.trim()).filter(Boolean) }
-  })
+  return ({ contexts: t('research.editor.contexts'), runs: t('research.editor.runs'), assets: t('research.editor.assets'), artifacts: t('research.editor.artifacts'), papers: t('research.editor.papers'), decisions: t('research.editor.decisions'), edges: t('research.editor.edges'), publications: t('research.editor.publications'), 'publication-export': t('research.editor.publicationExport') })[mode]
 }
 function message(reason: unknown): string { return reason instanceof Error ? reason.message : String(reason) }
 function short(value: string) { return value.slice(0, 8) }
@@ -351,14 +315,11 @@ function PreviewSurface({ payload, t }: { payload: ScientificPreviewPayload; t: 
             else { element.replaceChildren(); const empty = document.createElement('p'); empty.textContent = t('research.preview.noSheets'); element.appendChild(empty) }
           }
         } else {
-          // PPTX previews are owned by the ZeroWall presentation workbench,
-          // which renders the persisted per-slide PNGs. Keeping a second
-          // OOXML viewer here produced a different source of truth and could
-          // show stale decks from the generic research artifact list.
+          // Historical files remain available through the Office file preview.
           if (!disposed) {
             element.replaceChildren()
             const note = document.createElement('p')
-            note.textContent = '请在“演示文稿”工作台查看逐页预览；此处仅提供 PPTX 文件打开。'
+            note.textContent = '请从文件列表使用 Office 预览打开此 PPTX 文件。'
             element.appendChild(note)
           }
         }

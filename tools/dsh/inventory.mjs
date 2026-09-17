@@ -16,6 +16,7 @@ const thirdPartyOrder = [
   'dsh-better-sidebar-icons',
   'dsh-file-review',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
+  'dsh-univer-office',
   'dsh-zotero',
   '@dsh-external/zotero-harvest',
   'dsh-wechat',
@@ -23,18 +24,19 @@ const thirdPartyOrder = [
 ]
 const zeroWallOrder = [
   'base', 'secrets', 'environment', 'desktop-compat', 'projects', 'mcp',
-  'account', 'ai-cloud', 'opencode',
-  'files', 'images', 'image-dup',
+  'account', 'ai-cloud',
+  'files', 'images',
   'research', 'pubmed', 'mineru', 'singlecell', 'execution', 'python', 'runs',
-  'publications', 'presentations', 'skills', 'reviewer',
+  'publications', 'skills', 'reviewer',
 ]
 const expectedOrder = [
   ...thirdPartyOrder,
-  ...zeroWallOrder.slice(0, 9).map(id => `@zerowallscience/plugin-${id}`),
+  ...zeroWallOrder.slice(0, 8).map(id => `@zerowallscience/plugin-${id}`),
+  '@jiesou/dsh-opencode-zen-free-provider',
   'dsh-free-search',
-  ...zeroWallOrder.slice(9).map(id => `@zerowallscience/plugin-${id}`),
+  ...zeroWallOrder.slice(8).map(id => `@zerowallscience/plugin-${id}`),
 ]
-const thirdPartyPackages = [...thirdPartyOrder, 'dsh-free-search']
+const thirdPartyPackages = [...thirdPartyOrder, '@jiesou/dsh-opencode-zen-free-provider', 'dsh-free-search']
 
 const zeroWallPlugins = []
 for (const id of zeroWallOrder) {
@@ -145,12 +147,7 @@ const inventory = {
   profiles: profileInventory,
   thirdPartyPlugins,
   zeroWallPlugins,
-  sharedPackages: [{
-    package: '@zerowallscience/dsh-ppt-runtime',
-    source: 'packages/presentations-runtime',
-    plugin: false,
-    productionPath: 'resources/app.asar/node_modules/@zerowallscience/dsh-ppt-runtime',
-  }],
+  sharedPackages: [{ package: '@zerowallscience/integrity-runtime', source: 'packages/integrity-runtime', plugin: false, productionPath: 'resources/app.asar/node_modules/@zerowallscience/integrity-runtime' }],
 }
 
 await writeFile(output, `${JSON.stringify(inventory, null, 2)}\n`)

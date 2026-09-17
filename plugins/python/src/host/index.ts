@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 import { access, lstat, readFile } from 'node:fs/promises'
 import { delimiter, isAbsolute, join, relative, resolve } from 'node:path'
@@ -92,7 +93,7 @@ async function runPython(args: PythonArgs, exec: { signal: AbortSignal; agent?: 
     const child = spawn(resolved.executable, ['-c', bootstrap], {
       cwd: workdir,
       windowsHide: true,
-      env: { ...process.env, PYTHONNOUSERSITE: '1', PYTHONPATH: [resolved.overlayPath, resolved.sitePackages].join(delimiter) },
+      env: { ...process.env, ZEROWALL_PYTHON_OVERLAY: resolved.overlayPath, ZEROWALL_NODE: process.execPath, ZEROWALL_INTEGRITY_WORKER: createRequire(import.meta.url).resolve('@zerowallscience/integrity-runtime/worker').replace(/app\.asar([\\/])/u, 'app.asar.unpacked$1'), PYTHONNOUSERSITE: '1', PYTHONPATH: [resolved.overlayPath, resolved.sitePackages].join(delimiter) },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let stdout = ''; let stderr = ''; let timedOut = false; let settled = false

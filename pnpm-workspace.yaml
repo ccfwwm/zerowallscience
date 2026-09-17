@@ -54,6 +54,11 @@ peerDependencyRules:
     - '@deepseek-ai/dsh-client-runtime'
   allowedVersions:
     typescript: '>=5 <7'
+    '@jiesou/dsh-opencode-zen-free-provider>@deepseek-ai/dsh-credentials': '0.1.5-rc.2'
+    '@jiesou/dsh-opencode-zen-free-provider>@deepseek-ai/dsh-llm': '0.1.5-rc.2'
+    '@jiesou/dsh-opencode-zen-free-provider>@deepseek-ai/dsh-llm-pi-ai': '0.1.5-rc.2'
+    '@jiesou/dsh-opencode-zen-free-provider>@deepseek-ai/dsh-settings': '0.1.5-rc.2'
+    '@jiesou/dsh-opencode-zen-free-provider>@deepseek-ai/dsh-util-values': '0.1.5-rc.2'
 
 allowBuilds:
   dsh-better-sidebar: true
@@ -72,16 +77,23 @@ allowBuilds:
   dsh-zotero: false
 
 minimumReleaseAgeExclude:
-  - '@earendil-works/pi-ai@0.84.2'
+  # Explicitly requested integration pin, published today.
+  - '@jiesou/dsh-opencode-zen-free-provider@0.1.18'
+  - 'dsh-univer-office@0.3.2'
+  - '@earendil-works/pi-ai@0.85.1'
   - dsh-better-sidebar@0.18.0
   - dsh-dream-skin@9.13.1
   - dsh-free-search@0.4.28
 
 patchedDependencies:
+  '@jiesou/dsh-opencode-zen-free-provider@0.1.18': patches/@jiesou__dsh-opencode-zen-free-provider@0.1.18.patch
   dsh-dream-skin@9.13.1: patches/dsh-dream-skin@9.13.1.patch
   dsh-free-search@0.4.28: patches/dsh-free-search@0.4.28.patch
 
 packageExtensions:
+  '@jiesou/dsh-opencode-zen-free-provider@0.1.18':
+    dependencies:
+      '@deepseek-ai/schemastery': 'workspace:*'
   'dsh-office-tools@*':
     dependencies:
       '@deepseek-ai/cordis': 'workspace:*'

@@ -176,7 +176,10 @@ export class AiCloudLlmController {
     this.profiles = next
     const routes = [...next.keys()]
     if (this.registration === undefined) {
-      if (routes.length === 0) return
+      if (routes.length === 0) {
+        await this.selectManagedDefault([], [])
+        return
+      }
       this.registration = this.ctx.llm.registerAdapter(routes, this.adapter)
     } else {
       this.registration.replace(routes)
@@ -189,8 +192,8 @@ export class AiCloudLlmController {
     if (defaults === undefined) return
     const current = defaults.currentSelection()
     if (models.length === 0) {
-      if (current.provider.startsWith(ROUTE_PREFIX)) {
-        await defaults.saveSelection({ provider: 'opencode2dsh', model: 'big-pickle' })
+      if (current.provider.startsWith(ROUTE_PREFIX) || ['opencode2dsh', 'opencode-zen-free-provider'].includes(current.provider)) {
+        await defaults.saveSelection({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
       }
       return
     }
@@ -207,14 +210,15 @@ export class AiCloudLlmController {
         await defaults.saveSelection({ provider: replacement.providerId, model: replacement.modelId })
         return
       }
-      await defaults.saveSelection({ provider: 'opencode2dsh', model: 'big-pickle' })
+      await defaults.saveSelection({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
       return
     }
     const preferred = [...models]
       .filter(model => /deepseek/i.test(model.modelId))
       .sort((left, right) => left.modelId.localeCompare(right.modelId))[0]
-    if (preferred === undefined) return
-    await defaults.saveSelection({ provider: preferred.providerId, model: preferred.modelId })
+    const available = preferred ?? models.find(model => routes.includes(model.providerId))
+    if (available === undefined) return
+    await defaults.saveSelection({ provider: available.providerId, model: available.modelId })
   }
 }
 

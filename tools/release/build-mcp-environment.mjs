@@ -1,19 +1,17 @@
-import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto'
-import { createRequire } from 'node:module'
-import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto'
+import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
-import { basename, dirname, join, relative, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { patchSciMasterMcp } from './scimaster-compat.mjs'
-const JSZip = createRequire(resolve(import.meta.dirname, '../../desktop/package.json'))('jszip')
 const execFileAsync = promisify(execFile)
 
 const root = resolve(import.meta.dirname, '../..')
 const staging = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_STAGING ?? join(root, 'mcp-environment-staging'))
 const output = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_OUTPUT ?? join(root, 'desktop', 'dist', 'mcp-environment'))
-const environmentVersion = (process.env.ZEROWALL_MCP_ENVIRONMENT_VERSION ?? process.env.ZEROWALL_MCP_ENVIRONMENT_REVISION ?? '1.2.0').trim()
+const environmentVersion = (process.env.ZEROWALL_MCP_ENVIRONMENT_VERSION ?? process.env.ZEROWALL_MCP_ENVIRONMENT_REVISION ?? '1.4.0').trim()
 if (!environmentVersion) throw new Error('ZEROWALL_MCP_ENVIRONMENT_VERSION is required.')
-const pythonVersion = process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12'
+const pythonVersion = process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12.10'
 const pythonRuntime = pythonVersion.match(/^\d+\.\d+/u)?.[0] ?? pythonVersion
 // Keep the previous desktop-version field as a compatibility alias for
 // clients released before the managed runtime was renamed to ZeroWall Python.
@@ -36,18 +34,6 @@ const expectedPublicKey = (process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? `-
 const derivedPublicKey = createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }).trim()
 if (derivedPublicKey !== expectedPublicKey.trim()) throw new Error(`MCP signing key does not match the pinned ${keyId} public key.`)
 
-const excludedStagingFiles = new Set([
-  'mcp-private-key.pem',
-  'mcp-public-key.pem',
-])
-
-function lockedPackages(text) {
-  return text.split(/\r?\n/u).filter(line => /^[A-Za-z0-9][A-Za-z0-9_.-]*==[^\s]+$/u.test(line)).map(line => {
-    const [name, requiredVersion] = line.split('==')
-    return { name, requiredVersion }
-  })
-}
-
 async function checkMcpServer(command, args, cwd) {
   const requests = [
     { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'zerowall-build', version: '1' } } },
@@ -55,7 +41,7 @@ async function checkMcpServer(command, args, cwd) {
     { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
   ]
   await new Promise((resolveCheck, reject) => {
-    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
+    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', PYTHONNOUSERSITE: '1', PYTHONPATH: '' }, stdio: 'pipe' })
     let output = ''; let settled = false
     const finish = error => { if (settled) return; settled = true; clearTimeout(timer); child.kill(); error ? reject(error) : resolveCheck() }
     const timer = setTimeout(() => finish(new Error(`MCP build smoke test timed out: ${args.at(-1) ?? command}`)), 20_000)
@@ -73,18 +59,6 @@ async function checkMcpServer(command, args, cwd) {
   })
 }
 
-async function filesUnder(path, { exclude = () => false } = {}) {
-  const entries = await readdir(path, { withFileTypes: true })
-  const files = []
-  for (const entry of entries) {
-    const child = join(path, entry.name)
-    if (exclude(child, entry)) continue
-    if (entry.isDirectory()) files.push(...await filesUnder(child, { exclude }))
-    else if (entry.isFile()) files.push(child)
-  }
-  return files
-}
-
 await stat(join(staging, 'bio-tools', 'python', 'python.exe'))
 await stat(join(staging, 'bio-tools', 'run_server.py'))
 await stat(join(staging, 'ketcher-chemistry', 'server.js'))
@@ -92,26 +66,27 @@ await stat(join(root, 'resources', 'skills'))
 const sciMcpPath = join(staging, 'sci', 'dist', 'mcp.cjs')
 await stat(sciMcpPath)
 
-await execFileAsync(process.execPath, [join(root, 'tools', 'release', 'audit-skill-dependencies.mjs')], { cwd: root, windowsHide: true })
-const skillAudit = JSON.parse(await readFile(join(root, 'resources', 'python', 'skill-dependencies.json'), 'utf8'))
-const scienceLockPath = join(root, 'resources', 'python', 'requirements-science.lock')
-const compatibleLockPath = join(root, 'resources', 'python', 'requirements-managed-compatible.lock')
-const scienceLock = await readFile(scienceLockPath, 'utf8')
-const compatibleLock = await readFile(compatibleLockPath, 'utf8')
-const corePackages = [...new Map([...lockedPackages(scienceLock), ...lockedPackages(compatibleLock)].map(item => [item.name.toLowerCase(), item])).values()]
-
+const finalLockPath = join(root, 'resources', 'python', 'requirements-windows.lock')
+const finalLock = await readFile(finalLockPath, 'utf8')
+const corePackages = [...finalLock.matchAll(/^([A-Za-z0-9_.-]+)==([^\s]+) --hash=sha256:[a-f0-9]{64}$/gmu)].map(match => ({ name: match[1], requiredVersion: match[2] }))
+if (corePackages.length < 127) throw new Error('Final hashed Windows lock is missing or incomplete.')
 const pythonExecutable = join(staging, 'bio-tools', 'python', 'python.exe')
 const sitePackages = join(staging, 'bio-tools', 'python', 'site-packages')
+const buildPython = process.env.ZEROWALL_MCP_BUILD_PYTHON ?? (process.platform === 'win32' ? 'py' : 'python3')
+const buildPythonArgs = process.platform === 'win32' && buildPython.toLowerCase() === 'py' ? ['-3.12'] : []
 if (process.env.ZEROWALL_MCP_REBUILD_PYTHON !== '0') {
-  await rm(sitePackages, { recursive: true, force: true })
-  await mkdir(sitePackages, { recursive: true })
-  const buildPython = process.env.ZEROWALL_MCP_BUILD_PYTHON ?? (process.platform === 'win32' ? 'py' : 'python3')
-  const buildPythonArgs = process.platform === 'win32' && buildPython.toLowerCase() === 'py' ? ['-3.12'] : []
-  await execFileAsync(buildPython, [...buildPythonArgs, '-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '--target', sitePackages, '-r', scienceLockPath, '-r', compatibleLockPath], {
-    cwd: staging, windowsHide: true, maxBuffer: 64 * 1024 * 1024,
-  })
+  throw new Error('Prepare a clean runtime with tools/release/prepare-python-environment.py, then set ZEROWALL_MCP_REBUILD_PYTHON=0. The complete inventory and functional evidence are still mandatory.')
 }
-
+const verificationPath = process.env.ZEROWALL_PYTHON_VERIFICATION
+if (!verificationPath) throw new Error('ZEROWALL_PYTHON_VERIFICATION must identify the functional acceptance report.')
+const verification = JSON.parse(await readFile(verificationPath, 'utf8'))
+if (!verification.ok || verification.python !== '3.12.10' || !verification.isolated || Object.keys(verification.cases ?? {}).length < 16 || Object.values(verification.cases).some(item => item.ok !== true)) throw new Error('Isolated functional acceptance failed or is incomplete.')
+const inventoryResult = await execFileAsync(pythonExecutable, ['-s', '-B', '-c', 'import importlib.metadata as m,json,re,sys; print(json.dumps({re.sub(r"[-_.]+","-",d.metadata["Name"]).lower():d.version for d in m.distributions(path=[sys.argv[1]])}))', sitePackages], { windowsHide: true, env: { ...process.env, PYTHONNOUSERSITE: '1', PYTHONPATH: '' } })
+const installed = JSON.parse(inventoryResult.stdout)
+if (Object.keys(installed).length !== corePackages.length || corePackages.some(pkg => installed[pkg.name] !== pkg.requiredVersion || verification.packages[pkg.name] !== pkg.requiredVersion)) throw new Error('Lock, installed runtime and functional report package inventories differ.')
+await execFileAsync(pythonExecutable, ['-s', '-B', '-c', 'import sys; assert sys.version_info[:3] == (3,12,10)'], { windowsHide: true })
+await execFileAsync(buildPython, [...buildPythonArgs, '-s', '-B', join(root, 'tools/release/audit-skill-dependencies.py'), '--site-packages', sitePackages, '--verification', verificationPath], { cwd: root, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
+const skillAudit = JSON.parse(await readFile(join(root, 'resources/python/skill-dependencies.json'), 'utf8'))
 // The embedded Windows Python uses python312._pth. That mode does not process
 // pywin32.pth, so mcp's top-level `import pywintypes` cannot find the shim in
 // win32/lib. Keep a private top-level copy in the environment so imports work
@@ -127,54 +102,37 @@ const embeddedPthText = await readFile(embeddedPth, 'utf8')
 const requiredPthEntries = ['site-packages/win32', 'site-packages/win32/lib', 'site-packages/pythonwin', `../../../../python-overlay/python-${pythonRuntime}`]
 const missingPthEntries = requiredPthEntries.filter(entry => !embeddedPthText.split(/\r?\n/u).includes(entry))
 if (missingPthEntries.length > 0) await writeFile(embeddedPth, `${embeddedPthText.trimEnd()}\n${missingPthEntries.join('\n')}\n`, 'utf8')
-const managedPythonModules = ['mcp', 'numpy', 'pandas', 'httpx', 'openpyxl', 'pypdf', 'fitz', 'docx', 'pptx', 'matplotlib', 'Bio', 'anndata', 'scanpy', 'mygene', 'gseapy', 'polars', 'pyarrow', 'markitdown', 'liteparse']
+const managedPythonModules = Object.entries(verification.imports).filter(([, result]) => result.ok).map(([name]) => name)
+for (const name of ['cv2', 'imagehash', 'skimage', 'structlog', 'pikepdf', 'markdown', 'pyzotero']) {
+  if (!managedPythonModules.includes(name)) throw new Error(`Mandatory module was not verified: ${name}`)
+}
 const managedPythonImports = managedPythonModules.join(', ')
-const managedPythonEnv = { ...process.env, PYTHONPATH: sitePackages, PYTHONNOUSERSITE: '1' }
-await execFileAsync(pythonExecutable, ['-c', `import ${managedPythonImports}`], {
+const managedPythonEnv = { ...process.env, PYTHONPATH: '', PYTHONNOUSERSITE: '1' }
+await execFileAsync(pythonExecutable, ['-s', '-B', '-c', `import ${managedPythonImports}`], {
   cwd: staging,
   env: managedPythonEnv,
   windowsHide: true,
 })
-await execFileAsync(pythonExecutable, ['-m', 'pip', 'check'], { cwd: staging, env: managedPythonEnv, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
+await execFileAsync(pythonExecutable, ['-s', '-B', '-m', 'pip', 'check'], { cwd: staging, env: managedPythonEnv, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
 await checkMcpServer(pythonExecutable, ['run_server.py', 'mcp_bio'], join(staging, 'bio-tools'))
 await checkMcpServer(process.execPath, ['server.js'], join(staging, 'ketcher-chemistry'))
 await checkMcpServer(process.execPath, ['dist/mcp.cjs'], join(staging, 'sci'))
-await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })
-const zip = new JSZip()
-const stagingFiles = await filesUnder(staging, {
-  exclude: (path, entry) => entry.isFile() && excludedStagingFiles.has(relative(staging, path).replaceAll('\\', '/')),
-})
-const patchedSciMcp = patchSciMasterMcp(await readFile(sciMcpPath))
-for (const path of stagingFiles) {
-  const rel = relative(staging, path).replaceAll('\\', '/')
-  zip.file(rel, rel === 'sci/dist/mcp.cjs' ? patchedSciMcp : await readFile(path))
-}
-for (const path of await filesUnder(join(root, 'resources', 'skills'))) {
-  const rel = relative(join(root, 'resources', 'skills'), path).replaceAll('\\', '/')
-  zip.file(`skills/${rel}`, await readFile(path))
-}
-// Ship the reproducible dependency inputs alongside the managed runtime so
-// diagnostics and future environment updates use the same source of truth.
-for (const name of ['requirements-mcp.txt', 'requirements-base.txt', 'requirements-science.txt', 'requirements-science.lock', 'requirements-mineru.txt', 'requirements-managed-ui.txt', 'requirements-managed-compatible.txt', 'requirements-managed-compatible.lock', 'skill-dependencies.json']) {
-  const path = join(root, 'resources', 'python', name)
-  try { zip.file(`python/${name}`, await readFile(path)) } catch { /* optional layer may be absent in older checkouts */ }
-}
 const archiveName = `zerowall-python-windows-x64-${environmentVersion}.zip`
-const archive = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 9 } })
 const archivePath = join(output, archiveName)
-await writeFile(archivePath, archive)
-const archiveSha256 = createHash('sha256').update(archive).digest('hex')
-const sourceHashes = {}
-for (const path of stagingFiles) {
-  const rel = relative(staging, path).replaceAll('\\', '/')
-  sourceHashes[rel] = createHash('sha256').update(rel === 'sci/dist/mcp.cjs' ? patchedSciMcp : await readFile(path)).digest('hex')
-}
+try { await stat(archivePath); throw new Error('Refusing to overwrite an existing release archive.') } catch (error) { if (error.code !== 'ENOENT') throw error }
+const patchedSciMcp = patchSciMasterMcp(await readFile(sciMcpPath))
+await writeFile(sciMcpPath, patchedSciMcp)
+await execFileAsync(buildPython, [...buildPythonArgs, '-s', '-B', join(root, 'tools/release/pack-python-environment.py'), staging, root, archivePath], { windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
+const archiveInventory = JSON.parse(await readFile(archivePath.replace(/\.zip$/u, '.inventory.json'), 'utf8'))
+const archiveSha256 = archiveInventory.sha256
+const archiveSize = archiveInventory.size
+const sourceHashes = archiveInventory.sourceHashes
 const baseUrl = (process.env.ZEROWALL_PYTHON_BASE_URL ?? process.env.ZEROWALL_MCP_ENVIRONMENT_BASE_URL ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python/windows-x64').replace(/\/$/u, '')
 const manifest = {
   schema: 2, environmentVersion, ...(legacyApplicationVersion ? { version: legacyApplicationVersion } : {}), contentRevision, environmentId: 'zerowall-python', platform: 'win32', architecture: 'x64',
-  archiveUrl: `${baseUrl}/${environmentVersion}/${archiveName}`, archiveSha256, archiveSize: archive.byteLength,
-  python: { version: pythonVersion, relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/site-packages', modules: managedPythonModules, layers: ['base', 'science', 'managed-compatible', 'mineru-optional'], dependencyManifests: ['python/requirements-base.txt', 'python/requirements-science.txt', 'python/requirements-science.lock', 'python/requirements-managed-compatible.lock', 'python/requirements-mineru.txt'], supportsZeroWallTool: true },
+  archiveUrl: `${baseUrl}/${environmentVersion}/${archiveName}`, archiveSha256, archiveSize,
+  python: { version: pythonVersion, relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/site-packages', modules: managedPythonModules, layers: ['base', 'science', 'managed-compatible', 'integrity', 'research'], dependencyManifests: ['python/requirements-windows.lock', 'python/requirements-research.txt', 'python/requirements-research.lock', 'python/skill-dependency-policy.json', 'python/requirements-base.txt', 'python/requirements-science.txt', 'python/requirements-science.lock', 'python/requirements-managed-compatible.lock', 'python/requirements-integrity.lock', 'python/requirements-mineru.txt'], supportsZeroWallTool: true },
   pythonHealth: { imports: managedPythonModules, optionalLayers: { mineru: ['mineru'] }, bioServer: 'bio-tools/run_server.py mcp_bio', ketcherServer: 'ketcher-chemistry/server.js' },
   dependencies: { corePackages, userOverlay: { enabled: true, path: `python-overlay/python-${pythonRuntime}`, requirementsFile: 'requirements-user.txt' } },
   skillsAudit: skillAudit,
@@ -190,4 +148,4 @@ manifest.signature.value = sign(null, Buffer.from(JSON.stringify(unsigned)), pri
 if (!verify(null, Buffer.from(JSON.stringify(unsigned)), expectedPublicKey, Buffer.from(manifest.signature.value, 'base64'))) throw new Error('MCP manifest self-verification failed.')
 await writeFile(join(output, `${environmentVersion}.json`), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
 await writeFile(join(output, 'latest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
-console.log(`Built ${archiveName} (${archive.byteLength} bytes, ${archiveSha256})`)
+console.log(`Built ${archiveName} (${archiveSize} bytes, ${archiveSha256})`)

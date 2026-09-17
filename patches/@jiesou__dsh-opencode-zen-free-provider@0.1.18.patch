@@ -1,0 +1,98 @@
+diff --git a/lib/index.js b/lib/index.js
+index 75d76f1..208c885 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -25,6 +25,8 @@ const NS = 'opencode-zen-free-provider';
+ /** Latest CLI version, read off unpkg's `@latest` redirect via the package's own `package.json`. */
+ const OPENCODE_VERSION_URL = 'https://unpkg.com/opencode-ai@latest/package.json';
+ const OPENCODE_VERSION_FALLBACK = '1.18.18';
++const CATALOG_RETRY_DELAYS_MS = [250, 1_000, 5_000, 15_000, 60_000];
++const CATALOG_REFRESH_INTERVAL_MS = 15 * 60 * 1_000;
+ /** Envelope types that must stay AUTH-classified instead of being rewritten. */
+ const AUTH_ERROR_TYPES = new Set(['AuthError', 'authentication_error', 'invalid_api_key', 'unauthorized']);
+ export const Config = z.object({
+@@ -187,16 +189,12 @@ function reasoningLevelsFor(metadata) {
+ // "upstream decides" — it also drops "Off" from the selector, which is correct
+ // because this endpoint offers no way to turn thinking down.
+ function reasoningMapFor(levels, api) {
+-    const map = {};
++    const map = Object.fromEntries(PI_LEVEL_KEYS.map(key => [key, levels.includes(key) ? key : null]));
+-    for (const key of PI_LEVEL_KEYS) {
+-        if (levels.includes(key))
+-            map[key] = key;
+-    }
+     if (api === 'openai-completions') {
+-        map.off = levels.includes('none') ? 'none' : 'off';
++        map.off = levels.includes('none') ? 'none' : null;
+     }
+     else {
+         map.off = null;
+     }
+     return map;
+ }
+@@ -307,7 +305,7 @@ export async function apply(ctx, config) {
+     ctx.llm.registerConfigurableProviders([
+         { provider: PROVIDER, displayName: DISPLAY_NAME, settingsNs: NS, settingsPath: [] },
+     ]);
+-    ctx.llm.registerAdapter([PROVIDER], adapter);
++    const registration = ctx.llm.registerAdapter([PROVIDER], adapter);
+     ctx.inject(['settings'], (settingsCtx) => {
+         settingsCtx.settings.installSection(ctx, NS, Config, config, {
+             setSource: (source) => {
+@@ -318,8 +316,10 @@ export async function apply(ctx, config) {
+             },
+         });
+     });
+-    // The catalog is fetched once at mount. Mount never awaits it: an unreachable
+-    // upstream must not kill the plugin.
++    // Catalog discovery stays off the mount path so an unreachable upstream does
++    // not kill the plugin. A transient startup failure must not leave the adapter
++    // permanently empty, though: retry with bounded backoff and refresh the live
++    // catalogue periodically after recovery.
+     async function sync() {
+         const [zen, modelsDev] = await Promise.all([
+             fetchJson('https://opencode.ai/zen/v1/models', {
+@@ -341,9 +341,40 @@ export async function apply(ctx, config) {
+             return;
+         scanned = next;
+         profiles = buildProfiles();
++        registration.replace([PROVIDER]);
+         ctx.logger.info('[%s] synced %d free model(s): %s', name, scanned.length, scanned.map(model => model.id).join(', '));
+     }
+-    void sync().catch((error) => {
+-        ctx.logger.warn('[%s] initial catalog scan failed: %s', name, errorChain(error));
+-    });
++    let retryAttempt = 0;
++    let syncTimer;
++    let syncStopped = false;
++    const scheduleSync = (delayMs) => {
++        if (syncStopped)
++            return;
++        if (syncTimer !== undefined)
++            clearTimeout(syncTimer);
++        syncTimer = setTimeout(() => {
++            syncTimer = undefined;
++            void runSync();
++        }, delayMs);
++        syncTimer.unref?.();
++    };
++    const runSync = async () => {
++        try {
++            await sync();
++            retryAttempt = 0;
++            scheduleSync(CATALOG_REFRESH_INTERVAL_MS);
++        }
++        catch (error) {
++            const delayMs = CATALOG_RETRY_DELAYS_MS[Math.min(retryAttempt, CATALOG_RETRY_DELAYS_MS.length - 1)];
++            retryAttempt += 1;
++            ctx.logger.warn('[%s] catalog scan failed; retrying in %d ms: %s', name, delayMs, errorChain(error));
++            scheduleSync(delayMs);
++        }
++    };
++    ctx.effect(() => () => {
++        syncStopped = true;
++        if (syncTimer !== undefined)
++            clearTimeout(syncTimer);
++    }, `${name}: catalog synchronization`);
++    void runSync();
+ }

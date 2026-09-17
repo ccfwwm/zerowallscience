@@ -1,35 +1,64 @@
 # ZeroWall Python environment
 
-ZeroWall Science uses one managed Python profile for MCP servers and bundled
-Skills. The dependency inputs are layered so the runtime can stay small while
-the literature and document workflows share the same interpreter:
+The Windows x64 shared CPU research environment uses **CPython 3.12.10**.
+Environment release **1.4.0 / revision 1** is versioned independently of Python
+and the desktop application. Existing 1.3.0 assets remain available for rollback.
+
+## Dependency inputs
 
 | File | Purpose |
 | --- | --- |
-| `resources/python/requirements-base.txt` | MCP, HTTP, validation, pandas, NumPy, image basics |
-| `resources/python/requirements-science.txt` | PDF, Office, plotting, statistics, and common bioinformatics |
-| `resources/python/requirements-mineru.txt` | Optional MinerU, OCR, and deep-learning layer |
-| `resources/python/requirements-mcp.txt` | Compatibility entry point used by the MCP environment builder |
+| `requirements-base.txt`, `requirements-science.txt` | Existing MCP, documents, statistics and biology |
+| `requirements-science.lock`, `requirements-managed-compatible.lock` | Preserve existing core versions |
+| `requirements-integrity.txt`, `requirements-integrity.lock` | Image comparison and PDF integrity |
+| `requirements-research.txt` | Broad CPU research, medical imaging, geography and PyZotero |
+| `requirements-research.lock` | Complete resolution with upstream distribution hashes |
+| `requirements-windows.lock` | Exact release wheels, including locally built pure Python wheels |
+| `skill-dependency-policy.json` | Import aliases and independent environment exceptions |
+| `skill-dependencies.json` | Source evidence, installed versions and isolated verification |
 
-The managed Windows runtime is built from the requirements inputs into
-`mcp-environment-staging/bio-tools/python`, then installed under
-`%APPDATA%\\zerowall-science\\zerowall-python`. The packaging manifest must list
-the modules used by health checks and include the `resources/skills` tree. A
-profile migration should be performed in this order:
+Only `opencv-python-headless` is installed in the shared environment. Scanpy,
+Leiden, scientific image libraries and the Playwright Python API are included.
+Playwright browsers, Torch/CUDA, model weights, complete OCR stacks and system
+tools are provisioned separately. Aeon, Cobra, NeuroKit2, MatchMS, BioServices
+and scVelo require independent environments because of core version constraints.
+PySAM and ETE4 are excluded until supported Windows wheels are available.
 
-1. Build a new staging profile from the locked inputs.
-2. Run the MCP health check and import checks for document, plotting, and
-   literature modules.
-3. Run the ZeroWall plugin and Python regression tests.
-4. Switch the default profile only after the previous profile remains available
-   for rollback.
+## Reproducible build
 
-Heavy packages such as MinerU, Torch, Scanpy, and OpenCV belong to the opt-in
-layer. They are not silently installed by a Skill. A missing optional package
-must produce an actionable error and leave the task's review queue intact.
+1. Resolve the research input for Windows x64 / Python 3.12 with the existing
+   science, compatibility and integrity constraints. Do not downgrade core pins.
+2. Run `py -3.12 tools/release/prepare-python-environment.py --work .build/python-1.4.0`.
+   The build interpreter must be exactly 3.12.10. Wheels are hash checked; the
+   final environment is installed offline into a clean staging directory.
+3. Run the staged `bio-tools/python/python.exe -s -B` with the absolute path to
+   `tools/release/verify-python-environment.py --output .build/python-1.4.0/verification.json`.
+   This disables personal packages and tests actual image, medical, Office,
+   Zotero, statistical, biological, chemical and quantum operations.
+4. Run image workflow integration, desktop Python tool, MCP and update tests.
+   Build with `ZEROWALL_MCP_ENVIRONMENT_STAGING`, `ZEROWALL_MCP_ENVIRONMENT_OUTPUT`,
+   `ZEROWALL_PYTHON_VERIFICATION`, `ZEROWALL_MCP_REBUILD_PYTHON=0`, version 1.4.0,
+   Python version 3.12.10 and the existing stable-3 signing key file configured.
+   `node tools/release/build-mcp-environment.mjs` checks the lock, installed
+   metadata and verification inventory agree before generating schema 2 assets.
 
-The literature trail Skill uses `requests`, `pypdf`/`PyMuPDF`, and `openpyxl`.
-For complex layout, equations, tables, or OCR, the saved PDF is handed to the
-ZeroWall MinerU capability and its task ID/artifacts are recorded in the source
-ledger. Credentials remain in ZeroWall Environment settings and are never part
-of a requirements file or task artifact.
+The auditor reads Python AST imports, dynamic imports, Markdown declarations
+and examples, requirements and vendor sources. Source documents are audit data.
+`managed` requires installation and isolated verification evidence, and version
+mismatches remain visible. Standard-library and Skill-local imports are filtered.
+Optional examples, development dependencies and external services are recorded
+separately; static analysis cannot prove that every arbitrary dynamic import was found.
+
+## Publication and updates
+
+`node scripts/publish-mcp-environment.mjs` first uploads immutable versioned ZIP
+and signed manifest. It verifies the public signature, complete size and SHA-256
+before promoting `latest.json`, then checks the exact URL used by desktop clients.
+Never overwrite an existing version archive. Credentials and signing keys remain
+outside the archive and source control.
+
+The desktop installs into the inactive slot and checks health before switching
+`current.json`. The `python-overlay/python-3.12` directory is retained across
+updates, including the six existing user extensions. Rollback retains the old
+slot; a failed update must leave the previous working environment selected.
+Comprehensive checks run during the build; client startup keeps lightweight checks.

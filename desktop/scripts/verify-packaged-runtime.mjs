@@ -40,6 +40,11 @@ if (archiveFiles.some(path => path.includes('node_modules/@fylar/'))) {
 if (archiveFiles.some(path => path.startsWith('node_modules/@daweifu/capability-menu/'))) {
   throw new Error('Removed capability-menu module is still in the packaged runtime.')
 }
+for (const retired of ['@zerowallscience/plugin-opencode', 'dsh-opencode-zen-free-provider', '@zerowallscience/plugin-image-dup', '@zerowallscience/plugin-presentations', '@zerowallscience/presentations-runtime']) {
+  if (archiveFiles.some(path => path.startsWith(`node_modules/${retired}/`))) {
+    throw new Error(`Retired module is still in the packaged runtime: ${retired}`)
+  }
+}
 const packagedManifest = JSON.parse(readArchiveFile('package.json').toString('utf8'))
 for (const entry of ['out/main/index.js', 'out/preload/index.cjs']) {
   if (!readArchiveFile(entry).equals(await readFile(resolve(packageRoot, entry)))) {
@@ -100,7 +105,6 @@ const requiredArchivePaths = [
   'node_modules/@pdf-lib/fontkit/dist/fontkit.es.js',
   'node_modules/@deepseek-ai/cordis-plugin-group/lib/index.js',
   'node_modules/@zerowallscience/plugin-base/lib/client.js',
-  'node_modules/@zerowallscience/plugin-opencode/lib/index.js',
   'node_modules/@zerowallscience/plugin-projects/lib/index.js',
   'node_modules/@zerowallscience/plugin-files/lib/index.js',
   'node_modules/@zerowallscience/plugin-python/lib/index.js',
@@ -109,19 +113,14 @@ const requiredArchivePaths = [
   'node_modules/@zerowallscience/plugin-pubmed/lib/typert.remote-client.js',
   'node_modules/@zerowallscience/plugin-pubmed/THIRD_PARTY_LICENSES/Apache-2.0.txt',
   'node_modules/@zerowallscience/plugin-images/lib/client.js',
-  'node_modules/@zerowallscience/plugin-image-dup/lib/index.js',
-  'node_modules/@zerowallscience/plugin-image-dup/lib/client.js',
-  'node_modules/@zerowallscience/plugin-image-dup/package.json',
   'node_modules/@zerowallscience/plugin-mineru/lib/index.js',
   'node_modules/@zerowallscience/plugin-mineru/lib/client.js',
   'node_modules/@zerowallscience/plugin-mineru/package.json',
   'node_modules/@zerowallscience/plugin-mineru/zerowall.plugin.json',
-  'node_modules/@zerowallscience/plugin-presentations/lib/index.js',
-  'node_modules/@zerowallscience/plugin-presentations/lib/client.js',
-  'node_modules/@zerowallscience/dsh-ppt-runtime/lib/index.mjs',
-  'node_modules/@zerowallscience/dsh-ppt-runtime/lib/tools.mjs',
-  'node_modules/@zerowallscience/dsh-ppt-runtime/preset/ppt/preset.yml',
-  'node_modules/@zerowallscience/dsh-ppt-runtime/preset/ppt/agent.cordis.yml',
+  'node_modules/@zerowallscience/integrity-runtime/hash-worker.mjs',
+  'node_modules/dsh-univer-office/lib/index.js',
+  'node_modules/dsh-univer-office/lib/client.js',
+  'node_modules/dsh-univer-office/artifacts/gateway.cjs',
   'node_modules/dsh-better-sidebar-icons/lib/index.js',
   'node_modules/dsh-better-sidebar-icons/lib/client.js',
   'node_modules/dsh-better-sidebar-icons/icons/default_file.svg',
@@ -135,6 +134,11 @@ const requiredArchivePaths = [
   'node_modules/dsh-free-search/lib/index.js',
   'node_modules/dsh-free-search/lib/client.js',
   'node_modules/dsh-free-search/package.json',
+  'node_modules/@jiesou/dsh-opencode-zen-free-provider/lib/index.js',
+  'node_modules/@jiesou/dsh-opencode-zen-free-provider/lib/openai-completions.js',
+  'node_modules/@jiesou/dsh-opencode-zen-free-provider/lib/openai-responses.js',
+  'node_modules/@jiesou/dsh-opencode-zen-free-provider/cordis.patch.yml',
+  'node_modules/@jiesou/dsh-opencode-zen-free-provider/LICENSE',
   'node_modules/@changfenhuang/dsh-genui/lib/index.js',
   'node_modules/@changfenhuang/dsh-genui/lib/client.js',
   'node_modules/@changfenhuang/dsh-genui/lib/assets/mermaid.js',
@@ -156,11 +160,12 @@ for (const path of requiredArchivePaths) {
 }
 
 for (const path of [
+  resolve(packaged.resourcesRoot, 'splash.html'),
   resolve(packaged.resourcesRoot, 'zerowall.patch.yml'),
   resolve(packaged.resourcesRoot, 'skills', 'literature-review', 'SKILL.md'),
   resolve(packaged.resourcesRoot, 'skills', 'pubmed-literature', 'SKILL.md'),
   resolve(packaged.resourcesRoot, 'skills', 'mineru-document-parser', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'zerowall-ppt', 'SKILL.md'),
+  ...['zerowall-image-dup', 'zerowall-paper-analysis', 'zerowall-paper-compare', 'zerowall-integrity-report'].map(name => resolve(packaged.resourcesRoot, 'skills', name, 'SKILL.md')),
   resolve(packaged.resourcesRoot, 'skills', 'bioinfor-figure-export', 'SKILL.md'),
   resolve(packaged.resourcesRoot, 'skills', 'bioinfor-literature-search-digest', 'SKILL.md'),
   resolve(packaged.resourcesRoot, 'skills', 'bioinfor-public-data-access', 'SKILL.md'),
@@ -180,6 +185,16 @@ for (const path of [
   resolve(packaged.resourcesRoot, 'licenses', 'THIRD_PARTY_NOTICES.md'),
   resolve(packaged.resourcesRoot, 'licenses', 'deepseek-harness.version.json'),
 ]) await access(path)
+
+const packagedSplash = await readFile(resolve(packaged.resourcesRoot, 'splash.html'), 'utf8')
+const sourceSplash = await readFile(resolve(packageRoot, 'build', 'splash.html'), 'utf8')
+if (packagedSplash !== sourceSplash) throw new Error('Packaged splash.html differs from the current desktop source.')
+for (const marker of ["params.get('version')", 'width: min(720px, calc(100% - 64px))', 'height: 9px']) {
+  if (!packagedSplash.includes(marker)) throw new Error(`Packaged splash.html is missing the startup UI marker: ${marker}`)
+}
+for (const retired of ['6.1.0', '工作台就绪后，将在后台连接已启用的 MCP 服务。', '你的会话与设置保存在本机']) {
+  if (packagedSplash.includes(retired)) throw new Error(`Packaged splash.html contains retired startup copy: ${retired}`)
+}
 
 await verifyArchivePolicy()
 await verifyExternalPolicy()
@@ -207,8 +222,8 @@ async function verifyArchivePolicy() {
   if (nativeMismatch.length > 0) throw new Error(`Non-Windows-x64 native files found in ASAR:\n${nativeMismatch.join('\n')}`)
 
   const pluginNames = [
-    'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
-    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations',
+    'base', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mineru', 'mcp',
+    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications',
   ]
   const betterSidebarPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-better-sidebar/package.json'))
   if (betterSidebarPackages.length !== 1) throw new Error(`dsh-better-sidebar must be packaged exactly once; found ${betterSidebarPackages.length}.`)
@@ -247,16 +262,7 @@ async function verifyArchivePolicy() {
   if (!betterSidebarClient.includes('expandedRef.current')) {
     throw new Error('Packaged dsh-better-sidebar is missing the stable expanded-directory snapshot used by file-tree refreshes.')
   }
-  const presentationsClient = readArchiveFile('node_modules/@zerowallscience/plugin-presentations/lib/client.js').toString('utf8')
-  const presentationsInject = [...presentationsClient.matchAll(/const inject = \[[\s\S]*?\];/gu)]
-    .map(match => [...match[0].matchAll(/["']([^"']+)["']/gu)].map(value => value[1]))
-    .find(names => names.includes('betterSidebar') && names.includes('remote.zerowallPresentation'))
-  if (!presentationsClient.includes('.conversation.addImageBytesToDraft(')) {
-    throw new Error('Packaged presentations client is missing its session-owned draft image bridge.')
-  }
-  if (presentationsInject === undefined || !presentationsInject.includes('conversation')) {
-    throw new Error('Packaged presentations client accesses conversation without declaring it in the client inject list.')
-  }
+
   const forbiddenBetterSidebarFiles = archiveFiles.filter(path => path.startsWith('node_modules/dsh-better-sidebar/') && (
     /^node_modules\/dsh-better-sidebar\/README(?:_[^/]+)?\.md$/iu.test(path)
     || /^node_modules\/dsh-better-sidebar\/LICENSE$/iu.test(path)
@@ -324,6 +330,23 @@ async function verifyArchivePolicy() {
       throw new Error(`Packaged dsh-free-search contains removed compatibility or self-update marker: ${forbidden}`)
     }
   }
+  const openCodePackages = archiveFiles.filter(path => path.endsWith('node_modules/@jiesou/dsh-opencode-zen-free-provider/package.json'))
+  if (openCodePackages.length !== 1) throw new Error(`OpenCode Zen Free provider must be packaged exactly once; found ${openCodePackages.length}.`)
+  const openCodeManifest = JSON.parse(readArchiveFile('node_modules/@jiesou/dsh-opencode-zen-free-provider/package.json').toString('utf8'))
+  if (openCodeManifest.version !== '0.1.18' || openCodeManifest.license !== 'MIT') {
+    throw new Error(`Packaged OpenCode Zen Free provider must be MIT-licensed 0.1.18; found ${openCodeManifest.version} (${openCodeManifest.license}).`)
+  }
+  const openCodeHost = readArchiveFile('node_modules/@jiesou/dsh-opencode-zen-free-provider/lib/index.js').toString('utf8')
+  for (const marker of [
+    'OpenCode Zen Free',
+    'opencode-zen-free-provider',
+    'mimo-v2.5-free',
+    'registration.replace([PROVIDER])',
+    'CATALOG_RETRY_DELAYS_MS',
+    'CATALOG_REFRESH_INTERVAL_MS',
+  ]) {
+    if (!openCodeHost.includes(marker)) throw new Error(`Packaged OpenCode Zen Free provider is missing marker: ${marker}`)
+  }
   for (const name of [...pluginNames.map(value => `plugin-${value}`), 'research-store']) {
     const packagePaths = archiveFiles.filter(path => path.endsWith(`@zerowallscience/${name}/package.json`))
     if (packagePaths.length !== 1) throw new Error(`@zerowallscience/${name} must be packaged exactly once; found ${packagePaths.length}.`)
@@ -340,11 +363,10 @@ async function verifyArchivePolicy() {
   const forbiddenWechat = archiveFiles.filter(path => /node_modules\/(?:wechaty|wechaty-puppet-|@juzi-bot\/wechaty)/iu.test(path))
   if (forbiddenWechat.length > 0) throw new Error(`Non-iLink WeChat runtime found in ASAR:\n${forbiddenWechat.slice(0, 20).join('\n')}`)
   const forbiddenCapabilityFiles = archiveFiles.filter(path => (
-    path.startsWith('node_modules/@zerowallscience/plugin-image-dup/')
-    || path.startsWith('node_modules/@zerowallscience/dsh-ppt-runtime/')
+    path.startsWith('node_modules/@zerowallscience/integrity-runtime/')
   ) && /(?:^|\/)(?:README(?:_[^/]*)?\.md|tests?|\.env(?:\.[^/]*)?)(?:\/|$)|\.map$/iu.test(path))
-  if (forbiddenCapabilityFiles.length > 0) throw new Error(`Forbidden image-dup/PPT upstream development files found in ASAR:\n${forbiddenCapabilityFiles.join('\n')}`)
-  const hardcodedUserPath = archiveFiles.filter(path => /node_modules\/@zerowallscience\/(?:plugin-image-dup|dsh-ppt-runtime)\/.+\.(?:js|mjs|json|yml)$/iu.test(path))
+  if (forbiddenCapabilityFiles.length > 0) throw new Error(`Forbidden integrity runtime development files found in ASAR:\n${forbiddenCapabilityFiles.join('\n')}`)
+  const hardcodedUserPath = archiveFiles.filter(path => /node_modules\/@zerowallscience\/integrity-runtime\/.+\.(?:js|mjs|json|yml)$/iu.test(path))
     .find(path => /[A-Za-z]:[\\/]Users[\\/][^\\/]+/iu.test(readArchiveFile(path).toString('utf8')))
   if (hardcodedUserPath !== undefined) throw new Error(`Hard-coded user path found in packaged capability runtime: ${hardcodedUserPath}`)
 
@@ -363,7 +385,6 @@ async function verifyArchivePolicy() {
   if (!filesHost.includes('extract_uploaded_file')) {
     throw new Error('Packaged Files Host is missing the on-demand extraction tool.')
   }
-  verifyOpenCode2DshRuntime(readArchiveFile('node_modules/@zerowallscience/plugin-opencode/lib/index.js').toString('utf8'))
   const modelSelectionClient = readArchiveFile('node_modules/@deepseek-ai/dsh-client-ui-model-selection/lib/client.js').toString('utf8')
   if (!modelSelectionClient.includes('selectingKey')) {
     throw new Error('Packaged model selector is missing row-scoped selection state.')
@@ -420,7 +441,11 @@ function hasForbiddenRuntimeDirectory(path) {
       && index === 2
       && segments[0]?.toLowerCase() === 'node_modules'
       && segments[1]?.toLowerCase() === '@univerjs'
-    return forbidden.has(lower) && !isUniverDocsPackage
+    const isUniverBundledDocumentation = lower === 'docs'
+      && index === 2
+      && segments[0] === 'node_modules'
+      && segments[1] === 'dsh-univer-office'
+    return forbidden.has(lower) && !isUniverDocsPackage && !isUniverBundledDocumentation
   })
 }
 
@@ -448,26 +473,16 @@ async function verifyExternalPolicy() {
 
 async function verifySizePolicy() {
   const installedBytes = await directorySize(packaged.root)
-  // 3.0.8 bundles the local PDF.js, OOXML, and XLSX parsers so installed
-  // runtime remains self-contained on clean machines. Keep a bounded gate,
-  // but account for those offline parser assets.
-  // Stable ships the Claude Code bridge, its signed Windows SDK runtime, and
-  // the better-sidebar editor/terminal/browser chunks. Keep a hard ceiling
-  // for the complete self-contained app, while retaining a conservative 300 MiB
-  // installer gate. GitHub Releases and Qiniu both support larger objects; the
-  // old 240 MiB project-local threshold rejected the alpha.1 runtime growth.
-  // gate below for the user-facing artifact.
-  // Alpha.1 ships the self-contained Claude Code bridge (~322 MiB) and the
-  // Windows canvas/PDF/Office native runtimes. Keep headroom for those
-  // required binaries while retaining a hard upper bound against accidental
-  // dependency growth.
-  if (installedBytes > 1_200 * MIB) throw new Error(`Installed output ${(installedBytes / MIB).toFixed(1)} MiB exceeds the 1,200 MiB gate.`)
+  // 6.2.0 adds Univer's offline Gateway, Viewer, render worker (~181 MiB),
+  // and Windows native Office dependencies to the existing Claude runtime.
+  // Measured output is 1,375 MiB installed and 320 MiB compressed.
+  if (installedBytes > 1_500 * MIB) throw new Error(`Installed output ${(installedBytes / MIB).toFixed(1)} MiB exceeds the 1,500 MiB gate.`)
 
   const installers = (await readdir(resolve(packageRoot, 'dist'), { withFileTypes: true }))
     .filter(entry => entry.isFile() && entry.name.includes(`-${packagedManifest.version}-`) && entry.name.endsWith('.exe') && !entry.name.toLowerCase().includes('uninstall'))
   for (const installer of installers) {
     const size = (await stat(resolve(packageRoot, 'dist', installer.name))).size
-    if (size > 300 * MIB) throw new Error(`Installer ${installer.name} ${(size / MIB).toFixed(1)} MiB exceeds the 300 MiB gate.`)
+    if (size > 360 * MIB) throw new Error(`Installer ${installer.name} ${(size / MIB).toFixed(1)} MiB exceeds the 360 MiB gate.`)
   }
 }
 
@@ -487,15 +502,14 @@ async function verifyImports() {
     ]);
     for (const name of [
       '@zerowallscience/plugin-base',
-      '@zerowallscience/plugin-opencode',
       '@zerowallscience/plugin-projects',
       '@zerowallscience/plugin-account',
       '@zerowallscience/plugin-ai-cloud',
       '@zerowallscience/plugin-files',
       '@zerowallscience/plugin-images',
-      '@zerowallscience/plugin-image-dup',
+
       '@zerowallscience/plugin-mineru',
-      '@zerowallscience/plugin-presentations',
+
       '@zerowallscience/plugin-mcp',
       '@zerowallscience/plugin-skills',
       'dsh-free-search',
@@ -620,6 +634,9 @@ async function verifyNativeRuntime() {
 
   const ripgrep = spawnSync(ripgrepPath, ['--version'], { encoding: 'utf8', windowsHide: true })
   if (ripgrep.status !== 0 || !ripgrep.stdout.includes('ripgrep')) throw new Error(`ripgrep smoke failed: ${ripgrep.stderr}`)
+  await runEmbeddedNode([
+    resolve(unpackedModules, '@zerowallscience', 'integrity-runtime', 'hash-worker.mjs'), '--selftest',
+  ], { cwd: packaged.root })
 }
 
 async function verifyDirectoryPickerWorker() {
@@ -714,6 +731,7 @@ async function verifyHostStartup() {
         try {
           await verifyWebBootManifest(probeUrl)
           await verifyPluginInventory(probeUrl)
+          await verifyOpenCodeCatalog(probeUrl)
           await verifyZoteroStatus(probeUrl)
           if (!freeSearchVerified) {
             await verifyFreeSearch(probeUrl)
@@ -858,15 +876,71 @@ async function verifyPluginInventory(url) {
     throw new Error('Removed capability-menu module is still mounted in the Host.')
   }
   const expected = [
-    'base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mineru', 'mcp',
-    'skills', 'reviewer', 'research', 'pubmed', 'singlecell', 'execution', 'python', 'runs', 'publications', 'presentations',
+    'base', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mineru', 'mcp',
+    'skills', 'reviewer', 'research', 'pubmed', 'singlecell', 'execution', 'python', 'runs', 'publications',
   ].map(name => `@zerowallscience/plugin-${name}`)
-  expected.push('@dsh-external/zotero-harvest', 'dsh-free-search', 'dsh-wechat', 'dsh-file-review', '@changfenhuang/dsh-genui', 'dsh-zotero')
+  expected.push('@dsh-external/zotero-harvest', '@jiesou/dsh-opencode-zen-free-provider', 'dsh-free-search', 'dsh-wechat', 'dsh-file-review', '@changfenhuang/dsh-genui', 'dsh-zotero')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
   const missing = expected.filter(name => !byModule.has(name))
   if (missing.length > 0) throw new Error(`Packaged Host plugin inventory is missing: ${missing.join(', ')}`)
   const inactive = expected.filter(name => byModule.get(name)?.enabled !== true || byModule.get(name)?.fiberPhase !== 'active')
   if (inactive.length > 0) throw new Error(`Packaged Host ZeroWall plugins are not active: ${inactive.map(name => `${name}=${JSON.stringify(byModule.get(name))}`).join('; ')}`)
+}
+
+async function verifyOpenCodeCatalog(url) {
+  const call = async (request, timeout = 30_000) => {
+    const rpcId = randomUUID()
+    const response = await hostFetch(authUrl(new URL(url), '/api/session/modelCatalog'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'client-request',
+        rpcId,
+        method: 'session/modelCatalog',
+        payload: { args: { request } },
+      }),
+      signal: AbortSignal.timeout(timeout),
+    })
+    if (!response.ok) throw new Error(`Packaged OpenCode catalog returned HTTP ${response.status}.`)
+    const envelope = await response.json()
+    if (envelope?.rpcId !== rpcId || envelope?.result?.ok !== true) {
+      throw new Error(`Packaged OpenCode catalog request failed: ${JSON.stringify(envelope)}`)
+    }
+    return envelope.result.value
+  }
+
+  let catalog
+  const deadline = Date.now() + 45_000
+  while (Date.now() < deadline) {
+    catalog = await call({ refresh: true })
+    if (catalog?.groups?.some(group => group.id === 'opencode-zen-free-provider' && group.models?.length > 0)) break
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 500))
+  }
+  const group = catalog?.groups?.find(candidate => candidate.id === 'opencode-zen-free-provider')
+  if (group?.name !== 'OpenCode Zen Free' || !Array.isArray(group.models) || group.models.length === 0) {
+    throw new Error(`Packaged OpenCode Zen Free dynamic catalog is unavailable: ${JSON.stringify(catalog)}`)
+  }
+  const invalid = group.models.filter(model => typeof model?.id !== 'string' || !model.id.endsWith('-free'))
+  if (invalid.length > 0) throw new Error(`Packaged OpenCode catalog contains non-free models: ${JSON.stringify(invalid)}`)
+  if (!group.models.some(model => model.id === 'mimo-v2.5-free')) {
+    throw new Error(`Packaged OpenCode catalog is missing mimo-v2.5-free: ${JSON.stringify(group.models)}`)
+  }
+
+  const checked = await call({ check: true, refresh: true, provider: group.id, model: 'mimo-v2.5-free' }, 120_000)
+  const model = checked?.groups?.find(candidate => candidate.id === group.id)?.models?.find(candidate => candidate.id === 'mimo-v2.5-free')
+  if (model?.status !== 'available' || !Number.isFinite(model.lastCheckedAt)) {
+    throw new Error(`Packaged OpenCode mimo-v2.5-free inference probe failed: ${JSON.stringify(model)}`)
+  }
+  if (!['supported', 'unsupported', 'unknown'].includes(model.visionStatus ?? 'unknown')) {
+    throw new Error(`Packaged OpenCode vision status is invalid: ${JSON.stringify(model)}`)
+  }
+
+  const persisted = await call({ refresh: true })
+  const persistedModel = persisted?.groups?.find(candidate => candidate.id === group.id)?.models?.find(candidate => candidate.id === model.id)
+  if (persistedModel?.status !== 'available' || persistedModel.lastCheckedAt !== model.lastCheckedAt) {
+    throw new Error(`Packaged OpenCode model status was not retained: ${JSON.stringify(persistedModel)}`)
+  }
+  console.log(`Packaged OpenCode Zen Free catalog and mimo-v2.5-free inference verified (${group.models.length} dynamic models).`)
 }
 
 async function verifyFreeSearch(url) {
@@ -1035,14 +1109,14 @@ async function verifyWebBootManifest(url) {
     '@zerowallscience/plugin-projects',
     '@zerowallscience/plugin-account',
     '@zerowallscience/plugin-images',
-    '@zerowallscience/plugin-image-dup',
+
     '@zerowallscience/plugin-mineru',
     '@zerowallscience/plugin-singlecell',
     '@zerowallscience/plugin-mcp',
     '@zerowallscience/plugin-skills',
     '@zerowallscience/plugin-reviewer',
     '@zerowallscience/plugin-research',
-    '@zerowallscience/plugin-presentations',
+
     'dsh-free-search', 'dsh-zotero',
   ]
   const missing = required.filter(id => !ids.has(id))
@@ -1153,10 +1227,10 @@ async function verifyDesktopStartup() {
       '@deepseek-ai/dsh-api-session-controller', '@deepseek-ai/dsh-client-connection',
       '@deepseek-ai/dsh-client-ui-layout', '@zerowallscience/plugin-base',
       '@zerowallscience/plugin-projects', '@zerowallscience/plugin-account', '@zerowallscience/plugin-images',
-      '@zerowallscience/plugin-image-dup',
+
       '@zerowallscience/plugin-mineru',
       '@zerowallscience/plugin-mcp', '@zerowallscience/plugin-skills', '@zerowallscience/plugin-reviewer',
-      '@zerowallscience/plugin-research', '@zerowallscience/plugin-presentations',
+      '@zerowallscience/plugin-research',
       'dsh-free-search', 'dsh-zotero',
       '@changfenhuang/dsh-genui',
     ]) {
@@ -1195,12 +1269,24 @@ async function verifyDesktopStartup() {
     }
     await page.getByRole('button', { name: /^(设置|Settings)$/ }).click()
     const settings = page.getByRole('dialog', { name: /^(设置|Settings)$/ })
+    const settingsNav = settings.locator('nav button')
+    const settingsNavLabels = (await settingsNav.allInnerTexts()).map(label => label.trim()).filter(Boolean)
+    if (!/^(关于|About)$/u.test(settingsNavLabels.at(-1) ?? '')) {
+      throw new Error(`About must be the final Settings navigation entry; found ${JSON.stringify(settingsNavLabels)}.`)
+    }
+    await settingsNav.last().click()
+    await settings.getByRole('heading', { name: 'ZeroWall Science', exact: true }).waitFor({ state: 'visible' })
+    await settings.getByText(desktopManifest.version, { exact: true }).waitFor({ state: 'visible' })
+    await page.screenshot({ path: resolve(root, 'settings-about-last.png'), fullPage: true })
+    console.log(`Packaged Settings keeps About last and reports version ${desktopManifest.version}. Evidence: ${root}`)
     await settings.getByRole('button', { name: 'Zotero', exact: true }).click()
     await settings.locator('input[value="http://127.0.0.1:23119/api"]').waitFor({ state: 'visible', timeout: 30_000 })
     // Locale assertions use controlled fixture names; user-supplied names
     // retain their original language during saved-profile replay.
     if (!process.env.ZEROWALL_SSH_PROFILE_REPLAY) await verifySettingsLocales(page, settings, root)
+    await verifyOpenCodeSettings(page, settings, root)
     await settings.getByRole('button', { name: /^(关闭|Close)$/ }).click()
+    await verifyOpenCodeConversationSelector(page, root)
     if (process.env.ZEROWALL_ZOTERO_REPLAY_LOG) {
       try { await verifyConversationViews(page, root) } catch (error) {
         await page.screenshot({ path: resolve(root, 'replay-failure.png'), fullPage: true })
@@ -1423,11 +1509,6 @@ async function verifySourceRuntimePolicy() {
   await access(resolve(repositoryRoot, 'packages', 'dsh-wechat', 'dist', 'index.js'))
   const stableProfile = await readFile(resolve(repositoryRoot, 'profiles', 'generated', 'stable.yml'), 'utf8')
   const desktopPatch = await readFile(resolve(repositoryRoot, 'desktop', 'build', 'zerowall.patch.yml'), 'utf8')
-  const opencodeManifest = JSON.parse(await readFile(resolve(repositoryRoot, 'plugins', 'opencode', 'package.json'), 'utf8'))
-  if (opencodeManifest.dependencies?.['@earendil-works/pi-ai'] !== '0.84.2') {
-    throw new Error('opencode2dsh must pin the repository-compatible pi-ai 0.84.2 runtime.')
-  }
-  verifyOpenCode2DshRuntime(await readFile(resolve(repositoryRoot, 'plugins', 'opencode', 'lib', 'index.js'), 'utf8'))
   if (!stableProfile.includes("'@huanlin/dsh-plugin-better-sidebar-plugin-office'")
     || !stableProfile.includes("'dsh-wechat'")
     || !/wechat:[\s\S]*enabled:\s*true[\s\S]*autoConnect:\s*false[\s\S]*channel:\s*ilink/u.test(stableProfile)) {
@@ -1437,16 +1518,68 @@ async function verifySourceRuntimePolicy() {
     throw new Error('Packaged Electron patch must mount the Better-sidebar Office viewer.')
   }
   if (!desktopPatch.includes("name: 'dsh-wechat'")) throw new Error('Packaged Electron patch must mount dsh-wechat.')
-  if (!desktopPatch.includes('provider: opencode2dsh') || desktopPatch.includes('provider: opencode-zen')) {
-    throw new Error('Packaged Electron defaults must exclusively select opencode2dsh.')
+  if (!desktopPatch.includes("name: '@jiesou/dsh-opencode-zen-free-provider'")
+    || !stableProfile.includes("'@jiesou/dsh-opencode-zen-free-provider'")) {
+    throw new Error('OpenCode Zen Free provider must be mounted in the packaged desktop and Stable profile.')
+  }
+  if (/opencode2dsh|@zerowallscience\/plugin-opencode/u.test(desktopPatch + stableProfile)) {
+    throw new Error('Retired local OpenCode provider must not be mounted or selected.')
   }
 }
 
-function verifyOpenCode2DshRuntime(source) {
-  for (const marker of ['opencode2dsh', 'Bearer public', 'models-dev-cache.json', 'x-opencode-session', 'probeModel']) {
-    if (!source.includes(marker)) throw new Error(`OpenCode runtime is missing opencode2dsh marker: ${marker}`)
+async function verifyOpenCodeSettings(page, settings, root) {
+  try {
+    await settings.getByRole('button', { name: '模型', exact: true }).click()
+    await settings.getByRole('heading', { name: '模型', exact: true }).waitFor({ state: 'visible', timeout: 30_000 })
+    await settings.getByText('OpenCode Zen Free', { exact: true }).first().waitFor({ state: 'visible', timeout: 60_000 })
+    await settings.getByRole('button', { name: '检测全部模型', exact: true }).waitFor({ state: 'visible' })
+    const model = settings.locator('li').filter({ has: page.locator('[title="mimo-v2.5-free"]') }).first()
+    await model.waitFor({ state: 'visible', timeout: 60_000 })
+    await model.getByRole('button', { name: /^检测 /u }).waitFor({ state: 'visible' })
+    await waitForModelAvailability(model, 60_000).catch(async () => {
+      await model.getByRole('button', { name: /^检测 /u }).click()
+      await waitForModelAvailability(model, 120_000)
+    })
+    if (!await model.getByText('可用', { exact: true }).isVisible()) throw new Error('mimo-v2.5-free did not render the available status')
+    await page.screenshot({ path: resolve(root, 'settings-models-opencode-zen-free.png'), fullPage: true })
+    console.log(`Packaged OpenCode Zen Free model settings and detection controls verified. Evidence: ${root}`)
+  } catch (error) {
+    await page.screenshot({ path: resolve(root, 'settings-models-opencode-failure.png'), fullPage: true })
+    await writeFile(resolve(root, 'settings-models-opencode-failure.txt'), await page.locator('body').innerText())
+    throw new Error(`${error.message}\nOpenCode settings evidence: ${root}`)
   }
-  if (source.includes('OPENCODE_API_KEY')) throw new Error('OpenCode runtime must not depend on the retired OPENCODE_API_KEY route.')
+}
+
+async function verifyOpenCodeConversationSelector(page, root) {
+  try {
+    const trigger = page.getByRole('button', { name: /^(选择模型，当前|Select model, current)/u }).first()
+    await trigger.waitFor({ state: 'visible', timeout: 30_000 })
+    await trigger.click()
+    const menu = page.getByRole('menu', { name: /^(模型与推理等级|Model and reasoning effort)$/u })
+    await menu.waitFor({ state: 'visible' })
+    await menu.getByRole('menuitem', { name: /^(模型|Model)\s/u }).click()
+    const group = menu.getByRole('group', { name: 'OpenCode Zen Free', exact: true })
+    await group.waitFor({ state: 'visible', timeout: 60_000 })
+    const model = group.getByRole('menuitemradio', { name: 'MiMo V2.5 Free', exact: true })
+    await model.waitFor({ state: 'visible' })
+    await model.scrollIntoViewIfNeeded()
+    await page.screenshot({ path: resolve(root, 'conversation-models-opencode-zen-free.png'), fullPage: true })
+    await page.keyboard.press('Escape')
+    console.log(`Packaged conversation model selector includes OpenCode Zen Free. Evidence: ${root}`)
+  } catch (error) {
+    await page.screenshot({ path: resolve(root, 'conversation-models-opencode-failure.png'), fullPage: true })
+    await writeFile(resolve(root, 'conversation-models-opencode-failure.txt'), await page.locator('body').innerText())
+    throw new Error(`${error.message}\nOpenCode conversation selector evidence: ${root}`)
+  }
+}
+
+async function waitForModelAvailability(model, timeout) {
+  const deadline = Date.now() + timeout
+  while (Date.now() < deadline) {
+    if (await model.getAttribute('data-status') === 'available') return
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 250))
+  }
+  throw new Error(`mimo-v2.5-free remained ${await model.getAttribute('data-status') ?? 'unknown'}`)
 }
 
 async function pluginManifestPaths() {

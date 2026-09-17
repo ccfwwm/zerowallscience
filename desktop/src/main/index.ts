@@ -303,7 +303,9 @@ function ensureTray(): void {
 async function showSplash(): Promise<void> {
   const window = mainWindow ?? createWindow()
   ensureTray()
-  await window.loadFile(resourcePath('splash.html'), { query: { icon: pathToFileURL(desktopIconPath()).href } })
+  await window.loadFile(resourcePath('splash.html'), {
+    query: { icon: pathToFileURL(desktopIconPath()).href, version: app.getVersion() },
+  })
   if (!window.isDestroyed()) window.show()
 }
 
@@ -521,46 +523,49 @@ if (ownsInstance) app.whenReady().then(async () => {
     await writeFile(path, data, { flag: 'wx' })
     return copyWindowsFile(path)
   })
-  let deletingSession = false
+  const deletingSessions = new Map<string, Promise<boolean>>()
   ipcMain.handle('desktop:delete-session', async (event, input: { sessionId?: unknown; title?: unknown; language?: unknown }) => {
-    if (event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame || !validSessionId(input?.sessionId) || !runtime || deletingSession) return false
+    if (event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame || !validSessionId(input?.sessionId) || !runtime) return false
+    const pending = deletingSessions.get(input.sessionId)
+    if (pending) return pending
+    const sessionId = input.sessionId
     const window = mainWindow
     const activeRuntime = runtime
     const zh = input.language !== 'en'
     const title = typeof input.title === 'string' ? input.title.slice(0, 200) : input.sessionId
     const label = (cn: string, en: string) => zh ? cn : en
-    deletingSession = true
+    async function sessionDeleteRpc<T>(method: string, request: object): Promise<T> {
+      if (activeRuntime.snapshot().phase !== 'ready') throw new Error(label('工作台尚未就绪。', 'The workbench is not ready.'))
+      const body = { type: 'client-request', rpcId: crypto.randomUUID(), method: `session/${method}`, payload: { args: { request } } }
+      const result = await window.webContents.executeJavaScript(`(async () => {
+        const response = await fetch(${JSON.stringify(`/api/session/${method}`)}, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: ${JSON.stringify(JSON.stringify(body))} });
+        return response.json();
+      })()`)
+      if (!result?.result?.ok) throw new Error(result?.result?.error?.message ?? label('会话操作失败。', 'Session operation failed.'))
+      return result.result.value as T
+    }
+    const operation = (async () => {
     try {
       return await deleteStoredSession({
-        root: join(userData, 'harness', 'sessions'), sessionId: input.sessionId,
-        assertIdle: async () => {
-          if (activeRuntime.snapshot().phase !== 'ready') throw new Error(label('工作台尚未就绪。', 'The workbench is not ready.'))
-          const result = await window.webContents.executeJavaScript(`(async () => {
-            const response = await fetch('/api/session/list', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ type: 'client-request', rpcId: crypto.randomUUID(), method: 'session/list', payload: { args: { _request: {} } } }) });
-            return response.json();
-          })()`)
-          if (!result?.result?.ok || !Array.isArray(result.result.value?.items)) throw new Error(label('无法检查会话状态，请重试。', 'Could not check session status. Please retry.'))
-          if (result.result.value.items.some((item: { running?: boolean }) => item.running)) throw new Error(label('请等待正在运行的任务完成后再删除会话。', 'Wait for running tasks to finish before deleting a session.'))
-        },
+        root: join(userData, 'harness', 'sessions'), sessionId,
+        prepare: () => sessionDeleteRpc('prepareDelete', { sessionId: input.sessionId }),
+        commit: token => sessionDeleteRpc('commitDelete', { sessionId: input.sessionId, token }),
+        abort: token => sessionDeleteRpc('abortDelete', { sessionId: input.sessionId, token }),
         confirm: async () => (await dialog.showMessageBox(window, {
           type: 'warning', title: label('删除会话', 'Delete session'),
           message: label(`确定删除“${title}”？`, `Delete “${title}”?`),
-          detail: label('此会话的本地记录将移至系统回收站，工作台会刷新。工作区文件和其他会话不会删除。', 'This session’s local records will move to the Recycle Bin and the workbench will refresh. Workspace files and other sessions are kept.'),
+          detail: label('此会话的本地记录将移至系统回收站。工作区文件和其他会话不会删除。', 'This session’s local records will move to the Recycle Bin. Workspace files and other sessions are kept.'),
           buttons: [label('取消', 'Cancel'), label('删除会话', 'Delete session')], defaultId: 0, cancelId: 0, noLink: true,
         })).response === 1,
-        stop: async () => {
-          publishStartup({ phase: 'starting', progress: 20, startedAt: Date.now(), message: label('正在删除会话并刷新工作台', 'Deleting session and refreshing the workbench') })
-          await showSplash()
-          await activeRuntime.stop()
-        },
         trash: path => shell.trashItem(path),
-        start: () => activeRuntime.start(join(userData, 'workspace')),
       })
     } catch (error) {
       await dialog.showMessageBox(window, { type: 'error', message: label('无法删除会话', 'Could not delete session'), detail: error instanceof Error ? error.message : String(error) })
       return false
-    } finally { deletingSession = false }
+    } finally { deletingSessions.delete(sessionId) }
+    })()
+    deletingSessions.set(sessionId, operation)
+    return operation
   })
   ipcMain.handle('desktop:clipboard-copy-text', async (_event, value: unknown) => {
     if (typeof value !== 'string' || value.length > 2_000_000) return false

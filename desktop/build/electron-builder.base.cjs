@@ -6,6 +6,8 @@ const common = {
     '**/*.exe',
     '**/node-pty/**/*',
     '**/sharp/**/*',
+    '**/@zerowallscience/integrity-runtime/**/*',
+    '**/dsh-univer-office/**/*',
     '**/koffi/**/*',
     '**/@koromix/koffi-*/*',
     '**/@koromix/koffi-*/**/*',

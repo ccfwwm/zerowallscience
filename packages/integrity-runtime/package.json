@@ -1,0 +1,19 @@
+{
+  "name": "@zerowallscience/integrity-runtime",
+  "version": "6.2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./worker": "./hash-worker.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "hash-worker.mjs",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "jimp": "1.6.1",
+    "sharp": "0.35.3",
+    "pdf-lib": "1.17.1"
+  }
+}

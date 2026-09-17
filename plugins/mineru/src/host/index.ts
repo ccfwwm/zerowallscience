@@ -68,7 +68,27 @@ async function remoteParse(cfg: MineruConfig, api: MineruApi, token: string | un
     } const state = String(data.state ?? ''); if (state !== 'done' && state !== 'failed') continue; if (state === 'failed') throw new Error(String(data.err_msg ?? 'MinerU 解析失败。')); if (api === 'precision') { const zipUrl = typeof data.full_zip_url === 'string' ? data.full_zip_url : undefined; return zipUrl ? { ...(taskId ? { taskId } : {}), archive: await downloadBytes(zipUrl, signal) } : { ...(taskId ? { taskId } : {}) } } const markdownUrl = typeof data.markdown_url === 'string' ? data.markdown_url : undefined; if (!markdownUrl) return { ...(taskId ? { taskId } : {}) }; return { ...(taskId ? { taskId } : {}), markdown: new TextDecoder().decode(await downloadBytes(markdownUrl, signal, 64 * 1024 * 1024)) }
   }
 }
-async function writeResult(cfg: MineruConfig, sessionId: string, cwd: string, sourceName: string, api: MineruApi, taskId: string | undefined, markdown: string | undefined, archive: Uint8Array | undefined, started: number): Promise<MineruParseResult> { const dir = resolve(cwd, cfg.artifactRootName, 'artifacts', `run-${Date.now()}-${randomUUID().slice(0, 8)}`); await mkdir(dir, { recursive: true }); if (archive) await extractZip(archive, dir); const text = markdown ?? await readFile(resolve(dir, 'full.md'), 'utf8').catch(() => '# MinerU 解析结果\n\n服务未返回可读 Markdown。'); await writeFile(resolve(dir, 'full.md'), text, 'utf8'); await writeFile(resolve(dir, 'run.json'), JSON.stringify({ plugin: 'zerowall-mineru', sessionId, source: sourceName, api, taskId: taskId ?? null, createdAt: new Date().toISOString() }, null, 2), 'utf8'); return { ok: true, api, mode: cfg.mode, modelVersion: cfg.modelVersion, ...(taskId ? { taskId } : {}), sourceName, runDir: dir, durationMs: Date.now() - started, preview: preview(text, cfg.inlineMarkdownBytes), artifacts: await artifacts(dir) } }
+async function writeResult(cfg: MineruConfig, sessionId: string, cwd: string, sourceName: string, api: MineruApi, taskId: string | undefined, markdown: string | undefined, archive: Uint8Array | undefined, started: number): Promise<MineruParseResult> {
+  const dir = resolve(cwd, cfg.artifactRootName, 'artifacts', `run-${Date.now()}-${randomUUID().slice(0, 8)}`)
+  await mkdir(dir, { recursive: true })
+  if (archive) await extractZip(archive, dir)
+  const extracted = await artifacts(dir)
+  const markdownFile = extracted.find(item => item.name === 'full.md') ?? extracted.find(item => item.kind === 'markdown')
+  const text = markdown ?? (markdownFile ? await readFile(markdownFile.path, 'utf8') : undefined)
+  if (!text?.trim()) throw new Error('MinerU 未返回可读 Markdown；解析未完成，请保留任务编号后重试。')
+  // Preserve relative image links when an upstream archive contains a nested directory.
+  const markdownPath = markdownFile?.path ?? resolve(dir, 'full.md')
+  if (!markdownFile || markdown !== undefined) await writeFile(markdownPath, text, 'utf8')
+  const files = await artifacts(dir)
+  const manifestPath = resolve(dir, 'parse-manifest.json')
+  await writeFile(manifestPath, JSON.stringify({ schema: 1, parser: 'mineru', source: sourceName, api, taskId: taskId ?? null,
+    markdown: markdownPath, images: files.filter(item => item.kind === 'image').map(item => item.path),
+    contentList: files.find(item => item.name.endsWith('_content_list.json'))?.path ?? null,
+    artifacts: files.map(item => ({ path: item.path, checksum: item.checksum })) }, null, 2), 'utf8')
+  await writeFile(resolve(dir, 'run.json'), JSON.stringify({ plugin: 'zerowall-mineru', sessionId, source: sourceName, api, taskId: taskId ?? null, createdAt: new Date().toISOString() }, null, 2), 'utf8')
+  return { ok: true, api, mode: cfg.mode, modelVersion: cfg.modelVersion, ...(taskId ? { taskId } : {}), sourceName, runDir: dir,
+    durationMs: Date.now() - started, preview: preview(text, cfg.inlineMarkdownBytes), artifacts: await artifacts(dir) }
+}
 
 declare module '@deepseek-ai/cordis' { interface Context { zerowallMineru: ZeroWallMineruService } }
 export class ZeroWallMineruService extends TypertRemoteService {

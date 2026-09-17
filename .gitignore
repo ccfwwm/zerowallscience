@@ -20,6 +20,8 @@ test-results/
 *.log
 /.sessions/
 /.tmp/
+/.upstream/
+/data/cache/
 # local session / recordings (never commit)
 .claude/
 cladue_science.mp4

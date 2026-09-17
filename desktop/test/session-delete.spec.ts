@@ -2,57 +2,63 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, rename, symlink } from 'node:f
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { deleteStoredSession, findSessionDirectory } from '../src/main/session-delete.js'
+import { deleteStoredSession, validateSessionDirectory } from '../src/main/session-delete.js'
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'zerowall-delete-'))
   const sessions = join(root, 'sessions')
   const target = join(sessions, 'project', 'session-one')
   const other = join(sessions, 'project', 'session-two')
-  for (const [path, id] of [[target, 'session-one'], [other, 'session-two']]) {
-    await mkdir(path!, { recursive: true }); await writeFile(join(path!, 'session.v3.jsonl'), JSON.stringify({ id }) + '\n')
+  for (const path of [target, other]) {
+    await mkdir(path, { recursive: true }); await writeFile(join(path, 'session.v5.jsonl'), 'history')
   }
-  return { root, sessions, target, other, close: () => rm(root, { recursive: true, force: true }) }
+  const calls: string[] = []
+  const ops = { root: sessions, sessionId: 'session-one', confirm: async () => { calls.push('confirm'); return true },
+    prepare: async () => { calls.push('prepare'); return { token: 'lease', path: target } },
+    commit: async (token: string) => { expect(token).toBe('lease'); calls.push('commit') },
+    abort: async () => { calls.push('abort') },
+    trash: async (path: string) => { calls.push('trash'); await rename(path, join(root, 'recycle')) } }
+  return { root, sessions, target, other, calls, ops, close: () => rm(root, { recursive: true, force: true }) }
 }
 
-describe('confirmed desktop session deletion', () => {
-  it('cancel never stops the Host or changes either session', async () => {
-    const f = await fixture(); const calls: string[] = []
-    try {
-      expect(await deleteStoredSession({ root: f.sessions, sessionId: 'session-one', assertIdle: async () => {}, confirm: async () => false,
-        stop: async () => { calls.push('stop') }, start: async () => { calls.push('start') }, trash: async () => { calls.push('trash') } })).toBe(false)
-      expect(calls).toEqual([]); expect(await findSessionDirectory(f.sessions, 'session-one')).toBe(f.target)
-    } finally { await f.close() }
-  })
-  it('rechecks activity, stops writers, removes only the chosen session and restarts', async () => {
-    const f = await fixture(); const calls: string[] = []
-    try {
-      await deleteStoredSession({ root: f.sessions, sessionId: 'session-one', assertIdle: async () => { calls.push('idle') }, confirm: async () => { calls.push('confirm'); return true },
-        stop: async () => { calls.push('stop') }, start: async () => { calls.push('start') }, trash: async path => { calls.push('trash'); await rename(path, join(f.root, 'recycle')) } })
-      expect(calls).toEqual(['idle', 'confirm', 'idle', 'stop', 'trash', 'start'])
-      await expect(findSessionDirectory(f.sessions, 'session-one')).rejects.toThrow('not found')
-      expect(await readFile(join(f.other, 'session.v3.jsonl'), 'utf8')).toContain('session-two')
-    } finally { await f.close() }
-  })
-  it('running task after confirmation blocks deletion; failed trash restarts the Host', async () => {
-    const f = await fixture(); let checks = 0; let stopped = false; let restarted = false
-    const ops = { root: f.sessions, sessionId: 'session-one', confirm: async () => true,
-      stop: async () => { stopped = true }, start: async () => { restarted = true }, trash: async () => { throw new Error('trash failed') } }
-    try {
-      await expect(deleteStoredSession({ ...ops, assertIdle: async () => { if (++checks === 2) throw new Error('busy') } })).rejects.toThrow('busy')
-      expect(stopped).toBe(false)
-      await expect(deleteStoredSession({ ...ops, assertIdle: async () => {} })).rejects.toThrow('trash failed')
-      expect(restarted).toBe(true); expect(await findSessionDirectory(f.sessions, 'session-one')).toBe(f.target)
-    } finally { await f.close() }
-  })
-  it('rejects path traversal, mismatched headers and junctions', async () => {
+describe('local session deletion without restarting the Host', () => {
+  it('cancellation performs no Host or filesystem operation', async () => {
     const f = await fixture()
     try {
-      await expect(findSessionDirectory(f.sessions, '../project')).rejects.toThrow('Invalid')
-      await writeFile(join(f.target, 'session.v3.jsonl'), '{"id":"wrong"}\n')
-      await expect(findSessionDirectory(f.sessions, 'session-one')).rejects.toThrow('does not match')
-      await symlink(f.other, join(f.sessions, 'project', 'session-link'), 'junction')
-      await expect(findSessionDirectory(f.sessions, 'session-link')).rejects.toThrow('outside')
+      expect(await deleteStoredSession({ ...f.ops, confirm: async () => false })).toBe(false)
+      expect(f.calls).toEqual([])
+      expect(await readFile(join(f.target, 'session.v5.jsonl'), 'utf8')).toBe('history')
+    } finally { await f.close() }
+  })
+  it('prepares only the target and commits after the OS move', async () => {
+    const f = await fixture()
+    try {
+      expect(await deleteStoredSession(f.ops)).toBe(true)
+      expect(f.calls).toEqual(['confirm', 'prepare', 'trash', 'commit'])
+      expect(await readFile(join(f.other, 'session.v5.jsonl'), 'utf8')).toBe('history')
+      expect(await readFile(join(f.root, 'recycle', 'session.v5.jsonl'), 'utf8')).toBe('history')
+    } finally { await f.close() }
+  })
+  it('busy target never reaches trash and trash failure aborts the lease', async () => {
+    const f = await fixture()
+    try {
+      await expect(deleteStoredSession({ ...f.ops, prepare: async () => { throw new Error('busy') } })).rejects.toThrow('busy')
+      expect(f.calls).toEqual(['confirm'])
+      f.calls.length = 0
+      await expect(deleteStoredSession({ ...f.ops, trash: async () => { throw new Error('trash failed') } })).rejects.toThrow('trash failed')
+      expect(f.calls).toEqual(['confirm', 'prepare', 'abort'])
+      expect(await readFile(join(f.target, 'session.v5.jsonl'), 'utf8')).toBe('history')
+    } finally { await f.close() }
+  })
+  it('rejects outside paths, another session, traversal and junctions', async () => {
+    const f = await fixture()
+    try {
+      await expect(validateSessionDirectory(f.sessions, '../project', f.target)).rejects.toThrow('Invalid')
+      await expect(validateSessionDirectory(f.sessions, 'session-one', f.other)).rejects.toThrow('Invalid')
+      await expect(validateSessionDirectory(f.sessions, 'session-one', f.root)).rejects.toThrow('Invalid')
+      const link = join(f.sessions, 'project', 'session-link')
+      await symlink(f.other, link, 'junction')
+      await expect(validateSessionDirectory(f.sessions, 'session-link', link)).rejects.toThrow('Invalid')
     } finally { await f.close() }
   })
 })

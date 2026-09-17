@@ -97,5 +97,29 @@
     "commit": "9635a4f27ba186f414d3ba23042bd12ee176cddc",
     "license": "MIT",
     "source": "packages/zotero-harvest"
+  },
+  "researchIntegrity": {
+    "manusift": {
+      "repository": "https://github.com/WuP1ao0/ManuSift",
+      "commit": "2622d024ad27791196eb86bad51a9fe7bb0bb268",
+      "source": "resources/skills/zerowall-image-dup/scripts/vendor/manusift"
+    },
+    "imageRegionWorker": {
+      "repository": "https://github.com/PetCT/dsh-Bio-image-dup-check",
+      "commit": "7051eb55f611a46db3d9cfa1768e56c7d1a91553",
+      "source": "packages/integrity-runtime/hash-worker.mjs"
+    }
+  },
+  "openCodeZenFree": {
+    "repository": "https://github.com/jiesou/dsh-opencode-zen-free-provider",
+    "version": "0.1.18",
+    "commit": "3226693d041feb5c67e5899f8ee7e43756c844dd",
+    "integrity": "sha512-UxIc2XvXh9+v6Q28h0LUiUZvnqzCrVxKHYijly12xt9CRlGJh1OVUPLl7JLFO1eH0tZt/bM8bh47bB4Pr9MDXQ==",
+    "license": "MIT"
+  },
+  "univerOffice": {
+    "repository": "https://github.com/dream-num/dsh-univer-office",
+    "version": "0.3.2",
+    "telemetry": false
   }
 }

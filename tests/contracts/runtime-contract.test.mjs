@@ -2,8 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { access, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { createRequire } from 'node:module'
 
 const root = resolve(import.meta.dirname, '../..')
+const { parse: parseYaml } = createRequire(resolve(root, 'deepseek-harness/packages/settings/settings-file/package.json'))('yaml')
 
 test('stable profile pins rc.2 and includes the bundled WeChat plugin', async () => {
   const profile = await readFile(resolve(root, 'profiles/generated/stable.yml'), 'utf8')
@@ -47,7 +49,7 @@ test('Dream Skin is a single pinned theme layer loaded before ZeroWall UI', asyn
 })
 
 test('ZeroWall domain clients do not duplicate better-sidebar tabs', async () => {
-  const clients = ['account', 'ai-cloud', 'execution', 'images', 'mcp', 'presentations', 'projects', 'publications', 'research', 'reviewer', 'runs', 'skills', 'wechat']
+  const clients = ['account', 'ai-cloud', 'execution', 'images', 'mcp', 'projects', 'publications', 'research', 'reviewer', 'runs', 'skills', 'wechat']
   for (const name of clients) {
     const source = await readFile(resolve(root, `plugins/${name}/src/client/index.ts`), 'utf8')
     assert.doesNotMatch(source, /registerDomainSidebarTab/u, `${name} must not register a duplicate domain tab`)
@@ -56,7 +58,7 @@ test('ZeroWall domain clients do not duplicate better-sidebar tabs', async () =>
 })
 
 test('domain clients declare conversation when they access the composer service', async () => {
-  for (const name of ['images', 'presentations']) {
+  for (const name of ['images']) {
     const manifest = JSON.parse(await readFile(resolve(root, `plugins/${name}/package.json`), 'utf8'))
     assert.ok(manifest.dsh.client.inject.includes('conversation'), `${name} client must inject conversation`)
   }
@@ -85,7 +87,7 @@ test('desktop image limits fit inside the buffered client connection carrier', a
 })
 
 test('all ZeroWall plugins expose a manifest and rc.2 range', async () => {
-  const names = ['base', 'opencode', 'desktop-compat', 'secrets', 'environment', 'mineru', 'projects', 'account', 'ai-cloud', 'files', 'images', 'image-dup', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'presentations', 'singlecell']
+  const names = ['base', 'desktop-compat', 'secrets', 'environment', 'mineru', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mcp', 'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications', 'singlecell']
   for (const name of names) {
     const manifest = JSON.parse(await readFile(resolve(root, `plugins/${name}/zerowall.plugin.json`), 'utf8'))
     assert.match(manifest.name, /^@zerowallscience\/plugin-/)
@@ -126,8 +128,53 @@ test('the pinned dsh-free-search package uses current client services and has no
   for (const marker of ['advanced_search', 'platform_search', 'free_search_test']) assert.match(host, new RegExp(marker, 'u'))
   assert.match(client, /free-search-engine/u)
 
-  const lockfile = await readFile(resolve(root, 'pnpm-lock.yaml'), 'utf8')
-  assert.match(lockfile, /dsh-free-search@0\.4\.28:\s+resolution: \{integrity: sha512-USN\/rV\/Yf1LjrHWFMn8RT6MBuugu5sYCjbG\+MKgg6jd4FCqDmi47V4SnD\+8fjJ43XZHXc0D5b\+QejL2hj3WhWQ==\}/u)
+  const lockfile = parseYaml(await readFile(resolve(root, 'pnpm-lock.yaml'), 'utf8'))
+  assert.equal(lockfile.packages['dsh-free-search@0.4.28'].resolution.integrity,
+    'sha512-USN/rV/Yf1LjrHWFMn8RT6MBuugu5sYCjbG+MKgg6jd4FCqDmi47V4SnD+8fjJ43XZHXc0D5b+QejL2hj3WhWQ==')
+})
+
+test('About remains the final Settings navigation section', async () => {
+  const source = await readFile(resolve(root, 'plugins/base/src/client/index.ts'), 'utf8')
+  assert.match(source, /id: 'zerowall-about', order: Number\.MAX_SAFE_INTEGER/u)
+})
+
+test('OpenCode Zen Free is pinned once and keeps the existing default model', async () => {
+  const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
+  const integrations = JSON.parse(await readFile(resolve(root, 'config/integrations/upstream-sources.json'), 'utf8'))
+  assert.equal(desktop.dependencies['@jiesou/dsh-opencode-zen-free-provider'], '0.1.18')
+  assert.equal(desktop.devDependencies['@earendil-works/pi-ai'], '0.85.1')
+  assert.deepEqual(integrations.openCodeZenFree, {
+    repository: 'https://github.com/jiesou/dsh-opencode-zen-free-provider',
+    version: '0.1.18',
+    commit: '3226693d041feb5c67e5899f8ee7e43756c844dd',
+    integrity: 'sha512-UxIc2XvXh9+v6Q28h0LUiUZvnqzCrVxKHYijly12xt9CRlGJh1OVUPLl7JLFO1eH0tZt/bM8bh47bB4Pr9MDXQ==',
+    license: 'MIT',
+  })
+
+  const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
+  assert.equal((patch.match(/name: '@jiesou\/dsh-opencode-zen-free-provider'/gu) ?? []).length, 1)
+  assert.match(patch, /- id: agent-default-model\s+config:\s+provider: deepseek-official\s+model: deepseek-v4-flash/u)
+  assert.doesNotMatch(patch, /opencode2dsh|@zerowallscience\/plugin-opencode/u)
+  for (const profile of ['development', 'preview', 'stable']) {
+    const source = await readFile(resolve(root, `profiles/generated/${profile}.yml`), 'utf8')
+    assert.equal((source.match(/'@jiesou\/dsh-opencode-zen-free-provider'/gu) ?? []).length, 1)
+    assert.doesNotMatch(source, /opencode2dsh|@zerowallscience\/plugin-opencode/u)
+  }
+
+  const manifest = JSON.parse(await readFile(resolve(root, 'desktop/node_modules/@jiesou/dsh-opencode-zen-free-provider/package.json'), 'utf8'))
+  assert.equal(manifest.version, '0.1.18')
+  assert.equal(manifest.license, 'MIT')
+  const host = await readFile(resolve(root, 'desktop/node_modules/@jiesou/dsh-opencode-zen-free-provider/lib/index.js'), 'utf8')
+  assert.match(host, /registration\.replace\(\[PROVIDER\]\)/u)
+
+  const lockfile = parseYaml(await readFile(resolve(root, 'pnpm-lock.yaml'), 'utf8'))
+  assert.equal(lockfile.packages['@jiesou/dsh-opencode-zen-free-provider@0.1.18'].resolution.integrity,
+    integrations.openCodeZenFree.integrity)
+  assert.equal(lockfile.patchedDependencies['@jiesou/dsh-opencode-zen-free-provider@0.1.18'],
+    '9d8a3e59d5bff5711f403de7df9cbd0cdbb160e74f311443cee42e43924a7e7c')
+  const providerSnapshot = Object.entries(lockfile.snapshots)
+    .find(([key]) => key.startsWith('@jiesou/dsh-opencode-zen-free-provider@0.1.18('))?.[1]
+  assert.equal(providerSnapshot?.dependencies?.['@deepseek-ai/schemastery'], 'link:deepseek-harness/vendor/schemastery')
 })
 
 test('dynamic client bundles use the DSH classic-script ModuleLoader contract', async () => {

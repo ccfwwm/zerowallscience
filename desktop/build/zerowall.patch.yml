@@ -54,23 +54,14 @@
     searchProvider: ddg
     fetchProvider: http
 
-# opencode2dsh is the anonymous, free default. It authenticates with the
-# upstream literal `public`, refreshes the free catalog in the background, and
-# keeps a verified static fallback so startup never depends on account setup.
+# Titles use local first-prompt fallback until a configured account route exists.
 - id: session-title-llm
-  config:
-    targetWords: 5
-    targetCjkCharacters: 10
-    maxInputBytes: 4096
-    maxOutputTokens: 64
-    timeoutMs: 60000
-    provider: opencode2dsh
-    model: big-pickle
+  disabled: true
 
 - id: agent-default-model
   config:
-    provider: opencode2dsh
-    model: big-pickle
+    provider: deepseek-official
+    model: deepseek-v4-flash
 
 # Both local coding assistants are installed on the desktop and their DSH
 # provider bundles are part of the runtime closure. Keep their tools enabled
@@ -151,6 +142,11 @@
     - id: better-sidebar-office
       name: '@huanlin/dsh-plugin-better-sidebar-plugin-office'
 
+    - id: univer-office
+      name: 'dsh-univer-office'
+      config:
+        telemetry: false
+
     - id: zotero
       name: 'dsh-zotero'
 
@@ -191,8 +187,10 @@
     - id: zerowall-ai-cloud-llm
       name: '@zerowallscience/plugin-ai-cloud'
 
-    - id: zerowall-opencode
-      name: '@zerowallscience/plugin-opencode'
+    # Anonymous OpenCode Zen route. The provider owns dynamic free-model
+    # discovery and publishes an adapter update after its one-shot sync.
+    - id: opencode-zen-free-provider
+      name: '@jiesou/dsh-opencode-zen-free-provider'
 
     - id: web-search-free
       name: 'dsh-free-search'
@@ -211,8 +209,6 @@
     - id: zerowall-image-generation
       name: '@zerowallscience/plugin-images'
 
-    - id: zerowall-image-dup
-      name: '@zerowallscience/plugin-image-dup'
 
     - id: zerowall-research
       name: '@zerowallscience/plugin-research'
@@ -238,8 +234,6 @@
     - id: zerowall-publication
       name: '@zerowallscience/plugin-publications'
 
-    - id: zerowall-presentation
-      name: '@zerowallscience/plugin-presentations'
 
     - id: zerowall-skills-plugin
       name: '@zerowallscience/plugin-skills'

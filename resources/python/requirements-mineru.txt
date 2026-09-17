@@ -1,6 +1,7 @@
 # Heavy, opt-in document parsing layer. Keep outside the minimal MCP profile.
 -r requirements-science.txt
 mineru>=2,<3
-opencv-python>=4.9,<5
+# Install this profile in an independent environment; do not overlay the shared runtime.
+opencv-python-headless>=4.9,<5
 torch>=2.2,<3
 transformers>=4.40,<5

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "6.1.0",
+  "version": "6.2.0",
   "description": "ZeroWall Science 4.3 local-first scientific research workbench with the DSH better-sidebar workbench.",
   "private": true,
   "type": "module",
@@ -23,6 +23,7 @@
     "package:stable:mac:arm64": "node scripts/verify-target.mjs darwin arm64 && electron-builder --config build/electron-builder.stable.cjs --mac --arm64 --publish never && node scripts/verify-packaged-runtime.mjs"
   },
   "dependencies": {
+    "@jiesou/dsh-opencode-zen-free-provider": "0.1.18",
     "dsh-auto-review": "workspace:*",
     "@changfenhuang/dsh-genui": "workspace:*",
     "dsh-better-sidebar-icons": "workspace:*",
@@ -32,7 +33,6 @@
     "@huanlin/dsh-plugin-better-sidebar-plugin-office": "github:HuanLinOTO/dsh-plugin-better-sidebar-plugin-office#3b881c9d002109444368b1a28d371663390b156b",
     "dsh-zotero": "0.8.4",
     "dsh-dream-skin": "9.13.1",
-    "@zerowallscience/dsh-ppt-runtime": "workspace:^",
     "@zerowallscience/plugin-account": "workspace:^",
     "@zerowallscience/plugin-ai-cloud": "workspace:^",
     "@zerowallscience/plugin-base": "workspace:^",
@@ -41,10 +41,8 @@
     "@zerowallscience/plugin-environment": "workspace:^",
     "@zerowallscience/plugin-files": "workspace:^",
     "@zerowallscience/plugin-images": "workspace:^",
-    "@zerowallscience/plugin-image-dup": "workspace:^",
     "@zerowallscience/plugin-mineru": "workspace:^",
     "@zerowallscience/plugin-mcp": "workspace:^",
-    "@zerowallscience/plugin-presentations": "workspace:^",
     "@zerowallscience/plugin-projects": "workspace:^",
     "@zerowallscience/plugin-publications": "workspace:^",
     "@zerowallscience/plugin-python": "workspace:^",
@@ -58,12 +56,14 @@
     "dsh-progressive-tools": "workspace:*",
     "@dingyi222666/dsh-session-notification": "workspace:*",
     "dsh-ssh-ops": "workspace:*",
-    "@dsh-external/zotero-harvest": "workspace:*"
+    "@dsh-external/zotero-harvest": "workspace:*",
+    "dsh-univer-office": "0.3.2",
+    "@zerowallscience/integrity-runtime": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis-plugin-group": "workspace:^",
     "@deepseek-ai/dsh": "workspace:^",
-    "@earendil-works/pi-ai": "0.82.1",
+    "@earendil-works/pi-ai": "0.85.1",
     "@electron/asar": "3.4.1",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@pdf-lib/fontkit": "1.1.1",

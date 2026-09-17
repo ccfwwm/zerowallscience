@@ -3,12 +3,12 @@
   "platform": "win32",
   "architecture": "x64",
   "python": "3.12",
-  "generatedAt": "2026-09-13T08:08:58.083Z",
+  "generatedAt": "2026-09-17T05:40:24.825Z",
   "summary": {
-    "ready": 92,
+    "ready": 93,
     "managed": 19,
     "optional": 108,
-    "external": 19,
+    "external": 18,
     "incompatible": 2
   },
   "skills": [
@@ -5455,79 +5455,39 @@
       "requirements": []
     },
     {
-      "name": "zerowall-ketcher",
-      "path": "zerowall-ketcher",
-      "status": "ready",
-      "reason": "No additional managed Python package is required.",
-      "detectedImports": [],
-      "requirements": []
-    },
-    {
-      "name": "zerowall-literature",
-      "path": "zerowall-literature",
+      "name": "zerowall-image-dup",
+      "path": "zerowall-image-dup",
       "status": "optional",
       "detectedImports": [
+        "PIL",
         "__future__",
         "argparse",
-        "concurrent",
-        "contextlib",
-        "csv",
-        "ctypes",
+        "base64",
         "dataclasses",
-        "datetime",
-        "difflib",
-        "fcntl",
         "fitz",
         "hashlib",
         "html",
         "importlib",
         "json",
-        "literature_pipeline",
-        "matplotlib",
-        "mimetypes",
-        "msvcrt",
-        "openpyxl",
+        "manusift",
+        "markdown",
         "os",
-        "paper_download_bridge",
         "pathlib",
-        "playwright",
-        "pypdf",
         "re",
-        "reportlab",
-        "requests",
         "shutil",
         "subprocess",
         "sys",
-        "tempfile",
-        "threading",
-        "time",
-        "typing",
-        "unicodedata",
-        "urllib",
-        "xml"
+        "time"
       ],
       "requirements": [
         {
+          "name": "pillow",
+          "import": "PIL",
+          "status": "managed"
+        },
+        {
           "name": "__future__",
           "import": "__future__",
-          "status": "optional",
-          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
-        },
-        {
-          "name": "ctypes",
-          "import": "ctypes",
-          "status": "optional",
-          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
-        },
-        {
-          "name": "difflib",
-          "import": "difflib",
-          "status": "optional",
-          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
-        },
-        {
-          "name": "fcntl",
-          "import": "fcntl",
           "status": "optional",
           "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
         },
@@ -5537,56 +5497,27 @@
           "status": "managed"
         },
         {
-          "name": "literature_pipeline",
-          "import": "literature_pipeline",
-          "status": "optional",
-          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
-        },
-        {
-          "name": "matplotlib",
-          "import": "matplotlib",
-          "status": "managed"
-        },
-        {
-          "name": "msvcrt",
-          "import": "msvcrt",
-          "status": "optional",
-          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
-        },
-        {
-          "name": "openpyxl",
-          "import": "openpyxl",
-          "status": "managed"
-        },
-        {
-          "name": "paper_download_bridge",
-          "import": "paper_download_bridge",
-          "status": "optional",
-          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
-        },
-        {
-          "name": "playwright",
-          "import": "playwright",
-          "status": "optional",
-          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
-        },
-        {
-          "name": "pypdf",
-          "import": "pypdf",
-          "status": "managed"
-        },
-        {
-          "name": "reportlab",
-          "import": "reportlab",
-          "status": "optional",
-          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
-        },
-        {
-          "name": "requests",
-          "import": "requests",
+          "name": "markdown",
+          "import": "markdown",
           "status": "managed"
         }
       ]
+    },
+    {
+      "name": "zerowall-integrity-report",
+      "path": "zerowall-integrity-report",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
+    },
+    {
+      "name": "zerowall-ketcher",
+      "path": "zerowall-ketcher",
+      "status": "ready",
+      "reason": "No additional managed Python package is required.",
+      "detectedImports": [],
+      "requirements": []
     },
     {
       "name": "zerowall-mcp-guide",
@@ -5597,16 +5528,16 @@
       "requirements": []
     },
     {
-      "name": "zerowall-ppt",
-      "path": "zerowall-ppt",
+      "name": "zerowall-paper-analysis",
+      "path": "zerowall-paper-analysis",
       "status": "ready",
       "reason": "No additional managed Python package is required.",
       "detectedImports": [],
       "requirements": []
     },
     {
-      "name": "zerowall-ppt-rebuild-image",
-      "path": "zerowall-ppt-rebuild-image",
+      "name": "zerowall-paper-compare",
+      "path": "zerowall-paper-compare",
       "status": "ready",
       "reason": "No additional managed Python package is required.",
       "detectedImports": [],
@@ -5651,56 +5582,6 @@
       "reason": "No additional managed Python package is required.",
       "detectedImports": [],
       "requirements": []
-    },
-    {
-      "name": "zerowall-tsg-literature",
-      "path": "zerowall-tsg-literature",
-      "status": "external",
-      "reason": "Requires an external service, account, runtime, hardware, or system executable.",
-      "detectedImports": [
-        "Crypto",
-        "__future__",
-        "argparse",
-        "base64",
-        "dataclasses",
-        "datetime",
-        "json",
-        "os",
-        "pathlib",
-        "re",
-        "requests",
-        "secrets",
-        "sys",
-        "tempfile",
-        "time",
-        "typing",
-        "urllib"
-      ],
-      "requirements": [
-        {
-          "name": "Crypto",
-          "import": "Crypto",
-          "status": "optional",
-          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
-        },
-        {
-          "name": "__future__",
-          "import": "__future__",
-          "status": "optional",
-          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
-        },
-        {
-          "name": "requests",
-          "import": "requests",
-          "status": "managed"
-        },
-        {
-          "name": "secrets",
-          "import": "secrets",
-          "status": "optional",
-          "reason": "Not part of the signed Windows Python 3.12 lock; install or configure it only when this workflow is used."
-        }
-      ]
     }
   ]
 }

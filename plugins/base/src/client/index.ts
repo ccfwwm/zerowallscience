@@ -67,6 +67,6 @@ export async function apply(ctx: ClientContext): Promise<void> {
     inject: () => ({}),
   }, WechatStatusButton))
   ctx.slots.inject('settings.section', () => ctx.slots.register({
-    name: 'settings.section', id: 'zerowall-about', order: 99, locale: NS, label: () => ctx.locale.bind(NS)('about.nav'),
+    name: 'settings.section', id: 'zerowall-about', order: Number.MAX_SAFE_INTEGER, locale: NS, label: () => ctx.locale.bind(NS)('about.nav'),
   }, AboutSection))
 }

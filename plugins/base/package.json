@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-base",
-  "version": "6.1.0",
+  "version": "6.2.0",
   "description": "ZeroWall Science base domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -55,7 +55,6 @@
         "@zerowallscience/plugin-projects",
         "@zerowallscience/plugin-account",
         "@zerowallscience/plugin-files",
-        "@zerowallscience/plugin-image-dup",
         "@zerowallscience/plugin-mcp",
         "@zerowallscience/plugin-skills",
         "@zerowallscience/plugin-research",
@@ -63,8 +62,7 @@
         "@zerowallscience/plugin-singlecell",
         "@zerowallscience/plugin-execution",
         "@zerowallscience/plugin-runs",
-        "@zerowallscience/plugin-publications",
-        "@zerowallscience/plugin-presentations"
+        "@zerowallscience/plugin-publications"
       ],
       "platform": "web"
     }
@@ -152,7 +150,6 @@
     "@zerowallscience/plugin-projects": "workspace:^",
     "@zerowallscience/plugin-account": "workspace:^",
     "@zerowallscience/plugin-files": "workspace:^",
-    "@zerowallscience/plugin-image-dup": "workspace:^",
     "@zerowallscience/plugin-mcp": "workspace:^",
     "@zerowallscience/plugin-skills": "workspace:^",
     "@zerowallscience/plugin-research": "workspace:^",
@@ -161,7 +158,6 @@
     "@zerowallscience/plugin-execution": "workspace:^",
     "@zerowallscience/plugin-runs": "workspace:^",
     "@zerowallscience/plugin-publications": "workspace:^",
-    "@zerowallscience/plugin-presentations": "workspace:^",
     "dsh-file-review": "workspace:*",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0",

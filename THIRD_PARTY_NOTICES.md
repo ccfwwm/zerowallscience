@@ -29,7 +29,6 @@ The 5.9.0 desktop adapts the following pinned plugins. Their original LICENSE fi
 | `@zerowallscience/dsh-ppt-runtime` | [`yejiming/dsh-ppt`](https://github.com/yejiming/dsh-ppt) | `538f23c834056e2b3ab7314524d4b31416803a6b` | MIT |
 | `dsh-office-tools` | [`kw78/dsh-office-tools`](https://github.com/kw78/dsh-office-tools) | `30d063323e01d506a56ea89f4b2925a3a686a9fc` (`v1.0.1`) | MIT |
 | `dsh-free-search@0.4.24` | [`DDDMUC/dsh-free-search`](https://github.com/DDDMUC/dsh-free-search) | `d1beabcf643256d95823a9cb8f06fc8f84a40483` | MIT |
-| `@zerowallscience/plugin-opencode` | [`FishBottle7/opencode2dsh`](https://github.com/FishBottle7/opencode2dsh) | `d5c4ed1c0b084064a317c9b7e798bee322acda91` | MIT |
 
 | `resources/skills/academic-*`, `resources/skills/deep-research`, `resources/skills/ars-*` | [`Imbad0202/academic-research-skills`](https://github.com/Imbad0202/academic-research-skills) `v3.21.2` (`8fa3d651ad45da9e02762a6ba1fa3d1f231f91b6`) via [`nullptr-DZF/dsh-academic-research-skills`](https://github.com/nullptr-DZF/dsh-academic-research-skills) (`a6859a3752cfe582a166ca283c10d3a45e1f9c9c`) | CC-BY-NC-4.0 |
 
@@ -583,3 +582,23 @@ Source: https://github.com/Fisfzy/zotero-harvest
 Version: 0.2.0, commit 9635a4f27ba186f414d3ba23042bd12ee176cddc
 Copyright (c) 2026 Fisfzy. MIT License: packages/zotero-harvest/LICENSE.
 Adapted for the pinned DSH runtime and authenticated Zotero Local API.
+
+## ZeroWall research integrity adapters
+
+ManuSift (WuP1ao0), pinned commit 2622d024ad27791196eb86bad51a9fe7bb0bb268.
+Source: https://github.com/WuP1ao0/ManuSift. License retained at resources/skills/zerowall-image-dup/scripts/vendor/ManuSift.LICENSE.
+The Python source is vendored unchanged; the ZeroWall CLI, normalization, evidence rendering and skills are separate adapters.
+
+The image region worker derives from PetCT/dsh-Bio-image-dup-check, commit 7051eb55f611a46db3d9cfa1768e56c7d1a91553.
+Source: https://github.com/PetCT/dsh-Bio-image-dup-check. MIT license retained at packages/integrity-runtime/LICENSE.
+ZeroWall adds a PNG normalization entry point; detector algorithms retain their upstream implementation.
+
+## dsh-univer-office
+
+Version 0.3.2, Apache-2.0. Source: https://github.com/dream-num/dsh-univer-office.
+Provides Office generation/editing, Gateway, Viewer, and eight bundled skills. Telemetry is disabled in the ZeroWall profile.
+
+## dsh-opencode-zen-free-provider
+
+Version 0.1.18, MIT license. Source: https://github.com/jiesou/dsh-opencode-zen-free-provider/tree/3226693d041feb5c67e5899f8ee7e43756c844dd.
+ZeroWall applies a narrow catalog-generation notification patch so models discovered after Host startup enter the existing health-check pipeline.

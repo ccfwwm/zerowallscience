@@ -1,7 +1,9 @@
 import { createHash, verify } from 'node:crypto'
-import { readFile, stat } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
+import { publishVerifiedAssets } from '../tools/release/publish-verified-assets.mjs'
 
 const require = createRequire(import.meta.url)
 const qiniu = require('qiniu')
@@ -25,23 +27,60 @@ if ((manifest.environmentVersion ?? manifest.version) !== environmentVersion || 
 if (manifest.signature?.algorithm !== 'ed25519' || !publicKeys[manifest.signature.keyId]) throw new Error('MCP manifest must use a trusted Ed25519 key.')
 const { signature, ...unsigned } = manifest
 if (!verify(null, Buffer.from(JSON.stringify(unsigned)), publicKeys[signature.keyId], Buffer.from(signature.value, 'base64'))) throw new Error('MCP manifest signature failed local verification.')
-const archiveBytes = await readFile(resolve(dist, archive))
-if (archiveBytes.byteLength !== manifest.archiveSize || createHash('sha256').update(archiveBytes).digest('hex') !== manifest.archiveSha256) throw new Error('MCP archive does not match its signed manifest.')
+async function hashFile(file) {
+  const hash = createHash('sha256'); let size = 0
+  for await (const chunk of createReadStream(file)) { hash.update(chunk); size += chunk.length }
+  return { size, sha256: hash.digest('hex') }
+}
+const archiveDigest = await hashFile(resolve(dist, archive))
+if (archiveDigest.size !== manifest.archiveSize || archiveDigest.sha256 !== manifest.archiveSha256) throw new Error('MCP archive does not match its signed manifest.')
 const files = [[`stable/zerowall-python/windows-x64/${environmentVersion}/${archive}`, archive, overwriteVersionAssets], [`stable/zerowall-python/windows-x64/${environmentVersion}/manifest.json`, `${environmentVersion}.json`, overwriteVersionAssets], ['stable/zerowall-python/windows-x64/latest.json', 'latest.json', true]]
 const mac = new qiniu.auth.digest.Mac(env.QINIU_ACCESS_KEY, env.QINIU_SECRET_KEY)
 const config = new qiniu.conf.Config(); config.zone = qiniu.zone[`Zone_${env.QINIU_REGION}`] ?? qiniu.zone.Zone_z2
 const uploader = new qiniu.form_up.FormUploader(config)
-function upload(key, file, overwrite) { return new Promise((resolvePromise, reject) => { const policy = new qiniu.rs.PutPolicy({ scope: `${env.QINIU_BUCKET}:${key}`, overwrite }); uploader.putFile(policy.uploadToken(mac), key, resolve(dist, file), new qiniu.form_up.PutExtra(), (error, body, info) => info?.statusCode === 200 ? resolvePromise(body) : reject(error ?? new Error(`Qiniu upload failed for ${key}: HTTP ${info?.statusCode}`))) }) }
-for (const [key, file, overwrite] of files) { const info = await stat(resolve(dist, file)); await upload(key, file, overwrite); const bytes = await readFile(resolve(dist, file)); console.log(`${key}\t${info.size}\t${createHash('sha256').update(bytes).digest('hex')}`) }
-
+const resumeUploader = new qiniu.resume_up.ResumeUploader(config)
+function upload(key, file, overwrite) {
+  return new Promise((resolvePromise, reject) => {
+    const policy = new qiniu.rs.PutPolicy({ scope: `${env.QINIU_BUCKET}:${key}`, insertOnly: overwrite ? 0 : 1, expires: 86400 })
+    const callback = (error, body, info) => info?.statusCode === 200 ? resolvePromise(body) : reject(new Error(`Qiniu upload failed for ${key}: HTTP ${info?.statusCode ?? 'network error'}`))
+    if (file.endsWith('.zip')) {
+      const extra = qiniu.resume_up.PutExtra.create({ resumeRecordFile: resolve(dist, `${file}.upload-progress.json`), version: 'v2' })
+      resumeUploader.putFile(policy.uploadToken(mac), key, resolve(dist, file), extra, callback)
+    } else uploader.putFile(policy.uploadToken(mac), key, resolve(dist, file), new qiniu.form_up.PutExtra(), callback)
+  })
+}
 const publicBase = env.QINIU_DOMAIN.replace(/\/$/u, '')
-const publicManifestResponse = await fetch(`${publicBase}/stable/zerowall-python/windows-x64/latest.json`, { cache: 'no-store' })
-if (!publicManifestResponse.ok) throw new Error(`Public MCP manifest returned HTTP ${publicManifestResponse.status}.`)
-const publicManifest = await publicManifestResponse.json()
-const { signature: publicSignature, ...publicUnsigned } = publicManifest
-if (!publicSignature?.keyId || !publicKeys[publicSignature.keyId] || !verify(null, Buffer.from(JSON.stringify(publicUnsigned)), publicKeys[publicSignature.keyId], Buffer.from(publicSignature?.value ?? '', 'base64'))) throw new Error('Public MCP manifest signature verification failed.')
-const publicArchiveResponse = await fetch(publicManifest.archiveUrl, { cache: 'no-store' })
-if (!publicArchiveResponse.ok) throw new Error(`Public MCP archive returned HTTP ${publicArchiveResponse.status}.`)
-const publicArchive = Buffer.from(await publicArchiveResponse.arrayBuffer())
-if (publicArchive.byteLength !== publicManifest.archiveSize || createHash('sha256').update(publicArchive).digest('hex') !== publicManifest.archiveSha256) throw new Error('Public MCP archive does not match its signed manifest.')
-console.log(`Public ZeroWall Python ${environmentVersion} signature, size, and SHA-256 verified.`)
+function verifyPublicManifest(value) {
+  const { signature: receivedSignature, ...payload } = value
+  if (!receivedSignature?.keyId || !publicKeys[receivedSignature.keyId] || !verify(null, Buffer.from(JSON.stringify(payload)), publicKeys[receivedSignature.keyId], Buffer.from(receivedSignature.value ?? '', 'base64'))) throw new Error('Public manifest signature verification failed.')
+  if (JSON.stringify(value) !== JSON.stringify(manifest)) throw new Error('Public manifest does not match this exact release.')
+}
+async function getManifest(url) {
+  const response = await fetch(url, { cache: 'no-store' })
+  if (!response.ok) throw new Error(`Public manifest HTTP ${response.status}`)
+  const value = await response.json(); verifyPublicManifest(value); return value
+}
+async function verifyPublicArchive() {
+  const response = await fetch(manifest.archiveUrl, { cache: 'no-store' })
+  if (!response.ok || !response.body) throw new Error(`Public archive HTTP ${response.status}`)
+  const hash = createHash('sha256'); let size = 0
+  for await (const chunk of response.body) { hash.update(chunk); size += chunk.length }
+  if (size !== manifest.archiveSize || hash.digest('hex') !== manifest.archiveSha256) throw new Error('Public archive size/hash mismatch; latest was not changed.')
+}
+// Immutable assets must be publicly verified before the shared update pointer moves.
+await publishVerifiedAssets({
+  assets: files.slice(0, 2),
+  upload: async ([key, file, overwrite]) => {
+    await upload(key, file, overwrite)
+    const digest = await hashFile(resolve(dist, file))
+    console.log(`${key}\t${digest.size}\t${digest.sha256}`)
+  },
+  verifyVersion: () => getManifest(`${publicBase}/${files[1][0]}`),
+  verifyArchive: verifyPublicArchive,
+  promote: async () => { console.log('Versioned assets verified; promoting latest.json.'); await upload(files[2][0], files[2][1], true) },
+  verifyLatest: async () => {
+    await getManifest(`${publicBase}/${files[2][0]}?release=${encodeURIComponent(environmentVersion)}&verify=${Date.now()}`)
+    await getManifest(`${publicBase}/${files[2][0]}`)
+  },
+})
+console.log(`Public ZeroWall Python ${environmentVersion} signature, size, SHA-256 and exact latest pointer verified.`)

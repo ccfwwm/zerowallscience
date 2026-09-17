@@ -25,6 +25,7 @@ const desktopModules = resolve(root, 'desktop/node_modules')
 const workspaceModules = resolve(root, 'node_modules')
 const zerowallPackageRoots = [
   resolve(root, 'store'),
+  resolve(root, 'packages/integrity-runtime'),
   resolve(root, 'packages/dsh-ssh-ops'),
   resolve(root, 'packages/zotero-harvest'),
   resolve(root, 'packages/dsh-progressive-tools'),
@@ -52,11 +53,14 @@ const desktopRuntimeSeeds = [
   'dsh-better-sidebar-icons',
   'dsh-file-review',
   '@huanlin/dsh-plugin-better-sidebar-plugin-office',
+  'dsh-univer-office',
+  '@zerowallscience/integrity-runtime',
   'dsh-zotero',
   '@dsh-external/zotero-harvest',
   'dsh-wechat',
   'dsh-auto-review',
   '@changfenhuang/dsh-genui',
+  '@jiesou/dsh-opencode-zen-free-provider',
   'dsh-free-search',
   'dsh-dream-skin',
   '@deepseek-ai/dsh-subagent-claude-code',
@@ -200,6 +204,22 @@ async function copyRuntimePackage(package_, targetRoot) {
     return
   }
 
+  if (manifest.name === 'dsh-univer-office') {
+    // The Gateway and render workers must execute from physical files in Electron.
+    for (const entry of ['lib', 'docs', 'skills', 'artifacts', 'LICENSE', 'cordis.patch.yml']) await copyEntry(sourceRoot, targetRoot, entry)
+    const hostPath = resolve(targetRoot, 'lib/index.js')
+    const host = await readFile(hostPath, 'utf8')
+    const anchor = 'var PLUGIN_NODE_MODULES = fileURLToPath(new URL("../../node_modules/", import.meta.url));'
+    if (!host.includes(anchor)) throw new Error('Univer 0.3.2 physical artifact adapter no longer matches.')
+    await writeFile(hostPath, host.replace(anchor, anchor + String.raw`
+GATEWAY_ENTRY = GATEWAY_ENTRY.replace(/app\.asar([\\/])/g, 'app.asar.unpacked$1');
+VIEWER_ROOT = VIEWER_ROOT.replace(/app\.asar([\\/])/g, 'app.asar.unpacked$1');
+UNIT_CONTENT_WORKER_ENTRY = UNIT_CONTENT_WORKER_ENTRY.replace(/app\.asar([\\/])/g, 'app.asar.unpacked$1');
+RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar.unpacked$1');
+`))
+    return
+  }
+
   if (manifest.name === 'dsh-zotero') {
     for (const entry of ['lib', 'LICENSE', 'cordis.patch.yml']) await copyEntry(sourceRoot, targetRoot, entry)
     const adapters = [
@@ -320,7 +340,7 @@ function includeRuntimeFile(sourceRoot, candidate) {
   // npm packages frequently publish executable JavaScript under `src`, even
   // when `main` itself lives at the package root. Keep every src directory;
   // guessing whether it is development-only creates incomplete runtimes.
-  if (segments.some(segment => segment === 'node_modules' || forbiddenDirectories.has(segment))) return false
+  if (segments.some(segment => segment === 'node_modules' || (forbiddenDirectories.has(segment) && !(segment === 'docs' && sourceRoot.replaceAll('\\', '/').endsWith('/dsh-univer-office'))))) return false
   const lower = path.toLowerCase()
   if (lower.endsWith('.d.ts') || lower.endsWith('.tsbuildinfo') || forbiddenExtensions.has(extname(lower))) return false
   if (/\.(?:spec|test)\.[cm]?js$/.test(lower)) return false

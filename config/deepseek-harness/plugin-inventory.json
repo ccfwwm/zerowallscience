@@ -3,7 +3,7 @@
   "harness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
     "branch": "codex/zerowall-dsh-015rc2",
-    "commit": "4a842786a3c62c1b3fcae5bef7f2d46c1f44e244",
+    "commit": "1f75e7706d8709f20dc53929fdf3869d3a67e4ff",
     "upstreamRepository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "upstreamCommit": "a66e4702047846cdaa10c66c9d3df3951f5ea70d",
     "tag": "dsh-v0.1.5-rc.2",
@@ -46,6 +46,7 @@
         "dsh-better-sidebar-icons",
         "dsh-file-review",
         "@huanlin/dsh-plugin-better-sidebar-plugin-office",
+        "dsh-univer-office",
         "dsh-zotero",
         "@dsh-external/zotero-harvest",
         "dsh-wechat",
@@ -58,11 +59,10 @@
         "@zerowallscience/plugin-mcp",
         "@zerowallscience/plugin-account",
         "@zerowallscience/plugin-ai-cloud",
-        "@zerowallscience/plugin-opencode",
+        "@jiesou/dsh-opencode-zen-free-provider",
         "dsh-free-search",
         "@zerowallscience/plugin-files",
         "@zerowallscience/plugin-images",
-        "@zerowallscience/plugin-image-dup",
         "@zerowallscience/plugin-research",
         "@zerowallscience/plugin-pubmed",
         "@zerowallscience/plugin-mineru",
@@ -71,7 +71,6 @@
         "@zerowallscience/plugin-python",
         "@zerowallscience/plugin-runs",
         "@zerowallscience/plugin-publications",
-        "@zerowallscience/plugin-presentations",
         "@zerowallscience/plugin-skills",
         "@zerowallscience/plugin-reviewer"
       ]
@@ -88,6 +87,7 @@
         "dsh-better-sidebar-icons",
         "dsh-file-review",
         "@huanlin/dsh-plugin-better-sidebar-plugin-office",
+        "dsh-univer-office",
         "dsh-zotero",
         "@dsh-external/zotero-harvest",
         "dsh-wechat",
@@ -100,11 +100,10 @@
         "@zerowallscience/plugin-mcp",
         "@zerowallscience/plugin-account",
         "@zerowallscience/plugin-ai-cloud",
-        "@zerowallscience/plugin-opencode",
+        "@jiesou/dsh-opencode-zen-free-provider",
         "dsh-free-search",
         "@zerowallscience/plugin-files",
         "@zerowallscience/plugin-images",
-        "@zerowallscience/plugin-image-dup",
         "@zerowallscience/plugin-research",
         "@zerowallscience/plugin-pubmed",
         "@zerowallscience/plugin-mineru",
@@ -113,7 +112,6 @@
         "@zerowallscience/plugin-python",
         "@zerowallscience/plugin-runs",
         "@zerowallscience/plugin-publications",
-        "@zerowallscience/plugin-presentations",
         "@zerowallscience/plugin-skills",
         "@zerowallscience/plugin-reviewer"
       ]
@@ -130,6 +128,7 @@
         "dsh-better-sidebar-icons",
         "dsh-file-review",
         "@huanlin/dsh-plugin-better-sidebar-plugin-office",
+        "dsh-univer-office",
         "dsh-zotero",
         "@dsh-external/zotero-harvest",
         "dsh-wechat",
@@ -142,11 +141,10 @@
         "@zerowallscience/plugin-mcp",
         "@zerowallscience/plugin-account",
         "@zerowallscience/plugin-ai-cloud",
-        "@zerowallscience/plugin-opencode",
+        "@jiesou/dsh-opencode-zen-free-provider",
         "dsh-free-search",
         "@zerowallscience/plugin-files",
         "@zerowallscience/plugin-images",
-        "@zerowallscience/plugin-image-dup",
         "@zerowallscience/plugin-research",
         "@zerowallscience/plugin-pubmed",
         "@zerowallscience/plugin-mineru",
@@ -155,7 +153,6 @@
         "@zerowallscience/plugin-python",
         "@zerowallscience/plugin-runs",
         "@zerowallscience/plugin-publications",
-        "@zerowallscience/plugin-presentations",
         "@zerowallscience/plugin-skills",
         "@zerowallscience/plugin-reviewer"
       ]
@@ -227,11 +224,19 @@
       "productionPath": "resources/app.asar/node_modules/@huanlin/dsh-plugin-better-sidebar-plugin-office"
     },
     {
+      "package": "dsh-univer-office",
+      "version": "0.3.2",
+      "owner": "third-party",
+      "source": "desktop/package.json",
+      "loadOrder": 9,
+      "productionPath": "resources/app.asar/node_modules/dsh-univer-office"
+    },
+    {
       "package": "dsh-zotero",
       "version": "0.8.4",
       "owner": "third-party",
       "source": "desktop/package.json",
-      "loadOrder": 9,
+      "loadOrder": 10,
       "productionPath": "resources/app.asar/node_modules/dsh-zotero"
     },
     {
@@ -239,7 +244,7 @@
       "version": "workspace:*",
       "owner": "third-party",
       "source": "desktop/package.json",
-      "loadOrder": 10,
+      "loadOrder": 11,
       "productionPath": "resources/app.asar/node_modules/@dsh-external/zotero-harvest"
     },
     {
@@ -247,7 +252,7 @@
       "version": "workspace:*",
       "owner": "third-party",
       "source": "desktop/package.json",
-      "loadOrder": 11,
+      "loadOrder": 12,
       "productionPath": "resources/app.asar/node_modules/dsh-wechat"
     },
     {
@@ -255,15 +260,23 @@
       "version": "workspace:*",
       "owner": "third-party",
       "source": "desktop/package.json",
-      "loadOrder": 12,
+      "loadOrder": 13,
       "productionPath": "resources/app.asar/node_modules/@changfenhuang/dsh-genui"
+    },
+    {
+      "package": "@jiesou/dsh-opencode-zen-free-provider",
+      "version": "0.1.18",
+      "owner": "third-party",
+      "source": "desktop/package.json",
+      "loadOrder": 22,
+      "productionPath": "resources/app.asar/node_modules/@jiesou/dsh-opencode-zen-free-provider"
     },
     {
       "package": "dsh-free-search",
       "version": "0.4.28",
       "owner": "third-party",
       "source": "desktop/package.json",
-      "loadOrder": 22,
+      "loadOrder": 23,
       "productionPath": "resources/app.asar/node_modules/dsh-free-search"
     }
   ],
@@ -271,12 +284,12 @@
     {
       "id": "base",
       "package": "@zerowallscience/plugin-base",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/base",
       "manifest": "plugins/base/zerowall.plugin.json",
       "client": true,
       "remote": false,
-      "loadOrder": 13,
+      "loadOrder": 14,
       "capabilities": [
         "ui.locale",
         "ui.update"
@@ -294,12 +307,12 @@
     {
       "id": "secrets",
       "package": "@zerowallscience/plugin-secrets",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/secrets",
       "manifest": "plugins/secrets/zerowall.plugin.json",
       "client": false,
       "remote": false,
-      "loadOrder": 14,
+      "loadOrder": 15,
       "capabilities": [
         "credentials.read",
         "credentials.write"
@@ -316,12 +329,12 @@
     {
       "id": "environment",
       "package": "@zerowallscience/plugin-environment",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/environment",
       "manifest": "plugins/environment/zerowall.plugin.json",
       "client": true,
       "remote": true,
-      "loadOrder": 15,
+      "loadOrder": 16,
       "capabilities": [
         "environment-config"
       ],
@@ -338,12 +351,12 @@
     {
       "id": "desktop-compat",
       "package": "@zerowallscience/plugin-desktop-compat",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/desktop-compat",
       "manifest": "plugins/desktop-compat/zerowall.plugin.json",
       "client": false,
       "remote": false,
-      "loadOrder": 16,
+      "loadOrder": 17,
       "capabilities": [
         "desktop.profiles",
         "desktop.plugins"
@@ -359,12 +372,12 @@
     {
       "id": "projects",
       "package": "@zerowallscience/plugin-projects",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/projects",
       "manifest": "plugins/projects/zerowall.plugin.json",
       "client": true,
       "remote": true,
-      "loadOrder": 17,
+      "loadOrder": 18,
       "capabilities": [
         "projects",
         "workspaces"
@@ -379,12 +392,12 @@
     {
       "id": "mcp",
       "package": "@zerowallscience/plugin-mcp",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/mcp",
       "manifest": "plugins/mcp/zerowall.plugin.json",
       "client": true,
       "remote": true,
-      "loadOrder": 18,
+      "loadOrder": 19,
       "capabilities": [
         "mcp"
       ],
@@ -403,12 +416,12 @@
     {
       "id": "account",
       "package": "@zerowallscience/plugin-account",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/account",
       "manifest": "plugins/account/zerowall.plugin.json",
       "client": true,
       "remote": true,
-      "loadOrder": 19,
+      "loadOrder": 20,
       "capabilities": [
         "account"
       ],
@@ -423,12 +436,12 @@
     {
       "id": "ai-cloud",
       "package": "@zerowallscience/plugin-ai-cloud",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/ai-cloud",
       "manifest": "plugins/ai-cloud/zerowall.plugin.json",
       "client": true,
       "remote": false,
-      "loadOrder": 20,
+      "loadOrder": 21,
       "capabilities": [
         "llm.cloud"
       ],
@@ -444,38 +457,14 @@
       "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-ai-cloud"
     },
     {
-      "id": "opencode",
-      "package": "@zerowallscience/plugin-opencode",
-      "version": "6.1.0",
-      "source": "plugins/opencode",
-      "manifest": "plugins/opencode/zerowall.plugin.json",
-      "client": false,
-      "remote": false,
-      "loadOrder": 21,
-      "capabilities": [
-        "llm.free",
-        "llm.discovery"
-      ],
-      "permissions": [
-        "network",
-        "attachments"
-      ],
-      "requiredServices": [
-        "llm",
-        "attachments"
-      ],
-      "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-opencode"
-    },
-    {
       "id": "files",
       "package": "@zerowallscience/plugin-files",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/files",
       "manifest": "plugins/files/zerowall.plugin.json",
       "client": true,
       "remote": true,
-      "loadOrder": 23,
+      "loadOrder": 24,
       "capabilities": [
         "files",
         "data-assets",
@@ -495,12 +484,12 @@
     {
       "id": "images",
       "package": "@zerowallscience/plugin-images",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/images",
       "manifest": "plugins/images/zerowall.plugin.json",
       "client": true,
       "remote": false,
-      "loadOrder": 24,
+      "loadOrder": 25,
       "capabilities": [
         "images",
         "image-generation"
@@ -518,38 +507,9 @@
       "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-images"
     },
     {
-      "id": "image-dup",
-      "package": "@zerowallscience/plugin-image-dup",
-      "version": "6.1.0",
-      "source": "plugins/image-dup",
-      "manifest": "plugins/image-dup/zerowall.plugin.json",
-      "client": true,
-      "remote": true,
-      "loadOrder": 25,
-      "capabilities": [
-        "image-duplicate-detection",
-        "artifacts"
-      ],
-      "permissions": [
-        "files",
-        "processes",
-        "attachments"
-      ],
-      "requiredServices": [
-        "tools",
-        "sessions",
-        "zerowallFiles",
-        "zerowallResearch"
-      ],
-      "optionalServices": [
-        "zerowallProjects"
-      ],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-image-dup"
-    },
-    {
       "id": "research",
       "package": "@zerowallscience/plugin-research",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/research",
       "manifest": "plugins/research/zerowall.plugin.json",
       "client": true,
@@ -570,7 +530,7 @@
     {
       "id": "pubmed",
       "package": "@zerowallscience/plugin-pubmed",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/pubmed",
       "manifest": "plugins/pubmed/zerowall.plugin.json",
       "client": false,
@@ -598,7 +558,7 @@
     {
       "id": "mineru",
       "package": "@zerowallscience/plugin-mineru",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/mineru",
       "manifest": "plugins/mineru/zerowall.plugin.json",
       "client": true,
@@ -631,7 +591,7 @@
     {
       "id": "singlecell",
       "package": "@zerowallscience/plugin-singlecell",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/singlecell",
       "manifest": "plugins/singlecell/zerowall.plugin.json",
       "client": true,
@@ -666,7 +626,7 @@
     {
       "id": "execution",
       "package": "@zerowallscience/plugin-execution",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/execution",
       "manifest": "plugins/execution/zerowall.plugin.json",
       "client": true,
@@ -686,7 +646,7 @@
     {
       "id": "python",
       "package": "@zerowallscience/plugin-python",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/python",
       "manifest": "plugins/python/zerowall.plugin.json",
       "client": false,
@@ -708,7 +668,7 @@
     {
       "id": "runs",
       "package": "@zerowallscience/plugin-runs",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/runs",
       "manifest": "plugins/runs/zerowall.plugin.json",
       "client": true,
@@ -728,7 +688,7 @@
     {
       "id": "publications",
       "package": "@zerowallscience/plugin-publications",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/publications",
       "manifest": "plugins/publications/zerowall.plugin.json",
       "client": true,
@@ -746,40 +706,14 @@
       "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-publications"
     },
     {
-      "id": "presentations",
-      "package": "@zerowallscience/plugin-presentations",
-      "version": "6.1.0",
-      "source": "plugins/presentations",
-      "manifest": "plugins/presentations/zerowall.plugin.json",
-      "client": true,
-      "remote": true,
-      "loadOrder": 34,
-      "capabilities": [
-        "presentations"
-      ],
-      "permissions": [
-        "files",
-        "processes",
-        "network",
-        "approvals"
-      ],
-      "requiredServices": [
-        "tools",
-        "sessions",
-        "zerowallImageGeneration"
-      ],
-      "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-presentations"
-    },
-    {
       "id": "skills",
       "package": "@zerowallscience/plugin-skills",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/skills",
       "manifest": "plugins/skills/zerowall.plugin.json",
       "client": true,
       "remote": true,
-      "loadOrder": 35,
+      "loadOrder": 34,
       "capabilities": [
         "skills"
       ],
@@ -796,12 +730,12 @@
     {
       "id": "reviewer",
       "package": "@zerowallscience/plugin-reviewer",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "source": "plugins/reviewer",
       "manifest": "plugins/reviewer/zerowall.plugin.json",
       "client": true,
       "remote": false,
-      "loadOrder": 36,
+      "loadOrder": 35,
       "capabilities": [
         "reviewer"
       ],
@@ -820,10 +754,10 @@
   ],
   "sharedPackages": [
     {
-      "package": "@zerowallscience/dsh-ppt-runtime",
-      "source": "packages/presentations-runtime",
+      "package": "@zerowallscience/integrity-runtime",
+      "source": "packages/integrity-runtime",
       "plugin": false,
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/dsh-ppt-runtime"
+      "productionPath": "resources/app.asar/node_modules/@zerowallscience/integrity-runtime"
     }
   ]
 }

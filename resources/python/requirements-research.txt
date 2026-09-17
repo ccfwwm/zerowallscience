@@ -1,0 +1,58 @@
+# Broad CPU research profile; existing core ABI versions are constrained by the
+# three existing locks when compiling requirements-windows.lock.
+-r requirements-science.txt
+-r requirements-managed-compatible.txt
+-r requirements-integrity.txt
+pyzotero>=1.13,<2
+cloudscraper==1.2.71
+markitdown[pdf,docx,pptx,xls,xlsx]==0.1.7
+imageio
+tifffile
+imagecodecs
+pillow-heif
+pydicom==3.0.2
+pylibjpeg[libjpeg,openjpeg,rle]
+pyjpegls
+nibabel
+pynrrd
+SimpleITK
+astropy>=7.2,<9
+dask[array,dataframe,distributed]>=2025.1
+xarray
+netCDF4
+geopandas
+pyogrio
+pyproj
+shapely
+pint>=0.25.3
+uncertainties>=3.2.3
+pingouin>=0.6
+lifelines
+pyDOE3
+simpy==4.1.2
+shap[plots]>=0.52
+pymoo>=0.6.1.6
+scikit-survival==0.28.0
+hdbscan
+xgboost
+pymc>=6.0.1
+arviz>=1.0
+scanpy[leiden]==1.12.4
+pydeseq2==0.5.4
+scikit-bio>=0.7
+gprofiler-official
+flowio==1.4.0
+rdkit
+datamol
+medchem
+pybids
+openpiv>=0.25.4
+pyopenms>=3.5.0
+pymatgen>=2026.5.4
+mp-api>=0.46.4
+pytximport
+qutip>=5.3
+qiskit[visualization]>=2.5
+playwright==1.62.0
+pycryptodome==3.23.0
+tomli==2.2.1
