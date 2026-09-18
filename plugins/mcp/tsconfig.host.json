@@ -3,5 +3,27 @@
   "include": [
     "src/host",
     "src/shared"
-  ]
+  ],
+  "compilerOptions": {
+    "paths": {
+      "@deepseek-ai/dsh-typert-protocol": [
+        "deepseek-harness/packages/typert/protocol/src/index.ts"
+      ],
+      "@zerowallscience/research-store": [
+        "store/src/index.ts"
+      ],
+      "@zerowallscience/research-store/types": [
+        "store/src/index.ts"
+      ],
+      "@zerowallscience/plugin-*/types": [
+        "plugins/*/src/shared/types.ts"
+      ],
+      "@zerowallscience/plugin-*": [
+        "plugins/*/src/host/index.ts"
+      ],
+      "@deepseek-ai/dsh-util-values": [
+        "deepseek-harness/packages/util/values/src/index.ts"
+      ]
+    }
+  }
 }

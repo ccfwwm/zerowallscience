@@ -172,6 +172,8 @@ it('synchronizes settings and review controls and keeps the chosen layout on reo
       <Review settings={settings} />
     </>,
   )
+  expect(view.queryByRole('link')).toBeNull()
+  expect(view.queryByText('Star on GitHub')).toBeNull()
   fireEvent.click(view.getByRole('button', { name: 'Expand: File review' }))
   const selectors = view.getAllByRole('combobox', { name: 'Diff layout' })
   await act(async () => {

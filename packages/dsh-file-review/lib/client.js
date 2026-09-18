@@ -4816,40 +4816,40 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			document.head.appendChild(style);
 		}
 		var UnifiedDiff_module_css_default = {
-			"unified_add": "bpckIG_unified_add",
-			"unifiedRemoved": "bpckIG_unifiedRemoved",
-			"splitPane": "bpckIG_splitPane",
-			"unifiedHeader": "bpckIG_unifiedHeader",
-			"unifiedBlock": "bpckIG_unifiedBlock",
-			"unifiedLineNumber": "bpckIG_unifiedLineNumber",
-			"unifiedCopyButton": "bpckIG_unifiedCopyButton",
-			"unifiedBody": "bpckIG_unifiedBody",
-			"unifiedStatus": "bpckIG_unifiedStatus",
 			"splitEmpty": "bpckIG_splitEmpty",
-			"commentEditor": "bpckIG_commentEditor",
-			"commentSave": "bpckIG_commentSave",
 			"commentActions": "bpckIG_commentActions",
-			"commentRow": "bpckIG_commentRow",
-			"unifiedLine": "bpckIG_unifiedLine",
-			"unifiedOmitted": "bpckIG_unifiedOmitted",
-			"splitCell": "bpckIG_splitCell",
-			"unified_context": "bpckIG_unified_context",
-			"commentHint": "bpckIG_commentHint",
-			"unifiedAdded": "bpckIG_unifiedAdded",
-			"unifiedPath": "bpckIG_unifiedPath",
-			"unified_del": "bpckIG_unified_del",
 			"commentDelete": "bpckIG_commentDelete",
-			"unifiedBodyWrap": "bpckIG_unifiedBodyWrap",
-			"commentCancel": "bpckIG_commentCancel",
-			"unifiedSign": "bpckIG_unifiedSign",
 			"commentTrigger": "bpckIG_commentTrigger",
-			"commentBody": "bpckIG_commentBody",
-			"splitGrid": "bpckIG_splitGrid",
-			"unifiedEmbedded": "bpckIG_unifiedEmbedded",
+			"commentHint": "bpckIG_commentHint",
+			"unifiedHeader": "bpckIG_unifiedHeader",
+			"commentEditor": "bpckIG_commentEditor",
+			"unified_del": "bpckIG_unified_del",
 			"unifiedGap": "bpckIG_unifiedGap",
-			"unifiedText": "bpckIG_unifiedText",
+			"unifiedBody": "bpckIG_unifiedBody",
+			"splitCell": "bpckIG_splitCell",
+			"unified_add": "bpckIG_unified_add",
+			"unifiedStatus": "bpckIG_unifiedStatus",
+			"unifiedEmbedded": "bpckIG_unifiedEmbedded",
+			"commentBody": "bpckIG_commentBody",
+			"splitPane": "bpckIG_splitPane",
+			"unifiedOmitted": "bpckIG_unifiedOmitted",
 			"unifiedFile": "bpckIG_unifiedFile",
-			"unifiedHunkHeader": "bpckIG_unifiedHunkHeader"
+			"unifiedLineNumber": "bpckIG_unifiedLineNumber",
+			"unifiedBodyWrap": "bpckIG_unifiedBodyWrap",
+			"unifiedPath": "bpckIG_unifiedPath",
+			"unifiedSign": "bpckIG_unifiedSign",
+			"unifiedLine": "bpckIG_unifiedLine",
+			"unified_context": "bpckIG_unified_context",
+			"unifiedBlock": "bpckIG_unifiedBlock",
+			"unifiedText": "bpckIG_unifiedText",
+			"unifiedHunkHeader": "bpckIG_unifiedHunkHeader",
+			"commentSave": "bpckIG_commentSave",
+			"unifiedAdded": "bpckIG_unifiedAdded",
+			"unifiedCopyButton": "bpckIG_unifiedCopyButton",
+			"unifiedRemoved": "bpckIG_unifiedRemoved",
+			"splitGrid": "bpckIG_splitGrid",
+			"commentRow": "bpckIG_commentRow",
+			"commentCancel": "bpckIG_commentCancel"
 		};
 		//#endregion
 		//#region src/client/UnifiedDiff.tsx
@@ -5330,85 +5330,85 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			document.head.appendChild(style);
 		}
 		var ProducedFiles_module_css_default = {
-			"reviewCommentPreviewPositioner": "bWJNLG_reviewCommentPreviewPositioner",
-			"toastHeader": "bWJNLG_toastHeader",
-			"openButton": "bWJNLG_openButton",
-			"moreFiles": "bWJNLG_moreFiles",
-			"reviewMessageAction": "bWJNLG_reviewMessageAction",
-			"icon": "bWJNLG_icon",
-			"fileIconWrap": "bWJNLG_fileIconWrap",
-			"cardTitle": "bWJNLG_cardTitle",
-			"toastTitle": "bWJNLG_toastTitle",
-			"reviewButton": "bWJNLG_reviewButton",
-			"added": "bWJNLG_added",
-			"reviewPathText": "bWJNLG_reviewPathText",
-			"noticeFilePath": "bWJNLG_noticeFilePath",
-			"buttonIcon": "bWJNLG_buttonIcon",
-			"fileName": "bWJNLG_fileName",
-			"reviewSubtitle": "bWJNLG_reviewSubtitle",
-			"reviewMessageActionIcon": "bWJNLG_reviewMessageActionIcon",
-			"toggleButton": "bWJNLG_toggleButton",
-			"noticeIcon": "bWJNLG_noticeIcon",
-			"reviewFile": "bWJNLG_reviewFile",
-			"noticeIconSvg": "bWJNLG_noticeIconSvg",
-			"reviewHeader": "bWJNLG_reviewHeader",
-			"reviewDiff": "bWJNLG_reviewDiff",
-			"reviewCommentPreviewAbove": "bWJNLG_reviewCommentPreviewAbove",
-			"reviewUnavailable": "bWJNLG_reviewUnavailable",
-			"reviewToolbar": "bWJNLG_reviewToolbar",
-			"commentDock": "bWJNLG_commentDock",
-			"reviewFileHeader": "bWJNLG_reviewFileHeader",
-			"noticeFiles": "bWJNLG_noticeFiles",
 			"commentPreviewLocation": "bWJNLG_commentPreviewLocation",
-			"toolbarButton": "bWJNLG_toolbarButton",
-			"commentDockPill": "bWJNLG_commentDockPill",
-			"reviewMessageTime": "bWJNLG_reviewMessageTime",
-			"toast": "bWJNLG_toast",
-			"commentDockRemove": "bWJNLG_commentDockRemove",
-			"cardTitleBlock": "bWJNLG_cardTitleBlock",
-			"toastCopy": "bWJNLG_toastCopy",
-			"noticeDismissButton": "bWJNLG_noticeDismissButton",
-			"commentDockOpen": "bWJNLG_commentDockOpen",
-			"commentPreviewCard": "bWJNLG_commentPreviewCard",
-			"toastDescription": "bWJNLG_toastDescription",
-			"commentDockIcon": "bWJNLG_commentDockIcon",
-			"card": "bWJNLG_card",
-			"fileRow": "bWJNLG_fileRow",
-			"reviewPath": "bWJNLG_reviewPath",
-			"sidebarTab": "bWJNLG_sidebarTab",
-			"removed": "bWJNLG_removed",
-			"reviewCommentPreview": "bWJNLG_reviewCommentPreview",
-			"reviewMessageRow": "bWJNLG_reviewMessageRow",
-			"reviewHeading": "bWJNLG_reviewHeading",
-			"sidebarTabEmpty": "bWJNLG_sidebarTabEmpty",
-			"noticeFileArrow": "bWJNLG_noticeFileArrow",
-			"reviewBody": "bWJNLG_reviewBody",
-			"cardHeader": "bWJNLG_cardHeader",
-			"toastCloseButton": "bWJNLG_toastCloseButton",
-			"toastSuccess": "bWJNLG_toastSuccess",
-			"noticeFileList": "bWJNLG_noticeFileList",
-			"noticeFileButton": "bWJNLG_noticeFileButton",
-			"reviewCommentPillRoot": "bWJNLG_reviewCommentPillRoot",
-			"reviewStatus": "bWJNLG_reviewStatus",
-			"commentPreviewPath": "bWJNLG_commentPreviewPath",
-			"reviewMessageStack": "bWJNLG_reviewMessageStack",
-			"reviewMessageCommentIcon": "bWJNLG_reviewMessageCommentIcon",
-			"reviewMessageExtraBlock": "bWJNLG_reviewMessageExtraBlock",
-			"stats": "bWJNLG_stats",
-			"reviewCommentPreviewBelow": "bWJNLG_reviewCommentPreviewBelow",
-			"commentPreviewHeader": "bWJNLG_commentPreviewHeader",
-			"reviewMessageBubble": "bWJNLG_reviewMessageBubble",
-			"noticeFileListLabel": "bWJNLG_noticeFileListLabel",
 			"reviewMessageCommentPill": "bWJNLG_reviewMessageCommentPill",
 			"commentPreviewBody": "bWJNLG_commentPreviewBody",
-			"toastError": "bWJNLG_toastError",
+			"cardTitleBlock": "bWJNLG_cardTitleBlock",
+			"removed": "bWJNLG_removed",
+			"moreFiles": "bWJNLG_moreFiles",
+			"reviewCommentPillRoot": "bWJNLG_reviewCommentPillRoot",
+			"reviewMessageActionIcon": "bWJNLG_reviewMessageActionIcon",
+			"reviewCommentPreviewPositioner": "bWJNLG_reviewCommentPreviewPositioner",
+			"noticeFileList": "bWJNLG_noticeFileList",
+			"commentPreviewHeader": "bWJNLG_commentPreviewHeader",
+			"reviewButton": "bWJNLG_reviewButton",
+			"fileName": "bWJNLG_fileName",
+			"stats": "bWJNLG_stats",
+			"reviewFileHeader": "bWJNLG_reviewFileHeader",
+			"commentDockRemove": "bWJNLG_commentDockRemove",
+			"toastHeader": "bWJNLG_toastHeader",
+			"reviewStatus": "bWJNLG_reviewStatus",
+			"toastTitle": "bWJNLG_toastTitle",
+			"fileIconWrap": "bWJNLG_fileIconWrap",
+			"noticeFileListLabel": "bWJNLG_noticeFileListLabel",
+			"reviewPathText": "bWJNLG_reviewPathText",
+			"sidebarTab": "bWJNLG_sidebarTab",
+			"noticeIconSvg": "bWJNLG_noticeIconSvg",
+			"toastDescription": "bWJNLG_toastDescription",
+			"fileList": "bWJNLG_fileList",
+			"icon": "bWJNLG_icon",
+			"reviewPath": "bWJNLG_reviewPath",
+			"noticeIcon": "bWJNLG_noticeIcon",
+			"noticeFilePath": "bWJNLG_noticeFilePath",
+			"sidebarTabEmpty": "bWJNLG_sidebarTabEmpty",
+			"reviewCommentPreviewAbove": "bWJNLG_reviewCommentPreviewAbove",
+			"reviewCommentPreviewBelow": "bWJNLG_reviewCommentPreviewBelow",
 			"reviewMessageActions": "bWJNLG_reviewMessageActions",
+			"commentPreviewCard": "bWJNLG_commentPreviewCard",
+			"reviewMessageBubble": "bWJNLG_reviewMessageBubble",
+			"reviewDiff": "bWJNLG_reviewDiff",
+			"reviewFile": "bWJNLG_reviewFile",
+			"toastSuccess": "bWJNLG_toastSuccess",
+			"reviewHeading": "bWJNLG_reviewHeading",
+			"reviewMessageReference": "bWJNLG_reviewMessageReference",
+			"reviewSubtitle": "bWJNLG_reviewSubtitle",
+			"commentDockIcon": "bWJNLG_commentDockIcon",
+			"noticeDismissButton": "bWJNLG_noticeDismissButton",
+			"reviewMessageCommentIcon": "bWJNLG_reviewMessageCommentIcon",
+			"cardTitle": "bWJNLG_cardTitle",
+			"toastCloseButton": "bWJNLG_toastCloseButton",
+			"buttonIcon": "bWJNLG_buttonIcon",
+			"toastError": "bWJNLG_toastError",
+			"reviewBody": "bWJNLG_reviewBody",
+			"toggleButton": "bWJNLG_toggleButton",
+			"fileRow": "bWJNLG_fileRow",
+			"commentDockOpen": "bWJNLG_commentDockOpen",
+			"noticeFileButton": "bWJNLG_noticeFileButton",
+			"reviewMessageAction": "bWJNLG_reviewMessageAction",
+			"reviewMessageExtraBlock": "bWJNLG_reviewMessageExtraBlock",
+			"reviewHeader": "bWJNLG_reviewHeader",
+			"reviewToolbar": "bWJNLG_reviewToolbar",
+			"reviewMessageRow": "bWJNLG_reviewMessageRow",
+			"card": "bWJNLG_card",
 			"closeIcon": "bWJNLG_closeIcon",
+			"reviewMessageStack": "bWJNLG_reviewMessageStack",
+			"reviewMessageTime": "bWJNLG_reviewMessageTime",
+			"cardHeader": "bWJNLG_cardHeader",
+			"reviewUnavailable": "bWJNLG_reviewUnavailable",
+			"commentDock": "bWJNLG_commentDock",
+			"added": "bWJNLG_added",
+			"reviewCommentPreview": "bWJNLG_reviewCommentPreview",
+			"commentPreviewPath": "bWJNLG_commentPreviewPath",
+			"toolbarButton": "bWJNLG_toolbarButton",
 			"reviewContent": "bWJNLG_reviewContent",
 			"reviewTitle": "bWJNLG_reviewTitle",
+			"commentDockPill": "bWJNLG_commentDockPill",
+			"noticeFiles": "bWJNLG_noticeFiles",
+			"toastCopy": "bWJNLG_toastCopy",
+			"noticeFileArrow": "bWJNLG_noticeFileArrow",
 			"reviewCommentPillRootMessage": "bWJNLG_reviewCommentPillRootMessage",
-			"fileList": "bWJNLG_fileList",
-			"reviewMessageReference": "bWJNLG_reviewMessageReference"
+			"openButton": "bWJNLG_openButton",
+			"toast": "bWJNLG_toast"
 		};
 		//#endregion
 		//#region src/client/ReviewContent.tsx
@@ -6519,8 +6519,6 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		const en = {
 			"settings.title": "File review",
 			"settings.description": "See every file your agent changes clearly.",
-			"settings.star.title": "Star on GitHub",
-			"settings.star.aria": "Star dsh-file-review on GitHub (opens in a new tab)",
 			"settings.expand": "Expand",
 			"settings.collapse": "Collapse",
 			"settings.readOnly": "The settings file is read-only.",
@@ -6593,8 +6591,6 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		const zh = {
 			"settings.title": "文件审查",
 			"settings.description": "让你看清agent改动的每一个文件",
-			"settings.star.title": "去 GitHub 点 Star",
-			"settings.star.aria": "在 GitHub 为 dsh-file-review 点 Star（在新标签页打开）",
 			"settings.expand": "展开",
 			"settings.collapse": "收起",
 			"settings.readOnly": "配置文件为只读。",
@@ -6708,7 +6704,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		}
 		//#endregion
 		//#region \0dsh-file-review-css:C:\softworks\gpt-tools\zerowallscience\packages\dsh-file-review\src\client\FileReviewSettingsCard.module.css.mjs
-		const css = ".yC9_GW_card{--accent:#9b8afb;border:1px solid color-mix(in srgb, var(--accent) 65%, var(--dsw-alias-border-l2));background:linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--dsw-alias-bg-layer-3)), var(--dsw-alias-bg-layer-3) 65%);border-radius:16px;list-style:none;transition:border-color .16s,background .16s}.yC9_GW_card:hover,.yC9_GW_cardOpen{border-color:color-mix(in srgb, var(--dsw-alias-brand-primary) 40%, var(--dsw-alias-border-l2))}.yC9_GW_header{width:100%;color:inherit;font:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:18px 16px;display:flex}.yC9_GW_header:focus-visible,.yC9_GW_github:focus-visible,.yC9_GW_select:focus-visible,.yC9_GW_toggle:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}.yC9_GW_icon{box-sizing:border-box;border:1px solid var(--accent);background:color-mix(in srgb, var(--accent) 12%, transparent);width:48px;height:48px;color:var(--dsw-alias-brand-primary);fill:none;stroke:currentColor;stroke-width:1.8px;stroke-linecap:round;stroke-linejoin:round;border-radius:12px;flex:none;padding:8px}.yC9_GW_github{border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb, var(--accent) 10%, var(--dsw-alias-bg-layer-3));color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere;border-radius:13px;align-items:center;gap:12px;margin:0 16px 16px;padding:12px;text-decoration:none;transition:border-color .16s,background .16s;display:flex}.yC9_GW_github:hover{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 18%, var(--dsw-alias-bg-layer-3))}.yC9_GW_githubIcon{width:24px;height:24px;color:var(--dsw-alias-label-primary);fill:currentColor;flex:none}.yC9_GW_githubTitle{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:1.4}.yC9_GW_githubSlug{color:var(--dsw-alias-label-tertiary);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.4}.yC9_GW_externalIcon{fill:none;stroke:currentColor;stroke-width:1.5px;stroke-linecap:round;stroke-linejoin:round;flex:none;width:16px;height:16px}.yC9_GW_star{color:#f4b74e;margin-right:6px}.yC9_GW_heading{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}.yC9_GW_title{color:var(--dsw-alias-label-primary);font-size:18px;font-weight:600;line-height:1.4}.yC9_GW_description,.yC9_GW_hint,.yC9_GW_readOnly{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5}.yC9_GW_chevron{box-sizing:content-box;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary);border-radius:12px;flex:none;padding:8px;transition:transform .16s}.yC9_GW_chevronOpen{transform:rotate(180deg)}.yC9_GW_body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px}.yC9_GW_row{align-items:center;gap:16px;padding:16px 0;display:flex}.yC9_GW_field{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}.yC9_GW_label{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:500;line-height:1.5}.yC9_GW_hint,.yC9_GW_readOnly{margin:0}.yC9_GW_readOnly{padding-bottom:12px}.yC9_GW_toggle{background:var(--dsw-alias-bg-module-platform);cursor:pointer;border:0;border-radius:999px;flex:none;width:40px;height:22px;padding:0;transition:background .16s;position:relative}.yC9_GW_select{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);font:inherit;border-radius:6px;padding:6px 8px}.yC9_GW_toggle[data-checked=true]{background:var(--dsw-alias-brand-primary)}.yC9_GW_toggle:disabled{cursor:default;opacity:.5}.yC9_GW_thumb{background:var(--dsw-alias-bg-layer-3);border-radius:50%;width:16px;height:16px;transition:transform .16s;position:absolute;top:3px;left:3px;box-shadow:0 1px 2px #0003}.yC9_GW_toggle[data-checked=true] .yC9_GW_thumb{transform:translate(18px)}@media (prefers-reduced-motion:reduce){.yC9_GW_card,.yC9_GW_github,.yC9_GW_chevron,.yC9_GW_toggle,.yC9_GW_thumb{transition:none}}";
+		const css = ".yC9_GW_card{--accent:#9b8afb;border:1px solid color-mix(in srgb, var(--accent) 65%, var(--dsw-alias-border-l2));background:linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--dsw-alias-bg-layer-3)), var(--dsw-alias-bg-layer-3) 65%);border-radius:16px;list-style:none;transition:border-color .16s,background .16s}.yC9_GW_card:hover,.yC9_GW_cardOpen{border-color:color-mix(in srgb, var(--dsw-alias-brand-primary) 40%, var(--dsw-alias-border-l2))}.yC9_GW_header{width:100%;color:inherit;font:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:18px 16px;display:flex}.yC9_GW_header:focus-visible,.yC9_GW_select:focus-visible,.yC9_GW_toggle:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}.yC9_GW_icon{box-sizing:border-box;border:1px solid var(--accent);background:color-mix(in srgb, var(--accent) 12%, transparent);width:48px;height:48px;color:var(--dsw-alias-brand-primary);fill:none;stroke:currentColor;stroke-width:1.8px;stroke-linecap:round;stroke-linejoin:round;border-radius:12px;flex:none;padding:8px}.yC9_GW_heading{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}.yC9_GW_title{color:var(--dsw-alias-label-primary);font-size:18px;font-weight:600;line-height:1.4}.yC9_GW_description,.yC9_GW_hint,.yC9_GW_readOnly{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5}.yC9_GW_chevron{box-sizing:content-box;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary);border-radius:12px;flex:none;padding:8px;transition:transform .16s}.yC9_GW_chevronOpen{transform:rotate(180deg)}.yC9_GW_body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px}.yC9_GW_row{align-items:center;gap:16px;padding:16px 0;display:flex}.yC9_GW_field{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}.yC9_GW_label{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:500;line-height:1.5}.yC9_GW_hint,.yC9_GW_readOnly{margin:0}.yC9_GW_readOnly{padding-bottom:12px}.yC9_GW_toggle{background:var(--dsw-alias-bg-module-platform);cursor:pointer;border:0;border-radius:999px;flex:none;width:40px;height:22px;padding:0;transition:background .16s;position:relative}.yC9_GW_select{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);font:inherit;border-radius:6px;padding:6px 8px}.yC9_GW_toggle[data-checked=true]{background:var(--dsw-alias-brand-primary)}.yC9_GW_toggle:disabled{cursor:default;opacity:.5}.yC9_GW_thumb{background:var(--dsw-alias-bg-layer-3);border-radius:50%;width:16px;height:16px;transition:transform .16s;position:absolute;top:3px;left:3px;box-shadow:0 1px 2px #0003}.yC9_GW_toggle[data-checked=true] .yC9_GW_thumb{transform:translate(18px)}@media (prefers-reduced-motion:reduce){.yC9_GW_card,.yC9_GW_chevron,.yC9_GW_toggle,.yC9_GW_thumb{transition:none}}";
 		const styleId = "dsh-file-review/FileReviewSettingsCard.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(styleId) + "]") === null) {
 			const style = document.createElement("style");
@@ -6718,30 +6714,24 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			document.head.appendChild(style);
 		}
 		var FileReviewSettingsCard_module_css_default = {
-			"githubIcon": "yC9_GW_githubIcon",
-			"externalIcon": "yC9_GW_externalIcon",
-			"icon": "yC9_GW_icon",
-			"description": "yC9_GW_description",
-			"label": "yC9_GW_label",
-			"readOnly": "yC9_GW_readOnly",
-			"githubSlug": "yC9_GW_githubSlug",
-			"select": "yC9_GW_select",
-			"header": "yC9_GW_header",
-			"github": "yC9_GW_github",
+			"field": "yC9_GW_field",
 			"hint": "yC9_GW_hint",
-			"star": "yC9_GW_star",
-			"row": "yC9_GW_row",
-			"cardOpen": "yC9_GW_cardOpen",
-			"card": "yC9_GW_card",
-			"thumb": "yC9_GW_thumb",
-			"toggle": "yC9_GW_toggle",
 			"chevron": "yC9_GW_chevron",
-			"chevronOpen": "yC9_GW_chevronOpen",
+			"label": "yC9_GW_label",
+			"toggle": "yC9_GW_toggle",
+			"header": "yC9_GW_header",
 			"title": "yC9_GW_title",
-			"githubTitle": "yC9_GW_githubTitle",
-			"heading": "yC9_GW_heading",
+			"description": "yC9_GW_description",
+			"thumb": "yC9_GW_thumb",
+			"cardOpen": "yC9_GW_cardOpen",
+			"select": "yC9_GW_select",
 			"body": "yC9_GW_body",
-			"field": "yC9_GW_field"
+			"card": "yC9_GW_card",
+			"icon": "yC9_GW_icon",
+			"readOnly": "yC9_GW_readOnly",
+			"chevronOpen": "yC9_GW_chevronOpen",
+			"heading": "yC9_GW_heading",
+			"row": "yC9_GW_row"
 		};
 		//#endregion
 		//#region src/client/FileReviewSettingsCard.tsx
@@ -6776,169 +6766,131 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			};
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("li", {
 				className: `${FileReviewSettingsCard_module_css_default.card} ${open ? FileReviewSettingsCard_module_css_default.cardOpen : ""}`,
-				children: [
-					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
-						type: "button",
-						className: FileReviewSettingsCard_module_css_default.header,
-						"aria-expanded": open,
-						"aria-label": `${t(open ? "settings.collapse" : "settings.expand")}: ${title}`,
-						onClick: () => {
-							setOpen((value) => !value);
-						},
-						children: [
-							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("svg", {
-								className: FileReviewSettingsCard_module_css_default.icon,
-								viewBox: "0 0 32 32",
-								"aria-hidden": "true",
-								children: [
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", { d: "M16 3H6a2 2 0 0 0-2 2v22a2 2 0 0 0 2 2h10M16 3l7 7v5M16 3v7h7" }),
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
-										d: "M8 14h6",
-										stroke: "var(--dsw-alias-state-error-primary, #d65f76)"
-									}),
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
-										d: "M8 21h6m-3-3v6",
-										stroke: "var(--dsw-alias-state-success-primary, #269d80)"
-									}),
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("circle", {
-										cx: "23",
-										cy: "23",
-										r: "6",
-										fill: "var(--dsw-alias-bg-layer-3)"
-									}),
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
-										d: "m27.5 27.5 3 3",
-										strokeWidth: "2.5"
-									}),
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", { d: "m20.5 23 1.5 1.5 3-3" })
-								]
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-								className: FileReviewSettingsCard_module_css_default.heading,
-								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-									className: FileReviewSettingsCard_module_css_default.title,
-									children: title
-								}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-									className: FileReviewSettingsCard_module_css_default.description,
-									children: t("settings.description")
-								})]
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("svg", {
-								className: `${FileReviewSettingsCard_module_css_default.chevron} ${open ? FileReviewSettingsCard_module_css_default.chevronOpen : ""}`,
-								width: "14",
-								height: "14",
-								viewBox: "0 0 14 14",
-								"aria-hidden": "true",
-								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
-									d: "m3.5 5.25 3.5 3.5 3.5-3.5",
-									fill: "none",
-									stroke: "currentColor",
-									strokeLinecap: "round"
+				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+					type: "button",
+					className: FileReviewSettingsCard_module_css_default.header,
+					"aria-expanded": open,
+					"aria-label": `${t(open ? "settings.collapse" : "settings.expand")}: ${title}`,
+					onClick: () => {
+						setOpen((value) => !value);
+					},
+					children: [
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("svg", {
+							className: FileReviewSettingsCard_module_css_default.icon,
+							viewBox: "0 0 32 32",
+							"aria-hidden": "true",
+							children: [
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", { d: "M16 3H6a2 2 0 0 0-2 2v22a2 2 0 0 0 2 2h10M16 3l7 7v5M16 3v7h7" }),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
+									d: "M8 14h6",
+									stroke: "var(--dsw-alias-state-error-primary, #d65f76)"
+								}),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
+									d: "M8 21h6m-3-3v6",
+									stroke: "var(--dsw-alias-state-success-primary, #269d80)"
+								}),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("circle", {
+									cx: "23",
+									cy: "23",
+									r: "6",
+									fill: "var(--dsw-alias-bg-layer-3)"
+								}),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
+									d: "m27.5 27.5 3 3",
+									strokeWidth: "2.5"
+								}),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", { d: "m20.5 23 1.5 1.5 3-3" })
+							]
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+							className: FileReviewSettingsCard_module_css_default.heading,
+							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+								className: FileReviewSettingsCard_module_css_default.title,
+								children: title
+							}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+								className: FileReviewSettingsCard_module_css_default.description,
+								children: t("settings.description")
+							})]
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("svg", {
+							className: `${FileReviewSettingsCard_module_css_default.chevron} ${open ? FileReviewSettingsCard_module_css_default.chevronOpen : ""}`,
+							width: "14",
+							height: "14",
+							viewBox: "0 0 14 14",
+							"aria-hidden": "true",
+							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
+								d: "m3.5 5.25 3.5 3.5 3.5-3.5",
+								fill: "none",
+								stroke: "currentColor",
+								strokeLinecap: "round"
+							})
+						})
+					]
+				}), open ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+					className: FileReviewSettingsCard_module_css_default.body,
+					children: [
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", {
+							className: FileReviewSettingsCard_module_css_default.row,
+							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+								className: FileReviewSettingsCard_module_css_default.field,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+									className: FileReviewSettingsCard_module_css_default.label,
+									children: t("review.layout")
 								})
-							})
-						]
-					}),
-					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("a", {
-						className: FileReviewSettingsCard_module_css_default.github,
-						href: "https://github.com/left0ver/dsh-file-review",
-						target: "_blank",
-						rel: "noopener noreferrer",
-						"aria-label": t("settings.star.aria"),
-						children: [
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("svg", {
-								className: FileReviewSettingsCard_module_css_default.githubIcon,
-								viewBox: "0 0 24 24",
-								"aria-hidden": "true",
-								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", { d: "M12 2.4a9.8 9.8 0 0 0-3.1 19.1c.5.1.7-.2.7-.5v-1.9c-2.8.6-3.4-1.2-3.4-1.2-.5-1.1-1.1-1.4-1.1-1.4-.9-.6.1-.6.1-.6 1 0 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-4.9 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.5 9.5 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.8-2.3 4.6-4.6 4.9.4.3.7.9.7 1.8V21c0 .3.2.6.7.5A9.8 9.8 0 0 0 12 2.4Z" })
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-								className: FileReviewSettingsCard_module_css_default.heading,
-								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-									className: FileReviewSettingsCard_module_css_default.githubTitle,
-									children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-										className: FileReviewSettingsCard_module_css_default.star,
-										"aria-hidden": "true",
-										children: "★"
-									}), t("settings.star.title")]
-								}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-									className: FileReviewSettingsCard_module_css_default.githubSlug,
-									children: "left0ver/dsh-file-review"
+							}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("select", {
+								className: FileReviewSettingsCard_module_css_default.select,
+								"aria-label": t("review.layout"),
+								"aria-busy": saving,
+								value: settings.value?.diffLayout ?? "split",
+								disabled: !writable,
+								onChange: (event) => {
+									changeLayout(event.target.value === "unified" ? "unified" : "split");
+								},
+								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("option", {
+									value: "split",
+									children: t("review.layoutSplit")
+								}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("option", {
+									value: "unified",
+									children: t("review.layoutUnified")
 								})]
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("svg", {
-								className: FileReviewSettingsCard_module_css_default.externalIcon,
-								viewBox: "0 0 16 16",
-								"aria-hidden": "true",
-								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", { d: "M6 3h7v7M13 3 7 9M11 9v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h3" })
-							})
-						]
-					}),
-					open ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-						className: FileReviewSettingsCard_module_css_default.body,
-						children: [
-							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", {
-								className: FileReviewSettingsCard_module_css_default.row,
+							})]
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+							className: FileReviewSettingsCard_module_css_default.row,
+							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+								className: FileReviewSettingsCard_module_css_default.field,
 								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-									className: FileReviewSettingsCard_module_css_default.field,
-									children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-										className: FileReviewSettingsCard_module_css_default.label,
-										children: t("review.layout")
-									})
-								}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("select", {
-									className: FileReviewSettingsCard_module_css_default.select,
-									"aria-label": t("review.layout"),
-									"aria-busy": saving,
-									value: settings.value?.diffLayout ?? "split",
-									disabled: !writable,
-									onChange: (event) => {
-										changeLayout(event.target.value === "unified" ? "unified" : "split");
-									},
-									children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("option", {
-										value: "split",
-										children: t("review.layoutSplit")
-									}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("option", {
-										value: "unified",
-										children: t("review.layoutUnified")
-									})]
+									className: FileReviewSettingsCard_module_css_default.label,
+									children: t("settings.wordWrap.title")
+								}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+									className: FileReviewSettingsCard_module_css_default.hint,
+									children: t("settings.wordWrap.description")
 								})]
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-								className: FileReviewSettingsCard_module_css_default.row,
-								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-									className: FileReviewSettingsCard_module_css_default.field,
-									children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-										className: FileReviewSettingsCard_module_css_default.label,
-										children: t("settings.wordWrap.title")
-									}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-										className: FileReviewSettingsCard_module_css_default.hint,
-										children: t("settings.wordWrap.description")
-									})]
-								}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-									type: "button",
-									role: "switch",
-									className: FileReviewSettingsCard_module_css_default.toggle,
-									"aria-checked": wordWrap,
-									"aria-label": t("settings.wordWrap.title"),
-									"aria-busy": saving,
-									"data-checked": wordWrap,
-									disabled: !writable,
-									onClick: () => {
-										toggleWordWrap();
-									},
-									children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { className: FileReviewSettingsCard_module_css_default.thumb })
-								})]
-							}),
-							!settings.writable ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
-								className: FileReviewSettingsCard_module_css_default.readOnly,
-								children: t("settings.readOnly")
-							}) : null,
-							saveError && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
-								role: "alert",
-								children: t("settings.saveError")
-							})
-						]
-					}) : null
-				]
+							}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+								type: "button",
+								role: "switch",
+								className: FileReviewSettingsCard_module_css_default.toggle,
+								"aria-checked": wordWrap,
+								"aria-label": t("settings.wordWrap.title"),
+								"aria-busy": saving,
+								"data-checked": wordWrap,
+								disabled: !writable,
+								onClick: () => {
+									toggleWordWrap();
+								},
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { className: FileReviewSettingsCard_module_css_default.thumb })
+							})]
+						}),
+						!settings.writable ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+							className: FileReviewSettingsCard_module_css_default.readOnly,
+							children: t("settings.readOnly")
+						}) : null,
+						saveError && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+							role: "alert",
+							children: t("settings.saveError")
+						})
+					]
+				}) : null]
 			});
 		}
 		//#endregion

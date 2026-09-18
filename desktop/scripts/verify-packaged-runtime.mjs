@@ -46,10 +46,17 @@ for (const retired of ['@zerowallscience/plugin-opencode', 'dsh-opencode-zen-fre
   }
 }
 const packagedManifest = JSON.parse(readArchiveFile('package.json').toString('utf8'))
-for (const entry of ['out/main/index.js', 'out/preload/index.cjs']) {
+for (const entry of ['out/main/index.js', 'out/main/python-updater-worker.js', 'out/preload/index.cjs']) {
   if (!readArchiveFile(entry).equals(await readFile(resolve(packageRoot, entry)))) {
     throw new Error(`Packaged ${entry} differs from the completed desktop build. Rebuild before packaging.`)
   }
+}
+for (const entry of ['out/main/python-updater-worker.js', 'node_modules/yauzl/index.js', 'node_modules/pend/index.js']) {
+  await access(resolve(packaged.resourcesRoot, 'app.asar.unpacked', entry))
+}
+const packagedMcpHost = readArchiveFile('node_modules/@zerowallscience/plugin-mcp/lib/index.js').toString('utf8')
+if (/from\s*['"]@deepseek-ai\/dsh-mcp-client\/src\//u.test(packagedMcpHost)) {
+  throw new Error('MCP generation bridge must be bundled; the packaged app cannot import unpublished MCP source files.')
 }
 const requiredArchivePaths = [
   'node_modules/@dsh-external/zotero-harvest/lib/index.js',
@@ -314,7 +321,7 @@ async function verifyArchivePolicy() {
     throw new Error(`Packaged dsh-free-search must be MIT-licensed ${desktopManifest.dependencies['dsh-free-search']}; found ${freeSearchManifest.version} (${freeSearchManifest.license}).`)
   }
   const freeSearchInject = freeSearchManifest.dsh?.client?.inject
-  if (!Array.isArray(freeSearchInject) || !freeSearchInject.includes('slots') || !freeSearchInject.includes('commandUi')) {
+  if (!Array.isArray(freeSearchInject) || freeSearchInject.length !== 1 || freeSearchInject[0] !== 'slots') {
     throw new Error(`Packaged dsh-free-search has an incompatible client inject contract: ${JSON.stringify(freeSearchInject)}.`)
   }
   const freeSearchHost = readArchiveFile('node_modules/dsh-free-search/lib/index.js').toString('utf8')
@@ -324,6 +331,16 @@ async function verifyArchivePolicy() {
   }
   for (const marker of ['settings.plugin.item', 'free-search-engine', 'slots', 'commandUi']) {
     if (!freeSearchClient.includes(marker)) throw new Error(`Packaged dsh-free-search client is missing marker: ${marker}`)
+  }
+  if (!freeSearchClient.includes('const inject = ["slots"]') || !freeSearchClient.includes('ctx.inject(["commandUi"]')) {
+    throw new Error('Packaged dsh-free-search must keep the settings card independent from the optional command UI service.')
+  }
+  if (/\brunUpdate\b|\bupgrading\b(?=\s*\?|\s*\|\|)/u.test(freeSearchClient)) {
+    throw new Error('Packaged dsh-free-search contains a stale self-update runtime reference.')
+  }
+  const fileReviewClient = readArchiveFile('node_modules/dsh-file-review/lib/client.js').toString('utf8')
+  for (const forbidden of ['https://github.com/left0ver/dsh-file-review', 'Star on GitHub', '去 GitHub 点 Star']) {
+    if (fileReviewClient.includes(forbidden)) throw new Error(`Packaged file review settings still contains the removed GitHub promotion: ${forbidden}`)
   }
   for (const forbidden of ['@deepseek-ai/dsh-client-runtime', 'node:child_process', 'pnpm add dsh-free-search@latest', '/update']) {
     if (freeSearchHost.includes(forbidden) || freeSearchClient.includes(forbidden) || JSON.stringify(freeSearchManifest).includes(forbidden)) {

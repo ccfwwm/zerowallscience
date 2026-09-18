@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 const root = resolve(import.meta.dirname, '../..')
 const rootPackage = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const version = String(rootPackage.version)
+const hostCompilerOptions = JSON.parse(await readFile(resolve(root, 'tsconfig.plugin.host.json'), 'utf8')).compilerOptions
 const clientInject = [
   'betterSidebar',
   // `slots` is the Cordis service used by client plugins to register
@@ -236,6 +237,7 @@ for (const plugin of plugins) {
           }
         : {}),
       ...(npmDependencies[plugin.id] ?? {}),
+      ...(plugin.id === 'mcp' ? { '@modelcontextprotocol/sdk': '1.30.0' } : {}),
     },
     peerDependencies: {
       '@deepseek-ai/cordis': '^4.0.3',
@@ -280,6 +282,10 @@ for (const plugin of plugins) {
   await writeFile(resolve(dir, 'tsconfig.host.json'), `${JSON.stringify({
     extends: '../../tsconfig.plugin.host.json',
     include: ['src/host', 'src/shared'],
+    ...(plugin.id === 'mcp' ? { compilerOptions: { paths: {
+      ...hostCompilerOptions.paths,
+      '@deepseek-ai/dsh-util-values': ['deepseek-harness/packages/util/values/src/index.ts'],
+    } } } : {}),
   }, null, 2)}\n`)
   await writeFile(resolve(dir, 'tsconfig.client.json'), `${JSON.stringify({
     extends: '../../tsconfig.plugin.client.json',
@@ -290,7 +296,9 @@ for (const plugin of plugins) {
     '',
     `export default zerowallBundle('${name}', { host: true, client: ${plugin.client === true}${plugin.id === 'ai-cloud'
       ? String.raw`, hostAlwaysBundle: [/^@deepseek-ai\/dsh-llm-pi-ai\/src\/config\.ts$/u, /llm-pi-ai[\\/]src[\\/]config\.ts$/u]`
-      : ''} })`,
+      : plugin.id === 'mcp'
+        ? String.raw`, hostAlwaysBundle: [/^@deepseek-ai\/dsh-mcp-client\/src\//]`
+        : ''} })`,
     '',
   ].join('\n'))
   if (plugin.client) {

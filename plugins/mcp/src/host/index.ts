@@ -1,3 +1,4 @@
+import { ManagedGenerations } from './managed-generations.js'
 import type { Context, Fiber } from '@deepseek-ai/cordis'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -38,7 +39,9 @@ export const RDATALINUX_RPLOTFIGURE_SERVER_NAME = 'rplotfigure'
 export const RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL = 'zerowall.mcp.rdatalinux_authorization'
 export const RDATALINUX_R_MCP_AUTHORIZATION_ENV = 'R_PLATFORM_MCP_AUTHORIZATION'
 const ENVIRONMENT_SECRET_PREFIX = 'zerowall.environment.var.'
-const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 30 * 60_000
+// A prepared update waits for Host readiness. Poll the compact transaction and
+// pointer frequently; manifest contents remain cached by the file signature.
+const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 1000
 const MCP_FAILURE_COOLDOWN_MS = 5 * 60_000
 const RDATALINUX_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
 const FIGUREYA_MODULE_MAX_BYTES = 250 * 1024 * 1024
@@ -136,6 +139,7 @@ declare module '@deepseek-ai/cordis' {
 export class ZeroWallMcpService extends TypertRemoteService {
   static inject = ['zerowallProjects', 'tools']
 
+  private managed!: ManagedGenerations
   private readonly connecting = new Map<string, Promise<void>>()
   private disposed = false
   private backgroundStarted = false
@@ -158,6 +162,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallMcp')
+    this.managed = new ManagedGenerations(ctx, () => managedEnvironmentRecord()?.root)
     const service = this
     // Biomni execution runs through the DSH MCP bridge, but its model key is
     // owned by ZeroWall AI Cloud rather than the DSH credential-local store.
@@ -537,7 +542,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       // dsh-mcp-client broadcasts on both the nested Fiber and root context.
       // A delayed reconnect/start event must not regress a connection that
       // has already completed its initial tools/list synchronization.
-      if (state === 'starting' && this.fibers.has(record.id) && this.registeredTools.has(record.id)) return
+      if (state === 'starting' && (this.fibers.has(record.id) || this.managed.has(record.id)) && this.registeredTools.has(record.id)) return
       if (state === 'active') { const names = this.toolNames(record.serverName); this.registeredTools.set(record.id, names); this.indexMcpTools(record.serverName, names) }
       this.statuses.set(record.id, {
         state,
@@ -837,11 +842,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
     this.environmentSignature = managedEnvironmentSignature(managedEnvironmentRecord(this.environmentFileSignature))
     const configuredInterval = Number(process.env.ZEROWALL_MCP_ENVIRONMENT_POLL_MS)
     const interval = Number.isFinite(configuredInterval) && configuredInterval >= 100 ? configuredInterval : MCP_ENVIRONMENT_POLL_INTERVAL_MS
-    this.environmentPoller = setInterval(() => { void this.pollEnvironment() }, interval)
+    this.environmentPoller = setInterval(() => { void this.pollEnvironment().catch(error => this.ctx.logger.warn(`zerowall-mcp: environment transaction failed: ${redactError(error)}`)) }, interval)
   }
 
   private async pollEnvironment(): Promise<void> {
-    if (!this.backgroundStarted || this.environmentRefreshInFlight) return
+    if (this.environmentRefreshInFlight) return
+    await this.prepareEnvironmentTransaction()
+    this.managed.commitStaged()
+    if (!this.backgroundStarted) return
     const fileSignature = managedEnvironmentFileSignature()
     if (fileSignature === this.environmentFileSignature) return
     this.environmentFileSignature = fileSignature
@@ -859,7 +867,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
         this.convergeReadyStatuses()
         if (this.disposed) return
         for (const server of this.projects().listMcpServers()) {
-          if (server.enabled && isManagedMcp(server.serverName) && this.statuses.get(server.id)?.state !== 'active') this.startConnection(server)
+          if (server.enabled && isManagedMcp(server.serverName)) await this.reconcile(server)
         }
       })
     } catch (error) {
@@ -867,6 +875,37 @@ export class ZeroWallMcpService extends TypertRemoteService {
     } finally {
       this.environmentRefreshInFlight = false
     }
+  }
+
+  private activationId = ''
+  private activationBusy = false
+  private async prepareEnvironmentTransaction(): Promise<void> {
+    const root = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
+    if (!root || this.activationBusy) return
+    this.activationBusy = true
+    try {
+      const transaction = await readFile(join(root, 'activation.json'), 'utf8').then(JSON.parse, () => undefined)
+      if (!transaction?.transactionId || transaction.transactionId === this.activationId || Date.now() - transaction.createdAt > 180_000) return
+      this.activationId = transaction.transactionId
+      const candidate = transaction.candidate as ManagedEnvironmentRecord
+      if (!candidate.root || candidate.health !== 'ready') throw new Error('无效候选环境。')
+      const prepared: Array<{ id: string; value: Awaited<ReturnType<ManagedGenerations['prepare']>> }> = []
+      try {
+        for (const record of this.projects().listMcpServers().filter(record => record.enabled && isManagedMcp(record.serverName))) {
+          const key = record.serverName === 'zerowall_managed_scimaster' ? await this.secrets.get(SCIMASTER_API_KEY_CREDENTIAL).catch(() => undefined) : undefined
+          if (record.serverName === 'zerowall_managed_scimaster' && !key) continue
+          const resolved = resolveMcpConfig(record, process.env, process.cwd(), undefined, candidate)
+          if (!resolved.config || resolved.config.transport !== 'stdio') throw new Error('候选 MCP 配置无效。')
+          if (key) resolved.config.env.ZEROWALL_SCIMASTER_API_KEY = key
+          prepared.push({ id: record.id, value: await this.managed.prepare(resolved.config, candidate.root) })
+        }
+        for (const item of prepared) await this.managed.stage(item.id, candidate.root, item.value)
+        await writeFile(join(root, 'activation-ready.json'), JSON.stringify({ transactionId: transaction.transactionId, ready: true }))
+      } catch (error) {
+        await Promise.allSettled(prepared.map(item => this.managed.discard(item.value)))
+        await writeFile(join(root, 'activation-ready.json'), JSON.stringify({ transactionId: transaction.transactionId, error: redactError(error) }))
+      }
+    } finally { this.activationBusy = false }
   }
 
   private async seedBundledServers(): Promise<void> {
@@ -1031,7 +1070,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     if (this.disposed) throw new Error('MCP service is stopping.')
     const record = this.projects().listMcpServers().find(item => item.serverName === serverName)
     if (record === undefined || !record.enabled) throw new Error('MCP connection is disabled or unknown. Enable it in Settings first.')
-    if (this.statuses.get(record.id)?.state === 'active' && this.fibers.has(record.id)) return
+    if (this.statuses.get(record.id)?.state === 'active' && (this.fibers.has(record.id) || this.managed.has(record.id))) return
     const cooldown = this.failureCooldownUntil.get(record.id) ?? 0
     if (cooldown > Date.now()) throw new Error('MCP connection is cooling down after a failed start. Retry later or reload it from Settings.')
     let pending = this.connecting.get(record.id)
@@ -1058,13 +1097,20 @@ export class ZeroWallMcpService extends TypertRemoteService {
     this.reconcileVersions.set(record.id, version)
     this.readyVersions.delete(record.id)
     const current = (): boolean => !this.disposed && this.reconcileVersions.get(record.id) === version
+    if (record.enabled && isManagedMcp(record.serverName) && this.managed.has(record.id) && this.managed.snapshot(record.id) === managedEnvironmentRecord()?.root) {
+      const names = this.managed.names(record.id)
+      this.registeredTools.set(record.id, names); this.indexMcpTools(record.serverName, names)
+      this.readyVersions.set(record.id, version)
+      this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
+      return
+    }
     if (!record.enabled) {
       await this.disposeOne(record.id)
       if (current()) this.statuses.set(record.id, { state: 'disabled', error: '', missingEnvironmentVariables: [] })
       return
     }
     if (isManagedMcp(record.serverName) && !managedEnvironmentReady()) {
-      if (current() && !this.fibers.has(record.id)) this.statuses.set(record.id, { state: 'blocked', error: 'The Claude Science MCP environment is not ready. Retry initialization or select a user-managed environment in Settings.', missingEnvironmentVariables: [] })
+      if (current() && !(this.fibers.has(record.id) || this.managed.has(record.id))) this.statuses.set(record.id, { state: 'blocked', error: 'The Claude Science MCP environment is not ready. Retry initialization or select a user-managed environment in Settings.', missingEnvironmentVariables: [] })
       return
     }
     let sciMasterApiKey: string | undefined
@@ -1111,6 +1157,25 @@ export class ZeroWallMcpService extends TypertRemoteService {
       return
     }
     if (!current()) return
+    if (isManagedMcp(record.serverName) && resolved.config.transport === 'stdio') {
+      const config = resolved.config as McpClient.StdioConfig
+      if (sciMasterApiKey !== undefined) config.env.ZEROWALL_SCIMASTER_API_KEY = sciMasterApiKey
+      try {
+        const candidate = await this.managed.prepare(config, managedEnvironmentRecord()?.root)
+        if (!current()) { await this.managed.discard(candidate); return }
+        const names = this.managed.activate(record.id, candidate)
+        this.registeredTools.set(record.id, names)
+        this.indexMcpTools(record.serverName, names)
+        this.readyVersions.set(record.id, version)
+        this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
+      } catch (error) {
+        if (!this.managed.has(record.id)) this.statuses.set(record.id, { state: 'error', error: redactError(error), missingEnvironmentVariables: [] })
+        else this.ctx.logger.warn(`Managed candidate failed; retaining active generation: ${redactError(error)}`)
+        this.environmentFileSignature = ''
+        this.environmentSignature = ''
+      }
+      return
+    }
     // DSH reserves a server namespace until the prior client is disposed.
     await this.disposeOne(record.id)
     if (!current()) return
@@ -1156,7 +1221,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     // global registry during a concurrent refresh can otherwise expose a
     // different server's tools in this DTO.
     const tools = [...(this.registeredTools.get(record.id) ?? this.toolNames(record.serverName))]
-    const runtimeState = status.state === 'starting' && this.fibers.has(record.id) && this.registeredTools.has(record.id)
+    const runtimeState = status.state === 'starting' && (this.fibers.has(record.id) || this.managed.has(record.id)) && this.registeredTools.has(record.id)
       ? 'active'
       : status.state
     return {
@@ -1178,7 +1243,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private convergeReadyStatuses(): void {
     for (const record of this.projects().listMcpServers()) {
       const version = this.readyVersions.get(record.id)
-      if (!record.enabled || version === undefined || this.reconcileVersions.get(record.id) !== version || !this.fibers.has(record.id)) continue
+      if (!record.enabled || version === undefined || this.reconcileVersions.get(record.id) !== version || !(this.fibers.has(record.id) || this.managed.has(record.id))) continue
       const status = this.statuses.get(record.id)
       if (status?.state === 'starting' || status?.state === undefined) {
         this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
@@ -1199,6 +1264,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   }
 
   private async disposeOne(id: string): Promise<void> {
+    await this.managed.remove(id)
     const fiber = this.fibers.get(id)
     if (fiber === undefined) return
     this.fibers.delete(id)
@@ -1208,13 +1274,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
   }
 
   private async disposeAll(): Promise<void> {
+    await this.managed.dispose()
     await Promise.allSettled([...this.fibers.keys()].map(id => this.disposeOne(id)))
   }
 }
 
 function dshHome(): string { return resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh')) }
 function defaultMcpMarkerPath(): string { return join(dshHome(), 'zerowall-mcp-defaults-v1.json') }
-export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.ProcessEnv, hostCwd = process.cwd(), enabledTools?: string[]): ResolvedMcpConfig {
+export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.ProcessEnv, hostCwd = process.cwd(), enabledTools?: string[], candidate?: ManagedEnvironmentRecord): ResolvedMcpConfig {
   const missing = new Set<string>()
   const resolveRefs = (refs: Record<string, string>): Record<string, string> => Object.fromEntries(
     Object.entries(refs).map(([target, source]) => {
@@ -1233,13 +1300,26 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
     ...(enabledTools === undefined ? {} : { enabledTools }),
   }
   const launch = record.transport === 'stdio' ? resolveStdioLaunch(record, hostCwd) : undefined
+  if (launch && candidate?.root) {
+    const currentRoot = managedEnvironmentRecord()?.root
+    if (currentRoot) {
+      launch.command = launch.command.replace(currentRoot, candidate.root)
+      launch.args = launch.args.map(arg => arg.replace(currentRoot, candidate.root!))
+      launch.cwd = launch.cwd.replace(currentRoot, candidate.root)
+    } else {
+      const relative = record.command === 'zerowall-managed:bio-tools' ? ['bio-tools/python/python.exe', 'bio-tools/run_server.py', 'mcp_bio'] : record.command === 'zerowall-managed:ketcher' ? ['', 'ketcher-chemistry/server.js'] : ['', 'sci/zerowall-mcp-launcher.cjs']
+      launch.command = relative[0] ? join(candidate.root, relative[0]) : process.execPath
+      launch.args = [join(candidate.root, relative[1]!), ...relative.slice(2)]
+      launch.cwd = candidate.root
+    }
+  }
   if (record.transport === 'stdio' && record.command === 'zerowall-managed:bio-tools') {
-    const managed = managedEnvironmentRecord()
+    const managed = candidate ?? managedEnvironmentRecord()
     const root = managed?.root
     const version = managed?.environmentVersion ?? managed?.version
     if (root && version) {
       const pythonVersion = managed.manifest?.python?.version?.match(/^\d+\.\d+/u)?.[0] ?? managed.manifest?.python?.version ?? version
-      const overlay = resolve(root, '..', '..', 'python-overlay', `python-${pythonVersion.replace(/[^A-Za-z0-9.-]/gu, '-')}`)
+      const overlay = managed.overlayPath ?? resolve(root, '..', '..', 'python-overlay', `python-${pythonVersion.replace(/[^A-Za-z0-9.-]/gu, '-')}`)
       values.PYTHONPATH = [overlay, join(root, managed.manifest?.python?.relativeSitePackages ?? 'bio-tools/python/Lib/site-packages')].join(';')
       values.PYTHONNOUSERSITE = '1'
     }
@@ -1275,7 +1355,7 @@ export function resolveStdioLaunch(record: Pick<McpServerRecord, 'command' | 'ar
 
 function isManagedMcp(serverName: string): boolean { return serverName === 'zerowall_managed_bio_tools' || serverName === 'zerowall_managed_ketcher' || serverName === 'zerowall_managed_scimaster' }
 
-type ManagedEnvironmentRecord = { root?: string; health?: string; version?: string; environmentVersion?: string; contentRevision?: number; archiveSha256?: string; mode?: string; manifest?: { python?: { version?: string; relativeSitePackages?: string } } }
+type ManagedEnvironmentRecord = { overlayPath?: string; root?: string; health?: string; version?: string; environmentVersion?: string; contentRevision?: number; archiveSha256?: string; mode?: string; manifest?: { python?: { version?: string; relativeSitePackages?: string } } }
 let managedEnvironmentCache: { path: string; fileSignature: string; record: ManagedEnvironmentRecord | undefined } | undefined
 
 function managedEnvironmentPath(): string | undefined {

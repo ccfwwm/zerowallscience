@@ -96,8 +96,6 @@ interface Draft {
   reconnectMaxAttempts: string
 }
 
-interface PythonEnvironmentInfo { ready: boolean; version?: string; executable?: string; sitePackages?: string; overlayPath?: string; packageCount?: number; corePackageCount?: number; overlayPackageCount?: number; packages: Array<{ name: string; version: string; location?: string; source: 'core' | 'overlay'; requiredVersion?: string; latestVersion?: string; updateAvailable?: boolean; health: 'healthy' | 'update-available' | 'locked' }>; skillAudit?: { summary: Record<string, number>; skills: Array<{ name: string; status: string; reason?: string }> }; verification?: { imports: boolean; pipCheck: boolean; message: string }; message?: string }
-
 type Props = Partial<SidebarFooterActionOwnerProps> & McpActions & PropsLocale<typeof NS> & { embedded?: boolean }
 
 const NEW_SERVER = '__new__'
@@ -477,115 +475,7 @@ export function McpConnectionsButton(props: Props) {
   </>
 }
 
-export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
-  const [info, setInfo] = useState<PythonEnvironmentInfo>()
-  const [environment, setEnvironment] = useState<{ environmentVersion?: string; contentRevision?: number; onlineEnvironmentVersion?: string; onlineContentRevision?: number; updateAvailable?: boolean; updated?: boolean; progress?: number; lastUpdateError?: string; phase: string; message?: string }>()
-  const [query, setQuery] = useState('')
-  const [spec, setSpec] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [feedback, setFeedback] = useState<string>()
-  const updateRequested = useRef(false)
-
-  const load = useCallback(async (search = '') => {
-    const [nextInfo, nextEnvironment] = await Promise.all([
-      window.zerowallDesktop?.getMcpPythonInfo?.(search),
-      window.zerowallDesktop?.checkMcpEnvironment?.(),
-    ])
-    if (nextInfo !== undefined) setInfo(nextInfo)
-    if (nextEnvironment !== undefined) setEnvironment(nextEnvironment)
-  }, [])
-
-  useEffect(() => {
-    const unsubscribe = window.zerowallDesktop?.onMcpEnvironmentStatus?.(status => {
-      setEnvironment(status)
-      if (status.phase === 'ready' && updateRequested.current) {
-        updateRequested.current = false
-        if (status.updated === true) {
-          setFeedback(t('python.updated'))
-          void window.zerowallDesktop?.getMcpPythonInfo?.().then(next => { if (next !== undefined) setInfo(next) })
-        } else if (status.lastUpdateError) {
-          setFeedback(t('python.failed', { error: status.lastUpdateError }))
-        }
-      } else if (status.phase === 'failed' && updateRequested.current) {
-        updateRequested.current = false
-        setFeedback(t('python.failed', { error: status.message ?? t('python.errorUnknown') }))
-      }
-    })
-    void load()
-    return unsubscribe
-  }, [load, t])
-
-  const install = async () => {
-    if (spec.trim() === '') return
-    setBusy(true); setFeedback(undefined)
-    try {
-      const next = await window.zerowallDesktop?.installMcpPythonPackage?.(spec)
-      if (next !== undefined) setInfo(next)
-      setFeedback(t('python.installed', { name: spec.trim() })); setSpec('')
-    } catch (reason) { setFeedback(message(reason)) }
-    finally { setBusy(false) }
-  }
-
-  const update = async () => {
-    setBusy(true); setFeedback(undefined)
-    updateRequested.current = true
-    try {
-      const status = await window.zerowallDesktop?.updateMcpEnvironment?.()
-      if (status !== undefined) setEnvironment(status)
-      setFeedback(t('python.updateStarted'))
-    }
-    catch (reason) { setFeedback(message(reason)) }
-    finally { setBusy(false) }
-  }
-
-  const environmentBusy = environment !== undefined && ['checking', 'downloading', 'verifying', 'installing'].includes(environment.phase)
-
-  const checkPackages = async () => {
-    setBusy(true); setFeedback(undefined)
-    try { const next = await window.zerowallDesktop?.checkMcpPythonPackageUpdates?.(); if (next !== undefined) setInfo(next); setFeedback(t('python.checkedPackages')) }
-    catch (reason) { setFeedback(message(reason)) }
-    finally { setBusy(false) }
-  }
-
-  const updatePackages = async () => {
-    setBusy(true); setFeedback(undefined)
-    try { const next = await window.zerowallDesktop?.updateMcpPythonPackages?.(); if (next !== undefined) setInfo(next); setFeedback(t('python.updatedPackages')) }
-    catch (reason) { setFeedback(message(reason)) }
-    finally { setBusy(false) }
-  }
-  const checkOne = async (name: string) => {
-    setBusy(true); setFeedback(undefined)
-    try { const next = await window.zerowallDesktop?.checkMcpPythonPackageUpdates?.([name]); if (next !== undefined) setInfo(next); setFeedback(t('python.checkedOne', { name })) } catch (reason) { setFeedback(message(reason)) } finally { setBusy(false) }
-  }
-  const updateOne = async (name: string) => {
-    setBusy(true); setFeedback(undefined)
-    try { const next = await window.zerowallDesktop?.updateMcpPythonPackages?.([name]); if (next !== undefined) setInfo(next); setFeedback(t('python.updatedOne', { name })) } catch (reason) { setFeedback(message(reason)) } finally { setBusy(false) }
-  }
-
-  return <section className={css.pythonPanel} aria-labelledby="zerowall-python-title">
-    <header className={css.header}><div><p>ZeroWall Science</p><h2 id="zerowall-python-title">{t('python.title')}</h2></div><button className={css.iconButton} type="button" onClick={() => void load(query)} disabled={busy || environmentBusy} title={t('python.recheck')} aria-label={t('python.recheck')}><RefreshCw size={17} /></button></header>
-    <div className={css.pythonBody}>
-      <div className={css.pythonSummary}>
-        <div><span>{t('python.status')}</span><strong>{info?.ready ? t('python.ready') : t('python.unavailable')}</strong></div>
-        <div><span>{t('python.version')}</span><strong>{info?.version ?? t('python.unknown')}</strong></div>
-        <div><span>{t('python.packages')}</span><strong>{info?.packageCount ?? info?.packages.length ?? 0}</strong></div>
-        <div><span>{t('python.environment')}</span><strong>{environment?.environmentVersion ?? t('python.notInstalled')}{t('python.revision')}{environment?.contentRevision ?? '-'}</strong></div>
-      </div>
-      <div className={css.environmentLine}><span>{t('python.online')}{environment?.onlineEnvironmentVersion ?? t('python.checking')}{t('python.revision')}{environment?.onlineContentRevision ?? '-'}</span><span className={css.sciMasterActions}>{environment?.updateAvailable === true && <button type="button" onClick={() => void update()} disabled={busy || environmentBusy}>{t('python.update')}</button>}<button type="button" onClick={() => void load(query)} disabled={busy || environmentBusy}>{t('python.check')}</button></span></div>
-      {environmentBusy && <div className={css.environmentProgress} role="status" aria-live="polite"><div><span>{t('python.updating')}</span><strong>{Math.round(environment.progress ?? 0)}%</strong></div><progress max="100" value={environment.progress ?? 0} /></div>}
-      {environment?.lastUpdateError && <p className={css.error}>{t('python.lastError')}{environment.lastUpdateError}</p>}
-      {info?.message && <p className={css.error}>{info.message === 'ZeroWall Python 尚未就绪。' ? t('python.notReady') : info.message}</p>}
-      {info?.ready && <>
-        <dl className={css.pathList}><dt>{t('python.interpreter')}</dt><dd>{info.executable}</dd><dt>{t('python.builtin')}</dt><dd>{info.sitePackages}</dd><dt>{t('python.overlay')}</dt><dd>{info.overlayPath}</dd></dl>
-        <div className={css.packageToolbar}><div className={css.sciMasterActions}><input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void load(query) }} placeholder={t('python.searchHint')} /><button type="button" onClick={() => void load(query)} disabled={busy}>{t('python.search')}</button><button type="button" onClick={() => { setQuery(''); void load('') }} disabled={busy}>{t('python.all')}</button></div><div className={css.sciMasterActions}><input value={spec} onChange={event => setSpec(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void install() }} placeholder={t('python.installHint')} /><button className={css.saveButton} type="button" onClick={() => void install()} disabled={busy || spec.trim() === ''}>{t('python.install')}</button></div></div>
-        <div className={css.environmentLine}><span>{t('python.coreCount', { core: info.corePackageCount ?? 0, user: info.overlayPackageCount ?? 0 })}</span><span className={css.sciMasterActions}><button type="button" onClick={() => void checkPackages()} disabled={busy}>{t('python.checkPackages')}</button>{info.packages.some(pkg => pkg.updateAvailable) && <button type="button" onClick={() => void updatePackages()} disabled={busy}>{t('python.updatePackages')}</button>}</span></div>
-        <div className={css.packageList} role="list">{info.packages.map(pkg => <div key={`${pkg.name}-${pkg.version}`} role="listitem"><strong>{pkg.name}</strong><span>{pkg.version}{pkg.source === 'core' ? t('python.locked') : pkg.updateAvailable ? ` → ${pkg.latestVersion}` : t('python.user')}</span></div>)}</div>
-        {info.skillAudit && <div className={css.environmentLine}><span>{t('python.skills', { ready: info.skillAudit.summary.ready ?? 0, managed: info.skillAudit.summary.managed ?? 0, optional: info.skillAudit.summary.optional ?? 0, external: info.skillAudit.summary.external ?? 0, incompatible: info.skillAudit.summary.incompatible ?? 0 })}</span></div>}
-      </>}
-      {feedback && <p className={!/(?:失败|error|fail)/iu.test(feedback) ? css.success : css.error}>{feedback}</p>}
-    </div>
-  </section>
-}
+export { PythonEnvironmentPanel } from './PythonEnvironmentPanel.js'
 
 function Field({ label, children }: { label: string, children: React.ReactNode }) {
   return <label className={css.field}><span>{label}</span>{children}</label>

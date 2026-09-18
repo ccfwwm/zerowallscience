@@ -34,7 +34,6 @@
 }
 
 .header:focus-visible,
-.github:focus-visible,
 .select:focus-visible,
 .toggle:focus-visible {
   outline: 2px solid var(--dsw-alias-brand-primary);
@@ -56,66 +55,6 @@
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.github {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0 16px 16px;
-  padding: 12px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 13px;
-  background: color-mix(in srgb, var(--accent) 10%, var(--dsw-alias-bg-layer-3));
-  color: var(--dsw-alias-label-secondary);
-  text-decoration: none;
-  overflow-wrap: anywhere;
-  transition:
-    border-color 0.16s,
-    background 0.16s;
-}
-
-.github:hover {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 18%, var(--dsw-alias-bg-layer-3));
-}
-
-.githubIcon {
-  width: 24px;
-  height: 24px;
-  flex: none;
-  color: var(--dsw-alias-label-primary);
-  fill: currentColor;
-}
-
-.githubTitle {
-  color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.githubSlug {
-  color: var(--dsw-alias-label-tertiary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.externalIcon {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.star {
-  margin-right: 6px;
-  color: #f4b74e;
 }
 
 .heading {
@@ -240,7 +179,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .card,
-  .github,
   .chevron,
   .toggle,
   .thumb {

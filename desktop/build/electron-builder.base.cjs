@@ -1,6 +1,11 @@
 const common = {
   asar: true,
   asarUnpack: [
+    'package.json',
+    'out/main/python-updater-worker.js',
+    'out/main/chunks/mcp-environment-*.js',
+    '**/yauzl/**/*',
+    '**/pend/**/*',
     '**/*.node',
     '**/*.dll',
     '**/*.exe',

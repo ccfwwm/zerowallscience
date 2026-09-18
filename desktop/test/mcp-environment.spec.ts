@@ -2,7 +2,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import JSZip from 'jszip'
 import { canonicalManifest, extractZipInWorker, mcpEnvironmentDiagnostic, McpEnvironmentController, selectPythonHealthImports, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
 
@@ -46,6 +46,56 @@ async function environment(root: string, manifest: McpEnvironmentManifest): Prom
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
 describe('MCP environment upgrades', () => {
+  it('recognizes a committed package job after a crash before job completion was recorded', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-package-commit-')); roots.push(root)
+    const installed = join(root, 'slots', 'committed')
+    await mkdir(installed, { recursive: true }); await mkdir(join(root, 'plans'))
+    const planId = '11111111-1111-1111-1111-111111111111'
+    await writeFile(join(root, 'current.json'), JSON.stringify({ root: installed, health: 'ready' }))
+    await writeFile(join(root, 'plans', `${planId}.json`), JSON.stringify({ planId, snapshotId: 'old-snapshot', changes: [] }))
+    await writeFile(join(installed, 'customization.json'), JSON.stringify({ planId }))
+    const controller = new McpEnvironmentController({ root, manifestUrl: 'https://fixture', publicKey: '', publish() {} })
+    const inventory = { snapshotId: installed, ready: true, packages: [] }
+    vi.spyOn(controller, 'pythonInfo').mockResolvedValue(inventory)
+    await expect(controller.applyPackagePlan(planId)).resolves.toEqual(inventory)
+    expect(JSON.parse(await readFile(join(root, 'current.json'), 'utf8')).root).toBe(installed)
+  })
+  it('binds a manual rollback manifest to the selected directory instead of the current slot', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-python-rollback-')); roots.push(root)
+    const selected = join(root, 'slots', 'a'), current = join(root, 'slots', 'b')
+    const old = signedManifest('6.2.0', 'stable-1', '1.3.0')
+    const next = signedManifest('6.2.0', 'stable-1', '1.4.0')
+    await environment(selected, old); await environment(current, next)
+    await writeFile(join(root, 'current.json'), JSON.stringify({ root: current, health: 'ready', manifest: next }))
+    const controller = new McpEnvironmentController({ root, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(), healthCheck: async () => undefined, publish: () => undefined })
+    await expect(controller.selectManual(selected)).resolves.toMatchObject({ phase: 'manual', environmentVersion: '1.3.0', message: selected })
+    expect(JSON.parse(await readFile(join(root, 'current.json'), 'utf8')).manifest.environmentVersion).toBe('1.3.0')
+  })
+  for (const failHealth of [false, true]) {
+    it(`preserves all six user extensions when a 1.4.0 upgrade ${failHealth ? 'fails health checks' : 'succeeds'}`, async () => {
+      const root = await mkdtemp(join(tmpdir(), 'zerowall-python-overlay-')); roots.push(root)
+      const installed = join(root, 'slots', 'a')
+      const old = signedManifest('6.2.0', 'stable-1', '1.3.0')
+      const next = signedManifest('6.2.0', 'stable-1', '1.4.0')
+      await environment(installed, old)
+      await writeFile(join(root, 'current.json'), JSON.stringify({ root: installed, health: 'ready', slot: 'a', manifest: old }))
+      const overlay = join(root, 'python-overlay', 'python-3.12')
+      await mkdir(overlay, { recursive: true })
+      const names = ['greenlet', 'playwright', 'pycryptodome', 'pyee', 'tomli', 'typing-extensions']
+      for (const name of names) await writeFile(join(overlay, name), `existing ${name}`)
+      const controller = new McpEnvironmentController({
+        root, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(), publish: () => undefined,
+        fetcher: async url => String(url).endsWith('latest.json') ? new Response(JSON.stringify(next)) : new Response(new Uint8Array(testArchive)),
+        healthCheck: async (_root, manifest) => { if (failHealth && manifest.environmentVersion === '1.4.0') throw new Error('injected runtime health failure') },
+      })
+      const status = await controller.initialize()
+      expect(status).toMatchObject({ phase: 'ready', environmentVersion: failHealth ? '1.3.0' : '1.4.0', currentSlot: failHealth ? 'a' : 'b' })
+      for (const name of names) expect(await readFile(join(overlay, name), 'utf8')).toBe(`existing ${name}`)
+      expect(await readFile(join(installed, 'manifest.json'), 'utf8')).toBe(JSON.stringify(old))
+      if (failHealth) expect(status.lastUpdateError).toContain('injected runtime health failure')
+      else expect(JSON.parse(await readFile(join(root, 'rollback.json'), 'utf8')).root).toBe(installed)
+    })
+  }
   it('keeps the durable status log compact while preserving the skill summary', () => {
     const diagnostic = mcpEnvironmentDiagnostic({
       phase: 'ready',
@@ -73,7 +123,7 @@ describe('MCP environment upgrades', () => {
     await extractZipInWorker(archivePath, target, (completed, total) => progress.push([completed, total]))
 
     expect(eventLoopResponsive).toBe(true)
-    expect(progress.at(-1)).toEqual([7, 7])
+    expect(progress.at(-1)).toEqual([16, 16])
     await expect(readFile(join(target, 'skills', 'example', 'SKILL.md'), 'utf8')).resolves.toBe('')
   })
 
@@ -167,7 +217,7 @@ describe('MCP environment upgrades', () => {
     await expect(controller.initialize()).resolves.toMatchObject({ phase: 'ready', currentSlot: 'b', updated: true, rollbackAvailable: true })
   })
 
-  it('adopts a fully installed inactive slot after a previous pointer switch failed', async () => {
+  it('does not activate an orphan slot without validated customization and activation evidence', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-mcp-root-')); roots.push(root)
     const installed = join(root, 'slots', 'a')
     const recovered = join(root, 'slots', 'b')
@@ -182,10 +232,10 @@ describe('MCP environment upgrades', () => {
       fetcher: async url => { requests.push(String(url)); return new Response(JSON.stringify(onlineManifest), { status: 200 }) }, healthCheck: async () => undefined, publish: () => undefined,
     })
 
-    await expect(controller.initialize()).resolves.toMatchObject({ phase: 'ready', environmentVersion: '1.2.0', currentSlot: 'b', updated: true })
-    expect(requests).toEqual(['https://example.test/latest.json'])
-    expect(JSON.parse(await readFile(join(root, 'current.json'), 'utf8'))).toMatchObject({ root: recovered, slot: 'b', environmentVersion: '1.2.0' })
-    expect(JSON.parse(await readFile(join(root, 'rollback.json'), 'utf8'))).toMatchObject({ root: installed, slot: 'a', environmentVersion: '1.1.3' })
+    await expect(controller.initialize()).resolves.toMatchObject({ phase: 'ready', environmentVersion: '1.1.3', currentSlot: 'a', updated: false })
+    expect(requests[0]).toBe('https://example.test/latest.json')
+    expect(JSON.parse(await readFile(join(root, 'current.json'), 'utf8'))).toMatchObject({ root: installed, slot: 'a', environmentVersion: '1.1.3' })
+    expect(controller.current().lastUpdateError).toBeTruthy()
   })
 
   it('starts a user update immediately and preserves active progress during checks', async () => {

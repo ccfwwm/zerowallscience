@@ -33,7 +33,7 @@ packageExtensionsChecksum: sha256-Q6X1Gl6DMuKgbSzTYjDqmxO9yrX+axXoi3kYfoCanGA=
 patchedDependencies:
   '@jiesou/dsh-opencode-zen-free-provider@0.1.18': 9d8a3e59d5bff5711f403de7df9cbd0cdbb160e74f311443cee42e43924a7e7c
   dsh-dream-skin@9.13.1: 76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380
-  dsh-free-search@0.4.28: 8b49e133a15d89640dc4c7c32b1cbf492a3fc2d5310856749c31870093bd02ca
+  dsh-free-search@0.4.28: 498dcee1f79256aefeb19cdcc127a81ff06db502713fa41343e529b3343f21cc
 
 importers:
 
@@ -11499,7 +11499,7 @@ importers:
         version: link:../packages/dsh-file-review
       dsh-free-search:
         specifier: 0.4.28
-        version: 0.4.28(patch_hash=8b49e133a15d89640dc4c7c32b1cbf492a3fc2d5310856749c31870093bd02ca)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-tools@deepseek-harness+packages+core+tools)
+        version: 0.4.28(patch_hash=498dcee1f79256aefeb19cdcc127a81ff06db502713fa41343e529b3343f21cc)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-tools@deepseek-harness+packages+core+tools)
       dsh-progressive-tools:
         specifier: workspace:*
         version: link:../packages/dsh-progressive-tools
@@ -11508,13 +11508,16 @@ importers:
         version: link:../packages/dsh-ssh-ops
       dsh-univer-office:
         specifier: 0.3.2
-        version: 0.3.2(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-attachment@deepseek-harness+packages+attachment+attachment)(@deepseek-ai/dsh-host-webserver@deepseek-harness+packages+host+webserver)(@deepseek-ai/dsh-llm@deepseek-harness+packages+llm+llm)(@deepseek-ai/dsh-session@deepseek-harness+packages+core+session)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-skill@deepseek-harness+packages+skill+skill)(@deepseek-ai/dsh-tools@deepseek-harness+packages+core+tools)(yauzl@2.10.0)
+        version: 0.3.2(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-attachment@deepseek-harness+packages+attachment+attachment)(@deepseek-ai/dsh-host-webserver@deepseek-harness+packages+host+webserver)(@deepseek-ai/dsh-llm@deepseek-harness+packages+llm+llm)(@deepseek-ai/dsh-session@deepseek-harness+packages+core+session)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-skill@deepseek-harness+packages+skill+skill)(@deepseek-ai/dsh-tools@deepseek-harness+packages+core+tools)(yauzl@3.4.0)
       dsh-wechat:
         specifier: workspace:*
         version: link:../packages/dsh-wechat
       dsh-zotero:
         specifier: 0.8.4
         version: 0.8.4(79ec771b4591fbcb2f891e8f371ba1a5)
+      yauzl:
+        specifier: 3.4.0
+        version: 3.4.0
     devDependencies:
       '@deepseek-ai/cordis-plugin-group':
         specifier: workspace:^
@@ -14114,6 +14117,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../deepseek-harness/vendor/schemastery
         version: link:../../deepseek-harness/vendor/schemastery
+      '@modelcontextprotocol/sdk':
+        specifier: 1.30.0
+        version: 1.30.0(zod@4.4.3)
       '@zerowallscience/plugin-base':
         specifier: workspace:^
         version: link:../base
@@ -26494,6 +26500,10 @@ packages:
   yauzl@2.10.0:
     resolution: {integrity: sha512-p4a9I6X6nu6IhoGmBqAcbJy1mlC4j27vEPZX9F4L4/vZT3Lyq1VkFHw/V/PUcB9Buo+DG3iHkT0x3Qya58zc3g==}
 
+  yauzl@3.4.0:
+    resolution: {integrity: sha512-jIH9yLR9wqr0wOS0TpBvo/g/2UgZH5qePVbjgRliiF0BYvOZyaBknKsF+x9Iht0O6sqgnB93rCICdOZFecJuDw==}
+    engines: {node: '>=12'}
+
   yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
@@ -29594,12 +29604,12 @@ snapshots:
       - react-native-b4a
       - supports-color
 
-  '@puppeteer/browsers@3.2.2(yauzl@2.10.0)':
+  '@puppeteer/browsers@3.2.2(yauzl@3.4.0)':
     dependencies:
       modern-tar: 0.8.5
       yargs: 18.1.0
     optionalDependencies:
-      yauzl: 2.10.0
+      yauzl: 3.4.0
 
   '@quansync/fs@1.0.0':
     dependencies:
@@ -32423,6 +32433,14 @@ snapshots:
     optionalDependencies:
       vite: 6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.12)(yaml@2.9.0)
 
+  '@vitest/mocker@4.1.10(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.0))':
+    dependencies:
+      '@vitest/spy': 4.1.10
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.0)
+
   '@vitest/mocker@4.1.10(vite@6.4.3(@types/node@24.10.1)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.12)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 4.1.10
@@ -33812,7 +33830,7 @@ snapshots:
       '@deepseek-ai/dsh-client-ui-settings': link:deepseek-harness/packages/client/ui-settings
       react: 18.2.0
 
-  dsh-free-search@0.4.28(patch_hash=8b49e133a15d89640dc4c7c32b1cbf492a3fc2d5310856749c31870093bd02ca)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-tools@deepseek-harness+packages+core+tools):
+  dsh-free-search@0.4.28(patch_hash=498dcee1f79256aefeb19cdcc127a81ff06db502713fa41343e529b3343f21cc)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-tools@deepseek-harness+packages+core+tools):
     dependencies:
       '@deepseek-ai/dsh-settings': link:deepseek-harness/packages/settings/settings
       '@deepseek-ai/dsh-tools': link:deepseek-harness/packages/core/tools
@@ -33829,7 +33847,7 @@ snapshots:
       '@deepseek-ai/dsh-session': link:deepseek-harness/packages/core/session
       '@deepseek-ai/dsh-tools': link:deepseek-harness/packages/core/tools
 
-  dsh-univer-office@0.3.2(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-attachment@deepseek-harness+packages+attachment+attachment)(@deepseek-ai/dsh-host-webserver@deepseek-harness+packages+host+webserver)(@deepseek-ai/dsh-llm@deepseek-harness+packages+llm+llm)(@deepseek-ai/dsh-session@deepseek-harness+packages+core+session)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-skill@deepseek-harness+packages+skill+skill)(@deepseek-ai/dsh-tools@deepseek-harness+packages+core+tools)(yauzl@2.10.0):
+  dsh-univer-office@0.3.2(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-attachment@deepseek-harness+packages+attachment+attachment)(@deepseek-ai/dsh-host-webserver@deepseek-harness+packages+host+webserver)(@deepseek-ai/dsh-llm@deepseek-harness+packages+llm+llm)(@deepseek-ai/dsh-session@deepseek-harness+packages+core+session)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-skill@deepseek-harness+packages+skill+skill)(@deepseek-ai/dsh-tools@deepseek-harness+packages+core+tools)(yauzl@3.4.0):
     dependencies:
       '@deepseek-ai/cordis': link:deepseek-harness/vendor/cordis
       '@deepseek-ai/dsh-attachment': link:deepseek-harness/packages/attachment/attachment
@@ -33840,12 +33858,12 @@ snapshots:
       '@deepseek-ai/dsh-skill': link:deepseek-harness/packages/skill/skill
       '@deepseek-ai/dsh-tools': link:deepseek-harness/packages/core/tools
       '@deepseek-ai/schemastery': link:deepseek-harness/vendor/schemastery
-      '@puppeteer/browsers': 3.2.2(yauzl@2.10.0)
+      '@puppeteer/browsers': 3.2.2(yauzl@3.4.0)
       '@univerjs-pro/cli-assets': 0.1.0
       '@univerjs-pro/engine-formula-rust-binding': 1.0.0-insiders.20260910-22fe9c7
       '@univerjs-pro/exchange-node-binding': 0.1.2
       libsql: 0.5.29
-      puppeteer-core: 25.11.0(yauzl@2.10.0)
+      puppeteer-core: 25.11.0(yauzl@3.4.0)
     transitivePeerDependencies:
       - bufferutil
       - proxy-agent
@@ -36860,9 +36878,9 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  puppeteer-core@25.11.0(yauzl@2.10.0):
+  puppeteer-core@25.11.0(yauzl@3.4.0):
     dependencies:
-      '@puppeteer/browsers': 3.2.2(yauzl@2.10.0)
+      '@puppeteer/browsers': 3.2.2(yauzl@3.4.0)
       chromium-bidi: 17.0.2(devtools-protocol@0.0.1680125)
       devtools-protocol: 0.0.1680125
       typed-query-selector: 2.12.2
@@ -39400,6 +39418,10 @@ snapshots:
     dependencies:
       buffer-crc32: 0.2.13
       fd-slicer: 1.1.0
+
+  yauzl@3.4.0:
+    dependencies:
+      pend: 1.2.0
 
   yocto-queue@0.1.0: {}
 

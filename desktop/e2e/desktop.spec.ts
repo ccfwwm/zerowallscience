@@ -365,6 +365,29 @@ describe('ZeroWall Science Electron', () => {
     const settings = page.getByRole('dialog', { name: '设置' })
     await settings.getByRole('button', { name: '插件' }).click()
     expect(await settings.getByRole('tab', { name: '插件配置' }).count()).toBe(1)
+    await settings.getByRole('tab', { name: '插件配置' }).click()
+    const freeSearchCard = settings.locator('.dshfs-card')
+    await freeSearchCard.waitFor({ state: 'visible' })
+    const freeSearchHeader = freeSearchCard.locator('.dshfs-header')
+    await freeSearchHeader.click()
+    await page.waitForTimeout(500)
+    if (await freeSearchCard.count() === 0) {
+      throw new Error([
+        'Free Search card disappeared while expanding.',
+        `Settings text:\n${(await settings.innerText()).slice(0, 12_000)}`,
+        `Renderer diagnostics:\n${rendererOutput.slice(-100).join('\n')}`,
+      ].join('\n\n'))
+    }
+    await expect.poll(() => freeSearchHeader.getAttribute('aria-expanded')).toBe('true')
+    const freeSearchBody = freeSearchCard.locator('.dshfs-body')
+    await freeSearchBody.waitFor({ state: 'visible' })
+    await expect.poll(() => freeSearchBody.locator('.dshfs-label').first().innerText()).toMatch(/搜索引擎|Search engine/u)
+    const engineSelect = freeSearchBody.locator('select').first()
+    await engineSelect.waitFor({ state: 'visible' })
+    expect((await engineSelect.locator('option').allTextContents()).some(label => label.includes('Bing'))).toBe(true)
+    await settings.getByText('文件审查', { exact: true }).waitFor({ state: 'visible' })
+    expect(await settings.getByRole('link', { name: /GitHub.*Star|Star.*GitHub/i }).count()).toBe(0)
+    expect(await settings.getByText('去 GitHub 点 Star', { exact: true }).count()).toBe(0)
     await settings.getByRole('tab', { name: 'Skills' }).click()
     await settings.getByText(/科研 Skills/).waitFor({ state: 'visible' })
     await settings.getByRole('button', { name: '添加 Skill' }).waitFor({ state: 'visible' })

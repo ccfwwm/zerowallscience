@@ -15,7 +15,8 @@ import { isZoteroOpenUrl } from './security-policy.js'
 import { resolveDesktopIdentity } from './identity.js'
 import { findDesktopWorkspaceRoot, resolveDesktopIconPath, resolveDesktopResourcePath } from './paths.js'
 import { stopBeforeExit } from './shutdown.js'
-import { mcpEnvironmentDiagnostic, McpEnvironmentController, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
+import { PythonUpdaterService } from './python-updater-service.js'
+import { mcpEnvironmentDiagnostic, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
 import { DesktopUpdateController, isUpdateCheckDue, UPDATE_CHECK_INTERVAL_MS } from './updater.js'
 import { resolveRevealPath } from './reveal-path.js'
@@ -375,7 +376,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     encrypt: (value) => safeStorage.encryptString(value),
     decrypt: (value) => safeStorage.decryptString(value),
   })
-  let mcpEnvironment!: McpEnvironmentController
+  let mcpEnvironment!: PythonUpdaterService
   let mcpEnvironmentStartTimer: NodeJS.Timeout | undefined
   const scheduleMcpEnvironmentUpdate = (): void => {
     if (mcpEnvironmentStartTimer !== undefined) return
@@ -422,7 +423,9 @@ if (ownsInstance) app.whenReady().then(async () => {
 
   const mcpEnvironmentLogPath = join(app.getPath('logs'), 'mcp-environment.log')
   await mkdir(dirname(mcpEnvironmentLogPath), { recursive: true })
-  mcpEnvironment = new McpEnvironmentController({
+  let notifiedPythonSnapshot: string | undefined
+  mcpEnvironment = new PythonUpdaterService({
+    coordinateHost: true,
     root: mcpEnvironmentRoot,
     manifestUrl: process.env.ZEROWALL_PYTHON_MANIFEST ?? process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python/windows-x64/latest.json',
     publicKey: process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? MCP_ENVIRONMENT_PUBLIC_KEY,
@@ -432,8 +435,15 @@ if (ownsInstance) app.whenReady().then(async () => {
       void appendFile(mcpEnvironmentLogPath, `${JSON.stringify({ timestamp: new Date().toISOString(), ...mcpEnvironmentDiagnostic(status) })}\n`, 'utf8').catch(() => undefined)
       const window = mainWindow
       if (window !== undefined && !window.isDestroyed()) window.webContents.send('desktop:mcp-environment:status-changed', status)
+      const snapshot = status.packageInventory?.snapshotId
+      if (status.updated && snapshot && snapshot !== notifiedPythonSnapshot) {
+        notifiedPythonSnapshot = snapshot
+        if (Notification.isSupported()) new Notification({ title: 'Python 环境已更新', body: `科研环境 ${status.activeEnvironment?.environmentVersion ?? ''} 已生效，依赖清单已同步。`, silent: true }).show()
+      }
     },
   })
+
+  app.once('before-quit', () => mcpEnvironment.stop())
 
   const updates = new DesktopUpdateController({
     updater: autoUpdater,
@@ -613,6 +623,10 @@ if (ownsInstance) app.whenReady().then(async () => {
     tray = undefined
     return updates.install()
   })
+    ipcMain.handle('desktop:mcp-environment:pause', () => mcpEnvironment.pause())
+    ipcMain.handle('desktop:mcp-environment:rollback', () => mcpEnvironment.rollback())
+    ipcMain.handle('desktop:mcp-python:preview', (_event, names: string[]) => mcpEnvironment.previewPackages(names))
+    ipcMain.handle('desktop:mcp-python:apply-plan', (_event, planId: string) => mcpEnvironment.applyPackagePlan(planId))
     ipcMain.handle('desktop:mcp-environment:get-status', () => mcpEnvironment.current())
     ipcMain.handle('desktop:mcp-environment:check', () => mcpEnvironment.checkForUpdates())
     ipcMain.handle('desktop:mcp-environment:update', () => mcpEnvironment.updateForUser())

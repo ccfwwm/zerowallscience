@@ -67,7 +67,31 @@ index ba50272d..7914cffc 100644
        if (state.status === "loading") return null;
        const ready = state.status === "ready";
        const t = tt(lang);
-@@ -969,12 +945,21 @@ react_jsx_runtime.jsx("div", {
+@@ -934,8 +910,8 @@ window.__ModuleLoader__.load({
+                                 className: "dshfs-updatePill",
+                                 type: "button",
+                                 title: updateInfo && updateInfo.ok && updateInfo.hasUpdate ? t.updateAvailable(updateInfo.current, updateInfo.latest) : undefined,
+-                                onClick: updateInfo && updateInfo.ok && updateInfo.hasUpdate ? runUpdate : runCheckUpdate,
+-                                disabled: upgrading || checkingUpdate || saving || !ready,
++                                onClick: runCheckUpdate,
++                                disabled: checkingUpdate || saving || !ready,
+                                 children: [
+                                   react_jsx_runtime.jsx("svg", {
+                                     className: "dshfs-updateIcon",
+@@ -953,10 +929,8 @@ window.__ModuleLoader__.load({
+                                       strokeLinejoin: "round",
+                                     }),
+                                   }),
+-                                  upgrading
+-                                    ? t.upgrading
+-                                    : checkingUpdate
+-                                      ? t.checkingUpdate
++                                  checkingUpdate
++                                    ? t.checkingUpdate
+                                       : updateInfo && updateInfo.ok && updateInfo.hasUpdate
+                                         ? t.hasUpdate
+                                         : t.checkUpdate,
+@@ -969,12 +943,21 @@ react_jsx_runtime.jsx("div", {
                                    children: t.upgradeDone(updateInfo.latest),
                                  })
                                : updateInfo.hasUpdate
@@ -95,6 +119,15 @@ index ba50272d..7914cffc 100644
                                  : react_jsx_runtime.jsx("span", {
                                      className: "dshfs-updateOk",
                                      children: t.updateLatest(updateInfo.current),
+@@ -1036,7 +1021,7 @@ window.__ModuleLoader__.load({
+       });
+     }
+ 
+-    const inject = ["slots", "commandUi"];
++    const inject = ["slots"];
+ 
+     function apply(ctx) {
+       // 挂官方插槽 settings.plugin.item（设置 → 插件 → 可配置标签页）。
 diff --git a/lib/index.js b/lib/index.js
 index 9039537c..928928dc 100644
 --- a/lib/index.js
@@ -213,13 +246,12 @@ diff --git a/package.json b/package.json
 index 8f7fc4f1..1639b464 100644
 --- a/package.json
 +++ b/package.json
-@@ -58,7 +58,8 @@
+@@ -58,7 +58,7 @@
      },
      "client": {
        "inject": [
 -        "@deepseek-ai/dsh-client-runtime"
-+        "slots",
-+        "commandUi"
++        "slots"
        ],
        "platform": "web"
      },

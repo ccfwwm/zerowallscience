@@ -97,29 +97,6 @@ export function FileReviewSettingsCard({
           />
         </svg>
       </button>
-      <a
-        className={css.github}
-        href="https://github.com/left0ver/dsh-file-review"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={t('settings.star.aria')}
-      >
-        <svg className={css.githubIcon} viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 2.4a9.8 9.8 0 0 0-3.1 19.1c.5.1.7-.2.7-.5v-1.9c-2.8.6-3.4-1.2-3.4-1.2-.5-1.1-1.1-1.4-1.1-1.4-.9-.6.1-.6.1-.6 1 0 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-4.9 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.5 9.5 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.8-2.3 4.6-4.6 4.9.4.3.7.9.7 1.8V21c0 .3.2.6.7.5A9.8 9.8 0 0 0 12 2.4Z" />
-        </svg>
-        <span className={css.heading}>
-          <span className={css.githubTitle}>
-            <span className={css.star} aria-hidden="true">
-              ★
-            </span>
-            {t('settings.star.title')}
-          </span>
-          <span className={css.githubSlug}>left0ver/dsh-file-review</span>
-        </span>
-        <svg className={css.externalIcon} viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M6 3h7v7M13 3 7 9M11 9v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h3" />
-        </svg>
-      </a>
       {open ? (
         <div className={css.body}>
           <label className={css.row}>

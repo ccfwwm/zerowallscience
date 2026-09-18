@@ -48,6 +48,9 @@ d.SOPClassUID=meta.MediaStorageSOPClassUID;d.SOPInstanceUID=meta.MediaStorageSOP
 d.Rows,d.Columns=a.shape;d.SamplesPerPixel=1;d.PhotometricInterpretation='MONOCHROME2';d.BitsAllocated=16;d.BitsStored=16;d.HighBit=15;d.PixelRepresentation=0;d.PixelData=a.tobytes();d.save_as('test.dcm',enforce_file_format=True)
 assert np.array_equal(pydicom.dcmread('test.dcm').pixel_array,a)
 assert np.array_equal(jpeg_ls.decode(jpeg_ls.encode(a)),a)
+from pydicom.uid import JPEGLSLossless, RLELossless
+for syntax in [JPEGLSLossless, RLELossless]:
+ d.compress(syntax);assert np.array_equal(d.pixel_array,a);d.decompress()
 for uid in ['1.2.840.10008.1.2.4.50','1.2.840.10008.1.2.4.90','1.2.840.10008.1.2.5']:
  assert pydicom.pixels.get_decoder(uid).is_available,uid
 volume=np.arange(64,dtype=np.float32).reshape(4,4,4)
@@ -57,7 +60,7 @@ image=sitk.GetImageFromArray(volume);sitk.WriteImage(image,'test.mha');assert np
 ''',
     'zotero-mocked-api': '''
 from pyzotero import zotero
-import httpx
+import httpx2 as httpx
 z=zotero.Zotero('12345','user','offline-test-key')
 def reply(request):
  assert 'api.zotero.org' in str(request.url)
@@ -70,14 +73,15 @@ from markitdown import MarkItDown
 from docx import Document
 from pptx import Presentation
 from pptx.util import Inches
-import openpyxl,fitz
+import openpyxl,fitz,os,shutil
+shutil.copyfile(os.environ['ZEROWALL_XLS_FIXTURE'],'sample.xls')
 doc=Document();doc.add_paragraph('ZeroWall Office marker');doc.save('sample.docx')
 p=Presentation();s=p.slides.add_slide(p.slide_layouts[6]);s.shapes.add_textbox(Inches(1), Inches(1), Inches(6), Inches(1)).text='ZeroWall Office marker';p.save('sample.pptx')
 w=openpyxl.Workbook();w.active.append(['ZeroWall Office marker',42]);w.save('sample.xlsx')
 with fitz.open() as d:
  page=d.new_page();page.insert_text((30,40),'ZeroWall Office marker');d.save('sample.pdf')
 converter=MarkItDown()
-for path in ['sample.docx','sample.pptx','sample.xlsx','sample.pdf']:
+for path in ['sample.docx','sample.pptx','sample.xls','sample.xlsx','sample.pdf']:
  result=converter.convert(path);assert 'ZeroWall' in result.text_content,(path,result.text_content)
 ''',
     'statistics': '''
@@ -100,16 +104,16 @@ m=RandomForestRegressor(n_estimators=3,random_state=1).fit(x,y)
 assert shap.TreeExplainer(m)(x[:2]).values.shape==(2,3)
 assert len(hdbscan.HDBSCAN(min_cluster_size=3).fit_predict(x))==30
 assert len(xgboost.XGBRegressor(n_estimators=2,n_jobs=1).fit(x,y).predict(x))==30
-assert get_problem('sphere').evaluate(np.zeros((1,10)))[0]==0
+assert get_problem('sphere').evaluate(np.full((1,10),.5))[0]==0
 t,s=kaplan_meier_estimator(np.array([True,True,False]),np.array([1,2,3]));assert len(t)==3
 ''',
     'bayesian': '''
 import pymc as pm,arviz as az,numpy as np
 with pm.Model() as m:
  x=pm.Normal('x',0,1);pm.Normal('obs',x,1,observed=np.array([0.1,0.2]))
- result=pm.sample_prior_predictive(samples=3,random_seed=1)
+ result=pm.sample_prior_predictive(draws=3,random_seed=1)
 assert result.prior.sizes['draw']==3
-assert az.from_dict(posterior={'a':np.ones((1,10))}).posterior.sizes['draw']==10
+assert az.from_dict({'posterior':{'a':np.ones((1,10))}}).posterior.sizes['draw']==10
 ''',
     'data-and-geography': '''
 import numpy as np,dask.array as da,xarray as xr,geopandas as gpd,pyogrio
@@ -150,7 +154,7 @@ from pymatgen.core import Lattice,Structure
 from mp_api.client import MPRester
 assert Chem.MolToSmiles(Chem.MolFromSmiles('CCO'))=='CCO'
 assert dm.to_mol('CCO').GetNumAtoms()==3
-assert len(mc.functional.list_default_available_rules())>0
+assert mc.functional.rules_filter(['CCO'],rules=['rule_of_five'],n_jobs=1).tolist()==[True]
 s=Structure(Lattice.cubic(3.5),['Na','Cl'],[[0,0,0],[.5,.5,.5]]);assert len(Structure.from_str(s.to(fmt='cif'),fmt='cif'))==2
 with MPRester(api_key='0'*32,mute_progress_bars=True) as client: assert client is not None
 ''',
@@ -167,7 +171,7 @@ s=oms.MSSpectrum();s.set_peaks(([100.,200.],[1.,2.]));assert s.size()==2
 import flowio,numpy as np,json
 from bids import BIDSLayout
 from openpiv import pyprocess
-flowio.create_fcs('sample.fcs',list(map(float,range(12))),['A','B','C'])
+with open('sample.fcs','wb') as stream: flowio.create_fcs(stream,list(map(float,range(12))),['A','B','C'])
 f=flowio.FlowData('sample.fcs');assert f.event_count==4
 from pathlib import Path
 Path('bids').mkdir(exist_ok=True);Path('bids/dataset_description.json').write_text(json.dumps({'Name':'test','BIDSVersion':'1.10.0'}))
@@ -182,7 +186,7 @@ assert callable(pytximport.tximport)
 from pathlib import Path
 for name in ['s1','s2']:
  Path(name).mkdir(exist_ok=True);Path(name+'/quant.sf').write_text('Name\\tLength\\tEffectiveLength\\tTPM\\tNumReads\\nt1\\t1000\\t800\\t600000\\t60\\nt2\\t1000\\t800\\t400000\\t40\\n')
-result=pytximport.tximport(['s1/quant.sf','s2/quant.sf'],data_type='salmon',tx_out=True)
+result=pytximport.tximport(['s1/quant.sf','s2/quant.sf'],data_type='salmon',return_transcript_data=True)
 assert result is not None
 ''',
     'user-tools': '''
@@ -207,6 +211,7 @@ def main():
     work = output.parent / 'functional'
     work.mkdir(exist_ok=True)
     env = {**os.environ, 'PYTHONNOUSERSITE': '1', 'PYTHONPATH': '', 'MPLBACKEND': 'Agg', 'NUMBA_NUM_THREADS': '2', 'OMP_NUM_THREADS': '2', 'OPENBLAS_NUM_THREADS': '2'}
+    env['ZEROWALL_XLS_FIXTURE'] = str(ROOT/'tools/release/fixtures/sample.xls')
     if sys.version_info[:3] != (3,12,10):
         raise SystemExit('Expected CPython 3.12.10')
     site = Path(sys.executable).parent / 'site-packages'
@@ -224,10 +229,23 @@ def main():
         return result
     report={'python':'3.12.10','isolated':True,'packages':packages,'imports':{},'cases':{}}
     if not args.case:
+        # Also exercise installed modules used by Skill source/vendor files,
+        # including dependencies that previously appeared only in documentation.
+        draft = output.parent / 'audit-installed.json'
+        subprocess.run([sys.executable, '-s', '-B', str(ROOT/'tools/release/audit-skill-dependencies.py'), '--site-packages', str(site), '--output', str(draft)], check=True, env=env)
+        extra_modules = set()
+        for skill in json.loads(draft.read_text('utf-8'))['skills']:
+            for requirement in skill['requirements']:
+                if requirement['name'] not in packages:
+                    continue
+                extra_modules.update(requirement['imports'])
+                if not requirement['imports']:
+                    d = next((d for d in metadata.distributions(path=[str(site)]) if re.sub(r'[-_.]+','-',d.metadata['Name']).lower()==requirement['name']), None)
+                    extra_modules.update(m for m in (d.read_text('top_level.txt') or '').splitlines() if m.isidentifier() and not m.startswith('_'))
         def probe(module):
             return module, child('import-'+module, f'import importlib,pathlib; m=importlib.import_module({module!r}); p=getattr(m,"__file__",None); assert p is None or pathlib.Path(p).resolve().is_relative_to(pathlib.Path({str(site)!r}).resolve()), p; print(p)')
         with ThreadPoolExecutor(max_workers=4) as pool:
-            for name,result in pool.map(probe,MODULES): report['imports'][name]=result
+            for name,result in pool.map(probe, sorted(set(MODULES) | extra_modules)): report['imports'][name]=result
     elif output.exists():
         report=json.loads(output.read_text('utf-8'))
     for name,code in CASES.items():

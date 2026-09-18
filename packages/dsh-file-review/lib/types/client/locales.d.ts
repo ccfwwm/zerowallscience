@@ -5,8 +5,6 @@ export declare const NS = "file-review";
 export declare const en: {
     'settings.title': string;
     'settings.description': string;
-    'settings.star.title': string;
-    'settings.star.aria': string;
     'settings.expand': string;
     'settings.collapse': string;
     'settings.readOnly': string;

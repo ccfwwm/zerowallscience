@@ -44,7 +44,9 @@ function upload(key, file, overwrite) {
     const policy = new qiniu.rs.PutPolicy({ scope: `${env.QINIU_BUCKET}:${key}`, insertOnly: overwrite ? 0 : 1, expires: 86400 })
     const callback = (error, body, info) => info?.statusCode === 200 ? resolvePromise(body) : reject(new Error(`Qiniu upload failed for ${key}: HTTP ${info?.statusCode ?? 'network error'}`))
     if (file.endsWith('.zip')) {
-      const extra = qiniu.resume_up.PutExtra.create({ resumeRecordFile: resolve(dist, `${file}.upload-progress.json`), version: 'v2' })
+      let lastPercent = -5
+      const progress = (bytes, total) => { const percent = Math.floor(bytes / total * 100); if (percent >= lastPercent + 5) { console.log(`Archive upload ${percent}%`); lastPercent = percent } }
+      const extra = qiniu.resume_up.PutExtra.create(file, undefined, 'application/zip', resolve(dist, `${file}.upload-progress.json`), progress, 8 * 1024 * 1024, 'v2')
       resumeUploader.putFile(policy.uploadToken(mac), key, resolve(dist, file), extra, callback)
     } else uploader.putFile(policy.uploadToken(mac), key, resolve(dist, file), new qiniu.form_up.PutExtra(), callback)
   })
@@ -77,10 +79,25 @@ await publishVerifiedAssets({
   },
   verifyVersion: () => getManifest(`${publicBase}/${files[1][0]}`),
   verifyArchive: verifyPublicArchive,
-  promote: async () => { console.log('Versioned assets verified; promoting latest.json.'); await upload(files[2][0], files[2][1], true) },
+  promote: async () => {
+    console.log('Versioned assets verified; promoting latest.json.')
+    await upload(files[2][0], files[2][1], true)
+    const cdn = new qiniu.cdn.CdnManager(mac)
+    await new Promise((resolveRefresh, reject) => cdn.refreshUrls([`${publicBase}/${files[2][0]}`], (_error, body, info) => {
+      if (info?.statusCode === 200 && body?.code === 200) resolveRefresh()
+      else reject(new Error(`Latest pointer uploaded, but CDN refresh failed: HTTP ${info?.statusCode}`))
+    }))
+  },
   verifyLatest: async () => {
     await getManifest(`${publicBase}/${files[2][0]}?release=${encodeURIComponent(environmentVersion)}&verify=${Date.now()}`)
-    await getManifest(`${publicBase}/${files[2][0]}`)
+    for (let attempt = 0; ; attempt++) {
+      try { await getManifest(`${publicBase}/${files[2][0]}`); break }
+      catch (error) {
+        if (attempt >= 11) throw error
+        console.log('Waiting for CDN pointer refresh...')
+        await new Promise(resolveWait => setTimeout(resolveWait, 10_000))
+      }
+    }
   },
 })
 console.log(`Public ZeroWall Python ${environmentVersion} signature, size, SHA-256 and exact latest pointer verified.`)

@@ -69,6 +69,7 @@ const desktopRuntimeSeeds = [
   '@modelcontextprotocol/sdk',
   '@pdf-lib/fontkit',
   'jszip',
+  'yauzl',
   'pdf-lib',
   'pptxgenjs',
 ]

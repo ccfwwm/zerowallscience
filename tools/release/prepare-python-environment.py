@@ -36,6 +36,8 @@ def main():
     if sys.version_info[:3] != (3, 12, 10):
         raise SystemExit("Build requires CPython 3.12.10")
     env = {**os.environ, "PYTHONNOUSERSITE": "1", "PYTHONPATH": "", "PIP_DISABLE_PIP_VERSION_CHECK": "1"}
+    # Do not use this output directory as --find-links: locally built pure-Python
+    # wheels have final-lock hashes, while the source lock hashes their sdists.
     run([sys.executable, "-m", "pip", "wheel", "--prefer-binary", "--require-hashes", "-r", source_lock, "--wheel-dir", wheelhouse], env=env)
     expected = dict(re.findall(r"^([A-Za-z0-9_.-]+)==([^\s\\]+)", source_lock.read_text(), re.M))
     expected = {normalized(k): v for k, v in expected.items()}

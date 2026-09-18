@@ -118,7 +118,7 @@ test('the pinned dsh-free-search package uses current client services and has no
   const manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
   assert.equal(manifest.version, '0.4.28')
   assert.equal(manifest.license, 'MIT')
-  assert.deepEqual(manifest.dsh.client.inject, ['slots', 'commandUi'])
+  assert.deepEqual(manifest.dsh.client.inject, ['slots'])
 
   const host = await readFile(resolve(packageRoot, 'lib/index.js'), 'utf8')
   const client = await readFile(resolve(packageRoot, 'lib/client.js'), 'utf8')
@@ -126,7 +126,10 @@ test('the pinned dsh-free-search package uses current client services and has no
     assert.doesNotMatch(`${host}\n${client}`, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'))
   }
   for (const marker of ['advanced_search', 'platform_search', 'free_search_test']) assert.match(host, new RegExp(marker, 'u'))
+  assert.match(client, /const inject = \["slots"\]/u)
+  assert.match(client, /ctx\.inject\(\["commandUi"\]/u)
   assert.match(client, /free-search-engine/u)
+  assert.doesNotMatch(client, /\brunUpdate\b|\bupgrading\b(?=\s*\?|\s*\|\|)/u)
 
   const lockfile = parseYaml(await readFile(resolve(root, 'pnpm-lock.yaml'), 'utf8'))
   assert.equal(lockfile.packages['dsh-free-search@0.4.28'].resolution.integrity,

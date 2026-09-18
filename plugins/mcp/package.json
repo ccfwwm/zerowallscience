@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-mcp",
-  "version": "6.2.0",
+  "version": "6.2.1",
   "description": "ZeroWall Science mcp domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -149,7 +149,8 @@
     "lucide-react": "^0.468.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@modelcontextprotocol/sdk": "1.30.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.3"

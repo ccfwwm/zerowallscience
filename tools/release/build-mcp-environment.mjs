@@ -12,6 +12,7 @@ const output = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_OUTPUT ?? join(root,
 const environmentVersion = (process.env.ZEROWALL_MCP_ENVIRONMENT_VERSION ?? process.env.ZEROWALL_MCP_ENVIRONMENT_REVISION ?? '1.4.0').trim()
 if (!environmentVersion) throw new Error('ZEROWALL_MCP_ENVIRONMENT_VERSION is required.')
 const pythonVersion = process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12.10'
+if (pythonVersion !== '3.12.10') throw new Error('This release profile requires Python 3.12.10 exactly.')
 const pythonRuntime = pythonVersion.match(/^\d+\.\d+/u)?.[0] ?? pythonVersion
 // Keep the previous desktop-version field as a compatibility alias for
 // clients released before the managed runtime was renamed to ZeroWall Python.
@@ -42,20 +43,32 @@ async function checkMcpServer(command, args, cwd) {
   ]
   await new Promise((resolveCheck, reject) => {
     const child = spawn(command, args, { cwd, windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', PYTHONNOUSERSITE: '1', PYTHONPATH: '' }, stdio: 'pipe' })
-    let output = ''; let settled = false
+    let output = ''; let settled = false; let initialized = false
     const finish = error => { if (settled) return; settled = true; clearTimeout(timer); child.kill(); error ? reject(error) : resolveCheck() }
-    const timer = setTimeout(() => finish(new Error(`MCP build smoke test timed out: ${args.at(-1) ?? command}`)), 20_000)
+    const timer = setTimeout(() => finish(new Error(`MCP build smoke test timed out: ${args.at(-1) ?? command}`)), 60_000)
     child.once('error', finish)
     let stderr = ''
     child.stderr.on('data', chunk => { stderr = (stderr + String(chunk)).slice(-2_000) })
     child.once('exit', code => { if (!settled) finish(new Error(`MCP build smoke test exited early (${code ?? 'unknown'}): ${stderr.trim()}`)) })
     child.stdout.on('data', chunk => {
       output += String(chunk)
-      for (const line of output.split(/\r?\n/u)) {
-        try { const reply = JSON.parse(line); if (reply.id === 2 && Array.isArray(reply.result?.tools)) return finish() } catch { /* wait for a complete JSON line */ }
+      const lines = output.split(/\r?\n/u); output = lines.pop() ?? ''
+      for (const line of lines) {
+        let reply
+        try { reply = JSON.parse(line) } catch { continue }
+        if (reply.id === 1) {
+          if (reply.error || !reply.result) return finish(new Error('MCP initialize failed'))
+          initialized = true
+          child.stdin.write(`${requests.slice(1).map(item => JSON.stringify(item)).join('\n')}\n`)
+        }
+        if (reply.id === 2) {
+          if (!initialized || reply.error || !Array.isArray(reply.result?.tools) || !reply.result.tools.length) return finish(new Error('MCP tools/list failed'))
+          console.log(`MCP verified ${cwd}: ${reply.result.tools.length} tools`)
+          return finish()
+        }
       }
     })
-    child.stdin.end(`${requests.map(item => JSON.stringify(item)).join('\n')}\n`)
+    child.stdin.write(`${JSON.stringify(requests[0])}\n`)
   })
 }
 
@@ -85,7 +98,7 @@ const inventoryResult = await execFileAsync(pythonExecutable, ['-s', '-B', '-c',
 const installed = JSON.parse(inventoryResult.stdout)
 if (Object.keys(installed).length !== corePackages.length || corePackages.some(pkg => installed[pkg.name] !== pkg.requiredVersion || verification.packages[pkg.name] !== pkg.requiredVersion)) throw new Error('Lock, installed runtime and functional report package inventories differ.')
 await execFileAsync(pythonExecutable, ['-s', '-B', '-c', 'import sys; assert sys.version_info[:3] == (3,12,10)'], { windowsHide: true })
-await execFileAsync(buildPython, [...buildPythonArgs, '-s', '-B', join(root, 'tools/release/audit-skill-dependencies.py'), '--site-packages', sitePackages, '--verification', verificationPath], { cwd: root, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
+await execFileAsync(pythonExecutable, ['-s', '-B', join(root, 'tools/release/audit-skill-dependencies.py'), '--site-packages', sitePackages, '--verification', verificationPath], { cwd: root, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
 const skillAudit = JSON.parse(await readFile(join(root, 'resources/python/skill-dependencies.json'), 'utf8'))
 // The embedded Windows Python uses python312._pth. That mode does not process
 // pywin32.pth, so mcp's top-level `import pywintypes` cannot find the shim in

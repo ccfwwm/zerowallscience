@@ -10,7 +10,16 @@ hashes = {}
 with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as z:
     for source, prefix in [(staging, ''), (root/'resources/skills', 'skills/'), (root/'resources/python', 'python/')]:
         for p in sorted(source.rglob('*')):
-            if not p.is_file() or '__pycache__' in p.parts or p.suffix in ('.pyc', '.pyo', '.pem'):
+            if not p.is_file() or '__pycache__' in p.parts or p.suffix in ('.pyc', '.pyo'):
+                continue
+            if p.suffix == '.pem':
+                # Public TLS trust bundles are runtime dependencies. Exclude all
+                # other PEMs, and reject any private key in the allowed bundle.
+                if p.name != 'cacert.pem' or p.parent.name != 'certifi':
+                    continue
+                if b'PRIVATE KEY' in p.read_bytes():
+                    raise RuntimeError(f'Private key in certificate bundle: {p.name}')
+            if p.name.startswith('.env') and p.suffix in ('.example', '.sample', '.template'):
                 continue
             relative = p.relative_to(source).as_posix()
             if '.secrets' in p.parts or p.name.startswith('.env'):

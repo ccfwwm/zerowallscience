@@ -23,11 +23,15 @@ def imports(text):
     except (SyntaxError, ValueError):
         return []
     result = []
+    optional = set()
+    for parent in ast.walk(tree):
+        if isinstance(parent, ast.Try) and any(handler.type is None or any(isinstance(n, ast.Name) and n.id in ('ImportError', 'ModuleNotFoundError') for n in ast.walk(handler.type)) for handler in parent.handlers):
+            optional.update(id(n) for stmt in parent.body for n in ast.walk(stmt))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            result.extend((item.name.split('.')[0], node.lineno, 'import') for item in node.names)
+            result.extend((item.name.split('.')[0], node.lineno, 'optional-import' if id(node) in optional else 'import') for item in node.names)
         elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
-            result.append((node.module.split('.')[0], node.lineno, 'import'))
+            result.append((node.module.split('.')[0], node.lineno, 'optional-import' if id(node) in optional else 'import'))
         elif isinstance(node, ast.Call) and node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
             name = node.func.id if isinstance(node.func, ast.Name) else node.func.attr if isinstance(node.func, ast.Attribute) else ''
             if name in ('__import__', 'import_module', 'find_spec'):
@@ -42,7 +46,10 @@ def install_specs(text):
         match = re.search(r'\b(?:uv\s+(?:pip\s+install|add)|pip3?\s+install|conda\s+install)\s+(.+)', line)
         if not match:
             continue
-        command = re.split(r'`|&&|\|\||;', match[1], maxsplit=1)[0]
+        prefix = line[:match.start()].strip()
+        if prefix and not (prefix.endswith(('`', '(', ':')) or re.fullmatch(r'(?:\$\s*)?(?:python[\d.]*\s+-m|!)', prefix) or 'install with ' in prefix.lower()):
+            continue
+        command = re.split(r'`|\)|&&|\|\||;|\.\s+[A-Z]', match[1], maxsplit=1)[0]
         j = i
         while command.rstrip().endswith('\\') and j + 1 < len(lines):
             j += 1
@@ -56,9 +63,10 @@ def install_specs(text):
             if skip:
                 skip = False
                 continue
-            if token in ('-r', '-c', '-e', '--python', '--index-url', '--extra-index-url', '-c', '--channel', '--target'):
+            if token in ('-r', '-c', '-e', '--requirement', '--constraint', '--prerelease', '--python', '--index-url', '--extra-index-url', '--channel', '--target', '--upgrade-strategy'):
                 skip = True
                 continue
+            token = token.rstrip('.')
             if re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*(?:\[[A-Za-z0-9_,.-]+\])?(?:(?:[<>=!~]=?)[A-Za-z0-9.*+!,<>=~-]+)?', token):
                 yield token, i + 1
 
@@ -112,6 +120,8 @@ def main():
         files = owned[folder]
         # Local modules are scoped to this Skill, not a repository-wide name set.
         local = {p.stem for p in files if p.suffix == '.py'} | {p.parent.name for p in files if p.name == '__init__.py'}
+        # PEP 420 namespace packages also work without __init__.py.
+        local |= {p.relative_to(folder).parts[0] for p in files if p.suffix == '.py' and len(p.relative_to(folder).parts) > 1}
         evidence = []
         for p in files:
             if p.suffix not in ('.py', '.md', '.txt', '.toml', '.lock'):
@@ -154,7 +164,7 @@ def main():
                 if module in sys.stdlib_module_names or module in local:
                     continue
                 pkg = aliases.get(module, module_packages.get(module, norm(module)))
-                evidence.append({'package': pkg, 'import': module, 'file': rel, 'line': line, 'kind': kind, 'role': role})
+                evidence.append({'package': pkg, 'import': module, 'file': rel, 'line': line, 'kind': kind, 'role': 'optional-feature' if kind == 'optional-import' and role == 'runtime' else role})
         grouped = defaultdict(list)
         for item in evidence:
             grouped[item['package']].append(item)

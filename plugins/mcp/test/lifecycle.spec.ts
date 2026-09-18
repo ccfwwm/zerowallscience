@@ -49,6 +49,9 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await ctx.plugin(ZeroWallMcpService)
       expect((await ctx.zerowallMcp.list())[0]?.enabled).toBe(true)
       expect(starts).not.toHaveBeenCalled()
+      process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = root
+      writeFileSync(join(root, 'activation.json'), JSON.stringify({ transactionId: 'before-background-start', candidate: { root: join(root, 'candidate'), health: 'ready' }, createdAt: Date.now() }))
+      await expect.poll(() => { try { return JSON.parse(readFileSync(join(root, 'activation-ready.json'), 'utf8')) } catch { return undefined } }, { timeout: 5000 }).toMatchObject({ transactionId: 'before-background-start', ready: true })
       process.emit('message', { type: 'unrelated' }, undefined)
       expect(starts).not.toHaveBeenCalled()
       process.emit('message', { type: 'zerowall:desktop:workbench-ready' }, undefined)
@@ -195,7 +198,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     }
   }, 30_000)
 
-  it('starts enabled managed servers once their environment becomes ready and polls every thirty minutes', async () => {
+  it('starts enabled managed servers once their environment becomes ready and polls the compact pointer every second', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-refresh-'))
     const environmentStore = join(root, 'environment-store')
     const installed = join(environmentStore, 'versions', '4.1.10')
@@ -237,9 +240,9 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await expect.poll(async () => (await ctx.zerowallMcp.list()).filter(item => item.serverName.startsWith('zerowall_managed_')).every(item => item.runtimeState === 'blocked'), { timeout: 10_000, interval: 25 }).toBe(true)
       mkdirSync(environmentStore, { recursive: true })
       writeFileSync(join(environmentStore, 'current.json'), JSON.stringify({ version: '4.1.10', root: installed, health: 'ready' }))
-      const timer = timers.mock.calls.find(call => call[1] === 30 * 60_000)
+      const timer = timers.mock.calls.find(call => call[1] === 1000)
       expect(timer).toBeDefined()
-      // Fire the production callback without starting a real half-hour wait.
+      // Fire the production callback to verify the compact-pointer refresh.
       await (timer![0] as () => void)()
       await new Promise(resolve => setImmediate(resolve))
       await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowall_managed_ketcher')?.runtimeState, { timeout: 10_000 }).toBe('active')

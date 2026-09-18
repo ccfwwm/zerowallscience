@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
-import { access, lstat, readFile } from 'node:fs/promises'
+import { access, lstat, readFile, mkdir, writeFile, rm } from 'node:fs/promises'
 import { delimiter, isAbsolute, join, relative, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -12,7 +13,7 @@ interface PythonArgs { code: string; description: string; timeoutMs?: number; wo
 interface PythonResult { exitCode: number; timedOut: boolean; stdout: string; stderr: string; python: string }
 interface RArgs { code: string; description: string; timeoutMs?: number; workdir?: string }
 interface RResult { exitCode: number; timedOut: boolean; stdout: string; stderr: string; rscript: string }
-interface CurrentRecord { root?: unknown; health?: unknown; manifest?: Manifest }
+interface CurrentRecord { overlayPath?: string; root?: unknown; health?: unknown; manifest?: Manifest }
 interface Manifest {
   version?: unknown
   python?: { version?: unknown; relativeExecutable?: unknown; relativeSitePackages?: unknown }
@@ -51,7 +52,7 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
   const executable = resolve(installRoot, relativeExecutable)
   const sitePackages = resolve(installRoot, relativeSitePackages)
   const runtime = typeof manifest.python?.version === 'string' ? manifest.python.version.match(/^\d+\.\d+/u)?.[0] ?? '3.12' : '3.12'
-  const overlayPath = resolve(root, 'python-overlay', `python-${runtime.replace(/[^A-Za-z0-9.-]/gu, '-')}`)
+  const overlayPath = current.overlayPath ?? resolve(root, 'python-overlay', `python-${runtime.replace(/[^A-Za-z0-9.-]/gu, '-')}`)
   const isContained = (candidate: string): boolean => {
     const containment = relative(installRoot, candidate)
     return containment !== '..' && !containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(containment)
@@ -85,10 +86,14 @@ async function runPython(args: PythonArgs, exec: { signal: AbortSignal; agent?: 
   if (workdirRelative === '..' || workdirRelative.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(workdirRelative)) {
     throw new Error('Python workdir must remain inside the current session workspace.')
   }
+  const leaseDirectory = join(environmentRoot()!, 'leases')
+  await mkdir(leaseDirectory, { recursive: true })
+  const lease = join(leaseDirectory, `${process.pid}-${randomUUID()}.json`)
+  await writeFile(lease, JSON.stringify({ pid: process.pid, snapshot: resolved.root, kind: 'python', createdAt: new Date().toISOString() }))
   const controller = new AbortController()
   const abort = () => controller.abort()
   exec.signal.addEventListener('abort', abort, { once: true })
-  return await new Promise<PythonResult>((resolveResult, reject) => {
+  try { return await new Promise<PythonResult>((resolveResult, reject) => {
     const bootstrap = `import sys\nsys.path.insert(0, ${JSON.stringify(resolved.overlayPath)})\n${args.code}`
     const child = spawn(resolved.executable, ['-c', bootstrap], {
       cwd: workdir,
@@ -105,6 +110,7 @@ async function runPython(args: PythonArgs, exec: { signal: AbortSignal; agent?: 
     child.once('error', error => finish(() => reject(error)))
     child.once('exit', (exitCode, signal) => finish(() => resolveResult({ exitCode: exitCode ?? -1, timedOut, stdout, stderr, python: resolved.executable })))
   })
+  } finally { await rm(lease, { force: true }).catch(() => undefined) }
 }
 
 function resolveRscript(): string {
