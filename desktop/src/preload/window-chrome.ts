@@ -18,7 +18,8 @@ export function mountWindowChrome(): void {
       #zerowall-window-drag { position:fixed; top:0; left:88px; right:0; height:8px; z-index:2147483645; -webkit-app-region:drag; }
       html[data-zerowall-chrome] header:has([data-conversation-header-corner]) > div:first-child { min-height:40px; -webkit-app-region:drag; }
       html[data-zerowall-chrome] header button, html[data-zerowall-chrome] header input, html[data-zerowall-chrome] header [role=tab] { -webkit-app-region:no-drag; }
-      html[data-zerowall-chrome] div:has(> [data-shell-overlay]) > div:first-of-type > div > div:first-child { padding-top:40px; height:92px; -webkit-app-region:drag; }
+      html[data-zerowall-chrome] [data-sidebar-header] { padding-top:40px; height:92px; -webkit-app-region:drag; }
+      html[data-zerowall-chrome] [data-sidebar-rail=true] [data-sidebar-header] { padding-top:22px; height:58px; }
       html[data-zerowall-chrome] [data-sidebar-collapsed=true] > div:nth-of-type(2) { padding-top:8px; }
       html[data-zerowall-chrome] [data-sidebar-collapsed=true] header:has([data-conversation-header-corner]) > div:first-child { padding-left:40px; }
       html[data-zerowall-chrome] div:has(> [data-shell-overlay]) button,

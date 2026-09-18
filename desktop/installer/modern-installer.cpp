@@ -116,17 +116,17 @@ static void paint() {
     if(!brandBitmap)loadBrand();
     if(brandBitmap)target->DrawBitmap(brandBitmap,D2D1::RectF(53,78,99,124));
     else label(L"Z",63,78,40,48,32,0x6968D6,true);
-    label(phase==L"complete"?L"准备好了，开启你的探索":phase==L"failed"?L"安装尚未完成":L"让科研灵感，自然发生",122,76,575,40,27,0x242B3E,true);
-    label(L"ZeroWall Science  ·  文献、知识与 AI 的科研工作台",123,115,580,28,13,0x7C8498);
-    const wchar_t* cards[]={L"文献阅读",L"知识关联",L"AI 探索"};
-    for(int i=0;i<3;i++) {
-      float x=48.0f+i*226.0f, y=166.0f+(reducedMotion||phase==L"failed"?0:3*std::sin(elapsed*1.6f+i*1.7f));
-      rect(x,y,212,80,0xFFFFFF,12); rect(x+16,y+18,30,36,i==2?0xEEEAFE:0xEFF2FA,6);
-      rect(x+23,y+28,16,3,0xA9ACD9,1); rect(x+23,y+35,12,3,0xC6CCE3,1);
-      label(cards[i],x+60,y+24,140,28,16,0x525E78,true);
+    label(phase==L"complete"?L"准备好了，开启你的探索":phase==L"failed"?L"安装尚未完成":L"科研全流程，文献全流程",122,76,575,40,27,0x242B3E,true);
+    label(L"智能医疗  ·  开箱即用的本地科研工作台",123,115,580,28,13,0x7C8498);
+    const wchar_t* cards[]={L"科研全流程",L"文献全流程",L"智能医疗",L"开箱即用"};
+    for(int i=0;i<4;i++) {
+      float x=48.0f+i*164.0f, y=166.0f+(reducedMotion||phase==L"failed"?0:3*std::sin(elapsed*1.6f+i*1.7f));
+      rect(x,y,154,80,0xFFFFFF,12); rect(x+14,y+18,30,36,i==2?0xEEEAFE:(i==3?0xEAF5F0:0xEFF2FA),6);
+      rect(x+21,y+28,16,3,0xA9ACD9,1); rect(x+21,y+35,12,3,0xC6CCE3,1);
+      label(cards[i],x+54,y+24,92,28,15,0x525E78,true);
     }
     if(phase==L"welcome") {
-      label(L"安装到此电脑，开始你的科研探索",48,276,640,26,15,0x4E5970);
+      label(L"一键安装，开箱即用，立即开始完整科研流程",48,276,640,26,15,0x4E5970);
       label(advanced?L"⌄  高级选项":L"›  高级选项",48,318,180,28,13,0x6674BC);
       if(advanced) {
         label(L"安装位置",48,352,78,28,12,0x7C8498);
