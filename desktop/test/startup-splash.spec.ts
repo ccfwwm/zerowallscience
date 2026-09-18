@@ -20,8 +20,8 @@ describe('desktop startup splash', () => {
   it('keeps a wide progress surface and removes redundant startup copy', async () => {
     const html = await readFile(resolve(desktopRoot, 'build', 'splash.html'), 'utf8')
 
-    expect(html).toContain('width: min(720px, calc(100% - 64px))')
-    expect(html).toContain('height: 9px')
+    expect(html).toContain('width: min(860px, calc(100% - 96px))')
+    expect(html).toContain('height: 14px')
     expect(html).toContain('cubic-bezier(.22, 1, .36, 1)')
     expect(html).not.toContain('工作台就绪后，将在后台连接已启用的 MCP 服务。')
     expect(html).not.toContain('你的会话与设置保存在本机')

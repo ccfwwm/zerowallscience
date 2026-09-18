@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-projects",
-  "version": "6.2.1",
+  "version": "6.3.0",
   "dsh": {
     "min": "0.1.5-rc.2",
     "max": "0.1.5-rc.2"

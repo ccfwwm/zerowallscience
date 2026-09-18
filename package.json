@@ -1,6 +1,6 @@
 {
   "name": "zerowallscience",
-  "version": "6.2.1",
+  "version": "6.3.0",
   "description": "ZeroWall Science local-first scientific research workbench.",
   "private": true,
   "type": "module",

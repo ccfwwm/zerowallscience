@@ -75,6 +75,8 @@ const common = {
   nsis: {
     include: 'build/installer.nsh',
     oneClick: false,
+    perMachine: false,
+    allowElevation: false,
     allowToChangeInstallationDirectory: true,
     createDesktopShortcut: true,
     createStartMenuShortcut: true,

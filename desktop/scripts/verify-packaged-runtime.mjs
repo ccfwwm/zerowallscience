@@ -196,7 +196,7 @@ for (const path of [
 const packagedSplash = await readFile(resolve(packaged.resourcesRoot, 'splash.html'), 'utf8')
 const sourceSplash = await readFile(resolve(packageRoot, 'build', 'splash.html'), 'utf8')
 if (packagedSplash !== sourceSplash) throw new Error('Packaged splash.html differs from the current desktop source.')
-for (const marker of ["params.get('version')", 'width: min(720px, calc(100% - 64px))', 'height: 9px']) {
+for (const marker of ["params.get('version')", 'width: min(860px, calc(100% - 96px))', 'height: 14px']) {
   if (!packagedSplash.includes(marker)) throw new Error(`Packaged splash.html is missing the startup UI marker: ${marker}`)
 }
 for (const retired of ['6.1.0', '工作台就绪后，将在后台连接已启用的 MCP 服务。', '你的会话与设置保存在本机']) {

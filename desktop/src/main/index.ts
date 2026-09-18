@@ -18,6 +18,7 @@ import { stopBeforeExit } from './shutdown.js'
 import { PythonUpdaterService } from './python-updater-service.js'
 import { mcpEnvironmentDiagnostic, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
+import { registerWindowControls } from './window-controls.js'
 import { DesktopUpdateController, isUpdateCheckDue, UPDATE_CHECK_INTERVAL_MS } from './updater.js'
 import { resolveRevealPath } from './reveal-path.js'
 import { copyWindowsFile } from './clipboard-files.js'
@@ -223,6 +224,7 @@ function runtimeAnchorPath(): string {
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
+    ...(process.platform === 'win32' ? { frame: false, roundedCorners: true } : {}),
     width: 1380,
     height: 900,
     minWidth: 960,
@@ -251,6 +253,7 @@ function createWindow(): BrowserWindow {
     hideWindowToTray(window, process.platform)
   })
   secureWindow(window, () => runtime?.snapshot().url)
+  registerWindowControls(window, () => runtime?.snapshot().url, pathToFileURL(resourcePath('splash.html')).href)
   window.on('closed', () => { if (mainWindow === window) mainWindow = undefined })
   mainWindow = window
   return window

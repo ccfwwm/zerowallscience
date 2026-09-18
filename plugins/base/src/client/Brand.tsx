@@ -22,6 +22,7 @@ function BrandName() {
 }
 
 function ProductVersion() {
+  if (typeof window !== 'undefined' && window.zerowallDesktop) return null
   return (
     <span className={css.version} aria-label="ZeroWall Science">
       <span>ZeroWall Science</span>

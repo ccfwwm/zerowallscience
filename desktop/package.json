@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "6.2.1",
+  "version": "6.3.0",
   "description": "ZeroWall Science 4.3 local-first scientific research workbench with the DSH better-sidebar workbench.",
   "private": true,
   "type": "module",
@@ -15,12 +15,13 @@
     "test:e2e:packaged": "vitest run --config e2e/vitest.config.ts e2e/desktop.spec.ts",
     "test:e2e:source": "vitest run --config e2e/vitest.config.ts e2e/desktop-source.spec.ts",
     "package:dir": "node scripts/verify-target.mjs win32 x64 && electron-builder --config build/electron-builder.stable.cjs --dir --publish never && node scripts/verify-packaged-runtime.mjs --desktop-only",
-    "package:win": "node scripts/verify-target.mjs win32 x64 && electron-builder --config build/electron-builder.stable.cjs --win --x64 --publish never && node scripts/verify-packaged-runtime.mjs --desktop-only && node ../tools/release/generate-windows-metadata.mjs",
+    "package:win": "node scripts/verify-target.mjs win32 x64 && pnpm installer:build && electron-builder --config build/electron-builder.stable.cjs --win --x64 --publish never && node scripts/verify-packaged-runtime.mjs --desktop-only && node ../tools/release/generate-windows-metadata.mjs",
     "package:mac:x64": "node scripts/verify-target.mjs darwin x64 && electron-builder --config build/electron-builder.preview.cjs --mac --x64 --publish never && node scripts/verify-packaged-runtime.mjs",
     "package:mac:arm64": "node scripts/verify-target.mjs darwin arm64 && electron-builder --config build/electron-builder.preview.cjs --mac --arm64 --publish never && node scripts/verify-packaged-runtime.mjs",
     "package:stable:win": "pnpm run package:win",
     "package:stable:mac:x64": "node scripts/verify-target.mjs darwin x64 && electron-builder --config build/electron-builder.stable.cjs --mac --x64 --publish never && node scripts/verify-packaged-runtime.mjs",
-    "package:stable:mac:arm64": "node scripts/verify-target.mjs darwin arm64 && electron-builder --config build/electron-builder.stable.cjs --mac --arm64 --publish never && node scripts/verify-packaged-runtime.mjs"
+    "package:stable:mac:arm64": "node scripts/verify-target.mjs darwin arm64 && electron-builder --config build/electron-builder.stable.cjs --mac --arm64 --publish never && node scripts/verify-packaged-runtime.mjs",
+    "installer:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-installer-ui.ps1"
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "workspace:*",
