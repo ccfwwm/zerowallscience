@@ -187,11 +187,6 @@
     - id: zerowall-ai-cloud-llm
       name: '@zerowallscience/plugin-ai-cloud'
 
-    # Anonymous OpenCode Zen route. The provider owns dynamic free-model
-    # discovery and publishes an adapter update after its one-shot sync.
-    - id: opencode-zen-free-provider
-      name: '@jiesou/dsh-opencode-zen-free-provider'
-
     - id: web-search-free
       name: 'dsh-free-search'
       config:

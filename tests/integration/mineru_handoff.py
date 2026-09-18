@@ -43,7 +43,8 @@ def main():
     value = json.loads(result.stdout.splitlines()[-1])
     assert result.returncode == 0 and value['ok'], (value, result.stderr[-2000:])
     payload = json.loads(Path(value['json']).read_text(encoding='utf-8'))
-    assert not payload['partial'], payload['skipped']
+    assert not payload['incomplete_execution'], payload['skipped']
+    assert Path(payload['ocr_requests']).exists()
     text = json.loads((Path(value['json']).parent / 'paper-000-text.json').read_text(encoding='utf-8'))
     assert 'MinerU OCR evidence' in text[0]['text'] and 'Native text' not in str(text)
     assert any({s['file'] for s in finding['sources']} == set(files) for finding in payload['findings'])

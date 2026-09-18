@@ -28,10 +28,9 @@ overrides:
   '@deepseek-ai/cosmokit': link:deepseek-harness/vendor/cosmokit
   '@deepseek-ai/schemastery': link:deepseek-harness/vendor/schemastery
 
-packageExtensionsChecksum: sha256-Q6X1Gl6DMuKgbSzTYjDqmxO9yrX+axXoi3kYfoCanGA=
+packageExtensionsChecksum: sha256-abmiS8QA+Bs4Jm00O277tOk+tRPKWesq7MFubCvSBJ4=
 
 patchedDependencies:
-  '@jiesou/dsh-opencode-zen-free-provider@0.1.18': 0a88ebd1c2afa493bdf0e93e70cb90176202b7b2d23e871d38dd9420d2bcc299
   dsh-dream-skin@9.13.1: 76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380
   dsh-free-search@0.4.28: 498dcee1f79256aefeb19cdcc127a81ff06db502713fa41343e529b3343f21cc
 
@@ -11419,9 +11418,6 @@ importers:
       '@huanlin/dsh-plugin-better-sidebar-plugin-office':
         specifier: github:HuanLinOTO/dsh-plugin-better-sidebar-plugin-office#3b881c9d002109444368b1a28d371663390b156b
         version: https://codeload.github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office/tar.gz/3b881c9d002109444368b1a28d371663390b156b(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@types/react-dom@18.3.5(@types/react@19.2.18))(@types/react@19.2.18)(dsh-better-sidebar@packages+dsh-better-sidebar)(pdfjs-dist@6.3.289)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
-      '@jiesou/dsh-opencode-zen-free-provider':
-        specifier: 0.1.18
-        version: 0.1.18(patch_hash=0a88ebd1c2afa493bdf0e93e70cb90176202b7b2d23e871d38dd9420d2bcc299)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-credentials@deepseek-harness+packages+credentials+credentials)(@deepseek-ai/dsh-llm-pi-ai@deepseek-harness+packages+llm+llm-pi-ai)(@deepseek-ai/dsh-llm@deepseek-harness+packages+llm+llm)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-util-values@deepseek-harness+packages+util+values)(@earendil-works/pi-ai@0.85.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3))
       '@zerowallscience/integrity-runtime':
         specifier: workspace:^
         version: link:../packages/integrity-runtime
@@ -17635,17 +17631,6 @@ packages:
   '@jest/types@27.0.2':
     resolution: {integrity: sha512-XpjCtJ/99HB4PmyJ2vgmN7vT+JLP7RW1FBT9RgnMFS4Dt7cvIyBee8O3/j98aUZ34ZpenPZFqmaaObWSeL65dg==}
     engines: {node: ^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0}
-
-  '@jiesou/dsh-opencode-zen-free-provider@0.1.18':
-    resolution: {integrity: sha512-UxIc2XvXh9+v6Q28h0LUiUZvnqzCrVxKHYijly12xt9CRlGJh1OVUPLl7JLFO1eH0tZt/bM8bh47bB4Pr9MDXQ==}
-    peerDependencies:
-      '@deepseek-ai/cordis': '>=4.0.1 <5'
-      '@deepseek-ai/dsh-credentials': '>=0.1.6-alpha.1 <0.2'
-      '@deepseek-ai/dsh-llm': '>=0.1.6-alpha.1 <0.2'
-      '@deepseek-ai/dsh-llm-pi-ai': '>=0.1.6-alpha.1 <0.2'
-      '@deepseek-ai/dsh-settings': '>=0.1.6-alpha.1 <0.2'
-      '@deepseek-ai/dsh-util-values': '>=0.1.6-alpha.1 <0.2'
-      '@earendil-works/pi-ai': ^0.85.1
 
   '@jimp/core@1.6.1':
     resolution: {integrity: sha512-+BoKC5G6hkrSy501zcJ2EpfnllP+avPevcBfRcZe/CW+EwEfY6X1EZ8QWyT7NpDIvEEJb1fdJnMMfUnFkxmw9A==}
@@ -28317,17 +28302,6 @@ snapshots:
       '@types/node': 22.20.1
       '@types/yargs': 16.0.11
       chalk: 4.1.2
-
-  '@jiesou/dsh-opencode-zen-free-provider@0.1.18(patch_hash=0a88ebd1c2afa493bdf0e93e70cb90176202b7b2d23e871d38dd9420d2bcc299)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-credentials@deepseek-harness+packages+credentials+credentials)(@deepseek-ai/dsh-llm-pi-ai@deepseek-harness+packages+llm+llm-pi-ai)(@deepseek-ai/dsh-llm@deepseek-harness+packages+llm+llm)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-util-values@deepseek-harness+packages+util+values)(@earendil-works/pi-ai@0.85.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3))':
-    dependencies:
-      '@deepseek-ai/cordis': link:deepseek-harness/vendor/cordis
-      '@deepseek-ai/dsh-credentials': link:deepseek-harness/packages/credentials/credentials
-      '@deepseek-ai/dsh-llm': link:deepseek-harness/packages/llm/llm
-      '@deepseek-ai/dsh-llm-pi-ai': link:deepseek-harness/packages/llm/llm-pi-ai
-      '@deepseek-ai/dsh-settings': link:deepseek-harness/packages/settings/settings
-      '@deepseek-ai/dsh-util-values': link:deepseek-harness/packages/util/values
-      '@deepseek-ai/schemastery': link:deepseek-harness/vendor/schemastery
-      '@earendil-works/pi-ai': 0.85.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)
 
   '@jimp/core@1.6.1':
     dependencies:

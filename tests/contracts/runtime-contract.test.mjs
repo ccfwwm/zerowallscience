@@ -141,43 +141,12 @@ test('About remains the final Settings navigation section', async () => {
   assert.match(source, /id: 'zerowall-about', order: Number\.MAX_SAFE_INTEGER/u)
 })
 
-test('OpenCode Zen Free is pinned once and keeps the existing default model', async () => {
+test('retired OpenCode free provider is absent from runtime configuration', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  const integrations = JSON.parse(await readFile(resolve(root, 'config/integrations/upstream-sources.json'), 'utf8'))
-  assert.equal(desktop.dependencies['@jiesou/dsh-opencode-zen-free-provider'], '0.1.18')
-  assert.equal(desktop.devDependencies['@earendil-works/pi-ai'], '0.85.1')
-  assert.deepEqual(integrations.openCodeZenFree, {
-    repository: 'https://github.com/jiesou/dsh-opencode-zen-free-provider',
-    version: '0.1.18',
-    commit: '3226693d041feb5c67e5899f8ee7e43756c844dd',
-    integrity: 'sha512-UxIc2XvXh9+v6Q28h0LUiUZvnqzCrVxKHYijly12xt9CRlGJh1OVUPLl7JLFO1eH0tZt/bM8bh47bB4Pr9MDXQ==',
-    license: 'MIT',
-  })
-
-  const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
-  assert.equal((patch.match(/name: '@jiesou\/dsh-opencode-zen-free-provider'/gu) ?? []).length, 1)
-  assert.match(patch, /- id: agent-default-model\s+config:\s+provider: deepseek-official\s+model: deepseek-v4-flash/u)
-  assert.doesNotMatch(patch, /opencode2dsh|@zerowallscience\/plugin-opencode/u)
-  for (const profile of ['development', 'preview', 'stable']) {
-    const source = await readFile(resolve(root, `profiles/generated/${profile}.yml`), 'utf8')
-    assert.equal((source.match(/'@jiesou\/dsh-opencode-zen-free-provider'/gu) ?? []).length, 1)
-    assert.doesNotMatch(source, /opencode2dsh|@zerowallscience\/plugin-opencode/u)
+  assert.equal(desktop.dependencies['@jiesou/dsh-opencode-zen-free-provider'], undefined)
+  for (const path of ['desktop/build/zerowall.patch.yml', 'profiles/generated/development.yml', 'profiles/generated/preview.yml', 'profiles/generated/stable.yml', 'config/deepseek-harness/plugin-inventory.json', 'pnpm-lock.yaml']) {
+    assert.doesNotMatch(await readFile(resolve(root, path), 'utf8'), /opencode-zen-free-provider|opencode2dsh/u)
   }
-
-  const manifest = JSON.parse(await readFile(resolve(root, 'desktop/node_modules/@jiesou/dsh-opencode-zen-free-provider/package.json'), 'utf8'))
-  assert.equal(manifest.version, '0.1.18')
-  assert.equal(manifest.license, 'MIT')
-  const host = await readFile(resolve(root, 'desktop/node_modules/@jiesou/dsh-opencode-zen-free-provider/lib/index.js'), 'utf8')
-  assert.match(host, /registration\.replace\(\[PROVIDER\]\)/u)
-
-  const lockfile = parseYaml(await readFile(resolve(root, 'pnpm-lock.yaml'), 'utf8'))
-  assert.equal(lockfile.packages['@jiesou/dsh-opencode-zen-free-provider@0.1.18'].resolution.integrity,
-    integrations.openCodeZenFree.integrity)
-  assert.equal(lockfile.patchedDependencies['@jiesou/dsh-opencode-zen-free-provider@0.1.18'],
-    '0a88ebd1c2afa493bdf0e93e70cb90176202b7b2d23e871d38dd9420d2bcc299')
-  const providerSnapshot = Object.entries(lockfile.snapshots)
-    .find(([key]) => key.startsWith('@jiesou/dsh-opencode-zen-free-provider@0.1.18('))?.[1]
-  assert.equal(providerSnapshot?.dependencies?.['@deepseek-ai/schemastery'], 'link:deepseek-harness/vendor/schemastery')
 })
 
 test('dynamic client bundles use the DSH classic-script ModuleLoader contract', async () => {

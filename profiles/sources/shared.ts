@@ -20,7 +20,6 @@ export const bundledPlugins = [
   '@zerowallscience/plugin-mcp',
   '@zerowallscience/plugin-account',
   '@zerowallscience/plugin-ai-cloud',
-  '@jiesou/dsh-opencode-zen-free-provider',
   'dsh-free-search',
   '@zerowallscience/plugin-files',
   '@zerowallscience/plugin-images',

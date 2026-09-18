@@ -147,9 +147,10 @@ def _read_image(path: str) -> Any | None:
     if cv2 is None or np is None:
         return None
     try:
-        arr = cv2.imread(path)
+        # Decode bytes rather than passing a Windows Unicode path to OpenCV.
+        arr = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
     except Exception:  # noqa: BLE001
-        return None
+        arr = None
     if arr is None:
         try:
             pil = Image.open(path).convert("RGB")
@@ -563,6 +564,7 @@ class SiftCopyMoveDetector:
                 ok=True,
             )
         findings: list[Finding] = []
+        read_failures: list[str] = []
         from ._image_size import summarize_image_sizes
 
         size_stats = summarize_image_sizes(doc.images)
@@ -575,6 +577,8 @@ class SiftCopyMoveDetector:
                 if (img.width or 0) < 64 or (img.height or 0) < 64:
                     continue
             analysis = analyze_copymove_path(path)
+            if not analysis.ok:
+                read_failures.append(path)
             if not analysis.ok or not analysis.flagged:
                 continue
             findings.append(
@@ -623,6 +627,7 @@ class SiftCopyMoveDetector:
         return DetectorResult(
             detector=self.name,
             findings=findings,
-            ok=True,
-            stats=size_stats.to_stats_dict(),
+            ok=not read_failures,
+            error=f'Image decode failed: {read_failures}' if read_failures else None,
+            stats={**size_stats.to_stats_dict(), 'read_failures': read_failures},
         )

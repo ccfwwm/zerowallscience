@@ -20,6 +20,7 @@ import { mcpEnvironmentDiagnostic, MCP_ENVIRONMENT_KEYRING } from './mcp-environ
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
 import { registerWindowControls } from './window-controls.js'
 import { DesktopUpdateController, isUpdateCheckDue, UPDATE_CHECK_INTERVAL_MS } from './updater.js'
+import { verifyDownloadedArtifact } from './update-artifact.js'
 import { resolveRevealPath } from './reveal-path.js'
 import { copyWindowsFile } from './clipboard-files.js'
 import { deleteStoredSession, validSessionId } from './session-delete.js'
@@ -452,6 +453,14 @@ if (ownsInstance) app.whenReady().then(async () => {
     updater: autoUpdater,
     enabled: app.isPackaged && identity.channel === 'stable',
     currentVersion: app.getVersion(),
+    validateInstaller: process.platform === 'win32' ? info => verifyDownloadedArtifact(info, app.getVersion()) : undefined,
+    beforeInstall: async () => {
+      await stopBeforeExit(() => runtime?.stop() ?? Promise.resolve(), 6_000)
+      restarting = false
+      quitting = true
+      tray?.destroy()
+      tray = undefined
+    },
     publish: status => {
       const window = mainWindow
       if (window !== undefined && !window.isDestroyed()) window.webContents.send('desktop:update-status', status)
@@ -463,6 +472,9 @@ if (ownsInstance) app.whenReady().then(async () => {
   // desktop builds use the same Qiniu metadata path.
   if (app.isPackaged && identity.channel === 'stable') {
     autoUpdater.setFeedURL({ provider: 'generic', url: STABLE_UPDATE_FEED_URL })
+    if (process.platform === 'win32' && autoUpdater instanceof updaterPackage.NsisUpdater) {
+      autoUpdater.installDirectory = dirname(process.execPath)
+    }
   }
 
   ipcMain.handle('desktop:info', (): DesktopInfo => ({ version: app.getVersion(), platform: process.platform, architecture: process.arch }))
@@ -618,14 +630,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:get-update-status', () => updates.current())
   ipcMain.handle('desktop:check-for-updates', () => updates.check())
   ipcMain.handle('desktop:download-update', () => updates.download())
-  ipcMain.handle('desktop:install-update', async () => {
-    if (updates.current().phase !== 'downloaded') return false
-    await stopBeforeExit(() => runtime?.stop() ?? Promise.resolve(), 6_000)
-    quitting = true
-    tray?.destroy()
-    tray = undefined
-    return updates.install()
-  })
+  ipcMain.handle('desktop:install-update', () => updates.install())
     ipcMain.handle('desktop:mcp-environment:pause', () => mcpEnvironment.pause())
     ipcMain.handle('desktop:mcp-environment:rollback', () => mcpEnvironment.rollback())
     ipcMain.handle('desktop:mcp-python:preview', (_event, names: string[]) => mcpEnvironment.previewPackages(names))

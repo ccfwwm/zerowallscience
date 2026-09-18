@@ -32,11 +32,10 @@ const zeroWallOrder = [
 const expectedOrder = [
   ...thirdPartyOrder,
   ...zeroWallOrder.slice(0, 8).map(id => `@zerowallscience/plugin-${id}`),
-  '@jiesou/dsh-opencode-zen-free-provider',
   'dsh-free-search',
   ...zeroWallOrder.slice(8).map(id => `@zerowallscience/plugin-${id}`),
 ]
-const thirdPartyPackages = [...thirdPartyOrder, '@jiesou/dsh-opencode-zen-free-provider', 'dsh-free-search']
+const thirdPartyPackages = [...thirdPartyOrder, 'dsh-free-search']
 
 const zeroWallPlugins = []
 for (const id of zeroWallOrder) {

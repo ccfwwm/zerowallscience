@@ -19,8 +19,11 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'vendor'))
-VERSION = '2622d024ad27791196eb86bad51a9fe7bb0bb268+zerowall.3'
+from mineru_adapter import normalize, extracted_tables, region_records, figure_findings
+from batch_scan import scan as batch_scan
+VERSION = '2622d024ad27791196eb86bad51a9fe7bb0bb268+zerowall.4'
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp', '.gif', '.webp', '.avif', '.heic', '.heif', '.jp2', '.j2k', '.svg'}
 CORE = {'fitz': 'PyMuPDF', 'pydantic_settings': 'pydantic-settings', 'numpy': 'numpy', 'cv2': 'opencv-python-headless', 'PIL': 'Pillow', 'imagehash': 'ImageHash', 'scipy': 'scipy', 'skimage': 'scikit-image', 'structlog': 'structlog', 'pikepdf': 'pikepdf', 'markdown': 'Markdown', 'yaml': 'PyYAML'}
 
@@ -75,7 +78,7 @@ def preflight():
             errors[package] = str(error)
 
     return {'ok': not missing, 'missing': missing, 'errors': errors, 'python': sys.executable, 'engine': VERSION,
-            'ocr': importlib.util.find_spec('easyocr') is not None,
+            'ocr': False, 'ocr_provider': 'mineru', 'local_ocr_optional': importlib.util.find_spec('easyocr') is not None,
             'node': os.environ.get('ZEROWALL_NODE') or shutil.which('node'),
             'worker': str(worker_path())}
 
@@ -91,14 +94,14 @@ def worker_path():
     raise RuntimeError('ZeroWall image worker is unavailable; repair the application runtime.')
 
 
-def node_scan(config):
+def node_scan(config, timeout=60):
     node = os.environ.get('ZEROWALL_NODE') or shutil.which('node')
     if not node:
         raise RuntimeError('ZeroWall Node runtime is unavailable.')
     env = {k: v for k, v in os.environ.items() if not re.search('KEY|SECRET|TOKEN|PASSWORD', k, re.I)}
     env['ELECTRON_RUN_AS_NODE'] = '1'
     result = subprocess.run([node, str(worker_path()), '--stdin'], input=json.dumps(config),
-                            text=True, encoding='utf-8', capture_output=True, timeout=300,
+                            text=True, encoding='utf-8', capture_output=True, timeout=timeout,
                             env=env, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     if result.returncode:
         raise RuntimeError('Image worker failed: ' + result.stderr[-2000:])
@@ -146,6 +149,9 @@ def image_doc(paths, trace, job, skipped):
     return ParsedDoc(trace, str(job), [], records, {})
 
 
+DEADLINE = float('inf')
+
+
 def image_detectors(doc, job, steps):
     from manusift.detectors import load_detector_class
     from manusift.checkpoint import read_step_silent, write_step
@@ -153,14 +159,42 @@ def image_detectors(doc, job, steps):
     if Path(doc.source_path).suffix.lower() == '.pdf':
         names.append('PanelDuplicateDetector')
     findings = []
+    if len(doc.images) > 32:
+        blocks = [doc.images[i:i+8] for i in range(0, len(doc.images), 8)]
+        for i, left in enumerate(blocks):
+            for j in range(i, len(blocks)):
+                if time.monotonic() >= DEADLINE:
+                    steps.append({'detector': 'scientific-tiles', 'ok': False, 'error': 'Budget reached; resume task.', 'next_tile': [i, j]})
+                    return findings
+                images = left if i == j else left + blocks[j]
+                subset = replace(doc, images=images)
+                found = image_detectors(subset, job / f'tile-{i:05d}-{j:05d}', steps)
+                for finding in found:
+                    raw = dict(finding.raw)
+                    if isinstance(raw.get('image_index'), int) and 0 <= raw['image_index'] < len(images):
+                        raw['image_index'] = doc.images.index(images[raw['image_index']])
+                    findings.append(replace(finding, raw=raw))
+        return findings
     for name in names:
         try:
             cls = load_detector_class(name)
             checkpoint = job / 'steps' / f'{cls.name}.json'
             result = read_step_silent(checkpoint)
             if result is None or not result.ok:
-                result = cls().run(doc)
-                write_step(checkpoint, result)
+                remaining = DEADLINE - time.monotonic()
+                if remaining < 1:
+                    raise TimeoutError('Budget reached; resume task.')
+                checkpoint.parent.mkdir(parents=True, exist_ok=True)
+                request = checkpoint.with_suffix('.input.json')
+                save(request, asdict(doc))
+                process = subprocess.run([sys.executable, str(ROOT / 'detector_worker.py'), name, str(request), str(checkpoint)],
+                    capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=min(60, remaining),
+                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+                if process.returncode:
+                    raise RuntimeError(process.stderr[-2000:])
+                result = read_step_silent(checkpoint)
+                if result is None:
+                    raise RuntimeError('Detector did not write a valid checkpoint')
             steps.append({'detector': result.detector, 'ok': result.ok, 'error': result.error})
             findings.extend(result.findings)
         except Exception as error:
@@ -206,12 +240,12 @@ def parsed_manifests(values):
     return result
 
 
-def load_mineru(path, trace, workspace, manifest, skipped):
+def load_mineru(path, trace, workspace, manifest, skipped, regions=None):
     from manusift.contracts import ParsedDoc, TextBlock
-    records = json.loads(Path(manifest['contentList']).read_text(encoding='utf-8')) if manifest.get('contentList') else []
+    records = normalize(json.loads(Path(manifest['contentList']).read_text(encoding='utf-8'))) if manifest.get('contentList') else []
     if not isinstance(records, list):
         raise ValueError('MinerU content list must be an array')
-    text = [TextBlock(int(row.get('page_idx', -1)), tuple(row.get('bbox', [0, 0, 0, 0])), str(row['text']))
+    text = [TextBlock(int(row.get('page_idx', -1)), tuple(row.get('bbox') or [0, 0, 0, 0]), str(row['text']))
             for row in records if isinstance(row, dict) and row.get('text')]
     if not text:
         text = [TextBlock(-1, (0, 0, 0, 0), Path(manifest['markdown']).read_text(encoding='utf-8'))]
@@ -229,7 +263,14 @@ def load_mineru(path, trace, workspace, manifest, skipped):
                   'mineru_image': original, 'mineru_bbox': row.get('bbox')}))
     # Preserve native table extraction where available; OCR/text/images come from MinerU.
     base = load_pdf(path, trace, workspace, True) if path.suffix.lower() == '.pdf' else ParsedDoc(trace, str(path), [], [], {})
-    return replace(base, text_blocks=text, images=images)
+    figure_rows, requests = region_records(records, manifest, regions or {}, path, skipped)
+    ocr_tables = extracted_tables(records + figure_rows, path, skipped)
+    # Prefer explicit MinerU tables, retain companion data without duplicating native PDF tables.
+    tables = ocr_tables + [t for t in base.tables if t.source_kind in {'csv', 'xlsx'}] if ocr_tables else base.tables
+    return replace(base, text_blocks=text, images=images, tables=tables,
+        metadata={**base.metadata, 'zerowall_figure_ocr': figure_rows, 'zerowall_ocr_requests': requests,
+                  'zerowall_mineru': {'provider': 'mineru', 'ocr': manifest.get('ocr'), 'tables': len(ocr_tables),
+                      'blocks': len(records), 'task_id': manifest.get('taskId'), 'model': manifest.get('modelVersion')}})
 
 
 def pair_sources(raw, doc):
@@ -267,6 +308,9 @@ def convert_findings(findings, doc):
     for finding in findings:
         item = asdict(finding)
         item['sources'] = pair_sources(finding.raw, doc)
+        if finding.raw.get('provider') == 'mineru':
+            item['sources'] = [{'file': doc.source_path, 'page': finding.raw.get('page'),
+                'bbox': finding.raw.get('bbox'), 'raster': finding.raw.get('image')}]
         item['engine'] = 'scientific-core'
         # Upstream titles can overstate a screening signal; keep original wording in evidence.
         item['title'] = item['title'].replace('shows copy-move forgery', 'shows a candidate copy-move pattern')
@@ -357,6 +401,7 @@ def write_report(output, payload):
     lines = ['# ZeroWall 科研分析报告', '', f"任务：{payload['trace_id']}", '',
              '检测结果是待人工复核的筛查信号。未检出不代表不存在问题。', '',
              f"发现 {len(payload['findings'])} 项；未完成/跳过 {len(payload['skipped'])} 项。", '']
+    lines += ['## 执行与 OCR 来源', '', '```json', json.dumps(payload.get('steps', []), ensure_ascii=False, indent=2), '```', '']
     for finding in payload['findings']:
         lines += [f"## {finding['title']} [{finding['severity']}]", '',
                   f"证据 ID：{finding['finding_id']}", '', finding['location'], '', finding['evidence'], '']
@@ -371,6 +416,9 @@ def write_report(output, payload):
 
 
 def run(args):
+    global DEADLINE
+    total_deadline = time.monotonic() + args.budget_seconds
+    DEADLINE = time.monotonic() + args.budget_seconds / 2
     if args.mode == 'setup':
         overlay = os.environ.get('ZEROWALL_PYTHON_OVERLAY')
         if not overlay:
@@ -390,6 +438,7 @@ def run(args):
     if not check['ok']:
         return check
     parsed = parsed_manifests(args.parsed)
+    regions = parsed_manifests(args.region_parsed)
     paths = input_paths(args.inputs, args.recursive)
     if not paths:
         raise ValueError('No supported input files were found.')
@@ -399,7 +448,7 @@ def run(args):
         raise ValueError('Paper comparison requires at least two PDFs.')
     data_paths = sorted({p.resolve() for value in args.data for p in ([Path(value)] if Path(value).is_file() else Path(value).rglob('*')) if p.is_file()}, key=str)
     entries = [{'path': str(p), 'sha256': digest(p), 'folder': str(p.parent)} for p in paths]
-    signature = hashlib.sha256(json.dumps([VERSION, args.mode, entries, args.threshold, args.cross_page_only, args.only_painted, parsed, {package: version(package) for package in CORE.values()}, [{'path': str(Path(d).resolve(strict=True)), 'sha256': digest(Path(d))} for d in data_paths]], sort_keys=True).encode()).hexdigest()
+    signature = hashlib.sha256(json.dumps([VERSION, args.mode, entries, args.threshold, args.cross_page_only, args.only_painted, args.batch_size, parsed, regions, {package: version(package) for package in CORE.values()}, [{'path': str(Path(d).resolve(strict=True)), 'sha256': digest(Path(d))} for d in data_paths]], sort_keys=True).encode()).hexdigest()
     trace = args.trace_id or 'zw-' + signature[:20]
     job = args.workspace.resolve() / trace
     output = job / 'output'
@@ -408,11 +457,16 @@ def run(args):
         manifest = job / 'manifest.json'
         if manifest.exists() and json.loads(manifest.read_text(encoding='utf-8'))['signature'] != signature:
             raise ValueError('Inputs or options changed; choose a new trace ID instead of reusing stale checkpoints.')
-        if (output / 'findings.json').exists() and not args.rerun and not json.loads((output / 'findings.json').read_text(encoding='utf-8')).get('partial'):
-            return {'ok': True, 'trace_id': trace, 'cached': True, 'report': str(output / 'report.html')}
+        if (output / 'findings.json').exists() and not args.rerun and not json.loads((output / 'findings.json').read_text(encoding='utf-8')).get('incomplete_execution', True):
+            cached = json.loads((output / 'findings.json').read_text(encoding='utf-8'))
+            return {'ok': True, 'trace_id': trace, 'cached': True, 'partial': cached['partial'],
+                    'incomplete_execution': False, 'ocr_requests': cached.get('ocr_requests'),
+                    'json': str(output / 'findings.json'), 'report': str(output / 'report.html')}
         if args.rerun:
             # Only generated checkpoints inside this validated task directory.
-            for checkpoint in job.rglob('steps/*.json'):
+            for checkpoint in job.rglob('*.json'):
+                if 'steps' not in checkpoint.relative_to(job).parts:
+                    continue
                 checkpoint.unlink()
         save(manifest, {'signature': signature, 'version': VERSION, 'inputs': entries})
         output.mkdir(parents=True, exist_ok=True)
@@ -448,21 +502,40 @@ def run(args):
                     def record_step(result, state):
                         steps.append({'detector': result.detector, 'ok': result.ok, 'error': result.error, 'stats': result.stats, 'source': str(path)})
                     parse_result = parsed.get(str(path))
-                    doc = load_mineru(path, paper_trace, job / 'papers', parse_result, skipped) if parse_result else load_pdf(path, paper_trace, job / 'papers', args.only_painted)
-                    original_parse = pipeline._parse_pdf
-                    try:
-                        # Adapter scoped to this sequential document; detector workers receive the frozen result.
-                        pipeline._parse_pdf = lambda *a, **kw: doc
-                        result = run_pipeline(path, paper_paths, JobState(trace_id=paper_trace, status='queued', source_filename=path.name), on_step_complete=record_step)
-                    finally:
-                        pipeline._parse_pdf = original_parse
+                    doc = load_mineru(path, paper_trace, job / 'papers', parse_result, skipped, regions) if parse_result else load_pdf(path, paper_trace, job / 'papers', args.only_painted)
+                    summary_path = paper_paths.steps_dir / 'zerowall-pipeline.json'
+                    request_path = paper_paths.steps_dir / 'zerowall-document.input.json'
+                    save(request_path, asdict(doc))
+                    if not summary_path.exists():
+                        try:
+                            remaining = DEADLINE - time.monotonic()
+                            if remaining < 1:
+                                raise TimeoutError('Budget reached; resume task.')
+                            process = subprocess.run([sys.executable, str(ROOT / 'detector_worker.py'), '--pipeline',
+                                str(request_path), str(summary_path), str(job / 'papers')],
+                                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=min(120, remaining),
+                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+                            if process.returncode:
+                                raise RuntimeError(process.stderr[-2000:])
+                        except Exception as error:
+                            steps.append({'detector':'paper-pipeline','source':str(path),'ok':False,'error':str(error)})
+                    if summary_path.exists():
+                        summary = json.loads(summary_path.read_text(encoding='utf-8'))
+                        steps.extend(summary['steps']); skipped.extend(summary['skipped'])
+                        from manusift.contracts import Finding
+                        findings.extend(convert_findings([Finding(**f) for f in summary['findings']], doc))
+                        if any(not step['ok'] for step in summary['steps']):
+                            summary_path.unlink()
                     if parse_result:
                         save(output / f'paper-{i:03d}-mineru.json', parse_result)
                         shutil.copy2(parse_result['markdown'], output / f'paper-{i:03d}.md')
-                    findings.extend(convert_findings(result.findings, doc))
                     save(output / f'paper-{i:03d}-text.json', [asdict(block) for block in doc.text_blocks])
                 else:
-                    doc = load_pdf(path, paper_trace, job / 'papers', args.only_painted)
+                    parse_result = parsed.get(str(path))
+                    doc = load_mineru(path, paper_trace, job / 'papers', parse_result, skipped, regions) if parse_result else load_pdf(path, paper_trace, job / 'papers', args.only_painted)
+                if doc.metadata.get('zerowall_mineru'):
+                    findings.extend(convert_findings(figure_findings(doc), doc))
+                    steps.append({'detector': 'mineru-ocr', 'ok': True, 'source': str(path), **doc.metadata['zerowall_mineru']})
                 docs.append(doc)
             except Exception as error:
                 skipped.append({'source': str(path), 'stage': 'pdf-analysis', 'reason': str(error)})
@@ -495,20 +568,18 @@ def run(args):
             staged.append(str(target))
             source_map[target.name] = {**image_source(image, image.exif['zerowall_source']), 'raster': str(target)}
         if staged:
-            try:
-                report = node_scan({'paths': staged, 'threshold': args.threshold, 'limit': len(staged), 'thumb': 180, 'copyMove': True, 'crossImage': True})
-                save(output / 'region-evidence.json', report)
-                findings.extend(worker_findings(report, source_map, trace, output))
-                skipped.extend(report.get('skipped', []))
-                steps.append({'detector': 'zerowall-region-adapter', 'ok': True})
-            except Exception as error:
-                steps.append({'detector': 'zerowall-region-adapter', 'ok': False, 'error': str(error)})
+            report = batch_scan(staged, job, args.threshold, node_scan, save, max(0, total_deadline-time.monotonic()), args.batch_size)
+            save(output / 'region-evidence.json', report)
+            findings.extend(worker_findings(report, source_map, trace, output))
+            skipped.extend(report.get('skipped', []))
+            steps.append({'detector': 'zerowall-region-adapter', 'ok': not report['partial'], 'progress': report['progress']})
         skipped.extend(step for step in steps if not step['ok'])
-        skipped.append({'detector': 'external-reference-verification', 'reason': 'Offline run; external references have not been verified.'})
-        if not check['ocr']:
-            for name in ['figure_stat_text', 'figure_grim', 'figure_table_ocr']:
-                skipped.append({'detector': name, 'reason': 'OCR dependency/models unavailable; not executed.'})
-            skipped.append({'detector': 'ocr', 'reason': 'Optional EasyOCR models are not installed; image-table OCR checks were not completed.'})
+        skipped.append({'detector': 'external-reference-verification', 'applicable': False, 'reason': 'Offline run; external references have not been verified.'})
+        requests = [item for doc in docs for item in doc.metadata.get('zerowall_ocr_requests', [])]
+        save(output / 'ocr-requests.json', requests)
+        for doc in docs:
+            if args.mode != 'image' and not doc.metadata.get('zerowall_mineru'):
+                skipped.append({'detector': 'mineru-ocr', 'source': doc.source_path, 'reason': 'No MinerU parsing artifacts supplied; document/figure OCR was not executed.'})
         if args.cross_page_only:
             findings = [f for f in findings if len(f.get('sources', [])) == 2 and all(s.get('page') is not None for s in f['sources']) and len({(s.get('file'), s.get('page')) for s in f['sources']}) > 1]
         merged = merge_findings(findings)
@@ -516,11 +587,11 @@ def run(args):
         folders = sorted({entry['folder'] for entry in entries})
         summary = [{'folder': folder, 'files': sum(e['folder'] == folder for e in entries),
                     'findings': sum(any(str(Path(src['file']).parent) == folder for src in f['sources']) for f in merged)} for folder in folders]
-        payload = {'partial': any(not step['ok'] for step in steps) or any('stage' in item for item in skipped), 'directory_summary': summary, 'trace_id': trace, 'engine': VERSION, 'inputs': entries, 'steps': steps, 'skipped': skipped,
+        payload = {'partial': any(item.get('applicable', True) for item in skipped), 'incomplete_execution': any(not step['ok'] for step in steps) or any(item.get('stage') in {'image-decode', 'pdf-analysis', 'region-batches', 'region-detection'} for item in skipped), 'ocr_requests': str(output / 'ocr-requests.json'), 'directory_summary': summary, 'trace_id': trace, 'engine': VERSION, 'inputs': entries, 'steps': steps, 'skipped': skipped,
                    'findings': merged, 'generated_at': time.time()}
         write_report(output, payload)
         return {'ok': True, 'partial': payload['partial'], 'trace_id': trace,
-                'findings': len(payload['findings']), 'report': str(output / 'report.html'), 'json': str(output / 'findings.json')}
+                'incomplete_execution': payload['incomplete_execution'], 'ocr_requests': payload['ocr_requests'], 'findings': len(payload['findings']), 'report': str(output / 'report.html'), 'json': str(output / 'findings.json')}
 
 
 def main():
@@ -535,9 +606,14 @@ def main():
     parser.add_argument('--only-painted', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--cross-page-only', action='store_true')
     parser.add_argument('--threshold', type=int, choices=range(0, 65), default=8)
-    parser.add_argument('--limit', type=int, default=300)
+    parser.add_argument('--limit', type=int, default=10000)
+    parser.add_argument('--budget-seconds', type=int, default=480)
+    parser.add_argument('--batch-size', type=int, default=16, choices=range(1, 65))
+    parser.add_argument('--region-parsed', action='append', default=[], help='Extracted figure image=MinerU manifest; repeat per image')
     parser.add_argument('--rerun', action='store_true')
     args = parser.parse_args()
+    if args.budget_seconds < 1 or args.limit < 1:
+        parser.error('Budget and limit must be positive')
     if args.trace_id and not re.fullmatch(r'[a-zA-Z0-9_-]{1,100}', args.trace_id):
         parser.error('Invalid trace ID')
     if args.mode == 'report' and not args.trace_id:

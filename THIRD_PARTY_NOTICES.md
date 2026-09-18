@@ -597,8 +597,3 @@ ZeroWall adds a PNG normalization entry point; detector algorithms retain their 
 
 Version 0.3.2, Apache-2.0. Source: https://github.com/dream-num/dsh-univer-office.
 Provides Office generation/editing, Gateway, Viewer, and eight bundled skills. Telemetry is disabled in the ZeroWall profile.
-
-## dsh-opencode-zen-free-provider
-
-Version 0.1.18, MIT license. Source: https://github.com/jiesou/dsh-opencode-zen-free-provider/tree/3226693d041feb5c67e5899f8ee7e43756c844dd.
-ZeroWall applies a narrow catalog-generation notification patch so models discovered after Host startup enter the existing health-check pipeline.

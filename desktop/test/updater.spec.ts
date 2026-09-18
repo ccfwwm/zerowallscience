@@ -11,6 +11,35 @@ class FakeUpdater extends EventEmitter implements DesktopUpdaterPort {
 }
 
 describe('desktop online updater', () => {
+  it('refuses a stale installer before stopping the Host and does not install on ordinary quit', async () => {
+    const updater = new FakeUpdater()
+    const beforeInstall = vi.fn()
+    const controller = new DesktopUpdateController({ updater, enabled: true, currentVersion: '6.3.0',
+      publish: vi.fn(), beforeInstall, validateInstaller: async () => { throw new Error('binary version mismatch') } })
+    updater.emit('update-downloaded', { version: '6.4.0', downloadedFile: 'old.exe' })
+    expect(await controller.install()).toBe(false)
+    expect(beforeInstall).not.toHaveBeenCalled()
+    expect(updater.quitAndInstall).not.toHaveBeenCalled()
+    expect(updater.autoInstallOnAppQuit).toBe(false)
+    expect(controller.current()).toMatchObject({ phase: 'error' })
+  })
+
+  it('merges repeated install clicks and validates before stopping the Host', async () => {
+    const updater = new FakeUpdater()
+    const order: string[] = []
+    let done!: () => void
+    const controller = new DesktopUpdateController({ updater, enabled: true, currentVersion: '6.3.0',
+      publish: vi.fn(), validateInstaller: async () => { order.push('validate'); await new Promise<void>(r => { done = r }) },
+      beforeInstall: async () => { order.push('stop') } })
+    updater.emit('update-downloaded', { version: '6.4.0' })
+    const first = controller.install(), second = controller.install()
+    expect(first).toBe(second)
+    expect(order).toEqual(['validate'])
+    done()
+    expect(await first).toBe(true)
+    expect(order).toEqual(['validate', 'stop'])
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1)
+  })
   it('checks manually, exposes an available version, downloads, and installs on confirmation', async () => {
     const updater = new FakeUpdater()
     const published = vi.fn()
@@ -23,7 +52,7 @@ describe('desktop online updater', () => {
     updater.emit('download-progress', { percent: 42.5 })
     updater.emit('update-downloaded', { version: '3.0.1' })
     expect(controller.current()).toMatchObject({ phase: 'downloaded', percent: 100 })
-    expect(controller.install()).toBe(true)
+    expect(await controller.install()).toBe(true)
     expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true)
     expect(published).toHaveBeenCalled()
   })

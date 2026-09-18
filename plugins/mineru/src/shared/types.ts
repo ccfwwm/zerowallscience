@@ -59,7 +59,7 @@ export interface MineruParseResult {
 }
 
 export interface MineruBatchResult { ok: true; api: 'precision'; results: MineruParseResult[]; succeeded: number; failed: number }
-export interface MineruTaskResult { ok: true; api: MineruApi; taskId: string; state: 'pending' | 'done' | 'failed'; result?: MineruParseResult; error?: string }
+export interface MineruTaskResult { ok: true; api: MineruApi; taskId: string; state: 'waiting-file' | 'pending' | 'running' | 'converting' | 'done' | 'failed'; result?: MineruParseResult; error?: string }
 
 export interface MineruRegistrationInput {
   sessionId: string

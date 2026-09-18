@@ -1386,10 +1386,10 @@ async function scanDataUrls(config) {
       const hashes = computeHashes(width, height, data);
       const wg = toGrayC(data, width, height, 384);
       let cmRegions = [];
-      if (copyMove) { try { cmRegions = detectCopyMove(width, height, data).regions; } catch (e) {} }
+      if (copyMove) { try { cmRegions = detectCopyMove(width, height, data).regions; } catch (e) { skipped.push({ stage: 'region-detection', reason: String(e) }); } }
       let thumbData = null;
       if (thumb > 0) {
-        try { const t = img.clone(); t.scaleToFit({ w: thumb, h: thumb }); thumbData = await jpegDataUrl(t); } catch (e) {}
+        try { const t = img.clone(); t.scaleToFit({ w: thumb, h: thumb }); thumbData = await jpegDataUrl(t); } catch (e) { skipped.push({ stage: 'region-detection', reason: String(e) }); }
       }
       items.push({
         name: f.name, path: null, w: width, h: height,
@@ -1399,14 +1399,14 @@ async function scanDataUrls(config) {
         cmRegions, cmCount: cmRegions.length, thumb: thumbData, _h: hashes,
       });
       if (crossImage !== false) {
-        try { const wg = toGrayC(data, width, height, 384); grayItems.push({ name: f.name, dataUrl: f.dataUrl, gray: wg.gray, w: wg.w, h: wg.h }); } catch (e) {}
+        try { const wg = toGrayC(data, width, height, 384); grayItems.push({ name: f.name, dataUrl: f.dataUrl, gray: wg.gray, w: wg.w, h: wg.h }); } catch (e) { skipped.push({ stage: 'region-detection', reason: String(e) }); }
       }
     } catch (e) {
       skipped.push({ name: f.name, error: String(e && e.message || e).slice(0, 200) });
     }
   }
   const pairs = [];
-  for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+  for (let i = 0; !config.featureOnly && !config.skipWholePairs && i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
     const c = comparePair(items[i]._h, items[j]._h, threshold);
     if (c.suspicious) pairs.push({ a: items[i].name, b: items[j].name, distance: c.distance, similarity: c.similarity, transform: c.transform });
   }
@@ -1417,9 +1417,10 @@ async function scanDataUrls(config) {
   if (crossImage !== false && grayItems.length >= 2) {
     for (let i = 0; i < grayItems.length; i++) for (let j = i + 1; j < grayItems.length; j++) {
       try {
+        if (config.leftCount != null && (i >= config.leftCount || j < config.leftCount)) continue;
         const r = crossMatch(grayItems[i], grayItems[j]);
         if (r.matches >= 5 && r.conf >= 0.95) crossPairs.push({ a: grayItems[i].name, b: grayItems[j].name, scale: r.scale, matches: r.matches, conf: r.conf, regions: r.regions });
-      } catch (e) {}
+      } catch (e) { skipped.push({ stage: 'region-detection', reason: String(e) }); }
     }
     crossPairs.sort((x, y) => y.matches - x.matches);
     for (const cp of crossPairs) {
@@ -1427,10 +1428,25 @@ async function scanDataUrls(config) {
         const gi = grayItems.find((g) => g.name === cp.a), gj = grayItems.find((g) => g.name === cp.b); if (!gi || !gj) continue;
         const imgA = await loadImg(gi), imgB = await loadImg(gj);
         cp.crop = await makeCropComposite(imgA, imgB, cp.regions[0]);
-      } catch (e) {}
+      } catch (e) { skipped.push({ stage: 'region-detection', reason: String(e) }); }
     }
   }
   return { ok: true, algorithm: 'aHash+dHash(6变换)+pHash + copyMove(分块) + crossImage(跨图复用)', total: clean.length, scanned: files.length, capped: files.length > limit, threshold, pairs, crossPairs, copyMove: copyMoveList, files: clean, skipped };
+}
+
+function compareFeatures(config) {
+  const fields = ['aH','pH','dH','dH_hf','dH_vf','dH_r90','dH_r180','dH_r270'];
+  const items = config.compareFeatures.map(item => ({name: item.name, hashes: Object.fromEntries(fields.map(k => [k, [parseInt(item[k].slice(0,8),16),parseInt(item[k].slice(8),16)]]))}));
+  const pop = x => { x -= (x >>> 1) & 0x55555555; x = (x & 0x33333333) + ((x >>> 2) & 0x33333333); return (((x + (x >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24; };
+  const distance = (a,b) => pop(a[0]^b[0]) + pop(a[1]^b[1]);
+  const candidates = [['dH','dH','重复/近重复'],['dH','dH_hf','水平翻转'],['dH','dH_vf','垂直翻转'],['dH','dH_r90','旋转 90°/270°'],['dH','dH_r180','旋转 180°'],['dH','dH_r270','旋转 90°/270°'],['aH','aH','重复/近重复'],['pH','pH','缩放/重压缩']];
+  const pairs = [];
+  for (let i=0; i<items.length; i++) for (let j=i+1; j<items.length; j++) {
+    let best=65, transform='';
+    for (const [a,b,label] of candidates) { const d=distance(items[i].hashes[a],items[j].hashes[b]); if(d<best){best=d;transform=label;} }
+    if(best <= (config.threshold ?? 8)) pairs.push({a:items[i].name,b:items[j].name,distance:best,similarity:Math.round((1-best/64)*1000)/1000,transform});
+  }
+  return {ok:true,pairs};
 }
 
 async function scanPathList(config) {
@@ -1462,6 +1478,7 @@ async function main() {
     const chunks = [];
     for await (const chunk of process.stdin) chunks.push(chunk);
     const config = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    if (config.compareFeatures) { console.log(JSON.stringify(compareFeatures(config))); return; }
     if (config.write) { await fs.writeFile(config.write.path, config.write.content, 'utf8'); process.stdout.write(JSON.stringify({ ok: true, path: config.write.path })); return; }
     if (config.normalize) {
       const sharp = runtimeRequire('sharp');

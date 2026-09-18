@@ -68,7 +68,8 @@ def main():
     compared=json.loads(Path(compare['json']).read_text(encoding='utf-8'))
     cross=[f for f in compared['findings'] if pair(f)=={'paper-a.pdf','paper-b.pdf'}]
     assert cross and any(s.get('pdf_rects') for f in cross for s in f['sources'])
-    assert not compared['partial'], compared['steps']
+    assert not compared['incomplete_execution'], compared['steps']
+    assert compared['partial'] and any(s.get('detector') == 'mineru-ocr' for s in compared['skipped'])
     assert (Path(compare['json']).parent/'paper-000-text.json').exists()
     resumed=invoke('compare',inputs/'paper-a.pdf',inputs/'paper-b.pdf','--workspace',workspace)
     assert resumed.get('cached') and resumed['trace_id']==compare['trace_id']

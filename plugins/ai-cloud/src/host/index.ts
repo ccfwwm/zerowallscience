@@ -192,6 +192,7 @@ export class AiCloudLlmController {
     if (defaults === undefined) return
     const current = defaults.currentSelection()
     if (models.length === 0) {
+      // Migrate historical selections only; no free-provider adapter is loaded.
       if (current.provider.startsWith(ROUTE_PREFIX) || ['opencode2dsh', 'opencode-zen-free-provider'].includes(current.provider)) {
         await defaults.saveSelection({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
       }

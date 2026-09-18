@@ -1,4 +1,5 @@
 import type { DesktopUpdateStatus } from '../shared/contracts.js'
+import type { DownloadedArtifact } from './update-artifact.js'
 
 type Listener = (...args: any[]) => void
 
@@ -44,18 +45,23 @@ export interface DesktopUpdaterOptions {
   updater: DesktopUpdaterPort
   enabled: boolean
   currentVersion: string
+  validateInstaller?(info: DownloadedArtifact): Promise<void>
+  beforeInstall?(): Promise<void>
   publish(status: DesktopUpdateStatus): void
 }
 
 export class DesktopUpdateController {
   private status: DesktopUpdateStatus
+  private downloaded?: DownloadedArtifact
+  private installing?: Promise<boolean>
 
   constructor(private readonly options: DesktopUpdaterOptions) {
     this.status = options.enabled
       ? { phase: 'idle', currentVersion: options.currentVersion }
       : { phase: 'unavailable', currentVersion: options.currentVersion, message: 'Online updates are available in packaged Stable builds.' }
     options.updater.autoDownload = false
-    options.updater.autoInstallOnAppQuit = true
+    // Installation must pass the same validation as the explicit restart button.
+    options.updater.autoInstallOnAppQuit = false
     options.updater.on('checking-for-update', () => this.set({ phase: 'checking', currentVersion: options.currentVersion }))
     options.updater.on('update-available', (info: UpdateInfo) => this.set({
       phase: 'available', currentVersion: options.currentVersion,
@@ -70,12 +76,12 @@ export class DesktopUpdateController {
       ...this.status, phase: 'downloading', currentVersion: options.currentVersion,
       percent: typeof progress.percent === 'number' ? Math.max(0, Math.min(100, progress.percent)) : 0,
     }))
-    options.updater.on('update-downloaded', (info: UpdateInfo) => this.set({
+    options.updater.on('update-downloaded', (info: DownloadedArtifact) => { this.downloaded = info; this.set({
       phase: 'downloaded', currentVersion: options.currentVersion,
       ...(typeof info.version === 'string' ? { version: info.version } : this.status.version === undefined ? {} : { version: this.status.version }),
       ...(this.status.notes === undefined ? {} : { notes: this.status.notes }),
       percent: 100,
-    }))
+    }) })
     options.updater.on('error', () => this.fail('检查或下载更新失败，请稍后重试。'))
   }
 
@@ -95,10 +101,27 @@ export class DesktopUpdateController {
     return this.current()
   }
 
-  install(): boolean {
-    if (!this.options.enabled || this.status.phase !== 'downloaded') return false
-    this.options.updater.quitAndInstall(false, true)
-    return true
+  install(): Promise<boolean> {
+    if (this.installing) return this.installing
+    if (!this.options.enabled || this.status.phase !== 'downloaded' || !this.downloaded) return Promise.resolve(false)
+    this.installing = (async () => {
+      try {
+        await this.options.validateInstaller?.(this.downloaded!)
+      } catch {
+        this.downloaded = undefined
+        this.fail('安装包版本或完整性校验失败，尚未退出应用。请重新检查并下载更新。')
+        return false
+      }
+      try {
+        await this.options.beforeInstall?.()
+        this.options.updater.quitAndInstall(false, true)
+        return true
+      } catch {
+        this.fail('无法启动更新安装，请重试。')
+        return false
+      }
+    })().finally(() => { this.installing = undefined })
+    return this.installing
   }
 
   private fail(message: string): void { this.set({ phase: 'error', currentVersion: this.options.currentVersion, message }) }

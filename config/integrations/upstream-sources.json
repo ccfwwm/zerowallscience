@@ -110,13 +110,6 @@
       "source": "packages/integrity-runtime/hash-worker.mjs"
     }
   },
-  "openCodeZenFree": {
-    "repository": "https://github.com/jiesou/dsh-opencode-zen-free-provider",
-    "version": "0.1.18",
-    "commit": "3226693d041feb5c67e5899f8ee7e43756c844dd",
-    "integrity": "sha512-UxIc2XvXh9+v6Q28h0LUiUZvnqzCrVxKHYijly12xt9CRlGJh1OVUPLl7JLFO1eH0tZt/bM8bh47bB4Pr9MDXQ==",
-    "license": "MIT"
-  },
   "univerOffice": {
     "repository": "https://github.com/dream-num/dsh-univer-office",
     "version": "0.3.2",

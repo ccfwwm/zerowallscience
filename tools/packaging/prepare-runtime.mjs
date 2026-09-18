@@ -60,7 +60,6 @@ const desktopRuntimeSeeds = [
   'dsh-wechat',
   'dsh-auto-review',
   '@changfenhuang/dsh-genui',
-  '@jiesou/dsh-opencode-zen-free-provider',
   'dsh-free-search',
   'dsh-dream-skin',
   '@deepseek-ai/dsh-subagent-claude-code',

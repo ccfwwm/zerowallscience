@@ -15,3 +15,11 @@ description: 对比两篇或多篇指定论文的研究问题、方法、结果�
 - 引用原文时保留所属文献和页码，不混淆不同文献中的同名图片、表格或作者结论。
 - 相同图片可能有合法授权、共享数据或方法示意用途，展示证据并要求人工解释，不自动认定抄袭。
 - 返回内容对照表、需要复核的匹配、未完成检查及报告链接。不要声称已运行未提供的全文文本相似度算法。
+
+## OCR 与任务续跑
+
+- PDF/文档默认由 `mineru-document-parser` 的 Precision VLM 解析，显式传 `isOcr: true`，保留 Markdown、图片、表格、页码与坐标。不需要安装本地 MinerU、EasyOCR 或 Torch。
+- 检测使用同一托管 Python，工具 `timeoutMs: 600000`；脚本默认 `--budget-seconds 480`，到时保存报告与检查点。读取 `incomplete_execution`，为 true 时以相同输入和参数再次调用，直到完成或用户停止；不要反复增加超时或删除检查点。
+- `partial` 表示筛查覆盖存在缺口，`incomplete_execution` 表示执行尚未完成。两者都要说明；无参考文献、伦理章节或适用表格属于材料限制，不等同于 Python 缺依赖。
+- 分析返回 `ocr_requests` 指向需补充识别的图像列表。按列表对图片调用 `mineru_parse`（`precision`、`isOcr: true`）；将每个结果用 `--region-parsed "<图片绝对路径>=<parse-manifest.json绝对路径>"` 交给下一次分析。增加解析材料后生成新 trace，保留旧报告。图注不代表图内标注已识别。
+- 只生成报告时不重复检测或提交 OCR。报告需附解析来源、已完成数量、待执行数量和未完成原因；没有页码/bbox 时明确标为未知。

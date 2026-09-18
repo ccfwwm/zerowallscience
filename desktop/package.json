@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "6.3.0",
+  "version": "6.4.0",
   "description": "ZeroWall Science 4.3 local-first scientific research workbench with the DSH better-sidebar workbench.",
   "private": true,
   "type": "module",
@@ -21,14 +21,13 @@
     "package:stable:win": "pnpm run package:win",
     "package:stable:mac:x64": "node scripts/verify-target.mjs darwin x64 && electron-builder --config build/electron-builder.stable.cjs --mac --x64 --publish never && node scripts/verify-packaged-runtime.mjs",
     "package:stable:mac:arm64": "node scripts/verify-target.mjs darwin arm64 && electron-builder --config build/electron-builder.stable.cjs --mac --arm64 --publish never && node scripts/verify-packaged-runtime.mjs",
-    "installer:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-installer-ui.ps1"
+    "installer:build": "node scripts/prepare-nsis-overlay.mjs && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-installer-ui.ps1"
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "workspace:*",
     "@dingyi222666/dsh-session-notification": "workspace:*",
     "@dsh-external/zotero-harvest": "workspace:*",
     "@huanlin/dsh-plugin-better-sidebar-plugin-office": "github:HuanLinOTO/dsh-plugin-better-sidebar-plugin-office#3b881c9d002109444368b1a28d371663390b156b",
-    "@jiesou/dsh-opencode-zen-free-provider": "0.1.18",
     "@zerowallscience/integrity-runtime": "workspace:^",
     "@zerowallscience/plugin-account": "workspace:^",
     "@zerowallscience/plugin-ai-cloud": "workspace:^",

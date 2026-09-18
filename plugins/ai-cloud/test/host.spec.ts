@@ -38,6 +38,14 @@ async function setup(secrets: MemorySecrets, account?: { discoverModels(): Promi
 }
 
 describe('ZeroWall AI Cloud LLM routes', () => {
+  it.each(['opencode2dsh', 'opencode-zen-free-provider'])('migrates a saved retired %s default without registering the provider', async (provider) => {
+    const { ctx, controller } = await setup(new MemorySecrets())
+    const saveSelection = vi.fn()
+    ctx.provide('agentDefaultModel', { currentSelection: () => ({ provider, model: 'retired-free-model' }), saveSelection } as never)
+    await controller.update({ status: 'signedOut', balanceFreshness: 'current', lowBalance: false, models: [] })
+    expect(saveSelection).toHaveBeenCalledWith({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+    expect(ctx.llm.listProviders()).toEqual([])
+  })
   it('registers managed routes, resolves the group key per request, and removes routes on logout', async () => {
     const secrets = new MemorySecrets()
     secrets.values.set('zerowall.ai-cloud.group.2', 'managed-secret')
