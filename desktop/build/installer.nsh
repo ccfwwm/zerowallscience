@@ -7,12 +7,13 @@
 
 !define ZW_UI_BINARY "${__FILEDIR__}\..\..\.build\installer-ui\modern-installer.exe"
 Var ZeroWallUiState
-!ifndef BUILD_UNINSTALLER
-Var ZeroWallUiProcess
-!else
+!ifdef BUILD_UNINSTALLER
 !macro customUnInit
   StrCpy $ZeroWallUiState ""
 !macroend
+!endif
+!ifndef BUILD_UNINSTALLER
+Var ZeroWallUiProcess
 !endif
 !macro ZW_PHASE value
   ${If} $ZeroWallUiState != ""
@@ -181,33 +182,43 @@ FunctionEnd
 !macroend
 
 !macro customCheckAppRunning
-  !insertmacro ZW_PHASE "extracting"
+  !insertmacro ZW_PHASE "stopping"
   InitPluginsDir
   File /oname=$PLUGINSDIR\zerowall-process-control.exe "${ZW_UI_BINARY}"
-  nsExec::Exec '"$PLUGINSDIR\zerowall-process-control.exe" --check-running "$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
+  zerowall_retry_process:
+  !insertmacro ZW_PHASE "stopping"
+  nsExec::Exec '"$PLUGINSDIR\zerowall-process-control.exe" --stop-running "$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
   Pop $R0
-  ${If} $R0 == 0
-    ${If} $ZeroWallUiState != ""
-      MessageBox MB_OKCANCEL|MB_ICONINFORMATION "安装需要关闭正在运行的 ZeroWall Science。请先保存工作，再点击确定继续。" /SD IDCANCEL IDOK zerowall_close_process
-      WriteINIStr "$ZeroWallUiState" "Install" "Error" "安装已取消。请保存工作并关闭应用后重试。"
-      !insertmacro ZW_PHASE "failed"
-      SetErrorLevel 2
-      Quit
-    ${EndIf}
-    ${IfNot} ${Silent}
-      MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "$(appRunning)" /SD IDCANCEL IDOK zerowall_close_process
-      Quit
-    ${EndIf}
-    zerowall_close_process:
-      nsExec::Exec '"$PLUGINSDIR\zerowall-process-control.exe" --stop-running "$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
-      Pop $R0
-  ${EndIf}
   ${If} $R0 != 1
-    !insertmacro ZW_PHASE "failed"
+    !ifndef BUILD_UNINSTALLER
+    ${If} $ZeroWallUiState != ""
+      ; Modern UI intentionally runs NSIS silently. Never use a silent
+      ; MessageBox default to decide whether this interactive user cancels.
+      WriteINIStr "$ZeroWallUiState" "Install" "Action" "waiting"
+      WriteINIStr "$ZeroWallUiState" "Install" "TargetExecutable" "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+      !insertmacro ZW_PHASE "process-blocked"
+      ${Do}
+        ReadINIStr $R0 "$ZeroWallUiState" "Install" "Action"
+        ${If} $R0 == "retry-process"
+          Goto zerowall_retry_process
+        ${EndIf}
+        ${If} $R0 == "close"
+          SetErrorLevel 2
+          Quit
+        ${EndIf}
+        System::Call 'kernel32::WaitForSingleObject(p $ZeroWallUiProcess, i 100)i.r1'
+        ${If} $1 == 0
+          SetErrorLevel 2
+          Quit
+        ${EndIf}
+      ${Loop}
+    ${EndIf}
+    !endif
     ${IfNot} ${Silent}
-      MessageBox MB_OK|MB_ICONSTOP "无法安全关闭目标程序，请手动退出 ZeroWall Science 后重试。"
+      MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "请关闭 ZeroWall Science 后点击重试，安装将继续。" IDRETRY zerowall_retry_process
     ${EndIf}
     SetErrorLevel 2
     Quit
   ${EndIf}
+  !insertmacro ZW_PHASE "extracting"
 !macroend

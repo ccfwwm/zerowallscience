@@ -29,7 +29,7 @@ static ID2D1Factory* factory;
 static ID2D1HwndRenderTarget* target;
 static IDWriteFactory* textFactory;
 static ID2D1Bitmap* brandBitmap;
-static HANDLE parentProcess;
+static HANDLE parentProcess, elevatedStopProcess;
 static std::wstring statePath, installPath, version, phase=L"welcome", failure;
 static bool advanced=false, desktopShortcut=true, reducedMotion=false, finished=false;
 static float scale=1, elapsed=0;
@@ -45,10 +45,13 @@ static int targetProcesses(const wchar_t* executable,bool stop) {
   if(Process32FirstW(snapshot,&entry)) do {
     entries.push_back(entry);
     if(_wcsicmp(entry.szExeFile,basename.c_str())!=0)continue;
-    HANDLE process=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,entry.th32ProcessID);
-    if(!process){CloseHandle(snapshot);return 2;}
+    HANDLE process=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION|SYNCHRONIZE,FALSE,entry.th32ProcessID);
+    if(!process){if(GetLastError()==ERROR_INVALID_PARAMETER)continue;CloseHandle(snapshot);return 2;}
     wchar_t path[32768];DWORD length=32768;
-    BOOL queried=QueryFullProcessImageNameW(process,0,path,&length);CloseHandle(process);
+    if(WaitForSingleObject(process,0)==WAIT_OBJECT_0){CloseHandle(process);continue;}
+    BOOL queried=QueryFullProcessImageNameW(process,0,path,&length);
+    bool exited=WaitForSingleObject(process,0)==WAIT_OBJECT_0;CloseHandle(process);
+    if(exited)continue;
     if(!queried){CloseHandle(snapshot);return 2;}
     if(_wcsicmp(path,executable)==0)selected.insert(entry.th32ProcessID);
   }while(Process32NextW(snapshot,&entry));
@@ -63,13 +66,22 @@ static int targetProcesses(const wchar_t* executable,bool stop) {
     ancestor=found->th32ParentProcessID;if(!protectedPids.insert(ancestor).second)break;
   }
   bool changed=true;
-  while(changed){changed=false;for(const auto& item:entries)if(selected.count(item.th32ParentProcessID)&&!selected.count(item.th32ProcessID)){selected.insert(item.th32ProcessID);changed=true;}}
+  // An updater may be launched by the app being replaced. Keep the installer
+  // and its UI/helper descendants alive while terminating the old app tree.
+  while(changed){changed=false;for(const auto& item:entries)if(selected.count(item.th32ParentProcessID)&&!selected.count(item.th32ProcessID)&&!protectedPids.count(item.th32ProcessID)){selected.insert(item.th32ProcessID);changed=true;}}
+  bool stopped=true;
   for(auto pid:selected){
     if(protectedPids.count(pid))continue;
     HANDLE process=OpenProcess(PROCESS_TERMINATE|SYNCHRONIZE,FALSE,pid);
-    if(process){TerminateProcess(process,0);WaitForSingleObject(process,5000);CloseHandle(process);}
+    if(process){
+      if(WaitForSingleObject(process,0)!=WAIT_OBJECT_0) {
+        TerminateProcess(process,0);
+        if(WaitForSingleObject(process,5000)!=WAIT_OBJECT_0)stopped=false;
+      }
+      CloseHandle(process);
+    } else if(GetLastError()!=ERROR_INVALID_PARAMETER)stopped=false;
   }
-  return targetProcesses(executable,false)==1?1:2;
+  return stopped&&targetProcesses(executable,false)==1?1:2;
 }
 static WNDPROC editProcedure;
 static LRESULT CALLBACK directoryProcedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
@@ -93,7 +105,22 @@ static void label(const std::wstring& value,float x,float y,float w,float h,floa
   if(format&&brush) { format->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP); target->DrawText(value.c_str(),(UINT32)value.size(),format,D2D1::RectF(x,y,x+w,y+h),brush); }
   release(format); release(brush);
 }
-static bool busy() { return phase!=L"welcome"&&phase!=L"complete"&&phase!=L"failed"; }
+static bool busy() { return phase!=L"welcome"&&phase!=L"complete"&&phase!=L"failed"&&phase!=L"process-blocked"; }
+static void authorizeStop() {
+  auto executable=read(L"TargetExecutable");
+  if(executable.empty()||executable.find(L'"')!=std::wstring::npos)return;
+  wchar_t helper[32768];GetModuleFileNameW(nullptr,helper,32768);
+  std::wstring arguments=L"--stop-running \""+executable+L"\"";
+  SHELLEXECUTEINFOW launch{sizeof(launch)};
+  launch.fMask=SEE_MASK_NOCLOSEPROCESS;launch.hwnd=windowHandle;
+  launch.lpVerb=L"runas";launch.lpFile=helper;launch.lpParameters=arguments.c_str();launch.nShow=SW_HIDE;
+  if(ShellExecuteExW(&launch)) {
+    elevatedStopProcess=launch.hProcess;
+    write(L"Phase",L"elevating");phase=L"elevating";
+  } else {
+    failure=GetLastError()==ERROR_CANCELLED?L"已取消授权。可重新授权，或手动退出应用后重新检测。":L"未能请求权限。可重试，或手动退出应用后重新检测。";
+  }
+}
 static void loadBrand() {
   IWICImagingFactory* wic=nullptr; IWICStream* stream=nullptr; IWICBitmapDecoder* decoder=nullptr; IWICBitmapFrameDecode* frame=nullptr; IWICFormatConverter* converter=nullptr;
   auto res=FindResourceW(nullptr,MAKEINTRESOURCEW(101),RT_RCDATA);
@@ -136,7 +163,7 @@ static void paint() {
       rect(508,432,204,44,0x6867D8,11); label(L"安装 ZeroWall Science",529,443,185,28,14,0xFFFFFF,true);
       label(L"本地优先 · 专注科研",48,445,350,24,12,0x9199AA);
     } else {
-      std::wstring message=phase==L"complete"?L"安装完成":phase==L"failed"?failure:phase==L"finalizing"?L"正在创建快捷方式，完成安装":phase==L"extracting"?L"正在解压应用与科研运行时":L"正在准备安装";
+      std::wstring message=phase==L"complete"?L"安装完成":phase==L"failed"?failure:phase==L"process-blocked"?(failure.empty()?L"应用仍在运行，需要授权结束进程后继续安装。":failure):phase==L"elevating"?L"正在授权关闭应用，完成后将自动继续安装":phase==L"stopping"?L"正在关闭运行中的应用，随后继续安装":phase==L"finalizing"?L"正在创建快捷方式，完成安装":phase==L"extracting"?L"正在解压应用与科研运行时":L"正在准备安装";
       label(message,48,286,662,60,16,phase==L"failed"?0xB35159:0x4E5970,true);
       rect(48,360,664,14,0xE2E6F0,7);
       if(phase==L"complete") rect(48,360,664,14,0x7473DB,7);
@@ -149,7 +176,10 @@ static void paint() {
         target->PopAxisAlignedClip();
       }
       label(phase==L"complete"?L"所有步骤已完成":phase==L"failed"?L"原有项目和账户数据不会被清除":L"准备安装       ·       解压文件       ·       完成配置",48,394,664,30,12,0x8A93A7);
-      if(phase==L"complete"||phase==L"failed") {
+      if(phase==L"process-blocked") {
+        rect(48,432,154,44,0xE9ECF7,11);label(L"已关闭，重新检测",61,444,140,26,13,0x5868A4,true);
+        rect(480,432,232,44,0x6867D8,11);label(L"授权结束进程并继续",496,443,212,28,15,0xFFFFFF,true);
+      } else if(phase==L"complete"||phase==L"failed") {
         rect(534,432,178,44,0x6867D8,11); label(phase==L"complete"?L"立即开启":L"关闭并重试",572,443,140,28,15,0xFFFFFF,true);
       } else label(L"正在处理，请稍候  ·  "+std::to_wstring((int)((GetTickCount64()-started)/1000))+L" 秒",48,445,640,26,12,0x9199AA);
     }
@@ -186,6 +216,10 @@ static LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
     case WM_PAINT: paint(); return 0;
     case WM_ERASEBKGND: return 1;
     case WM_TIMER: {
+      if(elevatedStopProcess&&WaitForSingleObject(elevatedStopProcess,0)==WAIT_OBJECT_0) {
+        CloseHandle(elevatedStopProcess);elevatedStopProcess=nullptr;
+        write(L"Phase",L"stopping");write(L"Action",L"retry-process");failure.clear();
+      }
       elapsed=(GetTickCount64()-started)/1000.0f;
       auto next=read(L"Phase",L"welcome");
       if(phase!=L"failed" && next!=L"welcome") phase=next;
@@ -203,6 +237,9 @@ static LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
         else if(advanced&&y>348&&y<380&&x>628) browse();
         else if(advanced&&y>385&&y<422&&x<350) desktopShortcut=!desktopShortcut;
         else if(y>432&&y<480&&x>508&&validatePath()) { write(L"Directory",installPath); write(L"DesktopShortcut",desktopShortcut?L"1":L"0"); write(L"Action",L"start"); phase=L"preparing"; started=GetTickCount64(); }
+      } else if(phase==L"process-blocked"&&y>432&&y<480) {
+        if(x>480)authorizeStop();
+        else if(x>=48&&x<=202){failure.clear();write(L"Phase",L"stopping");write(L"Action",L"retry-process");phase=L"stopping";}
       } else if(y>432&&y<480&&x>534&&(phase==L"complete"||phase==L"failed")) finish(phase==L"complete");
       InvalidateRect(hwnd,nullptr,FALSE);return 0;
     }
@@ -211,7 +248,8 @@ static LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
     case WM_KEYDOWN:
       if(wp==VK_ESCAPE&&!busy())finish(false);
       if(wp==VK_RETURN) {
-        if(phase==L"welcome"&&validatePath()) {write(L"Directory",installPath);write(L"DesktopShortcut",desktopShortcut?L"1":L"0");write(L"Action",L"start");phase=L"preparing";started=GetTickCount64();}
+        if(phase==L"process-blocked")authorizeStop();
+        else if(phase==L"welcome"&&validatePath()) {write(L"Directory",installPath);write(L"DesktopShortcut",desktopShortcut?L"1":L"0");write(L"Action",L"start");phase=L"preparing";started=GetTickCount64();}
         else if(phase==L"complete"||phase==L"failed")finish(phase==L"complete");
       }
       return 0;

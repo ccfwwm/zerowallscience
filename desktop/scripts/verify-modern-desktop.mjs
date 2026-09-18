@@ -71,6 +71,35 @@ try {
   const settings=page.getByRole('dialog',{name:/^(设置|Settings)$/})
   await settings.waitFor()
   assert.equal(await page.locator('#zerowall-window-controls button').count(),3)
+  const controlVisuals = await page.locator('#zerowall-window-controls button').evaluateAll(buttons => buttons.map(button => {
+    const dot = button.querySelector('i')
+    const icon = button.querySelector('svg.control-icon')
+    const path = icon?.querySelector('path')
+    return {
+      action: button.getAttribute('data-action'),
+      background: dot ? getComputedStyle(dot).backgroundColor : '',
+      opacity: dot ? getComputedStyle(dot).opacity : '',
+      icon: Boolean(icon),
+      path: path?.getAttribute('d') ?? '',
+      stroke: path ? getComputedStyle(path).stroke : '',
+    }
+  }))
+  const rgb = value => value.match(/\d+/g)?.map(Number) ?? []
+  const [closeRgb, minimizeRgb, maximizeRgb] = controlVisuals.map(control => rgb(control.background))
+  assert(closeRgb[0] > 220 && closeRgb[1] < 150 && closeRgb[2] < 150, JSON.stringify(controlVisuals))
+  assert(minimizeRgb[0] > 220 && minimizeRgb[1] > 140 && minimizeRgb[2] < 120, JSON.stringify(controlVisuals))
+  assert(maximizeRgb[0] < 100 && maximizeRgb[1] > 150 && maximizeRgb[2] < 120, JSON.stringify(controlVisuals))
+  assert(controlVisuals.every(control => control.opacity === '1' && control.icon && control.path && control.stroke !== 'none'), JSON.stringify(controlVisuals))
+  evidence.windowControlsVisuals = controlVisuals
+  await page.mouse.move(600, 400)
+  await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].blur())
+  await page.locator('#zerowall-window-controls[data-focused=false]').waitFor()
+  const inactive = await page.locator('#zerowall-window-controls i').evaluateAll(dots => dots.map(dot => ({ background: getComputedStyle(dot).backgroundColor, opacity: getComputedStyle(dot).opacity })))
+  assert.deepEqual(inactive.map(dot => dot.background), controlVisuals.map(control => control.background))
+  assert(inactive.every(dot => dot.opacity === '1'))
+  evidence.inactiveControls = inactive
+  await page.locator('#zerowall-window-controls').screenshot({ path: join(output, 'window-controls-unfocused.png') })
+  await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].focus())
   await shot('settings-window-controls')
   await settings.getByRole('button',{name:/^(关闭|Close)$/}).click()
   const buttons = page.locator('#zerowall-window-controls button')
