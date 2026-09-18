@@ -31,7 +31,7 @@ overrides:
 packageExtensionsChecksum: sha256-Q6X1Gl6DMuKgbSzTYjDqmxO9yrX+axXoi3kYfoCanGA=
 
 patchedDependencies:
-  '@jiesou/dsh-opencode-zen-free-provider@0.1.18': 9d8a3e59d5bff5711f403de7df9cbd0cdbb160e74f311443cee42e43924a7e7c
+  '@jiesou/dsh-opencode-zen-free-provider@0.1.18': 0a88ebd1c2afa493bdf0e93e70cb90176202b7b2d23e871d38dd9420d2bcc299
   dsh-dream-skin@9.13.1: 76d3f7ca7242ec241a59f3e1ee279651a3836a424261bc06bac32853abfde380
   dsh-free-search@0.4.28: 498dcee1f79256aefeb19cdcc127a81ff06db502713fa41343e529b3343f21cc
 
@@ -11421,7 +11421,7 @@ importers:
         version: https://codeload.github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office/tar.gz/3b881c9d002109444368b1a28d371663390b156b(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@types/react-dom@18.3.5(@types/react@19.2.18))(@types/react@19.2.18)(dsh-better-sidebar@packages+dsh-better-sidebar)(pdfjs-dist@6.3.289)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       '@jiesou/dsh-opencode-zen-free-provider':
         specifier: 0.1.18
-        version: 0.1.18(patch_hash=9d8a3e59d5bff5711f403de7df9cbd0cdbb160e74f311443cee42e43924a7e7c)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-credentials@deepseek-harness+packages+credentials+credentials)(@deepseek-ai/dsh-llm-pi-ai@deepseek-harness+packages+llm+llm-pi-ai)(@deepseek-ai/dsh-llm@deepseek-harness+packages+llm+llm)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-util-values@deepseek-harness+packages+util+values)(@earendil-works/pi-ai@0.85.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3))
+        version: 0.1.18(patch_hash=0a88ebd1c2afa493bdf0e93e70cb90176202b7b2d23e871d38dd9420d2bcc299)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-credentials@deepseek-harness+packages+credentials+credentials)(@deepseek-ai/dsh-llm-pi-ai@deepseek-harness+packages+llm+llm-pi-ai)(@deepseek-ai/dsh-llm@deepseek-harness+packages+llm+llm)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-util-values@deepseek-harness+packages+util+values)(@earendil-works/pi-ai@0.85.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3))
       '@zerowallscience/integrity-runtime':
         specifier: workspace:^
         version: link:../packages/integrity-runtime
@@ -28318,7 +28318,7 @@ snapshots:
       '@types/yargs': 16.0.11
       chalk: 4.1.2
 
-  '@jiesou/dsh-opencode-zen-free-provider@0.1.18(patch_hash=9d8a3e59d5bff5711f403de7df9cbd0cdbb160e74f311443cee42e43924a7e7c)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-credentials@deepseek-harness+packages+credentials+credentials)(@deepseek-ai/dsh-llm-pi-ai@deepseek-harness+packages+llm+llm-pi-ai)(@deepseek-ai/dsh-llm@deepseek-harness+packages+llm+llm)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-util-values@deepseek-harness+packages+util+values)(@earendil-works/pi-ai@0.85.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3))':
+  '@jiesou/dsh-opencode-zen-free-provider@0.1.18(patch_hash=0a88ebd1c2afa493bdf0e93e70cb90176202b7b2d23e871d38dd9420d2bcc299)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-credentials@deepseek-harness+packages+credentials+credentials)(@deepseek-ai/dsh-llm-pi-ai@deepseek-harness+packages+llm+llm-pi-ai)(@deepseek-ai/dsh-llm@deepseek-harness+packages+llm+llm)(@deepseek-ai/dsh-settings@deepseek-harness+packages+settings+settings)(@deepseek-ai/dsh-util-values@deepseek-harness+packages+util+values)(@earendil-works/pi-ai@0.85.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3))':
     dependencies:
       '@deepseek-ai/cordis': link:deepseek-harness/vendor/cordis
       '@deepseek-ai/dsh-credentials': link:deepseek-harness/packages/credentials/credentials

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { Context } from '../../deepseek-harness/vendor/cordis/src/index.ts'
+import { Context, Service } from '../../deepseek-harness/vendor/cordis/src/index.ts'
 import LlmRuntime from '../../deepseek-harness/packages/llm/llm/src/index.ts'
 import { AttachmentId, AttachmentStore, ImageVariantId } from '../../deepseek-harness/packages/attachment/attachment/src/index.ts'
 import type {
@@ -15,7 +15,7 @@ import { buildModelCatalog } from '../../deepseek-harness/packages/api/session-c
 const PROVIDER = 'opencode-zen-free-provider'
 const originalFetch = globalThis.fetch
 const requests: Array<{ url: string; headers: Headers; body: unknown }> = []
-let completionResponse: 'success' | 'free-tier' | 'auth' = 'success'
+let completionResponse: 'success' | 'free-tier' | 'client-only' | 'auth' = 'success'
 let catalogFailuresRemaining = 0
 let zenCatalogRequests = 0
 
@@ -85,6 +85,9 @@ async function mockFetch(input: string | URL | Request, init?: RequestInit): Pro
 
   const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
   requests.push({ url, headers, body: await bodyOf(input, init) })
+  if (completionResponse === 'client-only') {
+    return Response.json({ type: 'error', error: { type: 'FreeTierError', message: "Error from provider (Console): OpenCode's free tier can only be used from within OpenCode" } }, { status: 403 })
+  }
   if (completionResponse === 'free-tier') {
     return Response.json({ type: 'error', error: { type: 'FreeTierError', message: 'Free quota is unavailable in this region' } }, { status: 403 })
   }
@@ -105,13 +108,23 @@ async function waitForCatalog(ctx: Context): Promise<void> {
   throw new Error('OpenCode Zen catalog did not arrive')
 }
 
-async function boot(options: { attachments?: boolean } = {}): Promise<{ ctx: Context; updates: number[] }> {
+async function boot(options: { attachments?: boolean; credentials?: Map<string, string>; apiKeyEnv?: string } = {}): Promise<{ ctx: Context; updates: number[] }> {
   const ctx = new Context()
+  if (options.credentials !== undefined) {
+    const values = options.credentials
+    await ctx.plugin(class extends Service {
+      constructor(context: Context) { super(context, 'credentials') }
+      async resolve(ref: string) {
+        const value = values.get(ref)
+        return value === undefined ? undefined : { value, source: 'test' }
+      }
+    })
+  }
   await ctx.plugin(LlmRuntime)
   const updates: number[] = []
   ctx.on('llm/adapters-updated', () => { updates.push(Date.now()) })
   const provider = await import('../../desktop/node_modules/@jiesou/dsh-opencode-zen-free-provider/lib/index.js')
-  await ctx.plugin(provider, {})
+  await ctx.plugin(provider, options.apiKeyEnv === undefined ? {} : { apiKeyEnv: options.apiKeyEnv })
   if (options.attachments === true) await ctx.plugin(TestAttachmentStore)
   await waitForCatalog(ctx)
   return { ctx, updates }
@@ -169,6 +182,58 @@ afterAll(() => {
 })
 
 describe.sequential('OpenCode Zen Free mounted adapter', () => {
+  it('uses the settings editor credential reference, preserves legacy keys and reads rotations per request', async () => {
+    const credentials = new Map([['OPENCODE_ZEN_FREE_API_KEY', 'legacy-test-key']])
+    const { ctx } = await boot({ credentials })
+    requests.length = 0
+    try {
+      const probe = () => ctx.llm.probeModel(PROVIDER, 'mimo-v2.5-free')
+      await probe()
+      credentials.set('OPENCODE_ZEN_FREE_PROVIDER_API_KEY', 'editor-test-key')
+      await probe()
+      credentials.set('OPENCODE_ZEN_FREE_PROVIDER_API_KEY', 'rotated-test-key')
+      await probe()
+      credentials.clear()
+      await probe()
+      expect(requests.map(request => request.headers.get('authorization'))).toEqual([
+        'Bearer legacy-test-key', 'Bearer editor-test-key', 'Bearer rotated-test-key', 'Bearer public',
+      ])
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('honors an explicit credential reference', async () => {
+    const credentials = new Map([
+      ['CUSTOM_ZEN_KEY', 'custom-test-key'],
+      ['OPENCODE_ZEN_FREE_PROVIDER_API_KEY', 'editor-test-key'],
+      ['OPENCODE_ZEN_FREE_API_KEY', 'legacy-test-key'],
+    ])
+    const { ctx } = await boot({ credentials, apiKeyEnv: 'CUSTOM_ZEN_KEY' })
+    requests.length = 0
+    try {
+      await ctx.llm.probeModel(PROVIDER, 'mimo-v2.5-free')
+      expect(requests[0]?.headers.get('authorization')).toBe('Bearer custom-test-key')
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('surfaces the live client-only refusal without suggesting that login restores free access', async () => {
+    const { ctx } = await boot()
+    requests.length = 0
+    completionResponse = 'client-only'
+    try {
+      const catalog = await buildModelCatalog(ctx, { provider: PROVIDER, model: 'mimo-v2.5-free' }, {
+        check: true, refresh: true, provider: PROVIDER, model: 'mimo-v2.5-free',
+      })
+      expect(catalog.groups[0]?.models[0]).toMatchObject({
+        status: 'unavailable',
+        statusMessage: expect.stringContaining('免费模型仅允许在 OpenCode 内使用'),
+      })
+      expect(requests).toHaveLength(1)
+    } finally {
+      completionResponse = 'success'
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('recovers from a transient startup catalog failure and publishes the session catalog', async () => {
     catalogFailuresRemaining = 1
     zenCatalogRequests = 0

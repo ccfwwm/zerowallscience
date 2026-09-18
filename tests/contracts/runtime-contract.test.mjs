@@ -174,7 +174,7 @@ test('OpenCode Zen Free is pinned once and keeps the existing default model', as
   assert.equal(lockfile.packages['@jiesou/dsh-opencode-zen-free-provider@0.1.18'].resolution.integrity,
     integrations.openCodeZenFree.integrity)
   assert.equal(lockfile.patchedDependencies['@jiesou/dsh-opencode-zen-free-provider@0.1.18'],
-    '9d8a3e59d5bff5711f403de7df9cbd0cdbb160e74f311443cee42e43924a7e7c')
+    '0a88ebd1c2afa493bdf0e93e70cb90176202b7b2d23e871d38dd9420d2bcc299')
   const providerSnapshot = Object.entries(lockfile.snapshots)
     .find(([key]) => key.startsWith('@jiesou/dsh-opencode-zen-free-provider@0.1.18('))?.[1]
   assert.equal(providerSnapshot?.dependencies?.['@deepseek-ai/schemastery'], 'link:deepseek-harness/vendor/schemastery')

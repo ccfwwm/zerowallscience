@@ -1,8 +1,7 @@
 diff --git a/lib/index.js b/lib/index.js
-index 75d76f1..208c885 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -25,6 +25,8 @@ const NS = 'opencode-zen-free-provider';
+@@ -25,9 +25,12 @@
  /** Latest CLI version, read off unpkg's `@latest` redirect via the package's own `package.json`. */
  const OPENCODE_VERSION_URL = 'https://unpkg.com/opencode-ai@latest/package.json';
  const OPENCODE_VERSION_FALLBACK = '1.18.18';
@@ -11,26 +10,69 @@ index 75d76f1..208c885 100644
  /** Envelope types that must stay AUTH-classified instead of being rewritten. */
  const AUTH_ERROR_TYPES = new Set(['AuthError', 'authentication_error', 'invalid_api_key', 'unauthorized']);
  export const Config = z.object({
-@@ -187,16 +189,12 @@ function reasoningLevelsFor(metadata) {
++    apiKeyEnv: z.string().role('credential-ref').default('OPENCODE_ZEN_FREE_PROVIDER_API_KEY'),
+     retryPolicy: RetryPolicySchema,
+ });
+ const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
+@@ -118,6 +121,9 @@
+     const code = typeof detail.code === 'string' ? detail.code : '';
+     if (AUTH_ERROR_TYPES.has(type) || AUTH_ERROR_TYPES.has(code))
+         return errorMessage;
++    if (type === 'FreeTierError' && message.includes('can only be used from within OpenCode')) {
++        return `[opencode-zen FreeTierError] OpenCode 上游限制：免费模型仅允许在 OpenCode 内使用，当前直连接入不可用。请使用 OpenCode，或切换其他已配置模型。原始错误：${message}`;
++    }
+     // Dropping the status prefix is what defeats the AUTH classifier.
+     return `[opencode-zen ${type}] ${message}`;
+ };
+@@ -187,13 +193,9 @@
  // "upstream decides" — it also drops "Off" from the selector, which is correct
  // because this endpoint offers no way to turn thinking down.
  function reasoningMapFor(levels, api) {
 -    const map = {};
-+    const map = Object.fromEntries(PI_LEVEL_KEYS.map(key => [key, levels.includes(key) ? key : null]));
 -    for (const key of PI_LEVEL_KEYS) {
 -        if (levels.includes(key))
 -            map[key] = key;
 -    }
++    const map = Object.fromEntries(PI_LEVEL_KEYS.map(key => [key, levels.includes(key) ? key : null]));
      if (api === 'openai-completions') {
 -        map.off = levels.includes('none') ? 'none' : 'off';
 +        map.off = levels.includes('none') ? 'none' : null;
      }
      else {
          map.off = null;
-     }
-     return map;
- }
-@@ -307,7 +305,7 @@ export async function apply(ctx, config) {
+@@ -274,7 +276,7 @@
+         const profiles = new Map([[PROVIDER, {
+                     provider: PROVIDER,
+                     displayName: DISPLAY_NAME,
+-                    apiKeyEnv: credentialRef('OPENCODE_ZEN_FREE_API_KEY'),
++                    apiKeyEnv: credentialRef(opts.apiKeyEnv ?? 'OPENCODE_ZEN_FREE_PROVIDER_API_KEY'),
+                     streamIdleTimeoutMs: 300_000,
+                     maxRequestImageBytes: 20_971_520,
+                     requestImagePixelBudget: 4_194_304,
+@@ -296,18 +298,26 @@
+         resolveApiKey: async (_provider, profile) => {
+             const credentials = ctx.get('credentials');
+             if (credentials !== undefined) {
+-                const hit = await credentials.resolve(profile.apiKeyEnv);
+-                if (hit !== undefined)
+-                    return assertUsableApiKey(hit.value, name, String(profile.apiKeyEnv));
++                // The model settings editor derives this default from PROVIDER.
++                // Preserve the old reference for existing installations only
++                // when no explicit custom reference was selected.
++                const refs = profile.apiKeyEnv === 'OPENCODE_ZEN_FREE_PROVIDER_API_KEY'
++                    ? [profile.apiKeyEnv, credentialRef('OPENCODE_ZEN_FREE_API_KEY')]
++                    : [profile.apiKeyEnv];
++                for (const ref of refs) {
++                    const hit = await credentials.resolve(ref);
++                    if (hit !== undefined)
++                        return assertUsableApiKey(hit.value, name, String(ref));
++                }
+             }
+-            // OpenCode Zen accepts the public route without a user API key.
++            // Anonymous access is subject to upstream free-tier policy.
+             return 'public';
+         },
+     });
      ctx.llm.registerConfigurableProviders([
          { provider: PROVIDER, displayName: DISPLAY_NAME, settingsNs: NS, settingsPath: [] },
      ]);
@@ -39,7 +81,7 @@ index 75d76f1..208c885 100644
      ctx.inject(['settings'], (settingsCtx) => {
          settingsCtx.settings.installSection(ctx, NS, Config, config, {
              setSource: (source) => {
-@@ -318,8 +316,10 @@ export async function apply(ctx, config) {
+@@ -318,8 +328,10 @@
              },
          });
      });
@@ -52,7 +94,7 @@ index 75d76f1..208c885 100644
      async function sync() {
          const [zen, modelsDev] = await Promise.all([
              fetchJson('https://opencode.ai/zen/v1/models', {
-@@ -341,9 +341,40 @@ export async function apply(ctx, config) {
+@@ -341,9 +353,40 @@
              return;
          scanned = next;
          profiles = buildProfiles();
@@ -62,6 +104,7 @@ index 75d76f1..208c885 100644
 -    void sync().catch((error) => {
 -        ctx.logger.warn('[%s] initial catalog scan failed: %s', name, errorChain(error));
 -    });
+-}
 +    let retryAttempt = 0;
 +    let syncTimer;
 +    let syncStopped = false;
@@ -95,4 +138,4 @@ index 75d76f1..208c885 100644
 +            clearTimeout(syncTimer);
 +    }, `${name}: catalog synchronization`);
 +    void runSync();
- }
++}
