@@ -35,3 +35,20 @@ Windows x64，主仓库 main；DSH 固定到 `5a0414267f9c3a166e15ceb2603811ef95
 - Python 公共运行时清单仍为 Python 3.12.10、科研环境 1.4.0。
 
 本地证据保存在 `desktop/dist/verification-6.5.0/`；公开资产使用 `tools/release/verify-public-assets.mjs` 全量下载，逐个比较大小与 SHA-256。
+
+## 公开发布结果（2026-09-19）
+
+- 发布提交 `0fb742f2db4118b1e19efeee4a9946f1620c02c9`，注释标签 `v6.5.0`；DSH 两项提交先推送到自有 fork，正常 pre-push 类型检查通过。
+- 七牛云先发布不可变版本文件，再更新三个 Stable 入口；六个公开文件均完整回读并匹配本地大小和 SHA-256，`release:verify:stable` 通过。
+- GitHub Release：https://github.com/ccfwwm/zerowallscience/releases/tag/v6.5.0 ，正式发布，非草稿、非预发布，共六项资产。
+- GitHub API 的六项资产大小和 SHA-256 均匹配。由于本机 GitHub 大文件连接停滞/重置，额外通过已配置的 `hklinux` 验证主机独立完整读取六项公开资产，在内存中计算哈希，不在远端保存安装包；六项全部匹配。本机未完成的直连及分段尝试不计为成功。
+- 主仓库 `origin` 远端只有 `main`；`main` 包含本次实现和发布记录，版本标签固定在上述发布提交。
+
+| 文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| zerowall-science-6.5.0-win-x64.exe | 334232379 | 437e49a98f9471dfd5f1d769e95524f3a8dcd38740e50472d19d33e6f85520bc |
+| zerowall-science-6.5.0-win-x64.exe.blockmap | 346447 | 4b2ad2faac6b31cd7f21a5d4af8abc7a51cc17c6e7860cb4f7d61b60dbd1b24b |
+| zerowall-science-6.5.0-latest.json | 1395 | aa16a5fa2225d791c757f54f2ad85c307a4eb7774b4d450121cd777943676275 |
+| latest.yml | 1312 | 299cd205b6a75064cec56a5ed83811ec7d2052fd8a3a90f0f1ef4c1ff0c341a8 |
+| releases-latest.json | 1395 | aa16a5fa2225d791c757f54f2ad85c307a4eb7774b4d450121cd777943676275 |
+| releases-zerowallsciencedev-latest.json | 1395 | aa16a5fa2225d791c757f54f2ad85c307a4eb7774b4d450121cd777943676275 |
