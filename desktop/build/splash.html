@@ -87,7 +87,7 @@ body.failed #bar { background: #bf5b53; }
   <ol class="steps"><li data-step="15">检查数据</li><li data-step="25">准备环境</li><li data-step="35">科研服务</li><li data-step="85">打开工作台</li></ol>
 </section>
 <pre id="error" role="alert"></pre>
-<div class="actions"><button id="retry">重新启动</button><button id="logs">打开日志</button></div>
+<div class="actions"><button id="retry">重新启动</button><button id="logs">打开日志</button><button id="quit">退出</button></div>
 </main>
 <script>
 const params = new URLSearchParams(location.search)
@@ -98,6 +98,7 @@ if (version) document.getElementById('version').textContent = 'v' + version.repl
 const bridge = window.zerowallDesktop
 document.getElementById('retry').onclick = () => bridge?.restart()
 document.getElementById('logs').onclick = () => bridge?.openLogs()
+document.getElementById('quit').onclick = () => bridge?.windowControl('quit-startup')
 let state = { startedAt: Date.now(), phase: 'starting', progress: 5 }
 function render(next) {
   state = next

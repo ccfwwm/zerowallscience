@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Check, Copy, Eye, EyeOff, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import type {} from '@zerowallscience/plugin-base/client-helpers'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { EnvironmentVariableInfo, ImageGenerationQuality, ImageModelSelection } from '../shared/types.js'
@@ -35,6 +38,24 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const [busy, setBusy] = useState(false)
   const [newName, setNewName] = useState('')
   const [newValue, setNewValue] = useState('')
+  const [viewingVariable, setViewingVariable] = useState<{ name: string; value: string }>()
+  const [variableRevealed, setVariableRevealed] = useState(false)
+  const [variableCopied, setVariableCopied] = useState(false)
+  const [variableCopyError, setVariableCopyError] = useState(false)
+  const variableDialog = useRef<HTMLDialogElement>(null)
+  useEffect(() => {
+    if (viewingVariable === undefined) return
+    const previous = document.activeElement as HTMLElement | null
+    variableDialog.current?.showModal()
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      setViewingVariable(undefined)
+    }
+    window.addEventListener('keydown', escape, true)
+    return () => { window.removeEventListener('keydown', escape, true); previous?.focus() }
+  }, [viewingVariable])
   const [sciKey, setSciKey] = useState('')
   const [error, setError] = useState<LocalizedMessage>('')
   const [status, setStatus] = useState<Record<string, LoadState>>({ account: 'loading', catalog: 'loading', variables: 'loading', image: 'loading', mcp: 'loading' })
@@ -162,6 +183,29 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       setNewValue('')
     })
   }
+  const viewVariable = async (name: string) => run(async () => {
+    const value = await unwrap(environmentRemote.readVariable(name))
+    if (value === undefined) throw new LocalizedError('variablesUnavailable')
+    setViewingVariable({ name, value })
+    setVariableRevealed(false)
+    setVariableCopied(false)
+    setVariableCopyError(false)
+  })
+  const copyVariable = async () => {
+    if (viewingVariable === undefined) return
+    try {
+      setVariableCopyError(false)
+      if (window.zerowallDesktop?.copyText !== undefined) {
+        if (!await window.zerowallDesktop.copyText(viewingVariable.value)) throw new Error('clipboard unavailable')
+      } else {
+        await navigator.clipboard.writeText(viewingVariable.value)
+      }
+      setVariableCopied(true)
+    } catch {
+      setVariableCopied(false)
+      setVariableCopyError(true)
+    }
+  }
   const saveSci = async () => {
     if (!sciKey.trim()) return
     await run(async () => {
@@ -263,9 +307,15 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
 
       <article className={`${css.card} ${css.variablesCard}`}>
         <div className={css.cardHeader}><div><h3>{t('variablesTitle')}</h3><p>{t('variablesDescription')}</p></div><span className={css.status}>{statusText('variables', t('variableCount', { count: variables.length }))}</span></div>
-        <div className={css.variableList}>{variables.length === 0 ? <span className={css.muted}>{t('noVariables')}</span> : variables.map(variable => <div className={css.variableRow} key={variable.name}><code>{variable.name}</code><span>{variable.configured ? t('configured') : t('notConfigured')}</span>{variable.configured && <button className={css.textButton} type="button" disabled={busy} onClick={() => void run(async () => { const value = await unwrap(environmentRemote.readVariable(variable.name)); if (value !== undefined) await navigator.clipboard?.writeText(value) })}>查看并复制</button>}<button className={css.textButton} type="button" disabled={busy} onClick={() => void run(async () => setVariables(await unwrap(environmentRemote.deleteVariable(variable.name))))}>{t('delete')}</button></div>)}</div>
+        <div className={css.variableList}>{variables.length === 0 ? <span className={css.muted}>{t('noVariables')}</span> : variables.map(variable => <div className={css.variableRow} key={variable.name}><code>{variable.name}</code><span>{variable.configured ? t('configured') : t('notConfigured')}</span>{variable.configured && <button className={css.textButton} type="button" disabled={busy} onClick={() => void viewVariable(variable.name)}>{t('viewVariable')}</button>}<button className={css.textButton} type="button" disabled={busy} onClick={() => void run(async () => setVariables(await unwrap(environmentRemote.deleteVariable(variable.name))))}>{t('delete')}</button></div>)}</div>
         <div className={css.variableForm}><input className={css.control} placeholder={t('variableName')} value={newName} onChange={event => setNewName(event.target.value)} /><input className={css.control} type="password" placeholder={t('variableValue')} value={newValue} onChange={event => setNewValue(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !newName.trim() || !newValue} onClick={() => void saveVariable()}>{t('addVariable')}</button></div>
       </article>
     </div>
+    {viewingVariable !== undefined && createPortal(<dialog ref={variableDialog} className={css.variableDialog} aria-labelledby="environment-variable-title" onCancel={() => setViewingVariable(undefined)} onClick={event => { if (event.target === event.currentTarget) setViewingVariable(undefined) }}>
+      <header className={css.variableDialogHeader}><div><span className={css.eyebrow}>{t('variablesTitle')}</span><h3 id="environment-variable-title">{viewingVariable.name}</h3></div><button className={css.iconButton} type="button" aria-label={t('close')} onClick={() => setViewingVariable(undefined)}><X size={17} /></button></header>
+      <div className={css.variableValueBox}><input readOnly aria-label={t('variableValue')} type={variableRevealed ? 'text' : 'password'} value={viewingVariable.value} autoComplete="off" /><button className={css.iconButton} type="button" aria-label={t(variableRevealed ? 'hideValue' : 'showValue')} onClick={() => setVariableRevealed(value => !value)}>{variableRevealed ? <EyeOff size={16} /> : <Eye size={16} />}</button></div>
+      {variableCopyError && <p className={css.error} role="alert">{t('copyFailed')}</p>}
+      <footer className={css.variableDialogFooter}><span role="status">{variableCopied ? <><Check size={14} />{t('copied')}</> : t('valuePrivacy')}</span><button className={css.primaryButton} type="button" onClick={() => void copyVariable()}><Copy size={14} />{t('copyValue')}</button></footer>
+    </dialog>, document.body)}
   </section>
 }

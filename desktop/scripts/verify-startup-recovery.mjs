@@ -27,7 +27,8 @@ const application = await electron.launch({ executablePath: packaged.executableP
 try {
   const page = await application.firstWindow()
   await page.locator('.track').waitFor()
-  if (await page.getByRole('button').count()) throw new Error('Splash must not expose action buttons')
+  if (!await page.locator('body').evaluate(el => el.classList.contains('failed'))
+    && await page.locator('.actions').isVisible()) throw new Error('Startup recovery actions must stay hidden until failure')
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   const before = await page.locator('.track').evaluate(el => getComputedStyle(el, '::after').transform)
   await page.waitForTimeout(350)
@@ -38,7 +39,7 @@ try {
   await page.locator('#error').waitFor({ state: 'visible' })
   const error = await page.locator('#error').innerText()
   if (!error.includes('ssh_ops_profiles')) throw new Error(`Startup did not show the saved-profile failure: ${error}; evidence: ${root}`)
-  if (await page.getByRole('button').count() !== 0) throw new Error('Splash must be display-only')
+  for (const name of ['重新启动', '打开日志', '退出']) await page.getByRole('button', { name, exact: true }).waitFor({ state: 'visible' })
   await page.screenshot({ path: resolve(root, 'startup-failed.png') })
   // Intercept only the OS relaunch primitive: the real restart IPC and quit
   // path must stop its Host first, and then ask Electron to relaunch.

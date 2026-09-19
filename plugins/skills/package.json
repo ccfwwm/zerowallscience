@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-skills",
-  "version": "6.4.0",
+  "version": "6.5.0",
   "description": "ZeroWall Science skills domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

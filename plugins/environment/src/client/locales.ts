@@ -2,6 +2,15 @@ import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 
 export const NS = 'zerowall.environment'
 export const zh = {
+  "viewVariable": "查看并复制",
+  "close": "关闭",
+  "hideValue": "隐藏值",
+  "showValue": "显示值",
+  "copyValue": "复制值",
+  "copied": "已复制",
+  "copyFailed": "无法访问剪贴板，请重试或显示后手动复制。",
+  "valuePrivacy": "关闭窗口后自动隐藏敏感值",
+
   "clearedUsingSource": "已清除专用配置，当前使用{source}",
   "accountUnavailable": "账户服务不可用",
   "variablesUnavailable": "环境变量服务不可用",
@@ -150,6 +159,15 @@ export const zh = {
 export type EnvironmentKey = keyof typeof zh
 export type EnvironmentTranslate = Translate<EnvironmentKey>
 export const en: Record<EnvironmentKey, string> = {
+  "viewVariable": "View and copy",
+  "close": "Close",
+  "hideValue": "Hide value",
+  "showValue": "Show value",
+  "copyValue": "Copy value",
+  "copied": "Copied",
+  "copyFailed": "Clipboard unavailable. Try again or reveal and copy manually.",
+  "valuePrivacy": "Sensitive values are hidden when this window closes",
+
   "clearedUsingSource": "Dedicated setting cleared; now using {source}",
   "accountUnavailable": "Account service unavailable",
   "variablesUnavailable": "Environment variable service unavailable",

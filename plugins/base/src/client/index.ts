@@ -19,17 +19,17 @@ export { unwrapRemoteResult } from './remote-result.js'
 
 export const inject = ['slots', 'locale', 'remote', 'theme']
 
-function applyDefaultIvoryTheme(ctx: ClientContext): void {
+function applyDefaultLightTheme(ctx: ClientContext): void {
   const theme = (ctx as any).theme as { getTheme?: () => { preference?: string; themes?: Array<{ id: string }> }; setTheme?: (id: string) => void } | undefined
   if (theme?.getTheme === undefined || theme.setTheme === undefined || typeof window === 'undefined') return
-  // Dream Skin persists the user's choice. Only seed ivory when there is no
+  // Dream Skin persists the user's choice. Only seed light when there is no
   // local preference at all; a later manual choice is never overwritten.
   const hasUserPreference = ['dsh-dream-skin:skin', 'dsh-theme-preference', 'dsh-ui-theme:preference']
     .some(key => window.localStorage.getItem(key) !== null)
   if (hasUserPreference) return
   const snapshot = theme.getTheme()
   if (snapshot.preference !== 'system' && snapshot.preference !== undefined) return
-  if (snapshot.themes?.some(item => item.id === 'ivory')) theme.setTheme('ivory')
+  if (snapshot.themes?.some(item => item.id === 'light')) theme.setTheme('light')
 }
 
 export async function apply(ctx: ClientContext): Promise<void> {
@@ -38,7 +38,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
   // an offline first launch) and must not leave the entire UI on DSH's
   // fallback branding while it is pending.
   registerZeroWallBrand(ctx)
-  applyDefaultIvoryTheme(ctx)
+  applyDefaultLightTheme(ctx)
   // Remote contributions can also be discovered through an installed feature
   // package. Deduplicate descriptor IDs at the single assembly point so a
   // second copy cannot abort client startup with "direct method already
@@ -55,7 +55,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
   }
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'zerowall: dictionaries')
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
-    name: 'sidebar.footer.action', id: 'zerowall-update', order: -30, locale: NS,
+    name: 'sidebar.footer.action', id: 'zerowall-update', order: -10, locale: NS,
     inject: () => ({}),
   }, UpdateButton))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({

@@ -1,12 +1,14 @@
 const base = require('./electron-builder.stable.cjs')
+const { version } = require('../package.json')
+const key = version.replaceAll('.', '')
 
-// Isolated registry identity and shortcuts: never replace a user's installation.
+// Isolated registration keeps installer regression tests away from the user's app.
 module.exports = {
   ...base,
-  appId: 'com.zerowall.science.installer-test-640',
-  productName: 'ZeroWall Installer Test 640',
-  artifactName: 'zerowall-installer-test-6.4.0.exe',
-  directories: { ...base.directories, output: '../.build/installer-test-640' },
-  nsis: { ...base.nsis, shortcutName: 'ZeroWall Installer Test 640' },
+  appId: `com.zerowall.science.installer-test-${key}`,
+  productName: `ZeroWall Installer Test ${key}`,
+  artifactName: `zerowall-installer-test-${version}.exe`,
+  directories: { ...base.directories, output: `../.build/installer-test-${key}` },
+  nsis: { ...base.nsis, shortcutName: `ZeroWall Installer Test ${key}` },
   publish: null,
 }

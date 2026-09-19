@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import '../../../tests/support/native-dialog.js'
 import { createElement, type ComponentType } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -23,6 +24,8 @@ describe('environment settings client', () => {
     const remotes = {
       session: { modelCatalog: vi.fn().mockResolvedValue({ ok: true, value: { groups: [{ id: 'cloud', models: [{ id: 'claude-sonnet-5', name: 'Claude Sonnet 5', reasoning: { efforts: [{ id: 'high', name: '高' }] } }] }], failures: [] } }) },
       zerowallEnvironment: {
+        readVariable: vi.fn().mockResolvedValue({ ok: true, value: 'private-test-value' }),
+        deleteVariable: vi.fn().mockResolvedValue({ ok: true, value: [] }),
         listVariables: vi.fn().mockResolvedValue({ ok: true, value: [{ name: 'SCI_TOKEN', configured: true }] }),
         getImageModelSelection: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
       },
@@ -81,6 +84,35 @@ describe('environment settings client', () => {
     fireEvent.click(token.parentElement!.querySelector('button')!)
     await waitFor(() => expect(remotes.zerowallMcp.setHuagongsheApiKey).toHaveBeenCalledWith('test-token'))
     await waitFor(() => expect((token as HTMLInputElement).value).toBe(''))
+
+    fireEvent.click(screen.getByRole('button', { name: '查看并复制' }))
+    await screen.findByRole('dialog', { name: 'SCI_TOKEN' })
+    const secret = screen.getByLabelText('变量值') as HTMLInputElement
+    expect(secret.type).toBe('password')
+    expect(secret.value).toBe('private-test-value')
+    fireEvent.click(screen.getByRole('button', { name: '显示值' }))
+    expect(secret.type).toBe('text')
+    fireEvent.click(screen.getByRole('button', { name: '隐藏值' }))
+    expect(secret.type).toBe('password')
+    const clipboard = vi.fn().mockResolvedValue(undefined)
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: clipboard } })
+    try {
+      fireEvent.click(screen.getByRole('button', { name: '复制值' }))
+      await screen.findByText('已复制')
+      expect(clipboard).toHaveBeenCalledWith('private-test-value')
+      clipboard.mockRejectedValueOnce(new Error('denied'))
+      fireEvent.click(screen.getByRole('button', { name: '复制值' }))
+      await screen.findByText('无法访问剪贴板，请重试或显示后手动复制。')
+      fireEvent.keyDown(window, { key: 'Escape' })
+      expect(screen.queryByRole('dialog', { name: 'SCI_TOKEN' })).toBeNull()
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
+      else Reflect.deleteProperty(navigator, 'clipboard')
+    }
+    fireEvent.click(screen.getByRole('button', { name: '删除', exact: true }))
+    await waitFor(() => expect(remotes.zerowallEnvironment.deleteVariable).toHaveBeenCalledWith('SCI_TOKEN'))
+    await waitFor(() => expect(screen.queryByText('SCI_TOKEN')).toBeNull())
 
     // Switch the existing page in both directions without remounting or refetching.
     fireEvent.change(screen.getByLabelText('NCBI_API_KEY'), { target: { value: 'unsaved-key' } })

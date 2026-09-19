@@ -8,6 +8,22 @@ afterEach(cleanup)
 vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
 const info = (snapshotId: string, count: number) => ({ snapshotId, environmentVersion: snapshotId, version: '3.12.10', ready: true, packageCount: count, officialPackageCount: count, packages: Array.from({ length: count }, (_, i) => ({ name: `package-${String(i).padStart(3, '0')}`, version: '1.0', source: 'core' as const, health: 'locked' as const })) })
 describe('Python dependency panel', () => {
+  it('distinguishes inventory loading from an unavailable runtime and a filtered empty list', async () => {
+    let finish!: (value: unknown) => void
+    const load = vi.fn().mockImplementationOnce(() => new Promise(resolve => { finish = resolve })).mockResolvedValue(info('ready', 1))
+    window.zerowallDesktop = { getMcpPythonInfo: load } as any
+    render(<PythonEnvironmentPanel t={((key: string) => zh[key as keyof typeof zh] ?? key) as any} />)
+    expect(screen.getByText('正在刷新当前环境依赖清单…')).toBeTruthy()
+    expect(screen.queryByText('没有匹配的依赖')).toBeNull()
+    await act(async () => finish({ ready: false, packages: [] }))
+    expect(screen.getByText('不可用')).toBeTruthy()
+    expect(screen.getByText('ZeroWall Python 尚未就绪。')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '刷新包清单' }))
+    await screen.findByText('package-000')
+    fireEvent.change(screen.getByLabelText('搜索依赖'), { target: { value: 'absent' } })
+    expect(screen.getByText('没有匹配的依赖')).toBeTruthy()
+  })
+
   it('renders English controls and structured progress without Chinese backend messages', async () => {
     window.zerowallDesktop = {
       getMcpPythonInfo: async () => info('old', 131),

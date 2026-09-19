@@ -78,6 +78,11 @@ afterEach(async () => {
   await page.setViewportSize({ width: 1280, height: 900 })
   const settings = page.getByRole('dialog', { name: /^(设置|Settings)$/ })
   if (await settings.isVisible().catch(() => false)) {
+    if (await page.getByRole('dialog', { name: 'Settings', exact: true }).isVisible()) {
+      await settings.getByRole('button', { name: 'General', exact: true }).click()
+      await settings.getByRole('button', { name: /English/ }).click()
+      await page.getByRole('menuitem', { name: '中文' }).click()
+    }
     await settings.getByRole('button', { name: /^(关闭|Close)$/ }).click()
     await settings.waitFor({ state: 'hidden', timeout: 30_000 })
   }
@@ -123,7 +128,7 @@ describe('ZeroWall Science Electron', () => {
         })
         if (!response.ok) throw new Error('Failed to seed appearance fixture')
       }, { image, skin })
-      await page.reload()
+      await reloadWithoutCredentials(page)
     }
     await setWallpaper(oldImage, 'nebula')
     await expect.poll(() => page.evaluate(async () => {
@@ -131,7 +136,7 @@ describe('ZeroWall Science Electron', () => {
       const state = (await response.json()).value
       return { wallpaper: state['dsh-dream-skin:wallpaper'] ?? null, builtin: state['dsh-dream-skin:builtin-last'], composer: state['dsh-dream-skin:composer-opacity'] }
     })).toEqual({ wallpaper: null, builtin: 'light', composer: '1' })
-    await page.reload()
+    await reloadWithoutCredentials(page)
     await expect.poll(() => page.evaluate(() => ({
       scheme: document.documentElement.style.colorScheme,
       image: localStorage.getItem('dsh-dream-skin:wallpaper'),
@@ -153,7 +158,7 @@ describe('ZeroWall Science Electron', () => {
           'dsh-dream-skin:composer-opacity': '1', 'dsh-dream-skin:modal-opacity': '1',
         } }) })
       })
-      await page.reload()
+      await reloadWithoutCredentials(page)
     }
   })
 
@@ -174,7 +179,7 @@ describe('ZeroWall Science Electron', () => {
       const session = await rpc('session/create', { workspaceId: workspace.workspace.workspaceId })
       await rpc('session/rename', { sessionId: session.sessionId, title: '图片与模型回归' })
     }, workspacePath)
-    await page.reload()
+    await reloadWithoutCredentials(page)
     await page.getByText('markdown-images', { exact: true }).first().click().catch(async (error) => {
       console.log('Workspace diagnostics', (await page.locator('body').innerText()).slice(0, 4000))
       throw error
@@ -345,7 +350,7 @@ describe('ZeroWall Science Electron', () => {
     await englishSettings.getByRole('heading', { name: 'Environment', exact: true }).waitFor()
     await englishSettings.getByRole('heading', { name: 'AIchem', exact: true }).waitFor()
     expect(await englishSettings.getByLabel('AIchem API token', { exact: true }).getAttribute('type')).toBe('password')
-    await englishSettings.getByRole('button', { name: 'Save TSG settings', exact: true }).waitFor()
+    await englishSettings.getByRole('region', { name: 'Literature services', exact: true }).getByRole('button', { name: 'Save settings', exact: true }).waitFor()
     await englishSettings.getByText('Review model mode', { exact: true }).waitFor()
     expect(await englishSettings.getByText('模型目录已同步', { exact: true }).count()).toBe(0)
     const artifacts = join(desktopRoot, 'dist', 'verification-6.0.0')
@@ -485,6 +490,53 @@ describe('ZeroWall Science Electron', () => {
     }
   })
 
+  it('verifies 6.5.0 variable privacy, clipboard, settings chrome and account layout', async () => {
+    const artifacts = join(desktopRoot, 'dist', 'verification-6.5.0')
+    mkdirSync(artifacts, { recursive: true })
+    expect(await page.evaluate(() => document.documentElement.dataset.zerowallBoot)).toBe('ready')
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const settings = page.getByRole('dialog', { name: '设置' })
+    expect(await settings.getByRole('button', { name: '打开配置文件' }).count()).toBe(0)
+    await settings.getByRole('button', { name: '环境配置', exact: true }).click()
+    await settings.getByPlaceholder('变量名，例如 SCI_KEY').fill('ZEROWALL_UI_TEST')
+    await settings.getByPlaceholder('变量值', { exact: true }).fill('test-only-650')
+    await settings.getByRole('button', { name: '添加变量', exact: true }).click()
+    const row = settings.locator('div').filter({ has: page.locator('code', { hasText: 'ZEROWALL_UI_TEST' }) }).filter({ has: page.getByRole('button', { name: '查看并复制' }) }).last()
+    await row.getByRole('button', { name: '查看并复制' }).click()
+    const viewer = page.getByRole('dialog', { name: 'ZEROWALL_UI_TEST' })
+    await viewer.waitFor()
+    expect(await viewer.getByLabel('变量值', { exact: true }).getAttribute('type')).toBe('password')
+    await viewer.getByRole('button', { name: '复制值', exact: true }).click()
+    await viewer.getByText('已复制', { exact: true }).waitFor()
+    await viewer.getByRole('button', { name: '显示值', exact: true }).click()
+    expect(await viewer.getByLabel('变量值', { exact: true }).inputValue()).toBe('test-only-650')
+    await viewer.getByRole('button', { name: '隐藏值', exact: true }).click()
+    await page.screenshot({ path: join(artifacts, 'variable-viewer.png') })
+    await page.keyboard.press('Escape')
+    expect(await settings.isVisible()).toBe(true)
+    await row.getByRole('button', { name: '删除', exact: true }).click()
+    await expect.poll(() => settings.locator('code', { hasText: 'ZEROWALL_UI_TEST' }).count()).toBe(0)
+    await settings.getByRole('heading', { name: '环境配置', exact: true }).scrollIntoViewIfNeeded()
+    await page.screenshot({ path: join(artifacts, 'environment.png') })
+    await settings.getByRole('button', { name: 'Python 环境', exact: true }).click()
+    await page.screenshot({ path: join(artifacts, 'python.png') })
+    await page.keyboard.press('Escape')
+    expect(await settings.isVisible()).toBe(false)
+    const expand = page.getByRole('button', { name: '展开快捷入口', exact: true })
+    if (await expand.isVisible()) await expand.click()
+    const login = page.getByRole('button', { name: '登录AI平台', exact: true })
+    const update = page.locator('button[data-update]')
+    expect(await update.evaluate((element) => element.previousElementSibling?.textContent)).toContain('登录AI平台')
+    await update.click()
+    await page.getByRole('dialog').waitFor()
+    await page.screenshot({ path: join(artifacts, 'update.png') })
+    await page.keyboard.press('Escape')
+    await login.click()
+    const account = page.getByRole('dialog', { name: '登录或注册' })
+    await account.waitFor()
+    await page.screenshot({ path: join(artifacts, 'login.png') })
+  })
+
   it('opens the account surface without exposing credentials to the Renderer', async () => {
     await page.keyboard.press('Escape')
     const expand = page.getByRole('button', { name: '展开快捷入口', exact: true })
@@ -502,6 +554,15 @@ describe('ZeroWall Science Electron', () => {
   })
 })
 
+// This credential-free profile deliberately skips configuration. That decision
+// lasts for one onboarding traversal, so each reload must finish the new one.
+async function reloadWithoutCredentials(page: Page): Promise<void> {
+  await page.reload()
+  const credential = page.getByRole('dialog', { name: '添加一个 API Key 开始使用' })
+  await credential.waitFor({ state: 'visible', timeout: 30_000 })
+  await credential.getByRole('button', { name: '稍后配置' }).click()
+  await credential.waitFor({ state: 'hidden', timeout: 30_000 })
+}
 async function completeFirstRunOnboarding(page: Page): Promise<void> {
   const notice = page.getByRole('dialog', { name: '内测声明' })
   await notice.waitFor({ state: 'visible', timeout: 30_000 })

@@ -6,6 +6,7 @@ import css from './PythonEnvironmentPanel.module.css'
 
 const normalize = (name: string) => name.toLowerCase().replace(/[-_.]+/gu, '-')
 export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
+  const [inventoryLoading, setInventoryLoading] = useState(true)
   const [info, setInfo] = useState<McpPythonInfo>()
   const [status, setStatus] = useState<McpEnvironmentStatus>()
   const [query, setQuery] = useState(''); const [filter, setFilter] = useState('all')
@@ -18,12 +19,14 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   const api = window.zerowallDesktop
   const refresh = useCallback(async () => {
     const id = ++request.current
+    setInventoryLoading(true)
     try {
       const next = await window.zerowallDesktop?.getMcpPythonInfo?.()
       if (id !== request.current || !next) return
       if (active.current && next.snapshotId && next.snapshotId !== active.current) return
       setInfo(next)
     } catch (error) { if (id === request.current) setFeedback(String(error)) }
+    finally { if (id === request.current) setInventoryLoading(false) }
   }, [])
   useEffect(() => {
     const receive = (next: McpEnvironmentStatus) => {
@@ -32,7 +35,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
       if (snapshot && snapshot !== active.current) {
         active.current = snapshot; setUpdates({}); setPlan(undefined); setDetail(undefined); void refresh()
       }
-      if (next.packageInventory?.snapshotId === snapshot && next.packageInventory) { request.current++; setInfo(next.packageInventory) }
+      if (next.packageInventory?.snapshotId === snapshot && next.packageInventory) { request.current++; setInfo(next.packageInventory); setInventoryLoading(false) }
       if (next.updated) setFeedback(t('python.manager.activated'))
       if (next.lastUpdateError) setFeedback(next.lastUpdateError)
     }
@@ -73,7 +76,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   return <section className={css.panel} aria-label={t('python.title')}>
     <header className={css.heading}><div><small>ZeroWall Science</small><h2>{t('python.title')}</h2></div><button onClick={() => void refresh()} aria-label={t('python.manager.refreshInventory')}>{t('python.manager.refresh')}</button></header>
     <div className={css.summary}>
-      <div><span>{t('python.manager.status')}</span><strong>{info?.ready ? t('python.manager.ready') : t('python.manager.checking')}</strong></div>
+      <div><span>{t('python.manager.status')}</span><strong>{info?.ready ? t('python.manager.ready') : inventoryLoading || working ? t('python.manager.checking') : t('python.unavailable')}</strong></div>
       <div><span>Python</span><strong>{info?.version ?? '—'}</strong></div>
       <div><span>{t('python.manager.currentEnvironment')}</span><strong>{status?.activeEnvironment?.environmentVersion ?? info?.environmentVersion ?? '—'}{(status?.activeEnvironment?.localRevision ?? info?.localRevision) ? t('python.manager.localRevision', { revision: status?.activeEnvironment?.localRevision ?? info?.localRevision ?? 0 }) : ''}</strong></div>
       <div><span>{t('python.manager.effective')}</span><strong>{inventoryMatches ? info?.packageCount ?? '—' : t('python.manager.refreshing')}</strong></div>
@@ -108,7 +111,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
           </div></div>
         </div>)}
       </div>
-      {!rows.length && <p className={css.empty}>{t('python.manager.empty')}</p>}
+      {!rows.length && <p className={css.empty} role="status">{inventoryLoading ? t('python.manager.refreshingInventory') : !info?.ready ? t('python.notReady') : t('python.manager.empty')}</p>}
     </div>
     <footer className={css.footer}>
       <div className={css.toolbar}><input aria-label={t('python.manager.add')} placeholder={t('python.manager.addHint')} value={spec} onChange={e => setSpec(e.target.value)} /><button disabled={!spec.trim() || busy[spec.trim()]} onClick={() => void preview([spec.trim()])}>{t('python.manager.plan')}</button></div>

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import '../../../tests/support/native-dialog.js'
 
 import React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -154,6 +155,31 @@ describe('AI Cloud account panel', () => {
     await waitFor(() => expect(actions.getAccount).toHaveBeenCalledOnce())
     fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
     expect((await screen.findByRole('alert')).textContent).toContain('余额已不足')
+  })
+
+  it('dismisses the empty balance prompt for the rest of this startup', async () => {
+    const actions = props()
+    actions.getAccount.mockResolvedValue({ status: 'signedIn', email: 'user@example.com', balance: -1, currency: 'CNY', balanceFreshness: 'current', lowBalance: false, models: [] })
+    render(<AiCloudAccountButton {...actions} />)
+    expect(await screen.findByRole('dialog', { name: '账户余额不足' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '稍后再说' }))
+    expect(screen.queryByRole('dialog', { name: '账户余额不足' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
+    await waitFor(() => expect(actions.getAccount).toHaveBeenCalledTimes(2))
+    expect(screen.queryByRole('dialog', { name: '账户余额不足' })).toBeNull()
+  })
+
+  it.each([
+    { balance: 0, balanceFreshness: 'stale' },
+    { balance: undefined, balanceFreshness: 'current' },
+    { balance: 5, balanceFreshness: 'current' },
+  ])('never prompts for an unknown, stale or positive balance: %j', async (balance) => {
+    const actions = props()
+    actions.getAccount.mockResolvedValue({ status: 'signedIn', email: 'user@example.com', ...balance, lowBalance: false, models: [] })
+    render(<AiCloudAccountButton {...actions} />)
+    fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
+    await screen.findByRole('button', { name: '退出登录' })
+    expect(screen.queryByRole('dialog', { name: '账户余额不足' })).toBeNull()
   })
 
   it('checks remember password by default and sends the choice with login', async () => {

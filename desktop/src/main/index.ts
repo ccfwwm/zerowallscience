@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { appendFile, cp, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, WebContentsView, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
 import { DesktopNotifications } from './notifications.js'
 import updaterPackage from 'electron-updater'
 import { HarnessRuntime, type HarnessChildProcess } from './runtime/harness-runtime.js'
@@ -36,6 +36,7 @@ autoUpdater.requestHeaders = { 'Cache-Control': 'no-cache' }
 const MCP_ENVIRONMENT_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAu8wAGfgRWqQBdIGcbkwPlBq01SjgEMybgNh3xVv0ej4=\n-----END PUBLIC KEY-----`
 
 let mainWindow: BrowserWindow | undefined
+let startupCover: WebContentsView | undefined
 let runtime: HarnessRuntime | undefined
 let tray: Tray | undefined
 let quitting = false
@@ -254,8 +255,12 @@ function createWindow(): BrowserWindow {
     hideWindowToTray(window, process.platform)
   })
   secureWindow(window, () => runtime?.snapshot().url)
-  registerWindowControls(window, () => runtime?.snapshot().url, pathToFileURL(resourcePath('splash.html')).href)
-  window.on('closed', () => { if (mainWindow === window) mainWindow = undefined })
+  registerWindowControls(window, () => runtime?.snapshot().url, pathToFileURL(resourcePath('splash.html')).href, () => startupCover?.webContents, () => app.quit())
+  window.on('closed', () => {
+    startupCover?.webContents.close()
+    startupCover = undefined
+    if (mainWindow === window) mainWindow = undefined
+  })
   mainWindow = window
   return window
 }
@@ -275,6 +280,7 @@ function restartDesktop(): void {
 function publishStartup(update: Partial<StartupStatus>): void {
   startup = { ...startup, ...update }
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:startup-status', startup)
+  if (startupCover && !startupCover.webContents.isDestroyed()) startupCover.webContents.send('desktop:startup-status', startup)
   const line = { timestamp: new Date().toISOString(), elapsedMs: Date.now() - startup.startedAt, ...update }
   void mkdir(app.getPath('logs'), { recursive: true }).then(() =>
     appendFile(join(app.getPath('logs'), 'startup.log'), `${JSON.stringify(line)}\n`, 'utf8'),
@@ -308,6 +314,11 @@ function ensureTray(): void {
 async function showSplash(): Promise<void> {
   const window = mainWindow ?? createWindow()
   ensureTray()
+  if (startupCover) {
+    window.contentView.removeChildView(startupCover)
+    startupCover.webContents.close()
+    startupCover = undefined
+  }
   await window.loadFile(resourcePath('splash.html'), {
     query: { icon: pathToFileURL(desktopIconPath()).href, version: app.getVersion() },
   })
@@ -322,12 +333,34 @@ async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
   if (!/[?&]token=/u.test(snapshot.url)) return
   const window = mainWindow ?? createWindow()
   publishStartup({ progress: 85, message: '正在打开工作台' })
+  // Keep the same branded splash above the navigating document until every
+  // client plugin has activated and React has painted the workbench.
+  const cover = new WebContentsView({ webPreferences: {
+    contextIsolation: true, nodeIntegration: false, sandbox: true,
+    preload: join(import.meta.dirname, '../preload/index.cjs'),
+  } })
+  startupCover = cover
+  const resizeCover = () => {
+    const { width, height } = window.getContentBounds()
+    cover.setBounds({ x: 0, y: 0, width, height })
+  }
+  cover.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  cover.webContents.on('will-navigate', event => event.preventDefault())
+  await cover.webContents.loadFile(resourcePath('splash.html'), {
+    query: { icon: pathToFileURL(desktopIconPath()).href, version: app.getVersion() },
+  })
+  window.contentView.addChildView(cover)
+  resizeCover()
+  window.on('resize', resizeCover)
+  cover.webContents.once('destroyed', () => window.removeListener('resize', resizeCover))
   await window.loadURL(snapshot.url)
   // Wait for the actual shell, not just the HTML load. This also surfaces a
   // renderer plugin failure instead of silently abandoning the startup page.
   const deadline = Date.now() + 45_000
   while (!window.isDestroyed() && !quitting) {
-    const mounted = await window.webContents.executeJavaScript('Boolean(document.querySelector("[data-dsh-better-sidebar], [data-zerowall-conversation], [contenteditable]"))')
+    const bootFailed = await window.webContents.executeJavaScript('document.documentElement.dataset.zerowallBoot === "failed"')
+    if (bootFailed) throw new Error('客户端插件加载失败，请重试或打开日志查看详情。')
+    const mounted = await window.webContents.executeJavaScript('Boolean(document.documentElement.dataset.zerowallBoot === "ready" && document.querySelector("[data-dsh-better-sidebar], [data-zerowall-conversation], [contenteditable]"))')
     if (mounted) break
     if (Date.now() >= deadline) throw new Error('工作台界面加载超时，请打开日志检查客户端插件。')
     await new Promise(resolve => setTimeout(resolve, 200))
@@ -335,6 +368,9 @@ async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
   if (!window.isDestroyed()) {
     publishStartup({ phase: 'ready', progress: 100, message: '工作台已就绪' })
     runtime?.workbenchReady()
+    window.contentView.removeChildView(cover)
+    cover.webContents.close()
+    startupCover = undefined
     window.show()
     window.focus()
   }

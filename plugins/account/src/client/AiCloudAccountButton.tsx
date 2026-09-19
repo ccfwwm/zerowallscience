@@ -59,6 +59,32 @@ export function AiCloudAccountButton(props: Props) {
   const [polling, setPolling] = useState(false)
   const [error, setError] = useState<string>()
   const [qrImage, setQrImage] = useState<string>()
+  const [balancePrompt, setBalancePrompt] = useState(false)
+  const balanceDialog = useRef<HTMLDialogElement>(null)
+  const balancePrompted = useRef(false)
+  useEffect(() => {
+    if (account?.status !== 'signedIn' || account.balanceFreshness !== 'current') {
+      setBalancePrompt(false)
+      return
+    }
+    if (account.balance !== undefined && Number.isFinite(account.balance) && account.balance <= 0 && !balancePrompted.current) {
+      balancePrompted.current = true
+      setBalancePrompt(true)
+    } else if (account.balance !== undefined && account.balance > 0) setBalancePrompt(false)
+  }, [account])
+  useEffect(() => {
+    if (!balancePrompt) return
+    const previous = document.activeElement as HTMLElement | null
+    balanceDialog.current?.showModal()
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      setBalancePrompt(false)
+    }
+    window.addEventListener('keydown', escape, true)
+    return () => { window.removeEventListener('keydown', escape, true); previous?.focus() }
+  }, [balancePrompt])
 
   const loadBilling = useCallback(async () => {
     const [checkoutResult, ordersResult] = await Promise.allSettled([props.checkoutInfo(), props.listOrders()])
@@ -113,14 +139,14 @@ export function AiCloudAccountButton(props: Props) {
   useEffect(() => {
     if (!open || target) return
     const close = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || balancePrompt) return
       event.preventDefault()
       event.stopImmediatePropagation()
       setOpen(false)
     }
     window.addEventListener('keydown', close, true)
     return () => window.removeEventListener('keydown', close, true)
-  }, [open, target])
+  }, [open, target, balancePrompt])
 
   useEffect(() => {
     if ((!open && !target) || activeOrder === undefined || TERMINAL.has(activeOrder.status.toUpperCase())) return
@@ -346,6 +372,13 @@ export function AiCloudAccountButton(props: Props) {
         </div>}
       </section>
     </div>, target ?? document.body)}
+    {balancePrompt && createPortal(<dialog ref={balanceDialog} className={css.balancePrompt} aria-labelledby="zerowall-balance-prompt-title" onCancel={() => setBalancePrompt(false)}>
+      <button className={css.promptClose} type="button" aria-label={props.t('common.close')} onClick={() => setBalancePrompt(false)}><X size={16} /></button>
+      <div className={css.balancePromptIcon}><CreditCard size={28} /></div>
+      <h3 id="zerowall-balance-prompt-title">{props.t('account.balancePromptTitle')}</h3>
+      <p>{props.t('account.balancePrompt')}</p>
+      <div className={css.authActions}><button className={css.secondary} type="button" onClick={() => setBalancePrompt(false)}>{props.t('account.later')}</button><button className={css.primary} type="button" onClick={() => { setBalancePrompt(false); setOpen(true); void refresh() }}>{props.t('account.rechargeTitle')}</button></div>
+    </dialog>, document.body)}
   </>
 }
 

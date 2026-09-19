@@ -3,7 +3,7 @@ import { mountWindowChrome } from './window-chrome.js'
 import type { DesktopClipboardFile, DesktopClipboardImage, DesktopInfo, DesktopUpdateStatus, McpEnvironmentStatus, McpPythonInfo, PythonPackagePlan, StartupStatus } from '../shared/contracts.js'
 
 contextBridge.exposeInMainWorld('zerowallDesktop', {
-  windowControl: (action: 'minimize' | 'toggle-maximize' | 'close' | 'state') => ipcRenderer.invoke('desktop:window-control', action),
+  windowControl: (action: 'minimize' | 'toggle-maximize' | 'close' | 'state' | 'quit-startup') => ipcRenderer.invoke('desktop:window-control', action),
   openZotero: async (url: string): Promise<boolean> => await ipcRenderer.invoke('desktop:open-zotero', url) as boolean,
   saveTextFile: async (input: { name: string; text: string }): Promise<boolean> => await ipcRenderer.invoke('desktop:save-text-file', input) as boolean,
   deleteSession: async (input: { sessionId: string; title: string; language: string }): Promise<boolean> => await ipcRenderer.invoke('desktop:delete-session', input) as boolean,
