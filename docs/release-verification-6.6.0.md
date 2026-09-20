@@ -1,4 +1,4 @@
-# ZeroWall Science 6.6.0 本地打包验证
+# ZeroWall Science 6.6.0 打包与发布验证
 
 日期：2026-09-20。平台：Windows x64。基于当前工作区完整重新构建，包含账户注册、验证码反馈和邮箱密码重置流程的修改。
 
@@ -25,6 +25,25 @@
 
 ## 验证边界与证据
 
-本次仅生成本地安装包，未上传七牛云或创建 GitHub Release，未替换用户当前安装的应用。运行验证使用隔离用户目录中的打包版；本次未执行安装器安装或升级测试，也未发送真实验证码邮件、创建真实账户或执行真实密码重置。
+打包验证完成后，按用户后续指令发布七牛云和 GitHub。未替换用户当前安装的应用。运行验证使用隔离用户目录中的打包版；本次未执行安装器安装或升级测试，也未发送真实验证码邮件、创建真实账户或执行真实密码重置。
 
 证据目录：`desktop/dist/verification-6.6.0/`，包含 `package-audit.json`、账户密码重置移动端和设置页截图，以及桌面回归截图。构建及测试日志保存在 `.tmp/package-6.6.0.log`、`.tmp/host-6.6.0.log`、`.tmp/e2e-6.6.0.log`、`.tmp/tests-account-6.6.0.log` 和 `.tmp/contracts-6.6.0.log`。
+
+## 公开发布结果（2026-09-20）
+
+- 发布代码提交：`0a121d66084147ae5fb5e48b24367634f4fb73da`；注释标签：`v6.6.0`。
+- 按七牛云、GitHub 顺序发布。七牛云三个 Stable 更新入口均已更新为 6.6.0；`release:verify:stable` 通过。
+- 七牛云六个公开文件完整回读，大小与 SHA-256 全部匹配本地文件。
+- GitHub Release：https://github.com/ccfwwm/zerowallscience/releases/tag/v6.6.0 ，正式发布，非草稿、非预发布，标记为 Latest，共六项资产。
+- GitHub API 返回的六项资产大小与 SHA-256 全部匹配。使用已有验证主机 `hklinux` 独立完整读取六个公开文件，流式计算 SHA-256，同样全部匹配；未在验证主机持久保存安装包。
+- `origin/main` 已推送，远端分支仅保留 `main`。
+- 公开核对证据：`desktop/dist/verification-6.6.0/qiniu-public-assets.json`、`github-api-assets.json`、`github-public-assets.json`。
+
+| 文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| zerowall-science-6.6.0-win-x64.exe | 334220617 | 1cca93223ba8e6d87105c69739b0bf822dba06bb69b6ddf1524cc05365ab1695 |
+| zerowall-science-6.6.0-win-x64.exe.blockmap | 346432 | 9773209e7764380457a320661ac11df5c97ab1bf977822139676eff830b6f704 |
+| zerowall-science-6.6.0-latest.json | 1183 | b7087b870ba65b5ee3fbb24d4bcc381ee4abdd98ecad0827d1271da63c2d7dfd |
+| latest.yml | 1116 | c8e8bb95280f8610a83279d72f9c08faf2801d1c6bfb7cffa536f10b897481ec |
+| releases-latest.json | 1183 | b7087b870ba65b5ee3fbb24d4bcc381ee4abdd98ecad0827d1271da63c2d7dfd |
+| releases-zerowallsciencedev-latest.json | 1183 | b7087b870ba65b5ee3fbb24d4bcc381ee4abdd98ecad0827d1271da63c2d7dfd |
