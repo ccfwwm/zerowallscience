@@ -17,6 +17,11 @@ const dshRoot = resolve(root, 'deepseek-harness')
 const closurePath = resolve(root, '.build/dsh/runtime-closure.json')
 const outputRoot = resolve(root, '.build/runtime/node_modules')
 const expectedOutputParent = resolve(root, '.build/runtime')
+const buildReceipt = JSON.parse(await readFile(resolve(root, '.build/dsh/build-receipt.json'), 'utf8'))
+const expectedHarness = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
+if (buildReceipt.commit !== expectedHarness.commit || buildReceipt.version !== expectedHarness.version) {
+  throw new Error('Harness build receipt differs from the pinned source. Run pnpm build before preparing the runtime.')
+}
 const desktopModules = resolve(root, 'desktop/node_modules')
 // pnpm keeps transitive packages (for example Jimp's gifwrap decoder) under
 // the workspace virtual store rather than linking every package into the
@@ -113,6 +118,8 @@ for (const sourceRoot of zerowallPackageRoots) {
 const missing = [...dshNames].filter(name => !workspacePackages.has(name))
 if (missing.length > 0) throw new Error(`Pinned DSH runtime packages are missing: ${missing.join(', ')}`)
 
+// An interrupted refresh must never retain a receipt from the prior tree.
+await rm(resolve(expectedOutputParent, 'build-receipt.json'), { force: true })
 await rm(outputRoot, { recursive: true, force: true })
 await mkdir(outputRoot, { recursive: true })
 
@@ -162,6 +169,7 @@ while (queue.length > 0) {
   }
 }
 
+await writeFile(resolve(expectedOutputParent, 'build-receipt.json'), JSON.stringify(buildReceipt, null, 2))
 console.log(`Prepared ${copiedTargets.size} production runtime package locations (${incompatible} incompatible packages skipped).`)
 
 async function resolvePackage(name, parentRoot) {

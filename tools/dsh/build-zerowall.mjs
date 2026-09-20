@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
@@ -27,6 +27,10 @@ if (status !== '' && !allowDirty) {
 runPnpm(['--filter', '@deepseek-ai/dsh-root', 'run', 'build:lib:host'], { NODE_OPTIONS: '--max-old-space-size=8192' })
 runPnpm(['--filter', '@deepseek-ai/dsh-root', 'run', 'build:lib:client'], { NODE_OPTIONS: '--max-old-space-size=8192' })
 runPnpm(['--filter', '@deepseek-ai/dsh-root', 'run', 'build:web'])
+await mkdir(resolve(root, '.build/dsh'), { recursive: true })
+await writeFile(resolve(root, '.build/dsh/build-receipt.json'), JSON.stringify({
+  commit, version: manifest.version, applicationVersion: rootManifest.version, builtAt: new Date().toISOString(),
+}, null, 2))
 
 function git(args) {
   return execFileSync('git', args, { cwd: source, encoding: 'utf8' }).trim()

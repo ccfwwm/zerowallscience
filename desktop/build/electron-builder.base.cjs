@@ -1,4 +1,11 @@
 const common = {
+  beforePack: async () => {
+    const { pathToFileURL } = require('node:url')
+    const { resolve } = require('node:path')
+    const root = resolve(__dirname, '../..')
+    const { verifyRuntimeFreshness } = await import(pathToFileURL(resolve(root, 'tools/packaging/verify-runtime-freshness.mjs')).href)
+    await verifyRuntimeFreshness(root)
+  },
   asar: true,
   asarUnpack: [
     'package.json',
@@ -53,6 +60,7 @@ const common = {
     { from: '../profiles/generated', to: 'profiles', filter: ['*.yml'] },
     { from: '../THIRD_PARTY_NOTICES.md', to: 'licenses/THIRD_PARTY_NOTICES.md' },
     { from: '../config/deepseek-harness/upstream.json', to: 'licenses/deepseek-harness.version.json' },
+    { from: '../.build/runtime/build-receipt.json', to: 'licenses/build-receipt.json' },
     { from: '../resources/brand/app-icons/icon.png', to: 'icon.png' },
     { from: '../resources/brand/zerowall/zerowall-icon.png', to: 'zerowall-icon.png' },
   ],

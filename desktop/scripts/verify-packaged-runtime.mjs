@@ -46,6 +46,20 @@ for (const retired of ['@zerowallscience/plugin-opencode', '@jiesou/dsh-opencode
   }
 }
 const packagedManifest = JSON.parse(readArchiveFile('package.json').toString('utf8'))
+const packagedBuildReceipt = JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'licenses/build-receipt.json'), 'utf8'))
+const runtimeBuildReceipt = JSON.parse(await readFile(resolve(repositoryRoot, '.build/runtime/build-receipt.json'), 'utf8'))
+if (packagedBuildReceipt.commit !== pinnedUpstream.commit
+  || packagedBuildReceipt.version !== pinnedUpstream.version
+  || packagedBuildReceipt.applicationVersion !== desktopManifest.version
+  || JSON.stringify(packagedBuildReceipt) !== JSON.stringify(runtimeBuildReceipt)) {
+  throw new Error('Packaged Harness receipt differs from the current pinned build. Repackage the current runtime.')
+}
+for (const file of ['lib/client.js', 'lib/index.js']) {
+  const path = `node_modules/@zerowallscience/plugin-mcp/${file}`
+  if (!readArchiveFile(path).equals(await readFile(resolve(repositoryRoot, '.build/runtime', path)))) {
+    throw new Error(`Packaged MCP ${file} is stale. Repackage the current runtime.`)
+  }
+}
 for (const entry of ['out/main/index.js', 'out/main/python-updater-worker.js', 'out/preload/index.cjs']) {
   if (!readArchiveFile(entry).equals(await readFile(resolve(packageRoot, entry)))) {
     throw new Error(`Packaged ${entry} differs from the completed desktop build. Rebuild before packaging.`)
