@@ -29,6 +29,7 @@ interface ManagedCredentialResolver {
 }
 
 interface BiomniRouteDetails {
+  api?: string
   provider: string
   model: string
   baseUrl?: string
@@ -120,6 +121,7 @@ export class AiCloudLlmController {
         return {
           provider,
           model,
+          ...(profile.api === undefined ? {} : { api: profile.api }),
           ...(profile.baseURL === undefined ? {} : { baseUrl: profile.baseURL }),
           ...(apiKey === undefined ? {} : { apiKey }),
         }

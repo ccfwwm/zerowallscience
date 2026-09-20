@@ -205,7 +205,7 @@ describe('ZeroWall AI Cloud LLM routes', () => {
     const resolver = ctx.get('zerowallMcpRouteResolver') as { resolve(provider: string, model: string): Promise<Record<string, string> | undefined> }
     await expect(resolver.resolve('zerowall-ai-cloud-2-completions', 'gpt-test')).resolves.toEqual({
       provider: 'zerowall-ai-cloud-2-completions', model: 'gpt-test',
-      baseUrl: 'https://hkcode.aicodeme.xyz/v1', apiKey: 'biomni-secret',
+      baseUrl: 'https://hkcode.aicodeme.xyz/v1', apiKey: 'biomni-secret', api: 'openai-responses',
     })
     await expect(resolver.resolve('opencode2dsh', 'big-pickle')).resolves.toBeUndefined()
   })
