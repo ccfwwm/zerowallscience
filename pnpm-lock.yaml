@@ -12906,6 +12906,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-renderer
       tsdown:
         specifier: 0.22.2
         version: 0.22.2(@tsdown/css@0.22.2)(publint@0.3.23)(tsx@4.23.12)(typescript@6.0.3)(unrun@0.2.39)

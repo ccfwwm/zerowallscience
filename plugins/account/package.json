@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-account",
-  "version": "6.5.0",
+  "version": "6.6.0",
   "description": "ZeroWall Science account domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -150,6 +150,7 @@
     "@deepseek-ai/cordis": "^4.0.3"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-client-ui-renderer": "workspace:^",
     "tsdown": "^0.22.2",
     "typescript": "6.0.3",
     "vitest": "^4.1.10"

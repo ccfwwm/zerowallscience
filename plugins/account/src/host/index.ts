@@ -4,7 +4,7 @@ import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
 import type {
   AiCloudAccountSnapshot, AiCloudCreateOrderRequest, AiCloudGateway, AiCloudLoginRequest, AiCloudManagedModel,
   AiCloudCheckoutInfo, AiCloudGetOrderRequest, AiCloudPaymentOrder, AiCloudPublicConfig,
-  AiCloudRegisterRequest, AiCloudSendCodeRequest, AiCloudVerifyOrderRequest,
+  AiCloudRegisterRequest, AiCloudSendCodeRequest, AiCloudSendCodeResult, AiCloudForgotPasswordRequest, AiCloudVerifyOrderRequest,
   AiCloudSavedLogin,
 } from '../shared/types.js'
 import type {} from 'zod'
@@ -13,6 +13,7 @@ export type {
   AiCloudAccountSnapshot, AiCloudCheckoutInfo, AiCloudCreateOrderRequest, AiCloudGateway, AiCloudGetOrderRequest,
   AiCloudLoginRequest, AiCloudManagedModel, AiCloudPaymentOrder, AiCloudPublicConfig,
   AiCloudRegisterRequest, AiCloudSendCodeRequest, AiCloudVerifyOrderRequest,
+  AiCloudSendCodeResult, AiCloudForgotPasswordRequest,
   AiCloudSavedLogin,
 } from '../shared/types.js'
 
@@ -94,21 +95,32 @@ export class AiCloudClient {
     }
   }
 
-  async publicConfig(): Promise<AiCloudPublicConfig> {
-    const { body } = await this.withFailover((base) => this.request(base, '/settings/public'))
+  async publicConfig(gatewayBaseUrl?: string): Promise<AiCloudPublicConfig> {
+    const base = gatewayBaseUrl === undefined ? await this.preferredBase() : this.requireBase(gatewayBaseUrl)
+    const { body } = await this.request(base, '/settings/public')
     return parsePublicConfig(body)
   }
 
-  async sendCode(input: AiCloudSendCodeRequest): Promise<void> {
-    const email = required(input.email, 'Email')
-    await this.withFailover((base) => this.request(base, '/auth/send-verify-code', {
+  async sendCode(input: AiCloudSendCodeRequest): Promise<AiCloudSendCodeResult> {
+    const email = normalizedEmail(input.email)
+    const base = input.gatewayBaseUrl === undefined ? await this.preferredBase() : this.requireBase(input.gatewayBaseUrl)
+    const sent = await this.request(base, '/auth/send-verify-code', {
       method: 'POST', body: { email },
-    }))
+    })
+    return { countdown: parseSendCodeResult(sent.body), gatewayBaseUrl: base }
+  }
+
+  async forgotPassword(input: AiCloudForgotPasswordRequest): Promise<void> {
+    const email = normalizedEmail(input.email)
+    const base = input.gatewayBaseUrl === undefined ? await this.preferredBase() : this.requireBase(input.gatewayBaseUrl)
+    await this.request(base, '/auth/forgot-password', {
+      method: 'POST', body: { email },
+    })
   }
 
   async login(input: AiCloudLoginRequest): Promise<AiCloudAccountSnapshot> {
-    const email = required(input.email, 'Email')
-    const password = required(input.password, 'Password')
+    const email = normalizedEmail(input.email)
+    const password = requiredPassword(input.password)
     const authenticated = await this.authenticate(email, password)
     const account = await this.finishAuthentication(authenticated.baseUrl, email, password, authenticated.accessToken, undefined, input.rememberPassword !== false)
     // Model discovery is part of signing in, not a UI follow-up. This keeps
@@ -123,16 +135,19 @@ export class AiCloudClient {
   }
 
   async register(input: AiCloudRegisterRequest): Promise<AiCloudAccountSnapshot> {
-    const config = await this.publicConfig()
+    const base = input.gatewayBaseUrl === undefined ? await this.preferredBase() : this.requireBase(input.gatewayBaseUrl)
+    const config = await this.publicConfig(base)
     if (!config.registrationEnabled || !config.emailVerifyEnabled || config.captchaEnabled || config.invitationCodeEnabled) {
       throw new Error('AI Cloud native registration is not available with the current server policy.')
     }
-    const email = required(input.email, 'Email')
-    const password = required(input.password, 'Password')
+    const email = normalizedEmail(input.email)
+    const password = requiredPassword(input.password)
     const verificationCode = required(input.verificationCode, 'Verification code')
-    const registered = await this.withFailover((base) => this.request(base, '/auth/register', {
+    // Verification codes belong to one gateway. Never replay a one-time
+    // registration on a backup after a timeout or validation failure.
+    const registered = { ...await this.request(base, '/auth/register', {
       method: 'POST', body: { email, password, verify_code: verificationCode },
-    }))
+    }), base }
     let token = optionalAccessToken(registered.body)
     if (token === undefined) {
       const login = await this.request(registered.base, '/auth/login', { method: 'POST', body: { email, password } })
@@ -473,10 +488,11 @@ declare module '@deepseek-ai/cordis' {
 export class ZeroWallAccountService extends TypertRemoteService {
   private readonly client = new AiCloudClient()
   constructor(private readonly runtimeCtx: Context) { super(runtimeCtx, 'zerowallAccount') }
-  @Remote('publicConfig') publicConfig(): Promise<AiCloudPublicConfig> { return this.client.publicConfig() }
+  @Remote('publicConfig') publicConfig(gatewayBaseUrl?: string): Promise<AiCloudPublicConfig> { return this.client.publicConfig(gatewayBaseUrl) }
   @Remote('gateways') gateways(): Promise<AiCloudGateway[]> { return this.client.gateways() }
   @Remote('selectGateway') async selectGateway(baseUrl: string): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.selectGateway(baseUrl)) }
-  @Remote('sendCode') sendCode(input: AiCloudSendCodeRequest): Promise<void> { return this.client.sendCode(input) }
+  @Remote('sendCode') sendCode(input: AiCloudSendCodeRequest): Promise<AiCloudSendCodeResult> { return this.client.sendCode(input) }
+  @Remote('forgotPassword') forgotPassword(input: AiCloudForgotPasswordRequest): Promise<void> { return this.client.forgotPassword(input) }
   @Remote('login') async login(input: AiCloudLoginRequest): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.login(input)) }
   @Remote('register') async register(input: AiCloudRegisterRequest): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.register(input)) }
   @Remote('current') async current(): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.current()) }
@@ -497,6 +513,16 @@ export class ZeroWallAccountService extends TypertRemoteService {
 }
 
 function required(value: string, label: string): string { const out = value.trim(); if (!out) throw new Error(`${label} is required.`); return out }
+function normalizedEmail(value: string): string {
+  const email = required(value, 'Email').toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('ACCOUNT_INVALID_EMAIL')
+  return email
+}
+function requiredPassword(value: string): string { if (!value) throw new Error('Password is required.'); return value }
+function parseSendCodeResult(body: string): number {
+  const data = envelope(body)
+  return Math.max(1, Math.floor(numberField(data, ['countdown', 'count_down', 'cooldown']) ?? 60))
+}
 function managedProviderId(groupId: string, modelId: string): string { return `zerowall-ai-cloud-${groupId}-${managedProtocol(modelId)}` }
 function managedProtocol(modelId: string): 'responses' | 'messages' | 'completions' {
   if (/^(?:gpt|o[1-9]|o3|o4|chatgpt)/iu.test(modelId)) return 'responses'
@@ -514,7 +540,7 @@ function booleanField(value: Record<string, unknown>, names: string[]): boolean 
 function optionalAccessToken(body: string): string | undefined { return stringField(envelope(body), ['access_token', 'accessToken', 'token']) }
 function accessToken(body: string): string { const token = optionalAccessToken(body); if (!token) throw new Error('AI Cloud returned no access token.'); return token }
 function accountFunds(body: string): { balance: number; currency: string } { const data = envelope(body); const account = isRecord(data.user) ? data.user : isRecord(data.account) ? data.account : data; return { balance: numberField(account, ['balance', 'credit', 'amount']) ?? 0, currency: stringField(account, ['currency', 'currency_code', 'unit']) ?? 'CNY' } }
-function parsePublicConfig(body: string): AiCloudPublicConfig { const data = envelope(body); const recharge = stringField(data, ['rechargeUrl', 'recharge_url']); const lowBalanceThreshold = numberField(data, ['lowBalanceThreshold', 'low_balance_threshold']); return { registrationEnabled: booleanField(data, ['registrationEnabled', 'registration_enabled']), emailVerifyEnabled: booleanField(data, ['emailVerifyEnabled', 'email_verify_enabled']), invitationCodeEnabled: booleanField(data, ['invitationCodeEnabled', 'invitation_code_enabled']), captchaEnabled: booleanField(data, ['captchaEnabled', 'captcha_enabled']), ...(recharge === undefined ? {} : { rechargeUrl: validateRechargeUrl(recharge) }), ...(lowBalanceThreshold === undefined ? {} : { lowBalanceThreshold }) } }
+function parsePublicConfig(body: string): AiCloudPublicConfig { const data = envelope(body); const recharge = stringField(data, ['rechargeUrl', 'recharge_url']); const lowBalanceThreshold = numberField(data, ['lowBalanceThreshold', 'low_balance_threshold']); return { registrationEnabled: booleanField(data, ['registrationEnabled', 'registration_enabled']), emailVerifyEnabled: booleanField(data, ['emailVerifyEnabled', 'email_verify_enabled']), invitationCodeEnabled: booleanField(data, ['invitationCodeEnabled', 'invitation_code_enabled']), captchaEnabled: ['captchaEnabled', 'captcha_enabled', 'turnstile_enabled', 'tencent_captcha_enabled', 'aliyun_captcha_enabled'].some(key => booleanField(data, [key])), passwordResetEnabled: booleanField(data, ['passwordResetEnabled', 'password_reset_enabled']), ...(recharge === undefined ? {} : { rechargeUrl: validateRechargeUrl(recharge) }), ...(lowBalanceThreshold === undefined ? {} : { lowBalanceThreshold }) } }
 function validateRechargeUrl(raw: string): string { const url = new URL(raw); if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash || !['aicodeme.cn', 'aicodeme.xyz'].some((root) => url.hostname === root || url.hostname.endsWith(`.${root}`))) throw new Error('AI Cloud returned an unsafe recharge URL.'); return raw }
 function list(body: string): unknown[] {
   const root = JSON.parse(body) as unknown

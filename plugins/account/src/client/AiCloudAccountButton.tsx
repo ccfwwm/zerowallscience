@@ -11,7 +11,7 @@ import css from './AiCloudAccountButton.module.css'
 export interface AiCloudModelView { providerId: string; groupId: string; groupName: string; modelId: string; baseUrl: string }
 export interface AiCloudAccountView { status: 'signedOut' | 'signedIn' | 'authExpired'; email?: string; balance?: number; currency?: string; balanceFreshness: 'current' | 'stale'; rechargeUrl?: string; lowBalance: boolean; gatewayBaseUrl?: string; models: AiCloudModelView[] }
 export interface AiCloudGatewayView { baseUrl: string; label: string; preferred: boolean }
-export interface AiCloudPublicView { registrationEnabled: boolean; emailVerifyEnabled: boolean; invitationCodeEnabled: boolean; captchaEnabled: boolean; rechargeUrl?: string; lowBalanceThreshold?: number }
+export interface AiCloudPublicView { registrationEnabled: boolean; emailVerifyEnabled: boolean; invitationCodeEnabled: boolean; captchaEnabled: boolean; passwordResetEnabled?: boolean; rechargeUrl?: string; lowBalanceThreshold?: number }
 export interface AiCloudCheckoutView { enabled: boolean; minimumAmount: number; paymentTypes: string[]; rechargeUrl?: string }
 export interface AiCloudOrderView { id: number; outTradeNo: string; status: string; amount: number; paymentType: string; paymentUrl?: string; qrCode?: string; createdAt?: string }
 
@@ -19,12 +19,13 @@ interface Actions {
   getAccount: () => Promise<AiCloudAccountView>
   forgetLogin: () => Promise<void>
   savedLogin: () => Promise<{ email: string; password: string; baseUrl: string; rememberPassword: true } | undefined>
-  getPublicConfig: () => Promise<AiCloudPublicView>
+  getPublicConfig: (gatewayBaseUrl?: string) => Promise<AiCloudPublicView>
   gateways: () => Promise<AiCloudGatewayView[]>
   selectGateway: (baseUrl: string) => Promise<AiCloudAccountView>
   login: (email: string, password: string, rememberPassword: boolean) => Promise<AiCloudAccountView>
-  register: (email: string, password: string, verificationCode: string, rememberPassword: boolean) => Promise<AiCloudAccountView>
-  sendCode: (email: string) => Promise<void>
+  register: (email: string, password: string, verificationCode: string, rememberPassword: boolean, gatewayBaseUrl?: string) => Promise<AiCloudAccountView>
+  sendCode: (email: string, gatewayBaseUrl?: string) => Promise<{ countdown: number; gatewayBaseUrl: string }>
+  forgotPassword: (email: string, gatewayBaseUrl?: string) => Promise<void>
   logout: () => Promise<void>
   discoverModels: () => Promise<AiCloudAccountView>
   checkoutInfo: () => Promise<AiCloudCheckoutView>
@@ -46,11 +47,20 @@ export function AiCloudAccountButton(props: Props) {
   const [gateways, setGateways] = useState<AiCloudGatewayView[]>([])
   const [checkout, setCheckout] = useState<AiCloudCheckoutView>()
   const [registering, setRegistering] = useState(false)
+  const [forgotMode, setForgotMode] = useState(false)
   const [syncingModels, setSyncingModels] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberPassword, setRememberPassword] = useState(true)
   const [code, setCode] = useState('')
+  const [codeCooldown, setCodeCooldown] = useState(0)
+  const [sendingCode, setSendingCode] = useState(false)
+  const [resetCooldown, setResetCooldown] = useState(0)
+  const authPending = useRef(false)
+  const refreshPending = useRef(false)
+  const formEdited = useRef(false)
+  const configRequest = useRef(0)
+  const [codeNotice, setCodeNotice] = useState<string>()
   const [orders, setOrders] = useState<AiCloudOrderView[]>([])
   const [activeOrder, setActiveOrder] = useState<AiCloudOrderView>()
   const [amount, setAmount] = useState('100')
@@ -58,10 +68,23 @@ export function AiCloudAccountButton(props: Props) {
   const [busy, setBusy] = useState(false)
   const [polling, setPolling] = useState(false)
   const [error, setError] = useState<string>()
+  const [success, setSuccess] = useState<string>()
+  const [verificationGateway, setVerificationGateway] = useState<string>()
   const [qrImage, setQrImage] = useState<string>()
   const [balancePrompt, setBalancePrompt] = useState(false)
   const balanceDialog = useRef<HTMLDialogElement>(null)
   const balancePrompted = useRef(false)
+  useEffect(() => {
+    if (codeCooldown <= 0 && resetCooldown <= 0) return
+    const codeUntil = Date.now() + codeCooldown * 1000
+    const resetUntil = Date.now() + resetCooldown * 1000
+    const timer = window.setInterval(() => {
+      setCodeCooldown(Math.max(0, Math.ceil((codeUntil - Date.now()) / 1000)))
+      setResetCooldown(Math.max(0, Math.ceil((resetUntil - Date.now()) / 1000)))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [codeCooldown, resetCooldown])
+
   useEffect(() => {
     if (account?.status !== 'signedIn' || account.balanceFreshness !== 'current') {
       setBalancePrompt(false)
@@ -98,9 +121,12 @@ export function AiCloudAccountButton(props: Props) {
   }, [paymentType, props.checkoutInfo, props.listOrders])
 
   const refresh = useCallback(async () => {
+    if (authPending.current || refreshPending.current) return
+    refreshPending.current = true
     setBusy(true)
     setError(undefined)
-    void props.getPublicConfig().then(setConfig).catch(() => undefined)
+    const requestId = ++configRequest.current
+    void props.getPublicConfig().then(value => { if (requestId === configRequest.current) setConfig(value) }).catch(() => { if (requestId === configRequest.current) setConfig(undefined) })
     void props.gateways().then(setGateways).catch(() => undefined)
     try {
       const nextAccount = await props.getAccount()
@@ -111,6 +137,7 @@ export function AiCloudAccountButton(props: Props) {
       setError(message(reason))
       return undefined
     } finally {
+      refreshPending.current = false
       setBusy(false)
     }
   }, [loadBilling, props.getAccount, props.getPublicConfig])
@@ -128,7 +155,7 @@ export function AiCloudAccountButton(props: Props) {
     let active = true
     if (account?.status !== 'signedOut' && account?.status !== 'authExpired') return
     void props.savedLogin?.().then(saved => {
-      if (!active || saved === undefined) return
+      if (!active || saved === undefined || formEdited.current) return
       setEmail(saved.email)
       setPassword(saved.password)
       setRememberPassword(true)
@@ -187,12 +214,29 @@ export function AiCloudAccountButton(props: Props) {
   }, [activeOrder?.qrCode])
 
   const authenticate = async () => {
+    if (authPending.current || busy) return
+    if (forgotMode && !resetAvailable) { setError(props.t('account.resetUnavailable')); return }
+    if (registering && !registrationAvailable) { setError(props.t('account.registrationUnavailable')); return }
+    if (!validEmail(email)) { setError(props.t('account.invalidEmail')); return }
+    if (!forgotMode && password === '') return
+    if (forgotMode && resetCooldown > 0) return
+    if (!forgotMode && registering && password.length < 6) { setError(props.t('account.passwordHint')); return }
+    if (!forgotMode && registering && !/^[0-9]{6}$/.test(code.trim())) { setError(props.t('account.invalidCode')); return }
+    authPending.current = true
+    setSuccess(undefined)
     setBusy(true)
     setError(undefined)
     try {
+      if (forgotMode) {
+        await props.forgotPassword(email.trim().toLowerCase(), selectedGateway)
+        setResetCooldown(60)
+        setPassword('')
+        setSuccess(props.t('account.resetSent'))
+        return
+      }
       const next = registering
-        ? await props.register(email, password, code, rememberPassword)
-        : await props.login(email, password, rememberPassword)
+        ? await props.register(email.trim().toLowerCase(), password, code.trim(), rememberPassword, verificationGateway ?? selectedGateway)
+        : await props.login(email.trim().toLowerCase(), password, rememberPassword)
       setAccount(next)
       setCode('')
       // Host login performs discovery as part of the authenticated operation.
@@ -203,6 +247,7 @@ export function AiCloudAccountButton(props: Props) {
     } catch (reason) {
       setError(message(reason))
     } finally {
+      authPending.current = false
       setBusy(false)
     }
   }
@@ -221,9 +266,22 @@ export function AiCloudAccountButton(props: Props) {
   }
 
   const sendCode = async () => {
+    if (codeCooldown > 0 || busy || authPending.current) return
+    if (!registrationAvailable) { setError(props.t('account.registrationUnavailable')); return }
+    if (!validEmail(email)) { setError(props.t('account.invalidEmail')); return }
+    authPending.current = true
+    setSendingCode(true)
     setBusy(true)
     setError(undefined)
-    try { await props.sendCode(email) } catch (reason) { setError(message(reason)) } finally { setBusy(false) }
+    setSuccess(undefined)
+    setCodeNotice(undefined)
+    try {
+      const result = await props.sendCode(email.trim().toLowerCase(), selectedGateway)
+      setVerificationGateway(result.gatewayBaseUrl)
+      setCodeCooldown(result.countdown)
+      setCode('')
+      setCodeNotice(props.t('account.codeSent', { email: email.trim().toLowerCase() }))
+    } catch (reason) { setError(message(reason)) } finally { authPending.current = false; setSendingCode(false); setBusy(false) }
   }
 
   const logout = async () => {
@@ -247,12 +305,19 @@ export function AiCloudAccountButton(props: Props) {
   }
 
   const switchGateway = async (baseUrl: string) => {
+    if (authPending.current) return
+    formEdited.current = true
+    ++configRequest.current
+    setConfig(undefined)
+    clearVerification()
+    setSuccess(undefined)
     setBusy(true)
     setError(undefined)
     try {
       const next = await props.selectGateway(baseUrl)
       setAccount(next)
       setGateways(current => current.map(gateway => ({ ...gateway, preferred: gateway.baseUrl === baseUrl })))
+      setConfig(await props.getPublicConfig(baseUrl))
       if (next.status === 'signedIn') await loadBilling()
     } catch (reason) {
       setError(message(reason))
@@ -275,9 +340,19 @@ export function AiCloudAccountButton(props: Props) {
     }
   }
 
+  const clearVerification = () => { setCode(''); setVerificationGateway(undefined); setCodeNotice(undefined) }
+  const changeMode = (mode: 'login' | 'register' | 'reset') => {
+    formEdited.current = true
+    setForgotMode(mode === 'reset'); setRegistering(mode === 'register')
+    setError(undefined); setSuccess(undefined)
+    if (mode !== 'register') setCodeNotice(undefined)
+    if (mode === 'reset') setPassword('')
+  }
   const continueOrder = (order: AiCloudOrderView) => { setActiveOrder(order) }
   const signedIn = account?.status === 'signedIn'
+  const selectedGateway = account?.gatewayBaseUrl ?? gateways.find(gateway => gateway.preferred)?.baseUrl ?? gateways[0]?.baseUrl
   const registrationAvailable = config?.registrationEnabled === true && config.emailVerifyEnabled && !config.captchaEnabled && !config.invitationCodeEnabled
+  const resetAvailable = config?.passwordResetEnabled === true && !config.captchaEnabled
   const minimumAmount = checkout?.minimumAmount ?? 10
   const paymentTypes = [...new Set((checkout?.paymentTypes ?? ['alipay', 'wxpay']).map(displayPaymentType))]
   const paymentUrl = activeOrder?.paymentUrl ?? checkout?.rechargeUrl ?? account?.rechargeUrl ?? config?.rechargeUrl
@@ -295,34 +370,51 @@ export function AiCloudAccountButton(props: Props) {
       <span className={css.triggerIcon}><Cloud size={18} aria-hidden="true" /><i className={css.statusDot} aria-hidden="true" /></span>{props.wide && <span>{props.t('account.nav')}</span>}
     </button>
     {(open || target) && createPortal(<div className={target ? css.embedded : css.backdrop} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false) }}>
-      <section className={css.panel} role={target ? undefined : "dialog"} aria-modal={target ? undefined : true} aria-labelledby="zerowall-account-title">
+      <section className={css.panel} data-auth={!signedIn} role={target ? undefined : "dialog"} aria-modal={target ? undefined : true} aria-labelledby="zerowall-account-title">
         <header className={css.header}>
-          <div><p>ZeroWall Science</p><h2 id="zerowall-account-title">{signedIn ? props.t('account.centerTitle') : props.t('account.title')}</h2></div>
+          <div><p>ZeroWall Science</p><h2 id="zerowall-account-title">{signedIn ? props.t('account.centerTitle') : forgotMode ? props.t('account.resetTitle') : props.t('account.title')}</h2></div>
           {!target && <button className={css.iconButton} type="button" onClick={() => setOpen(false)} title={props.t('common.close')} aria-label={props.t('common.close')}><X size={18} /></button>}
         </header>
-        {error && <p className={css.error} role="alert">{/credential IPC is unavailable/u.test(error) ? props.t('account.desktopRequired') : error}</p>}
-        {!signedIn ? <div className={css.auth}>
+        {error && <p className={css.error} role="alert">{accountError(error, props.t)}</p>}
+        {success && <p className={css.success} role="status">{success}</p>}
+        {!signedIn ? <form className={css.auth} noValidate onSubmit={event => { event.preventDefault(); void authenticate() }}>
           {account?.status === 'authExpired' && <p className={css.notice}>{props.t('account.authExpired')}</p>}
-          <section className={css.capabilities} aria-label={props.t('account.capabilities')}>
+          {!forgotMode && <section className={css.capabilities} aria-label={props.t('account.capabilities')}>
             <strong>{props.t('account.capabilities')}</strong>
             <span>{props.t('account.capabilitiesNote')}</span>
-          </section>
-          <p className={css.authLead}>{props.t('account.authLead')}</p>
-          <GatewaySelector gateways={gateways} selected={account?.gatewayBaseUrl} disabled={busy} onChange={switchGateway} t={props.t} />
-          <div className={css.segmented} role="group" aria-label={props.t('account.actions')}>
-            <button type="button" aria-pressed={!registering} onClick={() => setRegistering(false)}>{props.t('account.login')}</button>
-            <button type="button" aria-pressed={registering} disabled={!registrationAvailable} onClick={() => setRegistering(true)}>{props.t('account.register')}</button>
-          </div>
-          <label>{props.t('account.email')}<input type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="username" /></label>
-          <label>{props.t('account.password')}<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete={registering ? 'new-password' : 'current-password'} /></label>
-          <label className={css.remember}><input type="checkbox" checked={rememberPassword} onChange={event => { const checked = event.target.checked; setRememberPassword(checked); if (!checked) void props.forgetLogin().then(() => setPassword('')).catch(reason => setError(message(reason))) }} />{props.t('account.rememberPassword')}</label>
-          {registering && <label>{props.t('account.code')}<span className={css.codeRow}><input value={code} onChange={event => setCode(event.target.value)} /><button type="button" onClick={() => void sendCode()} disabled={busy || email.trim() === ''} title={props.t('account.sendCode')} aria-label={props.t('account.sendCode')}><Send size={16} /></button></span></label>}
-          <p className={css.savedHint}>{props.t(rememberPassword ? 'account.savedHint' : 'account.unsavedHint')}</p>
+          </section>}
+          <p className={css.authLead}>{props.t(forgotMode ? 'account.resetLead' : registering ? 'account.registerLead' : 'account.authLead')}</p>
+          <GatewaySelector gateways={gateways} selected={selectedGateway} disabled={busy} onChange={switchGateway} t={props.t} />
+          {!forgotMode && <div className={css.segmented} role="group" aria-label={props.t('account.actions')}>
+            <button type="button" aria-pressed={!registering} disabled={busy} onClick={() => changeMode('login')}>{props.t('account.login')}</button>
+            <button type="button" aria-pressed={registering} disabled={busy || !registrationAvailable} onClick={() => changeMode('register')}>{props.t('account.register')}</button>
+          </div>}
+          <label>{props.t('account.email')}<input type="email" value={email} disabled={busy} onChange={event => { formEdited.current = true; setEmail(event.target.value); clearVerification(); setSuccess(undefined); setError(undefined) }} autoComplete="username" autoCapitalize="none" spellCheck={false} /></label>
+          {!forgotMode && <>
+            <label>{props.t('account.password')}<input type="password" value={password} disabled={busy} onChange={event => { formEdited.current = true; setPassword(event.target.value) }} autoComplete={registering ? 'new-password' : 'current-password'} /></label>
+            {registering && <p className={css.authLead}>{props.t('account.passwordHint')}</p>}
+            <label className={css.remember}><input type="checkbox" disabled={busy} checked={rememberPassword} onChange={event => { const checked = event.target.checked; setRememberPassword(checked); if (!checked) void props.forgetLogin().then(() => undefined).catch(reason => setError(message(reason))) }} />{props.t('account.rememberPassword')}</label>
+          </>}
+          {registering && !forgotMode && <div className={css.codeGroup}>
+            <label htmlFor="zerowall-verification-code">{props.t('account.code')}</label>
+            <div className={css.codeRow}>
+              <input id="zerowall-verification-code" disabled={busy} value={code} onChange={event => setCode(event.target.value)} inputMode="numeric" autoComplete="one-time-code" maxLength={6} aria-describedby="zerowall-code-help" />
+              <button type="button" onClick={() => void sendCode()} disabled={busy || !registrationAvailable || !validEmail(email) || codeCooldown > 0}>
+                {sendingCode ? <RefreshCw className={css.spin} size={15} aria-hidden="true" /> : <Send size={15} aria-hidden="true" />}
+                {sendingCode ? props.t('account.sendingCode') : codeCooldown > 0 ? props.t('account.codeResend', { seconds: codeCooldown }) : props.t('account.sendCode')}
+              </button>
+            </div>
+            <p id="zerowall-code-help" className={codeNotice ? css.codeNotice : css.authLead} role={codeNotice ? 'status' : undefined}>{codeNotice ?? props.t('account.codeHelp')}</p>
+          </div>}
+          {!registering && !forgotMode && <button className={css.textButton} type="button" disabled={busy} onClick={() => changeMode('reset')}>{props.t('account.forgotPassword')}</button>}
+          {!forgotMode && <p className={css.savedHint}>{props.t(rememberPassword ? 'account.savedHint' : 'account.unsavedHint')}</p>}
+          {forgotMode && (config?.passwordResetEnabled === false || config?.captchaEnabled) && <p className={css.notice}>{props.t('account.resetUnavailable')}</p>}
           <div className={css.authActions}>
             {!target && <button className={css.secondary} type="button" onClick={() => setOpen(false)}>{props.t('account.skip')}</button>}
-            <button className={css.primary} type="button" onClick={() => void authenticate()} disabled={busy || email.trim() === '' || password === '' || (registering && code.trim() === '')}>{registering ? props.t('account.registerConfigure') : props.t('account.loginConfigure')}</button>
+            <button className={css.primary} type="submit" disabled={busy || !validEmail(email) || (forgotMode ? resetCooldown > 0 || !resetAvailable : password === '' || (registering && (!registrationAvailable || password.length < 6 || !/^[0-9]{6}$/.test(code.trim()))))}>{busy && !sendingCode ? props.t('account.working') : forgotMode ? (resetCooldown > 0 ? props.t('account.codeResend', { seconds: resetCooldown }) : props.t('account.sendReset')) : registering ? props.t('account.registerConfigure') : props.t('account.loginConfigure')}</button>
           </div>
-        </div> : <div className={css.content}>
+          {forgotMode && <button className={css.textButton} type="button" disabled={busy} onClick={() => changeMode('login')}>{props.t('account.backToLogin')}</button>}
+        </form> : <div className={css.content}>
           <GatewaySelector gateways={gateways} selected={account?.gatewayBaseUrl} disabled={busy} onChange={switchGateway} t={props.t} />
           <div className={css.accountCard}>
             <div className={css.identity}><span>{props.t('account.currentAccount')}</span><strong>{account.email}</strong><small><CheckCircle2 size={13} />{account.balanceFreshness === 'stale' ? props.t('account.lastBalance') : props.t('account.signedIn')}</small></div>
@@ -427,4 +519,19 @@ function openExternal(url: string): void { window.open(url, '_blank', 'noopener,
 function message(reason: unknown): string {
   const raw = reason instanceof Error ? reason.message : String(reason)
   return raw.replace(/^zerowall\.[\w.]+ failed:\s*(?:internal:\s*)?/i, '').trim()
+}
+
+function validEmail(value: string): boolean { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) }
+function accountError(error: string, t: TranslateNS<typeof NS>): string {
+  if (/credential IPC is unavailable/i.test(error)) return t('account.desktopRequired')
+  if (/invalid or expired verification code|INVALID_VERIFY_CODE/i.test(error)) return t('account.codeInvalid')
+  if (/too many.*attempt|VERIFY_CODE_MAX_ATTEMPTS/i.test(error)) return t('account.codeAttempts')
+  if (/too frequent|too many requests|HTTP 429|rate.limit/i.test(error)) return t('account.tooFrequent')
+  if (/email.*(?:already|exists)|EMAIL_EXISTS/i.test(error)) return t('account.emailExists')
+  if (/invalid.*credentials|incorrect.*password|HTTP 401/i.test(error)) return t('account.loginInvalid')
+  if (/ACCOUNT_INVALID_EMAIL|email.*required/i.test(error)) return t('account.invalidEmail')
+  if (/password reset is not|PASSWORD_RESET_DISABLED/i.test(error)) return t('account.resetUnavailable')
+  if (/native registration is not available/i.test(error)) return t('account.registrationUnavailable')
+  if (/fetch failed|failed to fetch|network|timeout|timed out|unreachable/i.test(error)) return t('account.networkError')
+  return error.replace(/^.*?gateway\/internal:\s*/i, '').replace(/^zerowall\.account\.[^:]+ failed:\s*[^:]+:\s*/i, '')
 }

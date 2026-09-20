@@ -13,6 +13,88 @@ function json(value: unknown, status = 200): Response {
 }
 
 describe('AI Cloud account client', () => {
+  it('uses the same normalized email, gateway and exact password for verification and registration', async () => {
+    const secrets = new MemorySecrets()
+    let issuedEmail = ''
+    let issuedGateway = ''
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input))
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
+      if (url.pathname.endsWith('/settings/public')) return json({ data: { registration_enabled: true, email_verify_enabled: true } })
+      if (url.pathname.endsWith('/auth/send-verify-code')) {
+        issuedEmail = body.email
+        issuedGateway = url.origin
+        return json({ data: { countdown: 45 } })
+      }
+      if (url.pathname.endsWith('/auth/register')) {
+        expect(url.origin).toBe(issuedGateway)
+        expect(body).toEqual({ email: issuedEmail, password: ' password with spaces ', verify_code: '012345' })
+        return json({ data: { access_token: 'test-token' } })
+      }
+      if (url.pathname.endsWith('/auth/me')) return json({ data: { balance: 1 } })
+      throw new Error('No model catalog in this fixture')
+    })
+    const client = new AiCloudClient({ secrets, fetch: fetcher, bases: ['https://hkcode.aicodeme.xyz', 'https://code.aicodeme.xyz'] })
+    const sent = await client.sendCode({ email: ' User@Example.COM ', gatewayBaseUrl: 'https://code.aicodeme.xyz' })
+    expect(sent.countdown).toBe(45)
+    const account = await client.register({ email: 'USER@example.com', password: ' password with spaces ', verificationCode: '012345', gatewayBaseUrl: sent.gatewayBaseUrl })
+    expect(account).toMatchObject({ status: 'signedIn', email: 'user@example.com', gatewayBaseUrl: sent.gatewayBaseUrl })
+  })
+
+  it('does not fail over or change credentials after reset email failure', async () => {
+    const secrets = new MemorySecrets()
+    secrets.values.set('existing', 'preserved')
+    const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error('fetch failed'))
+    const client = new AiCloudClient({ secrets, fetch: fetcher, bases: ['https://hkcode.aicodeme.xyz', 'https://code.aicodeme.xyz'] })
+    await expect(client.forgotPassword({ email: 'user@example.com', gatewayBaseUrl: 'https://code.aicodeme.xyz' })).rejects.toThrow('fetch failed')
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect([...secrets.values]).toEqual([['existing', 'preserved']])
+    await expect(client.forgotPassword({ email: 'user@example.com', gatewayBaseUrl: 'https://untrusted.example' })).rejects.toThrow()
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
+  it.each(['turnstile_enabled', 'tencent_captcha_enabled', 'aliyun_captcha_enabled'])('honors the Sub2API captcha flag %s', async (flag) => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(json({ data: { registration_enabled: true, email_verify_enabled: true, password_reset_enabled: true, [flag]: true } }))
+    const client = new AiCloudClient({ secrets: new MemorySecrets(), fetch: fetcher })
+    await expect(client.publicConfig()).resolves.toMatchObject({ captchaEnabled: true, passwordResetEnabled: true })
+    fetcher.mockResolvedValue(json({ data: { registration_enabled: true, email_verify_enabled: true, [flag]: true } }))
+    await expect(client.register({ email: 'user@example.com', password: 'password', verificationCode: '012345' })).rejects.toThrow('native registration is not available')
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  it('normalizes the email and keeps verification requests on the selected gateway', async () => {
+    const secrets = new MemorySecrets()
+    const calls: Array<{ url: string; body?: string }> = []
+    const fetcher: typeof fetch = async (input, init) => {
+      calls.push({ url: String(input), body: typeof init?.body === 'string' ? init.body : undefined })
+      if (String(input).endsWith('/auth/send-verify-code')) return json({ data: { countdown: 60 } })
+      if (String(input).endsWith('/auth/forgot-password')) return json({ data: { message: 'sent' } })
+      throw new Error(`Unexpected request: ${String(input)}`)
+    }
+    const client = new AiCloudClient({ secrets, fetch: fetcher, bases: ['https://hkcode.aicodeme.xyz', 'https://code.aicodeme.xyz'] })
+
+    await expect(client.sendCode({ email: ' User@Example.COM ', gatewayBaseUrl: 'https://code.aicodeme.xyz' })).resolves.toEqual({ countdown: 60, gatewayBaseUrl: 'https://code.aicodeme.xyz' })
+    await expect(client.forgotPassword({ email: ' User@Example.COM ', gatewayBaseUrl: 'https://code.aicodeme.xyz' })).resolves.toBeUndefined()
+    expect(calls).toEqual([
+      expect.objectContaining({ url: 'https://code.aicodeme.xyz/api/v1/auth/send-verify-code', body: JSON.stringify({ email: 'user@example.com' }) }),
+      expect.objectContaining({ url: 'https://code.aicodeme.xyz/api/v1/auth/forgot-password', body: JSON.stringify({ email: 'user@example.com' }) }),
+    ])
+  })
+
+  it('does not replay a one-time registration code through another gateway', async () => {
+    const secrets = new MemorySecrets()
+    const calls: string[] = []
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input)
+      calls.push(url)
+      if (url.endsWith('/settings/public')) return json({ data: { registration_enabled: true, email_verify_enabled: true, invitation_code_enabled: false, turnstile_enabled: false } })
+      if (url.endsWith('/auth/register')) return json({ message: 'invalid or expired verification code' }, 400)
+      throw new Error(`Unexpected request: ${url}`)
+    }
+    const client = new AiCloudClient({ secrets, fetch: fetcher, bases: ['https://hkcode.aicodeme.xyz', 'https://code.aicodeme.xyz'] })
+    await expect(client.register({ email: 'user@example.com', password: 'secret-123', verificationCode: '123456', gatewayBaseUrl: 'https://code.aicodeme.xyz' })).rejects.toThrow(/invalid or expired/)
+    expect(calls.filter(url => url.endsWith('/auth/register'))).toEqual(['https://code.aicodeme.xyz/api/v1/auth/register'])
+  })
   it('discovers groups when the gateway returns an array in data', async () => {
     const secrets = new MemorySecrets()
     const fetcher = vi.fn<typeof fetch>(async (input, init) => {

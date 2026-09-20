@@ -243,6 +243,7 @@ for (const plugin of plugins) {
       '@deepseek-ai/cordis': '^4.0.3',
     },
     devDependencies: {
+      ...(plugin.id === 'account' ? { '@deepseek-ai/dsh-client-ui-renderer': 'workspace:^' } : {}),
       tsdown: '^0.22.2',
       typescript: '6.0.3',
       vitest: '^4.1.10',

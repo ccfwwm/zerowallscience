@@ -10,10 +10,6 @@ import { GithubButton } from './GithubButton.tsx'
 import { WechatStatusButton } from './WechatStatusButton.tsx'
 import { AboutSection } from './AboutSection.tsx'
 
-declare module '@deepseek-ai/dsh-client-ui-slots' {
-  interface LocaleNamespaceMap { zerowall: ZeroWallKey }
-}
-
 export { en, NS, zh, type ZeroWallKey } from './locales.js'
 export { unwrapRemoteResult } from './remote-result.js'
 

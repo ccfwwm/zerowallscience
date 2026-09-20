@@ -490,8 +490,9 @@ describe('ZeroWall Science Electron', () => {
     }
   })
 
-  it('verifies 6.5.0 variable privacy, clipboard, settings chrome and account layout', async () => {
-    const artifacts = join(desktopRoot, 'dist', 'verification-6.5.0')
+  it('verifies variable privacy, clipboard, settings chrome and account layout', async () => {
+    const version = JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')).version
+    const artifacts = join(desktopRoot, 'dist', `verification-${version}`)
     mkdirSync(artifacts, { recursive: true })
     expect(await page.evaluate(() => document.documentElement.dataset.zerowallBoot)).toBe('ready')
     await page.getByRole('button', { name: '设置', exact: true }).click()
@@ -551,6 +552,23 @@ describe('ZeroWall Science Electron', () => {
     expect(await account.evaluate((dialog) => [...dialog.querySelectorAll<HTMLElement>('*')]
       .filter(element => getComputedStyle(element).overflowX === 'visible' && element.scrollWidth > element.clientWidth + 1)
       .map(element => element.textContent?.trim().slice(0, 80) ?? element.tagName))).toEqual([])
+    await account.getByRole('button', { name: '忘记密码？', exact: true }).click()
+    const reset = page.getByRole('dialog', { name: '重置密码', exact: true })
+    await reset.waitFor()
+    expect(await reset.getByLabel('密码', { exact: true }).count()).toBe(0)
+    expect(await reset.getByRole('button', { name: '发送重置邮件', exact: true }).isVisible()).toBe(true)
+    const version = JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')).version
+    const artifacts = join(desktopRoot, 'dist', `verification-${version}`)
+    mkdirSync(artifacts, { recursive: true })
+    await page.screenshot({ path: join(artifacts, 'account-password-reset-mobile.png') })
+    await page.keyboard.press('Escape')
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const settings = page.getByRole('dialog', { name: '设置', exact: true })
+    await settings.getByRole('button', { name: 'AI 云平台', exact: true }).click()
+    await settings.getByRole('heading', { name: '重置密码', exact: true }).waitFor()
+    expect(await settings.getByRole('button', { name: '发送重置邮件', exact: true }).isVisible()).toBe(true)
+    await page.screenshot({ path: join(artifacts, 'account-password-reset-settings.png') })
   })
 })
 

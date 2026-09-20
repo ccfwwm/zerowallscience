@@ -6,6 +6,7 @@ export interface AiCloudPublicConfig {
   emailVerifyEnabled: boolean
   invitationCodeEnabled: boolean
   captchaEnabled: boolean
+  passwordResetEnabled?: boolean
   rechargeUrl?: string
   lowBalanceThreshold?: number
 }
@@ -41,8 +42,10 @@ export interface AiCloudGateway {
 
 export interface AiCloudLoginRequest { email: string; password: string; rememberPassword?: boolean }
 export interface AiCloudSavedLogin { email: string; password: string; baseUrl: string; rememberPassword: true }
-export interface AiCloudRegisterRequest { email: string; password: string; verificationCode: string; rememberPassword?: boolean }
-export interface AiCloudSendCodeRequest { email: string }
+export interface AiCloudRegisterRequest { email: string; password: string; verificationCode: string; rememberPassword?: boolean; gatewayBaseUrl?: string }
+export interface AiCloudSendCodeRequest { email: string; gatewayBaseUrl?: string }
+export interface AiCloudSendCodeResult { countdown: number; gatewayBaseUrl: string }
+export interface AiCloudForgotPasswordRequest { email: string; gatewayBaseUrl?: string }
 
 export interface AiCloudPaymentOrder {
   id: number
