@@ -1,0 +1,50 @@
+{
+  "workflow_id": "r.geo",
+  "steps": [
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "describe",
+        "workflow_id": "r.geo",
+        "operation": "r.geo.catalog"
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "query",
+        "workflow_id": "r.geo",
+        "parameters": {
+          "operation": "r.geo.catalog",
+          "arguments": {}
+        }
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "run",
+        "workflow_id": "r.geo",
+        "parameters": {
+          "operation": "r.geo.download",
+          "arguments": {
+            "accession": "GSE1000",
+            "dry_run": false,
+            "profile": "expression",
+            "include_suppl": false,
+            "project_id": "rmcp-demo"
+          },
+          "request_id": "demo-r-geo-1"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "query": "structured result, no local run_id",
+    "run": "local run_id and status; remote_id only for asynchronous work"
+  },
+  "failure": {
+    "operation": "not.registered",
+    "expected": "not registered; no remote execution"
+  }
+}

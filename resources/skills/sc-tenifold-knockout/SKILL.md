@@ -32,6 +32,8 @@ metadata:
 
 ## 工具调用
 
+远程精确操作、输入 schema 和任务映射见 [操作目录](references/operations.md)，路径以本 Skill 返回的 resourceBase 为根解析。远程提交使用 `tool_dispatch`：`{"name":"research_workflow","arguments":{"action":"describe","workflow_id":"sc.knockout","operation":"r.submit.sc.tenifold.knockout"}}`。run 使用 `parameters={operation,arguments,request_id}`；返回的本地 run_id 用于 status/cancel。远端 scTenifold 状态接口真实参数是 job_id，不是 run_id。保留本地 intake/QC/解释流程。
+
 先通过 tool_search 发现 sc_tenifold_knockout_*，通过 tool_dispatch 调用，保留现有 intake/QC/解释流程。程序化远程敲除入口为 research_workflow，workflow_id=sc.knockout；describe 查询 r.submit.sc.tenifold.knockout 的实际参数。下述旧 r_* 名字表示能力名称，线上调用使用 rmcp 聚合工具及目录返回的 action；本地上传使用 r_files action=upload_workspace。首次上传用户数据需确认。
 
 ## 标准流程
@@ -42,7 +44,7 @@ metadata:
 4. 通过 `sc_tenifold_knockout_validate_dataset` 和远程运行时验证 raw counts、目标基因、维度、基因唯一性及元数据。normalized/X 矩阵不得作为 raw counts。
 5. 通过 `sc_tenifold_knockout_qc` 在 R MCP 执行每样本 QC、doublet/环境 RNA 风险、非肿瘤筛选和 `cell_type × condition` 分层。缺少生物学重复时可继续，但结果必须标记为探索性。
 6. 调用 `sc_tenifold_knockout_plan` 和 `sc_tenifold_knockout_run`。默认 `execution: r-mcp`、`seeds: [123,456]`、`nc_nNet: 10`、`nc_nCells: 500`、`fdr: 0.05`；每个目标、细胞群、种子和子采样独立运行。
-7. 运行前调用远程 `r_validate_sc_tenifold_runtime`，确认 `R.version.string`、`scTenifoldKnk` 版本和 `sessionInfo()`。使用 `r_register_project`、`r_upload_workspace_file` 和 `r_submit_sc_tenifold_knockout`；用 `r_get_sc_tenifold_run`、`r_get_sc_tenifold_manifest`、`r_cancel_sc_tenifold_run` 管理任务。
+7. 使用工作流 `sc.knockout` query `r.validate.sc.tenifold.runtime` 确认运行时。上传用 Host `r_files` 的 upload_workspace；run `r.submit.sc.tenifold.knockout` 提交，status/cancel 使用返回的本地 run_id。排障时使用 describe 返回的 `r.get.sc.tenifold.run`、`r.get.sc.tenifold.manifest` 和 `r.cancel.sc.tenifold.run`，传远端 job_id。
 8. 运行完成后调用 `sc_tenifold_knockout_collect`、`sc_tenifold_knockout_interpret` 和 `sc_tenifold_knockout_figures`。R MCP 必须输出差异调控、显著基因、WT/KO 网络、manifold alignment、稳定性和阴性对照；缺文件时明确报告缺失。
 9. 使用 Bio Tools MCP 查询 GO、Reactome、UniProt 和 PubMed。将结论分为“R 统计观察”“数据库支持的机制证据”“待验证生物学假设”，没有证据就写“无法判断”。
 10. 调用 `sc_tenifold_knockout_report`、`sc_tenifold_knockout_review` 和 `sc_tenifold_knockout_experimental_design`，生成中文研究报告、图注、限制、审核结果和人工实验验证包。

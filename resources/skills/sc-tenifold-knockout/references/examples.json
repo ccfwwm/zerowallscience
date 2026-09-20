@@ -1,0 +1,11 @@
+{
+  "workflow_id": "sc.knockout",
+  "prerequisites": "Upload a validated real raw-count matrix to inputs/counts.rds; verify the requested gene is present. Small parameters below are a computational acceptance profile, not publication settings.",
+  "steps": [
+    {"name":"research_workflow","arguments":{"action":"query","workflow_id":"sc.knockout","parameters":{"operation":"r.validate.sc.tenifold.runtime","arguments":{}}}},
+    {"name":"research_workflow","arguments":{"action":"describe","workflow_id":"sc.knockout","operation":"r.submit.sc.tenifold.knockout"}},
+    {"name":"research_workflow","arguments":{"action":"run","workflow_id":"sc.knockout","parameters":{"operation":"r.submit.sc.tenifold.knockout","arguments":{"project_id":"rmcp-demo","input_path":"inputs/counts.rds","output_path":"sc-tenifold/demo","target":"CD3D","parameters":{"seed":123,"nc_nNet":2,"nc_nCells":100,"td_K":3},"confirm":true},"request_id":"sc-knockout-demo-1"}}}
+  ],
+  "expected":{"run":"local run_id; remote_key=job_id; status uses r.get.sc.tenifold.run; final manifest lists result tables"},
+  "failure":{"condition":"target absent, non-integer counts or unavailable runtime","recovery":"validate input and runtime before a new request; never describe normalized data as raw counts"}
+}

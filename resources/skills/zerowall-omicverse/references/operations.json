@@ -1,0 +1,749 @@
+{
+  "protocol_version": 2,
+  "catalog_version": "2026-09-20.1",
+  "content_sha256": "d97af66a6e1c5035a8a82df1919947bf254f7ab78a1b3f41d3781f443b99a752",
+  "id": "omicverse",
+  "skill": "zerowall-omicverse",
+  "groups": [
+    "omicverse_runtime",
+    "omicverse_catalog",
+    "omicverse_execute",
+    "omicverse_jobs",
+    "omicverse_artifacts"
+  ],
+  "operations": [
+    {
+      "id": "omicverse.status",
+      "public_tool": "omicverse_runtime",
+      "category": "omicverse_runtime",
+      "summary": "Inspect independent CPU environment, queue, version and resource limits.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "omicverse.search",
+      "public_tool": "omicverse_catalog",
+      "category": "omicverse_catalog",
+      "summary": "Search live native and API coverage catalog; unavailable or unverified APIs remain explicit.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "default": ""
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "omicverse.describe",
+      "public_tool": "omicverse_catalog",
+      "category": "omicverse_catalog",
+      "summary": "Get the exact native tool schema or Python API coverage entry.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "capability_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "capability_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "omicverse.run.python",
+      "public_tool": "omicverse_execute",
+      "category": "omicverse_execute",
+      "summary": "Execute Python in the isolated OmicVerse CPU worker. Write outputs in OUTPUT_DIR; shared inputs are read-only.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "request_id": {
+            "$ref": "#/properties/project_id"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000,
+            "default": 1800000
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000000
+          }
+        },
+        "required": [
+          "project_id",
+          "request_id",
+          "confirm",
+          "code"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "id",
+          "job_id"
+        ],
+        "argument": "job_id",
+        "status": "omicverse.get.job",
+        "cancel": "omicverse.cancel.job",
+        "manifest": "omicverse.get.job.manifest",
+        "log": "omicverse.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "omicverse.run.singlecell",
+      "public_tool": "omicverse_execute",
+      "category": "omicverse_execute",
+      "summary": "CPU QC, normalization, PCA, neighbors, UMAP, Leiden, markers and H5AD checkpoint using verified input.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "request_id": {
+            "$ref": "#/properties/project_id"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000,
+            "default": 1800000
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          },
+          "input_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "min_genes": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 200
+          },
+          "max_percent_mt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 20
+          }
+        },
+        "required": [
+          "project_id",
+          "request_id",
+          "confirm",
+          "input_path"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "id",
+          "job_id"
+        ],
+        "argument": "job_id",
+        "status": "omicverse.get.job",
+        "cancel": "omicverse.cancel.job",
+        "manifest": "omicverse.get.job.manifest",
+        "log": "omicverse.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "omicverse.run.bulk",
+      "public_tool": "omicverse_execute",
+      "category": "omicverse_execute",
+      "summary": "PyDESeq2 raw count differential expression with aligned biological replicate metadata.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "request_id": {
+            "$ref": "#/properties/project_id"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000,
+            "default": 1800000
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          },
+          "input_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "metadata_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "factor": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "test": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "request_id",
+          "confirm",
+          "input_path",
+          "metadata_path",
+          "factor",
+          "test",
+          "reference"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "id",
+          "job_id"
+        ],
+        "argument": "job_id",
+        "status": "omicverse.get.job",
+        "cancel": "omicverse.cancel.job",
+        "manifest": "omicverse.get.job.manifest",
+        "log": "omicverse.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "omicverse.run.spatial",
+      "public_tool": "omicverse_execute",
+      "category": "omicverse_execute",
+      "summary": "CPU spatial neighbors and Moran I with Squidpy; requires obsm spatial coordinates.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "request_id": {
+            "$ref": "#/properties/project_id"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000,
+            "default": 1800000
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          },
+          "input_path": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "project_id",
+          "request_id",
+          "confirm",
+          "input_path"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "id",
+          "job_id"
+        ],
+        "argument": "job_id",
+        "status": "omicverse.get.job",
+        "cancel": "omicverse.cancel.job",
+        "manifest": "omicverse.get.job.manifest",
+        "log": "omicverse.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "omicverse.run.native",
+      "public_tool": "omicverse_execute",
+      "category": "omicverse_execute",
+      "summary": "Submit an official P0+P0.5+P2 MCP tool in a persistent project/session; AnnData checkpoints survive restart.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "request_id": {
+            "$ref": "#/properties/project_id"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000,
+            "default": 1800000
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          },
+          "session_id": {
+            "$ref": "#/properties/project_id",
+            "default": "default"
+          },
+          "tool": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "tool_arguments": {
+            "type": "object",
+            "additionalProperties": {},
+            "default": {}
+          }
+        },
+        "required": [
+          "project_id",
+          "request_id",
+          "confirm",
+          "tool"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "id",
+          "job_id"
+        ],
+        "argument": "job_id",
+        "status": "omicverse.get.job",
+        "cancel": "omicverse.cancel.job",
+        "manifest": "omicverse.get.job.manifest",
+        "log": "omicverse.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "omicverse.run.agent",
+      "public_tool": "omicverse_execute",
+      "category": "omicverse_execute",
+      "summary": "Optional official OmicVerse Agent using the Host selected model, endpoint and explicit wire protocol. Credentials are transient.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "request_id": {
+            "$ref": "#/properties/project_id"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000,
+            "default": 1800000
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100000
+          },
+          "input_path": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "base_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "api": {
+            "type": "string",
+            "enum": [
+              "openai-completions",
+              "openai-responses",
+              "anthropic-messages"
+            ]
+          },
+          "api_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "request_id",
+          "confirm",
+          "prompt"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "id",
+          "job_id"
+        ],
+        "argument": "job_id",
+        "status": "omicverse.get.job",
+        "cancel": "omicverse.cancel.job",
+        "manifest": "omicverse.get.job.manifest",
+        "log": "omicverse.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "omicverse.list.jobs",
+      "public_tool": "omicverse_jobs",
+      "category": "omicverse_jobs",
+      "summary": "List durable jobs belonging to one project.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "omicverse.get.job",
+      "public_tool": "omicverse_jobs",
+      "category": "omicverse_jobs",
+      "summary": "Query job status.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "job_id": {
+            "$ref": "#/properties/project_id"
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "omicverse.get.job.log",
+      "public_tool": "omicverse_jobs",
+      "category": "omicverse_jobs",
+      "summary": "Read bounded worker logs.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "job_id": {
+            "$ref": "#/properties/project_id"
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "omicverse.get.job.manifest",
+      "public_tool": "omicverse_artifacts",
+      "category": "omicverse_artifacts",
+      "summary": "Read output paths, MIME, bytes and SHA-256.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "job_id": {
+            "$ref": "#/properties/project_id"
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "omicverse.cancel.job",
+      "public_tool": "omicverse_jobs",
+      "category": "omicverse_jobs",
+      "summary": "Cancel a queued/running job; native session instances are invalidated, checkpoints preserved.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "job_id": {
+            "$ref": "#/properties/project_id"
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id",
+          "confirm"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "omicverse.close.session",
+      "public_tool": "omicverse_runtime",
+      "category": "omicverse_runtime",
+      "summary": "Close an idle native session and release memory; class handles expire, H5AD files remain.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "session_id": {
+            "$ref": "#/properties/project_id"
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "project_id",
+          "session_id",
+          "confirm"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    }
+  ]
+}

@@ -38,6 +38,7 @@ describe('rdatalinux workspace upload bridge', () => {
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
+      vi.spyOn(ctx.zerowallMcp, 'executeCompactCapability').mockResolvedValue({ target: 'mcp__rmcp__r_project', content: [], value: { ok: true } })
       // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
       let connectionChecks = 0
       vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockImplementation(async () => {
@@ -305,4 +306,3 @@ describe('rdatalinux workspace upload bridge', () => {
     }
   })
 })
-

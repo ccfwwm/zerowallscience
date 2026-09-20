@@ -1,0 +1,48 @@
+{
+  "workflow_id": "biomni",
+  "steps": [
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "describe",
+        "workflow_id": "biomni",
+        "operation": "biomni.status"
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "query",
+        "workflow_id": "biomni",
+        "parameters": {
+          "operation": "biomni.status",
+          "arguments": {}
+        }
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "run",
+        "workflow_id": "biomni",
+        "parameters": {
+          "operation": "biomni.run.python",
+          "arguments": {
+            "project_id": "rmcp-demo",
+            "code": "from pathlib import Path\nPath(\"hello.txt\").write_text(\"Biomni remote runtime\")",
+            "confirm": true
+          },
+          "request_id": "demo-biomni-1"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "query": "structured result, no local run_id",
+    "run": "local run_id and status; remote_id only for asynchronous work"
+  },
+  "failure": {
+    "operation": "not.registered",
+    "expected": "not registered; no remote execution"
+  }
+}

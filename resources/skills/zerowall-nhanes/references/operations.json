@@ -1,0 +1,4824 @@
+{
+  "protocol_version": 2,
+  "catalog_version": "2026-09-20.1",
+  "content_sha256": "d97af66a6e1c5035a8a82df1919947bf254f7ab78a1b3f41d3781f443b99a752",
+  "id": "r.nhanes",
+  "skill": "zerowall-nhanes",
+  "groups": [
+    "r_nhanes_catalog",
+    "r_nhanes_analysis",
+    "r_nhanes_artifacts"
+  ],
+  "operations": [
+    {
+      "id": "r.nhanes.catalog",
+      "public_tool": "r_nhanes_catalog",
+      "category": "r_nhanes_catalog",
+      "summary": "List the indexed NHANES cycles, domains, file counts, sizes, and classification summary.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "refresh": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.list.datasets",
+      "public_tool": "r_nhanes_catalog",
+      "category": "r_nhanes_catalog",
+      "summary": "List NHANES files by cycle, domain, or dataset name. Returns paths, formats, sizes, and classifications.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "cycle": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{4}$",
+            "description": "NHANES cycle, for example 2019-2020"
+          },
+          "domain": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "NHANES domain, for example Demographics or Laboratory"
+          },
+          "dataset": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 200
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.search.variables",
+      "public_tool": "r_nhanes_catalog",
+      "category": "r_nhanes_catalog",
+      "summary": "Search NHANES variable names, labels, descriptions, cycles, and domains. Returns bounded metadata, not sample records.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "maxLength": 200,
+            "default": ""
+          },
+          "cycle": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{4}$",
+            "description": "NHANES cycle, for example 2019-2020"
+          },
+          "domain": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "NHANES domain, for example Demographics or Laboratory"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.describe.dataset",
+      "public_tool": "r_nhanes_catalog",
+      "category": "r_nhanes_catalog",
+      "summary": "Describe one NHANES data file, including columns, R types, labels, cycle, domain, size, and classification.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.get.codebook",
+      "public_tool": "r_nhanes_catalog",
+      "category": "r_nhanes_catalog",
+      "summary": "List the codebook, variable-label, and HTML documentation files associated with an NHANES dataset.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.ensure.available",
+      "public_tool": "r_nhanes_catalog",
+      "category": "r_nhanes_catalog",
+      "summary": "Check whether an NHANES dataset is locally available; when absent, return the official CDC download candidates and a queued-download request.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "cycle": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{4}$",
+            "description": "NHANES cycle, for example 2019-2020"
+          },
+          "domain": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "NHANES domain, for example Demographics or Laboratory"
+          },
+          "dataset": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "project_id",
+          "dataset"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": {
+        "id_fields": [
+          "download_job_id",
+          "job_id"
+        ],
+        "argument": "download_job_id",
+        "status": "r.nhanes.get.download.status",
+        "cancel": "r.nhanes.cancel.download"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.nhanes.get.download.status",
+      "public_tool": "r_nhanes_catalog",
+      "category": "r_nhanes_catalog",
+      "summary": "Return the state and progress of an NHANES download request.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "download_job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          }
+        },
+        "required": [
+          "download_job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.cancel.download",
+      "public_tool": "r_nhanes_catalog",
+      "category": "r_nhanes_catalog",
+      "summary": "Cancel a queued NHANES download request. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "download_job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "download_job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.preview",
+      "public_tool": "r_nhanes_catalog",
+      "category": "r_nhanes_catalog",
+      "summary": "Preview bounded rows and selected columns from an NHANES XPT, TSV, DAT, or SAS7BDAT file. Original files are read-only.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "dataset": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+              },
+              "cycle": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{4}$",
+                "description": "NHANES cycle, for example 2019-2020"
+              },
+              "domain": {
+                "type": "string",
+                "maxLength": 80,
+                "description": "NHANES domain, for example Demographics or Laboratory"
+              },
+              "dataset": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "ensure_available": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "max_rows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100
+          }
+        },
+        "required": [
+          "project_id",
+          "dataset"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.query",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Run a bounded parameterized NHANES query with selected columns and filters. Optionally writes a CSV/TSV/RDS result to the project workspace.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "dataset": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+              },
+              "cycle": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{4}$",
+                "description": "NHANES cycle, for example 2019-2020"
+              },
+              "domain": {
+                "type": "string",
+                "maxLength": 80,
+                "description": "NHANES domain, for example Demographics or Laboratory"
+              },
+              "dataset": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "ensure_available": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "column": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "op": {
+                  "type": "string",
+                  "enum": [
+                    "eq",
+                    "ne",
+                    "gt",
+                    "gte",
+                    "lt",
+                    "lte",
+                    "in",
+                    "contains"
+                  ]
+                },
+                "value": {}
+              },
+              "required": [
+                "column",
+                "op"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 50,
+            "default": []
+          },
+          "sort": {
+            "type": "object",
+            "properties": {
+              "column": {
+                "type": "string"
+              },
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "default": "asc"
+              }
+            },
+            "required": [
+              "column"
+            ],
+            "additionalProperties": false
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "default": 100
+          },
+          "output_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "output_format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "tsv",
+              "rds",
+              "parquet"
+            ],
+            "default": "csv"
+          }
+        },
+        "required": [
+          "project_id",
+          "dataset"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.join",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Join two to ten NHANES datasets by SEQN or another key and return bounded rows plus input manifests.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "maxLength": 1024,
+                  "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                },
+                "cycle": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-[0-9]{4}$",
+                  "description": "NHANES cycle, for example 2019-2020"
+                },
+                "domain": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "description": "NHANES domain, for example Demographics or Laboratory"
+                },
+                "dataset": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 500
+                },
+                "ensure_available": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 2,
+            "maxItems": 10
+          },
+          "key": {
+            "type": "string",
+            "default": "SEQN"
+          },
+          "all": {
+            "type": "boolean",
+            "default": false
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "default": 1000
+          },
+          "output_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "output_format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "tsv",
+              "rds",
+              "parquet"
+            ],
+            "default": "csv"
+          }
+        },
+        "required": [
+          "project_id",
+          "datasets"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.merge.cycles",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Run a standard SEQN-based cross-cycle merge using explicit cycle dataset specifications. Returns merged rows and cycle provenance.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "maxLength": 1024,
+                  "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                },
+                "cycle": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-[0-9]{4}$",
+                  "description": "NHANES cycle, for example 2019-2020"
+                },
+                "domain": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "description": "NHANES domain, for example Demographics or Laboratory"
+                },
+                "dataset": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 500
+                },
+                "ensure_available": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 2,
+            "maxItems": 12
+          },
+          "key": {
+            "type": "string",
+            "default": "SEQN"
+          },
+          "all": {
+            "type": "boolean",
+            "default": false
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "default": 1000
+          },
+          "output_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "output_format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "tsv",
+              "rds",
+              "parquet"
+            ],
+            "default": "csv"
+          }
+        },
+        "required": [
+          "project_id",
+          "datasets"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.export.dataset",
+      "public_tool": "r_nhanes_artifacts",
+      "category": "r_nhanes_artifacts",
+      "summary": "Materialize a bounded NHANES query into the project workspace as CSV, TSV, RDS, or Parquet and return a checksum manifest.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "dataset": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+              },
+              "cycle": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{4}$",
+                "description": "NHANES cycle, for example 2019-2020"
+              },
+              "domain": {
+                "type": "string",
+                "maxLength": 80,
+                "description": "NHANES domain, for example Demographics or Laboratory"
+              },
+              "dataset": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "ensure_available": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "column": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "op": {
+                  "type": "string",
+                  "enum": [
+                    "eq",
+                    "ne",
+                    "gt",
+                    "gte",
+                    "lt",
+                    "lte",
+                    "in",
+                    "contains"
+                  ]
+                },
+                "value": {}
+              },
+              "required": [
+                "column",
+                "op"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 50,
+            "default": []
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200000,
+            "default": 10000
+          },
+          "output_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "output_format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "tsv",
+              "rds",
+              "parquet"
+            ],
+            "default": "csv"
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "dataset"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.survey.summary",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Compute NHANES survey-weighted mean or proportion with optional grouping, PSU, strata, and weight variables.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "maxLength": 1024,
+                  "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                },
+                "cycle": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-[0-9]{4}$",
+                  "description": "NHANES cycle, for example 2019-2020"
+                },
+                "domain": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "description": "NHANES domain, for example Demographics or Laboratory"
+                },
+                "dataset": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 500
+                },
+                "ensure_available": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 10
+          },
+          "variable": {
+            "type": "string"
+          },
+          "group_by": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "string",
+            "default": "WTMEC2YR"
+          },
+          "strata": {
+            "type": "string",
+            "default": "SDMVSTRA"
+          },
+          "psu": {
+            "type": "string",
+            "default": "SDMVPSU"
+          },
+          "key": {
+            "type": "string",
+            "default": "SEQN"
+          },
+          "all": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "project_id",
+          "datasets",
+          "variable"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.survey.regression",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Run a validated NHANES survey-weighted linear or logistic regression and return coefficients with standard errors.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "maxLength": 1024,
+                  "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                },
+                "cycle": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-[0-9]{4}$",
+                  "description": "NHANES cycle, for example 2019-2020"
+                },
+                "domain": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "description": "NHANES domain, for example Demographics or Laboratory"
+                },
+                "dataset": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 500
+                },
+                "ensure_available": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 10
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "predictors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "family": {
+            "type": "string",
+            "enum": [
+              "gaussian",
+              "binomial",
+              "quasibinomial"
+            ],
+            "default": "gaussian"
+          },
+          "weight": {
+            "type": "string",
+            "default": "WTMEC2YR"
+          },
+          "strata": {
+            "type": "string",
+            "default": "SDMVSTRA"
+          },
+          "psu": {
+            "type": "string",
+            "default": "SDMVPSU"
+          },
+          "key": {
+            "type": "string",
+            "default": "SEQN"
+          },
+          "all": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "project_id",
+          "datasets",
+          "outcome",
+          "predictors"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.survey.tabulate",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Compute survey-weighted proportions for a categorical NHANES variable.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "maxLength": 1024,
+                  "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                },
+                "cycle": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-[0-9]{4}$",
+                  "description": "NHANES cycle, for example 2019-2020"
+                },
+                "domain": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "description": "NHANES domain, for example Demographics or Laboratory"
+                },
+                "dataset": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 500
+                },
+                "ensure_available": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 10
+          },
+          "variable": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "string",
+            "default": "WTMEC2YR"
+          },
+          "strata": {
+            "type": "string",
+            "default": "SDMVSTRA"
+          },
+          "psu": {
+            "type": "string",
+            "default": "SDMVPSU"
+          },
+          "key": {
+            "type": "string",
+            "default": "SEQN"
+          },
+          "all": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "project_id",
+          "datasets",
+          "variable"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.plot",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Generate an NHANES PNG and return a native MCP image. Supports histogram, density, boxplot, bar, and scatter charts.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "dataset": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+              },
+              "cycle": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{4}$",
+                "description": "NHANES cycle, for example 2019-2020"
+              },
+              "domain": {
+                "type": "string",
+                "maxLength": 80,
+                "description": "NHANES domain, for example Demographics or Laboratory"
+              },
+              "dataset": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500
+              },
+              "ensure_available": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "variable": {
+            "type": "string"
+          },
+          "y": {
+            "type": "string"
+          },
+          "chart": {
+            "type": "string",
+            "enum": [
+              "histogram",
+              "density",
+              "boxplot",
+              "bar",
+              "scatter"
+            ]
+          },
+          "group_by": {
+            "type": "string"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "column": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "op": {
+                  "type": "string",
+                  "enum": [
+                    "eq",
+                    "ne",
+                    "gt",
+                    "gte",
+                    "lt",
+                    "lte",
+                    "in",
+                    "contains"
+                  ]
+                },
+                "value": {}
+              },
+              "required": [
+                "column",
+                "op"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 50,
+            "default": []
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200000,
+            "default": 10000
+          },
+          "output_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 320,
+            "maximum": 4000,
+            "default": 1200
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 240,
+            "maximum": 4000,
+            "default": 800
+          }
+        },
+        "required": [
+          "project_id",
+          "dataset",
+          "variable"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.survey.plot",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Generate a survey-weighted NHANES PNG. Supports weighted histogram, category proportions, and grouped trends with weight, strata, and PSU validation.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "maxLength": 1024,
+                  "description": "Path relative to the NHANES root, for example 2019-2020/Demographics/p_demo.xpt"
+                },
+                "cycle": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-[0-9]{4}$",
+                  "description": "NHANES cycle, for example 2019-2020"
+                },
+                "domain": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "description": "NHANES domain, for example Demographics or Laboratory"
+                },
+                "dataset": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 500
+                },
+                "ensure_available": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 10
+          },
+          "variable": {
+            "type": "string"
+          },
+          "chart": {
+            "type": "string",
+            "enum": [
+              "histogram",
+              "bar",
+              "proportion",
+              "trend"
+            ],
+            "default": "histogram"
+          },
+          "group_by": {
+            "type": "string"
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "column": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "op": {
+                  "type": "string",
+                  "enum": [
+                    "eq",
+                    "ne",
+                    "gt",
+                    "gte",
+                    "lt",
+                    "lte",
+                    "in",
+                    "contains"
+                  ]
+                },
+                "value": {}
+              },
+              "required": [
+                "column",
+                "op"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 50,
+            "default": []
+          },
+          "weight": {
+            "type": "string",
+            "default": "WTMEC2YR"
+          },
+          "strata": {
+            "type": "string",
+            "default": "SDMVSTRA"
+          },
+          "psu": {
+            "type": "string",
+            "default": "SDMVPSU"
+          },
+          "key": {
+            "type": "string",
+            "default": "SEQN"
+          },
+          "all": {
+            "type": "boolean",
+            "default": false
+          },
+          "output_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 320,
+            "maximum": 4000,
+            "default": 1400
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 240,
+            "maximum": 4000,
+            "default": 900
+          }
+        },
+        "required": [
+          "project_id",
+          "datasets",
+          "variable"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.create.analysis.plan",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Save a versioned NHANES analysis plan in the ZeroWall project for later validation and asynchronous execution.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "plan": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "project_id",
+          "name",
+          "plan"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.list.analysis.plans",
+      "public_tool": "r_nhanes_artifacts",
+      "category": "r_nhanes_artifacts",
+      "summary": "List saved NHANES analysis plans for a project.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.get.analysis.plan",
+      "public_tool": "r_nhanes_artifacts",
+      "category": "r_nhanes_artifacts",
+      "summary": "Get one saved NHANES analysis plan, including its structured definition and catalog version.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "plan_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          }
+        },
+        "required": [
+          "project_id",
+          "plan_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.run.analysis.plan",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Validate and asynchronously run a saved NHANES analysis plan. Results include reproducible R code and manifests.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "plan_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 3600000,
+            "default": 1800000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "plan_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "run_id",
+          "id"
+        ],
+        "argument": "run_id",
+        "status": "r.nhanes.get.analysis.run",
+        "cancel": "r.nhanes.cancel.analysis.run",
+        "manifest": "r.nhanes.get.analysis.manifest"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.nhanes.get.analysis.run",
+      "public_tool": "r_nhanes_artifacts",
+      "category": "r_nhanes_artifacts",
+      "summary": "Get the current status and underlying job record for a NHANES analysis run.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          }
+        },
+        "required": [
+          "project_id",
+          "run_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.cancel.analysis.run",
+      "public_tool": "r_nhanes_artifacts",
+      "category": "r_nhanes_artifacts",
+      "summary": "Cancel a queued or running NHANES analysis run. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "run_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.get.analysis.manifest",
+      "public_tool": "r_nhanes_artifacts",
+      "category": "r_nhanes_artifacts",
+      "summary": "List CSV, RDS, PNG, JSON, and generated R script artifacts for a NHANES analysis run.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          }
+        },
+        "required": [
+          "project_id",
+          "run_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.get.analysis.result",
+      "public_tool": "r_nhanes_artifacts",
+      "category": "r_nhanes_artifacts",
+      "summary": "Read a NHANES analysis result file as text, native image, or bounded base64 chunk.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4194304,
+            "default": 1048576
+          }
+        },
+        "required": [
+          "project_id",
+          "run_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.nhanes.table.one",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Run an asynchronous NHANES table_one analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "accession": {
+            "type": "string",
+            "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+            "description": "Public GEO accession, for example GSE1000"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "maxItems": 20
+          },
+          "operation": {
+            "type": "string",
+            "const": "table_one"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "design": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "sample_groups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "feature_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "genes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100000
+          },
+          "ontology": {
+            "type": "string",
+            "enum": [
+              "BP",
+              "MF",
+              "CC"
+            ]
+          },
+          "key_type": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          },
+          "group_by": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "formula": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "event": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "effect_sizes": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "variances": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "normalization": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "harmony": {
+            "type": "boolean"
+          },
+          "batch_field": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "checkpoint": {
+            "type": "boolean",
+            "default": true
+          },
+          "apply_filters": {
+            "type": "boolean"
+          },
+          "min_features": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_features": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "min_counts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_counts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_percent_mt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "nfeatures": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000
+          },
+          "npcs": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "dims": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "resolution": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 10
+          },
+          "markers": {
+            "type": "boolean"
+          },
+          "min_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "logfc_threshold": {
+            "type": "number",
+            "minimum": 0
+          },
+          "doublet_detection": {
+            "type": "boolean"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "treatment": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "matching_method": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "distance": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "ratio": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "caliper": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "m": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "maxit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "REML": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "default": 123
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.nhanes.survival",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Run an asynchronous NHANES survival analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "accession": {
+            "type": "string",
+            "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+            "description": "Public GEO accession, for example GSE1000"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "maxItems": 20
+          },
+          "operation": {
+            "type": "string",
+            "const": "survival"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "design": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "sample_groups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "feature_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "genes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100000
+          },
+          "ontology": {
+            "type": "string",
+            "enum": [
+              "BP",
+              "MF",
+              "CC"
+            ]
+          },
+          "key_type": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          },
+          "group_by": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "formula": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "event": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "effect_sizes": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "variances": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "normalization": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "harmony": {
+            "type": "boolean"
+          },
+          "batch_field": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "checkpoint": {
+            "type": "boolean",
+            "default": true
+          },
+          "apply_filters": {
+            "type": "boolean"
+          },
+          "min_features": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_features": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "min_counts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_counts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_percent_mt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "nfeatures": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000
+          },
+          "npcs": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "dims": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "resolution": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 10
+          },
+          "markers": {
+            "type": "boolean"
+          },
+          "min_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "logfc_threshold": {
+            "type": "number",
+            "minimum": 0
+          },
+          "doublet_detection": {
+            "type": "boolean"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "treatment": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "matching_method": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "distance": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "ratio": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "caliper": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "m": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "maxit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "REML": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "default": 123
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.nhanes.mixed.model",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Run an asynchronous NHANES mixed_model analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "accession": {
+            "type": "string",
+            "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+            "description": "Public GEO accession, for example GSE1000"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "maxItems": 20
+          },
+          "operation": {
+            "type": "string",
+            "const": "mixed_model"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "design": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "sample_groups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "feature_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "genes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100000
+          },
+          "ontology": {
+            "type": "string",
+            "enum": [
+              "BP",
+              "MF",
+              "CC"
+            ]
+          },
+          "key_type": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          },
+          "group_by": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "formula": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "event": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "effect_sizes": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "variances": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "normalization": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "harmony": {
+            "type": "boolean"
+          },
+          "batch_field": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "checkpoint": {
+            "type": "boolean",
+            "default": true
+          },
+          "apply_filters": {
+            "type": "boolean"
+          },
+          "min_features": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_features": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "min_counts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_counts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_percent_mt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "nfeatures": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000
+          },
+          "npcs": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "dims": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "resolution": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 10
+          },
+          "markers": {
+            "type": "boolean"
+          },
+          "min_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "logfc_threshold": {
+            "type": "number",
+            "minimum": 0
+          },
+          "doublet_detection": {
+            "type": "boolean"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "treatment": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "matching_method": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "distance": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "ratio": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "caliper": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "m": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "maxit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "REML": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "default": 123
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.nhanes.multiple.imputation",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Run an asynchronous NHANES multiple_imputation analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "accession": {
+            "type": "string",
+            "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+            "description": "Public GEO accession, for example GSE1000"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "maxItems": 20
+          },
+          "operation": {
+            "type": "string",
+            "const": "multiple_imputation"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "design": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "sample_groups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "feature_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "genes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100000
+          },
+          "ontology": {
+            "type": "string",
+            "enum": [
+              "BP",
+              "MF",
+              "CC"
+            ]
+          },
+          "key_type": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          },
+          "group_by": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "formula": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "event": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "effect_sizes": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "variances": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "normalization": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "harmony": {
+            "type": "boolean"
+          },
+          "batch_field": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "checkpoint": {
+            "type": "boolean",
+            "default": true
+          },
+          "apply_filters": {
+            "type": "boolean"
+          },
+          "min_features": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_features": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "min_counts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_counts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_percent_mt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "nfeatures": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000
+          },
+          "npcs": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "dims": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "resolution": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 10
+          },
+          "markers": {
+            "type": "boolean"
+          },
+          "min_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "logfc_threshold": {
+            "type": "number",
+            "minimum": 0
+          },
+          "doublet_detection": {
+            "type": "boolean"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "treatment": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "matching_method": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "distance": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "ratio": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "caliper": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "m": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "maxit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "REML": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "default": 123
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.nhanes.propensity.score",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Run an asynchronous NHANES propensity_score analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "accession": {
+            "type": "string",
+            "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+            "description": "Public GEO accession, for example GSE1000"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "maxItems": 20
+          },
+          "operation": {
+            "type": "string",
+            "const": "propensity_score"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "design": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "sample_groups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "feature_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "genes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100000
+          },
+          "ontology": {
+            "type": "string",
+            "enum": [
+              "BP",
+              "MF",
+              "CC"
+            ]
+          },
+          "key_type": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          },
+          "group_by": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "formula": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "event": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "effect_sizes": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "variances": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "normalization": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "harmony": {
+            "type": "boolean"
+          },
+          "batch_field": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "checkpoint": {
+            "type": "boolean",
+            "default": true
+          },
+          "apply_filters": {
+            "type": "boolean"
+          },
+          "min_features": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_features": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "min_counts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_counts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_percent_mt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "nfeatures": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000
+          },
+          "npcs": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "dims": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "resolution": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 10
+          },
+          "markers": {
+            "type": "boolean"
+          },
+          "min_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "logfc_threshold": {
+            "type": "number",
+            "minimum": 0
+          },
+          "doublet_detection": {
+            "type": "boolean"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "treatment": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "matching_method": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "distance": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "ratio": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "caliper": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "m": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "maxit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "REML": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "default": 123
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.nhanes.meta.analysis",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Run an asynchronous NHANES meta_analysis analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "accession": {
+            "type": "string",
+            "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+            "description": "Public GEO accession, for example GSE1000"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "maxItems": 20
+          },
+          "operation": {
+            "type": "string",
+            "const": "meta_analysis"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "design": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "sample_groups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "feature_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "genes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100000
+          },
+          "ontology": {
+            "type": "string",
+            "enum": [
+              "BP",
+              "MF",
+              "CC"
+            ]
+          },
+          "key_type": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          },
+          "group_by": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "formula": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "event": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "effect_sizes": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "variances": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "normalization": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "harmony": {
+            "type": "boolean"
+          },
+          "batch_field": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "checkpoint": {
+            "type": "boolean",
+            "default": true
+          },
+          "apply_filters": {
+            "type": "boolean"
+          },
+          "min_features": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_features": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "min_counts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_counts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_percent_mt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "nfeatures": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000
+          },
+          "npcs": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "dims": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "resolution": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 10
+          },
+          "markers": {
+            "type": "boolean"
+          },
+          "min_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "logfc_threshold": {
+            "type": "number",
+            "minimum": 0
+          },
+          "doublet_detection": {
+            "type": "boolean"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "treatment": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "matching_method": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "distance": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "ratio": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "caliper": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "m": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "maxit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "REML": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "default": 123
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.nhanes.generate.km.plot",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Run an asynchronous NHANES generate_km_plot analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "accession": {
+            "type": "string",
+            "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+            "description": "Public GEO accession, for example GSE1000"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "maxItems": 20
+          },
+          "operation": {
+            "type": "string",
+            "const": "generate_km_plot"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "design": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "sample_groups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "feature_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "genes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100000
+          },
+          "ontology": {
+            "type": "string",
+            "enum": [
+              "BP",
+              "MF",
+              "CC"
+            ]
+          },
+          "key_type": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          },
+          "group_by": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "formula": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "event": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "effect_sizes": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "variances": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "normalization": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "harmony": {
+            "type": "boolean"
+          },
+          "batch_field": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "checkpoint": {
+            "type": "boolean",
+            "default": true
+          },
+          "apply_filters": {
+            "type": "boolean"
+          },
+          "min_features": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_features": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "min_counts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_counts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_percent_mt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "nfeatures": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000
+          },
+          "npcs": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "dims": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "resolution": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 10
+          },
+          "markers": {
+            "type": "boolean"
+          },
+          "min_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "logfc_threshold": {
+            "type": "number",
+            "minimum": 0
+          },
+          "doublet_detection": {
+            "type": "boolean"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "treatment": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "matching_method": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "distance": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "ratio": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "caliper": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "m": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "maxit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "REML": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "default": 123
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.nhanes.generate.roc.plot",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Run an asynchronous NHANES generate_roc_plot analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "accession": {
+            "type": "string",
+            "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+            "description": "Public GEO accession, for example GSE1000"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "maxItems": 20
+          },
+          "operation": {
+            "type": "string",
+            "const": "generate_roc_plot"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "design": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "sample_groups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "feature_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "genes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100000
+          },
+          "ontology": {
+            "type": "string",
+            "enum": [
+              "BP",
+              "MF",
+              "CC"
+            ]
+          },
+          "key_type": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          },
+          "group_by": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "formula": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "event": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "effect_sizes": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "variances": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "normalization": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "harmony": {
+            "type": "boolean"
+          },
+          "batch_field": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "checkpoint": {
+            "type": "boolean",
+            "default": true
+          },
+          "apply_filters": {
+            "type": "boolean"
+          },
+          "min_features": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_features": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "min_counts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_counts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_percent_mt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "nfeatures": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000
+          },
+          "npcs": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "dims": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "resolution": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 10
+          },
+          "markers": {
+            "type": "boolean"
+          },
+          "min_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "logfc_threshold": {
+            "type": "number",
+            "minimum": 0
+          },
+          "doublet_detection": {
+            "type": "boolean"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "treatment": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "matching_method": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "distance": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "ratio": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "caliper": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "m": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "maxit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "REML": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "default": 123
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.nhanes.generate.forest.plot",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Run an asynchronous NHANES generate_forest_plot analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "accession": {
+            "type": "string",
+            "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+            "description": "Public GEO accession, for example GSE1000"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "maxItems": 20
+          },
+          "operation": {
+            "type": "string",
+            "const": "generate_forest_plot"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "design": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "sample_groups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "feature_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "genes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100000
+          },
+          "ontology": {
+            "type": "string",
+            "enum": [
+              "BP",
+              "MF",
+              "CC"
+            ]
+          },
+          "key_type": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          },
+          "group_by": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "formula": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "event": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "effect_sizes": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "variances": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "normalization": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "harmony": {
+            "type": "boolean"
+          },
+          "batch_field": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "checkpoint": {
+            "type": "boolean",
+            "default": true
+          },
+          "apply_filters": {
+            "type": "boolean"
+          },
+          "min_features": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_features": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "min_counts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_counts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_percent_mt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "nfeatures": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000
+          },
+          "npcs": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "dims": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "resolution": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 10
+          },
+          "markers": {
+            "type": "boolean"
+          },
+          "min_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "logfc_threshold": {
+            "type": "number",
+            "minimum": 0
+          },
+          "doublet_detection": {
+            "type": "boolean"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "treatment": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "matching_method": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "distance": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "ratio": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "caliper": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "m": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "maxit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "REML": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "default": 123
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.nhanes.create.report",
+      "public_tool": "r_nhanes_analysis",
+      "category": "r_nhanes_analysis",
+      "summary": "Run an asynchronous NHANES create_report analysis using installed R/Bioconductor packages. Validates inputs, records runtime/package versions, and returns a job id; requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "accession": {
+            "type": "string",
+            "pattern": "^(GSE|GSM|GPL)[1-9][0-9]*$",
+            "description": "Public GEO accession, for example GSE1000"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "maxItems": 20
+          },
+          "operation": {
+            "type": "string",
+            "const": "create_report"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "design": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "sample_groups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "feature_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "genes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100000
+          },
+          "ontology": {
+            "type": "string",
+            "enum": [
+              "BP",
+              "MF",
+              "CC"
+            ]
+          },
+          "key_type": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          },
+          "group_by": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "formula": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "event": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "effect_sizes": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "variances": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 1000
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "normalization": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "harmony": {
+            "type": "boolean"
+          },
+          "batch_field": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "checkpoint": {
+            "type": "boolean",
+            "default": true
+          },
+          "apply_filters": {
+            "type": "boolean"
+          },
+          "min_features": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_features": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "min_counts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_counts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_percent_mt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "nfeatures": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000
+          },
+          "npcs": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "dims": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "resolution": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 10
+          },
+          "markers": {
+            "type": "boolean"
+          },
+          "min_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "logfc_threshold": {
+            "type": "number",
+            "minimum": 0
+          },
+          "doublet_detection": {
+            "type": "boolean"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "treatment": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "matching_method": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "distance": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "ratio": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "caliper": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "m": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "maxit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "REML": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "default": 123
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 14400000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    }
+  ]
+}

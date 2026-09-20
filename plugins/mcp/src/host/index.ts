@@ -5,7 +5,7 @@ import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { lstat, mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, open, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { ToolCallId, type ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -426,7 +426,34 @@ export class ZeroWallMcpService extends TypertRemoteService {
           const resolvedSource = await realpath(source)
           if (resolvedSource !== source) throw new Error('local_path must not resolve through a symbolic link.')
           const size = (await stat(source)).size
-          if (size < 1 || size > RDATALINUX_UPLOAD_MAX_BYTES) throw new Error('The local file must be between 1 byte and 100 MiB.')
+          if (size < 1 || size > 20 * 1024 ** 3) throw new Error('The local file must be between 1 byte and 20 GiB.')
+          await service.executeCompactCapability('r.register.project', { project_id: values.project_id, name: values.project_id }, exec)
+          if (size > RDATALINUX_UPLOAD_MAX_BYTES) {
+            const handle = await open(source, 'r')
+            try {
+              const chunk = Buffer.alloc(4_194_304); const hash = createHash('sha256')
+              for (let position = 0; position < size;) { const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, size - position), position); if (!bytesRead) throw new Error('Upload source changed'); hash.update(chunk.subarray(0, bytesRead)); position += bytesRead }
+              const sha256 = hash.digest('hex')
+              const transfer_id = createHash('sha256').update(JSON.stringify([values.project_id, values.remote_path, sha256, size])).digest('hex')
+              const transfer = async (action: string, fields: Record<string, unknown> = {}) => {
+                const response = await service.ctx.tools.execute({ signal: exec.signal, callId: ToolCallId(`r-transfer-${transfer_id}-${action}`), name: remoteName, arguments: { action: 'r.upload.transfer', arguments: { project_id: values.project_id, transfer_id, action, confirm: true, ...fields } }, parent: exec.token, agent: exec.agent })
+                return service.compactPayload(response, remoteName)
+              }
+              const started = await transfer('start', { path: values.remote_path, bytes: size, sha256 })
+              let position = Number(started.offset)
+              if (!Number.isSafeInteger(position) || position < 0 || position > size) throw new Error('Invalid upload resume offset')
+              while (position < size) {
+                exec.signal.throwIfAborted()
+                const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, size - position), position)
+                if (!bytesRead) throw new Error('Upload source changed')
+                const response = await transfer('chunk', { offset: position, data_base64: chunk.subarray(0, bytesRead).toString('base64') })
+                if (Number(response.offset) !== position + bytesRead) throw new Error('Upload offset acknowledgement mismatch')
+                position += bytesRead
+              }
+              const committed = await transfer('finish')
+              return { projectId: values.project_id!, localPath: requested, remotePath: values.remote_path!, bytes: size, sha256, transferId: transfer_id, remote: committed }
+            } finally { await handle.close() }
+          }
           const bytes = await readFile(source)
           const sha256 = createHash('sha256').update(bytes).digest('hex')
           const nested = await service.ctx.tools.execute({
@@ -465,10 +492,28 @@ export class ZeroWallMcpService extends TypertRemoteService {
           : resolvedPayload
         const expectedBytes = Number(manifest.bytes)
         const expectedSha256 = typeof manifest.sha256 === 'string' ? manifest.sha256.toLowerCase() : ''
-        if (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0 || expectedBytes > RDATALINUX_UPLOAD_MAX_BYTES) throw new Error('The remote file must be between 0 bytes and 100 MiB.')
+        if (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0 || expectedBytes > 20 * 1024 ** 3) throw new Error('The remote file must be between 0 bytes and 20 GiB.')
         if (!/^[a-f0-9]{64}$/u.test(expectedSha256)) throw new Error('The remote file manifest has no valid SHA-256.')
-        const chunks: Buffer[] = []
+        const parent = dirname(source)
+        let currentParent = workspace
+        for (const component of relative(workspace, parent).split(/[\\/]/u).filter(Boolean)) {
+          currentParent = join(currentParent, component)
+          try {
+            const info = await lstat(currentParent)
+            if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Download directories must not be symbolic links.')
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+            await mkdir(currentParent)
+          }
+        }
+        const parentContainment = relative(workspace, await realpath(parent))
+        if (parentContainment === '..' || parentContainment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(parentContainment)) throw new Error('local_path resolves outside the current workspace.')
+        const temporary = `${source}.${Date.now()}.download-partial`
+        const output = await open(temporary, 'wx')
+        const hash = createHash('sha256')
         let offset = 0
+        let sha256: string
+        try {
         while (offset < expectedBytes) {
           const chunkResult = await service.ctx.tools.execute({
             signal: exec.signal,
@@ -484,30 +529,33 @@ export class ZeroWallMcpService extends TypertRemoteService {
           if (typeof chunkPayload.data_base64 !== 'string' || chunkPayload.data_base64 === '') throw new Error(`The remote file chunk at offset ${offset} has no data.`)
           const chunk = Buffer.from(chunkPayload.data_base64, 'base64')
           if (chunk.length < 1 || offset + chunk.length > expectedBytes) throw new Error(`The remote file chunk at offset ${offset} has an invalid length.`)
-          chunks.push(chunk)
+          let written = 0
+          while (written < chunk.length) {
+            const progress = await output.write(chunk, written, chunk.length - written)
+            if (progress.bytesWritten === 0) throw new Error('Local download write made no progress.')
+            written += progress.bytesWritten
+          }
+          hash.update(chunk)
           offset += chunk.length
         }
-        const bytes = Buffer.concat(chunks)
-        const sha256 = createHash('sha256').update(bytes).digest('hex')
-        if (bytes.length !== expectedBytes || sha256 !== expectedSha256) throw new Error('The downloaded file does not match its remote Manifest.')
-        const parent = dirname(source)
-        const resolvedParent = await realpath(parent).catch(async error => {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-          return resolve(parent)
-        })
-        const parentContainment = relative(workspace, resolvedParent)
-        if (parentContainment === '..' || parentContainment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(parentContainment)) throw new Error('local_path resolves outside the current workspace.')
-        await mkdir(parent, { recursive: true })
+        sha256 = hash.digest('hex')
+        if (offset !== expectedBytes || sha256 !== expectedSha256) throw new Error('The downloaded file does not match its remote Manifest.')
+        await output.sync()
+        await output.close()
         try {
           const existing = await lstat(source)
           if (!existing.isFile() || existing.isSymbolicLink()) throw new Error('local_path must resolve to a regular, non-symbolic-link file.')
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
         }
-        await writeFile(source, bytes)
+        await rename(temporary, source)
+        } finally {
+          await output.close()
+          await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error })
+        }
         return sourceRequest === undefined
-          ? { projectId: values.project_id!, localPath: requested, requestedRemotePath: values.remote_path!, remotePath: resolvedRemotePath, name: basename(source), bytes: bytes.length, sha256 }
-          : { moduleId: sourceRequest.moduleId, sourcePath: resolvedRemotePath, localPath: requested, name: basename(source), bytes: bytes.length, sha256 }
+          ? { projectId: values.project_id!, localPath: requested, requestedRemotePath: values.remote_path!, remotePath: resolvedRemotePath, name: basename(source), bytes: expectedBytes, sha256 }
+          : { moduleId: sourceRequest.moduleId, sourcePath: resolvedRemotePath, localPath: requested, name: basename(source), bytes: expectedBytes, sha256 }
       },
     }) as any)
     this.recordsReady = this.seedBundledServers().then(() => {
@@ -601,6 +649,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
     const parsed = JSON.parse(text.text) as unknown
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`${target} returned an invalid catalog`)
     return parsed as Record<string, JsonValue>
+  }
+
+  async workflowRequest(action: string, args: unknown, exec: any): Promise<unknown> {
+    await this.ensureConnected('rmcp')
+    const target = 'mcp__rmcp__r_runtime'
+    const result = await this.ctx.tools.execute({ callId: ToolCallId(`${exec.callId}:${action}`), name: target, arguments: { action, arguments: args }, agent: exec.agent, parent: exec.token, rootCallId: exec.rootCallId ?? exec.callId, signal: exec.signal })
+    if (result.isError) throw new Error(result.content.filter(block => block.type === 'text').map(block => block.text).join('\n'))
+    return this.compactPayload(result, target)
   }
 
   async searchCompactCapabilities(query: string, detailId: string | undefined, limit: number, exec: any): Promise<CompactCapabilityRecord[]> {
@@ -1492,4 +1548,3 @@ export default { apply }
 function isManagedMcpName(name: string): boolean {
   return ['rmcp', 'huagongshe', 'zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher'].includes(name)
 }
-

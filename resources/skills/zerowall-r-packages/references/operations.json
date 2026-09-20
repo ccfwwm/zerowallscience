@@ -1,0 +1,190 @@
+{
+  "protocol_version": 2,
+  "catalog_version": "2026-09-20.1",
+  "content_sha256": "d97af66a6e1c5035a8a82df1919947bf254f7ab78a1b3f41d3781f443b99a752",
+  "id": "r.packages",
+  "skill": "zerowall-r-packages",
+  "groups": [
+    "r_packages"
+  ],
+  "operations": [
+    {
+      "id": "r.get.package.status",
+      "public_tool": "r_packages",
+      "category": "r_packages",
+      "summary": "Return installed versions and library paths for selected R packages. Read-only.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9.]+$"
+            },
+            "minItems": 1,
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "packages"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.ensure.analysis.packages",
+      "public_tool": "r_packages",
+      "category": "r_packages",
+      "summary": "Ensure approved R/Bioconductor analysis packages are installed in the managed global library. Requires administrator authorization and confirm=true; DuckDB and Arrow are only checked and are not installed by this operation.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9.]+$"
+            },
+            "minItems": 1,
+            "maxItems": 30
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "packages"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.list.packages",
+      "public_tool": "r_packages",
+      "category": "r_packages",
+      "summary": "List installed R packages and versions visible to the remote R worker across the global and system library paths.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.install.packages",
+      "public_tool": "r_packages",
+      "category": "r_packages",
+      "summary": "Install validated CRAN packages into the global R library under a serial package lock. Requires administrator authorization and confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9.]+$"
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "packages"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.uninstall.packages",
+      "public_tool": "r_packages",
+      "category": "r_packages",
+      "summary": "Uninstall validated packages from the global R library under a serial package lock. Requires administrator authorization and confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9.]+$"
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "packages"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    }
+  ]
+}

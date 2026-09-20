@@ -1,0 +1,52 @@
+{
+  "workflow_id": "figureya",
+  "steps": [
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "describe",
+        "workflow_id": "figureya",
+        "operation": "figureya.search"
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "query",
+        "workflow_id": "figureya",
+        "parameters": {
+          "operation": "figureya.search",
+          "arguments": {
+            "q": "volcano"
+          }
+        }
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "run",
+        "workflow_id": "figureya",
+        "parameters": {
+          "operation": "figureya.create.plan",
+          "arguments": {
+            "project_id": "rmcp-demo",
+            "action": "plan",
+            "mode": "custom_r",
+            "code": "png(\"plot.png\"); plot(1:3, c(2,4,7)); dev.off()",
+            "confirm": true
+          },
+          "request_id": "demo-figureya-1"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "query": "structured result, no local run_id",
+    "run": "local run_id and status; remote_id only for asynchronous work"
+  },
+  "failure": {
+    "operation": "not.registered",
+    "expected": "not registered; no remote execution"
+  }
+}

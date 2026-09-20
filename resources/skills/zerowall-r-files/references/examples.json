@@ -1,0 +1,51 @@
+{
+  "workflow_id": "r.files",
+  "steps": [
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "describe",
+        "workflow_id": "r.files",
+        "operation": "r.list.directory"
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "query",
+        "workflow_id": "r.files",
+        "parameters": {
+          "operation": "r.list.directory",
+          "arguments": {
+            "project_id": "rmcp-demo"
+          }
+        }
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "run",
+        "workflow_id": "r.files",
+        "parameters": {
+          "operation": "r.write.file",
+          "arguments": {
+            "project_id": "rmcp-demo",
+            "path": "input.csv",
+            "content": "x,y\n1,2\n2,4\n",
+            "confirm": true
+          },
+          "request_id": "demo-r-files-1"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "query": "structured result, no local run_id",
+    "run": "local run_id and status; remote_id only for asynchronous work"
+  },
+  "failure": {
+    "operation": "not.registered",
+    "expected": "not registered; no remote execution"
+  }
+}

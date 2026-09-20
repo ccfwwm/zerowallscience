@@ -6,6 +6,8 @@ allowed-tools: tool_search tool_dispatch
 
 数据库检索（PubMed、UniProt、注释、变异、公共数据）优先 Bio Tools；本地序列、文件、统计和图表使用 BioGenie；复杂 Agent、服务器数据湖和远程计算使用 zerowall-rbioagent。不要为了交叉验证无差别地调用多个同功能后端。
 
+AnnData、单细胞、空间和多组学专项分析使用 zerowall-omicverse；远程科研全局入口及 ID/文件约定见 zerowall-rmcp。OmicVerse 使用独立远程环境，与 Biomni 共享已完成的数据资源；不在本地科学环境安装 OmicVerse。NHANES 权重分析继续使用 zerowall-nhanes。
+
 用 tool_search 发现工具，用 tool_dispatch 执行：
 
 - Bio Tools：先 bio_search 检索 capability_id 与参数，再调用其 public_tool，传入 capability_id 和 arguments。

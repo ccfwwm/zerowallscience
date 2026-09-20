@@ -1,0 +1,49 @@
+{
+  "workflow_id": "r.nhanes",
+  "steps": [
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "describe",
+        "workflow_id": "r.nhanes",
+        "operation": "r.nhanes.catalog"
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "query",
+        "workflow_id": "r.nhanes",
+        "parameters": {
+          "operation": "r.nhanes.catalog",
+          "arguments": {}
+        }
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "run",
+        "workflow_id": "r.nhanes",
+        "parameters": {
+          "operation": "r.nhanes.ensure.available",
+          "arguments": {
+            "cycle": "2017-2018",
+            "domain": "Demographics",
+            "dataset": "DEMO_J",
+            "project_id": "rmcp-demo"
+          },
+          "request_id": "demo-r-nhanes-1"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "query": "structured result, no local run_id",
+    "run": "local run_id and status; remote_id only for asynchronous work"
+  },
+  "failure": {
+    "operation": "not.registered",
+    "expected": "not registered; no remote execution"
+  }
+}

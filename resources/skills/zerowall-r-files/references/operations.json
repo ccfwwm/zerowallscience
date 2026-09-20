@@ -1,0 +1,678 @@
+{
+  "protocol_version": 2,
+  "catalog_version": "2026-09-20.1",
+  "content_sha256": "d97af66a6e1c5035a8a82df1919947bf254f7ab78a1b3f41d3781f443b99a752",
+  "id": "r.files",
+  "skill": "zerowall-r-files",
+  "groups": [
+    "r_files"
+  ],
+  "operations": [
+    {
+      "id": "r.upload.transfer",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "Host resumable upload: start/status/chunk/finish, at most 4 MiB per chunk and 20 GiB per file. SHA-256 checked before atomic commit; existing destinations are not overwritten.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "start",
+              "status",
+              "chunk",
+              "finish"
+            ]
+          },
+          "transfer_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "bytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 21474836480
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "data_base64": {
+            "type": "string",
+            "maxLength": 5592416
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "action",
+          "transfer_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.list.directory",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "List bounded metadata for files and directories inside a project workspace. Symbolic links are reported but cannot be followed.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.create.directory",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "Create a directory inside a project workspace. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.delete.path",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "Delete a file or directory tree inside a project workspace. Project roots cannot be deleted. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.read.file",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "Read a project file. Text is returned as text; PNG, JPEG, GIF, and WebP are automatically returned as native MCP image content without requiring base64 in the tool arguments; other binary files return metadata and a bounded chunk plan.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "max_chars": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2000000,
+            "default": 256000
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.get.file.manifest",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "Return file size, MIME type, SHA-256, and modification time without transferring file content.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.resolve.file",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "Resolve an exact project file path. FigureYa result-relative paths are mapped to the newest durable figureya/<job_id>/ artifact and returned with its Manifest.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.read.file.chunk",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "Read one base64 file chunk. Chunks are at most 4 MiB and include offset, next_offset, EOF, total size, and SHA-256.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4194304,
+            "default": 1048576
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.read.image",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "Return a PNG, JPEG, GIF, or WebP as a native MCP image content block plus checksum metadata. Images are limited to 8 MiB.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8388608,
+            "default": 8388608
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.write.file",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "Write UTF-8 source code or text inside a project. Requires confirm=true and returns a checksum manifest.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 20000000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "content"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.upload.file",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "Upload one base64-encoded file of at most 100 MiB (decoded binary size). Requires confirm=true. For larger files, use server-side transfer or split the file before upload.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "data_base64": {
+            "type": "string",
+            "maxLength": 139810152
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "data_base64"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.upload.workspace.file",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "兼容别名：上传一个 base64 文件到项目工作区。需要 confirm=true。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "data_base64": {
+            "type": "string",
+            "maxLength": 139810152
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "data_base64"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.download.file",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "Download a project file. Images that fit the inline limit are returned as native MCP image content; larger or non-image binaries return a manifest and bounded base64 chunk plan for r_read_file_chunk.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4194304,
+            "default": 1048576
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.read.data",
+      "public_tool": "r_files",
+      "category": "r_files",
+      "summary": "Preview bounded CSV, JSON, RDS, or Parquet data with column types and truncation metadata.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "json",
+              "rds",
+              "parquet"
+            ]
+          },
+          "max_rows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "default": 100
+          }
+        },
+        "required": [
+          "project_id",
+          "format"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    }
+  ]
+}

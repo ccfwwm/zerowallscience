@@ -1,0 +1,49 @@
+{
+  "workflow_id": "omicverse",
+  "steps": [
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "describe",
+        "workflow_id": "omicverse",
+        "operation": "omicverse.status"
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "query",
+        "workflow_id": "omicverse",
+        "parameters": {
+          "operation": "omicverse.status",
+          "arguments": {}
+        }
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "run",
+        "workflow_id": "omicverse",
+        "parameters": {
+          "operation": "omicverse.run.singlecell",
+          "arguments": {
+            "project_id": "rmcp-demo",
+            "request_id": "singlecell-demo",
+            "input_path": "data:OmicVerse/pbmc3k_raw.h5ad",
+            "confirm": true
+          },
+          "request_id": "demo-omicverse-1"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "query": "structured result, no local run_id",
+    "run": "local run_id and status; remote_id only for asynchronous work"
+  },
+  "failure": {
+    "operation": "not.registered",
+    "expected": "not registered; no remote execution"
+  }
+}

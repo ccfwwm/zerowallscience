@@ -1,0 +1,37 @@
+{
+  "workflow_id": "r.packages",
+  "steps": [
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "describe",
+        "workflow_id": "r.packages",
+        "operation": "r.get.package.status"
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "query",
+        "workflow_id": "r.packages",
+        "parameters": {
+          "operation": "r.get.package.status",
+          "arguments": {
+            "packages": [
+              "Matrix",
+              "Seurat"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "expected": {
+    "query": "structured result, no local run_id",
+    "run": "local run_id and status; remote_id only for asynchronous work"
+  },
+  "failure": {
+    "operation": "not.registered",
+    "expected": "not registered; no remote execution"
+  }
+}

@@ -1,0 +1,1350 @@
+{
+  "protocol_version": 2,
+  "catalog_version": "2026-09-20.1",
+  "content_sha256": "d97af66a6e1c5035a8a82df1919947bf254f7ab78a1b3f41d3781f443b99a752",
+  "id": "r.compute",
+  "skill": "zerowall-rplatform",
+  "groups": [
+    "r_runtime",
+    "r_project",
+    "r_execute",
+    "r_jobs"
+  ],
+  "operations": [
+    {
+      "id": "r.health",
+      "public_tool": "r_runtime",
+      "category": "r_runtime",
+      "summary": "Check remote R platform availability, R version, and package library.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.runtime.capabilities",
+      "public_tool": "r_runtime",
+      "category": "r_runtime",
+      "summary": "Inspect the production R runtime, Bioconductor version, installed package versions, and supported analysis/plot/report capabilities. Read-only.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.validate.analysis.environment",
+      "public_tool": "r_runtime",
+      "category": "r_runtime",
+      "summary": "Validate that the requested R/Bioconductor packages are available before submitting a reproducible analysis. Returns missing packages without starting a job.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9.]+$"
+            },
+            "maxItems": 50
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.get.runtime.profile",
+      "public_tool": "r_runtime",
+      "category": "r_runtime",
+      "summary": "Return the reproducibility profile identifier and exact package snapshot for the production R runtime.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.register.project",
+      "public_tool": "r_project",
+      "category": "r_project",
+      "summary": "Create or verify an isolated workspace for a ZeroWall project. Returns project root and persistent working directory.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "project_id",
+          "name"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.create.reproduction.record",
+      "public_tool": "r_project",
+      "category": "r_project",
+      "summary": "Register a paper or literature reproduction with citation/DOI, research question, data references, plan metadata, and seed. The record is persisted in the project and linked conceptually to later GEO/NHANES runs. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "citation": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "doi": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "geo",
+              "nhanes",
+              "other"
+            ],
+            "default": "other"
+          },
+          "research_question": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "data_references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "maxItems": 100
+          },
+          "analysis_plan_id": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 10000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "title"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.list.reproduction.records",
+      "public_tool": "r_project",
+      "category": "r_project",
+      "summary": "List paper/literature reproduction records saved in a ZeroWall project.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 100
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.get.reproduction.record",
+      "public_tool": "r_project",
+      "category": "r_project",
+      "summary": "Get one reproduction record with citation, data references, analysis plan linkage, and notes.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "record_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          }
+        },
+        "required": [
+          "project_id",
+          "record_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.update.reproduction.record",
+      "public_tool": "r_project",
+      "category": "r_project",
+      "summary": "Update citation, DOI, target figures/tables, data references, notes, or linked analysis plans for a reproduction record. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "record_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "record": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "record_id",
+          "record"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.list.reproduction.runs",
+      "public_tool": "r_project",
+      "category": "r_project",
+      "summary": "List analysis and comparison runs linked to a reproduction record.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "record_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 100
+          }
+        },
+        "required": [
+          "project_id",
+          "record_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.compare.reproduction.runs",
+      "public_tool": "r_project",
+      "category": "r_project",
+      "summary": "Compare two project result files as a table or figure. Tables report row/column alignment and numeric errors; figures report pixel MSE, SSIM, optional OCR, and classified differences. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "record_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "table",
+              "figure"
+            ],
+            "default": "table"
+          },
+          "reference_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "reproduced_path": {
+            "$ref": "#/properties/reference_path"
+          },
+          "diff_output_path": {
+            "$ref": "#/properties/reference_path",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "tolerance": {
+            "type": "number",
+            "minimum": 0,
+            "default": 1e-8
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "record_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.compare.figures",
+      "public_tool": "r_project",
+      "category": "r_project",
+      "summary": "Compare two paper/reproduction images with dimensions, SHA-256, pixel error, SSIM approximation, OCR when tesseract is installed, and a diff image.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "record_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "reference_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "reproduced_path": {
+            "$ref": "#/properties/reference_path"
+          },
+          "diff_output_path": {
+            "$ref": "#/properties/reference_path",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "record_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.compare.tables",
+      "public_tool": "r_project",
+      "category": "r_project",
+      "summary": "Compare paper/reproduction CSV, TSV, TXT, or RDS tables with row/column alignment and absolute/mean numeric errors.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "record_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "reference_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "reproduced_path": {
+            "$ref": "#/properties/reference_path"
+          },
+          "tolerance": {
+            "type": "number",
+            "minimum": 0,
+            "default": 1e-8
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "record_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.export.reproduction.bundle",
+      "public_tool": "r_project",
+      "category": "r_project",
+      "summary": "Export a reproduction archive containing record metadata, plans, scripts, manifests, figures, tables, reports, and provenance. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "record_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "output_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "record_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.generate.report",
+      "public_tool": "r_execute",
+      "category": "r_execute",
+      "summary": "Generate a paper-style HTML/PDF report from a structured GEO or NHANES analysis plan. Uses Quarto when installed and records an explicit fallback when unavailable; asynchronous and requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "geo",
+              "nhanes"
+            ]
+          },
+          "plan": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "source",
+          "plan"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.generate.figure",
+      "public_tool": "r_execute",
+      "category": "r_execute",
+      "summary": "Generate a publication figure through a GEO or NHANES analysis plan. The result is an asynchronous job with PNG/PDF and provenance artifacts; requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "geo",
+              "nhanes"
+            ]
+          },
+          "plan": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "source",
+          "plan"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.generate.table",
+      "public_tool": "r_execute",
+      "category": "r_execute",
+      "summary": "Generate a publication table through a structured GEO or NHANES query/analysis plan and save reproducible CSV/RDS outputs; requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "geo",
+              "nhanes"
+            ]
+          },
+          "plan": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "source",
+          "plan"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.set.working.directory",
+      "public_tool": "r_project",
+      "category": "r_project",
+      "summary": "Persist a project-relative working directory used by later R jobs.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.get.working.directory",
+      "public_tool": "r_project",
+      "category": "r_project",
+      "summary": "Return the persistent working directory for a project.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.submit.script",
+      "public_tool": "r_execute",
+      "category": "r_execute",
+      "summary": "Submit an R script path or inline R code for asynchronous execution and immediately return a persistent job id. Results written to R_PLATFORM_RESULT_DIR become downloadable artifacts. For large single-cell QC, Harmony, UMAP, or clustering, prefer r_geo_single_cell_pipeline so the run has four-hour limits, progress phases, and checkpoints. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "script_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 2000000
+          },
+          "working_directory": {
+            "$ref": "#/properties/script_path",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 14400000,
+            "default": 1800000
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.convert.anndata",
+      "public_tool": "r_execute",
+      "category": "r_execute",
+      "summary": "Convert Seurat/SCE RDS and AnnData H5AD using the R worker and pinned Python. Emits a conversion report and checks assay values, dimensions and cell/gene order.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "input_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "rds_to_h5ad",
+              "h5ad_to_rds"
+            ]
+          },
+          "assay": {
+            "type": "string",
+            "minLength": 1,
+            "default": "RNA"
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "direction"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.get.job",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "Get current state, timestamps, exit code, failure reason, and result summary for an R job.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.wait.job",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "Wait up to 30 seconds for a queued or running job to change state, then return its latest record. Call again while still queued or running.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 30000,
+            "default": 10000
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.list.jobs",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "List up to 100 recent asynchronous R jobs for a project.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.get.job.log",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "Read bounded stdout and stderr tails for an R job.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4000000,
+            "default": 256000
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.cancel.job",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "Request cancellation of a queued or running R job. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.get.job.manifest",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "List result files produced in R_PLATFORM_RESULT_DIR with MIME type, byte size, and SHA-256.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.get.job.result",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "Read a job result by manifest path. Text is returned as text, images as native MCP images, and other binary data as bounded base64 chunks.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4194304,
+            "default": 1048576
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    }
+  ]
+}
