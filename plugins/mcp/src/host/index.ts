@@ -109,7 +109,7 @@ export function providerCredentialNames(provider: string): string[] {
   if (/openai|gpt/u.test(normalized)) add('OPENAI_API_KEY')
   if (/anthropic|claude/u.test(normalized)) add('ANTHROPIC_API_KEY')
   if (/google|gemini|vertex/u.test(normalized)) add('GOOGLE_API_KEY')
-  if (/moonshot|kimi/u.test(normalized)) add('MOONSHOT_API_KEY')
+  if (/moonshot|kimi/u.test(normalized)) { add('MOONSHOT_API_KEY'); add('KIMI_API_KEY') }
   if (/qwen|aliyun|dashscope/u.test(normalized)) add('DASHSCOPE_API_KEY')
   if (/zhipu|glm/u.test(normalized)) add('ZHIPUAI_API_KEY')
   if (/minimax/u.test(normalized)) add('MINIMAX_API_KEY')
@@ -169,6 +169,22 @@ export class ZeroWallMcpService extends TypertRemoteService {
     // Expose a narrow Host-only resolver so the bridge can inject the active
     // route key into Biomni execution calls without putting it in session
     // messages, connection records, or tool descriptions.
+    ctx.provide('zerowallMcpRuntimeEnvironment', {
+      resolve: async (server: string): Promise<Record<string, string>> => {
+        if (server !== 'rmcp') return {}
+        const record = service.projects().listMcpServers().find(item => item.serverName === server)
+        const output: Record<string, string> = {}
+        for (const [name, ref] of Object.entries(record?.envRefs ?? {})) {
+          if (!/^[A-Z][A-Z0-9_]{0,99}$/u.test(name) || /^(?:BIOMNI_|R_PLATFORM_|LD_|PYTHON|ZERO|XDG_|LC_)/u.test(name)
+            || ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'BASH_ENV', 'ENV', 'SHELLOPTS', 'NODE_OPTIONS', 'LLM_SOURCE'].includes(name)) throw new Error(`INVALID_RUNTIME_ENV: ${name}`)
+          const key = `${ENVIRONMENT_SECRET_PREFIX}${ref.toLowerCase()}`
+          const value = await service.secrets.get(key) ?? process.env[ref]
+          if (typeof value !== 'string' || !value.trim()) throw new Error(`MISSING_RUNTIME_ENV: ${name}`)
+          output[name] = value
+        }
+        return output
+      },
+    } as never)
     ctx.provide('zerowallMcpCredentialResolver', {
       resolve: async (provider: string, _model: string): Promise<string | undefined> => {
         // Managed ZeroWall AI Cloud routes keep their key in the account

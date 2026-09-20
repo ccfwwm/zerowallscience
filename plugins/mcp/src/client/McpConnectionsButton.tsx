@@ -434,6 +434,7 @@ export function McpConnectionsButton(props: Props) {
               <Field label={props.t('mcp.workingDirectory')}><input value={draft.cwd} onChange={event => setDraft({ ...draft, cwd: event.target.value })} placeholder="C:\\science" /></Field>
               <Field label={props.t('mcp.environmentReferences')}><textarea rows={3} value={draft.envRefs} onChange={event => setDraft({ ...draft, envRefs: event.target.value })} placeholder="API_TOKEN=ZEROWALL_MCP_TOKEN" /></Field>
             </> : <>
+              {draft.serverName === 'rmcp' && <Field label="转发的科研变量（名称=环境变量引用）"><textarea rows={3} value={draft.envRefs} onChange={event => setDraft({ ...draft, envRefs: event.target.value })} placeholder="NCBI_API_KEY=NCBI_API_KEY" /></Field>}
               <Field label="URL"><input value={draft.url} onChange={event => setDraft({ ...draft, url: event.target.value })} placeholder="https://mcp.example.com/api" /></Field>
               <Field label={props.t('mcp.headerReferences')}><textarea rows={3} value={draft.headerRefs} onChange={event => setDraft({ ...draft, headerRefs: event.target.value })} placeholder="Authorization=ZEROWALL_MCP_AUTHORIZATION" /></Field>
             </>}
@@ -528,7 +529,7 @@ function inputFromDraft(draft: Draft, t: TranslateNS<typeof NS>): McpServerInput
     command: draft.transport === 'stdio' ? draft.command : '',
     args: draft.transport === 'stdio' ? parseLines(draft.args) : [],
     cwd: draft.transport === 'stdio' ? draft.cwd : '',
-    envRefs: draft.transport === 'stdio' ? parseReferences(draft.envRefs, t('mcp.environmentReferences'), ENVIRONMENT_TARGET) : {},
+    envRefs: draft.transport === 'stdio' || draft.serverName === 'rmcp' ? parseReferences(draft.envRefs, t('mcp.environmentReferences'), ENVIRONMENT_TARGET) : {},
     url: draft.transport === 'streamable-http' ? draft.url : '',
     headerRefs: draft.transport === 'streamable-http' ? parseReferences(draft.headerRefs, t('mcp.headerReferences'), HTTP_HEADER_TARGET) : {},
     toolCallTimeoutMs: positive(draft.toolCallTimeoutMs, t('mcp.toolTimeout')),
