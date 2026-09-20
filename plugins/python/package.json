@@ -94,7 +94,8 @@
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
-    "@zerowallscience/integrity-runtime": "workspace:^"
+    "@zerowallscience/integrity-runtime": "workspace:^",
+    "@zerowallscience/research-store": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.3"

@@ -1,4 +1,5 @@
 import { ManagedGenerations } from './managed-generations.js'
+import { registerResearchWorkflow } from './research-workflow.js'
 import type { Context, Fiber } from '@deepseek-ai/cordis'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -163,6 +164,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   constructor(ctx: Context) {
     super(ctx, 'zerowallMcp')
     this.managed = new ManagedGenerations(ctx, () => managedEnvironmentRecord()?.root)
+    registerResearchWorkflow(ctx, this)
     const service = this
     // Biomni execution runs through the DSH MCP bridge, but its model key is
     // owned by ZeroWall AI Cloud rather than the DSH credential-local store.
@@ -893,6 +895,12 @@ export class ZeroWallMcpService extends TypertRemoteService {
     }
   }
 
+  @Remote('pendingEditors')
+  pendingEditors(): Array<{ artifact_id: string; url: string; sessionId: string; cwd: string; createdAt: number }> { return this.managed.ketcher.list() }
+
+  @Remote('acknowledgeEditor')
+  acknowledgeEditor(id: string): void { this.managed.ketcher.acknowledge(id) }
+
   private activationId = ''
   private activationBusy = false
   private async prepareEnvironmentTransaction(): Promise<void> {
@@ -942,7 +950,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
     const projects = this.projects()
     // Migrate legacy rdatalinux namespaces while preserving settings.
     for (const server of projects.listMcpServers()) {
-      if (['rdatalinux_biomni', 'rdatalinux_r_platform', 'rbioagent', 'rplatform', 'rplotfigure'].includes(server.serverName)) {
+      if (['rdatalinux_biomni', 'rdatalinux_r_platform', 'rbioagent', 'rplatform', 'rplotfigure'].includes(server.serverName)
+        && server.transport === 'streamable-http'
+        && [RDATALINUX_R_MCP_URL, RDATALINUX_R_MCP_LEGACY_URL].includes(server.url ?? '')
+        && server.headerRefs?.Authorization === RDATALINUX_R_MCP_AUTHORIZATION_ENV) {
         const existing = projects.listMcpServers().find(candidate => candidate.serverName === RDATALINUX_SERVER_NAME)
         if (existing === undefined) projects.updateMcpServer(server.id, { serverName: RDATALINUX_SERVER_NAME, name: RDATALINUX_SERVER_NAME })
         else if (existing.id !== server.id) projects.deleteMcpServer(server.id)
@@ -1435,7 +1446,11 @@ function resolveManagedLaunch(command: string): { command: string; args: string[
   const root = managedEnvironmentRecord()?.root
   if (!root || !['zerowall-managed:bio-tools', 'zerowall-managed:ketcher', 'zerowall-managed:scimaster'].includes(command)) return undefined
   if (command === 'zerowall-managed:bio-tools') return { command: join(root, 'bio-tools', 'python', 'python.exe'), args: [join(root, 'bio-tools', 'run_server.py'), 'mcp_bio'], cwd: join(root, 'bio-tools') }
-  if (command === 'zerowall-managed:ketcher') return { command: process.execPath, args: [join(root, 'ketcher-chemistry', 'server.js')], cwd: join(root, 'ketcher-chemistry') }
+  if (command === 'zerowall-managed:ketcher') {
+    const bundled = process.env.ZEROWALL_KETCHER_ROOT
+    const ketcherRoot = bundled && existsSync(join(bundled, 'server.js')) ? bundled : join(root, 'ketcher-chemistry')
+    return { command: process.execPath, args: [join(ketcherRoot, 'server.js')], cwd: ketcherRoot }
+  }
   return { command: process.execPath, args: [join(root, 'sci', 'zerowall-mcp-launcher.cjs')], cwd: join(root, 'sci') }
 }
 

@@ -1,3 +1,4 @@
+import { attachPythonBroker } from './python-broker.js'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -401,6 +402,8 @@ if (ownsInstance) app.whenReady().then(async () => {
   publishStartup({ progress: 25, message: '正在准备本地运行环境' })
   await mkdir(mcpEnvironmentRoot, { recursive: true })
   process.env.ZEROWALL_PYTHON_ROOT = mcpEnvironmentRoot
+  process.env.ZEROWALL_BIOGENIE_ROOT = app.isPackaged ? join(process.resourcesPath, 'biogenie') : join(findWorkspaceRoot(), 'resources', 'biogenie')
+  process.env.ZEROWALL_KETCHER_ROOT = app.isPackaged ? join(process.resourcesPath, 'ketcher-chemistry') : join(findWorkspaceRoot(), 'resources', 'mcp', 'ketcher-chemistry')
   // Compatibility for older bundled plugins and already-running sessions.
   process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = mcpEnvironmentRoot
   // Do not block the entire desktop when the OS credential provider is not
@@ -450,7 +453,8 @@ if (ownsInstance) app.whenReady().then(async () => {
     onChildStarted: (child) => {
       const disposeCredential = attachCredentialBroker(child, credentialVault)
       const disposeDesktop = attachDesktopBridge(child)
-      return () => { disposeCredential(); disposeDesktop() }
+      const disposePython = attachPythonBroker(child, () => mcpEnvironment)
+      return () => { disposeCredential(); disposeDesktop(); disposePython() }
     },
     onChanged: (snapshot) => {
       if (snapshot.phase === 'ready' && navigation === undefined) {

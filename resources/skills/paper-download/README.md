@@ -38,7 +38,7 @@ against the actual source text.
   reach author-deposited full texts on ResearchGate using your own session
   cookies. See [`docs/ACQUISITION_HEADFUL.md`](docs/ACQUISITION_HEADFUL.md)
 - **Extended sources** (up to 17) — disabled by default and **strict opt-in**
-  only, see [`DISCLAIMER.md`](DISCLAIMER.md)
+  only, see `DISCLAIMER.md`（上游参考文件未随包附带；不要作为本地执行依赖）
 - **19 mechanical invariants** — automated registry health check with
   safe auto-fix for cosmetic drift
 - **Inverted writing workflow** — researches and reads first, writes
@@ -79,7 +79,7 @@ academic indexing and full-text platforms.
 Shadow-library activation is **explicit** and **per-session**. A
 disclaimer prints to stderr on first use. The user is responsible
 for legal compliance in their jurisdiction. See
-[`DISCLAIMER.md`](DISCLAIMER.md).
+`DISCLAIMER.md`（上游参考文件未随包附带；不要作为本地执行依赖）.
 
 Anna's Archive now answers the plain HTTP route with an anti-bot
 challenge, and its file server rejects a headless browser. The browser
@@ -94,14 +94,14 @@ container recipe and the scheduled-job command.
 
 | MCP | Coverage | Status |
 |---|---|---|
-| **paper-search MCP** | Unified API over 22 platforms above | **Required** for SOTA writing — install from git (see [`INSTALL.md`](INSTALL.md)) |
+| **paper-search MCP** | Unified API over 22 platforms above | **Required** for SOTA writing — install from git (see `INSTALL.md`（上游参考文件未随包附带；不要作为本地执行依赖）) |
 | **NotebookLM MCP** | Books corpus (Q&A with citations) | Optional — `RESEARCH_ENABLE_NOTEBOOKLM=1` |
 | **RTFM MCP** | Local indexed corpus (code, docs, research) | Optional — failure correlation only |
 
 > ⚠️ **Do not install `paper-search-mcp` from PyPI** — the published
 > version (`0.1.3`) is severely outdated (13 / 63 tools, no OpenAlex,
 > no Crossref, no Semantic Scholar). Use the git HEAD recipe in
-> [`INSTALL.md`](INSTALL.md#install-the-paper-search-mcp-required-for-sota-writing).
+> `INSTALL.md`（上游安装参考未随包附带；ZeroWall 使用内置检索入口）.
 
 ## Quick start
 
@@ -138,7 +138,7 @@ chmod 600 ~/.config/paper-trail/env
 ```
 
 Per-project shell overrides take priority. For complete configuration,
-see [`INSTALL.md`](INSTALL.md).
+see `INSTALL.md`（上游参考文件未随包附带；不要作为本地执行依赖）.
 
 ### Verify install
 
@@ -226,9 +226,9 @@ for the worker engine internals.
   browser-based acquisition in a headless container (virtual display,
   scheduled job)
 - [`docs/LEGAL.md`](docs/LEGAL.md) — licensing and attribution
-- [`DISCLAIMER.md`](DISCLAIMER.md) — shadow libraries opt-in policy
-- [`NOTICE.md`](NOTICE.md) — third-party attributions
-- [`CHANGELOG.md`](CHANGELOG.md) — version history
+- `DISCLAIMER.md`（上游参考文件未随包附带；不要作为本地执行依赖） — shadow libraries opt-in policy
+- `NOTICE.md`（上游参考文件未随包附带；不要作为本地执行依赖） — third-party attributions
+- `CHANGELOG.md`（上游参考文件未随包附带；不要作为本地执行依赖） — version history
 
 ## Configuration via environment variables
 
@@ -258,12 +258,12 @@ The file is optional; if absent the whitelist is empty.
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT — see `LICENSE`（上游参考文件未随包附带；不要作为本地执行依赖）.
 
 ## Acknowledgments
 
 This plugin builds on patterns and components from several open-source
-projects in the Claude Code ecosystem. See [`NOTICE.md`](NOTICE.md)
+projects in the Claude Code ecosystem. See `NOTICE.md`（上游参考文件未随包附带；不要作为本地执行依赖）
 for detailed attributions.
 
 ## Contributing

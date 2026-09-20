@@ -1,0 +1,4201 @@
+{
+  "generatedAt": "2026-09-20T09:23:51.888Z",
+  "summary": {
+    "total": 240,
+    "issues": 0,
+    "brokenLinks": 0,
+    "scripts": 537
+  },
+  "skills": [
+    {
+      "name": "academic-paper",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "academic-paper-reviewer",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "academic-pipeline",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "adaptyv",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "aeon",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "agent-infini",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "alphafold2",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "GPU",
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "analysis-workflow",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "analytical-method-validation",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/analytical-method-validation/scripts/check_accuracy_precision.py",
+        "resources/skills/analytical-method-validation/scripts/check_bioanalytical_run.py",
+        "resources/skills/analytical-method-validation/scripts/check_detection_limits.py",
+        "resources/skills/analytical-method-validation/scripts/check_response.py",
+        "resources/skills/analytical-method-validation/scripts/compare_methods.py",
+        "resources/skills/analytical-method-validation/scripts/plan_validation.py",
+        "resources/skills/analytical-method-validation/scripts/_catalog.py",
+        "resources/skills/analytical-method-validation/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "anndata",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "arboreto",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/arboreto/scripts/basic_grn_inference.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-3w",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-abstract",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-cache-invalidate",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-citation-check",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-disclosure",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-format-convert",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-full",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-lit-review",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-mark-read",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-outline",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-plan",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-rebuttal-audit",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-reviewer",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-revision",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-revision-coach",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ars-unmark-read",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "astropy",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bear-counter",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bear-map",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bear-onboard",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bear-propose",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bear-review",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bear-scoop",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bear-support",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bear-trace",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "benchling-integration",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bibliometric-analysis",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/bibliometric-analysis/bibliometrics.py"
+      ],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bids",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/bids/scripts/update_schema.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bio-plausibility",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bioinfor-figure-export",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "R",
+        "python",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bioinfor-literature-search-digest",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bioinfor-public-data-access",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/bioinfor-public-data-access/kernel.py",
+        "resources/skills/bioinfor-public-data-access/scripts/public_data_plan.py"
+      ],
+      "runtimes": [
+        "python",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "biopython",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bioservices",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/bioservices/scripts/batch_id_converter.py",
+        "resources/skills/bioservices/scripts/compound_cross_reference.py",
+        "resources/skills/bioservices/scripts/pathway_analysis.py",
+        "resources/skills/bioservices/scripts/protein_analysis_workflow.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "boltz",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "GPU",
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "borzoi",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "CUDA",
+        "GPU",
+        "python",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "browser-use",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "bulk-rnaseq",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/bulk-rnaseq/scripts/build_counts_matrix.py",
+        "resources/skills/bulk-rnaseq/scripts/validate_samplesheet.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "docker"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "cellxgene-census",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "chai1",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "GPU",
+        "python",
+        "CUDA"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "cirq",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "citation-reviewer",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/citation-reviewer/citation_check.py"
+      ],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "clinical-decision-support",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/clinical-decision-support/scripts/cohort_table_generator.py",
+        "resources/skills/clinical-decision-support/scripts/decision_logic_traceability.py",
+        "resources/skills/clinical-decision-support/scripts/deidentification_checklist.py",
+        "resources/skills/clinical-decision-support/scripts/evidence_profile_check.py",
+        "resources/skills/clinical-decision-support/scripts/model_biomarker_evaluation.py",
+        "resources/skills/clinical-decision-support/scripts/survival_plan_validator.py",
+        "resources/skills/clinical-decision-support/scripts/validate_cds_artifact.py",
+        "resources/skills/clinical-decision-support/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "node"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "clinical-reports",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/clinical-reports/scripts/check_deidentification.py",
+        "resources/skills/clinical-reports/scripts/consistency_checker.py",
+        "resources/skills/clinical-reports/scripts/format_adverse_events.py",
+        "resources/skills/clinical-reports/scripts/generate_report_template.py",
+        "resources/skills/clinical-reports/scripts/provenance_validator.py",
+        "resources/skills/clinical-reports/scripts/terminology_validator.py",
+        "resources/skills/clinical-reports/scripts/validate_case_report.py",
+        "resources/skills/clinical-reports/scripts/validate_trial_report.py",
+        "resources/skills/clinical-reports/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "cobrapy",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "code-organization",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv",
+        "conda",
+        "GPU",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "compute-env-setup",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "R",
+        "conda",
+        "CUDA",
+        "GPU",
+        "node"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "customize",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "dask",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "datamol",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [
+        "references\\reactions_data.md -> =[O:4]",
+        "references\\reactions_data.md -> =[O:4]"
+      ],
+      "issues": []
+    },
+    {
+      "name": "deep-research",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "deepchem",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/deepchem/scripts/graph_neural_network.py",
+        "resources/skills/deepchem/scripts/predict_solubility.py",
+        "resources/skills/deepchem/scripts/transfer_learning.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "CUDA"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "deepspot-m",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "CUDA",
+        "GPU",
+        "python",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "deeptools",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/deeptools/scripts/validate_files.py",
+        "resources/skills/deeptools/scripts/workflow_generator.py"
+      ],
+      "runtimes": [
+        "python",
+        "conda",
+        "uv",
+        "GPU"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "depmap",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "diffdock",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "dnanexus-integration",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/dnanexus-integration/scripts/inspect_dxpy.py",
+        "resources/skills/dnanexus-integration/scripts/validate_dxapp.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "domain-check",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/domain-check/domain_check.py"
+      ],
+      "runtimes": [
+        "python",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "esm",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "esmfold2",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "CUDA",
+        "GPU",
+        "uv",
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "etetoolkit",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/etetoolkit/scripts/quick_visualize.py",
+        "resources/skills/etetoolkit/scripts/tree_operations.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "node"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "evo2",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "CUDA",
+        "GPU",
+        "python",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "experimental-design",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/experimental-design/scripts/doe_designs.py",
+        "resources/skills/experimental-design/scripts/randomization.py"
+      ],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "exploratory-data-analysis",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/exploratory-data-analysis/scripts/capability_manifest.py",
+        "resources/skills/exploratory-data-analysis/scripts/distribution_sensitivity.py",
+        "resources/skills/exploratory-data-analysis/scripts/eda_analyzer.py",
+        "resources/skills/exploratory-data-analysis/scripts/image_inspector.py",
+        "resources/skills/exploratory-data-analysis/scripts/missingness_leakage_audit.py",
+        "resources/skills/exploratory-data-analysis/scripts/report_scaffold.py",
+        "resources/skills/exploratory-data-analysis/scripts/sequence_inspector.py",
+        "resources/skills/exploratory-data-analysis/scripts/tabular_profile.py",
+        "resources/skills/exploratory-data-analysis/scripts/_capabilities.py",
+        "resources/skills/exploratory-data-analysis/scripts/_common.py",
+        "resources/skills/exploratory-data-analysis/scripts/_structured.py",
+        "resources/skills/exploratory-data-analysis/scripts/_tabular.py",
+        "resources/skills/exploratory-data-analysis/scripts/__init__.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "fair-esm2",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "CUDA",
+        "GPU",
+        "python",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "figure-composer",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/figure-composer/kernel.py"
+      ],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "figure-provenance",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/figure-provenance/figure_provenance.py"
+      ],
+      "runtimes": [
+        "python",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "figure-style",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/figure-style/kernel.py"
+      ],
+      "runtimes": [
+        "python",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "flowio",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/flowio/scripts/inspect_fcs.py"
+      ],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "fluidsim",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/fluidsim/scripts/budget_summary.py",
+        "resources/skills/fluidsim/scripts/grid_resource_estimator.py",
+        "resources/skills/fluidsim/scripts/output_inventory.py",
+        "resources/skills/fluidsim/scripts/restart_compatibility.py",
+        "resources/skills/fluidsim/scripts/simulation_dry_run.py",
+        "resources/skills/fluidsim/scripts/solver_config_validator.py",
+        "resources/skills/fluidsim/scripts/_common.py",
+        "resources/skills/fluidsim/scripts/_schema.py",
+        "resources/skills/fluidsim/scripts/__init__.py"
+      ],
+      "runtimes": [
+        "GPU",
+        "python",
+        "uv",
+        "conda",
+        "CUDA"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "geniml",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/geniml/scripts/bed_validator.py",
+        "resources/skills/geniml/scripts/consensus_plan.py",
+        "resources/skills/geniml/scripts/corpus_auditor.py",
+        "resources/skills/geniml/scripts/embedding_plan.py",
+        "resources/skills/geniml/scripts/model_artifact_inspector.py",
+        "resources/skills/geniml/scripts/tokenizer_compatibility.py",
+        "resources/skills/geniml/scripts/_common.py",
+        "resources/skills/geniml/scripts/__init__.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "genomic-coordinates",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/genomic-coordinates/scripts/audit_intervals.py",
+        "resources/skills/genomic-coordinates/scripts/check_contigs.py",
+        "resources/skills/genomic-coordinates/scripts/convert_coords.py",
+        "resources/skills/genomic-coordinates/scripts/normalize_variant.py",
+        "resources/skills/genomic-coordinates/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "genomic-intelligence",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "GPU",
+        "python",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "geomaster",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "R",
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "geopandas",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/geopandas/scripts/crs_reprojection_plan.py",
+        "resources/skills/geopandas/scripts/export_plan.py",
+        "resources/skills/geopandas/scripts/geometry_validity_report.py",
+        "resources/skills/geopandas/scripts/sensitive_coordinates_checklist.py",
+        "resources/skills/geopandas/scripts/spatial_join_audit.py",
+        "resources/skills/geopandas/scripts/vector_inventory.py",
+        "resources/skills/geopandas/scripts/_common.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "gget",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/gget/scripts/batch_sequence_analysis.py",
+        "resources/skills/gget/scripts/enrichment_pipeline.py",
+        "resources/skills/gget/scripts/gene_analysis.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ginkgo-cloud-lab",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "glycoengineering",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "gpt-image-generator",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "gtars",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/gtars/scripts/artifact_inspector.py",
+        "resources/skills/gtars/scripts/bed_validator.py",
+        "resources/skills/gtars/scripts/coverage_preflight.py",
+        "resources/skills/gtars/scripts/execution_plan.py",
+        "resources/skills/gtars/scripts/refget_digest_plan.py",
+        "resources/skills/gtars/scripts/tokenizer_manifest.py",
+        "resources/skills/gtars/scripts/_common.py",
+        "resources/skills/gtars/scripts/__init__.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "histolab",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "hugging-science",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/hugging-science/scripts/fetch_catalog.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "hypogenic",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/hypogenic/scripts/audit_dataset.py",
+        "resources/skills/hypogenic/scripts/evaluate_local.py",
+        "resources/skills/hypogenic/scripts/inspect_outputs.py",
+        "resources/skills/hypogenic/scripts/plan_run.py",
+        "resources/skills/hypogenic/scripts/validate_config.py",
+        "resources/skills/hypogenic/scripts/_common.py",
+        "resources/skills/hypogenic/scripts/__init__.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "hypothesis-generation",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/hypothesis-generation/scripts/audit_evidence_ledger.py",
+        "resources/skills/hypothesis-generation/scripts/check_falsification_controls.py",
+        "resources/skills/hypothesis-generation/scripts/check_operationalization.py",
+        "resources/skills/hypothesis-generation/scripts/generate_preregistration_scaffold.py",
+        "resources/skills/hypothesis-generation/scripts/lint_causal_claims.py",
+        "resources/skills/hypothesis-generation/scripts/validate_hypothesis_schema.py",
+        "resources/skills/hypothesis-generation/scripts/validate_prediction_matrix.py",
+        "resources/skills/hypothesis-generation/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "image-base64-render",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "imaging-data-commons",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/imaging-data-commons/scripts/check_version.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "indication-dossier",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "iso-standards-readiness",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/iso-standards-readiness/scripts/audit_document_records.py",
+        "resources/skills/iso-standards-readiness/scripts/check_capa.py",
+        "resources/skills/iso-standards-readiness/scripts/check_qmsr_transition.py",
+        "resources/skills/iso-standards-readiness/scripts/check_supplier_controls.py",
+        "resources/skills/iso-standards-readiness/scripts/check_traceability.py",
+        "resources/skills/iso-standards-readiness/scripts/gap_analyzer.py",
+        "resources/skills/iso-standards-readiness/scripts/validate_evidence_manifest.py",
+        "resources/skills/iso-standards-readiness/scripts/validate_scope_intake.py",
+        "resources/skills/iso-standards-readiness/scripts/_catalog.py",
+        "resources/skills/iso-standards-readiness/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "labarchive-integration",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/labarchive-integration/scripts/entry_operations.py",
+        "resources/skills/labarchive-integration/scripts/notebook_operations.py",
+        "resources/skills/labarchive-integration/scripts/setup_config.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "lamindb",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "large-file",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/large-file/large_file_probe.py"
+      ],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "latchbio-integration",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/latchbio-integration/scripts/inspect_latch_sdk.py"
+      ],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "latex-posters",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/latex-posters/scripts/generate_schematic.py",
+        "resources/skills/latex-posters/scripts/generate_schematic_ai.py",
+        "resources/skills/latex-posters/scripts/review_poster.sh"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ligandmpnn",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "GPU",
+        "python",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "liteparse",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/liteparse/scripts/batch_parse_dir.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "literature-review",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/literature-review/kernel.py"
+      ],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "local-env-setup",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "uv",
+        "python",
+        "conda",
+        "GPU"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "managed-model-endpoints",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "managing-pixi-environments",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "conda",
+        "GPU",
+        "R",
+        "CUDA",
+        "python",
+        "Rscript"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "markdown-mermaid-writing",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "node"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "markitdown",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/markitdown/scripts/batch_convert.py",
+        "resources/skills/markitdown/scripts/convert_literature.py",
+        "resources/skills/markitdown/scripts/inspect_installation.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "matchms",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/matchms/scripts/library_search.py"
+      ],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "matlab",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/matlab/scripts/generate_function_scaffold.py",
+        "resources/skills/matlab/scripts/inventory_mat_file.py",
+        "resources/skills/matlab/scripts/plan_batch_command.py",
+        "resources/skills/matlab/scripts/plan_python_compatibility.py",
+        "resources/skills/matlab/scripts/reproducibility_report.py",
+        "resources/skills/matlab/scripts/scan_m_code.py",
+        "resources/skills/matlab/scripts/validate_project_manifest.py",
+        "resources/skills/matlab/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "matplotlib",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/matplotlib/scripts/plot_template.py",
+        "resources/skills/matplotlib/scripts/style_configurator.py"
+      ],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "medchem",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/medchem/scripts/filter_molecules.py"
+      ],
+      "runtimes": [
+        "python",
+        "conda",
+        "GPU",
+        "uv"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "method-choice",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "mineru-document-parser",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "molecular-dynamics",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "CUDA",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "molfeat",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ncats-arax",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/ncats-arax/scripts/arax_client.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "node"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "networkx",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "R",
+        "node"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "neurokit2",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/neurokit2/scripts/ecg_hrv_pipeline.py",
+        "resources/skills/neurokit2/scripts/eda_pipeline.py",
+        "resources/skills/neurokit2/scripts/generate_synthetic.py",
+        "resources/skills/neurokit2/scripts/inspect_signal.py",
+        "resources/skills/neurokit2/scripts/plan_epochs.py",
+        "resources/skills/neurokit2/scripts/validate_multimodal.py",
+        "resources/skills/neurokit2/scripts/_common.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "neuropixels-analysis",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/neuropixels-analysis/assets/analysis_template.py",
+        "resources/skills/neuropixels-analysis/scripts/compute_metrics.py",
+        "resources/skills/neuropixels-analysis/scripts/explore_recording.py",
+        "resources/skills/neuropixels-analysis/scripts/export_to_phy.py",
+        "resources/skills/neuropixels-analysis/scripts/neuropixels_pipeline.py",
+        "resources/skills/neuropixels-analysis/scripts/preprocess_recording.py",
+        "resources/skills/neuropixels-analysis/scripts/run_sorting.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "CUDA"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "nextflow",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "docker"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "omero-integration",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/omero-integration/scripts/export_image_metadata.py",
+        "resources/skills/omero-integration/scripts/inventory.py",
+        "resources/skills/omero-integration/scripts/omero_common.py",
+        "resources/skills/omero-integration/scripts/plan_transfer.py",
+        "resources/skills/omero-integration/scripts/validate_config.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "onekgpd",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/onekgpd/scripts/onekgpd_api.py",
+        "resources/skills/onekgpd/scripts/onekgpd_meta.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "ontology-term-resolution",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/ontology-term-resolution/scripts/ols_client.py",
+        "resources/skills/ontology-term-resolution/scripts/resolve_terms.py",
+        "resources/skills/ontology-term-resolution/scripts/validate_terms.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "open-notebook",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/open-notebook/scripts/chat_interaction.py",
+        "resources/skills/open-notebook/scripts/notebook_management.py",
+        "resources/skills/open-notebook/scripts/source_ingestion.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "docker"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "openfold3",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "CUDA",
+        "GPU",
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "openpiv",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/openpiv/scripts/analyze.py",
+        "resources/skills/openpiv/scripts/runner.py",
+        "resources/skills/openpiv/scripts/run_example.py",
+        "resources/skills/openpiv/scripts/__init__.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "opentrons-integration",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/opentrons-integration/scripts/absorbance_reader_template.py",
+        "resources/skills/opentrons-integration/scripts/basic_protocol_template.py",
+        "resources/skills/opentrons-integration/scripts/ot2_basic_protocol_template.py",
+        "resources/skills/opentrons-integration/scripts/pcr_setup_template.py",
+        "resources/skills/opentrons-integration/scripts/runtime_parameters_template.py",
+        "resources/skills/opentrons-integration/scripts/serial_dilution_template.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "optimize-for-gpu",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "GPU",
+        "CUDA",
+        "python",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pacsomatic",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/pacsomatic/scripts/run_pacsomatic.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "paper-download",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/paper-download/adapters/base.py",
+        "resources/skills/paper-download/adapters/flat.py",
+        "resources/skills/paper-download/adapters/obsidian.py",
+        "resources/skills/paper-download/adapters/zotero.py",
+        "resources/skills/paper-download/adapters/__init__.py",
+        "resources/skills/paper-download/hooks/post_edit_ref_check.py",
+        "resources/skills/paper-download/hooks/post_edit_sota_check.py",
+        "resources/skills/paper-download/hooks/pre_save_sota_check.py",
+        "resources/skills/paper-download/hooks/session_end_doctor.py",
+        "resources/skills/paper-download/hooks/_hook_env.py",
+        "resources/skills/paper-download/lib/acquire/publisher.py",
+        "resources/skills/paper-download/lib/acquire/publisher_headful.py",
+        "resources/skills/paper-download/lib/acquire/researchgate.py",
+        "resources/skills/paper-download/lib/acquire/__init__.py",
+        "resources/skills/paper-download/lib/archive_org_helper.py",
+        "resources/skills/paper-download/lib/browser_session.py",
+        "resources/skills/paper-download/lib/download_books.py",
+        "resources/skills/paper-download/lib/metadata_clean.py",
+        "resources/skills/paper-download/lib/oa_finder.py",
+        "resources/skills/paper-download/lib/s2_resolver.py",
+        "resources/skills/paper-download/lib/shadow/annas_archive.py",
+        "resources/skills/paper-download/lib/shadow/annas_archive_helper.py",
+        "resources/skills/paper-download/lib/shadow/annas_headful.py",
+        "resources/skills/paper-download/lib/shadow/annas_scidb.py",
+        "resources/skills/paper-download/lib/shadow/libgen.py",
+        "resources/skills/paper-download/lib/shadow/mirrors.py",
+        "resources/skills/paper-download/lib/shadow/scihub.py",
+        "resources/skills/paper-download/lib/shadow/__init__.py",
+        "resources/skills/paper-download/lib/validate_pdf_content.py",
+        "resources/skills/paper-download/lib/__init__.py",
+        "resources/skills/paper-download/pipeline/acquire.py",
+        "resources/skills/paper-download/pipeline/breakers.py",
+        "resources/skills/paper-download/pipeline/cascade.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/base.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/base_search.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/biorxiv.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/citeseerx.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/dblp.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/doaj.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/europepmc.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/iacr.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/medrxiv.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/oaipmh.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/openaire.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/paper.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/pmc.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/semantic.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/ssrn.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/utils.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/zenodo.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/_pscfg.py",
+        "resources/skills/paper-download/pipeline/cascade_sources/__init__.py",
+        "resources/skills/paper-download/pipeline/cli.py",
+        "resources/skills/paper-download/pipeline/config.py",
+        "resources/skills/paper-download/pipeline/dispatcher.py",
+        "resources/skills/paper-download/pipeline/doctor.py",
+        "resources/skills/paper-download/pipeline/events.py",
+        "resources/skills/paper-download/pipeline/identify.py",
+        "resources/skills/paper-download/pipeline/ingest.py",
+        "resources/skills/paper-download/pipeline/invariants.py",
+        "resources/skills/paper-download/pipeline/journal.py",
+        "resources/skills/paper-download/pipeline/linkify.py",
+        "resources/skills/paper-download/pipeline/linter_wrapper.py",
+        "resources/skills/paper-download/pipeline/lock.py",
+        "resources/skills/paper-download/pipeline/paper_search_acquire.py",
+        "resources/skills/paper-download/pipeline/preflight.py",
+        "resources/skills/paper-download/pipeline/purge.py",
+        "resources/skills/paper-download/pipeline/registry.py",
+        "resources/skills/paper-download/pipeline/rtfm_failures.py",
+        "resources/skills/paper-download/pipeline/rtfm_helper.py",
+        "resources/skills/paper-download/pipeline/sota_sync.py",
+        "resources/skills/paper-download/pipeline/tests/assert_coverage.py",
+        "resources/skills/paper-download/pipeline/tests/test_acquire_targeting.py",
+        "resources/skills/paper-download/pipeline/tests/test_acquisition_routes.py",
+        "resources/skills/paper-download/pipeline/tests/test_annas_headful.py",
+        "resources/skills/paper-download/pipeline/tests/test_browser_session.py",
+        "resources/skills/paper-download/pipeline/tests/test_concurrent.py",
+        "resources/skills/paper-download/pipeline/tests/test_events.py",
+        "resources/skills/paper-download/pipeline/tests/test_f1_negative.py",
+        "resources/skills/paper-download/pipeline/tests/test_idempotence.py",
+        "resources/skills/paper-download/pipeline/tests/test_ingest_dedup.py",
+        "resources/skills/paper-download/pipeline/tests/test_ingest_fixtures.py",
+        "resources/skills/paper-download/pipeline/tests/test_invariants_synthetic.py",
+        "resources/skills/paper-download/pipeline/tests/test_linkify_fixtures.py",
+        "resources/skills/paper-download/pipeline/tests/test_metadata_hygiene.py",
+        "resources/skills/paper-download/pipeline/tests/test_p2_sync_branchements.py",
+        "resources/skills/paper-download/pipeline/tests/test_p7_autofix_i22_i23.py",
+        "resources/skills/paper-download/pipeline/tests/test_p8_registry_cleanup.py",
+        "resources/skills/paper-download/pipeline/tests/test_purge_fixtures.py",
+        "resources/skills/paper-download/pipeline/tests/test_skills_structure.py",
+        "resources/skills/paper-download/pipeline/tests/test_sota_sync.py",
+        "resources/skills/paper-download/pipeline/tests/test_transient_retry.py",
+        "resources/skills/paper-download/pipeline/tests/test_validation_substance.py",
+        "resources/skills/paper-download/pipeline/transitions.py",
+        "resources/skills/paper-download/pipeline/__init__.py",
+        "resources/skills/paper-download/pipeline/__main__.py",
+        "resources/skills/paper-download/tools/citation_audit.py",
+        "resources/skills/paper-download/tools/identify_pdfs.py",
+        "resources/skills/paper-download/tools/precheck_sota_wikilinks.py",
+        "resources/skills/paper-download/tools/reinject_legacy_blocked.py",
+        "resources/skills/paper-download/tools/reset_registry.py",
+        "resources/skills/paper-download/tools/review_problems.py"
+      ],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "paper-download-pdf-cascade",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "paper-narrative",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/paper-narrative/kernel.py"
+      ],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "paper-to-report",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/paper-to-report/report_scaffold.py"
+      ],
+      "runtimes": [
+        "python",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pathml",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/pathml/scripts/image_qc.py",
+        "resources/skills/pathml/scripts/plan_inference.py",
+        "resources/skills/pathml/scripts/plan_pipeline.py",
+        "resources/skills/pathml/scripts/slide_manifest.py",
+        "resources/skills/pathml/scripts/validate_spatial_schema.py",
+        "resources/skills/pathml/scripts/_common.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda",
+        "CUDA",
+        "node"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pathogen-variant-surveillance",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/pathogen-variant-surveillance/scripts/lapis_client.py",
+        "resources/skills/pathogen-variant-surveillance/scripts/lineage_prevalence.py",
+        "resources/skills/pathogen-variant-surveillance/scripts/mutation_profile.py",
+        "resources/skills/pathogen-variant-surveillance/scripts/reporting_lag.py",
+        "resources/skills/pathogen-variant-surveillance/scripts/resolve_lineage.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pathway-enrichment",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/pathway-enrichment/scripts/run_enrichment.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pdf-explore",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/pdf-explore/kernel.py"
+      ],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "peer-review",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/peer-review/scripts/audit_citations.py",
+        "resources/skills/peer-review/scripts/audit_statistics_reproducibility.py",
+        "resources/skills/peer-review/scripts/generate_review_scaffold.py",
+        "resources/skills/peer-review/scripts/lint_review.py",
+        "resources/skills/peer-review/scripts/select_reporting_guidelines.py",
+        "resources/skills/peer-review/scripts/validate_claim_evidence.py",
+        "resources/skills/peer-review/scripts/validate_review_intake.py",
+        "resources/skills/peer-review/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pennylane",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "phylogenetics",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/phylogenetics/scripts/phylogenetic_analysis.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "node"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pixi-environment-builder",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "CUDA",
+        "conda",
+        "python",
+        "GPU",
+        "R",
+        "uv",
+        "Rscript"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pkpd-modeling",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/pkpd-modeling/scripts/allometry_and_fih.py",
+        "resources/skills/pkpd-modeling/scripts/bioequivalence.py",
+        "resources/skills/pkpd-modeling/scripts/check_popk_dataset.py",
+        "resources/skills/pkpd-modeling/scripts/ddi_static.py",
+        "resources/skills/pkpd-modeling/scripts/exposure_response.py",
+        "resources/skills/pkpd-modeling/scripts/fit_compartmental.py",
+        "resources/skills/pkpd-modeling/scripts/nca.py",
+        "resources/skills/pkpd-modeling/scripts/simulate_regimen.py",
+        "resources/skills/pkpd-modeling/scripts/tdm_bayes.py",
+        "resources/skills/pkpd-modeling/scripts/_common.py",
+        "resources/skills/pkpd-modeling/scripts/_models.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "polars",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "GPU",
+        "python",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "polars-bio",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "primekg",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/primekg/scripts/query_primekg.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "probe-compute-environment",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "GPU",
+        "R",
+        "conda",
+        "CUDA",
+        "node",
+        "python",
+        "Rscript"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "product-self-knowledge",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "project-scaffold",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "proteinmpnn",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "GPU",
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "protocolsio-integration",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/protocolsio-integration/scripts/pagination_helper.py",
+        "resources/skills/protocolsio-integration/scripts/plan_write_request.py",
+        "resources/skills/protocolsio-integration/scripts/protocols_read.py",
+        "resources/skills/protocolsio-integration/scripts/validate_auth_config.py",
+        "resources/skills/protocolsio-integration/scripts/validate_protocol_json.py",
+        "resources/skills/protocolsio-integration/scripts/_common.py",
+        "resources/skills/protocolsio-integration/scripts/__init__.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "publication-figures",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pubmed-literature",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pufferlib",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/pufferlib/scripts/benchmark_vectorization.py",
+        "resources/skills/pufferlib/scripts/env_contract_validator.py",
+        "resources/skills/pufferlib/scripts/env_template.py",
+        "resources/skills/pufferlib/scripts/inspect_checkpoint.py",
+        "resources/skills/pufferlib/scripts/repro_plan.py",
+        "resources/skills/pufferlib/scripts/train_template.py",
+        "resources/skills/pufferlib/scripts/validate_plan.py",
+        "resources/skills/pufferlib/scripts/_common.py",
+        "resources/skills/pufferlib/scripts/__init__.py"
+      ],
+      "runtimes": [
+        "CUDA",
+        "GPU",
+        "python",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pydeseq2",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/pydeseq2/scripts/run_deseq2_analysis.py"
+      ],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pydicom",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/pydicom/scripts/anonymize_dicom.py",
+        "resources/skills/pydicom/scripts/deidentification_audit.py",
+        "resources/skills/pydicom/scripts/dicom_inventory.py",
+        "resources/skills/pydicom/scripts/dicom_to_image.py",
+        "resources/skills/pydicom/scripts/extract_metadata.py",
+        "resources/skills/pydicom/scripts/pixel_frame_planner.py",
+        "resources/skills/pydicom/scripts/transfer_syntax_inspector.py",
+        "resources/skills/pydicom/scripts/uid_mapping_validator.py",
+        "resources/skills/pydicom/scripts/_common.py",
+        "resources/skills/pydicom/scripts/__init__.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pyhealth",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/pyhealth/assets/starter_pipeline.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pylabrobot",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/pylabrobot/scripts/check_deck_geometry.py",
+        "resources/skills/pylabrobot/scripts/generate_simulation_plan.py",
+        "resources/skills/pylabrobot/scripts/inspect_backends.py",
+        "resources/skills/pylabrobot/scripts/plan_transfers.py",
+        "resources/skills/pylabrobot/scripts/validate_manifest.py",
+        "resources/skills/pylabrobot/scripts/_common.py",
+        "resources/skills/pylabrobot/scripts/__init__.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pymatgen",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/pymatgen/scripts/artifact_manifest.py",
+        "resources/skills/pymatgen/scripts/composition_structure_validator.py",
+        "resources/skills/pymatgen/scripts/io_conversion_plan.py",
+        "resources/skills/pymatgen/scripts/mp_query.py",
+        "resources/skills/pymatgen/scripts/phase_diagram_generator.py",
+        "resources/skills/pymatgen/scripts/structure_analyzer.py",
+        "resources/skills/pymatgen/scripts/structure_converter.py",
+        "resources/skills/pymatgen/scripts/symmetry_sensitivity_report.py",
+        "resources/skills/pymatgen/scripts/_common.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pymc",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/pymc/assets/hierarchical_model_template.py",
+        "resources/skills/pymc/assets/linear_regression_template.py",
+        "resources/skills/pymc/scripts/model_comparison.py",
+        "resources/skills/pymc/scripts/model_diagnostics.py"
+      ],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pymoo",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/pymoo/scripts/custom_problem_example.py",
+        "resources/skills/pymoo/scripts/decision_making_example.py",
+        "resources/skills/pymoo/scripts/many_objective_example.py",
+        "resources/skills/pymoo/scripts/multi_objective_example.py",
+        "resources/skills/pymoo/scripts/single_objective_example.py"
+      ],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pyopenms",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/pyopenms/scripts/accurate_mass_search.py",
+        "resources/skills/pyopenms/scripts/align_link_quantify.py",
+        "resources/skills/pyopenms/scripts/consensus_to_matrix.py",
+        "resources/skills/pyopenms/scripts/convert_format.py",
+        "resources/skills/pyopenms/scripts/detect_adducts.py",
+        "resources/skills/pyopenms/scripts/detect_features_centroided.py",
+        "resources/skills/pyopenms/scripts/detect_features_metabo.py",
+        "resources/skills/pyopenms/scripts/digest_protein.py",
+        "resources/skills/pyopenms/scripts/export_gnps_sirius.py",
+        "resources/skills/pyopenms/scripts/extract_chromatograms.py",
+        "resources/skills/pyopenms/scripts/inspect_ms_data.py",
+        "resources/skills/pyopenms/scripts/mass_calculator.py",
+        "resources/skills/pyopenms/scripts/plot_ms_data.py",
+        "resources/skills/pyopenms/scripts/process_identifications.py",
+        "resources/skills/pyopenms/scripts/process_spectra.py",
+        "resources/skills/pyopenms/scripts/theoretical_spectrum.py"
+      ],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pysam",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/pysam/scripts/alignment_qc.py",
+        "resources/skills/pysam/scripts/filter_alignments.py",
+        "resources/skills/pysam/scripts/inspect_hts.py",
+        "resources/skills/pysam/scripts/variant_summary.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pytdc",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/pytdc/scripts/benchmark_evaluation.py",
+        "resources/skills/pytdc/scripts/cache_audit.py",
+        "resources/skills/pytdc/scripts/discover_metadata.py",
+        "resources/skills/pytdc/scripts/load_and_split_data.py",
+        "resources/skills/pytdc/scripts/molecular_generation.py",
+        "resources/skills/pytdc/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pytorch-lightning",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/pytorch-lightning/scripts/quick_trainer_setup.py",
+        "resources/skills/pytorch-lightning/scripts/template_datamodule.py",
+        "resources/skills/pytorch-lightning/scripts/template_lightning_module.py"
+      ],
+      "runtimes": [
+        "GPU",
+        "python",
+        "CUDA",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "pyzotero",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "qiskit",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/qiskit/scripts/check_environment.py",
+        "resources/skills/qiskit/scripts/inspect_runtime.py",
+        "resources/skills/qiskit/scripts/run_local_primitives.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "qutip",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/qutip/scripts/convergence_sweep.py",
+        "resources/skills/qutip/scripts/qobj_model_validator.py",
+        "resources/skills/qutip/scripts/result_audit.py",
+        "resources/skills/qutip/scripts/solver_config_planner.py",
+        "resources/skills/qutip/scripts/steady_state_spectrum_planner.py",
+        "resources/skills/qutip/scripts/two_level_simulation.py",
+        "resources/skills/qutip/scripts/_common.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "rdkit",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/rdkit/scripts/molecular_properties.py",
+        "resources/skills/rdkit/scripts/similarity_search.py",
+        "resources/skills/rdkit/scripts/substructure_filter.py"
+      ],
+      "runtimes": [
+        "python",
+        "conda",
+        "GPU",
+        "uv"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "reasoning-trace",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "relsa-severity-assessment",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/relsa-severity-assessment/scripts/forecast_relsa.py",
+        "resources/skills/relsa-severity-assessment/scripts/kde_thresholds.py",
+        "resources/skills/relsa-severity-assessment/scripts/relsa_score.py",
+        "resources/skills/relsa-severity-assessment/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "remote-compute-modal",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "GPU"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "remote-compute-ssh",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "conda",
+        "node"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "reproducible-research",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/reproducible-research/repro_check.py"
+      ],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "research-grants",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "rowan",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "GPU",
+        "python",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "sc-tenifold-knockout",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit grep python tool_search tool_dispatch",
+      "scripts": [
+        "resources/skills/sc-tenifold-knockout/scripts/create_plan.py",
+        "resources/skills/sc-tenifold-knockout/scripts/validate_inputs.py"
+      ],
+      "runtimes": [
+        "R",
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "sc-upstream",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "scanpy",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/scanpy/assets/analysis_template.py",
+        "resources/skills/scanpy/scripts/annotate.py",
+        "resources/skills/scanpy/scripts/batch_correct.py",
+        "resources/skills/scanpy/scripts/cluster.py",
+        "resources/skills/scanpy/scripts/convert.py",
+        "resources/skills/scanpy/scripts/find_markers.py",
+        "resources/skills/scanpy/scripts/inspect_data.py",
+        "resources/skills/scanpy/scripts/plot.py",
+        "resources/skills/scanpy/scripts/preprocess.py",
+        "resources/skills/scanpy/scripts/pseudobulk.py",
+        "resources/skills/scanpy/scripts/qc_analysis.py",
+        "resources/skills/scanpy/scripts/reduce_dimensions.py",
+        "resources/skills/scanpy/scripts/run_pipeline.py",
+        "resources/skills/scanpy/scripts/score_genes.py",
+        "resources/skills/scanpy/scripts/subset.py",
+        "resources/skills/scanpy/scripts/_common.py"
+      ],
+      "runtimes": [
+        "R",
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "Rscript"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "scgpt",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "CUDA",
+        "GPU",
+        "python",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "scholar-evaluation",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/scholar-evaluation/scripts/calculate_scores.py",
+        "resources/skills/scholar-evaluation/scripts/check_process.py",
+        "resources/skills/scholar-evaluation/scripts/check_traceability.py",
+        "resources/skills/scholar-evaluation/scripts/generate_report_scaffold.py",
+        "resources/skills/scholar-evaluation/scripts/summarize_agreement.py",
+        "resources/skills/scholar-evaluation/scripts/validate_rubric.py",
+        "resources/skills/scholar-evaluation/scripts/weight_sensitivity.py",
+        "resources/skills/scholar-evaluation/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "scientific-brainstorming",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/scientific-brainstorming/scripts/evaluate_matrix.py",
+        "resources/skills/scientific-brainstorming/scripts/session_scaffold.py",
+        "resources/skills/scientific-brainstorming/scripts/validate_register.py",
+        "resources/skills/scientific-brainstorming/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "scientific-critical-thinking",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "scikit-bio",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda",
+        "node"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "scikit-learn",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/scikit-learn/scripts/classification_pipeline.py",
+        "resources/skills/scikit-learn/scripts/clustering_analysis.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "scikit-survival",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/scikit-survival/scripts/competing_risk_cif.py",
+        "resources/skills/scikit-survival/scripts/evaluate_survival_metrics.py",
+        "resources/skills/scikit-survival/scripts/model_report.py",
+        "resources/skills/scikit-survival/scripts/train_survival_model.py",
+        "resources/skills/scikit-survival/scripts/validate_survival_csv.py",
+        "resources/skills/scikit-survival/scripts/_common.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "scvelo",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/scvelo/scripts/rna_velocity_workflow.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "scvi-tools",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/scvi-tools/kernel.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "conda",
+        "CUDA"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "seaborn",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "self-awareness",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "R",
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "shap",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/shap/scripts/tabular_report.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "simpy",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/simpy/scripts/basic_simulation_template.py",
+        "resources/skills/simpy/scripts/bounded_queue_scenario.py",
+        "resources/skills/simpy/scripts/event_trace_summary.py",
+        "resources/skills/simpy/scripts/replication_runner.py",
+        "resources/skills/simpy/scripts/resource_monitor.py",
+        "resources/skills/simpy/scripts/validate_simulation_config.py",
+        "resources/skills/simpy/scripts/_common.py"
+      ],
+      "runtimes": [
+        "uv",
+        "python",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "singlecell-milor",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/singlecell-milor/scripts/generate_milor_r_script.py",
+        "resources/skills/singlecell-milor/scripts/inspect_h5ad_for_milor.py"
+      ],
+      "runtimes": [
+        "R",
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "singlecell-qc",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/singlecell-qc/scripts/calculate_metrics.py",
+        "resources/skills/singlecell-qc/scripts/inspect_qc_metadata.py"
+      ],
+      "runtimes": [
+        "R",
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "skill-creator",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/skill-creator/eval-viewer/generate_review.py",
+        "resources/skills/skill-creator/scripts/aggregate_benchmark.py",
+        "resources/skills/skill-creator/scripts/generate_report.py",
+        "resources/skills/skill-creator/scripts/improve_description.py",
+        "resources/skills/skill-creator/scripts/package_skill.py",
+        "resources/skills/skill-creator/scripts/quick_validate.py",
+        "resources/skills/skill-creator/scripts/run_eval.py",
+        "resources/skills/skill-creator/scripts/run_loop.py",
+        "resources/skills/skill-creator/scripts/utils.py",
+        "resources/skills/skill-creator/scripts/__init__.py"
+      ],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "solublempnn",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "GPU",
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "stable-baselines3",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/stable-baselines3/scripts/custom_env_template.py",
+        "resources/skills/stable-baselines3/scripts/evaluate_agent.py",
+        "resources/skills/stable-baselines3/scripts/train_rl_agent.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "statistical-analysis",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/statistical-analysis/scripts/assumption_checks.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "statistical-power",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/statistical-power/scripts/power.py",
+        "resources/skills/statistical-power/scripts/simulate_power.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "stats-integrity",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/stats-integrity/stats_integrity_check.py"
+      ],
+      "runtimes": [
+        "R",
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "statsmodels",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "sympy",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "tamarind",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "GPU",
+        "python",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "tiledbvcf",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "docker",
+        "node"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "timesfm-forecasting",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/timesfm-forecasting/examples/anomaly-detection/detect_anomalies.py",
+        "resources/skills/timesfm-forecasting/examples/covariates-forecasting/demo_covariates.py",
+        "resources/skills/timesfm-forecasting/examples/global-temperature/generate_animation_data.py",
+        "resources/skills/timesfm-forecasting/examples/global-temperature/generate_gif.py",
+        "resources/skills/timesfm-forecasting/examples/global-temperature/generate_html.py",
+        "resources/skills/timesfm-forecasting/examples/global-temperature/run_example.sh",
+        "resources/skills/timesfm-forecasting/examples/global-temperature/run_forecast.py",
+        "resources/skills/timesfm-forecasting/examples/global-temperature/visualize_forecast.py",
+        "resources/skills/timesfm-forecasting/scripts/check_system.py",
+        "resources/skills/timesfm-forecasting/scripts/forecast_csv.py"
+      ],
+      "runtimes": [
+        "GPU",
+        "python",
+        "uv",
+        "conda",
+        "CUDA"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [
+        "examples\\global-temperature\\README.md -> forecast_visualization.png"
+      ],
+      "issues": []
+    },
+    {
+      "name": "torch-geometric",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "node",
+        "CUDA",
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "torchdrug",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "CUDA",
+        "node"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "traceability-review",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/traceability-review/pdf_extract.py"
+      ],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "transformers",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "treatment-plans",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/treatment-plans/scripts/check_completeness.py",
+        "resources/skills/treatment-plans/scripts/check_consistency.py",
+        "resources/skills/treatment-plans/scripts/generate_template.py",
+        "resources/skills/treatment-plans/scripts/privacy_process_check.py",
+        "resources/skills/treatment-plans/scripts/timeline_generator.py",
+        "resources/skills/treatment-plans/scripts/validate_traceability.py",
+        "resources/skills/treatment-plans/scripts/validate_treatment_plan.py",
+        "resources/skills/treatment-plans/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "umap-learn",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "uncertainty-and-units",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [
+        "resources/skills/uncertainty-and-units/scripts/audit_units.py",
+        "resources/skills/uncertainty-and-units/scripts/check_plausibility.py",
+        "resources/skills/uncertainty-and-units/scripts/convert_units.py",
+        "resources/skills/uncertainty-and-units/scripts/format_result.py",
+        "resources/skills/uncertainty-and-units/scripts/propagate_uncertainty.py",
+        "resources/skills/uncertainty-and-units/scripts/uncertainty_budget.py",
+        "resources/skills/uncertainty-and-units/scripts/_common.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "usfiscaldata",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda",
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "using-model-endpoint",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "conda",
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "vaex",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv",
+        "GPU",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "venue-templates",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/venue-templates/scripts/customize_template.py",
+        "resources/skills/venue-templates/scripts/query_template.py",
+        "resources/skills/venue-templates/scripts/validate_format.py"
+      ],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zarr-python",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU",
+        "uv",
+        "conda"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-aichem",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-bio",
+      "action": "合并入口",
+      "reason": "统一 Bio Tools / BioGenie / Biomni 后端导航",
+      "allowedTools": "tool_search tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "GPU"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-bio-tools",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-geo",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "tool_search tool_dispatch",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-image-dup",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [
+        "resources/skills/zerowall-image-dup/scripts/batch_scan.py",
+        "resources/skills/zerowall-image-dup/scripts/detector_worker.py",
+        "resources/skills/zerowall-image-dup/scripts/mineru_adapter.py",
+        "resources/skills/zerowall-image-dup/scripts/zerowall_integrity.py"
+      ],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-integrity-report",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-ketcher",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "tool_search tool_dispatch",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-mcp-guide",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-nhanes",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "tool_search tool_dispatch",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-paper-analysis",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-paper-compare",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-python-packages",
+      "action": "条件可用",
+      "reason": "运行取决于凭据、后端、模型或可选运行时；不自动安装",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python",
+        "uv"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-r-files",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "tool_search tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-r-packages",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "tool_search tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-rbioagent",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "tool_search tool_dispatch",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-rplatform",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "tool_search tool_dispatch",
+      "scripts": [],
+      "runtimes": [
+        "R"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-rplotfigure",
+      "action": "修复",
+      "reason": "统一发现/调用与托管环境契约",
+      "allowedTools": "tool_search tool_dispatch",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-scimaster",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    },
+    {
+      "name": "zerowall-spreadsheet",
+      "action": "保留",
+      "reason": "未发现重复注册或过期发现入口",
+      "allowedTools": "",
+      "scripts": [],
+      "runtimes": [
+        "python"
+      ],
+      "brokenLinks": [],
+      "reviewedExamples": [],
+      "issues": []
+    }
+  ]
+}

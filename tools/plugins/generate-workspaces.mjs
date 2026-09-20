@@ -1,5 +1,6 @@
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { researchToolConfig } from '../integration/research-tool-config.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const rootPackage = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
@@ -92,7 +93,7 @@ const dshDependencies = {
 }
 
 const npmDependencies = {
-  python: { '@zerowallscience/integrity-runtime': 'workspace:^' },
+  python: { '@zerowallscience/integrity-runtime': 'workspace:^', '@zerowallscience/research-store': 'workspace:^' },
   pubmed: { compromise: '14.16.0', undici: '^7.16.0', '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   base: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0' },
   projects: { '@deepseek-ai/dsh-session-format-catalog': 'workspace:^', '@deepseek-ai/dsh-session-persistence-jsonl': 'workspace:^', '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
@@ -271,6 +272,7 @@ for (const plugin of plugins) {
     '- insert:',
     `    - id: zerowall-${plugin.id}`,
     `      name: '${name}'`,
+    ...(plugin.id === 'mcp' ? ['- id: progressive-tools', `  config: ${JSON.stringify(researchToolConfig)}`] : []),
     '',
   ].join('\n'))
   await writeFile(resolve(dir, 'tsconfig.json'), `${JSON.stringify({

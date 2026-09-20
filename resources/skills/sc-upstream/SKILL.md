@@ -9,7 +9,7 @@ description: Use when the user wants to process GEO/SRA single-cell upstream dat
 
 These host rules override workflow examples below when they differ.
 
-- Use ZeroWall tools by their actual names and discover optional MCP capabilities with `search_mcp_tools`; do not assume `scu` or any connector is installed.
+- Use ZeroWall tools by their actual names and discover optional MCP capabilities with `tool_search`; do not assume `scu` or any connector is installed.
 - Use `run_in_context` with Run Manager for SRA downloads, FASTQ conversion, STARsolo, and other long-running jobs.
 - Resolve credentials only through **Settings > Credentials** and approved execution-context environment injection. Never scan project `.env` files.
 - Keep network calls, large transfers, overwrites, and destructive cleanup approval-gated. Validate metadata and manifests first.

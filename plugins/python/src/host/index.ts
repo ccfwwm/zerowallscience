@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { registerEnvironmentTool } from './environment-tool.js'
+import { registerBioLocal } from './bio-local.js'
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 import { access, lstat, readFile, mkdir, writeFile, rm } from 'node:fs/promises'
@@ -145,6 +147,8 @@ async function runR(args: RArgs, exec: { signal: AbortSignal; agent?: { session:
 }
 
 export function apply(ctx: Context): void {
+  registerEnvironmentTool(ctx)
+  registerBioLocal(ctx, runPython)
   ctx.tools.register(defineTool({
     name: 'python',
     description: 'Execute Python in the signed ZeroWall Python runtime (科研默认环境，含科学计算、文献、Office 和生物信息学依赖). Uses the current session workspace unless workdir is explicitly needed.',

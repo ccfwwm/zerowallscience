@@ -45,6 +45,8 @@ const common = {
     },
   ],
   extraResources: [
+    { from: '../resources/biogenie', to: 'biogenie', filter: ['**/*', '!**/__pycache__/**', '!**/*.pyc'] },
+    { from: '../resources/mcp/ketcher-chemistry', to: 'ketcher-chemistry', filter: ['server.js', 'widget/**', 'LICENSE*', 'UPSTREAM.json'] },
     { from: 'build/zerowall.patch.yml', to: 'zerowall.patch.yml' },
     { from: 'build/splash.html', to: 'splash.html' },
     { from: '../.build/resources/skills', to: 'skills', filter: ['**/*'] },

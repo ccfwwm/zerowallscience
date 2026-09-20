@@ -7,10 +7,12 @@ import type { StdioConfig } from '@deepseek-ai/dsh-mcp-client'
 import { mkdir, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { KetcherBridge } from './ketcher-bridge.js'
 
 interface Generation { client: Client; definitions: Map<string, ToolDefinition>; references: number; retired: boolean; lease?: string; snapshot?: string | undefined }
 /** Stable public tool names dispatch to immutable generations. Retiring never kills an in-flight call. */
 export class ManagedGenerations {
+  readonly ketcher = new KetcherBridge()
   private staged = new Map<string, { snapshot: string; generation: Generation; expires: number }>()
   private active = new Map<string, Generation>()
   private registrations = new Map<string, Map<string, () => void>>()
@@ -76,7 +78,10 @@ export class ManagedGenerations {
             const target = selected?.definitions.get(name)
             if (!selected || !target) throw new Error('该工具在当前环境不可用。')
             selected.references++; executions.set(exec, target)
-            try { return await target.execute(args, exec) }
+            try {
+              if (name.startsWith('mcp__zerowall_managed_ketcher__') && process.env.ZEROWALL_KETCHER_ROOT) return await this.ketcher.execute(selected.client, name.slice('mcp__zerowall_managed_ketcher__'.length), args, exec)
+              return await target.execute(args, exec)
+            }
             finally { selected.references--; if (selected.retired && selected.references === 0) void this.close(selected) }
           },
           finalizeContent: (exec, result) => executions.get(exec)?.finalizeContent?.(exec, result),

@@ -35,7 +35,7 @@ question needs them — each extra library multiplies the testing burden.
   terms after testing (see `interpretation.md`).
 - **KEGG** — manually curated metabolic & signaling pathways. Compact, well known.
 - **Reactome** — large, expert-curated, hierarchical human pathway set; good
-  granularity. APIs in `search_mcp_tools`.
+  granularity. APIs in `tool_search`.
 - **WikiPathways** — community-curated pathways; complements KEGG/Reactome.
 - **MSigDB** — collections of collections (Hallmark, curated, GO, immune, etc.);
   the standard source of GMT files for GSEA.
@@ -116,7 +116,7 @@ The `gget` skill (`gget info`) is another quick ID-mapping path.
 ## Pathway/interaction APIs
 
 For raw pathway content or network context (not enrichment statistics), use the
-`search_mcp_tools` skill, which wraps:
+`tool_search` skill, which wraps:
 - **Reactome** content + Analysis Service (submit a gene list, get pathway
   over-representation).
 - **KEGG** pathways/compounds.

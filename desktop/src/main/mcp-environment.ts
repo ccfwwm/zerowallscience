@@ -5,7 +5,7 @@ import { access, appendFile, cp, lstat, mkdir, readdir, readFile, rename, rm, st
 import { delimiter, dirname, join, resolve } from 'node:path'
 import { downloadArchive, extractArchive, requireFreeSpace } from './python-archive.js'
 import { collectSnapshots } from './python-snapshots.js'
-import { preparePackagePlan, applyPackagePlanFiles, replayCustomizations, type StoredPackagePlan } from './python-packages.js'
+import { preparePackagePlan, applyPackagePlanFiles, applyIsolatedProfile, replayCustomizations, type StoredPackagePlan } from './python-packages.js'
 import type { McpEnvironmentStatus, McpPythonInfo, McpPythonPackage, McpSkillAudit, PythonPackagePlan } from '../shared/contracts.js'
 
 export interface McpEnvironmentManifest {
@@ -163,7 +163,13 @@ export class McpEnvironmentController {
       }
       packages.sort((a, b) => a.name.localeCompare(b.name))
       const needle = query.trim().toLowerCase()
-      return { snapshotId: current.root, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), localRevision: current.localRevision, scannedAt: new Date().toISOString(), officialPackageCount: manifest.dependencies?.corePackages.length ?? 0, ready: true, version: `${versionResult.stdout}\n${versionResult.stderr}`.trim().replace(/^Python\s+/u, ''), executable, sitePackages, overlayPath, packageCount: packages.length, corePackageCount: packages.filter(pkg => pkg.source === 'core').length, overlayPackageCount: packages.filter(pkg => pkg.source === 'overlay').length, packages: needle === '' ? packages : packages.filter(pkg => pkg.name.toLowerCase().includes(needle)), skillAudit: manifest.skillsAudit ? { summary: manifest.skillsAudit.summary, skills: [] } : undefined }
+      const profiles: NonNullable<McpPythonInfo['profiles']> = []
+      for (const entry of await readdir(join(this.options.root, 'profiles'), { withFileTypes: true }).catch(() => [])) {
+        if (!entry.isDirectory()) continue
+        const record = await readFile(join(this.options.root, 'profiles', entry.name, 'current.json'), 'utf8').then(JSON.parse, () => undefined)
+        if (record) profiles.push({ name: entry.name, status: record.snapshotId === current.root ? 'ready' : 'stale', sitePackages: record.sitePackages, packages: (record.wheels ?? []).map((wheel: { name: string; version: string }) => ({ name: wheel.name, version: wheel.version })) })
+      }
+      return { profiles, snapshotId: current.root, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), localRevision: current.localRevision, scannedAt: new Date().toISOString(), officialPackageCount: manifest.dependencies?.corePackages.length ?? 0, ready: true, version: `${versionResult.stdout}\n${versionResult.stderr}`.trim().replace(/^Python\s+/u, ''), executable, sitePackages, overlayPath, packageCount: packages.length, corePackageCount: packages.filter(pkg => pkg.source === 'core').length, overlayPackageCount: packages.filter(pkg => pkg.source === 'overlay').length, packages: needle === '' ? packages : packages.filter(pkg => pkg.name.toLowerCase().includes(needle)), skillAudit: manifest.skillsAudit ? { summary: manifest.skillsAudit.summary, skills: [] } : undefined }
     } catch (error) { return { ready: false, packages: [], message: sanitizeError(error) } }
   }
 
@@ -198,10 +204,32 @@ export class McpEnvironmentController {
     return info
   }
 
-  async previewPackages(names: string[]): Promise<PythonPackagePlan> {
+  async previewPackages(names: string[], profile?: string): Promise<PythonPackagePlan> {
     if (!Array.isArray(names) || !names.length || names.length > 50 || names.some(name => typeof name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.-]*(?:\[[A-Za-z0-9_,.-]+\])?(?:[=<>!~]=?[A-Za-z0-9.*+!<>=~.-]+)?$/u.test(name))) throw new Error('包名格式不安全，仅支持包名及版本约束。')
     const context = await this.pythonContext()
-    return preparePackagePlan(this.options.root, context, names, await this.pythonInfo())
+    if (profile && !/^[a-z][a-z0-9-]{0,39}$/u.test(profile)) throw new Error('Invalid dependency profile')
+    const baseline = profile === 'sbol' ? ['numpy', 'biopython', 'sbol3>=1.0', 'tyto>=1.4'] : profile === 'circuit' ? ['numpy', 'biopython', 'biocrnpyler', 'bioscrape'] : []
+    return preparePackagePlan(this.options.root, context, [...new Set([...names, ...baseline])], profile ? { ready: true, packages: [] } : await this.pythonInfo(), profile)
+  }
+
+  async previewUninstall(names: string[]): Promise<StoredPackagePlan> {
+    if (!Array.isArray(names) || !names.length || names.length > 50 || names.some(name => typeof name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(name))) throw new Error('卸载只接受包名。')
+    const context = await this.pythonContext()
+    const info = await this.pythonInfo()
+    const removals = [...new Set(names.map(pythonPackageName))]
+    const required = new Set(['pip', 'packaging', 'setuptools', 'wheel', 'mcp', ...(context.manifest.dependencies?.corePackages.map(pkg => pythonPackageName(pkg.name)) ?? [])])
+    for (const name of removals) {
+      if (required.has(name)) throw new Error(`不能卸载必需依赖：${name}`)
+      if (!info.packages.some(pkg => pythonPackageName(pkg.name) === name)) throw new Error(`依赖未安装：${name}`)
+    }
+    const code = `import sys,json,re,importlib.metadata as m\nfrom packaging.requirements import Requirement\nsys.path[:0]=json.loads(sys.argv[2])\nremoved=set(json.loads(sys.argv[1]));norm=lambda s:re.sub(r'[-_.]+','-',s).lower()\nblocked=[]\nfor d in m.distributions():\n if norm(d.metadata['Name']) in removed: continue\n for raw in d.requires or []:\n  r=Requirement(raw)\n  if norm(r.name) in removed and (r.marker is None or r.marker.evaluate()): blocked.append(d.metadata['Name']+' requires '+raw)\nprint(json.dumps(blocked))`
+    const checked = await execute(context.executable, ['-I', '-B', '-c', code, JSON.stringify(removals), JSON.stringify([context.overlayPath, context.sitePackages])], context.root)
+    const blockers = JSON.parse(checked.stdout) as string[]
+    if (blockers.length) throw new Error(`仍有依赖使用这些包：${blockers.join('; ')}`)
+    const plan: StoredPackagePlan = { planId: randomUUID(), snapshotId: context.root, requested: removals, changes: removals.map(name => ({ name, from: info.packages.find(pkg => pythonPackageName(pkg.name) === name)!.version, to: '(removed)' })), wheels: [], removals }
+    await mkdir(join(this.options.root, 'plans'), { recursive: true })
+    await writeFile(join(this.options.root, 'plans', `${plan.planId}.json`), JSON.stringify(plan))
+    return plan
   }
 
   async updatePythonPackages(names: string[] = []): Promise<McpPythonInfo> {
@@ -222,6 +250,12 @@ export class McpEnvironmentController {
     if (!current?.root || plan.snapshotId !== current.root || plan.error) throw new Error('环境已变化，请重新检查升级计划。')
     const context = await this.pythonContext()
     const inventory = await this.pythonInfo()
+    if (plan.profile) {
+      this.set({ ...this.status, phase: 'installing', progress: 15, message: `正在准备独立依赖目录：${plan.profile}` })
+      await applyIsolatedProfile(this.options.root, context, plan)
+      await this.localStatus()
+      return this.pythonInfo()
+    }
     const target = join(this.options.root, 'slots', `local-${randomUUID()}`)
     await requireFreeSpace(this.options.root, 5 * 1024 ** 3)
     this.set({ ...this.status, phase: 'installing', lastUpdateError: undefined, updateJob: { taskId: planId, kind: 'applyPackagePlan', stage: 'installing', canPause: false, packageNames: plan.changes.map(change => change.name) }, progress: 15, message: '正在准备独立依赖副本，当前任务继续使用原环境。' })
@@ -239,14 +273,18 @@ export class McpEnvironmentController {
       const overlayPath = join(target, 'user-overlay')
       await mkdir(overlayPath, { recursive: true })
       const customizations = { ...(current.customizations ?? {}) }
-      for (const change of plan.changes) customizations[pythonPackageName(change.name)] = change.to
+      for (const change of plan.changes) {
+        if (plan.removals?.includes(pythonPackageName(change.name))) delete customizations[pythonPackageName(change.name)]
+        else customizations[pythonPackageName(change.name)] = change.to
+      }
+      const removedPackages = [...new Set([...(current.removedPackages ?? []), ...(plan.removals ?? [])])].filter(name => !plan.wheels.some(wheel => pythonPackageName(wheel.name) === name))
       const verifiedAt = new Date().toISOString()
       const prior = await readFile(join(current.root, 'customization.json'), 'utf8').then(JSON.parse, () => undefined)
       const history = [...(prior?.history ?? []), ...plan.changes.map(change => ({ ...change, verifiedAt }))]
       await writeFile(join(target, 'customization.json'), JSON.stringify({ planId, localRevision, customizations, changes: plan.changes, history, verifiedAt }))
       await this.writeCurrent(current as unknown as Record<string, unknown>, 'rollback.json')
       const extensionNames = [...new Set([...inventory.packages.filter(pkg => pkg.source === 'overlay').map(pkg => pythonPackageName(pkg.name)), ...plan.changes.filter(change => !context.manifest.dependencies?.corePackages.some(pkg => pythonPackageName(pkg.name) === pythonPackageName(change.name))).map(change => pythonPackageName(change.name))])]
-      await this.writeCurrent({ ...current, root: target, overlayPath, localRevision, customizations, extensionNames, rollbackAvailable: true, installedAt: new Date().toISOString(), manifest: context.manifest })
+      await this.writeCurrent({ ...current, root: target, overlayPath, localRevision, customizations, removedPackages, extensionNames: extensionNames.filter(name => !removedPackages.includes(name)), rollbackAvailable: true, installedAt: new Date().toISOString(), manifest: context.manifest })
       await this.localStatus()
       const info = await this.pythonInfo()
       info.verification = { imports: true, pipCheck: true, message: '独立副本的依赖、导入和科研服务验证通过。' }
@@ -341,12 +379,12 @@ export class McpEnvironmentController {
       const previousOverlay = current?.overlayPath ?? pythonOverlayPath(this.options.root, manifest)
       await mkdir(overlayPath, { recursive: true })
       if (await pathExists(previousOverlay)) await cp(previousOverlay, overlayPath, { recursive: true })
-      if (!this.options.healthCheck) await replayCustomizations(target, manifest, overlayPath, current?.customizations ?? {})
+      if (!this.options.healthCheck) await replayCustomizations(target, manifest, overlayPath, current?.customizations ?? {}, current?.removedPackages ?? [])
       if (current?.root && current.customizations) {
         const previousHistory = await readFile(join(current.root, 'customization.json'), 'utf8').then(JSON.parse, () => undefined)
         await writeFile(join(target, 'customization.json'), JSON.stringify({ ...previousHistory, customizations: current.customizations, verifiedAt: new Date().toISOString() }))
       }
-      await this.writeCurrent({ mode: 'managed', environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), archiveSha256: manifest.archiveSha256, root: target, overlayPath, customizations: current?.customizations, extensionNames: current?.extensionNames, localRevision: current?.localRevision, slot: targetSlot, manifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: current?.health === 'ready' && current.slot !== 'manual' })
+      await this.writeCurrent({ mode: 'managed', environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), archiveSha256: manifest.archiveSha256, root: target, overlayPath, customizations: current?.customizations, removedPackages: current?.removedPackages, extensionNames: current?.extensionNames, localRevision: current?.localRevision, slot: targetSlot, manifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: current?.health === 'ready' && current.slot !== 'manual' })
       const status = environmentStatus('ready', manifest, target, targetSlot, true, current?.health === 'ready' && current.slot !== 'manual')
       status.onlineEnvironmentVersion = environmentVersion(manifest); status.onlineContentRevision = contentRevision(manifest); status.updateAvailable = false; status.lastCheckedAt = new Date().toISOString()
       return this.set(status)
@@ -600,6 +638,7 @@ interface CurrentEnvironmentRecord {
   overlayPath?: string
   localRevision?: number
   customizations?: Record<string, string>
+  removedPackages?: string[]
   mode?: string
   environmentVersion?: string
   version?: string

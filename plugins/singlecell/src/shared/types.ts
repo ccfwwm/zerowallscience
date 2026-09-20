@@ -185,6 +185,8 @@ export interface ScTenifoldProjectConfig {
   execution?: ScTenifoldExecution
   executionContextId?: string
   remoteInput?: string
+  /** Explicit consent to upload this run's local matrix and metadata to rmcp. */
+  confirmRemoteUpload?: boolean
   remoteOutput?: string
   seed?: number
   seeds?: number[]

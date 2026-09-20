@@ -79,4 +79,4 @@ Each catalog entry is an H3 block with bulleted metadata followed by a descripti
 - `https://huggingscience.co/topics/<slug>.md` — one domain
 - `https://huggingscience.co/feed.xml` — RSS for new entries
 
-The `fetch_catalog.py` script wraps these and adds parsing, filtering, and JSON output. Prefer the script for structured access; use raw `browser-use or search_mcp_tools`/`curl` only if the script fails.
+The `fetch_catalog.py` script wraps these and adds parsing, filtering, and JSON output. Prefer the script for structured access; use raw `browser-use or tool_search`/`curl` only if the script fails.

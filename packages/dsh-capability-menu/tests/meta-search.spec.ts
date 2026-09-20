@@ -15,7 +15,7 @@ function agentStub(name: string) {
   return {
     id: name,
     options: {},
-    session: { header: { cwd: process.cwd() } },
+    session: { header: { cwd: process.cwd() }, snapshotEvents: () => [] },
     ctx: new Context(),
     status: 'idle',
   } as never
@@ -86,7 +86,7 @@ async function runTool(
     agent: agentStub('agent'),
     signal: testSignal,
   })
-  return { value: result.value, isError: result.isError }
+  return { value: result.isError ? result.content : result.value, isError: result.isError }
 }
 
 describe('capability-menu-search', () => {
@@ -205,8 +205,8 @@ describe('capability-menu-search', () => {
     const allowed = registerMcpTool(ctx, 'gongfeng', 'open_issue', 'Issue tool that stays resident')
     await ctx.capability.refresh()
 
-    const { value, isError } = await runTool(ctx, 'meta_search', { query: 'issue', max_results: 1 })
-    expect(isError).toBe(false)
+    const { value, isError } = await runTool(ctx, 'capability_search', { query: 'issue', max_results: 1 })
+    expect(isError, JSON.stringify(value)).toBe(false)
     const result = value as { mode: string; results: Array<{ id: string }> }
     expect(result.results.map(item => item.id)).toEqual([allowed])
   })

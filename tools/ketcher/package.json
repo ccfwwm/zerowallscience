@@ -1,0 +1,24 @@
+{
+  "name": "zerowall-ketcher-build",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "events": "3.3.0",
+    "ketcher-core": "3.18.0",
+    "ketcher-react": "3.18.0",
+    "ketcher-standalone": "3.18.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.11"
+  },
+  "overrides": {
+    "ketcher-core": "3.18.0"
+  }
+}

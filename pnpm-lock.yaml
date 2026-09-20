@@ -14895,6 +14895,9 @@ importers:
       '@zerowallscience/integrity-runtime':
         specifier: workspace:^
         version: link:../../packages/integrity-runtime
+      '@zerowallscience/research-store':
+        specifier: workspace:^
+        version: link:../../store
     devDependencies:
       tsdown:
         specifier: 0.22.2

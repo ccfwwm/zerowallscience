@@ -2,7 +2,7 @@
 name: sc-tenifold-knockout
 description: 用中文编排非肿瘤单细胞 scTenifoldKnk 虚拟敲除全流程：基因建议、公开数据发现、QC、远程 R MCP 分析、机制解释、图表、报告和实验验证方案。结果是计算假设，不是真实基因敲除。
 license: GPL-3.0-or-later
-allowed-tools: read write edit search grep shell python search_mcp_tools run_in_context get_run monitor_run cancel_run r_upload_workspace_file
+allowed-tools: read write edit grep python tool_search tool_dispatch
 metadata:
   method: scTenifoldKnk
   method_version: "1.0.3"
@@ -29,6 +29,10 @@ metadata:
 ```
 
 先调用 `sc_tenifold_knockout_intake`。目标基因必须保留原始输入并标准化；参考基因或主题只能生成带证据和置信度的候选，不得使用硬编码生物学候选冒充数据库结果。
+
+## 工具调用
+
+先通过 tool_search 发现 sc_tenifold_knockout_*，通过 tool_dispatch 调用，保留现有 intake/QC/解释流程。程序化远程敲除入口为 research_workflow，workflow_id=sc.knockout；describe 查询 r.submit.sc.tenifold.knockout 的实际参数。下述旧 r_* 名字表示能力名称，线上调用使用 rmcp 聚合工具及目录返回的 action；本地上传使用 r_files action=upload_workspace。首次上传用户数据需确认。
 
 ## 标准流程
 
@@ -67,3 +71,5 @@ protocols/replicate-plan.tsv / protocols/readout-plan.md
 最终审核只能是 `pass`、`pass_with_warnings`、`blocked` 或 `requires_human_review`。raw counts 不合格、目标基因缺失、R MCP/包缺失、QC 失败或没有可用重复时，不得继续伪造结论。
 
 详细中文步骤见 [README.zh-CN.md](README.zh-CN.md)、[references/workflow.zh-CN.md](references/workflow.zh-CN.md) 和 [references/result-interpretation.zh-CN.md](references/result-interpretation.zh-CN.md)。算法参数参考 [method-and-parameters.md](references/method-and-parameters.md)，审核前阅读 [review-checklist.md](references/review-checklist.md)。
+
+首次上传本次任务的本地矩阵或元数据前，取得用户授权，再在运行参数中设置 config.confirmRemoteUpload=true；已有远程输入且不上传元数据时不需要重复确认。

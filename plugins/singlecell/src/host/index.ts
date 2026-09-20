@@ -352,27 +352,38 @@ async function discover(input: ScTenifoldIntakeRequest, ctx?: Context, exec?: an
 }
 function jsonOutput(render: (value: unknown) => string) { return { schema: { type: 'object', additionalProperties: true }, render: (_args: unknown, value: unknown) => [{ type: 'text', text: render(value) }], presentationMeta: (_args: unknown, value: unknown) => value } as any }
 async function callRemoteTool(ctx: Context, exec: any, name: string, args: Record<string, unknown>): Promise<any> {
+  if (name.startsWith('mcp__rdatalinux_r_platform__r_')) {
+    const action = name.replace('mcp__rdatalinux_r_platform__r_', 'r.').replaceAll('_', '.')
+    const group = action.includes('validate.') ? 'r_runtime' : action === 'r.register.project' ? 'r_project' : action.includes('submit.') ? 'r_execute' : 'r_jobs'
+    name = `mcp__rmcp__${group}`
+    args = { action, arguments: args }
+  } else if (name === 'r_upload_workspace_file') {
+    name = 'r_files'; args = { action: 'upload_workspace', ...args }
+  }
   const result = await ctx.tools.execute({ signal: exec?.signal, callId: ToolCallId(`singlecell-${Date.now()}-${Math.random().toString(16).slice(2)}`), name, arguments: args, parent: exec?.token, agent: exec?.agent })
   if (result?.isError) {
     const message = (result.content as ContentBlock[] | undefined)?.map(block => block.type === 'text' ? block.text : '').filter(Boolean).join('\n')
     throw new Error(message || `${name} failed`)
   }
-  return result?.value ?? (result as any)?.structuredContent ?? result
+  const value = result?.value ?? (result as any)?.structuredContent ?? result
+  if (value?.structuredContent) return value.structuredContent
+  const text = value?.content?.find((block: any) => block.type === 'text')?.text
+  if (typeof text === 'string') { try { return JSON.parse(text) } catch { /* preserve non-JSON result */ } }
+  return value
 }
 function findRemoteJobId(value: unknown): string | undefined {
-  if (typeof value === 'string' && value.length > 0) return value
   if (!value || typeof value !== 'object') return undefined
   const object = value as Record<string, unknown>
   for (const key of ['job_id', 'jobId', 'id']) if (typeof object[key] === 'string' && object[key]) return String(object[key])
-  for (const child of Object.values(object)) { const found = findRemoteJobId(child); if (found) return found }
+  for (const key of ['job', 'result', 'data']) { const found = findRemoteJobId(object[key]); if (found) return found }
   return undefined
 }
 
 async function requireRemoteR(ctx: Context, exec: any): Promise<void> {
   if (!exec) throw new Error('missing_runtime: 当前操作必须通过 rdatalinux R MCP 执行。')
   const schemas = ctx.tools.schemas()
-  if (!schemas.some(schema => schema.name === R_MCP_RUNTIME || schema.name === 'mcp__rdatalinux_r_platform__r_submit_sc_tenifold_knockout' || schema.name === 'mcp__rdatalinux_r_platform__r_submit_script')) throw new Error('missing_runtime: rdatalinux R MCP 未连接或未注册。')
-  if (schemas.some(schema => schema.name === R_MCP_RUNTIME)) {
+  if (!schemas.some(schema => schema.name === 'mcp__rmcp__r_runtime')) throw new Error('missing_runtime: rmcp 未连接或未注册。')
+  if (schemas.some(schema => schema.name === 'mcp__rmcp__r_runtime')) {
     const runtime = await callRemoteTool(ctx, exec, R_MCP_RUNTIME, {})
     if (runtime && typeof runtime === 'object' && (runtime as Record<string, unknown>).available === false) throw new Error('missing_runtime: 远程 R 环境未发现 scTenifoldKnk。')
   }
@@ -696,8 +707,8 @@ export class ZeroWallSinglecellService extends TypertRemoteService {
     }
     if (execution === 'r-mcp' || execution === 'auto') {
       const schemas = this.context.tools.schemas()
-      const structuredSubmit = schemas.some(schema => schema.name === 'mcp__rdatalinux_r_platform__r_submit_sc_tenifold_knockout')
-      const genericSubmit = schemas.some(schema => schema.name === 'mcp__rdatalinux_r_platform__r_submit_script')
+      const structuredSubmit = schemas.some(schema => schema.name === 'mcp__rmcp__r_execute')
+      const genericSubmit = false
       if (!structuredSubmit && !genericSubmit) {
         result.ok = false
         result.state = 'failed'
@@ -706,6 +717,9 @@ export class ZeroWallSinglecellService extends TypertRemoteService {
         return result
       }
       if (structuredSubmit && exec !== undefined) {
+        if ((!cfg.remoteInput || cfg.metadata) && cfg.confirmRemoteUpload !== true) {
+          throw new Error('CONFIRMATION_REQUIRED: 首次向 rmcp 上传本次任务的矩阵和元数据前，请取得用户同意，然后设置 config.confirmRemoteUpload=true。')
+        }
         const runtime = await callRemoteTool(this.context, exec, 'mcp__rdatalinux_r_platform__r_validate_sc_tenifold_runtime', {})
         if (runtime && typeof runtime === 'object' && (runtime as Record<string, unknown>).available === false) throw new Error('missing_runtime: 远程 R 环境未发现 scTenifoldKnk；未上传数据或创建任务。')
         const remoteProjectId = `zerowall-${basename(projectPath).replace(/[^A-Za-z0-9._-]/gu, '-').slice(0, 100)}`
@@ -755,7 +769,7 @@ export class ZeroWallSinglecellService extends TypertRemoteService {
     const projectId = record.result.remoteProjectId
     if (!projectId) throw new Error('missing_runtime: 运行尚未登记远程 R MCP 项目。')
     const schemas = this.context.tools.schemas()
-    if (!schemas.some(schema => schema.name === 'mcp__rdatalinux_r_platform__r_submit_script')) throw new Error('missing_runtime: 远程 R MCP 未提供后处理脚本工具。')
+    if (!schemas.some(schema => schema.name === 'mcp__rmcp__r_execute')) throw new Error('missing_runtime: 远程 R MCP 未提供后处理脚本工具。')
     const submitted = await callRemoteTool(this.context, exec, 'mcp__rdatalinux_r_platform__r_submit_script', { project_id: projectId, code, working_directory: '.', timeout_ms: 600_000, confirm: true })
     const remoteJobId = findRemoteJobId(submitted)
     await persistJson(join(record.output, `${stage}-submit.json`), { stage, remoteProjectId: projectId, remoteJobId, submittedAt: new Date().toISOString() })

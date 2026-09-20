@@ -47,7 +47,7 @@ This document defines a PROCESS CONTRACT — declared stages, reviewer roles,
 gate rules, and retained artifacts. It does not promise consistent outputs.
 
 For computational re-execution documentation, see
-[`../../shared/artifact_reproducibility_pattern.md`](../../shared/artifact_reproducibility_pattern.md).
+`../../shared/artifact_reproducibility_pattern.md`（上游参考文件未随包附带；不要作为本地执行依赖）.
 
 The pipeline enforces process routing and deterministic validators where specified.
 The Material Passport's optional `repro_lock` records configuration for inspection;

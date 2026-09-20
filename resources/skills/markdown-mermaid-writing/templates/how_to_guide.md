@@ -2,7 +2,7 @@
 
 # How-To / Tutorial Guide Template
 
-> **Back to [Markdown Style Guide](../markdown_style_guide.md)** — Read the style guide first for formatting, citation, and emoji rules.
+> **Back to [Markdown Style Guide](../references/markdown_style_guide.md)** — Read the style guide first for formatting, citation, and emoji rules.
 
 **Use this template for:** Step-by-step tutorials, how-to guides, onboarding walkthroughs, runbooks, setup instructions, or any document whose primary job is teaching someone to do something. Designed so the reader succeeds on the first attempt.
 
@@ -17,7 +17,7 @@
 1. Copy this file to your project
 2. Replace all `[bracketed placeholders]` with your content
 3. **Test the guide yourself from scratch** — follow every step on a clean machine. If you skip this, the guide has bugs.
-4. Add [Mermaid diagrams](../mermaid_style_guide.md) for process overviews, decision points, or architecture context
+4. Add [Mermaid diagrams](../references/mermaid_style_guide.md) for process overviews, decision points, or architecture context
 5. Include actual output (trimmed) at every verification step — don't just say "you should see output"
 
 ---
@@ -234,9 +234,9 @@ Run through these checks to confirm everything is working:
 
 ### Still stuck?
 
-- **Search existing issues:** [docs/project/issues/](../../docs/project/issues/)
-- **Ask for help:** [docs/project/kanban/](../../docs/project/kanban/)
-- **File a bug:** [issue template](../../docs/project/issues/issue-00000001-agentic-documentation-system.md)
+- **Search existing issues:** docs/project/issues/（模板示例：生成文档时替换为实际项目路径）
+- **Ask for help:** docs/project/kanban/（模板示例：生成文档时替换为实际项目路径）
+- **File a bug:** issue template（模板示例：生成文档时替换为实际项目路径）
 
 ---
 
@@ -244,9 +244,9 @@ Run through these checks to confirm everything is working:
 
 Now that you've completed this guide:
 
-- **[Next tutorial]** — [What it covers and why you'd want to do it next](../workflow_guide.md)
-- **[Reference docs]** — [Where to learn the full feature set](../markdown_style_guide.md)
-- **[Advanced topic]** — [Deeper dive for when you're ready](../operational_readiness.md)
+- **[Next tutorial]** — What it covers and why you'd want to do it next（模板示例：生成文档时替换为实际项目路径）
+- **[Reference docs]** — [Where to learn the full feature set](../references/markdown_style_guide.md)
+- **[Advanced topic]** — Deeper dive for when you're ready（模板示例：生成文档时替换为实际项目路径）
 
 <details>
 <summary><strong>📋 Quick reference card</strong></summary>

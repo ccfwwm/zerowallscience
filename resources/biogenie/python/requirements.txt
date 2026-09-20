@@ -1,0 +1,58 @@
+# dsh-bio bundled Python environment dependencies.
+#
+# biopython is the core; numpy is its one hard runtime dependency. Keep this
+# list intentionally small so the lazily-bootstrapped environment stays fast
+# and reproducible. Add optional extras only when a bundled skill genuinely
+# requires them (and mirror the change in the matching SKILL body).
+biopython>=1.83
+numpy>=1.26
+# 捆绑 skill 实际依赖的绘图库（2026-08-17 实战测试发现缺失后补齐）：
+#  - matplotlib: 结构可视化（PDB 散点/轨迹图, bio-proto-pdb-analysis 模板使用）
+#  - reportlab:  GenomeDiagram 序列图谱（bio-graphics skill 使用）
+#  - rlPyCairo:  reportlab 的 PNG 渲染后端（GenomeDiagram write("PNG") 依赖, 缺失时报
+#                "cannot render PNG without rlPyCairo", 2026-08-17 实战测试踩坑后被 agent 装上的）
+# 三者都是纯 wheel 无编译依赖，安装体积适中，属「添加后立即可用」而非按需手动补装
+matplotlib>=3.8
+reportlab>=4.0
+rlPyCairo>=0.3
+# 出版级绘图（2026-08-17 吸收 scipilot-figure-skill / K-Dense scientific-visualization）：
+#  - pandas:   fig_profile 数据剖析（列类型/分布/相关）
+#  - scipy:    profile 偏度/统计协议（检验、效应量）
+#  - seaborn:  高层统计图配方（箱线/小提琴/热图，pub-figure 协议模板使用）
+#  - Pillow:   图文件审计（DPI 读取）+ 灰度预览渲染（fig_export 使用）
+# 四者均纯 wheel 预编译；环境引导时随 requirements 一次性装好（直接进核心，
+# 2026-08-17 决策：先不做 tier 延迟安装）。
+pandas>=2.0
+scipy>=1.10
+seaborn>=0.13
+Pillow>=10.0
+# 代谢通路设计（2026-08-22 新增，支持代谢网络建模与通量平衡分析）：
+#  - cobra:    代谢网络约束基础建模（FBA/FVA/基因敲除分析）
+#  - requests: HTTP 请求（KEGG/MetaCyc API 查询）
+cobra>=0.32.0
+requests>=2.28
+# 数据科学与机器学习（2026-08-22 新增）：
+#  - scikit-learn: 机器学习（分类/回归/聚类/降维/特征选择）
+#  - statsmodels:  统计建模（假设检验/回归/时间序列）+ 功效/样本量规划（TTestIndPower 等）
+scikit-learn>=1.3
+statsmodels>=0.14
+# 捆绑 skill 实际依赖（2026-09-11 静态门查出：bio-variant-analysis / bio-survival-analysis
+# 的代码模板引用了环境里根本不存在的库，用户一跑就 ImportError，违反零安装原则）：
+#  - vcfpy:    VCF 读写（零依赖纯 Python，闭包仅自身）
+#  - lifelines: 生存分析 KM/Cox（闭包 autograd + autograd-gamma，其余依赖已在第一层）
+# 两者 uv 实测解析干净（Resolved 24 packages，仅需新增 4 个 wheel）。
+vcfpy>=0.14
+lifelines>=0.30
+# ⚠️ 合成生物学五项已下沉第二层（v0.6.16 分层调整，2026-08-26）：
+# primer3-py / dnachisel / dna-features-viewer 不再随环境引导安装，改由
+# src/extra-deps.js EXTRA_DEPS 首次调用对应 op 时自动补装。下沉原因：第一层是
+# 全量解析、单包无解即整体失败的原子操作——冷启动实测 dnachisel>=3.3.0 为
+# 不可满足约束（PyPI 实际上限 3.2.16），卡死整个引导且 systemPython 兜底同炸；
+# 且 primer3-py 在 Windows+Python 3.12 仅有 <=2.3.0 可用 wheel（天花板低）。
+# 下沉后坏约束最多废掉一个 op，不再全局连坐：
+#  - primer3-py>=2.3.0         → bio_primer3_design
+#  - dnachisel>=3.2,<4         → bio_dna_optimize
+#  - dna-features-viewer>=3.1  → bio_plasmid_map 图形模式（缺失自动回退文本模式）
+#  - sbol3>=1.0 / tyto>=1.4    → bio_sbol_write / bio_sbol_read
+#    （二次下沉原因：tyto 声明 pyparsing(<3)，留在第一层会把整个环境钉死在
+#     pyparsing 2.4.7，与 clone_simulate 护栏 pyparsing>=3.1 结构性互斥）

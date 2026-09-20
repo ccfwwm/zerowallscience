@@ -62,15 +62,22 @@ export class PythonUpdaterService {
     })
   }
   pythonInfo(query = ''): Promise<McpPythonInfo> { return this.rpc('pythonInfo', [query]) }
+  async taskStatus(taskId?: string): Promise<unknown> {
+    if (!taskId) return this.current()
+    if (!/^[a-f0-9-]{36}$/u.test(taskId)) throw new Error('Invalid task id')
+    const job = JSON.parse(await readFile(join(this.options.root, 'jobs', `${taskId}.json`), 'utf8'))
+    return { ...job, ...(this.status.updateJob?.taskId === taskId ? { progress: this.status.progress, message: this.status.message, error: this.status.lastUpdateError } : {}) }
+  }
+  previewUninstall(names: string[]): Promise<unknown> { return this.rpc('previewUninstall', [names]) }
   checkPythonPackageUpdates(names: string[] = []): Promise<McpPythonInfo> { return this.rpc('checkPythonPackageUpdates', [names]) }
   checkForUpdates(): Promise<McpEnvironmentStatus> { return this.busy ? Promise.resolve(this.status) : this.rpc('checkForUpdates') }
   private enqueue(method: string, args: unknown[] = [], taskId: string = randomUUID()): { taskId: string } {
     if (this.scheduled.has(taskId)) return { taskId }
     this.scheduled.add(taskId)
-    const save = async (state: string) => {
+    const save = async (state: string, error?: string) => {
       const directory = join(this.options.root, 'jobs'); await mkdir(directory, { recursive: true })
       const destination = join(directory, `${taskId}.json`); const temporary = `${destination}.tmp`
-      await writeFile(temporary, JSON.stringify({ taskId, method, args, state, updatedAt: Date.now() }))
+      await writeFile(temporary, JSON.stringify({ taskId, method, args, state, error, updatedAt: Date.now() }))
       await rename(temporary, destination)
     }
     const persisted = save('queued')
@@ -92,7 +99,7 @@ export class PythonUpdaterService {
         await save(next.lastUpdateError ? 'failed' : 'complete')
       } catch (error) {
         if (this.paused || this.stopped) this.interrupted.set(taskId, { method, args })
-        await save(this.paused || this.stopped ? 'queued' : 'failed').catch(() => undefined)
+        await save(this.paused || this.stopped ? 'queued' : 'failed', String(error)).catch(() => undefined)
         this.publish({ ...this.status, phase: this.paused ? 'paused' : this.status.activeEnvironment ? 'ready' : 'failed', lastUpdateError: this.paused ? undefined : String(error), updateJob: { taskId, kind: method, stage: this.paused ? 'paused' : 'failed', canPause: false } })
       } finally { this.scheduled.delete(taskId); this.busy = false; this.activeMethod = undefined; this.activeTaskId = undefined; if (method === 'initialize') this.queuedUpdate = false; if (this.resumeRequested && !this.stopped) { this.resumeRequested = false; this.updateForUser() } }
     })
@@ -138,6 +145,6 @@ export class PythonUpdaterService {
   updatePythonPackages(names: string[]): { taskId: string } { return this.enqueue('updatePythonPackages', [names]) }
   selectManual(root: string): { taskId: string } { return this.enqueue('selectManual', [root]) }
   rollback(): { taskId: string } { return this.enqueue('rollback') }
-  previewPackages(names: string[]): Promise<unknown> { return this.rpc('previewPackages', [names]) }
+  previewPackages(names: string[], profile?: string): Promise<unknown> { return this.rpc('previewPackages', [names, profile]) }
   applyPackagePlan(planId: string): { taskId: string } { return this.enqueue('applyPackagePlan', [planId]) }
 }

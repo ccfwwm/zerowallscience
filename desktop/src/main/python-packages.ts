@@ -2,14 +2,14 @@ import { randomUUID } from 'node:crypto'
 import { rootCertificates } from 'node:tls'
 import { tmpdir } from 'node:os'
 import { spawn } from 'node:child_process'
-import { mkdir, readFile, writeFile, cp, readdir } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, cp, readdir, rm } from 'node:fs/promises'
 import { join, dirname, relative, resolve } from 'node:path'
 import type { McpEnvironmentManifest } from './mcp-environment.js'
 import type { McpPythonInfo, PythonPackagePlan } from '../shared/contracts.js'
 
 interface Context { root: string; executable: string; sitePackages: string; overlayPath: string; manifest: McpEnvironmentManifest }
 interface Wheel { name: string; version: string; url: string; hash: string }
-export interface StoredPackagePlan extends PythonPackagePlan { wheels: Wheel[] }
+export interface StoredPackagePlan extends PythonPackagePlan { wheels: Wheel[]; removals?: string[]; profile?: string }
 const normalize = (name: string) => name.toLowerCase().replace(/[-_.]+/gu, '-')
 let caFile: Promise<string> | undefined
 function publicCAFile(): Promise<string> {
@@ -36,7 +36,7 @@ async function run(executable: string, args: string[], paths: string[] = []): Pr
   })
 }
 
-export async function preparePackagePlan(root: string, context: Context, requested: string[], info: McpPythonInfo): Promise<StoredPackagePlan> {
+export async function preparePackagePlan(root: string, context: Context, requested: string[], info: McpPythonInfo, profile?: string): Promise<StoredPackagePlan> {
   const planId = randomUUID(); const directory = join(root, 'plans'); await mkdir(directory, { recursive: true })
   const reportPath = join(directory, `${planId}-pip.json`)
   const requestedNames = new Set(requested.map(name => normalize(name.match(/^[A-Za-z0-9_.-]+/u)![0])))
@@ -55,7 +55,7 @@ export async function preparePackagePlan(root: string, context: Context, request
   let result: any
   try {
     await writeFile(constraintsPath, pins.join('\n'))
-    const args = ['install', '--dry-run', '--upgrade-strategy', 'only-if-needed', '--only-binary=:all:', '--report', reportPath, '-r', requirementsPath, '-c', constraintsPath]
+    const args = ['install', '--dry-run', ...(profile ? ['--ignore-installed'] : []), '--upgrade-strategy', 'only-if-needed', '--only-binary=:all:', '--report', reportPath, '-r', requirementsPath, '-c', constraintsPath]
     try { await run(context.executable, args, [context.overlayPath, context.sitePackages]) }
     catch {
       // On conflict allow upward changes only, with the full change set shown before applying.
@@ -75,9 +75,37 @@ export async function preparePackagePlan(root: string, context: Context, request
     return { name: row.metadata.name, version: row.metadata.version, url, hash }
   })
   const versions = new Map(info.packages.map(pkg => [normalize(pkg.name), pkg.version]))
-  const plan: StoredPackagePlan = { planId, snapshotId: context.root, requested, wheels, changes: wheels.map(w => ({ name: w.name, from: versions.get(normalize(w.name)), to: w.version })) }
+  const plan: StoredPackagePlan = { planId, snapshotId: context.root, requested, wheels, ...(profile ? { profile } : {}), changes: wheels.map(w => ({ name: w.name, from: versions.get(normalize(w.name)), to: w.version })) }
   await writeFile(join(directory, `${planId}.json`), JSON.stringify(plan))
   return plan
+}
+
+export async function applyIsolatedProfile(root: string, context: Context, plan: StoredPackagePlan): Promise<string> {
+  if (!plan.profile || !/^[a-z][a-z0-9-]{0,39}$/u.test(plan.profile)) throw new Error('Invalid dependency profile')
+  const parent = join(root, 'profiles', plan.profile)
+  const target = join(parent, plan.planId)
+  const active = await readFile(join(parent, 'current.json'), 'utf8').then(JSON.parse, () => undefined)
+  if (active?.planId === plan.planId && active.snapshotId === context.root) return active.root
+  // A crashed attempt has never been activated; retry from clean owned output.
+  await rm(target, { recursive: true, force: true })
+  try {
+  await mkdir(target, { recursive: true })
+  const lock = join(target, 'requirements.lock')
+  await writeFile(lock, plan.wheels.map(w => `${w.name} @ ${w.url} --hash=sha256:${w.hash}`).join('\n'))
+  const site = join(target, 'site-packages')
+  await run(context.executable, ['install', '--ignore-installed', '--only-binary=:all:', '--require-hashes', '--no-deps', '--target', site, '-r', lock], [context.sitePackages])
+  await python(context.executable, `import sys,json,importlib.metadata as m\nfrom packaging.requirements import Requirement\nfrom packaging.utils import canonicalize_name\npackages={canonicalize_name(d.metadata['Name']):d for d in m.distributions(path=[sys.argv[1]])}\nfor d in packages.values():\n for raw in d.requires or []:\n  r=Requirement(raw)\n  if r.marker and not r.marker.evaluate(): continue\n  dependency=packages.get(canonicalize_name(r.name))\n  if dependency is None or dependency.version not in r.specifier: raise RuntimeError(d.metadata['Name']+' has unsatisfied dependency '+raw)`, [site])
+  const record = JSON.stringify({ profile: plan.profile, root: target, sitePackages: site, snapshotId: context.root, pythonVersion: context.manifest.python.version, planId: plan.planId, wheels: plan.wheels, verifiedAt: new Date().toISOString() })
+  await writeFile(join(target, 'manifest.json'), record)
+  const temporary = join(parent, `${plan.planId}.tmp`)
+  await writeFile(temporary, record)
+  const { rename } = await import('node:fs/promises')
+  await rename(temporary, join(parent, 'current.json'))
+  return target
+  } catch (error) {
+    await rm(target, { recursive: true, force: true }).catch(() => undefined)
+    throw error
+  }
 }
 
 async function python(executable: string, code: string, args: string[]): Promise<void> {
@@ -131,6 +159,10 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
   await mkdir(overlay, { recursive: true })
   if (resolve(context.overlayPath) !== resolve(overlay)) await cp(context.overlayPath, overlay, { recursive: true })
   await snapshotPythonPaths(target, context.manifest, overlay)
+  if (plan.removals?.length) {
+    await python(executable, REMOVE_DISTRIBUTIONS, [site, JSON.stringify(plan.removals)])
+    await python(executable, REMOVE_DISTRIBUTIONS, [overlay, JSON.stringify(plan.removals)])
+  }
   const wheelDir = join(root, 'plans', `${plan.planId}-wheels`); await mkdir(wheelDir, { recursive: true })
   const lock = join(root, 'plans', `${plan.planId}-wheels.txt`)
   await writeFile(lock, plan.wheels.map(w => `${w.name} @ ${w.url} --hash=sha256:${w.hash}`).join('\n'))
@@ -158,7 +190,7 @@ for name in names:
  if not modules: raise RuntimeError('缺少可验证的导入入口: '+name)
  for module in modules:
   if module.isidentifier() and not module.startswith('_'): importlib.import_module(module)
-`, [JSON.stringify(plan.changes.map(change => change.name))])
+`, [JSON.stringify(plan.wheels.map(wheel => wheel.name))])
   await python(executable, `import json,sys,importlib.util
 names=set(json.loads(sys.argv[1]))
 checks={
@@ -172,13 +204,19 @@ checks={
 }
 for name,code in checks.items():
  if name in names: exec(code)
-`, [JSON.stringify(plan.changes.map(change => normalize(change.name)))])
+`, [JSON.stringify(plan.wheels.map(wheel => normalize(wheel.name)))])
 }
 
-export async function replayCustomizations(target: string, manifest: McpEnvironmentManifest, overlayPath: string, customizations: Record<string, string>): Promise<void> {
+export async function replayCustomizations(target: string, manifest: McpEnvironmentManifest, overlayPath: string, customizations: Record<string, string>, removals: string[] = []): Promise<void> {
   await snapshotPythonPaths(target, manifest, overlayPath)
   const executable = join(target, manifest.python.relativeExecutable)
   const site = join(target, manifest.python.relativeSitePackages)
+  if (removals.length) {
+    const required = new Set(manifest.dependencies?.corePackages.map(pkg => normalize(pkg.name)) ?? [])
+    if (removals.some(name => required.has(normalize(name)))) throw new Error('新版环境将已卸载包列为必需依赖，请审核后重新升级。')
+    await python(executable, REMOVE_DISTRIBUTIONS, [site, JSON.stringify(removals)])
+    await python(executable, REMOVE_DISTRIBUTIONS, [overlayPath, JSON.stringify(removals)])
+  }
   if (Object.keys(customizations).length) {
     // Resolve against the new official environment before touching the candidate.
     const info: McpPythonInfo = { ready: true, packages: (manifest.dependencies?.corePackages ?? []).map(p => ({ name: p.name, version: p.requiredVersion, source: 'core', health: 'locked' })) }

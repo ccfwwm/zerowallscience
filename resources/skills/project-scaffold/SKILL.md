@@ -9,11 +9,11 @@ description: Build AI-ready project scaffolds from README requirements. Use this
 
 These host rules override workflow examples below when they differ.
 
-- Use ZeroWall tools by their actual names. Begin with `read`, `search`, and `grep`; discover optional MCP capabilities with `search_mcp_tools`.
+- Use ZeroWall tools by their actual names. Begin with `read`, `search`, and `grep`; discover optional MCP capabilities with `tool_search`.
 - Keep all generated project files inside the active project or Session workspace and preserve unrelated user files.
 - Resolve credentials only through **Settings > Credentials**. Never create, scan, or load project `.env` files and never print secret values.
 - Keep network calls, overwrites, repository initialization, and destructive moves approval-gated.
-- Do not install runtimes or dependencies automatically. Report the exact missing runtime or package instead.
+- Use `zerowall-python-packages` for managed Python dependency changes: inspect, preview, obtain confirmation, apply, and verify. Do not run pip/uv/conda against the managed snapshot. Report missing external runtimes separately.
 - Use project-relative paths and cross-platform commands. Gate Unix-only examples behind an explicit WSL, container, or SSH context.
 
 ## Overview

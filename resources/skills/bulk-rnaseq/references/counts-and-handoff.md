@@ -66,7 +66,7 @@ PyDESeq2 requires **integer** counts. STAR and featureCounts give integers alrea
 DESeq2 output is typically keyed by **Ensembl gene IDs** (e.g. `ENSG00000141510`), often with a version suffix (`.17`). Enrichr/MSigDB/g:Profiler libraries expect **gene symbols** (human UPPERCASE). Mapping mismatch is the #1 cause of "nothing is enriched".
 
 - Strip version suffixes: `ids.str.replace(r"\.\d+$", "", regex=True)`.
-- Map Ensembl → symbol with the `gget` skill (`gget info`), `search_mcp_tools`, `pybiomart`, or `mygene`. On Path A, the nf-core `gene_name` column already gives symbols — keep it alongside `gene_id`.
+- Map Ensembl → symbol with the `gget` skill (`gget info`), `tool_search`, `pybiomart`, or `mygene`. On Path A, the nf-core `gene_name` column already gives symbols — keep it alongside `gene_id`.
 - Keep mapping for *enrichment input*; you can keep Ensembl IDs through DE and map only the final gene lists.
 
 ## DE → enrichment recipe

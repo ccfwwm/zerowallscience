@@ -18,11 +18,11 @@ description: >-
 
 These host rules override workflow examples below when they differ.
 
-- Use ZeroWall tools by their actual names and discover optional MCP capabilities with `search_mcp_tools`; do not assume a connector is installed.
+- Use ZeroWall tools by their actual names and discover optional MCP capabilities with `tool_search`; do not assume a connector is installed.
 - Use `python` or `r` for short interactive work and `run_in_context` with Run Manager for long-running or high-resource jobs.
 - Resolve credentials only through **Settings > Credentials**. Never create, scan, or load project `.env` files and never print secret values.
 - Keep network calls, large transfers, overwrites, and destructive changes approval-gated. Start with read-only inspection or a dry-run plan.
-- Do not install runtimes or dependencies automatically. Report the exact missing runtime or package instead.
+- Use `zerowall-python-packages` for managed Python dependency changes: inspect, preview, obtain confirmation, apply, and verify. Do not run pip/uv/conda against the managed snapshot. Report missing external runtimes separately.
 - Use project-relative paths and cross-platform commands. Gate Unix-only examples behind an explicit WSL, container, or SSH context.
 
 ## Overview

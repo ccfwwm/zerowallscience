@@ -1,0 +1,142 @@
+# 吸收台账（skill 内容来源与改造记录）
+#
+# 用途：任何 skill 的第三方来源、基线 commit、许可、吸收方式与改造摘要都登记在此，
+# 供合规审计与后续维护（上游更新时判断是否值得跟进）。skill 正文末尾的 HTML 注释是
+# 同样信息的随文副本，本文件是机器可读的汇总。
+#
+# 许可立场：只吸收 MIT / Apache-2.0 / BSD / CC-BY 系。GPL / AGPL / LGPL / CC-BY-SA /
+# CC-BY-NC / Proprietary 一律**不复制文本**（可读、可参考思路，不可搬运）。
+# 许可未核实前按「仅参考思路」处理。
+#
+# 改造纪律：吸收 ≠ 照抄 —— 必须补 language 标注、对齐我方工具名（bio_*）、换成我方
+# 领域口径（分子生物学 / 合成生物学 / 代谢建模），并剥离平台私有配置。
+
+version: 1
+verified_on: "2026-09-11"
+
+sources:
+
+  - repo: aipoch/medical-research-skills
+    url: https://github.com/aipoch/medical-research-skills
+    commit: f5ef65b9bea79b6dd9553f52f95b0d08f7d64d26
+    license: MIT
+    license_file: LICENSE
+    upstream_status: active
+    audit: "605 个 SKILL.md 全部许可干净（600 显式 MIT + 5 继承根 LICENSE）"
+    absorbed_on: "2026-09-11"
+    absorbed:
+      - target: skills/bio-evidence-appraisal.md
+        source_skills:
+          - "Evidence Insight/evidence-level-ranker"
+          - "Evidence Insight/scientific-critical-thinking"
+        mode: "改造（重写）"
+        summary: >
+          取四轴评估（证据家族/执行质量/验证深度/表述纪律）、引用角色五档、越界五型与硬规则；
+          新增基础研究 B1-B5 梯级与「计算预测默认 B5」判据，对齐分子生物/合成生物学口径；
+          输出结构由 10 节模板简化为「四轴 + 报告骨架」；全部书目锚点经 PubMed 实测核验后重写。
+      - target: "skills/bio-literature-review.md（§三-§五 新增）"
+        source_skills:
+          - "Academic Writing/systematic-review"
+          - "Evidence Insight/rct-bias-assessment-rob2"
+        mode: "改造（并入已有 skill）"
+        summary: >
+          取 PRISMA 2020 八步流程、两阶段筛选、偏倚评估工具选择表、定量合成要点；
+          剥离 ScienceClaw/PROSPERO 平台耦合步骤，补入「PRISMA 适用边界」（叙述性/范围/活体综述）
+          与「不可合并时改结构化叙述综合」两条实操判据。
+      - target: "skills/protocols/statistics.md（§四-§五、§八 新增）"
+        source_skills:
+          - "Protocol Design/sample-size-and-power-planning-assistant"
+          - "Data Analysis/statistical-analysis"
+        mode: "改造（并入已有协议）"
+        summary: >
+          取规划姿态五档、假设质量分级、情景规划、功效威胁清单、效应量对照表、统计陷阱清单；
+          临床「患者/招募」口径改为生物学重复口径；配方重写为 statsmodels 版本并在本机插件
+          venv 实测（含 MDE、失访膨胀、Cohen's h、BH-FDR 的实测数值）。
+    reference_only:
+      - target: skill-auditor（MedSkillAudit）
+        mode: "仅参考思路（未复制文本）"
+        summary: >
+          scripts/test-skills.mjs 的静态质量门（description 长度 / 目录预算 / 主词唯一性 /
+          代码块可执行性）与 scripts/skill-standards-baseline.json 的棘轮机制，参考其
+          「否决门 + 分级评分 + P0/P1/P2 建议」结构；未引入其运行时（9 步流水线不落地）。
+
+  - repo: jaechang-hits/SciAgent-Skills
+    url: https://github.com/jaechang-hits/SciAgent-Skills
+    commit: fe505cae14d20b6c33be2e49666425be98f005bb
+    license: "根 CC-BY-4.0；per-skill 混杂 23 种（含 GPL/AGPL/LGPL/CC-BY-SA/CC-BY-NC-SA/Proprietary）"
+    audit: "208 条逐条筛选：166 可吸收 / 11 需谨慎 / 31 禁止；本次只取 CC-BY-4.0 的期刊规格与统计标注两类"
+    upstream_status: active
+    absorbed_on: "2026-09-11"
+    absorbed:
+      - target: "skills/bio-figure.md（期刊规格速查节）"
+        source_skills: "scientific-writing/{nature,science,cell,pnas,lancet,nejm,elife,cancer-research,general}-figure-guide"
+        license: CC-BY-4.0
+        mode: "改造（事实层重写 + 官方页复核）"
+        summary: >
+          取 9 刊的宽度/DPI/字体/panel 标签约定/格式/色彩模式事实；**逐条对官方页复核**，
+          复核发现其 Science 栏宽（3.4/5.0/7.0 in）与 PNAS 栏宽与官方页不符，已改用官方值；
+          宽度与格式以 python/figurelib/assets/publisher_profiles.json 的带源快照为准。
+      - target: "skills/protocols/pub-figure.md（显著性标注配方）"
+        source_skills: "data-visualization/statistical-significance-annotation"
+        license: CC-BY-4.0
+        mode: "改造（重写为可执行配方）"
+        summary: >
+          取星号约定表（ns/*/**/***/****）、校正后 p 值纪律、比较选择规则；重写实现配方
+          并补 y 轴留白与 dodge 坐标两个实测坑；多面板一节（9b）为自写（外部 multipanel 为 Proprietary，未用）。
+    reference_only:
+      - target: "data-visualization/multipanel"
+        mode: "不可用（Proprietary, HITS Inc.）"
+        summary: "多面板配方由本仓库自写（GridSpec + sharex/sharey + add_panel_labels）。"
+
+  - repo: Haojae/scipilot-figure-skill
+    url: https://github.com/Haojae/scipilot-figure-skill
+    commit: 43098ddb9e6a6d142218540c114f9ed38922fc42
+    license: MIT
+    upstream_status: "快照（2026-06-15 基线）"
+    absorbed_on: "2026-08 前"
+    absorbed:
+      - target: "python/figurelib/（setup_style / profile_data / export_figure / check_figure / layout_tools / visual_qa）"
+        mode: "直抄（vendor）"
+        summary: "出版级绘图执行层；随附 THIRD_PARTY_NOTICES.md 的完整 MIT 文本。"
+
+  - repo: K-Dense-AI/scientific-agent-skills
+    url: https://github.com/K-Dense-AI/scientific-agent-skills
+    commit: 991bd993aca4e90891d1f9908ba82ef45d77b6f0
+    license: MIT
+    upstream_status: active
+    absorbed_on: "2026-08 前"
+    absorbed:
+      - target: "python/figurelib/assets/（nature/publication/presentation.mplstyle、publisher_profiles.json、color_palettes.py）"
+        mode: "直抄（vendor）"
+        summary: "期刊样式与配色资产。"
+      - target: "skills/protocols/（坐标系统 / 统计检验 / 富集解读 / 文献检索策略等）"
+        mode: "改造（知识层重写并入）"
+        summary: "知识型内容重写为协议文档，出处标注在对应协议正文。"
+
+# 候选来源裁决（2026-09-11 侦察；未吸收的原因留档，避免重复评估）
+evaluated_not_absorbed:
+
+  - repo: jaechang-hits/SciAgent-Skills
+    license: "根 CC-BY-4.0，但 per-skill 混杂 23 种"
+    audit: "166 可吸收 / 11 需谨慎 / 31 禁止（GPL/AGPL/LGPL/CC-BY-SA/CC-BY-NC-SA/Proprietary）"
+    note: >
+      9 个期刊 figure 规格 skill 全部 CC-BY-4.0 且零耦合高增量，是阶段 A 的首选对象；
+      因需逐条白名单筛选（脚本 scripts/audit_skill_licenses.py），排在 B 阶段之后吸收。
+
+  - repo: GPTomics/bioSkills
+    license: "MIT（上游已归档，许可永久有效）"
+    note: "562 个 SKILL.md 全部继承根 MIT；作一次性快照来源，阶段 C（领域配方扩充）按需取。"
+
+  - repo: JimLiu/science-skills
+    license: "NONE（仓库根无 LICENSE 文件，仅 README/frontmatter 自称）"
+    note: >
+      降级为仅参考思路（其 reviewer agent 的审计维度可作反幻觉机制的启动材料）；
+      未经作者授权不复制任何文本。
+
+  - repo: FreedomIntelligence/OpenClaw-Medical-Skills
+    license: "NONE（GitHub 识别；README 有 MIT badge 但根目录许可未被识别）"
+    note: "含框架私有配置（openclaw.plugin.json）；降级为仅参考思路，不做翻案。"
+
+  - repo: BioTender-max/awesome-bio-agent-skills
+    license: "聚合仓库（上游许可不统一，有 GPL 污染风险）"
+    note: "只当索引/发现层使用，绝不整库复制。"

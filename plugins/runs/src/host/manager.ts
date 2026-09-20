@@ -98,6 +98,8 @@ export class RunManager {
     const recovered: RunRecord[] = []
     for (const project of this.store.listProjects()) {
       for (const run of this.store.listRuns(project.id).filter(item => ['submitted', 'running', 'paused', 'cancelling'].includes(item.status))) {
+        // Remote workflow jobs are recovered by their persisted backend IDs.
+        if (run.leaseOwner === 'research-workflow') continue
         const context = this.context(run.projectId, run.executionContextId)
         const localAlive = run.pid !== undefined && this.adapter.isAlive(run.pid)
         const remoteAlive = !localAlive && context !== undefined && context.kind !== 'local' && run.remotePid !== undefined

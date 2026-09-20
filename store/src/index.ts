@@ -1734,7 +1734,7 @@ function validatePresentationTransition(from: PresentationRecord['status'], to: 
 const RUN_TRANSITIONS: Record<RunStatus, readonly RunStatus[]> = {
   draft: ['draft', 'submitted', 'cancelled'], submitted: ['submitted', 'running', 'cancelling', 'failed', 'cancelled', 'timed_out'],
   running: ['running', 'paused', 'cancelling', 'succeeded', 'failed', 'cancelled', 'timed_out'],
-  paused: ['paused', 'running', 'cancelling', 'cancelled', 'timed_out'], cancelling: ['cancelling', 'cancelled', 'failed', 'timed_out'],
+  paused: ['paused', 'running', 'cancelling', 'cancelled', 'timed_out'], cancelling: ['cancelling', 'cancelled', 'succeeded', 'failed', 'timed_out'],
   succeeded: ['succeeded'], failed: ['failed'], cancelled: ['cancelled'], timed_out: ['timed_out'],
 }
 

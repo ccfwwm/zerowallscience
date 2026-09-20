@@ -9,11 +9,11 @@ description: "Plan, configure, validate, and document portable public-bioinforma
 
 These host rules override workflow examples below when they differ.
 
-- Use ZeroWall tools by their actual names and discover optional MCP capabilities with `search_mcp_tools`; do not assume a connector is installed.
+- Use ZeroWall tools by their actual names and discover optional MCP capabilities with `tool_search`; do not assume a connector is installed.
 - Use `python` for plan validation and bounded metadata work; use `run_in_context` with Run Manager for long-running downloads or compute.
 - Resolve credentials only through **Settings > Credentials**. Never create, scan, or load project `.env` files and never print secret values.
 - Keep network calls, large transfers, paid APIs, overwrites, and destructive changes approval-gated. Build and validate the plan first.
-- Do not install runtimes or dependencies automatically. Report the exact missing runtime or package instead.
+- Use `zerowall-python-packages` for managed Python dependency changes: inspect, preview, obtain confirmation, apply, and verify. Do not run pip/uv/conda against the managed snapshot. Report missing external runtimes separately.
 - Keep raw data and manifests inside the active project or Session workspace, using project-relative paths where practical.
 
 Build a reproducible acquisition plan before downloading. Treat GEO, SRA/ENA,

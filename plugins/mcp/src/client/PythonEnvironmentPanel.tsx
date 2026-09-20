@@ -93,6 +93,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
         {!!status?.updateJob?.totalBytes && <span>{((status.updateJob.receivedBytes ?? 0) / 1024 ** 2).toFixed(1)} / {(status.updateJob.totalBytes / 1024 ** 2).toFixed(1)} MiB</span>}
       </div>
     </div>
+    {!!info?.profiles?.length && <details><summary>BioGenie · {info.profiles.length}</summary>{info.profiles.map(profile => <div key={profile.name}><strong>{profile.name}</strong> · {profile.status === 'ready' ? t('python.manager.ready') : t('python.manager.refreshing')}<p>{profile.packages.map(pkg => `${pkg.name} ${pkg.version}`).join(', ')}</p></div>)}</details>}
     <div className={css.toolbar}>
       <input aria-label={t('python.manager.search')} placeholder={t('python.manager.searchHint')} value={query} onChange={e => setQuery(e.target.value)} />
       <select aria-label={t('python.manager.source')} value={filter} onChange={e => setFilter(e.target.value)}><option value="all">{t('python.manager.all')}</option><option value="core">{t('python.manager.core')}</option><option value="overlay">{t('python.manager.extension')}</option><option value="custom">{t('python.manager.custom')}</option><option value="updates">{t('python.manager.updates')}</option></select>
@@ -114,7 +115,8 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
       {!rows.length && <p className={css.empty} role="status">{inventoryLoading ? t('python.manager.refreshingInventory') : !info?.ready ? t('python.notReady') : t('python.manager.empty')}</p>}
     </div>
     <footer className={css.footer}>
-      <div className={css.toolbar}><input aria-label={t('python.manager.add')} placeholder={t('python.manager.addHint')} value={spec} onChange={e => setSpec(e.target.value)} /><button disabled={!spec.trim() || busy[spec.trim()]} onClick={() => void preview([spec.trim()])}>{t('python.manager.plan')}</button></div>
+      {!!info?.profiles?.length && <details><summary>BioGenie · {info.profiles.length}</summary>{info.profiles.map(profile => <div key={profile.name}><strong>{profile.name}</strong> · {profile.status === 'ready' ? t('python.manager.ready') : t('python.manager.refreshing')}<p>{profile.packages.map(pkg => `${pkg.name} ${pkg.version}`).join(', ')}</p></div>)}</details>}
+    <div className={css.toolbar}><input aria-label={t('python.manager.add')} placeholder={t('python.manager.addHint')} value={spec} onChange={e => setSpec(e.target.value)} /><button disabled={!spec.trim() || busy[spec.trim()]} onClick={() => void preview([spec.trim()])}>{t('python.manager.plan')}</button></div>
       <details><summary>{t('python.manager.paths')}</summary><dl><dt>{t('python.manager.interpreter')}</dt><dd>{info?.executable}</dd><dt>{t('python.manager.corePath')}</dt><dd>{info?.sitePackages}</dd><dt>{t('python.manager.overlayPath')}</dt><dd>{info?.overlayPath}</dd><dt>{t('python.manager.scanned')}</dt><dd>{info?.scannedAt}</dd><dt>{t('python.manager.skills')}</dt><dd>{info?.skillAudit ? Object.entries(info.skillAudit.summary).map(([key, value]) => `${key}: ${value}`).join(" · ") : t('python.manager.noAudit')}</dd></dl></details>
       {feedback && <p role="status" className={css.feedback}>{feedback}</p>}
     </footer>
