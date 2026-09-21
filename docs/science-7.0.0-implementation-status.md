@@ -305,3 +305,4 @@ This establishes an HE input/ROI baseline only. It is insufficient evidence for 
 - 新增 `zerowall-science-imrad-report/7.0.0-1`。`research_study` 支持 `generate_report`，工作台“报告与评估”页面可生成草稿；报告读取研究问题、数据契约、分析计划、观察、证据、主张、冻结快照和任务图，不从模型推测补写结果。
 - 草稿生成 Markdown 报告和 JSON Manifest 两个 Artifact，记录文档/证据/主张/任务/冻结版本和阻断原因。`final` 模式要求 Gate 2 已批准、存在主张且全部通过审计，并拒绝待人工复核证据。
 - 定向集成验证新增 1 项：真实项目目录写入 IMRAD Markdown/Manifest，草稿可读；未审计的正式报告被阻断。该能力是报告产物链路，不等于 12 项先导评估或正式医学结论。
+- 研究插件全量回归：27 个测试文件、119 项通过；H5AD 真实 Python 夹具测试单独提高到 30 秒超时上限，避免并行运行时被默认 5 秒测试门限误判。

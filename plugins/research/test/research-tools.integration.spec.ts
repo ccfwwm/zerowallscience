@@ -65,7 +65,7 @@ with h5py.File(sys.argv[1], 'w') as f:
   expect(selected.cell.selection).toMatchObject({ count: 1, sample: [{ index: 1, id: 'cell2' }], previewIndices: [] })
   const collection = value(await call('science_viewer', { action: 'cell_export_selection', viewer_id: id, expected_revision: selected.cell.viewer.version }))
   expect(await readFile(fileURLToPath(collection.cell.artifact.uri), 'utf8')).toContain('1,cell2')
-})
+}, 30000)
 
 it('runs image/annotation tools through the Host and keeps preview pixels out of Agent text', async () => {
   const {store,project,call}=await fixture()
