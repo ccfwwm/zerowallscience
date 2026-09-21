@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import sharp from 'sharp'
 import { afterEach, expect, it } from 'vitest'
 import { ResearchStore } from '../../../store/src/index.js'
-import { ImageViewerService, omePagePosition } from '../src/host/image-viewer.js'
+import { ImageViewerService, omePageForPosition, omePagePosition } from '../src/host/image-viewer.js'
 import { NativeEngineService } from '../src/host/native-engines.js'
 
 const cleanup: Array<() => Promise<void>> = []
@@ -14,6 +14,9 @@ it('maps OME pages according to the declared fastest-to-slowest axis order', () 
   expect(omePagePosition({ order: 'XYZCT', sizes: { Z: 2, C: 3, T: 4 } }, 0)).toEqual({ page: 0, z: 0, c: 0, t: 0 })
   expect(omePagePosition({ order: 'XYZCT', sizes: { Z: 2, C: 3, T: 4 } }, 11)).toEqual({ page: 11, z: 1, c: 2, t: 1 })
   expect(omePagePosition({ order: 'XYCZT', sizes: { C: 2, Z: 3, T: 2 } }, 5)).toEqual({ page: 5, c: 1, z: 2, t: 0 })
+  expect(omePageForPosition({ order: 'XYZCT', sizes: { Z: 2, C: 3, T: 4 } }, { z: 1, c: 2, t: 1 })).toBe(11)
+  expect(omePageForPosition({ order: 'XYCZT', sizes: { C: 2, Z: 3, T: 2 } }, { c: 1, z: 2, t: 0 })).toBe(5)
+  expect(() => omePageForPosition({ order: 'XYZCT', sizes: { Z: 2, C: 3, T: 4 } }, { z: 2 })).toThrow('outside its declared range')
 })
 it('handles single-page OME images and rejects invalid pages or dimensions', () => {
   expect(omePagePosition({ order: 'XY', sizes: { X: 32, Y: 16 } }, 0)).toEqual({ page: 0 })

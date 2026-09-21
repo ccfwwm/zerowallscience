@@ -320,3 +320,10 @@ This establishes an HE input/ROI baseline only. It is insufficient evidence for 
 - 新增 `XYZCT`、`XYCZT`、单页、非法页码和非法维度测试；研究插件全量回归为 27 个测试文件、122 项通过，Host/Client 类型检查和 Typert 合同生成通过。
 - 这只是 OME 页坐标的基础契约，不等于 OME-TIFF/OME-Zarr 的完整轴选择、分块读取、通道渲染或多维强度分析；这些仍需专用适配器和性能验收。
 - 图像工作台会在读取到可信 OME 元数据时显示轴序、各轴尺寸、当前 Z/C/T 位置和物理像素尺寸；普通 TIFF 或缺失元数据仍明确显示为未核验，不会把页码自动当作通道或时间点。
+
+## 2026-09-22 continuation: OME axis selection in the workbench
+
+- 新增 `omePageForPosition` 逆映射契约，将受校验的 Z/C/T 位置按 OME `DimensionOrder` 转回 TIFF 页码；非法轴值和越界值会被阻断，保持与已有页到轴位置映射相互可逆。
+- 图像工作台在多维 OME 元数据可用时提供 Z、C、T 数字选择控件；选择后更新当前页，保存视角后恢复该页和轴位置。旧的页码输入与 `ImageViewState` 接口继续兼容。
+- 新增逆映射和越界测试，定向 Image Viewer 测试 7 项通过，研究插件客户端 TypeScript 检查通过。
+- 该增量仍不代表 OME-TIFF/OME-Zarr 的完整分块读取、通道渲染、强度分析或 10 GiB 性能验收；大文件和标签掩膜仍需专用适配器。

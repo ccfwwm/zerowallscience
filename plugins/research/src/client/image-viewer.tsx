@@ -9,12 +9,25 @@ import { WesternBlotPanel } from './western-blot-panel.js'
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 const initialView: ImageViewState = { page: 0, zoom: 1, panX: 0, panY: 0 }
 
+function pageForOmePosition(order: string, sizes: Record<string, number>, position: { z?: number; c?: number; t?: number }): number {
+  let page = 0
+  let multiplier = 1
+  for (const axis of order.slice(2).split('').filter(axis => axis === 'Z' || axis === 'C' || axis === 'T')) {
+    const size = Number(sizes[axis] ?? 1)
+    const value = position[axis.toLowerCase() as 'z' | 'c' | 't'] ?? 0
+    page += value * multiplier
+    multiplier *= size
+  }
+  return page
+}
+
 export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
   const [assets, setAssets] = useState<DataAssetRecord[]>([])
   const [views, setViews] = useState<ViewerSessionRecord[]>([])
   const [assetId, setAssetId] = useState(''); const [importId, setImportId] = useState('')
   const [viewer, setViewer] = useState<ViewerSessionRecord>()
   const [image, setImage] = useState<ImagePreview>()
+  const [axisPosition, setAxisPosition] = useState<{ z?: number; c?: number; t?: number }>({})
   const [state, setState] = useState(initialView)
   const [annotations, setAnnotations] = useState<AnnotationRevisionRecord[]>([])
   const [launches, setLaunches] = useState<ScientificEngineLaunchResult[]>([])
@@ -52,7 +65,10 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
         const saved = response.viewer.state
         setState({ page: Number(saved.page), zoom: Number(saved.zoom), panX: Number(saved.panX), panY: Number(saved.panY) })
       }
-      if (response.image) setImage(response.image)
+      if (response.image) {
+        setImage(response.image)
+        setAxisPosition(response.image.axes?.position ?? {})
+      }
       if (response.annotations) setAnnotations(response.annotations)
       if (response.annotationSave?.conflict) {
         setMessage('并发修改：你的标注已保存为冲突分支，当前标注没有被覆盖。请对比修订，再选择要采用的内容。')
@@ -101,7 +117,20 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
       <div role="tablist" aria-label="已保存图像视图">{views.map(view => <button key={view.id} type="button" role="tab" aria-selected={viewer?.id===view.id} disabled={unsaved} onClick={() => void run({ action: 'image_read', viewerId: view.id })}>{assets.find(item => item.id === view.assetId)?.name ?? '图像'} · v{view.version}</button>)}</div>
       {viewer && image && draft && <>
         <p>{image.coordinates.width}×{image.coordinates.height} 原始像素 · {image.channels} 分量 · {image.depth} · {image.coordinates.pages} 页 · 当前标注修订 {head?.revision ?? '未保存'}</p>
-        {image.axes && <p aria-label="OME 轴位置">OME {image.axes.order} · {Object.entries(image.axes.sizes).map(([axis, size]) => `${axis}${size}`).join(' · ')} · 当前页 {image.axes.position?.page ?? image.page}{image.axes.position?.z === undefined ? '' : ` · Z${image.axes.position.z}`}{image.axes.position?.c === undefined ? '' : ` · C${image.axes.position.c}`}{image.axes.position?.t === undefined ? '' : ` · T${image.axes.position.t}`}{image.axes.physicalSize?.x === undefined ? '' : ` · 像素 ${image.axes.physicalSize.x}×${image.axes.physicalSize.y ?? image.axes.physicalSize.x} ${image.axes.physicalSize.unit ?? ''}/px`}</p>}
+        {image.axes && <>
+          <p aria-label="OME 轴位置">OME {image.axes.order} · {Object.entries(image.axes.sizes).map(([axis, size]) => `${axis}${size}`).join(' · ')} · 当前页 {image.axes.position?.page ?? image.page}{image.axes.position?.z === undefined ? '' : ` · Z${image.axes.position.z}`}{image.axes.position?.c === undefined ? '' : ` · C${image.axes.position.c}`}{image.axes.position?.t === undefined ? '' : ` · T${image.axes.position.t}`}{image.axes.physicalSize?.x === undefined ? '' : ` · 像素 ${image.axes.physicalSize.x}×${image.axes.physicalSize.y ?? image.axes.physicalSize.x} ${image.axes.physicalSize.unit ?? ''}/px`}</p>
+          <div aria-label="OME 轴选择">
+            {(['z', 'c', 't'] as const).filter(axis => image.axes!.sizes[axis.toUpperCase()] !== undefined && Number(image.axes!.sizes[axis.toUpperCase()]) > 1).map(axis => {
+              const size = Number(image.axes!.sizes[axis.toUpperCase()])
+              return <label key={axis}>{axis.toUpperCase()} <input aria-label={`OME ${axis.toUpperCase()} 位置`} type="number" min={0} max={size - 1} value={axisPosition[axis] ?? 0} disabled={unsaved} onChange={event => {
+                const next = { ...axisPosition, [axis]: Number(event.target.value) }
+                setAxisPosition(next)
+                setState(previous => ({ ...previous, page: pageForOmePosition(image.axes!.order, image.axes!.sizes, next) }))
+              }} /></label>
+            })}
+            <span>轴选择会更新当前页；保存图像视角后恢复该位置。</span>
+          </div>
+        </>}
         <div>{([['page','页码（从 0 开始）'],['zoom','缩放'],['panX','水平平移（像素）'],['panY','垂直平移（像素）']] as const).map(([key,label]) => <label key={key}>{label} <input aria-label={label} type="number" style={{ width: 85 }} value={state[key]} disabled={unsaved} onChange={event => setState(previous => ({ ...previous, [key]: Number(event.target.value) }))} /></label>)}
           <button type="button" disabled={unsaved} onClick={() => void run({ action: 'image_save', viewerId: viewer.id, expectedVersion: viewer.version, imageState: state })}>保存图像视角</button>
         </div>

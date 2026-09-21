@@ -31,6 +31,22 @@ export function omePagePosition(axes: { order: string; sizes: Record<string, num
   return position
 }
 
+/** Convert a validated Z/C/T coordinate back to the TIFF page index. */
+export function omePageForPosition(axes: { order: string; sizes: Record<string, number> }, position: { z?: number; c?: number; t?: number }): number {
+  const varying = axes.order.slice(2).split('').filter(axis => axis === 'Z' || axis === 'C' || axis === 'T')
+  let multiplier = 1
+  let page = 0
+  for (const axis of varying) {
+    const size = Number(axes.sizes[axis] ?? 1)
+    if (!Number.isSafeInteger(size) || size < 1) throw new Error(`OME axis ${axis} has an invalid size.`)
+    const value = position[axis.toLowerCase() as 'z' | 'c' | 't'] ?? 0
+    if (!Number.isSafeInteger(value) || value < 0 || value >= size) throw new Error(`OME axis ${axis} position is outside its declared range.`)
+    page += value * multiplier
+    multiplier *= size
+  }
+  return page
+}
+
 function omeAxes(bytes: Buffer, page = 0): ImagePreview['axes'] {
   const text = bytes.toString('utf8')
   const pixels = /<Pixels\b([^>]+)>/iu.exec(text)?.[1]
