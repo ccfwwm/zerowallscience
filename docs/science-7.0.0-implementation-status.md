@@ -312,3 +312,10 @@ This establishes an HE input/ROI baseline only. It is insufficient evidence for 
 - 科研画布导出从单一 SVG 扩展为 SVG、PNG、PDF 三个 Artifact，三者共享同一结构化规格、源资产/产物引用和 Manifest。PNG 由 SVG 在 Host 中确定性栅格化；PDF 使用单页图像 XObject 封装，并明确标记 `rasterized: true`，保留 SVG 作为可编辑工程源文件。
 - 画布面板现在显示三个输出的 URI、媒体类型和 SHA-256；导出测试检查 PNG 文件头、PDF 文件头、Manifest 源引用以及 Artifact 数量。
 - 这完成了科研画布的基础多格式交付，不等于多面板拼版、统计误差标注或出版级人工审阅已经完成。
+
+## 2026-09-22 continuation: OME page coordinate contract
+
+- 图像查看器现在保留 OME-TIFF `DimensionOrder` 的当前页位置，并按声明的最快到最慢轴序映射 `Z/C/T` 索引；单页图像明确返回仅包含页码的位置对象。
+- 页码必须是非负安全整数，轴尺寸必须是正整数，超过声明的 `Z×C×T` 页数会被阻断，避免把越界页伪装成有效的 Z、通道或时间点。
+- 新增 `XYZCT`、`XYCZT`、单页、非法页码和非法维度测试；研究插件全量回归为 27 个测试文件、122 项通过，Host/Client 类型检查和 Typert 合同生成通过。
+- 这只是 OME 页坐标的基础契约，不等于 OME-TIFF/OME-Zarr 的完整轴选择、分块读取、通道渲染或多维强度分析；这些仍需专用适配器和性能验收。

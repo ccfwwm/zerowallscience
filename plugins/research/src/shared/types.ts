@@ -56,7 +56,7 @@ export interface SequenceViewState { recordIndex: number; start: number; count: 
 export interface ImageViewState { page: number; zoom: number; panX: number; panY: number }
 export interface ImagePreview {
   sourceSha256: string; coordinates: ImageCoordinates; format: string; channels: number; depth: string
-  page: number; previewWidth: number; previewHeight: number; pngBase64: string; notes: string[]; axes?: { order: string; sizes: Record<string, number>; physicalSize?: { x?: number; y?: number; unit?: string } }
+  page: number; previewWidth: number; previewHeight: number; pngBase64: string; notes: string[]; axes?: { order: string; sizes: Record<string, number>; physicalSize?: { x?: number; y?: number; unit?: string }; position?: { page: number; z?: number; c?: number; t?: number } }
 }
 export interface ScienceViewerRequest {
   sessionId: string

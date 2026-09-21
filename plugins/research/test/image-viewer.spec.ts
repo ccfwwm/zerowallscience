@@ -5,11 +5,22 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import sharp from 'sharp'
 import { afterEach, expect, it } from 'vitest'
 import { ResearchStore } from '../../../store/src/index.js'
-import { ImageViewerService } from '../src/host/image-viewer.js'
+import { ImageViewerService, omePagePosition } from '../src/host/image-viewer.js'
 import { NativeEngineService } from '../src/host/native-engines.js'
 
 const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose() })
+it('maps OME pages according to the declared fastest-to-slowest axis order', () => {
+  expect(omePagePosition({ order: 'XYZCT', sizes: { Z: 2, C: 3, T: 4 } }, 0)).toEqual({ page: 0, z: 0, c: 0, t: 0 })
+  expect(omePagePosition({ order: 'XYZCT', sizes: { Z: 2, C: 3, T: 4 } }, 11)).toEqual({ page: 11, z: 1, c: 2, t: 1 })
+  expect(omePagePosition({ order: 'XYCZT', sizes: { C: 2, Z: 3, T: 2 } }, 5)).toEqual({ page: 5, c: 1, z: 2, t: 0 })
+})
+it('handles single-page OME images and rejects invalid pages or dimensions', () => {
+  expect(omePagePosition({ order: 'XY', sizes: { X: 32, Y: 16 } }, 0)).toEqual({ page: 0 })
+  expect(() => omePagePosition({ order: 'XY', sizes: { X: 32, Y: 16 } }, 1)).toThrow('outside the 1-page axis range')
+  expect(() => omePagePosition({ order: 'XYZCT', sizes: { Z: 0, C: 1, T: 1 } }, 0)).toThrow('axis Z has an invalid size')
+  expect(() => omePagePosition({ order: 'XYZCT', sizes: { Z: 2, C: 1, T: 1 } }, -1)).toThrow('non-negative integer')
+})
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'image-viewer-')); const projectRoot = join(root,'project'); await mkdir(projectRoot)
   const store = new ResearchStore(join(root,'store.sqlite')); const service = new ImageViewerService(store)

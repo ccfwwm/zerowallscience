@@ -12,7 +12,26 @@ import type { NativeEngineService } from './native-engines.js'
 
 const MAX_IMAGE_BYTES = 128 * 1024 * 1024
 const MAX_PIXELS = 100000000
-function omeAxes(bytes: Buffer): ImagePreview['axes'] {
+export function omePagePosition(axes: { order: string; sizes: Record<string, number> }, page: number): { page: number; z?: number; c?: number; t?: number } {
+  if (!Number.isSafeInteger(page) || page < 0) throw new Error('OME page must be a non-negative integer.')
+  const varying = axes.order.slice(2).split('').filter(axis => axis === 'Z' || axis === 'C' || axis === 'T')
+  const dimensions = varying.map(axis => {
+    const size = Number(axes.sizes[axis] ?? 1)
+    if (!Number.isSafeInteger(size) || size < 1) throw new Error(`OME axis ${axis} has an invalid size.`)
+    return { axis, size }
+  })
+  const pageCount = dimensions.reduce((total, dimension) => total * dimension.size, 1)
+  if (page >= pageCount) throw new Error(`OME page ${page} is outside the ${pageCount}-page axis range.`)
+  let remainder = page
+  const position: { page: number; z?: number; c?: number; t?: number } = { page }
+  for (const { axis, size } of dimensions) {
+    position[axis.toLowerCase() as 'z' | 'c' | 't'] = remainder % size
+    remainder = Math.floor(remainder / size)
+  }
+  return position
+}
+
+function omeAxes(bytes: Buffer, page = 0): ImagePreview['axes'] {
   const text = bytes.toString('utf8')
   const pixels = /<Pixels\b([^>]+)>/iu.exec(text)?.[1]
   if (!pixels) return undefined
@@ -21,7 +40,7 @@ function omeAxes(bytes: Buffer): ImagePreview['axes'] {
   const sizes = Object.fromEntries(['X','Y','Z','C','T'].flatMap(axis => { const value = read(`Size${axis}`); return value === undefined ? [] : [[axis, value]] }))
   const x = /\bPhysicalSizeX="([0-9.e+-]+)"/iu.exec(pixels)?.[1]; const y = /\bPhysicalSizeY="([0-9.e+-]+)"/iu.exec(pixels)?.[1]; const unit = /\bPhysicalSizeXUnit="([^"]+)"/iu.exec(pixels)?.[1]
   const physicalSize = { ...(x === undefined ? {} : { x: Number(x) }), ...(y === undefined ? {} : { y: Number(y) }), ...(unit === undefined ? {} : { unit }) }
-  return { order, sizes, ...(Object.keys(physicalSize).length ? { physicalSize } : {}) }
+  return { order, sizes, ...(Object.keys(physicalSize).length ? { physicalSize } : {}), position: omePagePosition({ order, sizes }, page) }
 }
 
 export class ImageViewerService {
@@ -126,7 +145,7 @@ export class ImageViewerService {
     assertCurrent()
     if (!viewer) viewer = this.store.createViewerSession({ projectId: project.id, assetId: asset.id, tool: 'image', state: { ...state, sourceSha256: sha256 } })
     else if (input.action === 'image_save') viewer = this.store.updateViewerSession(project.id, viewer.id, { expectedVersion: viewer.version, state: { ...state, sourceSha256: sha256 } })
-    const axes = metadata.format === 'tiff' ? omeAxes(bytes) : undefined
+    const axes = metadata.format === 'tiff' ? omeAxes(bytes, state.page) : undefined
     const image: ImagePreview = { sourceSha256: sha256, coordinates: { convention: 'pixel-edge-top-left', width, height, pages, calibration: null }, format: metadata.format!, channels: metadata.channels ?? 1, depth: metadata.depth ?? 'unknown', page: state.page, previewWidth: thumbnail.info.width, previewHeight: thumbnail.info.height, pngBase64: thumbnail.data.toString('base64'), ...(axes ? { axes } : {}), notes: ['预览为显示用 PNG，不用于从屏幕像素测量原始强度。', '坐标以未旋转原图像素边界为准，左上角 (0,0)。', ...(axes ? [`已读取 OME 轴元数据：${axes.order}。页码仍按 0 开始，轴索引映射由专用适配器负责。`] : pages > 1 ? ['TIFF 页码从 0 开始；未核验 OME 轴序，不能将页码直接解释为 Z、T 或通道。'] : [])] }
     return { ...response(), image }
   }
