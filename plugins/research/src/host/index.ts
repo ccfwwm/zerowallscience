@@ -31,6 +31,7 @@ import { SangerService } from './sanger.js'
 import { FlowService } from './flow.js'
 import { HeService } from './he.js'
 import { CanvasService } from './canvas.js'
+import { ReportService } from './report.js'
 import { CellViewerService } from './cell-viewer.js'
 import { BrainAtlasService } from './brain-atlas.js'
 import type { CanvasRequest, FijiExperimentRequest, FijiExperimentResponse, FlowRequest, HeRequest, SangerRequest } from '../shared/types.js'
@@ -62,6 +63,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
   private readonly flow: FlowService
   private readonly he: HeService
   private readonly canvas: CanvasService
+  private readonly reports: ReportService
   private readonly cells: CellViewerService
   private readonly brain: BrainAtlasService
 
@@ -79,6 +81,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     this.flow = new FlowService(this.store)
     this.he = new HeService(this.store)
     this.canvas = new CanvasService(this.store)
+    this.reports = new ReportService(this.store)
     this.cells = new CellViewerService(this.store)
     this.brain = new BrainAtlasService(this.store)
     ctx.provide('localScienceWorkflow', {
@@ -368,6 +371,11 @@ export class ZeroWallResearchService extends TypertRemoteService {
     const exec = { agent: { session }, callId: `rpc:obesity-alopecia-recon:${input.studyId}`, rootCallId: `rpc:obesity-alopecia-recon:${input.studyId}`, signal: new AbortController().signal } as unknown as ToolRunContext
     return this.runObesityAlopeciaRecon(input.studyId, exec)
   }
+  @Remote('generateResearchReport') async generateResearchReport(input: { sessionId: string; studyId: string; mode?: 'draft' | 'final' }): Promise<JsonObject> {
+    const project = this.projectForSession({ sessionId: input.sessionId })
+    if (!project) throw new Error('An active registered project session is required.')
+    return await this.reports.generate(project, input.studyId, input.mode ?? 'draft') as unknown as JsonObject
+  }
   @Remote('probeScientificEngines') async probeScientificEngines(): Promise<ScientificEngineStatus[]> {
     const fijiRoot = process.env.ZEROWALL_FIJI_PATH?.trim() || 'C:\\softworks\\fiji'
     const napariPython = engineExecutable('napari')
@@ -542,7 +550,7 @@ function registerResearchTools(ctx: Context): void {
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'research_study',
     description: 'Read and update structured research records. Human gate approval and plan freezing remain UI-only actions.',
-    parameters: { action: { type: 'string', required: true, enum: ['list', 'get', 'documents', 'create_document', 'register_evidence', 'audit_claim', 'method_check_evaluate', 'validate_nhanes_contract', 'validate_genetic_contract', 'obesity_alopecia_recon', 'tasks', 'create_task', 'update_task', 'refresh_tasks', 'task_budget', 'reconcile_task_run'] }, project_id: { type: 'string' }, study_id: { type: 'string' }, task_id: { type: 'string' }, claim_id: { type: 'string' }, task: { type: 'json' }, expected_version: { type: 'integer' }, kind: { type: 'string' }, payload: { type: 'json' }, method: { type: 'string' }, assumptions: { type: 'json' }, contract: { type: 'json' } },
+    parameters: { action: { type: 'string', required: true, enum: ['list', 'get', 'documents', 'create_document', 'register_evidence', 'audit_claim', 'method_check_evaluate', 'validate_nhanes_contract', 'validate_genetic_contract', 'obesity_alopecia_recon', 'generate_report', 'tasks', 'create_task', 'update_task', 'refresh_tasks', 'task_budget', 'reconcile_task_run'] }, project_id: { type: 'string' }, study_id: { type: 'string' }, task_id: { type: 'string' }, claim_id: { type: 'string' }, task: { type: 'json' }, expected_version: { type: 'integer' }, kind: { type: 'string' }, payload: { type: 'json' }, method: { type: 'string' }, assumptions: { type: 'json' }, contract: { type: 'json' }, report_mode: { type: 'string', enum: ['draft', 'final'] } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args, exec: ToolRunContext) {
       const service = ctx.zerowallResearch
@@ -558,6 +566,7 @@ function registerResearchTools(ctx: Context): void {
       if (args.action === 'get') return { study: study as unknown as JsonObject }
       if (args.action === 'documents') return { documents: service.listResearchDocuments({ studyId: String(args.study_id) }) as unknown as JsonObject }
       if (args.action === 'obesity_alopecia_recon') return service.runObesityAlopeciaRecon(study.id, exec)
+      if (args.action === 'generate_report') return await service.generateResearchReport({ sessionId: String(exec.agent?.session.id ?? ''), studyId: study.id, mode: args.report_mode === 'final' ? 'final' : 'draft' })
       if (args.action === 'tasks') return { tasks: service.listResearchTasks(String(args.study_id)) as unknown as JsonObject }
       if (['task_budget', 'refresh_tasks'].includes(String(args.action))) {
         if (args.action === 'task_budget') return { budget: service.getResearchTaskBudget(String(args.study_id)) as unknown as JsonObject }

@@ -57,6 +57,8 @@ export function ScienceWorkbench(props: TabComponentProps & { remote: Remote }):
   const [taskKind, setTaskKind] = useState('data-scout')
   const [taskBudget, setTaskBudget] = useState('{\n  "tokens": 100\n}')
   const [reconLoading, setReconLoading] = useState(false)
+  const [reportLoading, setReportLoading] = useState(false)
+  const [reportResult, setReportResult] = useState<{ mode: string; report?: { uri: string }; manifest?: { uri: string }; needsReview?: boolean; blockers?: string[] }>()
   const requestGeneration = useRef(0)
 
   const sessionId = props.scope.sessionId
@@ -167,6 +169,15 @@ export function ScienceWorkbench(props: TabComponentProps & { remote: Remote }):
       unwrapRemoteResult('reconcileResearchTaskRun', await remote.reconcileResearchTaskRun({ id: task.id })); await load(active?.id); setMessage('已按绑定 Run 对账任务状态。')
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
   }
+  const generateReport = async (mode: 'draft' | 'final'): Promise<void> => {
+    try {
+      if (!active || !sessionId || typeof remote.generateResearchReport !== 'function') throw new Error('当前 Host 不支持 IMRAD 报告生成。')
+      setReportLoading(true)
+      const result = unwrapRemoteResult('generateResearchReport', await remote.generateResearchReport({ sessionId, studyId: active.id, mode })) as { mode: string; report?: { uri: string }; manifest?: { uri: string }; needsReview?: boolean; blockers?: string[] }
+      setReportResult(result); setMessage(mode === 'final' ? '正式 IMRAD 报告已登记。' : 'IMRAD 报告草稿已登记，仍需人工审阅。')
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
+    finally { setReportLoading(false) }
+  }
 
   return <div style={styles.root}>
     <header style={styles.header}><div><h2 style={{ margin: 0 }}>科研可视化与分析工作台</h2><small>ZeroWall Science 7.0.0 · 研究记录、专业工具与远程计算</small></div><button type="button" onClick={() => void load()} disabled={loading}>{loading ? '检查中…' : '刷新状态'}</button></header>
@@ -177,7 +188,7 @@ export function ScienceWorkbench(props: TabComponentProps & { remote: Remote }):
     {page === 'plan' && <PlanPage active={active} snapshot={snapshot} rationale={rationale} setRationale={setRationale} approveGate={() => void approveGate(1)} freeze={() => void freeze()} taskName={taskName} setTaskName={setTaskName} taskKind={taskKind} setTaskKind={setTaskKind} taskBudget={taskBudget} setTaskBudget={setTaskBudget} createTask={() => void createTask()} refreshTasks={() => void refreshTasks()} reconcileTask={task => void reconcileTask(task)} />}
     <div hidden={page !== 'tools'}><Tools engines={engines} />{toolsOpened && sessionId && <div key={sessionId}><CellViewer remote={remote} sessionId={sessionId} /><ImageViewer remote={remote} sessionId={sessionId} /><NativeEnginePanel remote={remote} sessionId={sessionId} /><FijiExperimentPanel remote={remote} sessionId={sessionId} /><SequenceViewer remote={remote} sessionId={sessionId} /><SangerViewer remote={remote} sessionId={sessionId} /><FlowViewer remote={remote} sessionId={sessionId} /><HeViewer remote={remote} sessionId={sessionId} /><CanvasViewer remote={remote} sessionId={sessionId} /><BrainViewer remote={remote} sessionId={sessionId} /></div>}</div>
     {page === 'evidence' && <EvidencePage active={active} snapshot={snapshot} rationale={rationale} setRationale={setRationale} approveGate={() => void approveGate(2)} />}
-    {page === 'report' && <Panel title="报告与评估"><p>报告、图表工程、复现包和 12 项先导任务必须引用真实 Run/Artifact 与证据记录。</p><StatusLine label="当前研究" value={active?.title ?? '未选择'} /><StatusLine label="状态" value={active?.status ?? '未建立'} /></Panel>}
+    {page === 'report' && <ReportPage active={active} result={reportResult} loading={reportLoading} generateReport={mode => void generateReport(mode)} />}
   </div>
 }
 
@@ -198,6 +209,9 @@ function PlanPage({ active, snapshot, rationale, setRationale, approveGate, free
 function EvidencePage({ active, snapshot, rationale, setRationale, approveGate }: { active?: Study | undefined; snapshot?: Snapshot | undefined; rationale: string; setRationale: (value: string) => void; approveGate: () => void }): JSX.Element {
   const claims = snapshot?.documents.filter(document => document.kind === 'claim') ?? []
   return <Panel title="证据与结论"><StatusLine label="门禁二" value={active?.gate2 ?? 'pending'} /><StatusLine label="核心主张" value={`${claims.length} 条`} /><p>计算成功、证据通过检查和人工认可主张分别记录。冲突、阴性、失败和合理停止不能被隐藏。</p><textarea aria-label="最终主张审阅理由" value={rationale} onChange={event => setRationale(event.target.value)} rows={3} style={styles.textarea} /><button type="button" onClick={approveGate} disabled={!active || !active.currentFreezeId}>人工批准门禁二</button></Panel>
+}
+function ReportPage({ active, result, loading, generateReport }: { active?: Study | undefined; result?: { mode: string; report?: { uri: string }; manifest?: { uri: string }; needsReview?: boolean; blockers?: string[] }; loading: boolean; generateReport: (mode: 'draft' | 'final') => void }): JSX.Element {
+  return <Panel title="报告与评估"><p>IMRAD 报告只读取 ResearchStore 中已登记的问题、数据契约、计划、证据、主张和任务；草稿可生成，正式版要求门禁二和主张审计通过。</p><StatusLine label="当前研究" value={active?.title ?? '未选择'} /><StatusLine label="状态" value={active?.status ?? '未建立'} /><div style={styles.inline}><button type="button" disabled={!active || loading} onClick={() => generateReport('draft')}>{loading ? '生成中…' : '生成 IMRAD 草稿'}</button><button type="button" disabled={!active || loading || active.gate2 !== 'approved'} onClick={() => generateReport('final')}>生成正式报告</button></div>{result && <div role="status"><StatusLine label="报告模式" value={result.mode} /><StatusLine label="复核状态" value={result.needsReview ? '需要人工复核' : '可交付'} /><p>报告：<code>{result.report?.uri}</code><br />清单：<code>{result.manifest?.uri}</code></p>{result.blockers?.length ? <p>阻断：{result.blockers.join('；')}</p> : null}</div>}</Panel>
 }
 
 function Tools({ engines }: { engines: Engine[] }): JSX.Element { return <div style={styles.grid}><Panel title="专业工具"><div style={styles.cards}>{tools.map(tool => <article key={tool.id} style={styles.card}><strong>{tool.name}</strong><p>{tool.formats}</p><small>{tool.location}</small><div style={{ marginTop: 8, color: tool.state === 'ready' ? 'var(--dsw-color-success)' : tool.state === 'partial' ? 'var(--dsw-color-warning)' : 'var(--dsw-alias-label-secondary)' }}>{tool.state === 'ready' ? '可用' : tool.state === 'partial' ? '基础能力可用，深度流程建设中' : '计划中，尚未宣称可用'}</div></article>)}</div></Panel><Panel title="本地引擎健康状态">{engines.length ? engines.map(engine => <StatusLine key={engine.id} label={engine.name} value={`${engine.available ? '可用' : '不可用'} · ${engine.version ?? engine.reason ?? ''}`} />) : <p>尚未完成引擎探测。</p>}</Panel></div> }

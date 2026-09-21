@@ -178,6 +178,18 @@ it('records bounded obesity—alopecia NHANES reconnaissance without selecting a
   expect(store.listResearchDocuments(study.id).map(item => item.kind).sort()).toEqual(['dataset-contract', 'observation'])
 })
 
+it('generates a traceable IMRAD draft and blocks an unreviewed final report', async () => {
+  const { store, project, call } = await fixture()
+  const study = store.createResearchStudy({ projectId: project.id, title: '肥胖—脱发报告链路', phase: 'evidence' })
+  store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'question', payload: { text: 'BMI 与明确脱发表型的关系待核验。' } })
+  store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'evidence', payload: { result: '目录侦察完成', artifactId: 'artifact-catalog', needsReview: true } })
+  const draft = value(await call('research_study', { action: 'generate_report', study_id: study.id }))
+  expect(draft.report.uri).toMatch(/^file:/)
+  expect(await readFile(fileURLToPath(draft.report.uri), 'utf8')).toContain('Introduction')
+  expect(JSON.parse(await readFile(fileURLToPath(draft.manifest.uri), 'utf8'))).toMatchObject({ format: 'zerowall-science-imrad-report', needsReview: true })
+  expect((await call('research_study', { action: 'generate_report', study_id: study.id, report_mode: 'final' })).isError).toBe(true)
+})
+
 it('classifies catalog matches and unavailable responses deterministically', () => {
   const findings = buildReconFindings([
     { query: OBESITY_ALOPECIA_RECON_QUERIES[0], response: { variables: [{ name: 'ALQ', label: 'Alopecia areata' }] } },
