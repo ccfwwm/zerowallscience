@@ -20,6 +20,7 @@ const cases = [
   ['zerowall-ketcher', 'mcp__zerowall_managed_ketcher__open_sketcher'],
   ['zerowall-research-orchestrator', 'research_study'], ['method-choice', 'method_check_evaluate'],
   ['zerowall-sequence', 'science_viewer'],
+  ['zerowall-image-intensity', 'science_viewer'],
   ['zerowall-fiji', 'science_viewer'], ['zerowall-napari', 'science_viewer'],
   ['zerowall-cells', 'science_viewer'],
 ]

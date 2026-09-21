@@ -334,3 +334,5 @@ This establishes an HE input/ROI baseline only. It is insufficient evidence for 
 - 分析只接受已保存的 accepted annotation revision，支持 rectangle、polygon 和 point ROI，按 ROI 所在页计算像素数、sum、mean、min、max 和总体标准差。结果绑定源 Asset SHA-256、ViewerSession 版本、标注修订、尺寸/页数、校准元数据和 JSON Artifact，Artifact 的 `scientificReview` 固定为 `pending`。
 - 工作台增加“ROI 强度分析”操作和结果区，显示 Runner、修订、每个 ROI 的通道统计、Artifact URI/哈希及限制说明；没有 accepted ROI、存在未保存视角/标注或 Viewer 版本冲突时阻断。
 - 验证：Image Viewer Host/UI 定向测试 17 项通过；覆盖 4×4 确定性矩阵的矩形/多边形/点 ROI、多页 TIFF 页选择、Artifact Manifest、无 accepted ROI 和 stale Viewer revision。当前不代表 OME-Zarr、10 GiB 分块图像、OpenSlide 金字塔、Fiji 五类实验宏、标签/掩膜分析、远程图像重计算或大规模性能验收已经完成，也不构成诊断、治疗效果或生物学结论。
+
+- 新增 `zerowall-image-intensity` Skill，绑定真实 `science_viewer.image_analyze` schema，明确 accepted 标注、源像素、页/通道/位深、Artifact 溯源和 `scientificReview: pending` 边界；绑定测试覆盖该 Skill 的发现到工具调用链。
