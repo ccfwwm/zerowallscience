@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-mineru",
-  "version": "6.7.0",
+  "version": "6.8.0",
   "description": "ZeroWall Science mineru domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
