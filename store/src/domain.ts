@@ -4,6 +4,11 @@ export type ResearchNodeKind = 'execution-context' | 'data-asset' | 'run' | 'art
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]
 export interface JsonObject { [key: string]: JsonValue }
+export interface LocalScienceWorkflow {
+  list(): JsonObject
+  describe(operation?: string): JsonObject
+  execute(sessionId: string, action: string, parameters: JsonObject, runId?: string): Promise<JsonObject>
+}
 
 export interface ExecutionContextRecord {
   id: string
@@ -258,6 +263,108 @@ export interface PresentationQuality {
   warnings: string[]
 }
 
+/** Structured research state used by the 7.0.0 workbench. JSON fields are
+ * deliberately typed as JsonObject so the store remains forward compatible
+ * with domain-specific runners while revision and freeze semantics stay in
+ * one place. */
+export type ResearchStudyPhase = 'question' | 'data' | 'planning' | 'frozen' | 'analysis' | 'evidence' | 'report' | 'completed'
+export type ResearchStudyStatus = 'draft' | 'active' | 'blocked' | 'completed' | 'archived'
+export type ResearchGateStatus = 'pending' | 'approved' | 'rejected'
+export type ResearchRecordKind = 'observation' | 'question' | 'dataset-contract' | 'analysis-plan' | 'evidence' | 'claim' | 'viewer-session' | 'annotation-revision' | 'benchmark-task' | 'evaluation'
+
+export interface ResearchStudyRecord {
+  id: string
+  projectId: string
+  title: string
+  phase: ResearchStudyPhase
+  status: ResearchStudyStatus
+  currentQuestionId?: string
+  currentPlanId?: string
+  currentFreezeId?: string
+  budget: JsonObject
+  gate1: ResearchGateStatus
+  gate2: ResearchGateStatus
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ResearchDocumentRecord {
+  id: string
+  projectId: string
+  studyId: string
+  kind: ResearchRecordKind
+  payload: JsonObject
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface StudyFreezeRecord {
+  id: string
+  projectId: string
+  studyId: string
+  version: number
+  snapshot: JsonObject
+  createdAt: string
+}
+
+export type ResearchTaskStatus = 'pending' | 'ready' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'cancelled'
+export interface ResearchTaskRecord {
+  id: string; projectId: string; studyId: string; name: string; kind: string; status: ResearchTaskStatus
+  dependencies: string[]; exploratory: boolean; budget: JsonObject; runId?: string; attempt: number
+  error?: string; version: number; createdAt: string; updatedAt: string
+}
+export interface CreateResearchTaskInput { projectId: string; studyId: string; name: string; kind: string; dependencies?: string[]; exploratory?: boolean; budget?: JsonObject }
+export interface UpdateResearchTaskInput { status?: ResearchTaskStatus; runId?: string | null; error?: string | null; expectedVersion: number }
+export interface ResearchTaskBudgetReport {
+  studyId: string
+  accounting: 'estimated-per-attempt'
+  modes: Record<string, 'concurrent' | 'cumulative'>
+  limits: JsonObject
+  usage: JsonObject
+  available: JsonObject
+  reservations: Array<{ taskId: string; status: ResearchTaskStatus; attempt: number; budget: JsonObject }>
+  exceeded: string[]
+}
+
+export interface CreateResearchStudyInput { projectId: string; title: string; phase?: ResearchStudyPhase; budget?: JsonObject }
+export interface UpdateResearchStudyInput {
+  title?: string
+  phase?: ResearchStudyPhase
+  status?: ResearchStudyStatus
+  currentQuestionId?: string | null
+  currentPlanId?: string | null
+  budget?: JsonObject
+  gate1?: ResearchGateStatus
+  gate2?: ResearchGateStatus
+  expectedVersion: number
+}
+export interface CreateResearchDocumentInput { projectId: string; studyId: string; kind: ResearchRecordKind; payload: JsonObject }
+export interface UpdateResearchDocumentInput { payload: JsonObject; expectedVersion: number }
+export interface RegisterResearchEvidenceInput { projectId: string; studyId: string; payload: JsonObject }
+
+export interface ResearchStudySnapshot {
+  study: ResearchStudyRecord
+  documents: ResearchDocumentRecord[]
+  freezes: StudyFreezeRecord[]
+  tasks?: ResearchTaskRecord[]
+}
+
+export interface ViewerSessionRecord {
+  id: string
+  projectId: string
+  assetId: string
+  tool: 'sequence' | 'image' | 'flow' | 'cells' | 'brain'
+  state: JsonObject
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateViewerSessionInput { projectId: string; assetId: string; tool: ViewerSessionRecord['tool']; state?: JsonObject }
+export interface UpdateViewerSessionInput { expectedVersion: number; state: JsonObject }
+
 export interface ResearchProjectSnapshotV1 {
   format: 'zerowall-science-research-project'
   version: 1
@@ -277,7 +384,16 @@ export interface ResearchProjectSnapshotV2 extends Omit<ResearchProjectSnapshotV
   version: 2
   literature: import('./literature.ts').LiteratureSnapshot
 }
-export type ResearchProjectSnapshot = ResearchProjectSnapshotV1 | ResearchProjectSnapshotV2
+export interface ResearchProjectSnapshotV3 extends Omit<ResearchProjectSnapshotV2, 'version'> {
+  version: 3
+  researchStudies: ResearchStudyRecord[]
+  researchDocuments: ResearchDocumentRecord[]
+  studyFreezes: StudyFreezeRecord[]
+  viewerSessions?: ViewerSessionRecord[]
+  annotationRevisions?: import('./annotations.ts').AnnotationRevisionRecord[]
+  researchTasks?: ResearchTaskRecord[]
+}
+export type ResearchProjectSnapshot = ResearchProjectSnapshotV1 | ResearchProjectSnapshotV2 | ResearchProjectSnapshotV3
 
 export interface CreateExecutionContextInput { projectId: string; name: string; kind: ExecutionContextKind; config?: JsonObject }
 export interface UpdateExecutionContextInput { name?: string; kind?: ExecutionContextKind; config?: JsonObject }

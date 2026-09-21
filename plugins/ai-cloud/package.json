@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-ai-cloud",
-  "version": "6.8.0",
+  "version": "7.0.0",
   "description": "ZeroWall Science ai-cloud domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

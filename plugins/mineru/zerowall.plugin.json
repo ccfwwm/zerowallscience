@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-mineru",
-  "version": "6.8.0",
+  "version": "7.0.0",
   "dsh": {
     "min": "0.1.5-rc.2",
     "max": "0.1.5-rc.2"

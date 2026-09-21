@@ -45,24 +45,17 @@ Include only the fields you can actually determine — omit the rest rather than
 guessing. Do not infer a paired design from wishful reading; if the text is
 silent, leave the field out.
 
-## Output contract
+## Execute the check
 
-End the reply with exactly one fenced block, and keep it as the LAST thing in the
-message. The block is the extracted context, **not** a verdict:
+Discover `method_check_evaluate` with `tool_search`, then dispatch the exact returned tool with `{ "context": { ...extracted fields... } }`. Do not rely on a fenced `method` block to trigger execution: no automatic block-to-tool bridge is installed.
 
-```method
-{"context":{"design":"repeated measures (pre/post)","outcomeType":"continuous","groups":2,"sampleSize":24,"normality":"tested_nonnormal","testUsed":"independent t-test","nComparisons":1,"correctionApplied":false},"note":"Design and test read from the Methods section; distribution from the Shapiro-Wilk result in analysis/normality.txt."}
-```
+The deterministic result contains `checker`, `status`, `findings`, `missing`, and `scope`. Preserve `insufficient_information` and `flagged`. `no_listed_issue` means only that the implemented rules found no issue in the supplied metadata; it never certifies scientific applicability. Include source locations for the extracted fields in the explanation. This read-only tool does not automatically persist reviewer cards or an approved evidence record.
 
-- `context` carries the fields above; `note` is your one-line account of **where
-  in the workspace** you read each value (so the verdict is auditable).
-- The app runs the deterministic engine over `context` and renders the resulting
-  `method_choice` findings as reviewer cards, which persist to the workspace's
-  science database and appear in the research graph.
+For MR include instrumentCount, minimumFStatistic, ancestryChecked, buildChecked, harmonized and sampleOverlapChecked when documented. For coloc include leadSnpOnly, completeRegion, requiredFields and matchedLd for SuSiE. For pseudobulk include observationUnit and donorMetadata. Missing fields remain omitted.
 
 ## After the verdict
 
-When the user asks, explain each rendered finding in prose — what the rule means
+When the user asks, explain each returned finding in prose — what the rule means
 and how to fix the mismatch (e.g. "the design is paired, so use a paired t-test
 or Wilcoxon signed-rank"). Explaining is your job; deciding is the engine's.
 Never tell the user the method is "correct" or the analysis is "sound" — the

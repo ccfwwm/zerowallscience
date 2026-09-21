@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.client.json",
+  "compilerOptions": { "noCheck": false },
+  "include": ["src/client/view.tsx", "src/client/sequence-viewer.tsx", "src/client/native-engine-panel.tsx", "src/client/image-viewer.tsx", "src/client/western-blot-panel.tsx", "src/shared"]
+}

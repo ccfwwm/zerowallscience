@@ -1,0 +1,9 @@
+{
+  "id": "obesity-alopecia-pilot",
+  "title": "肥胖—脱发先导研究",
+  "phase": "question",
+  "phenotypePolicy": {"candidates": ["androgenetic-alopecia", "alopecia-areata", "unclassified-hair-loss"], "freezeAfterScout": true},
+  "branches": ["observational", "external-dataset", "mr", "qtl-colocalization", "bulk", "single-cell", "intervention-response"],
+  "stopConditions": ["no phenotype-compatible dataset", "missing matched GWAS", "missing full-region-QTL-or-LD", "no donor-or-pairing metadata"],
+  "claimPolicy": "No positive association, causal effect, mechanism, or therapeutic claim may be emitted without registered evidence and human gate 2."
+}

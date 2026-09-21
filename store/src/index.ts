@@ -3,6 +3,8 @@ import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash, randomUUID } from 'node:crypto'
 export * from './domain.ts'
+export * from './annotations.ts'
+import { validateAnnotationPayload, type AnnotationRevisionRecord, type CreateAnnotationRevisionInput, type AnnotationSaveResult } from './annotations.ts'
 export type { LiteratureSnapshot, LiteratureGraph, LiteratureNode, LiteratureEdge } from './literature.ts'
 import { LiteratureStore, LITERATURE_SQL, type LiteratureGraph, type LiteratureSnapshot } from './literature.ts'
 import type {
@@ -12,6 +14,12 @@ import type {
   ResearchEdgeRecord, ResearchNodeKind, ResearchProjectSnapshot, RunRecord, RunStatus,
   CreatePresentationInput, CreatePublicationInput, PresentationRecord, PublicationRecord,
   JsonObject, JsonValue, UpdateExecutionContextInput, UpdatePresentationChanges, UpdateRunChanges, AuditReport,
+  ResearchStudyRecord, ResearchDocumentRecord, StudyFreezeRecord, ResearchStudySnapshot,
+  CreateResearchStudyInput, UpdateResearchStudyInput, CreateResearchDocumentInput, UpdateResearchDocumentInput, RegisterResearchEvidenceInput,
+  ResearchStudyPhase, ResearchStudyStatus, ResearchGateStatus, ResearchRecordKind,
+  ResearchTaskRecord, ResearchTaskStatus, CreateResearchTaskInput, UpdateResearchTaskInput,
+  ResearchTaskBudgetReport,
+  ViewerSessionRecord, CreateViewerSessionInput, UpdateViewerSessionInput,
 } from './domain.ts'
 
 export interface ProjectRecord {
@@ -313,7 +321,141 @@ const MIGRATIONS = [
     `,
   },
   { version: 9, sql: LITERATURE_SQL },
+  {
+    version: 10,
+    sql: `
+      CREATE TABLE research_studies (
+        id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        title TEXT NOT NULL CHECK(length(trim(title)) > 0),
+        phase TEXT NOT NULL CHECK(phase IN ('question','data','planning','frozen','analysis','evidence','report','completed')),
+        status TEXT NOT NULL CHECK(status IN ('draft','active','blocked','completed','archived')),
+        current_question_id TEXT, current_plan_id TEXT, current_freeze_id TEXT,
+        budget_json TEXT NOT NULL DEFAULT '{}', gate1 TEXT NOT NULL CHECK(gate1 IN ('pending','approved','rejected')),
+        gate2 TEXT NOT NULL CHECK(gate2 IN ('pending','approved','rejected')),
+        version INTEGER NOT NULL DEFAULT 1 CHECK(version > 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(project_id, id)
+      );
+      CREATE INDEX research_studies_project_idx ON research_studies(project_id, updated_at DESC, id);
+      CREATE TABLE research_documents (
+        id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        study_id TEXT NOT NULL REFERENCES research_studies(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK(kind IN ('observation','question','dataset-contract','analysis-plan','evidence','claim','viewer-session','annotation-revision','benchmark-task','evaluation')),
+        payload_json TEXT NOT NULL DEFAULT '{}', version INTEGER NOT NULL DEFAULT 1 CHECK(version > 0),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(project_id, id)
+      );
+      CREATE INDEX research_documents_study_idx ON research_documents(study_id, kind, updated_at DESC, id);
+      CREATE TABLE study_freezes (
+        id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        study_id TEXT NOT NULL REFERENCES research_studies(id) ON DELETE CASCADE,
+        version INTEGER NOT NULL CHECK(version > 0), snapshot_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(study_id, version)
+      );
+      CREATE INDEX study_freezes_study_idx ON study_freezes(study_id, version DESC);
+    `,
+  },
+  {
+    version: 11,
+    sql: `CREATE TABLE viewer_sessions (
+      id TEXT PRIMARY KEY NOT NULL,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      asset_id TEXT NOT NULL REFERENCES data_assets(id) ON DELETE CASCADE,
+      tool TEXT NOT NULL CHECK(tool IN ('sequence','image','flow')),
+      state_json TEXT NOT NULL DEFAULT '{}', version INTEGER NOT NULL CHECK(version > 0),
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ); CREATE INDEX viewer_sessions_project_idx ON viewer_sessions(project_id, updated_at DESC);`,
+  },
+  {
+    version: 12,
+    sql: `CREATE TABLE annotation_revisions (
+      id TEXT PRIMARY KEY NOT NULL,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      asset_id TEXT NOT NULL REFERENCES data_assets(id) ON DELETE CASCADE,
+      source_sha256 TEXT NOT NULL CHECK(length(source_sha256)=64),
+      revision INTEGER NOT NULL CHECK(revision>0),
+      base_revision_id TEXT REFERENCES annotation_revisions(id) DEFERRABLE INITIALLY DEFERRED,
+      status TEXT NOT NULL CHECK(status IN ('accepted','conflict')),
+      origin TEXT NOT NULL CHECK(origin IN ('workbench','fiji','napari')),
+      payload_json TEXT NOT NULL, created_at TEXT NOT NULL,
+      UNIQUE(asset_id, source_sha256, revision)
+    );
+    CREATE INDEX annotations_asset_idx ON annotation_revisions(project_id, asset_id, source_sha256, revision);
+    CREATE TRIGGER annotations_immutable BEFORE UPDATE ON annotation_revisions BEGIN SELECT RAISE(ABORT, 'Annotation revisions are immutable'); END;`,
+  },
+  {
+    version: 13,
+    sql: `
+      CREATE TABLE viewer_sessions_v13 (
+        id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        asset_id TEXT NOT NULL REFERENCES data_assets(id) ON DELETE CASCADE,
+        tool TEXT NOT NULL CHECK(tool IN ('sequence','image','flow')),
+        state_json TEXT NOT NULL DEFAULT '{}', version INTEGER NOT NULL CHECK(version > 0),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      INSERT INTO viewer_sessions_v13 SELECT id, project_id, asset_id, tool, state_json, version, created_at, updated_at FROM viewer_sessions;
+      DROP TABLE viewer_sessions;
+      ALTER TABLE viewer_sessions_v13 RENAME TO viewer_sessions;
+      CREATE INDEX viewer_sessions_project_idx ON viewer_sessions(project_id, updated_at DESC);
+    `,
+  },
+  {
+    version: 14,
+    sql: `
+      CREATE TABLE IF NOT EXISTS research_tasks (
+        id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        study_id TEXT NOT NULL REFERENCES research_studies(id) ON DELETE CASCADE,
+        name TEXT NOT NULL CHECK(length(trim(name)) > 0), kind TEXT NOT NULL CHECK(length(trim(kind)) > 0),
+        status TEXT NOT NULL CHECK(status IN ('pending','ready','running','succeeded','failed','blocked','cancelled')),
+        dependencies_json TEXT NOT NULL DEFAULT '[]', exploratory INTEGER NOT NULL DEFAULT 0 CHECK(exploratory IN (0,1)),
+        budget_json TEXT NOT NULL DEFAULT '{}', run_id TEXT REFERENCES runs(id) ON DELETE SET NULL,
+        attempt INTEGER NOT NULL DEFAULT 0 CHECK(attempt >= 0), error TEXT, version INTEGER NOT NULL DEFAULT 1 CHECK(version > 0),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, id)
+      );
+      CREATE INDEX IF NOT EXISTS research_tasks_study_idx ON research_tasks(study_id, status, updated_at DESC);
+    `,
+  },
+  {
+    version: 15,
+    sql: `
+      CREATE TABLE viewer_sessions_v15 (
+        id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        asset_id TEXT NOT NULL REFERENCES data_assets(id) ON DELETE CASCADE,
+        tool TEXT NOT NULL CHECK(tool IN ('sequence','image','flow','cells')),
+        state_json TEXT NOT NULL DEFAULT '{}', version INTEGER NOT NULL CHECK(version > 0),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      INSERT INTO viewer_sessions_v15 SELECT id, project_id, asset_id, tool, state_json, version, created_at, updated_at FROM viewer_sessions;
+      DROP TABLE viewer_sessions;
+      ALTER TABLE viewer_sessions_v15 RENAME TO viewer_sessions;
+      CREATE INDEX viewer_sessions_project_idx ON viewer_sessions(project_id, updated_at DESC);
+    `,
+  },
+  {
+    version: 16,
+    sql: `
+      CREATE TABLE viewer_sessions_v16 (
+        id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        asset_id TEXT NOT NULL REFERENCES data_assets(id) ON DELETE CASCADE,
+        tool TEXT NOT NULL CHECK(tool IN ('sequence','image','flow','cells','brain')),
+        state_json TEXT NOT NULL DEFAULT '{}', version INTEGER NOT NULL CHECK(version > 0),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      INSERT INTO viewer_sessions_v16 SELECT id, project_id, asset_id, tool, state_json, version, created_at, updated_at FROM viewer_sessions;
+      DROP TABLE viewer_sessions;
+      ALTER TABLE viewer_sessions_v16 RENAME TO viewer_sessions;
+      CREATE INDEX viewer_sessions_project_idx ON viewer_sessions(project_id, updated_at DESC);
+    `,
+  },
 ] as const
+const CURRENT_SCHEMA_VERSION = 16
 
 export class ResearchStore {
   private readonly database: DatabaseSync
@@ -325,8 +467,13 @@ export class ResearchStore {
     this.database = new DatabaseSync(path)
     this.database.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
     const existing = this.database.prepare("SELECT name FROM sqlite_master WHERE name='schema_migrations'").get()
-    if (existing && this.schemaVersion() > 0 && this.schemaVersion() < 9 && path !== ':memory:') {
-      const backup = path + '.pre-literature-v9.sqlite'
+    if (existing && this.schemaVersion() > CURRENT_SCHEMA_VERSION) {
+      const version = this.schemaVersion()
+      this.database.close()
+      throw new Error(`Unsupported newer research-store schema ${version}; upgrade ZeroWall Science before opening this database.`)
+    }
+    if (existing && this.schemaVersion() > 0 && this.schemaVersion() < CURRENT_SCHEMA_VERSION && path !== ':memory:') {
+      const backup = path + `.pre-research-v${CURRENT_SCHEMA_VERSION}.sqlite`
       if (!existsSync(backup)) this.database.exec("VACUUM INTO '" + backup.replaceAll("'", "''") + "'")
     }
     this.migrate()
@@ -413,11 +560,531 @@ export class ResearchStore {
     `).all(limit) as Array<Record<string, string>>).map(projectFromRow)
   }
 
+  createResearchStudy(input: CreateResearchStudyInput): ResearchStudyRecord {
+    return this.withTransaction(() => {
+    this.requireProject(input.projectId)
+    const title = nonEmptyString(input.title, 'Research study title')
+    const phase = input.phase ?? 'question'
+    const budget = validateTaskBudget(input.budget ?? {}, true)
+    const now = new Date().toISOString()
+    const record: ResearchStudyRecord = {
+      id: randomUUID(), projectId: input.projectId, title, phase, status: 'draft', budget,
+      gate1: 'pending', gate2: 'pending', version: 1, createdAt: now, updatedAt: now,
+    }
+    this.database.prepare(`INSERT INTO research_studies
+      (id, project_id, title, phase, status, current_question_id, current_plan_id, current_freeze_id, budget_json, gate1, gate2, version, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?)`)
+      .run(record.id, record.projectId, record.title, record.phase, record.status, JSON.stringify(record.budget), record.gate1, record.gate2, record.version, record.createdAt, record.updatedAt)
+    this.recordAuditEvent(record.projectId, 'research-study.created', { studyId: record.id, phase: record.phase })
+    return record
+    })
+  }
+
+  getResearchStudy(id: string): ResearchStudyRecord | undefined {
+    const row = this.database.prepare('SELECT * FROM research_studies WHERE id = ?').get(id) as Record<string, unknown> | undefined
+    return row === undefined ? undefined : researchStudyFromRow(row)
+  }
+
+  listResearchStudies(projectId: string): ResearchStudyRecord[] {
+    this.requireProject(projectId)
+    return (this.database.prepare('SELECT * FROM research_studies WHERE project_id = ? ORDER BY updated_at DESC, id').all(projectId) as Array<Record<string, unknown>>).map(researchStudyFromRow)
+  }
+
+  updateResearchStudy(id: string, changes: UpdateResearchStudyInput): ResearchStudyRecord {
+    return this.withTransaction(() => {
+    const current = this.getResearchStudy(id)
+    if (current === undefined) throw new Error(`Research study was not found: ${id}`)
+    if (changes.expectedVersion !== current.version) throw new Error(`Research study revision conflict: expected ${changes.expectedVersion}, current ${current.version}.`)
+    if (current.status === 'archived') throw new Error('Archived research studies cannot be changed.')
+    if ('gate1' in changes || 'gate2' in changes) throw new Error('Use the human gate review endpoint.')
+    if (changes.phase === 'frozen') throw new Error('Use freezeResearchStudy to freeze a plan.')
+    if (['analysis', 'evidence', 'report', 'completed'].includes(changes.phase ?? '') && !current.currentFreezeId) throw new Error('A frozen plan is required for this phase.')
+    if ((changes.status === 'completed' || changes.phase === 'completed') && current.gate2 !== 'approved') throw new Error('Gate 2 must be approved before completion.')
+    if (current.currentFreezeId && (changes.currentQuestionId !== undefined || changes.currentPlanId !== undefined || changes.budget !== undefined)) throw new Error('Frozen study changes require an amendment.')
+    for (const [ref, kind] of [[changes.currentQuestionId, 'question'], [changes.currentPlanId, 'analysis-plan']] as const) {
+      if (ref) { const doc = this.getResearchDocument(ref); if (!doc || doc.studyId !== id || doc.kind !== kind) throw new Error('Current document does not belong to this study or has the wrong kind.') }
+    }
+    const updated: ResearchStudyRecord = {
+      ...current,
+      title: changes.title === undefined ? current.title : nonEmptyString(changes.title, 'Research study title'),
+      phase: changes.phase ?? current.phase,
+      status: changes.status ?? current.status,
+      budget: changes.budget === undefined ? current.budget : validateTaskBudget(changes.budget, true),
+      ...(changes.currentQuestionId === undefined ? (current.currentQuestionId === undefined ? {} : { currentQuestionId: current.currentQuestionId }) : (changes.currentQuestionId === null ? {} : { currentQuestionId: nonEmptyString(changes.currentQuestionId, 'Research question id') })),
+      ...(changes.currentPlanId === undefined ? (current.currentPlanId === undefined ? {} : { currentPlanId: current.currentPlanId }) : (changes.currentPlanId === null ? {} : { currentPlanId: nonEmptyString(changes.currentPlanId, 'Analysis plan id') })),
+      version: current.version + 1, updatedAt: new Date().toISOString(),
+    }
+    if (changes.currentQuestionId === null) delete updated.currentQuestionId
+    if (changes.currentPlanId === null) delete updated.currentPlanId
+    if (changes.currentQuestionId !== undefined || changes.currentPlanId !== undefined || changes.budget !== undefined) { updated.gate1 = 'pending'; updated.gate2 = 'pending' }
+    this.database.prepare(`UPDATE research_studies SET title=?, phase=?, status=?, current_question_id=?, current_plan_id=?, current_freeze_id=?, budget_json=?, gate1=?, gate2=?, version=?, updated_at=? WHERE id=?`)
+      .run(updated.title, updated.phase, updated.status, updated.currentQuestionId ?? null, updated.currentPlanId ?? null, updated.currentFreezeId ?? null, JSON.stringify(updated.budget), updated.gate1, updated.gate2, updated.version, updated.updatedAt, updated.id)
+    this.recordAuditEvent(updated.projectId, 'research-study.updated', { studyId: updated.id, version: updated.version, phase: updated.phase, status: updated.status })
+    return updated
+    })
+  }
+
+  createResearchDocument(input: CreateResearchDocumentInput): ResearchDocumentRecord {
+    return this.withTransaction(() => {
+    this.requireProject(input.projectId)
+    const study = this.getResearchStudy(input.studyId)
+    if (study === undefined || study.projectId !== input.projectId) throw new Error('Research document study does not belong to the project.')
+    if (study.status === 'archived') throw new Error('Archived research studies cannot be changed.')
+    if (study.currentFreezeId && ['question', 'dataset-contract', 'analysis-plan'].includes(input.kind)) throw new Error('Frozen study documents require an amendment.')
+    const payload = jsonObject(input.payload, 'Research document payload')
+    const now = new Date().toISOString()
+    const record: ResearchDocumentRecord = { id: randomUUID(), projectId: input.projectId, studyId: input.studyId, kind: input.kind, payload, version: 1, createdAt: now, updatedAt: now }
+    this.database.prepare('INSERT INTO research_documents (id, project_id, study_id, kind, payload_json, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(record.id, record.projectId, record.studyId, record.kind, JSON.stringify(record.payload), record.version, record.createdAt, record.updatedAt)
+    this.invalidateResearchStudy(study.id, record.kind)
+    this.recordAuditEvent(record.projectId, `research-${record.kind}.created`, { studyId: record.studyId, documentId: record.id })
+    return record
+    })
+  }
+
+  /** Register an executed result as evidence; agents cannot mint evidence through the generic document action. */
+  registerResearchEvidence(input: RegisterResearchEvidenceInput): ResearchDocumentRecord {
+    const payload = jsonObject(input.payload, 'Evidence payload')
+    const sourceKeys = ['artifactId', 'runId', 'assetId', 'documentId', 'source']
+    if (!sourceKeys.some(key => typeof payload[key] === 'string' && String(payload[key]).trim())) throw new Error('Evidence must reference an artifact, run, asset, document or source.')
+    if (payload.needsReview !== undefined && typeof payload.needsReview !== 'boolean') throw new Error('Evidence needsReview must be boolean.')
+    return this.createResearchDocument({ projectId: input.projectId, studyId: input.studyId, kind: 'evidence', payload: { ...payload, needsReview: payload.needsReview === true } })
+  }
+
+  /** Deterministically audit a claim's evidence references and persist the audit outcome. */
+  auditResearchClaim(claimId: string, expectedVersion: number): ResearchDocumentRecord {
+    const claim = this.getResearchDocument(claimId)
+    if (!claim || claim.kind !== 'claim') throw new Error('Research claim was not found.')
+    const refs = claim.payload.evidenceIds
+    const errors: string[] = []
+    if (!Array.isArray(refs) || refs.length === 0) errors.push('claim has no evidenceIds')
+    const seen = new Set<string>()
+    for (const ref of Array.isArray(refs) ? refs : []) {
+      if (typeof ref !== 'string' || !ref.trim() || seen.has(ref)) { errors.push('claim evidenceIds must be unique document IDs'); continue }
+      seen.add(ref)
+      const evidence = this.getResearchDocument(ref)
+      if (!evidence || evidence.studyId !== claim.studyId || evidence.kind !== 'evidence') errors.push(`missing evidence: ${ref}`)
+      else if (evidence.payload.needsReview === true) errors.push(`evidence needs review: ${ref}`)
+    }
+    const payload = { ...claim.payload, auditStatus: errors.length === 0 ? 'passed' : 'failed', needsReview: errors.length !== 0, auditErrors: errors }
+    return this.updateResearchDocument(claim.id, { expectedVersion, payload })
+  }
+
+  getResearchDocument(id: string): ResearchDocumentRecord | undefined {
+    const row = this.database.prepare('SELECT * FROM research_documents WHERE id = ?').get(id) as Record<string, unknown> | undefined
+    return row === undefined ? undefined : researchDocumentFromRow(row)
+  }
+
+  listResearchDocuments(studyId: string, kind?: ResearchRecordKind): ResearchDocumentRecord[] {
+    const study = this.getResearchStudy(studyId)
+    if (study === undefined) throw new Error(`Research study was not found: ${studyId}`)
+    const rows = (kind === undefined
+      ? this.database.prepare('SELECT * FROM research_documents WHERE study_id = ? ORDER BY updated_at DESC, id').all(studyId)
+      : this.database.prepare('SELECT * FROM research_documents WHERE study_id = ? AND kind = ? ORDER BY updated_at DESC, id').all(studyId, kind)) as Array<Record<string, unknown>>
+    return rows.map(researchDocumentFromRow)
+  }
+
+  updateResearchDocument(id: string, changes: UpdateResearchDocumentInput): ResearchDocumentRecord {
+    return this.withTransaction(() => {
+    const current = this.getResearchDocument(id)
+    if (current === undefined) throw new Error(`Research document was not found: ${id}`)
+    const study = this.getResearchStudy(current.studyId)
+    if (study === undefined) throw new Error(`Research study was not found: ${current.studyId}`)
+    if (study.status === 'archived') throw new Error('Archived research studies cannot be changed.')
+    if (changes.expectedVersion !== current.version) throw new Error(`Research document revision conflict: expected ${changes.expectedVersion}, current ${current.version}.`)
+    if (current.kind === 'annotation-revision') throw new Error('Annotation revisions are immutable; create a new revision.')
+    if (['question', 'dataset-contract', 'analysis-plan'].includes(current.kind) && this.listStudyFreezes(study.id).some(f => frozenDocumentIds(f.snapshot).has(current.id))) throw new Error('Frozen study documents require a new amendment record; the frozen record is immutable.')
+    const updated: ResearchDocumentRecord = { ...current, payload: jsonObject(changes.payload, 'Research document payload'), version: current.version + 1, updatedAt: new Date().toISOString() }
+    this.database.prepare('UPDATE research_documents SET payload_json=?, version=?, updated_at=? WHERE id=?').run(JSON.stringify(updated.payload), updated.version, updated.updatedAt, updated.id)
+    this.invalidateResearchStudy(study.id, current.kind)
+    this.recordAuditEvent(updated.projectId, `research-${updated.kind}.updated`, { studyId: updated.studyId, documentId: updated.id, version: updated.version })
+    return updated
+    })
+  }
+
+  validateAnalysisPlan(id: string): ResearchDocumentRecord {
+    const plan = this.getResearchDocument(id)
+    if (plan === undefined || plan.kind !== 'analysis-plan') throw new Error('Analysis plan was not found.')
+    const required = ['method', 'inputs', 'stoppingConditions', 'exploratory']
+    const missing = required.filter(key => plan.payload[key] === undefined)
+    if (missing.length > 0) throw new Error(`Analysis plan is incomplete: ${missing.join(', ')}.`)
+    nonEmptyString(plan.payload.method, 'Analysis method')
+    if (typeof plan.payload.exploratory !== 'boolean') throw new Error('exploratory must be boolean.')
+    if (!Array.isArray(plan.payload.stoppingConditions) || plan.payload.stoppingConditions.length === 0 || plan.payload.stoppingConditions.some(v => typeof v !== 'string' || !v.trim())) throw new Error('Non-empty stoppingConditions are required.')
+    if (!Array.isArray(plan.payload.inputs) || plan.payload.inputs.length === 0) throw new Error('Analysis inputs must reference data contracts.')
+    for (const ref of plan.payload.inputs) {
+      const contract = typeof ref === 'string' ? this.getResearchDocument(ref) : undefined
+      if (!contract || contract.studyId !== plan.studyId || contract.kind !== 'dataset-contract') throw new Error('Plan input is not a data contract in this study.')
+      if (contract.payload.applicability !== 'usable' || contract.payload.sourceStatus !== 'supported' || typeof contract.payload.source !== 'string' || !contract.payload.source.trim()) throw new Error('Data contract applicability/source is not verified.')
+    }
+    return plan
+  }
+
+  approveResearchGate(studyId: string, gate: 1 | 2, status: Exclude<ResearchGateStatus, 'pending'>, expectedVersion: number, rationale: string): ResearchStudyRecord {
+    return this.withTransaction(() => {
+    const study = this.getResearchStudy(studyId)
+    if (study === undefined) throw new Error(`Research study was not found: ${studyId}`)
+    if (study.status === 'archived') throw new Error('Archived research studies cannot be changed.')
+    if (expectedVersion !== study.version) throw new Error(`Research study revision conflict: current ${study.version}.`)
+    if (![1, 2].includes(gate) || !['approved', 'rejected'].includes(status)) throw new Error('Invalid gate decision.')
+    nonEmptyString(rationale, 'Human review rationale')
+    if (status === 'approved') {
+      if (gate === 1) {
+        const question = study.currentQuestionId ? this.getResearchDocument(study.currentQuestionId) : undefined
+        if (!question || question.kind !== 'question' || question.studyId !== study.id) throw new Error('A current question is required.')
+        this.validateAnalysisPlan(study.currentPlanId ?? '')
+      } else {
+        if (!study.currentFreezeId) throw new Error('A frozen plan is required before claim review.')
+        const claims = this.listResearchDocuments(studyId, 'claim')
+        if (!claims.length || claims.some(claim => claim.payload.needsReview === true || claim.payload.auditStatus !== 'passed')) throw new Error('Core claims need evidence audit before human approval.')
+        for (const claim of claims) {
+          const refs = claim.payload.evidenceIds
+          if (!Array.isArray(refs) || !refs.length) throw new Error('Core claim requires evidence references.')
+          for (const ref of refs) {
+            const evidence = typeof ref === 'string' ? this.getResearchDocument(ref) : undefined
+            if (!evidence || evidence.studyId !== studyId || evidence.kind !== 'evidence' || evidence.payload.needsReview === true) throw new Error('Claim evidence is missing or stale.')
+          }
+        }
+      }
+    }
+    this.database.prepare(`UPDATE research_studies SET ${gate === 1 ? 'gate1' : 'gate2'}=?, version=version+1, updated_at=? WHERE id=?`).run(status, new Date().toISOString(), studyId)
+    this.recordAuditEvent(study.projectId, 'research-study.gate-reviewed', { studyId, gate, status, rationale, reviewedVersion: expectedVersion })
+    return this.getResearchStudy(studyId)!
+    })
+  }
+
+  freezeResearchStudy(studyId: string, expectedVersion: number): StudyFreezeRecord {
+    return this.withTransaction(() => {
+    const study = this.getResearchStudy(studyId)
+    if (study === undefined) throw new Error(`Research study was not found: ${studyId}`)
+    if (expectedVersion !== study.version) throw new Error(`Research study revision conflict: current ${study.version}.`)
+    if (study.status === 'archived' || study.currentFreezeId) throw new Error('Study is archived or already frozen; create an amendment first.')
+    if (study.gate1 !== 'approved') throw new Error('Gate 1 must be approved before freezing a research study.')
+    if (study.currentQuestionId === undefined || study.currentPlanId === undefined) throw new Error('A current research question and analysis plan are required before freezing.')
+    const question = this.getResearchDocument(study.currentQuestionId)
+    const plan = this.validateAnalysisPlan(study.currentPlanId)
+    if (question === undefined || question.kind !== 'question' || question.studyId !== study.id) throw new Error('Current research question is invalid.')
+    if (plan.studyId !== study.id) throw new Error('Current analysis plan is invalid.')
+    const previous = (this.database.prepare('SELECT COALESCE(MAX(version), 0) AS version FROM study_freezes WHERE study_id = ?').get(study.id) as { version: number }).version
+    const freeze: StudyFreezeRecord = { id: randomUUID(), projectId: study.projectId, studyId: study.id, version: previous + 1, snapshot: JSON.parse(JSON.stringify({ study, question, plan, contracts: plan.payload.inputs, documents: this.listResearchDocuments(studyId).filter(d => ['question', 'dataset-contract', 'analysis-plan'].includes(d.kind)) })), createdAt: new Date().toISOString() }
+    freeze.snapshot.sha256 = createHash('sha256').update(JSON.stringify(freeze.snapshot)).digest('hex')
+    this.database.prepare('INSERT INTO study_freezes (id, project_id, study_id, version, snapshot_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(freeze.id, freeze.projectId, freeze.studyId, freeze.version, JSON.stringify(freeze.snapshot), freeze.createdAt)
+    this.database.prepare("UPDATE research_studies SET current_freeze_id=?, phase='frozen', status='active', version=version+1, updated_at=? WHERE id=?").run(freeze.id, freeze.createdAt, study.id)
+    this.recordAuditEvent(study.projectId, 'research-study.frozen', { studyId: study.id, freezeId: freeze.id, freezeVersion: freeze.version })
+    return freeze
+    })
+  }
+
+  amendResearchStudy(studyId: string, reason: string, expectedVersion: number): ResearchStudyRecord {
+    return this.withTransaction(() => {
+    const study = this.getResearchStudy(studyId)
+    if (study === undefined) throw new Error(`Research study was not found: ${studyId}`)
+    if (study.status === 'archived' || !study.currentFreezeId) throw new Error('Only an active frozen study can be amended.')
+    if (expectedVersion !== study.version) throw new Error(`Research study revision conflict: current ${study.version}.`)
+    this.recordAuditEvent(study.projectId, 'research-study.amended', { studyId, reason: nonEmptyString(reason, 'Amendment reason'), supersedesFreezeId: study.currentFreezeId })
+    this.database.prepare("UPDATE research_studies SET current_freeze_id=NULL, current_question_id=NULL, current_plan_id=NULL, phase='planning', status='active', gate1='pending', gate2='pending', version=version+1, updated_at=? WHERE id=?").run(new Date().toISOString(), studyId)
+    this.invalidateResearchStudy(studyId, 'analysis-plan')
+    return this.getResearchStudy(studyId)!
+    })
+  }
+
+  createResearchTask(input: CreateResearchTaskInput): ResearchTaskRecord {
+    return this.withTransaction(() => {
+      this.requireProject(input.projectId)
+      const study = this.getResearchStudy(input.studyId)
+      if (!study || study.projectId !== input.projectId) throw new Error('Research task study does not belong to the project.')
+      const name = nonEmptyString(input.name, 'Research task name'); const kind = nonEmptyString(input.kind, 'Research task kind')
+      const dependencies = [...new Set((input.dependencies ?? []).map(value => nonEmptyString(value, 'Research task dependency')))]
+      for (const dependency of dependencies) { const row = this.database.prepare('SELECT id, study_id FROM research_tasks WHERE id=?').get(dependency) as { id: string; study_id: string } | undefined; if (!row || row.study_id !== input.studyId) throw new Error('Research task dependency is missing or belongs to another study.') }
+      const now = new Date().toISOString(); const record: ResearchTaskRecord = { id: randomUUID(), projectId: input.projectId, studyId: input.studyId, name, kind, status: dependencies.length ? 'pending' : 'ready', dependencies, exploratory: input.exploratory === true, budget: validateTaskBudget(input.budget ?? {}), attempt: 0, version: 1, createdAt: now, updatedAt: now }
+      this.database.prepare('INSERT INTO research_tasks (id,project_id,study_id,name,kind,status,dependencies_json,exploratory,budget_json,run_id,attempt,error,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(record.id, record.projectId, record.studyId, record.name, record.kind, record.status, JSON.stringify(record.dependencies), record.exploratory ? 1 : 0, JSON.stringify(record.budget), null, 0, null, 1, now, now)
+      this.recordAuditEvent(record.projectId, 'research-task.created', { studyId: record.studyId, taskId: record.id, status: record.status })
+      return record
+    })
+  }
+
+  listResearchTasks(studyId: string): ResearchTaskRecord[] {
+    const study = this.getResearchStudy(studyId); if (!study) throw new Error(`Research study was not found: ${studyId}`)
+    return (this.database.prepare('SELECT * FROM research_tasks WHERE study_id=? ORDER BY created_at ASC, id').all(studyId) as Array<Record<string, unknown>>).map(researchTaskFromRow)
+  }
+
+  updateResearchTask(id: string, changes: UpdateResearchTaskInput): ResearchTaskRecord {
+    return this.withTransaction(() => {
+      const current = this.database.prepare('SELECT * FROM research_tasks WHERE id=?').get(id) as Record<string, unknown> | undefined
+      if (!current) throw new Error(`Research task was not found: ${id}`)
+      const task = researchTaskFromRow(current); if (changes.expectedVersion !== task.version) throw new Error(`Research task revision conflict: current ${task.version}.`)
+      if (changes.status !== undefined && !RESEARCH_TASK_TRANSITIONS[task.status].includes(changes.status)) throw new Error(`Invalid research task transition: ${task.status} -> ${changes.status}.`)
+      const nextRunId = changes.runId === undefined ? task.runId : changes.runId ?? undefined
+      const nextRun = nextRunId === undefined ? undefined : this.getRun(nextRunId)
+      if (nextRunId !== undefined && (!nextRun || nextRun.projectId !== task.projectId)) throw new Error('Research task run does not belong to the task project.')
+      if (changes.runId !== undefined && nextRunId !== task.runId && ['running', 'succeeded', 'cancelled'].includes(task.status)) throw new Error('Cannot replace or detach an active or completed task Run.')
+      if (nextRunId && nextRunId !== task.runId && this.database.prepare('SELECT id FROM research_tasks WHERE run_id=? AND id<>?').get(nextRunId, task.id)) throw new Error('Run is already bound to another research task.')
+      if (changes.status === 'running' && task.status !== 'running') {
+        if (!['ready', 'failed', 'blocked'].includes(task.status)) throw new Error('Only ready or recoverable research tasks can run.')
+        if (task.attempt > 0 && task.runId && (!nextRunId || nextRunId === task.runId)) throw new Error('A recovered research task requires a new Run binding.')
+        if (nextRun && !['submitted', 'running', 'paused', 'cancelling'].includes(nextRun.status)) throw new Error('A research task must start with an active Run.')
+        for (const dependency of task.dependencies) { const dep = this.database.prepare('SELECT status FROM research_tasks WHERE id=?').get(dependency) as { status: ResearchTaskStatus } | undefined; if (!dep || dep.status !== 'succeeded') throw new Error('Research task dependencies have not succeeded.') }
+        const study = this.getResearchStudy(task.studyId)
+        if (study && researchTaskBudgetExceeded(study.budget, this.listResearchTasks(task.studyId), task.id)) throw new Error('Research task budget would exceed the study budget.')
+      }
+      if (changes.status && changes.status !== task.status && task.status === 'running' && nextRun) {
+        const ended = nextRun.status === 'succeeded' ? 'succeeded' : nextRun.status === 'cancelled' ? 'cancelled' : ['failed', 'timed_out'].includes(nextRun.status) ? 'failed' : undefined
+        if (changes.status !== ended) throw new Error('Research task must retain its budget until its bound Run confirms the terminal state.')
+      }
+      if (changes.runId !== undefined && changes.runId !== null) {
+        const run = this.database.prepare('SELECT project_id FROM runs WHERE id=?').get(changes.runId) as { project_id: string } | undefined
+        if (!run || run.project_id !== task.projectId) throw new Error('Research task run does not belong to the task project.')
+      }
+      const status = changes.status ?? task.status
+      const updatedAt = new Date().toISOString()
+      const updated: ResearchTaskRecord = {
+        ...task,
+        status,
+        attempt: status === 'running' && task.status !== 'running' ? task.attempt + 1 : task.attempt,
+        version: task.version + 1,
+        updatedAt,
+      }
+      if (changes.runId !== undefined) {
+        if (changes.runId === null) delete updated.runId
+        else updated.runId = nonEmptyString(changes.runId, 'Research task run id')
+      }
+      if (status === 'running' || changes.error === null) delete updated.error
+      else if (changes.error !== undefined) updated.error = changes.error
+      this.database.prepare('UPDATE research_tasks SET status=?,run_id=?,attempt=?,error=?,version=?,updated_at=? WHERE id=?').run(updated.status, updated.runId ?? null, updated.attempt, updated.error ?? null, updated.version, updated.updatedAt, updated.id)
+      this.recordAuditEvent(updated.projectId, 'research-task.updated', { studyId: updated.studyId, taskId: updated.id, status: updated.status, version: updated.version })
+      return updated
+    })
+  }
+
+  refreshResearchTaskReadiness(studyId: string): ResearchTaskRecord[] {
+    return this.withTransaction(() => {
+      const tasks = this.listResearchTasks(studyId)
+      const statuses = new Map(tasks.map(task => [task.id, task.status]))
+      const now = new Date().toISOString()
+      let changed = true
+      while (changed) {
+        changed = false
+        for (const task of tasks.filter(item => statuses.get(item.id) === 'pending')) {
+        const dependencyStatuses = task.dependencies.map(id => statuses.get(id))
+        if (dependencyStatuses.some(status => status === 'failed' || status === 'blocked' || status === 'cancelled')) {
+          this.database.prepare("UPDATE research_tasks SET status='blocked',error=?,version=version+1,updated_at=? WHERE id=?").run('A dependency failed or was cancelled.', now, task.id)
+          statuses.set(task.id, 'blocked'); changed = true
+        } else if (dependencyStatuses.every(status => status === 'succeeded')) {
+          this.database.prepare("UPDATE research_tasks SET status='ready',error=NULL,version=version+1,updated_at=? WHERE id=?").run(now, task.id)
+          statuses.set(task.id, 'ready'); changed = true
+        }
+      }
+      }
+      return this.listResearchTasks(studyId)
+    })
+  }
+
+  getResearchTaskBudget(studyId: string): ResearchTaskBudgetReport {
+    const study = this.getResearchStudy(studyId)
+    if (!study) throw new Error(`Research study was not found: ${studyId}`)
+    const tasks = this.listResearchTasks(studyId)
+    const limits: JsonObject = {}
+    const usage: JsonObject = {}
+    const available: JsonObject = {}
+    const exceeded: string[] = []
+    for (const [limitKey, rawLimit] of Object.entries(study.budget)) {
+      if (!limitKey.startsWith('max') || typeof rawLimit !== 'number' || !Number.isFinite(rawLimit) || rawLimit < 0) continue
+      const resourceKey = limitKey.slice(3)
+      if (!resourceKey) continue
+      const key = resourceKey[0]!.toLowerCase() + resourceKey.slice(1)
+      const concurrent = isConcurrentBudget(key)
+      const value = concurrent
+        ? tasks.filter(task => task.status === 'running').reduce((sum, task) => sum + numericBudget(task.budget, key), 0)
+        : tasks.reduce((sum, task) => sum + task.attempt * numericBudget(task.budget, key), 0)
+      limits[limitKey] = rawLimit
+      usage[key] = value
+      available[key] = Math.max(0, rawLimit - value)
+      if (value > rawLimit) exceeded.push(key)
+    }
+    return {
+      studyId,
+      accounting: 'estimated-per-attempt',
+      modes: Object.fromEntries(Object.keys(usage).map(key => [key, isConcurrentBudget(key) ? 'concurrent' : 'cumulative'])),
+      limits,
+      usage,
+      available,
+      reservations: tasks.filter(task => task.status === 'running').map(task => ({ taskId: task.id, status: task.status, attempt: task.attempt, budget: task.budget })),
+      exceeded,
+    }
+  }
+
+  reconcileResearchTaskRun(id: string, expectedVersion?: number): ResearchTaskRecord {
+    return this.withTransaction(() => {
+      const row = this.database.prepare('SELECT * FROM research_tasks WHERE id=?').get(id) as Record<string, unknown> | undefined
+      if (!row) throw new Error(`Research task was not found: ${id}`)
+      const task = researchTaskFromRow(row)
+      if (expectedVersion !== undefined && expectedVersion !== task.version) throw new Error(`Research task revision conflict: current ${task.version}.`)
+      if (!task.runId) throw new Error('Research task has no bound Run.')
+      const run = this.getRun(task.runId)
+      if (!run || run.projectId !== task.projectId) throw new Error('Research task bound Run is unavailable or belongs to another project.')
+      const active = ['submitted', 'running', 'paused', 'cancelling'].includes(run.status)
+      if (active) {
+        if (task.status === 'ready') return this.updateResearchTask(task.id, { expectedVersion: task.version, status: 'running' })
+        // Reconciliation observes an existing reservation; it never starts a recovered attempt.
+        return task
+      }
+      const terminalStatus: ResearchTaskStatus | undefined = run.status === 'succeeded' ? 'succeeded' : run.status === 'cancelled' ? 'cancelled' : ['failed', 'timed_out'].includes(run.status) ? 'failed' : undefined
+      if (!terminalStatus || task.status === terminalStatus) return task
+      const error = terminalStatus === 'succeeded' ? null : (run.error ?? `Bound Run ended with status ${run.status}.`)
+      const updated = this.updateResearchTask(task.id, { expectedVersion: task.version, status: terminalStatus, error })
+      this.refreshResearchTaskReadiness(task.studyId)
+      return updated
+    })
+  }
+
+  private invalidateResearchStudy(studyId: string, kind: ResearchRecordKind): void {
+    if (['viewer-session', 'evaluation', 'benchmark-task'].includes(kind)) return
+    const affectsPlan = ['question', 'dataset-contract', 'analysis-plan', 'observation', 'annotation-revision'].includes(kind)
+    this.database.prepare(`UPDATE research_studies SET gate2='pending', ${affectsPlan ? "gate1='pending'," : ''} version=version+1, updated_at=? WHERE id=?`).run(new Date().toISOString(), studyId)
+    if (affectsPlan || kind === 'evidence') {
+      for (const doc of this.listResearchDocuments(studyId).filter(d => affectsPlan ? ['evidence', 'claim'].includes(d.kind) : d.kind === 'claim')) {
+        this.database.prepare('UPDATE research_documents SET payload_json=?, version=version+1, updated_at=? WHERE id=?').run(JSON.stringify({ ...doc.payload, needsReview: true }), new Date().toISOString(), doc.id)
+      }
+    }
+  }
+
+  listStudyFreezes(studyId: string): StudyFreezeRecord[] {
+    if (this.getResearchStudy(studyId) === undefined) throw new Error(`Research study was not found: ${studyId}`)
+    return (this.database.prepare('SELECT * FROM study_freezes WHERE study_id = ? ORDER BY version DESC').all(studyId) as Array<Record<string, unknown>>).map(studyFreezeFromRow)
+  }
+
+  getResearchStudySnapshot(studyId: string): ResearchStudySnapshot {
+    const study = this.getResearchStudy(studyId)
+    if (study === undefined) throw new Error(`Research study was not found: ${studyId}`)
+    return { study, documents: this.listResearchDocuments(studyId), freezes: this.listStudyFreezes(studyId), tasks: this.listResearchTasks(studyId) }
+  }
+
   getProjectPreferences(projectId: string): ProjectPreferencesRecord {
     this.requireProject(projectId)
     const row = this.database.prepare('SELECT * FROM project_preferences WHERE project_id = ?').get(projectId) as Record<string, unknown> | undefined
     if (row === undefined) return { projectId, settings: {}, updatedAt: '' }
     return projectPreferencesFromRow(row)
+  }
+
+  createViewerSession(input: CreateViewerSessionInput): ViewerSessionRecord {
+    return this.withTransaction(() => {
+      this.requireProject(input.projectId)
+      const asset = this.listDataAssets(input.projectId).find(asset => asset.id === input.assetId)
+      if (!asset) throw new Error('Viewer asset does not belong to this project.')
+      const now = new Date().toISOString()
+      const view: ViewerSessionRecord = { id: randomUUID(), projectId: input.projectId, assetId: asset.id, tool: input.tool, state: jsonObject(input.state ?? {}, 'Viewer state'), version: 1, createdAt: now, updatedAt: now }
+      this.database.prepare('INSERT INTO viewer_sessions (id, project_id, asset_id, tool, state_json, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(view.id, view.projectId, view.assetId, view.tool, JSON.stringify(view.state), view.version, now, now)
+      this.recordAuditEvent(view.projectId, 'viewer.opened', { viewerId: view.id, assetId: view.assetId, tool: view.tool })
+      return view
+    })
+  }
+
+  listViewerSessions(projectId: string): ViewerSessionRecord[] {
+    this.requireProject(projectId)
+    return (this.database.prepare('SELECT * FROM viewer_sessions WHERE project_id=? ORDER BY updated_at DESC, id').all(projectId) as Array<Record<string, unknown>>).map(viewerSessionFromRow)
+  }
+
+  updateViewerSession(projectId: string, id: string, input: UpdateViewerSessionInput): ViewerSessionRecord {
+    return this.withTransaction(() => {
+      const current = this.listViewerSessions(projectId).find(view => view.id === id)
+      if (!current) throw new Error('Viewer session does not belong to this project.')
+      if (input.expectedVersion !== current.version) throw new Error(`Viewer revision conflict: current ${current.version}.`)
+      const updated = { ...current, state: jsonObject(input.state, 'Viewer state'), version: current.version + 1, updatedAt: new Date().toISOString() }
+      this.database.prepare('UPDATE viewer_sessions SET state_json=?, version=?, updated_at=? WHERE id=?').run(JSON.stringify(updated.state), updated.version, updated.updatedAt, id)
+      this.recordAuditEvent(projectId, 'viewer.updated', { viewerId: id, version: updated.version })
+      return updated
+    })
+  }
+
+  getSessionResearchStudy(projectId: string, sessionId: string): ResearchStudyRecord | undefined {
+    const selections = this.getProjectPreferences(projectId).settings.researchSessions
+    if (!selections || Array.isArray(selections) || typeof selections !== 'object') return undefined
+    const id = selections[sessionId]
+    const study = typeof id === 'string' ? this.getResearchStudy(id) : undefined
+    return study?.projectId === projectId && study.status !== 'archived' ? study : undefined
+  }
+
+  listAnnotationRevisions(projectId: string, assetId?: string): AnnotationRevisionRecord[] {
+    this.requireProject(projectId)
+    if (assetId !== undefined && !this.listDataAssets(projectId).some(asset => asset.id === assetId)) throw new Error('Annotation asset does not belong to this project.')
+    const rows = assetId === undefined
+      ? this.database.prepare('SELECT * FROM annotation_revisions WHERE project_id=? ORDER BY revision').all(projectId)
+      : this.database.prepare('SELECT * FROM annotation_revisions WHERE project_id=? AND asset_id=? ORDER BY revision').all(projectId, assetId)
+    return (rows as Array<Record<string, unknown>>).map(annotationFromRow)
+  }
+
+  createAnnotationRevision(input: CreateAnnotationRevisionInput): AnnotationSaveResult {
+    return this.withTransaction(() => {
+      if (!/^[a-f0-9]{64}$/u.test(input.sourceSha256)) throw new Error('Annotation source SHA-256 is required.')
+      if (!['workbench', 'fiji', 'napari'].includes(input.origin)) throw new Error('Unsupported annotation origin.')
+      if (input.expectedRevisionId !== null && typeof input.expectedRevisionId !== 'string') throw new Error('Expected annotation revision ID or null is required.')
+      const history = this.listAnnotationRevisions(input.projectId, input.assetId).filter(item => item.sourceSha256 === input.sourceSha256)
+      const head = history.filter(item => item.status === 'accepted').at(-1)
+      const base = history.find(item => item.id === input.expectedRevisionId)
+      if (input.expectedRevisionId !== null && !base) throw new Error('Annotation base revision is missing, foreign or belongs to a different source.')
+      const payload = validateAnnotationPayload(input.payload)
+      if (head && ['width', 'height', 'pages'].some(key => head.payload.coordinates[key as 'width' | 'height' | 'pages'] !== payload.coordinates[key as 'width' | 'height' | 'pages'])) throw new Error('Annotation image geometry changed for the same source hash.')
+      const conflict = (head?.id ?? null) !== input.expectedRevisionId
+      const revision: AnnotationRevisionRecord = { id: randomUUID(), projectId: input.projectId, assetId: input.assetId, sourceSha256: input.sourceSha256, revision: (history.at(-1)?.revision ?? 0) + 1, baseRevisionId: input.expectedRevisionId, status: conflict ? 'conflict' : 'accepted', origin: input.origin, payload, createdAt: new Date().toISOString() }
+      this.database.prepare('INSERT INTO annotation_revisions (id,project_id,asset_id,source_sha256,revision,base_revision_id,status,origin,payload_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+        .run(revision.id, revision.projectId, revision.assetId, revision.sourceSha256, revision.revision, revision.baseRevisionId, revision.status, revision.origin, JSON.stringify(payload), revision.createdAt)
+      if (!conflict) this.invalidateAnnotationEvidence(input.projectId, input.assetId)
+      this.recordAuditEvent(input.projectId, conflict ? 'annotation.conflict-preserved' : 'annotation.revised', { revisionId: revision.id, assetId: input.assetId, sourceSha256: input.sourceSha256, baseRevisionId: input.expectedRevisionId, origin: input.origin })
+      return { revision, head: conflict ? head! : revision, conflict }
+    })
+  }
+
+  collectNativeAnnotation(input: CreateAnnotationRevisionInput, launchId: string, artifactInput: CreateArtifactInput): { annotationSave: AnnotationSaveResult; artifact: ArtifactRecord } {
+    return this.withTransaction(() => {
+      nonEmptyString(launchId, 'Native launch ID')
+      if (artifactInput.projectId !== input.projectId || input.origin === 'workbench' || !artifactInput.checksum) throw new Error('Native return project, origin and checksum are required.')
+      const previous = this.listAuditEvents(input.projectId).find(event => event.action === 'science-annotation.collected' && event.details.launchId === launchId)
+      if (previous) {
+        const history = this.listAnnotationRevisions(input.projectId, input.assetId).filter(item => item.sourceSha256 === input.sourceSha256)
+        const revision = history.find(item => item.id === previous.details.annotationRevisionId)
+        const head = history.filter(item => item.status === 'accepted').at(-1)
+        const artifact = this.listArtifacts(input.projectId).find(item => item.id === previous.details.artifactId)
+        if (!revision || !head || !artifact || previous.details.checksum !== artifactInput.checksum) throw new Error('Native return was already collected with different content or source.')
+        return { annotationSave: { revision, head, conflict: revision.status === 'conflict' }, artifact }
+      }
+      const annotationSave = this.createAnnotationRevision(input)
+      const artifact = this.createArtifact({ ...artifactInput, metadata: { ...artifactInput.metadata, sourceAssetId: input.assetId, sourceSha256: input.sourceSha256, annotationRevisionId: annotationSave.revision.id, needsReview: annotationSave.conflict, kind: 'image-annotations' } })
+      this.recordAuditEvent(input.projectId, 'science-annotation.collected', { launchId, annotationRevisionId: annotationSave.revision.id, artifactId: artifact.id, sourceAssetId: input.assetId, checksum: artifact.checksum! })
+      return { annotationSave, artifact }
+    })
+  }
+
+  private invalidateAnnotationEvidence(projectId: string, assetId: string): void {
+    const artifacts = this.listArtifacts(projectId).filter(item => item.metadata.sourceAssetId === assetId && typeof item.metadata.annotationRevisionId === 'string')
+    const artifactIds = new Set(artifacts.map(item => item.id))
+    for (const artifact of artifacts) this.database.prepare('UPDATE artifacts SET metadata_json=?,version=version+1,updated_at=? WHERE id=?')
+      .run(JSON.stringify({ ...artifact.metadata, needsReview: true }), new Date().toISOString(), artifact.id)
+    for (const study of this.listResearchStudies(projectId)) {
+      const docs = this.listResearchDocuments(study.id)
+      const evidence = docs.filter(doc => doc.kind === 'evidence' && ((doc.payload.assetId === assetId && typeof doc.payload.annotationRevisionId === 'string') || artifactIds.has(String(doc.payload.artifactId))))
+      const ids = new Set(evidence.map(doc => doc.id))
+      const claims = docs.filter(doc => doc.kind === 'claim' && Array.isArray(doc.payload.evidenceIds) && doc.payload.evidenceIds.some(id => ids.has(String(id))))
+      for (const doc of [...evidence, ...claims]) this.database.prepare('UPDATE research_documents SET payload_json=?,version=version+1,updated_at=? WHERE id=?')
+        .run(JSON.stringify({ ...doc.payload, needsReview: true }), new Date().toISOString(), doc.id)
+      if (evidence.length) this.database.prepare("UPDATE research_studies SET gate2='pending',version=version+1,updated_at=? WHERE id=?").run(new Date().toISOString(), study.id)
+    }
+  }
+
+  setSessionResearchStudy(projectId: string, sessionId: string, studyId: string | null): ResearchStudyRecord | undefined {
+    return this.withTransaction(() => {
+      nonEmptyString(sessionId, 'Session ID')
+      const study = studyId === null ? undefined : this.getResearchStudy(studyId)
+      if (studyId !== null && (!study || study.projectId !== projectId || study.status === 'archived')) throw new Error('Active study must belong to the current project and not be archived.')
+      const settings = this.getProjectPreferences(projectId).settings
+      const previous = settings.researchSessions
+      const selections: JsonObject = previous && typeof previous === 'object' && !Array.isArray(previous) ? { ...previous } : {}
+      if (study) selections[sessionId] = study.id
+      else delete selections[sessionId]
+      this.updateProjectSettings(projectId, { ...settings, researchSessions: selections })
+      return study
+    })
   }
 
   updateProjectSettings(projectId: string, settings: JsonObject): ProjectPreferencesRecord {
@@ -516,6 +1183,33 @@ export class ResearchStore {
     this.requireProject(projectId)
     return (this.database.prepare('SELECT * FROM data_assets WHERE project_id = ? ORDER BY updated_at DESC, id').all(projectId) as Array<Record<string, unknown>>)
       .map(dataAssetFromRow)
+  }
+
+  reserveScientificRun(input: CreateRunInput, requestId: string, fingerprint: string): { run: RunRecord; created: boolean } {
+    return this.withTransaction(() => {
+      if (!/^[A-Za-z0-9_.:-]{1,128}$/u.test(requestId) || !/^[a-f0-9]{64}$/u.test(fingerprint)) throw new Error('Scientific request key and SHA-256 fingerprint are required.')
+      const existing = this.listRuns(input.projectId).find(run => run.leaseOwner === 'fiji-workflow' && run.inputs.some(item => item.name === 'request_id' && item.uri === requestId))
+      if (existing) {
+        if (!existing.inputs.some(item => item.name === 'fingerprint' && item.uri === fingerprint)) throw new Error('IDEMPOTENCY_CONFLICT: this request key belongs to different inputs or parameters.')
+        return { run: existing, created: false }
+      }
+      const run = this.createRun({ ...input, leaseOwner: 'fiji-workflow', inputs: [...(input.inputs ?? []), { name: 'request_id', uri: requestId }, { name: 'fingerprint', uri: fingerprint }] })
+      return { run, created: true }
+    })
+  }
+
+  finishScientificRun(projectId: string, runId: string, artifacts: CreateArtifactInput[]): RunRecord {
+    return this.withTransaction(() => {
+      const run = this.getRun(runId)
+      if (!run || run.projectId !== projectId || run.leaseOwner !== 'fiji-workflow') throw new Error('Scientific run is not owned by this project.')
+      if (run.status === 'succeeded') return run
+      if (!['submitted','running'].includes(run.status) || artifacts.length === 0) throw new Error('Scientific run cannot accept successful artifacts in this state.')
+      for (const artifact of artifacts) {
+        if (artifact.projectId !== projectId || artifact.runId !== runId) throw new Error('Artifact run/project mismatch.')
+        this.createArtifact(artifact)
+      }
+      return this.updateRun(runId, { status: 'succeeded', progress: 1, outputs: artifacts.map(item => ({ name: item.name, uri: item.uri, mediaType: item.mediaType })) })
+    })
   }
 
   createRun(input: CreateRunInput): RunRecord {
@@ -888,11 +1582,17 @@ export class ResearchStore {
   exportResearchSnapshot(projectId: string): ResearchProjectSnapshot {
     const project = this.requireProject(projectId)
     return {
-      format: 'zerowall-science-research-project', version: 2, exportedAt: new Date().toISOString(), project,
+      format: 'zerowall-science-research-project', version: 3, exportedAt: new Date().toISOString(), project,
       literature: this.getLiteratureGraph(projectId),
       executionContexts: this.listExecutionContexts(projectId), dataAssets: this.listDataAssets(projectId),
       runs: this.listRuns(projectId), artifacts: this.listArtifacts(projectId), papers: this.listPapers(projectId),
       decisions: this.listDecisions(projectId), edges: this.listResearchEdges(projectId), auditEvents: this.listAuditEvents(projectId),
+      researchStudies: this.listResearchStudies(projectId),
+      researchDocuments: this.listResearchStudies(projectId).flatMap(study => this.listResearchDocuments(study.id)),
+      studyFreezes: this.listResearchStudies(projectId).flatMap(study => this.listStudyFreezes(study.id)),
+      researchTasks: this.listResearchStudies(projectId).flatMap(study => this.listResearchTasks(study.id)),
+      viewerSessions: this.listViewerSessions(projectId),
+      annotationRevisions: this.listAnnotationRevisions(projectId),
     }
   }
 
@@ -914,7 +1614,75 @@ export class ResearchStore {
       for (const item of input.papers) ids.set(item.id, this.createPaper({ ...item, projectId: project.id }).id)
       for (const item of input.decisions) ids.set(item.id, this.createDecision({ ...item, projectId: project.id }).id)
       for (const edge of input.edges) this.createResearchEdge({ projectId: project.id, fromId: mappedRequired(ids, edge.fromId), toId: mappedRequired(ids, edge.toId), relation: edge.relation, metadata: edge.metadata })
-      if (input.version === 2) this.literature.restore(project.id, input.literature, ids)
+      if (input.version === 2 || input.version === 3) this.literature.restore(project.id, input.literature, ids)
+      if (input.version === 3) {
+        for (const view of input.viewerSessions ?? []) {
+          const viewId = randomUUID(); ids.set(view.id, viewId)
+          this.database.prepare('INSERT INTO viewer_sessions (id, project_id, asset_id, tool, state_json, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(viewId, project.id, mappedRequired(ids, view.assetId), view.tool, JSON.stringify(view.state), view.version, view.createdAt, view.updatedAt)
+        }
+        for (const revision of input.annotationRevisions ?? []) ids.set(revision.id, randomUUID())
+        for (const revision of input.annotationRevisions ?? []) {
+          this.database.prepare('INSERT INTO annotation_revisions (id,project_id,asset_id,source_sha256,revision,base_revision_id,status,origin,payload_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+            .run(mappedRequired(ids, revision.id), project.id, mappedRequired(ids, revision.assetId), revision.sourceSha256, revision.revision, revision.baseRevisionId === null ? null : mappedRequired(ids, revision.baseRevisionId), revision.status, revision.origin, JSON.stringify(revision.payload), revision.createdAt)
+        }
+        for (const artifact of input.artifacts) this.database.prepare('UPDATE artifacts SET metadata_json=? WHERE id=?')
+          .run(JSON.stringify(remapResearchReferences(artifact.metadata, ids)), mappedRequired(ids, artifact.id))
+        for (const view of input.viewerSessions ?? []) this.database.prepare('UPDATE viewer_sessions SET state_json=? WHERE id=?')
+          .run(JSON.stringify(remapResearchReferences(view.state, ids)), mappedRequired(ids, view.id))
+        // Import the research graph in two passes.  Calling the public create
+        // methods here would invalidate gates, reject archived studies and
+        // lose the original revision numbers.  Direct inserts are safe inside
+        // this transaction after validateResearchSnapshot has checked all
+        // ownership and references.
+        const researchIds = new Map<string, string>(ids)
+        researchIds.set(input.project.id, project.id)
+        const studies = new Map<string, string>()
+        for (const study of input.researchStudies) {
+          const id = randomUUID(); studies.set(study.id, id); researchIds.set(study.id, id)
+          this.database.prepare(`INSERT INTO research_studies (id, project_id, title, phase, status, current_question_id, current_plan_id, current_freeze_id, budget_json, gate1, gate2, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?)`)
+            .run(id, project.id, study.title, study.phase, study.status, JSON.stringify(study.budget), study.gate1, study.gate2, study.version, study.createdAt, study.updatedAt)
+        }
+        // Allocate every task identity before resolving dependencies.  Snapshot
+        // order is not a topological order, so resolving while inserting would
+        // reject valid graphs whose dependency appears later in the export.
+        const taskIds = new Map<string, string>()
+        for (const task of input.researchTasks ?? []) {
+          const id = randomUUID(); taskIds.set(task.id, id); researchIds.set(task.id, id)
+        }
+        for (const task of input.researchTasks ?? []) {
+          const id = mappedRequired(taskIds, task.id)
+          this.database.prepare('INSERT INTO research_tasks (id,project_id,study_id,name,kind,status,dependencies_json,exploratory,budget_json,run_id,attempt,error,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(
+            id, project.id, mappedRequired(studies, task.studyId), task.name, task.kind, task.status,
+            JSON.stringify(task.dependencies.map(dependency => mappedRequired(taskIds, dependency))), task.exploratory ? 1 : 0,
+            JSON.stringify(task.budget), task.runId === undefined ? null : mappedRequired(ids, task.runId), task.attempt,
+            task.error ?? null, task.version, task.createdAt, task.updatedAt,
+          )
+        }
+        const documents = new Map<string, string>()
+        for (const document of input.researchDocuments) { const id = randomUUID(); documents.set(document.id, id); researchIds.set(document.id, id) }
+        for (const document of input.researchDocuments) {
+          const id = mappedRequired(documents, document.id)
+          this.database.prepare('INSERT INTO research_documents (id, project_id, study_id, kind, payload_json, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(id, project.id, mappedRequired(studies, document.studyId), document.kind, JSON.stringify(remapResearchReferences(document.payload, researchIds)), document.version, document.createdAt, document.updatedAt)
+        }
+        const freezes = new Map<string, string>()
+        for (const freeze of input.studyFreezes) { const id = randomUUID(); freezes.set(freeze.id, id); researchIds.set(freeze.id, id) }
+        for (const freeze of input.studyFreezes) {
+          const id = mappedRequired(freezes, freeze.id)
+          const transformed = remapResearchReferences(freeze.snapshot, researchIds)
+          const snapshot = withResearchSnapshotHash({ ...jsonObject(transformed, 'Imported freeze'), importProvenance: { sourceFreezeId: freeze.id, sourceProjectId: input.project.id, sourceSnapshot: freeze.snapshot } })
+          this.database.prepare('INSERT INTO study_freezes (id, project_id, study_id, version, snapshot_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+            .run(id, project.id, mappedRequired(studies, freeze.studyId), freeze.version, JSON.stringify(snapshot), freeze.createdAt)
+        }
+        for (const study of input.researchStudies) {
+          const studyId = mappedRequired(studies, study.id)
+          const questionId = study.currentQuestionId === undefined ? null : mappedRequired(documents, study.currentQuestionId)
+          const planId = study.currentPlanId === undefined ? null : mappedRequired(documents, study.currentPlanId)
+          const freezeId = study.currentFreezeId === undefined ? null : mappedRequired(freezes, study.currentFreezeId)
+          this.database.prepare('UPDATE research_studies SET current_question_id=?, current_plan_id=?, current_freeze_id=? WHERE id=?').run(questionId, planId, freezeId, studyId)
+        }
+      }
       this.audit(project.id, undefined, 'project.imported', { sourceProjectId: input.project.id })
       return project
     })
@@ -1390,6 +2158,74 @@ function projectPreferencesFromRow(row: Record<string, unknown>): ProjectPrefere
   }
 }
 
+function researchStudyFromRow(row: Record<string, unknown>): ResearchStudyRecord {
+  return {
+    id: String(row.id ?? ''), projectId: String(row.project_id ?? ''), title: String(row.title ?? ''),
+    phase: row.phase as ResearchStudyPhase, status: row.status as ResearchStudyStatus,
+    ...(row.current_question_id === null || row.current_question_id === undefined ? {} : { currentQuestionId: String(row.current_question_id) }),
+    ...(row.current_plan_id === null || row.current_plan_id === undefined ? {} : { currentPlanId: String(row.current_plan_id) }),
+    ...(row.current_freeze_id === null || row.current_freeze_id === undefined ? {} : { currentFreezeId: String(row.current_freeze_id) }),
+    budget: jsonObject(jsonValue(row.budget_json, 'Research study budget'), 'Research study budget'),
+    gate1: row.gate1 as ResearchGateStatus, gate2: row.gate2 as ResearchGateStatus,
+    version: Number(row.version ?? 1), createdAt: String(row.created_at ?? ''), updatedAt: String(row.updated_at ?? ''),
+  }
+}
+
+function researchDocumentFromRow(row: Record<string, unknown>): ResearchDocumentRecord {
+  return {
+    id: String(row.id ?? ''), projectId: String(row.project_id ?? ''), studyId: String(row.study_id ?? ''), kind: row.kind as ResearchRecordKind,
+    payload: jsonObject(jsonValue(row.payload_json, 'Research document payload'), 'Research document payload'), version: Number(row.version ?? 1),
+    createdAt: String(row.created_at ?? ''), updatedAt: String(row.updated_at ?? ''),
+  }
+}
+
+function studyFreezeFromRow(row: Record<string, unknown>): StudyFreezeRecord {
+  return { id: String(row.id ?? ''), projectId: String(row.project_id ?? ''), studyId: String(row.study_id ?? ''), version: Number(row.version ?? 1), snapshot: jsonObject(jsonValue(row.snapshot_json, 'Study freeze snapshot'), 'Study freeze snapshot'), createdAt: String(row.created_at ?? '') }
+}
+
+function researchTaskFromRow(row: Record<string, unknown>): ResearchTaskRecord {
+  const dependencies = jsonValue<unknown>(row.dependencies_json, 'Research task dependencies')
+  if (!Array.isArray(dependencies) || dependencies.some(item => typeof item !== 'string')) throw new Error('Research task dependencies are invalid.')
+  return { id: String(row.id ?? ''), projectId: String(row.project_id ?? ''), studyId: String(row.study_id ?? ''), name: String(row.name ?? ''), kind: String(row.kind ?? ''), status: row.status as ResearchTaskStatus, dependencies, exploratory: row.exploratory === 1, budget: jsonObject(jsonValue(row.budget_json, 'Research task budget'), 'Research task budget'), ...(row.run_id === null || row.run_id === undefined ? {} : { runId: String(row.run_id) }), attempt: Number(row.attempt ?? 0), ...(row.error === null || row.error === undefined ? {} : { error: String(row.error) }), version: Number(row.version ?? 1), createdAt: String(row.created_at ?? ''), updatedAt: String(row.updated_at ?? '') }
+}
+
+function researchTaskBudgetExceeded(studyBudget: JsonObject, tasks: ResearchTaskRecord[], candidateId: string): boolean {
+  validateTaskBudget(studyBudget, true)
+  for (const [limitKey, rawLimit] of Object.entries(studyBudget)) {
+    if (!limitKey.startsWith('max') || typeof rawLimit !== 'number' || !Number.isFinite(rawLimit) || rawLimit < 0) continue
+    const resourceKey = limitKey.slice(3)
+    const key = resourceKey.length === 0 ? resourceKey : resourceKey[0]!.toLowerCase() + resourceKey.slice(1)
+    if (!key) continue
+    const concurrent = isConcurrentBudget(key)
+    const used = concurrent
+      ? tasks.filter(task => task.status === 'running').reduce((sum, task) => sum + numericBudget(task.budget, key), 0)
+      : tasks.reduce((sum, task) => sum + task.attempt * numericBudget(task.budget, key), 0)
+    const candidate = tasks.find(task => task.id === candidateId)
+    const requested = numericBudget(candidate?.budget ?? {}, key)
+    const projected = used + requested
+    if (projected > rawLimit) return true
+  }
+  return false
+}
+
+function numericBudget(budget: JsonObject, key: string): number {
+  if (key === 'concurrentTasks') return 1
+  const value = budget[key]
+  if (value === undefined) return 0
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new Error(`Invalid research budget: ${key}.`)
+  return value
+}
+
+function isConcurrentBudget(key: string): boolean { return ['remoteThreads', 'memoryGiB', 'concurrentTasks'].includes(key) }
+function validateTaskBudget(value: unknown, study = false): JsonObject {
+  const budget = jsonObject(value, 'Research budget')
+  for (const [key, amount] of Object.entries(budget)) {
+    if (study && !key.startsWith('max')) continue
+    if ((study && key.length <= 3) || typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) throw new Error(`Invalid research budget: ${key} must be a finite non-negative number.`)
+  }
+  return budget
+}
+
 function versionedRow(row: Record<string, unknown>): {
   id: string; projectId: string; name: string; version: number; createdAt: string; updatedAt: string
 } {
@@ -1738,6 +2574,16 @@ const RUN_TRANSITIONS: Record<RunStatus, readonly RunStatus[]> = {
   succeeded: ['succeeded'], failed: ['failed'], cancelled: ['cancelled'], timed_out: ['timed_out'],
 }
 
+const RESEARCH_TASK_TRANSITIONS: Record<ResearchTaskStatus, readonly ResearchTaskStatus[]> = {
+  pending: ['pending', 'ready', 'blocked', 'cancelled'],
+  ready: ['ready', 'running', 'blocked', 'cancelled'],
+  running: ['running', 'succeeded', 'failed', 'blocked', 'cancelled'],
+  succeeded: ['succeeded'],
+  failed: ['failed', 'ready', 'running', 'cancelled'],
+  blocked: ['blocked', 'ready', 'running', 'cancelled'],
+  cancelled: ['cancelled'],
+}
+
 function validateRunStatus(status: RunStatus): void {
   if (!(status in RUN_TRANSITIONS)) throw new Error(`Invalid run status: ${String(status)}`)
 }
@@ -1753,10 +2599,13 @@ function omitName<T extends { name: string }>(value: T): Omit<T, 'name'> {
 }
 
 function validateResearchSnapshot(input: ResearchProjectSnapshot): void {
-  if (input?.format !== 'zerowall-science-research-project' || ![1, 2].includes(input.version)) throw new Error('Unsupported research project snapshot.')
-  if (input.version === 2 && (!input.literature || !Array.isArray(input.literature.nodes) || !Array.isArray(input.literature.edges) || !Array.isArray(input.literature.identifiers))) throw new Error('Research literature snapshot is incomplete.')
+  if (input?.format !== 'zerowall-science-research-project' || ![1, 2, 3].includes(input.version)) throw new Error('Unsupported research project snapshot.')
+  if (input.version === 2 || input.version === 3) {
+    if (!input.literature || !Array.isArray(input.literature.nodes) || !Array.isArray(input.literature.edges) || !Array.isArray(input.literature.identifiers)) throw new Error('Research literature snapshot is incomplete.')
+  }
   const arrays = [input.executionContexts, input.dataAssets, input.runs, input.artifacts, input.papers, input.decisions, input.edges, input.auditEvents]
   if (arrays.some(value => !Array.isArray(value))) throw new Error('Research project snapshot is incomplete.')
+  if (input.version === 3 && (![input.researchStudies, input.researchDocuments, input.studyFreezes].every(Array.isArray))) throw new Error('Research study snapshot is incomplete.')
   const ids = new Set<string>()
   for (const entity of arrays.slice(0, 6).flat() as Array<{ id: string; projectId: string }>) {
     if (entity.projectId !== input.project.id) throw new Error('Research snapshot contains a foreign project entity.')
@@ -1764,14 +2613,153 @@ function validateResearchSnapshot(input: ResearchProjectSnapshot): void {
     ids.add(entity.id)
   }
   for (const edge of input.edges) if (!ids.has(edge.fromId) || !ids.has(edge.toId)) throw new Error('Research snapshot contains an orphan edge.')
+  if (input.version === 3) {
+    if (input.viewerSessions !== undefined && !Array.isArray(input.viewerSessions)) throw new Error('Invalid viewer sessions.')
+    const viewIds = new Set<string>()
+    for (const view of input.viewerSessions ?? []) {
+      if (view.projectId !== input.project.id || !input.dataAssets.some(asset => asset.id === view.assetId)) throw new Error('Viewer snapshot contains a foreign asset.')
+      if (ids.has(view.id) || viewIds.has(view.id) || !Number.isSafeInteger(view.version) || view.version < 1 || !['sequence','image','flow','cells','brain'].includes(view.tool)) throw new Error('Invalid viewer snapshot.')
+      viewIds.add(view.id); jsonObject(view.state, 'Viewer state')
+    }
+    if (input.annotationRevisions !== undefined && !Array.isArray(input.annotationRevisions)) throw new Error('Invalid annotation revisions.')
+    const annotationIds = new Map<string, AnnotationRevisionRecord>()
+    const streams = new Map<string, AnnotationRevisionRecord[]>()
+    for (const revision of input.annotationRevisions ?? []) {
+      if (!revision.id || ids.has(revision.id) || viewIds.has(revision.id) || annotationIds.has(revision.id) || revision.projectId !== input.project.id || !input.dataAssets.some(asset => asset.id === revision.assetId)) throw new Error('Annotation snapshot has a foreign or duplicate revision.')
+      if (!/^[a-f0-9]{64}$/u.test(revision.sourceSha256) || !Number.isSafeInteger(revision.revision) || revision.revision < 1 || !['workbench','fiji','napari'].includes(revision.origin) || !['accepted','conflict'].includes(revision.status)) throw new Error('Invalid annotation revision.')
+      validateAnnotationPayload(revision.payload)
+      annotationIds.set(revision.id, revision)
+      const key = `${revision.assetId}:${revision.sourceSha256}`
+      const stream = streams.get(key) ?? []; stream.push(revision); streams.set(key, stream)
+    }
+    for (const stream of streams.values()) {
+      let head: AnnotationRevisionRecord | undefined
+      for (const [index, revision] of stream.sort((a,b) => a.revision-b.revision).entries()) {
+        if (revision.revision !== index + 1) throw new Error('Annotation history must be contiguous.')
+        if (revision.baseRevisionId !== null) {
+          const base = annotationIds.get(revision.baseRevisionId)
+          if (!base || base.assetId !== revision.assetId || base.sourceSha256 !== revision.sourceSha256 || base.revision >= revision.revision) throw new Error('Invalid annotation base revision.')
+        }
+        if ((revision.status === 'accepted') !== (revision.baseRevisionId === (head?.id ?? null))) throw new Error('Annotation history has an invalid conflict or head.')
+        if (head && ['width','height','pages'].some(key => head!.payload.coordinates[key as 'width'] !== revision.payload.coordinates[key as 'width'])) throw new Error('Annotation image geometry changed for the same source hash.')
+        if (revision.status === 'accepted') head = revision
+      }
+    }
+    for (const artifact of input.artifacts) {
+      const ref = artifact.metadata.annotationRevisionId
+      if (ref !== undefined && (typeof ref !== 'string' || !annotationIds.has(ref) || annotationIds.get(ref)!.assetId !== artifact.metadata.sourceAssetId)) throw new Error('Invalid artifact annotation reference.')
+    }
+    for (const view of input.viewerSessions ?? []) {
+      const ref = view.state.annotationRevisionId
+      if (ref !== undefined && (typeof ref !== 'string' || annotationIds.get(ref)?.assetId !== view.assetId)) throw new Error('Invalid viewer annotation reference.')
+    }
+    const studyIds = new Set<string>()
+    for (const study of input.researchStudies) { if (study.projectId !== input.project.id || studyIds.has(study.id)) throw new Error('Research snapshot contains an invalid study.'); studyIds.add(study.id) }
+    const documentIds = new Set<string>()
+    for (const document of input.researchDocuments) { if (document.projectId !== input.project.id || !studyIds.has(document.studyId) || documentIds.has(document.id)) throw new Error('Research snapshot contains an invalid study document.'); documentIds.add(document.id) }
+    const freezeIds = new Set<string>()
+    for (const freeze of input.studyFreezes) {
+      if (freeze.projectId !== input.project.id || !studyIds.has(freeze.studyId) || freeze.version < 1 || freezeIds.has(freeze.id)) throw new Error('Research snapshot contains an invalid study freeze.')
+      freezeIds.add(freeze.id)
+    }
+    if (input.researchTasks !== undefined && !Array.isArray(input.researchTasks)) throw new Error('Invalid research tasks.')
+    const tasks = input.researchTasks ?? []
+    const taskIds = new Map<string, ResearchTaskRecord>()
+    for (const task of tasks) {
+      if (task.projectId !== input.project.id || !studyIds.has(task.studyId) || ids.has(task.id) || taskIds.has(task.id)) throw new Error('Research snapshot contains an invalid research task.')
+      if (!Number.isSafeInteger(task.attempt) || task.attempt < 0 || !Number.isSafeInteger(task.version) || task.version < 1) throw new Error('Research snapshot contains an invalid research task budget.')
+      validateTaskBudget(task.budget)
+      if (!['pending', 'ready', 'running', 'succeeded', 'failed', 'blocked', 'cancelled'].includes(task.status)) throw new Error('Research snapshot contains an invalid research task status.')
+      if (!Array.isArray(task.dependencies) || task.dependencies.includes(task.id) || new Set(task.dependencies).size !== task.dependencies.length) throw new Error('Research snapshot contains invalid research task dependencies.')
+      if (task.runId !== undefined && !input.runs.some(run => run.id === task.runId && run.projectId === input.project.id)) throw new Error('Research snapshot contains an invalid research task run reference.')
+      taskIds.set(task.id, task)
+    }
+    for (const task of tasks) {
+      for (const dependency of task.dependencies) {
+        const target = taskIds.get(dependency)
+        if (!target || target.studyId !== task.studyId) throw new Error('Research snapshot contains a missing or foreign research task dependency.')
+      }
+    }
+    // A cycle makes readiness and recovery non-deterministic.  Reject it at
+    // the import boundary so the persisted graph always has a valid DAG.
+    const visiting = new Set<string>(), visited = new Set<string>()
+    const visitTask = (id: string): void => {
+      if (visiting.has(id)) throw new Error('Research snapshot contains a cyclic task dependency.')
+      if (visited.has(id)) return
+      visiting.add(id)
+      for (const dependency of taskIds.get(id)?.dependencies ?? []) visitTask(dependency)
+      visiting.delete(id); visited.add(id)
+    }
+    for (const task of tasks) visitTask(task.id)
+    const documents = new Map(input.researchDocuments.map(document => [document.id, document]))
+    for (const study of input.researchStudies) {
+      for (const [ref, kind] of [[study.currentQuestionId, 'question'], [study.currentPlanId, 'analysis-plan']] as const) {
+        if (ref !== undefined && (documents.get(ref)?.studyId !== study.id || documents.get(ref)?.kind !== kind)) throw new Error('Research snapshot contains an invalid current document reference.')
+      }
+      if (study.currentFreezeId !== undefined && !input.studyFreezes.some(freeze => freeze.id === study.currentFreezeId && freeze.studyId === study.id)) throw new Error('Research snapshot references a missing or foreign current freeze.')
+    }
+    for (const document of input.researchDocuments) {
+      const references = document.kind === 'analysis-plan' ? document.payload.inputs : document.kind === 'claim' ? document.payload.evidenceIds : undefined
+      const expectedKind = document.kind === 'analysis-plan' ? 'dataset-contract' : 'evidence'
+      if (references !== undefined) {
+        if (!Array.isArray(references) || references.some(ref => typeof ref !== 'string' || documents.get(ref)?.studyId !== document.studyId || documents.get(ref)?.kind !== expectedKind)) throw new Error('Research snapshot contains invalid document references.')
+      }
+      for (const [key, records] of [['runId', input.runs], ['artifactId', input.artifacts], ['assetId', input.dataAssets]] as const) {
+        const ref = document.payload[key]
+        if (ref !== undefined && (typeof ref !== 'string' || !records.some(record => record.id === ref))) throw new Error(`Research snapshot contains an invalid ${key}.`)
+      }
+    }
+    for (const freeze of input.studyFreezes) {
+      if (freeze.snapshot.sha256 !== withResearchSnapshotHash(freeze.snapshot).sha256) throw new Error('Study freeze snapshot checksum does not match.')
+    }
+  }
 }
 
 function mapped(ids: Map<string, string>, id: string | undefined): string | undefined {
   return id === undefined ? undefined : mappedRequired(ids, id)
 }
 
+function viewerSessionFromRow(row: Record<string, unknown>): ViewerSessionRecord {
+  return { id: String(row.id), projectId: String(row.project_id), assetId: String(row.asset_id), tool: row.tool as ViewerSessionRecord['tool'], state: jsonObject(jsonValue(row.state_json, 'Viewer state'), 'Viewer state'), version: Number(row.version), createdAt: String(row.created_at), updatedAt: String(row.updated_at) }
+}
+
 function mappedRequired(ids: Map<string, string>, id: string): string {
   const value = ids.get(id)
   if (value === undefined) throw new Error(`Research snapshot reference was not imported: ${id}`)
   return value
+}
+
+const RESEARCH_REFERENCE_KEYS = new Set(['id', 'projectId', 'studyId', 'currentQuestionId', 'currentPlanId', 'currentFreezeId', 'runId', 'artifactId', 'assetId', 'documentId', 'questionId', 'planId', 'freezeId', 'parentRevisionId', 'executionContextId', 'inputs', 'contracts', 'evidenceIds', 'artifactIds', 'assetIds', 'runIds', 'documentIds', 'sourceAssetId', 'annotationRevisionId', 'baseRevisionId', 'viewerId'])
+
+function annotationFromRow(row: Record<string, unknown>): AnnotationRevisionRecord {
+  return { id: String(row.id), projectId: String(row.project_id), assetId: String(row.asset_id), sourceSha256: String(row.source_sha256), revision: Number(row.revision), baseRevisionId: row.base_revision_id === null ? null : String(row.base_revision_id), status: row.status as AnnotationRevisionRecord['status'], origin: row.origin as AnnotationRevisionRecord['origin'], payload: validateAnnotationPayload(JSON.parse(String(row.payload_json))), createdAt: String(row.created_at) }
+}
+
+function remapResearchReferences(value: JsonValue, ids: Map<string, string>, key = ''): JsonValue {
+  if (typeof value === 'string') return RESEARCH_REFERENCE_KEYS.has(key) ? ids.get(value) ?? value : value
+  if (Array.isArray(value)) return value.map(item => remapResearchReferences(item, ids, key))
+  if (value !== null && typeof value === 'object') {
+    const output: JsonObject = {}
+    for (const [key, child] of Object.entries(value)) output[key] = key === 'importProvenance' ? child : remapResearchReferences(child, ids, key)
+    return output
+  }
+  return value
+}
+
+function withResearchSnapshotHash(snapshot: JsonValue): JsonObject {
+  const copy = JSON.parse(JSON.stringify(snapshot)) as JsonObject
+  delete copy.sha256
+  copy.sha256 = createHash('sha256').update(JSON.stringify(copy)).digest('hex')
+  return copy
+}
+
+function frozenDocumentIds(snapshot: JsonObject): Set<string> {
+  const result = new Set<string>()
+  const documents = snapshot.documents
+  if (Array.isArray(documents)) {
+    for (const document of documents) {
+      if (document !== null && typeof document === 'object' && !Array.isArray(document) && typeof document.id === 'string') result.add(document.id)
+    }
+  }
+  return result
 }

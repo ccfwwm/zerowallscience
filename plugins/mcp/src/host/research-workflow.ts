@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { ResearchStore } from '@zerowallscience/research-store'
+import type { LocalScienceWorkflow, ResearchTaskRecord } from '@zerowallscience/research-store/types'
 import { rWorkflows } from '../shared/r-workflows.js'
 import type { ZeroWallMcpService } from './index.js'
 
@@ -13,9 +14,10 @@ type ObjectValue = { [key: string]: Json }
 type Lifecycle = { id_fields: readonly string[]; argument: string; status: string; cancel?: string; manifest?: string; log?: string }
 type Operation = { lifecycle?: Lifecycle | null; query_allowed?: boolean; id: string; public_tool: string; summary: string; input_schema: unknown; requires_confirmation: boolean }
 type Module = { id: string; skill: string; groups: readonly string[]; operations: readonly Operation[] }
-interface State { run_id: string; workflow_id: string; operation: string; workspace: string; request_id: string; fingerprint: string; remote_id?: string; remote_key?: string; remote_project?: string; status_operation?: string; cancel_operation?: string; manifest_operation?: string; result?: ObjectValue; submission?: ObjectValue; lifecycle?: Lifecycle | null }
+interface State { run_id: string; workflow_id: string; operation: string; workspace: string; request_id: string; fingerprint: string; research_task_id?: string; remote_id?: string; remote_key?: string; remote_project?: string; status_operation?: string; cancel_operation?: string; manifest_operation?: string; result?: ObjectValue; submission?: ObjectValue; lifecycle?: Lifecycle | null }
 declare module '@deepseek-ai/cordis' {
   interface Context { researchWorkflow: { get(): ResearchWorkflowService } }
+  interface Context { localScienceWorkflow: LocalScienceWorkflow }
 }
 const modules: readonly Module[] = rWorkflows.modules
 const object = (value: unknown): ObjectValue => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as ObjectValue : {}
@@ -36,18 +38,23 @@ export function workflowPayload(value: unknown): ObjectValue {
 /** A Host service, shared by the model tool and code callers. Only registered catalog operations execute. */
 export class ResearchWorkflowService {
   private readonly pending = new Map<string, Promise<ObjectValue>>()
-  constructor(private readonly store: ResearchStore, private readonly directory: string, private readonly mcp: Pick<ZeroWallMcpService, 'ensureConnected' | 'executeCompactCapability' | 'workflowRequest'>) {}
-  list(): ObjectValue { return { workflows: modules.map(module => ({ workflow_id: module.id, skill: module.skill, operation_count: module.operations.length })) } }
+  constructor(private readonly store: ResearchStore, private readonly directory: string, private readonly mcp: Pick<ZeroWallMcpService, 'ensureConnected' | 'executeCompactCapability' | 'workflowRequest'>, private readonly local: () => LocalScienceWorkflow | undefined = () => undefined) {}
+  private localService(): LocalScienceWorkflow { const local=this.local();if(!local)throw new Error('Local Fiji workflow service is unavailable.');return local }
+  private sessionId(exec:ToolRunContext):string {const id=exec.agent?.session.id;if(!id)throw new Error('An active project session is required.');return String(id)}
+  list(): ObjectValue { return { workflows: [...modules.map(module => ({ workflow_id: module.id, skill: module.skill, operation_count: module.operations.length })), ...(this.local()?[this.localService().list()]:[])] } }
   describe(id: string, operation?: string): ObjectValue {
+    if(id==='fiji')return this.localService().describe(operation)
     const module = this.module(id)
     if (operation) return JSON.parse(JSON.stringify(this.operation(module, operation))) as ObjectValue
     return { workflow_id: id, skill: module.skill, catalog_version: rWorkflows.catalog_version, parameters: { operation: 'Exact operation id below', arguments: 'Object validated against the live backend schema', request_id: 'Unique idempotency key, reuse only for the same submission' }, operations: module.operations.map(op => ({ id: op.id, summary: op.summary, requires_confirmation: op.requires_confirmation })) }
   }
   async search(id: string, query: string, offset: number, limit: number, exec: ToolRunContext): Promise<ObjectValue> {
+    if(id==='fiji') { const operation=this.localService().describe();return {workflow_id:id,operations: offset>0 || limit<1 || (query && !JSON.stringify(operation).toLowerCase().includes(query.toLowerCase()))?[]:[operation]} }
     this.module(id)
     return object(await this.mcp.workflowRequest('workflow_search', { workflow_id: id, query, offset, limit }, exec))
   }
   async describeLive(id: string, operation: string | undefined, exec: ToolRunContext): Promise<ObjectValue> {
+    if(id==='fiji')return this.localService().describe(operation)
     this.module(id)
     if (!operation) return this.search(id, '', 0, 25, exec)
     return object(await this.mcp.workflowRequest('workflow_describe', { workflow_id: id, operation }, exec))
@@ -70,11 +77,14 @@ export class ResearchWorkflowService {
     return payload
   }
   async run(id: string, parameters: ObjectValue, exec: ToolRunContext): Promise<ObjectValue> {
+    if (parameters.research_task_id !== undefined && (typeof parameters.research_task_id !== 'string' || !parameters.research_task_id.trim())) throw new Error('research_task_id must be a nonempty string.')
+    if(id==='fiji')return this.localService().execute(this.sessionId(exec),'run',parameters)
     const module = this.module(id)
     const operationId = String(parameters.operation ?? '')
     const operation = await this.describeLive(id, operationId, exec) as unknown as Operation
     if (operation.id !== operationId) throw new Error('Invalid live operation contract')
     const args = { ...object(parameters.arguments) }
+    const researchTaskId = typeof parameters.research_task_id === 'string' ? parameters.research_task_id : undefined
     if (operation.requires_confirmation && args.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: approve the concrete operation and any first remote upload.')
     if (args.api_key || args.token || args.password) throw new Error('Use the Host credential broker; workflow arguments must not contain credentials.')
     const workspace = this.workspace(exec)
@@ -87,19 +97,27 @@ export class ResearchWorkflowService {
     // Concurrent callers with the same request cannot race past durable idempotency.
     const active = this.pending.get(key)
     if (active) { await active; return this.run(id, parameters, exec) }
-    const task = this.submit(module, operation, args, workspace, requestId, exec)
+    const task = this.submit(module, operation, args, workspace, requestId, exec, researchTaskId)
     this.pending.set(key, task)
     try { return await task } finally { this.pending.delete(key) }
   }
-  private async submit(module: Module, operation: Operation, args: ObjectValue, workspace: string, requestId: string, exec: ToolRunContext): Promise<ObjectValue> {
+  private async submit(module: Module, operation: Operation, args: ObjectValue, workspace: string, requestId: string, exec: ToolRunContext, researchTaskId?: string): Promise<ObjectValue> {
     const project = this.store.listProjects().find(item => resolve(item.rootPath) === workspace) ?? this.store.createProject({ name: workspace.split(/[\\/]/u).pop() || 'Research', rootPath: workspace })
-    const fingerprint = createHash('sha256').update(JSON.stringify(canonical({ workflow: module.id, operation: operation.id, args }))).digest('hex')
+    const researchTask = researchTaskId === undefined ? undefined : this.findResearchTask(project.id, researchTaskId)
+    const fingerprint = createHash('sha256').update(JSON.stringify(canonical({ workflow: module.id, operation: operation.id, args, ...(researchTaskId === undefined ? {} : { research_task_id: researchTaskId }) }))).digest('hex')
     const existing = this.store.listRuns(project.id).find(run => run.leaseOwner === 'research-workflow' && run.inputs.some(input => input.name === 'request_id' && input.uri === requestId))
     if (existing) { const state = await this.load(existing.id, exec); if (state.fingerprint !== fingerprint) throw new Error('IDEMPOTENCY_CONFLICT: request_id was already used for different parameters.'); return this.view(state) }
+    if (researchTask) {
+      const study = this.store.getResearchStudy(researchTask.studyId)!
+      if (['archived', 'completed', 'blocked'].includes(study.status)) throw new Error('The research study is not available for execution.')
+      if (!researchTask.exploratory && (!study.currentFreezeId || study.gate1 !== 'approved')) throw new Error('Confirmatory tasks require gate one approval and a frozen study plan.')
+    }
     const run = this.store.createRun({ projectId: project.id, name: `${module.id}: ${operation.id}`, command: 'research_workflow', workingDirectory: workspace, status: 'submitted', leaseOwner: 'research-workflow', inputs: [{ name: 'request_id', uri: requestId }] })
-    const state: State = { run_id: run.id, workflow_id: module.id, operation: operation.id, workspace, request_id: requestId, fingerprint, lifecycle: operation.lifecycle ?? null, ...(typeof args.project_id === 'string' ? { remote_project: args.project_id } : {}) }
+    const state: State = { run_id: run.id, workflow_id: module.id, operation: operation.id, workspace, request_id: requestId, fingerprint, ...(researchTask === undefined ? {} : { research_task_id: researchTask.id }), lifecycle: operation.lifecycle ?? null, ...(typeof args.project_id === 'string' ? { remote_project: args.project_id } : {}) }
     await this.save(state)
     try {
+      if (researchTask !== undefined) this.store.updateResearchTask(researchTask.id, { expectedVersion: researchTask.version, status: 'running', runId: run.id })
+      await this.save(state)
       // Health and precise capability lookup both run through the normal permission pipeline.
       if (module.id === 'r.compute' || module.id === 'sc.knockout') await this.call(module.id === 'sc.knockout' ? 'r.validate.sc.tenifold.runtime' : 'r.runtime.capabilities', {}, exec)
       if (operation.query_allowed !== true && operation.id !== 'r.register.project' && typeof args.project_id === 'string') await this.call('r.register.project', { project_id: args.project_id, name: args.project_id }, exec)
@@ -108,13 +126,17 @@ export class ResearchWorkflowService {
       state.submission = state.result
       this.track(state)
       await this.save(state)
-      if (!state.remote_id) this.store.updateRun(run.id, { status: 'succeeded', progress: 1, outputs: this.outputs(state) })
+      if (!state.remote_id) {
+        this.store.updateRun(run.id, { status: 'succeeded', progress: 1, outputs: this.outputs(state) })
+        this.reconcileBoundTask(state)
+      }
       else await this.refresh(state, exec)
       return this.view(state)
     } catch (error) {
       // Never replay an uncertain remote submission after timeout/disconnect.
       const current = this.store.getRun(run.id)!
       if (!terminal.has(current.status)) this.store.updateRun(run.id, { status: state.remote_id ? 'paused' : 'failed', error: `${String(error)}; do not resubmit with a new request_id until remote job history has been checked.` })
+      if (!state.remote_id) this.reconcileBoundTask(state)
       await this.save(state)
       return this.view(state)
     }
@@ -134,7 +156,8 @@ export class ResearchWorkflowService {
 
   private async refresh(state: State, exec: ToolRunContext): Promise<void> {
     const current = this.store.getRun(state.run_id)!
-    if (!state.remote_id || terminal.has(current.status)) return
+    if (terminal.has(current.status)) { this.reconcileBoundTask(state); return }
+    if (!state.remote_id) return
     const args: ObjectValue = { ...(state.remote_project ? { project_id: state.remote_project } : {}), [state.remote_key!]: state.remote_id }
     const result = await this.call(state.status_operation!, args, exec)
     state.result = result
@@ -146,6 +169,7 @@ export class ResearchWorkflowService {
     if (current.status === 'paused') this.store.updateRun(state.run_id, { status: 'running' })
     const progress = Number(scalar(result.progress ?? job.progress) ?? 0.1)
     this.store.updateRun(state.run_id, { status: mapped, progress: mapped === 'succeeded' ? 1 : Math.min(0.99, Math.max(0, Number.isFinite(progress) ? progress > 1 ? progress / 100 : progress : 0.1)), ...(mapped === 'failed' ? { error: String(result.error ?? job.error ?? 'Remote job failed') } : {}), outputs: this.outputs(state) })
+    if (terminal.has(mapped)) this.reconcileBoundTask(state)
   }
   private outputs(state: State): Array<{ name: string; uri: string; mediaType: string }> {
     const result = state.result ?? {}; const artifacts = object(result.artifacts ?? result.manifest)
@@ -161,10 +185,23 @@ export class ResearchWorkflowService {
     })
     return [{ name: 'result', uri: pathToFileURL(this.path(state.run_id)).href, mediaType: 'application/json' }, ...references]
   }
-  private view(state: State): ObjectValue { const run = this.store.getRun(state.run_id)!; return { run_id: run.id, workflow_id: state.workflow_id, status: run.status, progress: run.progress, remote_id: state.remote_id ?? null, remote_key: state.remote_key ?? null, submission: state.submission ?? {}, artifacts: JSON.parse(JSON.stringify(run.outputs)), result: state.result ?? {}, error: run.error ?? null } }
-  async status(id: string, exec: ToolRunContext): Promise<ObjectValue> { const state = await this.load(id, exec); await this.refresh(state, exec); return this.view(state) }
+  private view(state: State): ObjectValue { const run = this.store.getRun(state.run_id)!; return { run_id: run.id, workflow_id: state.workflow_id, status: run.status, research_task_id: state.research_task_id ?? null, progress: run.progress, remote_id: state.remote_id ?? null, remote_key: state.remote_key ?? null, submission: state.submission ?? {}, artifacts: JSON.parse(JSON.stringify(run.outputs)), result: state.result ?? {}, error: run.error ?? null } }
+  private findResearchTask(projectId: string, id: string): ResearchTaskRecord {
+    const task = this.store.listResearchStudies(projectId).flatMap(study => this.store.listResearchTasks(study.id)).find(item => item.id === id)
+    if (!task || task.projectId !== projectId) throw new Error('Research task is not in the active project.')
+    return task
+  }
+  private reconcileBoundTask(state: State): void {
+    if (!state.research_task_id) return
+    const run = this.store.getRun(state.run_id)
+    if (!run) return
+    const task = this.findResearchTask(run.projectId, state.research_task_id)
+    if (task.runId === run.id) this.store.reconcileResearchTaskRun(task.id)
+  }
+  async status(id: string, exec: ToolRunContext): Promise<ObjectValue> { if(this.store.getRun(id)?.leaseOwner==='fiji-workflow')return this.localService().execute(this.sessionId(exec),'status',{},id); const state = await this.load(id, exec); await this.refresh(state, exec); return this.view(state) }
   async cancel(id: string, confirm: boolean, exec: ToolRunContext): Promise<ObjectValue> {
     if (!confirm) throw new Error('CONFIRMATION_REQUIRED: cancel this workflow run.')
+    if(this.store.getRun(id)?.leaseOwner==='fiji-workflow')return this.localService().execute(this.sessionId(exec),'cancel',{},id)
     const state = await this.load(id, exec); const run = this.store.getRun(id)!
     if (terminal.has(run.status)) return this.view(state)
     if (!state.remote_id || !state.cancel_operation) throw new Error('No remote job id; inspect backend history before cancelling.')
@@ -177,18 +214,20 @@ export class ResearchWorkflowService {
 
 export function registerResearchWorkflow(ctx: Context, mcp: ZeroWallMcpService): void {
   let service: ResearchWorkflowService | undefined; let store: ResearchStore | undefined
+  let local:LocalScienceWorkflow|undefined
+  ctx.inject(['localScienceWorkflow'],scope=>{local=scope.localScienceWorkflow;scope.effect(()=>()=>{local=undefined})})
   const get = () => {
     if (service) return service
     const path = process.env.ZEROWALL_RESEARCH_DB; if (!path) throw new Error('Research database is unavailable')
-    store = new ResearchStore(path); service = new ResearchWorkflowService(store, join(dirname(path), 'workflows'), mcp)
+    store = new ResearchStore(path); service = new ResearchWorkflowService(store, join(dirname(path), 'workflows'), mcp,()=>local)
     return service
   }
   // Code callers use the same service and must supply their ordinary ToolRunContext.
   ctx.provide('researchWorkflow', { get })
   ctx.effect(() => () => store?.close())
   ctx.tools.register(defineTool({
-    name: 'research_workflow', description: 'List/describe registered research workflows; submit once, inspect progress/artifact manifests, or cancel. Uses one existing rmcp connection. Load the module skill first.',
-    parameters: { action: { type: 'string', required: true, enum: ['list', 'search', 'describe', 'query', 'run', 'status', 'cancel'] }, workflow_id: { type: 'string' }, query: { type: 'string' }, offset: { type: 'number' }, limit: { type: 'number' }, offline: { type: 'boolean' }, operation: { type: 'string' }, parameters: { type: 'json' }, run_id: { type: 'string' }, confirm: { type: 'boolean' } },
+    name: 'research_workflow', description: 'List/describe registered research workflows; submit once, inspect progress/artifact manifests, or cancel. Remote methods use the existing rmcp connection; Fiji runs through the local Host scientific service. Load the module skill first.',
+    parameters: { action: { type: 'string', required: true, enum: ['list', 'search', 'describe', 'query', 'run', 'status', 'cancel'] }, workflow_id: { type: 'string' }, query: { type: 'string' }, offset: { type: 'number' }, limit: { type: 'number' }, offline: { type: 'boolean' }, operation: { type: 'string' }, parameters: { type: 'json' }, research_task_id: { type: 'string', description: 'Optional existing research task to reserve and reconcile with this Run.' }, run_id: { type: 'string' }, confirm: { type: 'boolean' } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args, exec) {
       switch (args.action) {
@@ -196,7 +235,7 @@ export function registerResearchWorkflow(ctx: Context, mcp: ZeroWallMcpService):
         case 'describe': return args.offline ? { ...get().describe(args.workflow_id ?? '', args.operation), connected: false, verification: 'offline_unverified' } : get().describeLive(args.workflow_id ?? '', args.operation, exec)
         case 'search': return get().search(args.workflow_id ?? '', args.query ?? '', args.offset ?? 0, args.limit ?? 25, exec)
         case 'query': return get().query(args.workflow_id ?? '', object(args.parameters), exec)
-        case 'run': return get().run(args.workflow_id ?? '', object(args.parameters), exec)
+        case 'run': return get().run(args.workflow_id ?? '', { ...object(args.parameters), ...(args.research_task_id === undefined ? {} : { research_task_id: String(args.research_task_id) }) }, exec)
         case 'status': return get().status(args.run_id ?? '', exec)
         case 'cancel': return get().cancel(args.run_id ?? '', args.confirm === true, exec)
       }

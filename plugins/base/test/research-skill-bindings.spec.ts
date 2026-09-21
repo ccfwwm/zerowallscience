@@ -18,10 +18,14 @@ const cases = [
   ['zerowall-rplotfigure', 'mcp__rmcp__r_figureya_run'], ['sc-tenifold-knockout', 'sc_tenifold_knockout_run'],
   ['zerowall-bio', 'bio_local'], ['zerowall-python-packages', 'python_environment'],
   ['zerowall-ketcher', 'mcp__zerowall_managed_ketcher__open_sketcher'],
+  ['zerowall-research-orchestrator', 'research_study'], ['method-choice', 'method_check_evaluate'],
+  ['zerowall-sequence', 'science_viewer'],
+  ['zerowall-fiji', 'science_viewer'], ['zerowall-napari', 'science_viewer'],
+  ['zerowall-cells', 'science_viewer'],
 ]
 it.each(cases)('loads %s and dispatches its bound tool %s', async (skill, target) => {
   const ctx = new Context(); await ctx.plugin(SystemPrompt); await ctx.plugin(ToolRuntime)
-  const skillText = await readFile(resolve('../../resources/skills', skill!, 'SKILL.md'), 'utf8')
+  const skillText = await readFile(resolve(import.meta.dirname, '../../../resources/skills', skill!, 'SKILL.md'), 'utf8')
   expect(skillText).not.toContain('search_mcp_tools')
   const register = (name: string, execute: () => Promise<string>) => ctx.tools.register(defineTool({ name, description: name, parameters: name === 'skill' ? { name: { type: 'string' } } : {}, output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] }, execute }))
   register('skill', async () => skillText)

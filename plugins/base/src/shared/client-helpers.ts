@@ -1,4 +1,5 @@
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { ZeroWallKey } from '../client/locales.js'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
