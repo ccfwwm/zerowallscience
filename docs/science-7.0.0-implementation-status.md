@@ -50,7 +50,7 @@
 | Sanger | SCF 1/2/3 与 ABIF/AB1 常见 DATA9–12/PBAS/PLOC/PCON 解析、四色峰图、PCON→Phred 存储置信度、移动窗口端点裁剪、全局参考比对、双向反向互补核对、JSON/FASTA 产物导出和源哈希/版本校验已实现；内置工作台面板与 `science_viewer` 的 `sanger_open/analyze/export/review` 已接入 | 峰图人工修订、混合峰/IUPAC 证据和真实仪器回归仍未验收 |
 | 流式 | FCS 3.0 有界解析、整数/32 位浮点事件、显式 spillover 补偿、none/arcsinh 变换、顺序矩形与多边形门控、散点预览和 Polygon GatingML 子集导出已接入工作台与 `science_viewer` | FlowJo 子集兼容、补偿独立参考、批处理和 100 万事件性能仍未验收 |
 | 科研画布 | 既有产物入口待复核 | 可编辑多面板、轴/图例/比例尺、数据溯源、PNG/SVG/PDF |
-| 脑图谱 | 独立环境仍未安装验证 | Allen 25 µm、切片/3D、brainreg/cellfinder/brainrender、统计/轨迹、CPU 资源验收 |
+| 脑图谱 | Allen CCF 25 µm atlasapi 查看、切片/脑区/坐标查询；brainreg 输出审计；真实 cellfinder 检测与 brainrender PNG/HTML 场景已接入 | brainreg 解剖配准质量基准、cellfinder 真实阳性参考、跨坐标变换/脑区统计、CPU 性能门仍需扩展 |
 | P2：临床/遗传/组学 | 确定性 metadata 方法检查，不等于执行 Runner | NHANES 通用契约/权重/domain；MR/共定位/MVMR 隔离环境与数值参考；bulk 配对/协变量、单细胞 pseudobulk、干预重复测量 |
 | 肥胖—脱发案例 | 模板，表型待核验 | 真实数据侦察、人工门禁一、可用分支/合理停止、证据与冲突、IMRAD 和人工门禁二 |
 | 系统提示词与 Skills | 核心提示词、动态研究上下文与部分 Skills | 全量技能审计、角色规则/规范哈希、覆盖来源展示、学术写作主张审计、所有领域真实工具链 |
@@ -288,4 +288,14 @@ This establishes an HE input/ROI baseline only. It is insufficient evidence for 
 - 注册 Manifest 增加 `outputAudit.status=ready-for-review` 和必需输出清单；该状态只表示工程输出可供人工审阅，不表示配准质量或解剖对齐已经认可。
 - 肥胖—脱发目录侦察的观察记录保存每个查询对应的本地 Run、远程任务 ID、状态和最多 20 个 Manifest 文件名，并汇总远程引用数量；不会把不可用、未运行或仅目录命中写成科学结论。
 
-新增验证：`engine-probe.spec.ts` 8 项通过（包含非空输出与哈希审计）；`research-tools.integration.spec.ts` 与引擎测试合计 24 项通过；Research Host 严格 TypeScript 通过。该增量仍未完成 brainreg 实际配准质量基准、cellfinder 检测、brainrender 三维场景、远程生产 NHANES 执行或 7.0.0 发布门禁。
+新增验证：`engine-probe.spec.ts` 8 项通过（包含非空输出与哈希审计）；`research-tools.integration.spec.ts` 与引擎测试合计 24 项通过；Research Host 严格 TypeScript 通过。该增量仍未完成 brainreg 实际配准质量基准、跨坐标变换/脑区统计、远程生产 NHANES 执行或 7.0.0 发布门禁。
+
+## 2026-09-22 continuation: managed cellfinder and brainrender scene runners
+
+- `brain_cellfinder` 使用受管理 Python 的 `cellfinder.core.main`，限制为项目内 `.npy`/TIFF 三维信号体，可选同尺寸背景、平面范围、体素尺寸和 CPU 空闲数。结果保存原始 `x,y,z` 像素坐标、输入 SHA-256、运行参数和 `scientificReview: pending` Artifact；默认跳过分类，避免把检测候选误称为细胞类型。
+- `brain_render` 使用真实 `brainrender.Scene` 与 Allen mouse 25 µm atlas，生成可打开的 PNG 和 HTML 场景，再登记三维场景 Manifest 及两个输出 Artifact。脑区名称不能解析、坐标不是 micron 或输出为空时阻断。
+- BrainGlobe 工作台已加入 cellfinder 和 brainrender 操作入口；Agent `science_viewer` 同步暴露 `brain_cellfinder`、`brain_render`、背景资产、平面范围、脑区和场景标题参数。
+
+真实验证：在本机受管理 Allen 图谱目录和 Python 环境下，brainrender 集成测试生成 PNG/HTML 并检查 HTML 内容；cellfinder 集成测试对 4×8×8 合成三维体真实运行并检查源哈希 Manifest。两项测试均通过。结果只证明计算和产物链路，不证明配准质量、细胞检测灵敏度或脑区机制。
+
+目录包回归证据：`C:\Users\ccf\AppData\Local\Temp\zerowall-packaged-desktop-M6gEJr`。本次 `pnpm package:dir` 已完成 Windows x64 `win-unpacked` 构建；从 `desktop/dist/win-unpacked/resources/app.asar` 解包检查到 `brain_cellfinder`、`brain_render`、`cellfinder.core.main`、`brainrender-scene.png`、`brainrender-scene.html` 以及 `scientificReview: pending`。这只是目录版构建和启动/设置烟测证据，不是正式安装器发布。

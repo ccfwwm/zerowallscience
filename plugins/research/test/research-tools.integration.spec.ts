@@ -218,6 +218,37 @@ it('runs the managed Allen 25 um BrainGlobe atlas through the science viewer whe
   expect(store.listArtifacts(project.id)).toHaveLength(1)
 }, 60000)
 
+it('renders a traceable brainrender PNG and HTML scene when the managed environment is configured', async () => {
+  const atlasDir = process.env.ZEROWALL_BRAINGLOBE_DIR
+  const python = process.env.ZEROWALL_BRAINGLOBE_PYTHON
+  if (!atlasDir || !python) return
+  const { store, project, call } = await fixture()
+  const rendered = value(await call('science_viewer', { action: 'brain_render', brain_regions: ['MOs'], brain_coordinates: [[1000, 1000, 1000]], brain_coordinate_units: 'micron', brain_title: 'ZeroWall test scene' }))
+  expect(rendered.brain.rendering).toMatchObject({ status: 'succeeded', regions: ['MOs'], coordinateCount: 1 })
+  const png = rendered.brain.rendering.pngUri
+  const html = rendered.brain.rendering.htmlUri
+  expect((await readFile(fileURLToPath(png))).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+  expect(await readFile(fileURLToPath(html), 'utf8')).toContain('k3d')
+  expect(rendered.brain.artifact).toMatchObject({ name: 'BrainGlobe 3D scene manifest' })
+  expect(store.listArtifacts(project.id)).toHaveLength(3)
+}, 180000)
+
+it('runs managed cellfinder detection and records source hashes when configured', async () => {
+  const atlasDir = process.env.ZEROWALL_BRAINGLOBE_DIR
+  const python = process.env.ZEROWALL_BRAINGLOBE_PYTHON
+  if (!atlasDir || !python) return
+  const { store, project, call } = await fixture()
+  const path = join(project.rootPath, 'signal.npy')
+  await promisify(execFile)(python, ['-c', 'import numpy as np,sys; a=np.zeros((4,8,8),dtype=np.float32); a[2,4,4]=1000; np.save(sys.argv[1],a)', path])
+  const asset = store.createDataAsset({ projectId: project.id, name: 'signal.npy', uri: pathToFileURL(path).href, location: 'local', mediaType: 'application/octet-stream' })
+  const detected = value(await call('science_viewer', { action: 'brain_cellfinder', asset_id: asset.id, brain_voxel_sizes: [5, 1, 1], brain_n_free_cpus: 63, brain_skip_classification: true, brain_start_plane: 0, brain_end_plane: 4 }))
+  expect(detected.brain.cellfinder).toMatchObject({ status: 'succeeded', sourceAssetId: asset.id, voxelSizes: [5, 1, 1] })
+  expect(detected.brain.artifact).toMatchObject({ name: 'BrainGlobe cellfinder detection' })
+  const manifest = JSON.parse(await readFile(fileURLToPath(detected.brain.artifact.uri), 'utf8'))
+  expect(manifest).toMatchObject({ format: 'zerowall-cellfinder-detection', sourceAssetId: asset.id, scientificReview: 'pending', parameters: { skipClassification: true } })
+  expect(manifest.sourceSha256).toMatch(/^[a-f0-9]{64}$/u)
+}, 240000)
+
 it('validates brainreg registration contracts before starting the managed runner', async () => {
   const { store, project, call } = await fixture()
   const path = join(project.rootPath, 'stack.tif')

@@ -10,17 +10,17 @@ import type { CrisprCandidate } from '../host/sequence.js'
 import type { CellSelection, CellSelectionResult } from './cell-selection.js'
 import type { CellCamera } from './cell-camera.js'
 export interface BrainAtlasRequest {
-  sessionId: string; action: 'open' | 'read' | 'analyze' | 'export' | 'cells' | 'trajectory' | 'register'
+  sessionId: string; action: 'open' | 'read' | 'analyze' | 'export' | 'cells' | 'trajectory' | 'register' | 'cellfinder' | 'render'
   viewerId?: string; expectedVersion?: number; atlas?: string; axis?: 0 | 1 | 2; index?: number; downsample?: number
   region?: string; coordinates?: Array<[number, number, number]>; coordinateUnits?: 'voxel' | 'micron'
-  cellsAssetId?: string; assetId?: string; maxCells?: number; voxelSizes?: [number, number, number]; orientation?: string; nFreeCpus?: number
+  cellsAssetId?: string; backgroundAssetId?: string; assetId?: string; maxCells?: number; voxelSizes?: [number, number, number]; orientation?: string; nFreeCpus?: number; startPlane?: number; endPlane?: number; skipClassification?: boolean; brainRegions?: string[]; brainTitle?: string; brainPointRadius?: number
 }
 export interface BrainAtlasSummary { atlas: string; version: string | null; species: string; resolution: [number, number, number]; shape: [number, number, number]; regionCount: number; regions: Array<{ id: number; acronym: string; name: string; parentId: number | null }> ; notes: string[] }
 export interface BrainSlice { axis: 0 | 1 | 2; index: number; width: number; height: number; downsample: number; labels: number[]; pngBase64?: string; notes: string[] }
 export interface BrainRegionResult { query: string; matches: Array<{ id: number; acronym: string; name: string; parentId: number | null; voxelCount?: number; volumeUm3?: number }>; notes: string[] }
 export interface BrainCellRecord { index: number; coordinate: [number, number, number]; regionId: number | string; acronym: string; hemisphere: string; }
 export interface BrainCellAnalysis { total: number; mapped: number; outside: number; byRegion: Array<{ acronym: string; regionId: number | string; count: number }>; cells: BrainCellRecord[]; notes: string[] }
-export interface BrainAtlasResponse { summary?: BrainAtlasSummary; slice?: BrainSlice; region?: BrainRegionResult; analysis?: BrainCellAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; registration?: { status: 'succeeded'; outputDirectory: string; command: string[]; notes: string[] } }
+export interface BrainAtlasResponse { summary?: BrainAtlasSummary; slice?: BrainSlice; region?: BrainRegionResult; analysis?: BrainCellAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; registration?: { status: 'succeeded'; outputDirectory: string; command: string[]; notes: string[] }; cellfinder?: { status: 'succeeded'; detected: number; sourceAssetId: string; backgroundAssetId?: string; voxelSizes: [number, number, number]; notes: string[] }; rendering?: { status: 'succeeded'; outputDirectory: string; pngUri: string; htmlUri: string; regions: string[]; coordinateCount: number; notes: string[] } }
 export interface CellViewerRequest { sessionId: string; action: 'open' | 'read' | 'analyze' | 'export' | 'select' | 'export_selection' | 'view'; camera?: CellCamera; assetId?: string; viewerId?: string; expectedVersion?: number; embedding?: string; embeddingLimit?: number; gene?: string; cellLimit?: number; groupBy?: string; selection?: CellSelection | null }
 export interface CellEmbedding { key: string; dimensions: number; points: Array<{ index: number; x: number; y: number; z?: number; group?: string | number | boolean | null }> }
 export interface CellDatasetSummary { encodingType: string; nObs: number; nVars: number; obsColumns: Array<{ name: string; kind: string }>; varColumns: Array<{ name: string; kind: string }>; varNames: string[]; varNamesTruncated: boolean; embeddings: Array<{ key: string; dimensions: number }>; backed: true }
@@ -60,7 +60,7 @@ export interface ImagePreview {
 }
 export interface ScienceViewerRequest {
   sessionId: string
-  action: 'list' | 'open' | 'read' | 'save' | 'analyze' | 'export' | 'launch_native' | 'native_status' | 'image_open' | 'image_read' | 'image_save' | 'annotation_save' | 'annotation_export' | 'annotation_import' | 'annotation_launch' | 'annotation_collect' | 'sanger_open' | 'sanger_analyze' | 'sanger_export' | 'sanger_review' | 'flow_open' | 'flow_analyze' | 'flow_export' | 'he_open' | 'he_analyze' | 'he_export' | 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view' | 'brain_open' | 'brain_read' | 'brain_analyze' | 'brain_export' | 'brain_cells' | 'brain_trajectory' | 'brain_register' | 'canvas_render' | 'canvas_export'
+  action: 'list' | 'open' | 'read' | 'save' | 'analyze' | 'export' | 'launch_native' | 'native_status' | 'image_open' | 'image_read' | 'image_save' | 'annotation_save' | 'annotation_export' | 'annotation_import' | 'annotation_launch' | 'annotation_collect' | 'sanger_open' | 'sanger_analyze' | 'sanger_export' | 'sanger_review' | 'flow_open' | 'flow_analyze' | 'flow_export' | 'he_open' | 'he_analyze' | 'he_export' | 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view' | 'brain_open' | 'brain_read' | 'brain_analyze' | 'brain_export' | 'brain_cells' | 'brain_trajectory' | 'brain_register' | 'brain_cellfinder' | 'brain_render' | 'canvas_render' | 'canvas_export'
   sanger?: SangerRequest
   flow?: FlowRequest
   he?: HeRequest
@@ -91,7 +91,7 @@ export interface ScienceViewerRequest {
   embedding?: string; embeddingLimit?: number; gene?: string; cellLimit?: number; groupBy?: string
   cellSelection?: CellSelection | null
   cellCamera?: CellCamera
-  brainAxis?: 0 | 1 | 2; brainIndex?: number; brainDownsample?: number; brainRegion?: string; brainCoordinates?: Array<[number, number, number]>; brainCoordinateUnits?: 'voxel' | 'micron'; cellsAssetId?: string; brainVoxelSizes?: [number, number, number]; brainOrientation?: string; brainNFreeCpus?: number; maxCells?: number
+  brainAxis?: 0 | 1 | 2; brainIndex?: number; brainDownsample?: number; brainRegion?: string; brainCoordinates?: Array<[number, number, number]>; brainCoordinateUnits?: 'voxel' | 'micron'; cellsAssetId?: string; backgroundAssetId?: string; brainVoxelSizes?: [number, number, number]; brainOrientation?: string; brainNFreeCpus?: number; brainStartPlane?: number; brainEndPlane?: number; brainSkipClassification?: boolean; brainRegions?: string[]; brainTitle?: string; brainPointRadius?: number; maxCells?: number
 }
 export interface ScienceViewerResponse {
   launch?: ScientificEngineLaunchResult
