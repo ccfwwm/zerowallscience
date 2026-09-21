@@ -1,4 +1,4 @@
-import type { ArtifactRecord, DataAssetRecord, ViewerSessionRecord, ImageAnnotations, ImageCoordinates, AnnotationRevisionRecord, AnnotationSaveResult, JsonObject } from '@zerowallscience/research-store/types'
+import type { ArtifactRecord, DataAssetRecord, ViewerSessionRecord, ImageAnnotations, ImageCoordinates, AnnotationRevisionRecord, AnnotationSaveResult, JsonObject, ImageRoi } from '@zerowallscience/research-store/types'
 import type { RunRecord } from '@zerowallscience/research-store/types'
 import type { WesternBlotPlan, WesternBlotResult } from './western-blot.js'
 import type { FijiExperimentId, FijiExperimentResult, FijiImageConfig } from './fiji-experiments.js'
@@ -58,9 +58,17 @@ export interface ImagePreview {
   sourceSha256: string; coordinates: ImageCoordinates; format: string; channels: number; depth: string
   page: number; previewWidth: number; previewHeight: number; pngBase64: string; notes: string[]; axes?: { order: string; sizes: Record<string, number>; physicalSize?: { x?: number; y?: number; unit?: string }; position?: { page: number; z?: number; c?: number; t?: number } }
 }
+export interface ImageRoiStatistics {
+  roiId: string; name: string; kind: ImageRoi['kind']; page: number; pixelCount: number; channels: number
+  sum: number[]; mean: number[]; min: number[]; max: number[]; standardDeviation: number[]
+}
+export interface ImageAnalysis {
+  runner: string; sourceAssetId: string; sourceSha256: string; viewerId: string; viewerVersion: number; annotationRevisionId: string
+  sourceWidth: number; sourceHeight: number; sourcePages: number; calibration: ImageCoordinates['calibration']; rois: ImageRoiStatistics[]; notes: string[]
+}
 export interface ScienceViewerRequest {
   sessionId: string
-  action: 'list' | 'open' | 'read' | 'save' | 'analyze' | 'export' | 'launch_native' | 'native_status' | 'image_open' | 'image_read' | 'image_save' | 'annotation_save' | 'annotation_export' | 'annotation_import' | 'annotation_launch' | 'annotation_collect' | 'sanger_open' | 'sanger_analyze' | 'sanger_export' | 'sanger_review' | 'flow_open' | 'flow_analyze' | 'flow_export' | 'he_open' | 'he_analyze' | 'he_export' | 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view' | 'brain_open' | 'brain_read' | 'brain_analyze' | 'brain_export' | 'brain_cells' | 'brain_trajectory' | 'brain_register' | 'brain_cellfinder' | 'brain_render' | 'canvas_render' | 'canvas_export'
+  action: 'list' | 'open' | 'read' | 'save' | 'analyze' | 'export' | 'launch_native' | 'native_status' | 'image_open' | 'image_read' | 'image_save' | 'image_analyze' | 'annotation_save' | 'annotation_export' | 'annotation_import' | 'annotation_launch' | 'annotation_collect' | 'sanger_open' | 'sanger_analyze' | 'sanger_export' | 'sanger_review' | 'flow_open' | 'flow_analyze' | 'flow_export' | 'he_open' | 'he_analyze' | 'he_export' | 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view' | 'brain_open' | 'brain_read' | 'brain_analyze' | 'brain_export' | 'brain_cells' | 'brain_trajectory' | 'brain_register' | 'brain_cellfinder' | 'brain_render' | 'canvas_render' | 'canvas_export'
   sanger?: SangerRequest
   flow?: FlowRequest
   he?: HeRequest
@@ -106,6 +114,7 @@ export interface ScienceViewerResponse {
   annotations?: AnnotationRevisionRecord[]
   annotationHead?: AnnotationRevisionRecord
   annotationSave?: AnnotationSaveResult
+  imageAnalysis?: ImageAnalysis
   sanger?: SangerResponse
   flow?: FlowResponse
   he?: HeResponse

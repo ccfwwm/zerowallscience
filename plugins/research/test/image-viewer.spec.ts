@@ -113,3 +113,55 @@ it('collects a bound native return once, preserving stale edits and rejecting su
   await expect(execute({action:'annotation_collect',launchId:'native-1'})).rejects.toThrow('different content')
   expect(store.listAnnotationRevisions(project.id)).toHaveLength(3)
 })
+
+async function intensityFixture(values: number[], width: number, height: number, extension: 'png' | 'tiff' = 'png') {
+  const root = await mkdtemp(join(tmpdir(), 'image-intensity-')); const projectRoot = join(root, 'project'); await mkdir(projectRoot)
+  const store = new ResearchStore(join(root, 'store.sqlite')); const service = new ImageViewerService(store)
+  cleanup.push(async () => { store.close(); await rm(root, { recursive: true, force: true }) })
+  const project = store.createProject({ name: 'Intensity', rootPath: projectRoot })
+  const path = join(projectRoot, `intensity.${extension}`)
+  const raw = Buffer.from(values.flatMap(value => [value, value, value]))
+  const image = extension === 'tiff'
+    ? await sharp(raw, { raw: { width, height, channels: 3, pageHeight: height / 2 } }).tiff({ compression: 'none' }).toBuffer()
+    : await sharp(raw, { raw: { width, height, channels: 3 } }).greyscale().png().toBuffer()
+  await writeFile(path, image)
+  const asset = store.createDataAsset({ projectId: project.id, name: 'Intensity image', uri: pathToFileURL(path).href, location: 'local', mediaType: extension === 'tiff' ? 'image/tiff' : 'image/png' })
+  const execute = (input: any) => service.execute(project, { sessionId: 's1', ...input })
+  const opened = await execute({ action: 'image_open', assetId: asset.id })
+  return { root, store, project, path, asset, opened, execute }
+}
+
+it('computes raw intensity statistics for rectangle, polygon and point ROIs and writes a traceable artifact', async () => {
+  const { store, project, opened, execute } = await intensityFixture([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], 4, 4)
+  const payload = { coordinates: opened.image!.coordinates, rois: [
+    { id: 'rect', name: 'rectangle', kind: 'rectangle', page: 0, x: 1, y: 0, width: 2, height: 2 },
+    { id: 'poly', name: 'triangle', kind: 'polygon', page: 0, points: [[0, 0], [3, 0], [0, 3]] },
+    { id: 'point', name: 'single', kind: 'point', page: 0, x: 2.1, y: 2.1 },
+  ] }
+  await execute({ action: 'annotation_save', viewerId: opened.viewer!.id, expectedVersion: 1, annotation: { expectedRevisionId: null, payload } })
+  const result = await execute({ action: 'image_analyze', viewerId: opened.viewer!.id, expectedVersion: 1 })
+  expect(result.imageAnalysis).toMatchObject({ runner: 'zerowall-image-intensity/7.0.0-1', sourceWidth: 4, sourceHeight: 4, sourcePages: 1, viewerVersion: 1 })
+  expect(result.imageAnalysis.rois[0]).toMatchObject({ pixelCount: 4, sum: [18, 18, 18], mean: [4.5, 4.5, 4.5], min: [2, 2, 2], max: [7, 7, 7] })
+  expect(result.imageAnalysis.rois[0].standardDeviation[0]).toBeCloseTo(Math.sqrt(4.25), 10)
+  expect(result.imageAnalysis.rois[1].pixelCount).toBe(6)
+  expect(result.imageAnalysis.rois[2]).toMatchObject({ pixelCount: 1, sum: [11, 11, 11], mean: [11, 11, 11], min: [11, 11, 11], max: [11, 11, 11] })
+  expect(result.artifact).toMatchObject({ metadata: { runner: 'zerowall-image-intensity/7.0.0-1', annotationRevisionId: result.imageAnalysis.annotationRevisionId, scientificReview: 'pending', kind: 'image-intensity-analysis' } })
+  const manifest = JSON.parse(await readFile(fileURLToPath(result.artifact!.uri), 'utf8'))
+  expect(manifest).toMatchObject({ format: 'zerowall-image-intensity-analysis', sourceAssetId: result.imageAnalysis.sourceAssetId, sourceSha256: result.imageAnalysis.sourceSha256, scientificReview: 'pending' })
+  expect(store.listArtifacts(project.id)).toHaveLength(1)
+})
+
+it('reads the ROI page selected in a multi-page TIFF instead of always using page zero', async () => {
+  const { opened, execute } = await intensityFixture([1, 2, 3, 4, 11, 12, 13, 14], 2, 4, 'tiff')
+  expect(opened.image).toMatchObject({ coordinates: { width: 2, height: 2, pages: 2 } })
+  const payload = { coordinates: opened.image!.coordinates, rois: [{ id: 'page-one', name: 'page one', kind: 'rectangle', page: 1, x: 0, y: 0, width: 2, height: 2 }] }
+  await execute({ action: 'annotation_save', viewerId: opened.viewer!.id, expectedVersion: 1, annotation: { expectedRevisionId: null, payload } })
+  const result = await execute({ action: 'image_analyze', viewerId: opened.viewer!.id, expectedVersion: 1 })
+  expect(result.imageAnalysis.rois[0]).toMatchObject({ page: 1, pixelCount: 4, sum: [50, 50, 50], mean: [12.5, 12.5, 12.5], min: [11, 11, 11], max: [14, 14, 14] })
+})
+
+it('blocks intensity analysis without an accepted ROI revision and after a stale viewer revision', async () => {
+  const { opened, execute } = await intensityFixture([1, 2, 3, 4], 2, 2)
+  await expect(execute({ action: 'image_analyze', viewerId: opened.viewer!.id, expectedVersion: 1 })).rejects.toThrow('accepted annotation revision')
+  await expect(execute({ action: 'image_analyze', viewerId: opened.viewer!.id, expectedVersion: 2 })).rejects.toThrow('current 1')
+})

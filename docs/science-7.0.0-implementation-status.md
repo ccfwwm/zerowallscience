@@ -327,3 +327,10 @@ This establishes an HE input/ROI baseline only. It is insufficient evidence for 
 - 图像工作台在多维 OME 元数据可用时提供 Z、C、T 数字选择控件；选择后更新当前页，保存视角后恢复该页和轴位置。旧的页码输入与 `ImageViewState` 接口继续兼容。
 - 新增逆映射和越界测试，定向 Image Viewer 测试 7 项通过，研究插件客户端 TypeScript 检查通过。
 - 该增量仍不代表 OME-TIFF/OME-Zarr 的完整分块读取、通道渲染、强度分析或 10 GiB 性能验收；大文件和标签掩膜仍需专用适配器。
+
+## 2026-09-22 continuation: traceable image ROI intensity Runner
+
+- 内置图像查看器新增受限本地强度分析 Runner `zerowall-image-intensity/7.0.0-1`。它从源文件原始像素解码，而不是从预览 PNG 取值，支持当前受限读取范围内的 PNG/JPEG/TIFF（包括可读取的多页 TIFF），并保留声明的整数/浮点位深；不支持 complex/dpcomplex，也不对不一致的多页几何或通道结构静默修正。
+- 分析只接受已保存的 accepted annotation revision，支持 rectangle、polygon 和 point ROI，按 ROI 所在页计算像素数、sum、mean、min、max 和总体标准差。结果绑定源 Asset SHA-256、ViewerSession 版本、标注修订、尺寸/页数、校准元数据和 JSON Artifact，Artifact 的 `scientificReview` 固定为 `pending`。
+- 工作台增加“ROI 强度分析”操作和结果区，显示 Runner、修订、每个 ROI 的通道统计、Artifact URI/哈希及限制说明；没有 accepted ROI、存在未保存视角/标注或 Viewer 版本冲突时阻断。
+- 验证：Image Viewer Host/UI 定向测试 17 项通过；覆盖 4×4 确定性矩阵的矩形/多边形/点 ROI、多页 TIFF 页选择、Artifact Manifest、无 accepted ROI 和 stale Viewer revision。当前不代表 OME-Zarr、10 GiB 分块图像、OpenSlide 金字塔、Fiji 五类实验宏、标签/掩膜分析、远程图像重计算或大规模性能验收已经完成，也不构成诊断、治疗效果或生物学结论。

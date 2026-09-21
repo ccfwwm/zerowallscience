@@ -5,13 +5,56 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import sharp from 'sharp'
 import type { ResearchStore } from '@zerowallscience/research-store'
 import { validateAnnotationPayload } from '@zerowallscience/research-store'
-import type { DataAssetRecord, ImageAnnotations, ProjectRecord, ViewerSessionRecord } from '@zerowallscience/research-store/types'
-import type { ImagePreview, ImageViewState, ScienceViewerRequest, ScienceViewerResponse } from '../shared/types.js'
+import type { DataAssetRecord, ImageAnnotations, ImageRoi, ProjectRecord, ViewerSessionRecord } from '@zerowallscience/research-store/types'
+import type { ImageAnalysis, ImagePreview, ImageRoiStatistics, ImageViewState, ScienceViewerRequest, ScienceViewerResponse } from '../shared/types.js'
 import { containedFile } from './science-viewer.js'
 import type { NativeEngineService } from './native-engines.js'
 
 const MAX_IMAGE_BYTES = 128 * 1024 * 1024
 const MAX_PIXELS = 100000000
+export const IMAGE_ANALYSIS_RUNNER = 'zerowall-image-intensity/7.0.0-1'
+
+type RawDepth = 'char' | 'double' | 'float' | 'int' | 'short' | 'uchar' | 'uint' | 'ushort'
+
+function readRawSample(raw: Buffer, offset: number, depth: RawDepth): number {
+  switch (depth) {
+    case 'uchar': return raw.readUInt8(offset)
+    case 'char': return raw.readInt8(offset)
+    case 'ushort': return raw.readUInt16LE(offset)
+    case 'short': return raw.readInt16LE(offset)
+    case 'uint': return raw.readUInt32LE(offset)
+    case 'int': return raw.readInt32LE(offset)
+    case 'float': return raw.readFloatLE(offset)
+    case 'double': return raw.readDoubleLE(offset)
+  }
+}
+
+function rawDepthBytes(depth: RawDepth): number {
+  return depth === 'uchar' || depth === 'char' ? 1 : depth === 'ushort' || depth === 'short' ? 2 : depth === 'uint' || depth === 'int' || depth === 'float' ? 4 : 8
+}
+
+function pointOnSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): boolean {
+  const cross = (px - ax) * (by - ay) - (py - ay) * (bx - ax)
+  if (Math.abs(cross) > 1e-9) return false
+  return px >= Math.min(ax, bx) - 1e-9 && px <= Math.max(ax, bx) + 1e-9 && py >= Math.min(ay, by) - 1e-9 && py <= Math.max(ay, by) + 1e-9
+}
+
+function polygonContains(x: number, y: number, points: Array<[number, number]>): boolean {
+  let inside = false
+  for (let index = 0, previous = points.length - 1; index < points.length; previous = index++) {
+    const [ax, ay] = points[index]!
+    const [bx, by] = points[previous]!
+    if (pointOnSegment(x, y, ax, ay, bx, by)) return true
+    if ((ay > y) !== (by > y) && x < (bx - ax) * (y - ay) / (by - ay) + ax) inside = !inside
+  }
+  return inside
+}
+
+function roiContains(roi: ImageRoi, x: number, y: number): boolean {
+  if (roi.kind === 'rectangle') return x + 0.5 >= roi.x && x + 0.5 < roi.x + roi.width && y + 0.5 >= roi.y && y + 0.5 < roi.y + roi.height
+  if (roi.kind === 'point') return Math.floor(roi.x) === x && Math.floor(roi.y) === y
+  return polygonContains(x + 0.5, y + 0.5, roi.points)
+}
 export function omePagePosition(axes: { order: string; sizes: Record<string, number> }, page: number): { page: number; z?: number; c?: number; t?: number } {
   if (!Number.isSafeInteger(page) || page < 0) throw new Error('OME page must be a non-negative integer.')
   const varying = axes.order.slice(2).split('').filter(axis => axis === 'Z' || axis === 'C' || axis === 'T')
@@ -151,6 +194,104 @@ export class ImageViewerService {
         const head = history().filter(item => item.status === 'accepted').at(-1)
         const artifact = this.store.createArtifact({ projectId: project.id, name: `Image ROI revision ${selected.revision}`, uri: pathToFileURL(exportedPath).href, mediaType: 'application/json', checksum: createHash('sha256').update(json).digest('hex'), metadata: { sourceAssetId: asset.id, sourceSha256: sha256, annotationRevisionId: selected.id, viewerId: viewer!.id, needsReview: selected.id !== head?.id, kind: 'image-annotations' } })
         return { ...response(), artifact }
+      } catch (error) { await rm(destination, { recursive: true, force: true }); throw error }
+    }
+    if (input.action === 'image_analyze') {
+      if (!viewer) throw new Error('An opened image viewer is required for intensity analysis.')
+      if (input.expectedVersion !== viewer.version) throw new Error(`Viewer revision conflict: current ${viewer.version}.`)
+      const annotations = history()
+      const selected = input.annotationRevisionId
+        ? annotations.find(item => item.id === input.annotationRevisionId)
+        : annotations.filter(item => item.status === 'accepted').at(-1)
+      if (!selected) throw new Error('Save or select an accepted annotation revision before image analysis.')
+      if (selected.status !== 'accepted') throw new Error('Image analysis requires an accepted annotation revision; conflict branches need explicit adoption first.')
+      const payload = validateAnnotationPayload(selected.payload)
+      if (payload.coordinates.width !== width || payload.coordinates.height !== height || payload.coordinates.pages !== pages) throw new Error('Annotation dimensions do not match the decoded image.')
+      if (payload.rois.length === 0) throw new Error('Image analysis requires at least one accepted ROI.')
+
+      const depth = metadata.depth as RawDepth
+      if (!['char', 'double', 'float', 'int', 'short', 'uchar', 'uint', 'ushort'].includes(depth)) throw new Error(`Image depth ${metadata.depth} is not supported by the bounded intensity Runner.`)
+      const pageBuffers = new Map<number, { raw: Buffer; width: number; height: number; channels: number }>()
+      const loadPage = async (page: number) => {
+        const existing = pageBuffers.get(page)
+        if (existing) return existing
+        const pageImage = sharp(bytes, { page, pages: 1, limitInputPixels: MAX_PIXELS, failOn: 'error' })
+        const pageMetadata = await pageImage.metadata()
+        const pageWidth = pageMetadata.width ?? 0
+        const pageHeight = pageMetadata.pageHeight ?? pageMetadata.height ?? 0
+        const pageChannels = pageMetadata.channels ?? 0
+        if (pageWidth !== width || pageHeight !== height) throw new Error('TIFF pages have different geometry; a series-aware adapter is required.')
+        if (!pageChannels || pageChannels !== (metadata.channels ?? pageChannels)) throw new Error('Image pages have different channel geometry.')
+        const decoded = await pageImage.raw({ depth }).toBuffer({ resolveWithObject: true })
+        const decodedInfo = decoded.info as typeof decoded.info & { depth?: string }
+        if (decodedInfo.width !== width || decodedInfo.height !== height || decodedInfo.channels !== pageChannels || decodedInfo.depth !== depth) throw new Error('Raw image decoder changed the declared pixel depth or geometry.')
+        const expectedBytes = width * height * pageChannels * rawDepthBytes(depth)
+        if (decoded.data.byteLength !== expectedBytes) throw new Error('Raw image decoder returned an unexpected buffer length.')
+        const value = { raw: decoded.data, width, height, channels: pageChannels }
+        pageBuffers.set(page, value)
+        return value
+      }
+
+      const rois: ImageRoiStatistics[] = []
+      for (const roi of payload.rois) {
+        if (roi.page < 0 || roi.page >= pages) throw new Error(`ROI ${roi.name} refers to an invalid image page.`)
+        if (roi.kind === 'point' && (Math.floor(roi.x) >= width || Math.floor(roi.y) >= height)) throw new Error(`Point ROI ${roi.name} lies on the image boundary and does not contain a pixel.`)
+        const page = await loadPage(roi.page)
+        const sums = Array.from({ length: page.channels }, () => 0)
+        const sumsSquared = Array.from({ length: page.channels }, () => 0)
+        const minimums = Array.from({ length: page.channels }, () => Number.POSITIVE_INFINITY)
+        const maximums = Array.from({ length: page.channels }, () => Number.NEGATIVE_INFINITY)
+        let pixelCount = 0
+        const bytesPerSample = rawDepthBytes(depth)
+        for (let y = 0; y < page.height; y++) {
+          for (let x = 0; x < page.width; x++) {
+            if (!roiContains(roi, x, y)) continue
+            pixelCount++
+            const pixelOffset = (y * page.width + x) * page.channels * bytesPerSample
+            for (let channel = 0; channel < page.channels; channel++) {
+              const value = readRawSample(page.raw, pixelOffset + channel * bytesPerSample, depth)
+              if (!Number.isFinite(value)) throw new Error(`ROI ${roi.name} contains a non-finite pixel value.`)
+              sums[channel]! += value
+              sumsSquared[channel]! += value * value
+              minimums[channel] = Math.min(minimums[channel]!, value)
+              maximums[channel] = Math.max(maximums[channel]!, value)
+            }
+          }
+        }
+        if (!pixelCount) throw new Error(`ROI ${roi.name} contains no pixel centers.`)
+        const means = sums.map(sum => sum / pixelCount)
+        const standardDeviation = sums.map((sum, channel) => Math.sqrt(Math.max(0, sumsSquared[channel]! / pixelCount - means[channel]! * means[channel]!)))
+        rois.push({ roiId: roi.id, name: roi.name, kind: roi.kind, page: roi.page, pixelCount, channels: page.channels, sum: sums, mean: means, min: minimums, max: maximums, standardDeviation })
+      }
+      const imageAnalysis: ImageAnalysis = {
+        runner: IMAGE_ANALYSIS_RUNNER,
+        sourceAssetId: asset.id,
+        sourceSha256: sha256,
+        viewerId: viewer.id,
+        viewerVersion: viewer.version,
+        annotationRevisionId: selected.id,
+        sourceWidth: width,
+        sourceHeight: height,
+        sourcePages: pages,
+        calibration: payload.coordinates.calibration,
+        rois,
+        notes: ['统计来自原始解码像素，不来自预览 PNG。', '结果是可追踪的强度描述，不构成诊断、治疗效果或生物学结论。', `位深保持为 ${depth}；未执行静默 8-bit 归一化。`],
+      }
+      const manifest = JSON.stringify({ format: 'zerowall-image-intensity-analysis', version: 1, ...imageAnalysis, scientificReview: 'pending' }, null, 2) + '\n'
+      const root = await realpath(project.rootPath)
+      const parentPath = join(root, '.zerowall')
+      await mkdir(parentPath, { recursive: true })
+      const parent = await containedFile(root, parentPath)
+      const exportsPath = join(parent, 'science-exports')
+      await mkdir(exportsPath, { recursive: true })
+      const destination = join(await containedFile(root, exportsPath), randomUUID())
+      await mkdir(destination)
+      const manifestPath = join(destination, 'image-intensity-analysis.json')
+      try {
+        await writeFile(manifestPath, manifest, { flag: 'wx' })
+        assertCurrent()
+        const artifact = this.store.createArtifact({ projectId: project.id, name: 'Image ROI intensity analysis', uri: pathToFileURL(manifestPath).href, mediaType: 'application/json', checksum: createHash('sha256').update(manifest).digest('hex'), metadata: { runner: IMAGE_ANALYSIS_RUNNER, sourceAssetId: asset.id, sourceSha256: sha256, viewerId: viewer.id, viewerVersion: viewer.version, annotationRevisionId: selected.id, scientificReview: 'pending', kind: 'image-intensity-analysis' } })
+        return { ...response(), imageAnalysis, artifact }
       } catch (error) { await rm(destination, { recursive: true, force: true }); throw error }
     }
     if (!['image_open', 'image_read', 'image_save'].includes(input.action)) throw new Error('Unsupported image viewer action.')

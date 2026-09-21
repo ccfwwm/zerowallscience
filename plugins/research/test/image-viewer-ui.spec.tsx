@@ -80,3 +80,28 @@ it('restores native return actions from Host records and keeps collection confli
   await waitFor(()=>expect(scienceViewer).toHaveBeenCalledWith({action:'annotation_collect',sessionId:'s1',viewerId:'v',expectedVersion:1,launchId:'native'}))
   expect(await screen.findByRole('status')).toHaveProperty('textContent',expect.stringContaining('冲突分支'))
 })
+
+it('runs accepted ROI intensity analysis and renders the traceable result', async () => {
+  const current = { id: 'head', revision: 1, status: 'accepted', origin: 'workbench', payload: { ...payload, rois: [{ id: 'r1', name: 'ROI 1', kind: 'rectangle', page: 0, x: 1, y: 1, width: 8, height: 8 }] } }
+  const analysis = { runner: 'zerowall-image-intensity/7.0.0-1', sourceAssetId: 'a', sourceSha256: 'a'.repeat(64), viewerId: 'v', viewerVersion: 1, annotationRevisionId: 'head', sourceWidth: 2000, sourceHeight: 1000, sourcePages: 1, calibration: null, rois: [{ roiId: 'r1', name: 'ROI 1', kind: 'rectangle', page: 0, pixelCount: 64, channels: 1, sum: [6400], mean: [100], min: [100], max: [100], standardDeviation: [0] }], notes: ['统计来自原始解码像素。'] }
+  const scienceViewer = vi.fn(async (input: any) => {
+    if (input.action === 'list') return ok({ assets: [{ id: 'a', name: 'Test image', uri: 'file:///image.png', location: 'local' }], viewers: [view] })
+    if (input.action === 'native_status') return ok({ launches: [] })
+    if (input.action === 'image_read') return ok({ viewer: view, image, annotations: [current], annotationHead: current })
+    if (input.action === 'image_analyze') return ok({ viewer: view, annotations: [current], annotationHead: current, imageAnalysis: analysis, artifact: { id: 'artifact-1', uri: 'file:///analysis.json', checksum: 'c'.repeat(64) } })
+    return ok({})
+  })
+  await canvas(scienceViewer)
+  const button = screen.getByRole('button', { name: 'ROI 强度分析' })
+  expect((button as HTMLButtonElement).disabled).toBe(false)
+  fireEvent.click(button)
+  await waitFor(() => expect(scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action: 'image_analyze', viewerId: 'v', expectedVersion: 1 })))
+  const result = await screen.findByRole('region', { name: 'ROI 强度分析结果' })
+  expect(result.textContent).toContain('ROI 1')
+  expect(result.textContent).toContain('artifact-1')
+})
+
+it('disables intensity analysis until an accepted ROI is available', async () => {
+  const scienceViewer = fixture(); await canvas(scienceViewer)
+  expect((screen.getByRole('button', { name: 'ROI 强度分析' }) as HTMLButtonElement).disabled).toBe(true)
+})
