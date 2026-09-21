@@ -319,3 +319,4 @@ This establishes an HE input/ROI baseline only. It is insufficient evidence for 
 - 页码必须是非负安全整数，轴尺寸必须是正整数，超过声明的 `Z×C×T` 页数会被阻断，避免把越界页伪装成有效的 Z、通道或时间点。
 - 新增 `XYZCT`、`XYCZT`、单页、非法页码和非法维度测试；研究插件全量回归为 27 个测试文件、122 项通过，Host/Client 类型检查和 Typert 合同生成通过。
 - 这只是 OME 页坐标的基础契约，不等于 OME-TIFF/OME-Zarr 的完整轴选择、分块读取、通道渲染或多维强度分析；这些仍需专用适配器和性能验收。
+- 图像工作台会在读取到可信 OME 元数据时显示轴序、各轴尺寸、当前 Z/C/T 位置和物理像素尺寸；普通 TIFF 或缺失元数据仍明确显示为未核验，不会把页码自动当作通道或时间点。

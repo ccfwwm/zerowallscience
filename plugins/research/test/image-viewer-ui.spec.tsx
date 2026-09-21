@@ -9,7 +9,7 @@ beforeEach(() => { vi.stubGlobal('PointerEvent', MouseEvent); SVGElement.prototy
 const ok = (value: unknown) => ({ ok:true,value })
 const coordinates = {convention:'pixel-edge-top-left',width:2000,height:1000,pages:1,calibration:null}
 const view = {id:'v',assetId:'a',tool:'image',version:1,state:{page:0,zoom:1,panX:0,panY:0}}
-const image = {sourceSha256:'a'.repeat(64),coordinates,format:'png',channels:1,depth:'uchar',page:0,previewWidth:1200,previewHeight:600,pngBase64:'AA==',notes:[]}
+const image = {sourceSha256:'a'.repeat(64),coordinates,format:'png',channels:1,depth:'uchar',page:0,previewWidth:1200,previewHeight:600,pngBase64:'AA==',notes:[],axes:{order:'XYZCT',sizes:{X:2000,Y:1000,Z:2,C:3,T:4},physicalSize:{x:.5,y:.5,unit:'um'},position:{page:0,z:0,c:0,t:0}}}
 const payload = {coordinates,rois:[]}
 function fixture() {
   return vi.fn(async (input:any) => {
@@ -33,6 +33,14 @@ it('maps a dragged rectangle into original pixel coordinates, not preview coordi
   fireEvent.pointerUp(surface,{clientX:14,clientY:24,button:0,pointerId:1})
   fireEvent.click(screen.getByRole('button',{name:'保存 ROI 修订'}))
   await waitFor(()=>expect(scienceViewer).toHaveBeenCalledWith(expect.objectContaining({action:'annotation_save',sessionId:'s1',expectedVersion:1,annotation:{expectedRevisionId:null,payload:{coordinates,rois:[expect.objectContaining({kind:'rectangle',x:20,y:40,width:8,height:8,page:0})]}}})))
+})
+it('shows verified OME axis order, dimensions, position and calibration',async()=>{
+  const scienceViewer=fixture(); await canvas(scienceViewer)
+  const axes = screen.getByLabelText('OME 轴位置').textContent
+  expect(axes).toContain('OME XYZCT')
+  expect(axes).toContain('Z2 · C3 · T4')
+  expect(axes).toContain('当前页 0 · Z0 · C0 · T0')
+  expect(axes).toContain('像素 0.5×0.5 um/px')
 })
 it('uses persisted zoom/pan for points and refuses drawing against an unsaved view',async()=>{
   const scienceViewer=fixture(); const surface=await canvas(scienceViewer)
