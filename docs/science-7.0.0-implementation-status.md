@@ -298,7 +298,7 @@ This establishes an HE input/ROI baseline only. It is insufficient evidence for 
 
 真实验证：在本机受管理 Allen 图谱目录和 Python 环境下，brainrender 集成测试生成 PNG/HTML 并检查 HTML 内容；cellfinder 集成测试对 4×8×8 合成三维体真实运行并检查源哈希 Manifest。两项测试均通过。结果只证明计算和产物链路，不证明配准质量、细胞检测灵敏度或脑区机制。
 
-目录包回归证据：`C:\Users\ccf\AppData\Local\Temp\zerowall-packaged-desktop-M6gEJr`。本次 `pnpm package:dir` 已完成 Windows x64 `win-unpacked` 构建；从 `desktop/dist/win-unpacked/resources/app.asar` 解包检查到 `brain_cellfinder`、`brain_render`、`cellfinder.core.main`、`brainrender-scene.png`、`brainrender-scene.html` 以及 `scientificReview: pending`。这只是目录版构建和启动/设置烟测证据，不是正式安装器发布。
+目录包回归证据：`C:\Users\ccf\AppData\Local\Temp\zerowall-packaged-desktop-gDZNPa`。本次 `pnpm package:dir` 已完成 Windows x64 `win-unpacked` 构建；从 `desktop/dist/win-unpacked/resources/app.asar` 解包检查到 `brain_cellfinder`、`brain_render`、`cellfinder.core.main`、`brainrender-scene.png`、`brainrender-scene.html`、`zerowall-science-imrad-report/7.0.0-1` 和 `generateResearchReport`，以及 `scientificReview: pending`。这只是目录版构建和启动/设置烟测证据，不是正式安装器发布。
 
 ## 2026-09-22 continuation: traceable IMRAD report generation
 
