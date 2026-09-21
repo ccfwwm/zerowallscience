@@ -35,7 +35,7 @@ export interface FlowResponse { dataset?: FlowDataset; analysis?: FlowAnalysis; 
 export interface HeRequest { sessionId: string; action: 'open' | 'analyze' | 'export'; assetId?: string; viewerId?: string; expectedVersion?: number; region?: HeRegion }
 export interface HeResponse { analysis?: HeAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; he?: { width: number; height: number; pages: number; format: string; notes: string[] } }
 export interface CanvasRequest { sessionId: string; action: 'render' | 'export'; spec: CanvasSpec }
-export interface CanvasResponse { canvas?: CanvasRender; artifact?: ArtifactRecord }
+export interface CanvasResponse { canvas?: CanvasRender; artifact?: ArtifactRecord; artifacts?: ArtifactRecord[] }
 export interface FijiWorkflowRequest { sessionId: string; action: 'list' | 'submit' | 'status' | 'cancel'; runId?: string; requestId?: string; researchTaskId?: string; viewerId?: string; expectedVersion?: number; annotationRevisionId?: string; plan?: WesternBlotPlan }
 export interface FijiWorkflowResponse { run?: RunRecord; runs?: RunRecord[]; artifacts?: ArtifactRecord[]; result?: WesternBlotResult }
 export interface FijiExperimentRequest { sessionId: string; action: 'list' | 'analyze'; experiment?: FijiExperimentId; requestId?: string; measurements?: JsonObject[]; sourceAssetId?: string; image?: FijiImageConfig }

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, expect, it } from 'vitest'
 import { ResearchStore } from '../../../store/src/index.js'
-import { CanvasService } from '../src/host/canvas.js'
+import { CanvasService, makeSingleImagePdf } from '../src/host/canvas.js'
 import { renderCanvas, validateCanvasSpec } from '../src/shared/canvas.js'
 
 const cleanup: Array<() => Promise<void>> = []
@@ -19,5 +19,11 @@ it('validates bounded series and renders deterministic escaped SVG', () => {
 
 it('exports an SVG and manifest with source references', async () => {
   const root = await mkdtemp(join(tmpdir(), 'canvas-service-')); const projectRoot = join(root, 'project'); await mkdir(projectRoot); const store = new ResearchStore(join(root, 'store.sqlite')); const service = new CanvasService(store); cleanup.push(async () => { store.close(); await rm(root, { recursive: true, force: true }) }); const project = store.createProject({ name: 'Canvas', rootPath: projectRoot })
-  const result = await service.execute(project, { sessionId: 's', action: 'export', spec }); expect(result.artifact?.mediaType).toBe('image/svg+xml'); expect(result.artifact?.metadata.pointCount).toBe(2); const manifest = JSON.parse(await readFile(fileURLToPath(String(result.artifact?.metadata.manifestUri)), 'utf8')); expect(manifest.spec.sourceAssetIds).toEqual(['asset-1'])
+  const result = await service.execute(project, { sessionId: 's', action: 'export', spec }); expect(result.artifact?.mediaType).toBe('image/svg+xml'); expect(result.artifact?.metadata.pointCount).toBe(2); expect(result.artifacts).toHaveLength(3); expect(result.artifacts?.map(item => item.mediaType)).toEqual(['image/svg+xml', 'image/png', 'application/pdf']); const manifest = JSON.parse(await readFile(fileURLToPath(String(result.artifact?.metadata.manifestUri)), 'utf8')); expect(manifest.spec.sourceAssetIds).toEqual(['asset-1']); expect((await readFile(fileURLToPath(result.artifacts![1].uri))).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a'); expect((await readFile(fileURLToPath(result.artifacts![2].uri))).subarray(0, 8).toString('ascii')).toBe('%PDF-1.4')
+})
+
+it('writes a structurally valid single-image PDF wrapper', () => {
+  const pdf = makeSingleImagePdf(Buffer.from('jpeg-data'), 640, 400)
+  expect(pdf.subarray(0, 8).toString('ascii')).toBe('%PDF-1.4')
+  expect(pdf.toString('ascii')).toContain('xref')
 })

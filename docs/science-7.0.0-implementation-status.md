@@ -306,3 +306,9 @@ This establishes an HE input/ROI baseline only. It is insufficient evidence for 
 - 草稿生成 Markdown 报告和 JSON Manifest 两个 Artifact，记录文档/证据/主张/任务/冻结版本和阻断原因。`final` 模式要求 Gate 2 已批准、存在主张且全部通过审计，并拒绝待人工复核证据。
 - 定向集成验证新增 1 项：真实项目目录写入 IMRAD Markdown/Manifest，草稿可读；未审计的正式报告被阻断。该能力是报告产物链路，不等于 12 项先导评估或正式医学结论。
 - 研究插件全量回归：27 个测试文件、119 项通过；H5AD 真实 Python 夹具测试单独提高到 30 秒超时上限，避免并行运行时被默认 5 秒测试门限误判。
+
+## 2026-09-22 continuation: canvas multi-format export
+
+- 科研画布导出从单一 SVG 扩展为 SVG、PNG、PDF 三个 Artifact，三者共享同一结构化规格、源资产/产物引用和 Manifest。PNG 由 SVG 在 Host 中确定性栅格化；PDF 使用单页图像 XObject 封装，并明确标记 `rasterized: true`，保留 SVG 作为可编辑工程源文件。
+- 画布面板现在显示三个输出的 URI、媒体类型和 SHA-256；导出测试检查 PNG 文件头、PDF 文件头、Manifest 源引用以及 Artifact 数量。
+- 这完成了科研画布的基础多格式交付，不等于多面板拼版、统计误差标注或出版级人工审阅已经完成。

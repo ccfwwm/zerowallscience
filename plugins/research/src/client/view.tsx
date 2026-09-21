@@ -33,7 +33,7 @@ const tools: Tool[] = [
   { id: 'sequence', name: 'Motif 序列工作台', formats: 'FASTA/GenBank、反向互补、翻译、五种限制酶、SpCas9/NGG 候选；PCR/Gibson 待实现', location: '本地确定性计算', state: 'partial' },
   { id: 'sanger', name: 'Sanger 峰图', formats: 'SCF/AB1 · 四色峰 · 质量裁剪 · 参考比对（双向核对待实现）', location: '内置解析', state: 'partial' },
   { id: 'flow', name: '流式细胞', formats: 'FCS 3.0 · 补偿 · arcsinh · 矩形门控 · GatingML 子集', location: '内置交互 + 远程批处理', state: 'partial' },
-  { id: 'canvas', name: '科研画布', formats: '结构化点图 · SVG · 源数据溯源（PNG/PDF 待实现）', location: '内置确定性渲染', state: 'partial' },
+  { id: 'canvas', name: '科研画布', formats: '结构化点图 · SVG/PNG/PDF · 源数据溯源', location: '内置确定性渲染', state: 'partial' },
   { id: 'brainglobe', name: '脑图谱', formats: 'Allen 小鼠 25 µm · 脑区查询 · 坐标映射', location: '独立 BrainGlobe 引擎', state: 'partial' },
 ]
 const pages: Array<[Page, string]> = [['overview', '研究概览'], ['data', '数据与资料'], ['plan', '研究计划'], ['tools', '专业工具'], ['evidence', '证据与结论'], ['report', '报告与评估']]
