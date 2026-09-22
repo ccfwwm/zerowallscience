@@ -9,10 +9,11 @@ import { WesternBlotPanel } from './western-blot-panel.js'
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 const initialView: ImageViewState = { page: 0, zoom: 1, panX: 0, panY: 0 }
 
-function pageForOmePosition(order: string, sizes: Record<string, number>, position: { z?: number; c?: number; t?: number }): number {
+function pageForOmePosition(order: string, sizes: Record<string, number>, position: { z?: number; c?: number; t?: number }, storage?: 'ome-tiff' | 'ome-zarr'): number {
   let page = 0
   let multiplier = 1
-  for (const axis of order.slice(2).split('').filter(axis => axis === 'Z' || axis === 'C' || axis === 'T')) {
+  const varying = storage === 'ome-zarr' ? order.split('').filter(axis => axis !== 'X' && axis !== 'Y').reverse() : order.slice(2).split('').filter(axis => axis === 'Z' || axis === 'C' || axis === 'T')
+  for (const axis of varying) {
     const size = Number(sizes[axis] ?? 1)
     const value = position[axis.toLowerCase() as 'z' | 'c' | 't'] ?? 0
     page += value * multiplier
@@ -20,6 +21,8 @@ function pageForOmePosition(order: string, sizes: Record<string, number>, positi
   }
   return page
 }
+
+function isImageAsset(asset: DataAssetRecord): boolean { return /\.(png|jpe?g|tiff?|pgm|zarr)(?:[\\/]|$)/iu.test(asset.uri) || asset.mediaType === 'application/vnd.ome.zarr' }
 
 export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
   const [assets, setAssets] = useState<DataAssetRecord[]>([])
@@ -127,9 +130,9 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
   }
   return <section aria-label="图像查看与 ROI" style={{ border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
     <h3>图像查看与 ROI 修订</h3>
-    <p>PNG/JPEG/TIFF 预览（当前上限 128 MiB、每页 1 亿像素）。原图坐标保存；多维轴序、超大图像分块和强度测量仍需专用适配。</p>
+    <p>PNG/JPEG/TIFF 与受限 OME-Zarr 预览（普通文件上限 128 MiB、每页 1 亿像素）。OME-Zarr 当前支持无压缩/gzip chunk 查看；分块分析仍需专用 Runner。</p>
     <fieldset disabled={busy} style={{ border: 0, padding: 0 }}>
-      <label>图像资产 <select aria-label="内置图像资产" value={assetId} onChange={event => setAssetId(event.target.value)}><option value="">选择图像</option>{assets.filter(asset => /\.(png|jpe?g|tiff?|pgm)$/iu.test(asset.uri)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+      <label>图像资产 <select aria-label="内置图像资产" value={assetId} onChange={event => setAssetId(event.target.value)}><option value="">选择图像</option>{assets.filter(isImageAsset).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
       <button type="button" disabled={!assetId || unsaved} onClick={() => void run({ action: 'image_open', assetId })}>打开图像</button>
       <button type="button" onClick={() => void list(generation.current).catch(error => setMessage(String(error)))}>刷新图像资产</button>
       <div role="tablist" aria-label="已保存图像视图">{views.map(view => <button key={view.id} type="button" role="tab" aria-selected={viewer?.id===view.id} disabled={unsaved} onClick={() => void run({ action: 'image_read', viewerId: view.id })}>{assets.find(item => item.id === view.assetId)?.name ?? '图像'} · v{view.version}</button>)}</div>
@@ -143,7 +146,7 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
               return <label key={axis}>{axis.toUpperCase()} <input aria-label={`OME ${axis.toUpperCase()} 位置`} type="number" min={0} max={size - 1} value={axisPosition[axis] ?? 0} disabled={unsaved} onChange={event => {
                 const next = { ...axisPosition, [axis]: Number(event.target.value) }
                 setAxisPosition(next)
-                setState(previous => ({ ...previous, page: pageForOmePosition(image.axes!.order, image.axes!.sizes, next) }))
+                setState(previous => ({ ...previous, page: pageForOmePosition(image.axes!.order, image.axes!.sizes, next, image.axes!.storage) }))
               }} /></label>
             })}
             <span>轴选择会更新当前页；保存图像视角后恢复该位置。</span>

@@ -344,3 +344,11 @@ This establishes an HE input/ROI baseline only. It is insufficient evidence for 
 - 验证：Image Viewer Host/UI 定向测试 17 项通过；覆盖 4×4 确定性矩阵的矩形/多边形/点 ROI、多页 TIFF 页选择、Artifact Manifest、无 accepted ROI 和 stale Viewer revision。当前不代表 OME-Zarr、10 GiB 分块图像、OpenSlide 金字塔、Fiji 五类实验宏、标签/掩膜分析、远程图像重计算或大规模性能验收已经完成，也不构成诊断、治疗效果或生物学结论。
 
 - 新增 `zerowall-image-intensity` Skill，绑定真实 `science_viewer.image_analyze` schema，明确 accepted 标注、源像素、页/通道/位深、Artifact 溯源和 `scientificReview: pending` 边界；绑定测试覆盖该 Skill 的发现到工具调用链。
+
+## 2026-09-22 continuation: bounded OME-Zarr viewer adapter
+
+- 新增受限 OME-Zarr v2 查看适配器，读取 `.zattrs` 的 multiscales/axes、首个 `.zarray` 数据集、形状、chunk 布局、dtype、物理尺度和 dimension separator；支持命名 `x/y` 以及 `z/c/t` 轴，并把当前页保存为可恢复的 Z/C/T 位置。
+- 当前页按声明的轴序只读取所需 chunk，支持无压缩和 gzip/zlib chunk，缺失 chunk 按零填充；路径解析保持在项目资产目录内，chunk 数超过 4096 或压缩格式不受支持时阻断并要求受管理适配器。适配器支持整数/浮点标量 dtype，保留源位深，不把元数据指纹冒充全量像素哈希。
+- OME-Zarr 预览、ViewerSession 和图像工作台会明确标注 `storage: ome-zarr`、轴尺寸、物理像素尺寸、当前位置和 `fingerprintScope: metadata-and-chunk-layout`。当前仅开放查看和视角保存，ROI 强度、标签掩膜、Fiji 原生回传和远程重计算继续阻断，直到实现 chunk-aware Runner。
+- 定向 OME-Zarr 测试覆盖无压缩页读取、gzip 解码、页坐标和不支持压缩阻断；研究插件完整回归为 28 个测试文件、134 项通过，Host/Client TypeScript 检查和 bundle 均通过。
+- 未完成边界：多尺度金字塔选择、真正瓦片请求、fill value/非 C-order 数据布局的完整兼容、10 GiB 性能验收和 chunk-aware 分析。该能力证明受限查看链路可用，不代表完成大图像科研分析。
