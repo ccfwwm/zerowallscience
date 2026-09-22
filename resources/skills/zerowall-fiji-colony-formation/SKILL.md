@@ -47,3 +47,6 @@ ParticleAnalyzer 使用8连通，minArea/maxArea保留区间内的颗粒；触�
   }
 }
 ```
+
+
+可选 `seededCells` 为真实正整数；缺失返回 null，不影响计数。`colonyFormationFraction=count/seededCells` 不是经对照 plating efficiency 校正的存活分数。plateId/wellId 保存在输入 context，不能把多个技术孔当作增加生物学重复。反光排除、边缘排除及人工拆分按共同规范 image.review 执行；当前没有自动 watershed。stainedArea 汇总通过颗粒面积筛选的掩膜，不是未经筛选的全部染色面积。

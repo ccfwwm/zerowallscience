@@ -1,3 +1,4 @@
+import type { ImageAnnotations } from '@zerowallscience/research-store/types'
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { open, readFile, readdir, writeFile } from 'node:fs/promises'
@@ -14,7 +15,7 @@ from ij.process import ByteProcessor,ImageProcessor
 from ij.measure import ResultsTable,Measurements,Calibration
 from ij.plugin.filter import ParticleAnalyzer
 from ij.io import FileSaver,RoiEncoder
-from ij.gui import Roi
+from ij.gui import Roi,PolygonRoi
 from java.lang import System
 def digest(path):
     h=hashlib.sha256()
@@ -44,7 +45,30 @@ try:
     # Native ImageJ LUT creates the exact inclusive threshold mask without display scaling.
     from jarray import array
     lut=array([255 if (v>=threshold if c['polarity']=='bright' else v<=threshold) else 0 for v in range(256)],'i')
-    mask=crop.duplicate();mask.applyTable(lut);foreground=int(mask.getHistogram()[255])
+    mask=crop.duplicate();mask.applyTable(lut)
+    automatic=mask.duplicate()
+    if not FileSaver(ImagePlus('automatic mask',automatic)).saveAsPng(os.path.join(directory,'automatic-mask.png')): raise ValueError('Cannot save automatic mask')
+    review=request.get('review')
+    if review:
+        document=review['payload'];coordinates=document['coordinates']
+        if coordinates['width']!=image.getWidth() or coordinates['height']!=image.getHeight() or coordinates['pages']!=1: raise ValueError('Accepted annotation dimensions differ from source image')
+        by_id={item['id']:item for item in document['rois']}
+        def area_roi(item):
+            if item['page']!=0 or item['kind']=='point': raise ValueError('Mask revision requires single-page area ROIs')
+            if item['kind']=='rectangle': return Roi(float(item['x'])-x,float(item['y'])-y,float(item['width']),float(item['height']))
+            return PolygonRoi(array([float(p[0])-x for p in item['points']],'f'),array([float(p[1])-y for p in item['points']],'f'),len(item['points']),Roi.POLYGON)
+        def fill_regions(target,ids,value):
+            target.setValue(value)
+            for key in ids: target.fill(area_roi(by_id[key]))
+        if 'foregroundRoiIds' in review:
+            mask=ByteProcessor(w,h);fill_regions(mask,review['foregroundRoiIds'],255)
+        exclusions=ByteProcessor(w,h);fill_regions(exclusions,review['excludedRoiIds'],255)
+        for row in range(h):
+            for col in range(w):
+                if exclusions.get(col,row): mask.set(col,row,0)
+        if not FileSaver(ImagePlus('excluded regions',exclusions)).saveAsPng(os.path.join(directory,'exclusion-mask.png')): raise ValueError('Cannot save exclusions')
+        save('accepted-review.json',review)
+    foreground=int(mask.getHistogram()[255])
     if not FileSaver(ImagePlus('threshold mask',mask)).saveAsPng(os.path.join(directory,'mask.png')): raise ValueError('Cannot save mask')
     overlay=crop.convertToRGB()
     for row in range(h):
@@ -96,7 +120,8 @@ try:
     result={'width':w,'height':h,'foregroundPixels':foreground,'componentAreas':areas,'discardedComponents':discarded,'imageJVersion':IJ.getVersion(),'javaVersion':System.getProperty('java.version'),'connectivity':8}
     if topology is not None: result['nativeSkeleton']=topology
     save('imagej-result.json',result);save('roi.json',{'roi':r,'sourceSha256':request['sourceSha256'],'coordinates':'source pixels','overlayCoordinates':'ROI-local pixels'})
-    names=['mask.png','overlay.png','analysis.roi','particles.csv','roi.json','imagej-result.json']
+    names=['automatic-mask.png','mask.png','overlay.png','analysis.roi','particles.csv','roi.json','imagej-result.json']
+    if review: names.extend(['exclusion-mask.png','accepted-review.json'])
     if topology is not None: names.extend(['skeleton.png','skeleton-tags.tif','skeleton-topology.json'])
     save('completion.json',{'status':'succeeded','requestSha256':digest(request_path),'files':[{'name':name,'sha256':digest(os.path.join(directory,name))} for name in names]})
 except:
@@ -106,8 +131,9 @@ System.exit(0)
 `
 
 let active = false
-export async function runImageJExperiment(directory: string, source: Buffer, config: FijiImageConfig, signal?: AbortSignal): Promise<{ analysis: FijiImageResult; files: Array<{ name: string; checksum: string }>; runnerSha256: string }> {
+export async function runImageJExperiment(directory: string, source: Buffer, config: FijiImageConfig, signal?: AbortSignal, review?: { annotationRevisionId: string; excludedRoiIds: string[]; foregroundRoiIds?: string[]; reason: string; payload: ImageAnnotations }): Promise<{ analysis: FijiImageResult; files: Array<{ name: string; checksum: string }>; runnerSha256: string }> {
   signal?.throwIfAborted()
+  if (config.review && !review) throw new Error('Mask review requires Host-validated accepted annotation data.')
   if (active) throw new Error('Another local ImageJ experiment is running; retry after it completes.')
   active = true
   try {
@@ -117,7 +143,7 @@ export async function runImageJExperiment(directory: string, source: Buffer, con
       const pluginDirectory=join(dirname(dirname(java.jars)),'plugins');const names=await readdir(pluginDirectory)
       for(const prefix of ['AnalyzeSkeleton_', 'Skeletonize3D_']){const matches=names.filter(name=>name.startsWith(prefix+'-')&&name.endsWith('.jar'));if(matches.length!==1)throw new Error(`Exactly one installed ${prefix} plugin is required.`);const name=matches[0]!;const path=join(pluginDirectory,name);plugins.push({name,sha256:hash(await readFile(path))});pluginPaths.push(path)}
     }
-    const request=JSON.stringify({directory,sourcePath,sourceSha256:hash(source),plugins,config:{...config,kind:config.kind??'bacterial-cfu'}},null,2)+'\n'
+    const request=JSON.stringify({directory,sourcePath,sourceSha256:hash(source),plugins,...(review?{review}:{}),config:{...config,kind:config.kind??'bacterial-cfu'}},null,2)+'\n'
     await writeFile(sourcePath,source,{flag:'wx'});await writeFile(requestPath,request,{flag:'wx'});await writeFile(scriptPath,fijiImageRunner,{flag:'wx'})
     const log=await open(join(directory,'imagej.log'),'wx')
     try { await new Promise<void>((resolve,reject)=>{
@@ -131,7 +157,7 @@ export async function runImageJExperiment(directory: string, source: Buffer, con
       child.once('error',error=>{cleanup();reject(error)});child.once('exit',code=>{cleanup();code===0&&!interruption?resolve():reject(new Error(interruption??`ImageJ exited ${code}; inspect imagej.log.`))})
     }) } finally { await log.close() }
     const completion=JSON.parse(await readFile(join(directory,'completion.json'),'utf8'))
-    const expected=['mask.png','overlay.png','analysis.roi','particles.csv','roi.json','imagej-result.json',...(config.kind==='tube-formation'?['skeleton.png','skeleton-tags.tif','skeleton-topology.json']:[])]
+    const expected=['automatic-mask.png','mask.png','overlay.png','analysis.roi','particles.csv','roi.json','imagej-result.json',...(review?['exclusion-mask.png','accepted-review.json']:[]),...(config.kind==='tube-formation'?['skeleton.png','skeleton-tags.tif','skeleton-topology.json']:[])]
     if(completion.status!=='succeeded'||completion.requestSha256!==hash(request)||!Array.isArray(completion.files)||completion.files.length!==expected.length)throw new Error('ImageJ completion manifest is invalid.')
     const files:Array<{name:string;checksum:string}>=[]
     for(const name of expected){const item=completion.files.find((entry:{name:string})=>entry.name===name);const bytes=await readFile(join(directory,name));if(!item||hash(bytes)!==item.sha256)throw new Error('ImageJ output checksum mismatch.');files.push({name,checksum:item.sha256})}
@@ -147,8 +173,9 @@ export async function runImageJExperiment(directory: string, source: Buffer, con
     else if(config.kind==='colony-formation'){
       if(config.stainUnit&&!['pixel','um2','mm2'].includes(config.stainUnit))throw new Error('Unknown area unit.')
       if(config.stainUnit&&config.stainUnit!=='pixel'&&(typeof config.pixelArea!=='number'||!Number.isFinite(config.pixelArea)||config.pixelArea<=0))throw new Error('Physical stained area requires positive pixelArea calibration.')
-      measurement=colonyMeasurement({wellId:config.wellId,independentCount:raw.componentAreas.length,...(config.stainUnit?{stainUnit:config.stainUnit,stainedArea:raw.componentAreas.reduce((sum:number,value:number)=>sum+value,0)*(config.stainUnit==='pixel'?1:config.pixelArea!)}:{})})
+      measurement=colonyMeasurement({wellId:config.wellId,independentCount:raw.componentAreas.length,...(config.seededCells===undefined?{}:{seededCells:config.seededCells}),...(config.stainUnit?{stainUnit:config.stainUnit,stainedArea:raw.componentAreas.reduce((sum:number,value:number)=>sum+value,0)*(config.stainUnit==='pixel'?1:config.pixelArea!)}:{})})
     }else measurement=cfuMeasurement({...config,colonyCount:raw.componentAreas.length})
+    if (review) notes.push('Accepted ROI masks are rasterized in source pixel coordinates; exclusions are not extrapolated to unseen tissue or plate area.', 'Automatic mask, accepted mask, exclusion mask and annotation revision are retained separately.')
     return {analysis:{...raw,measurement,notes},files:[...files,...await Promise.all(['completion.json','imagej-request.json','imagej-runner.py','imagej.log'].map(async name=>({name,checksum:hash(await readFile(join(directory,name)))})))],runnerSha256:hash(fijiImageRunner)}
   }finally{active=false}
 }

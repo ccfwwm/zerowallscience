@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol'
 import type { FijiExperimentId, FijiImageConfig } from '../shared/fiji-experiments.js'
-import type { DataAssetRecord } from '@zerowallscience/research-store/types'
+import type { DataAssetRecord, RunRecord } from '@zerowallscience/research-store/types'
+import { FijiReviewControls } from './fiji-review-controls.js'
+import type { FijiExperimentRequest, FijiExperimentResponse } from '../shared/types.js'
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
@@ -15,7 +17,7 @@ const examples: Record<FijiExperimentId, string> = {
 const imageExamples: Record<FijiExperimentId, object> = {
   'scratch-wound': { kind: 'scratch-wound', sampleId: 'S1', time: '24h', initialArea: 100, threshold: 128, polarity: 'bright', roi: { x: 0, y: 0, width: 10, height: 10 } },
   'colony-formation': { kind: 'colony-formation', wellId: 'A1', threshold: 128, polarity: 'dark', minArea: 2, maxArea: 100, stainUnit: 'pixel', roi: { x: 0, y: 0, width: 10, height: 10 } },
-  'bacterial-cfu': { kind: 'bacterial-cfu', plateId: 'P1', dilutionFactor: 1000, platedVolumeMl: 0.1, threshold: 128, polarity: 'bright', minArea: 2, maxArea: 100, roi: { x: 0, y: 0, width: 10, height: 10 } },
+  'bacterial-cfu': { kind: 'bacterial-cfu', plateId: 'P1', dilutionFactor: null, platedVolumeMl: null, threshold: 128, polarity: 'bright', minArea: 2, maxArea: 100, roi: { x: 0, y: 0, width: 10, height: 10 } },
   'tube-formation': { kind: 'tube-formation', sampleId: 'S1', threshold: 128, polarity: 'bright', unit: 'pixel', unitScale: 1, roi: { x: 0, y: 0, width: 10, height: 10 } },
 }
 
@@ -27,7 +29,12 @@ export function FijiExperimentPanel({ remote, sessionId }: { remote: Remote; ses
   const [measurements, setMeasurements] = useState<unknown[]>([])
   const generation = useRef(0); const request = useRef<{ signature: string; id: string }>()
   const [assets, setAssets] = useState<DataAssetRecord[]>([]); const [assetId, setAssetId] = useState('')
-  useEffect(() => { let current = true; generation.current++; setAssets([]); setAssetId(''); setPreviews([]); setMeasurements([]); setBusy(false); request.current = undefined; void remote.scienceViewer({ sessionId, action: 'list' }).then(value => { if (current) setAssets((unwrapRemoteResult('scienceViewer', value).assets ?? []).filter(asset => asset.location === 'local' && /\.(png|tiff?|pgm)$/iu.test(asset.uri))) }).catch(error => { if (current) setMessage(String(error)) }); return () => { current = false; generation.current++ } }, [remote, sessionId])
+  useEffect(() => { let current = true; generation.current++; setAssets([]); setAssetId(''); setPreviews([]); setMeasurements([]); setDetails(undefined); setHistory([]); setSelectedRun(''); setBusy(false); request.current = undefined; void remote.scienceViewer({ sessionId, action: 'list' }).then(value => { if (current) setAssets((unwrapRemoteResult('scienceViewer', value).assets ?? []).filter(asset => asset.location === 'local' && /\.(png|tiff?|pgm)$/iu.test(asset.uri))) }).catch(error => { if (current) setMessage(String(error)) }); return () => { current = false; generation.current++ } }, [remote, sessionId])
+  const [history,setHistory]=useState<RunRecord[]>([])
+  const previewName=(name:string)=>({'mask.png':'接受的分割掩膜','automatic-mask.png':'原始自动掩膜','exclusion-mask.png':'反光及边缘排除掩膜','overlay.png':'边界质控叠加','skeleton.png':'原生骨架'}[name]??name)
+  const [details,setDetails]=useState<FijiExperimentResponse>()
+  const [selectedRun,setSelectedRun]=useState('')
+  const call=async(input:FijiExperimentRequest):Promise<FijiExperimentResponse>=>unwrapRemoteResult('fijiExperiment',await remote.fijiExperiment(input))
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const run = async (): Promise<void> => {
@@ -42,9 +49,9 @@ export function FijiExperimentPanel({ remote, sessionId }: { remote: Remote; ses
       if (request.current?.signature !== signature) request.current = { signature, id: crypto.randomUUID() }
       const result = unwrapRemoteResult('fijiExperiment', await remote.fijiExperiment({ sessionId, action: 'analyze', experiment, requestId: request.current.id, ...(mode === 'measurements' ? { measurements: values } : { sourceAssetId: assetId, image: values as FijiImageConfig }) })) as { run?: { status: string; error?: string }; result?: { measurements: unknown[] }; artifacts?: Array<{ name: string; projectId: string; uri: string; checksum?: string }> }
       if (current !== generation.current) return
-      setMeasurements(result.result?.measurements ?? [])
+      setDetails(result as FijiExperimentResponse);setSelectedRun((result.run as any)?.id??'');setMeasurements(result.result?.measurements ?? [])
       for (const artifact of result.artifacts ?? []) {
-        if (!['mask.png', 'overlay.png', 'skeleton.png'].includes(artifact.name)) continue
+        if (!['automatic-mask.png', 'exclusion-mask.png', 'mask.png', 'overlay.png', 'skeleton.png'].includes(artifact.name)) continue
         const preview = unwrapRemoteResult('preview', await remote.preview({ projectId: artifact.projectId, uri: artifact.uri, mediaType: 'image/png' }))
         if (current !== generation.current) return
         setPreviews(previous => [...previous, { name: artifact.name, src: `data:image/png;base64,${preview.base64}` }])
@@ -62,8 +69,13 @@ export function FijiExperimentPanel({ remote, sessionId }: { remote: Remote; ses
       {mode === 'image' && <select aria-label="实验图像" disabled={busy} value={assetId} onChange={event => setAssetId(event.target.value)}><option value="">选择已登记图像</option>{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select>}
       <button type="button" onClick={() => void run()} disabled={busy}>{busy ? '计算中…' : mode === 'image' ? '分析图像' : '汇总测量'}</button>
     </div>
+    {mode==='image'&&assetId&&<FijiReviewControls sessionId={sessionId} assetId={assetId} text={text} setText={setText} call={call}/>}
+    <div><button type="button" disabled={busy} onClick={()=>void call({sessionId,action:'list'}).then(result=>setHistory(result.runs??[])).catch(reason=>setMessage(String(reason)))}>刷新实验任务</button><select aria-label="Fiji 历史任务" value={selectedRun} onChange={event=>setSelectedRun(event.target.value)}><option value="">选择任务</option>{history.map(run=><option key={run.id} value={run.id}>{run.name} · {run.status} · {run.id}</option>)}</select><button type="button" disabled={busy||!selectedRun} onClick={()=>{const current=generation.current;void call({sessionId,action:'status',runId:selectedRun}).then(async result=>{if(current!==generation.current)return;setDetails(result);setMeasurements(result.result?.measurements??[]);setPreviews([]);for(const artifact of result.artifacts??[]){if(!['automatic-mask.png','exclusion-mask.png','mask.png','overlay.png','skeleton.png'].includes(artifact.name))continue;const preview=unwrapRemoteResult('preview',await remote.preview({projectId:artifact.projectId,uri:artifact.uri,mediaType:'image/png'}));if(current!==generation.current)return;setPreviews(previous=>[...previous,{name:artifact.name,src:'data:image/png;base64,'+preview.base64}])}}).catch(reason=>setMessage(String(reason)))}}>恢复实验结果</button></div>
     <textarea aria-label="Fiji 实验测量 JSON" disabled={busy} value={text} onChange={event => setText(event.target.value)} rows={8} style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, fontFamily: 'ui-monospace, monospace' }} />
-    {previews.length > 0 && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{previews.map(preview => <figure key={preview.name}><img src={preview.src} alt={preview.name === 'mask.png' ? '分割掩膜' : preview.name === 'skeleton.png' ? '原生骨架' : '边界质控叠加'} style={{ maxWidth: 320, maxHeight: 260, imageRendering: 'pixelated' }} /><figcaption>{preview.name === 'mask.png' ? '分割掩膜（ROI 局部坐标）' : preview.name === 'skeleton.png' ? 'Skeletonize3D 骨架' : '边界质控叠加（ROI 局部坐标）'}</figcaption></figure>)}</div>}
+    {previews.length > 0 && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{previews.map(preview => <figure key={preview.name}><img src={preview.src} alt={previewName(preview.name)} style={{ width: 260, maxWidth: '100%', maxHeight: 260, objectFit: 'contain', imageRendering: 'pixelated' }} /><figcaption>{previewName(preview.name)+'（ROI 局部坐标）'}</figcaption></figure>)}</div>}
+    {details?.result?.reviewState==='needs_recheck'&&<p role="alert">结果需要重新复核：{details.result.reviewReasons?.join(', ')}</p>}
+    {details?.result?.timeline&&<p>已观察时间：{details.result.timeline.observedHours.join(', ')} h；缺失：{details.result.timeline.missingHours.join(', ')||'无'}；重复记录：{details.result.timeline.duplicateHours.join(', ')||'无'}</p>}
+    {selectedRun&&<button type="button" onClick={()=>void call({sessionId,action:'status',runId:selectedRun}).then(result=>{setDetails(result);setMeasurements(result.result?.measurements??[])}).catch(reason=>setMessage(String(reason)))}>检查结果与源修订</button>}
     {measurements.length > 0 && <pre aria-label="实验结果" style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(measurements, null, 2)}</pre>}
     {message && <pre style={{ whiteSpace: 'pre-wrap' }} role="status">{message}</pre>}
   </section>

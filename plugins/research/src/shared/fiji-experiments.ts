@@ -17,38 +17,44 @@ export function scratchWoundMeasurement(input: { sampleId: string; time: string;
   return { sampleId, time, initialArea, remainingArea, closureFraction, closurePercent: closureFraction * 100, flags: [remainingArea > initialArea ? 'wound_area_expanded' : '', remainingArea === 0 ? 'complete_closure_observed' : ''].filter(Boolean) }
 }
 
-export interface ColonyMeasurement { wellId: string; independentCount: number; stainedArea: number | null; stainUnit: string | null; flags: string[] }
-export function colonyMeasurement(input: { wellId: string; independentCount: number; stainedArea?: number; stainUnit?: string }): ColonyMeasurement {
+export interface ColonyMeasurement { wellId: string; independentCount: number; stainedArea: number | null; stainUnit: string | null; seededCells: number | null; colonyFormationFraction: number | null; flags: string[] }
+export function colonyMeasurement(input: { wellId: string; independentCount: number; stainedArea?: number; stainUnit?: string; seededCells?: number | null }): ColonyMeasurement {
   if (typeof input.wellId !== 'string' || !input.wellId.trim()) throw new Error('wellId is required.')
   if (!Number.isSafeInteger(input.independentCount) || input.independentCount < 0) throw new Error('independentCount must be a non-negative integer.')
   const hasArea = input.stainedArea !== undefined || input.stainUnit !== undefined
   if (hasArea && (typeof input.stainedArea !== 'number' || !Number.isFinite(input.stainedArea) || input.stainedArea < 0 || typeof input.stainUnit !== 'string' || !input.stainUnit.trim())) throw new Error('Stained area requires a non-negative value and explicit unit.')
-  return { wellId: input.wellId.trim(), independentCount: input.independentCount, stainedArea: hasArea ? input.stainedArea! : null, stainUnit: hasArea ? input.stainUnit!.trim() : null, flags: input.independentCount === 0 ? ['no_independent_colonies_observed'] : [] }
+  if (input.seededCells != null && (!Number.isSafeInteger(input.seededCells) || input.seededCells <= 0)) throw new Error('seededCells must be a positive integer or unknown.')
+  return { seededCells: input.seededCells ?? null, colonyFormationFraction: input.seededCells == null ? null : input.independentCount / input.seededCells, wellId: input.wellId.trim(), independentCount: input.independentCount, stainedArea: hasArea ? input.stainedArea! : null, stainUnit: hasArea ? input.stainUnit!.trim() : null, flags: input.independentCount === 0 ? ['no_independent_colonies_observed'] : [] }
 }
 
-export interface CfuMeasurement { plateId: string; colonyCount: number; dilutionFactor: number; platedVolumeMl: number; cfuPerMl: number; flags: string[] }
-export function cfuMeasurement(input: { plateId: string; colonyCount: number; dilutionFactor: number; platedVolumeMl: number }): CfuMeasurement {
+export interface CfuMeasurement { plateId: string; colonyCount: number; dilutionFactor: number | null; platedVolumeMl: number | null; cfuPerMl: number | null; flags: string[] }
+export function cfuMeasurement(input: { plateId: string; colonyCount: number; dilutionFactor?: number | null; platedVolumeMl?: number | null }): CfuMeasurement {
   if (typeof input.plateId !== 'string' || !input.plateId.trim()) throw new Error('plateId is required.')
   if (!Number.isSafeInteger(input.colonyCount) || input.colonyCount < 0) throw new Error('colonyCount must be a non-negative integer.')
-  if (!Number.isFinite(input.dilutionFactor) || input.dilutionFactor <= 0) throw new Error('A positive dilution factor is required; omit CFU when dilution is unknown.')
-  if (!Number.isFinite(input.platedVolumeMl) || input.platedVolumeMl <= 0) throw new Error('A positive plated volume in mL is required; omit CFU when volume is unknown.')
-  const cfuPerMl = input.colonyCount * input.dilutionFactor / input.platedVolumeMl
-  return { plateId: input.plateId.trim(), colonyCount: input.colonyCount, dilutionFactor: input.dilutionFactor, platedVolumeMl: input.platedVolumeMl, cfuPerMl, flags: input.colonyCount === 0 ? ['no_colonies_observed'] : [] }
+  if (input.dilutionFactor != null && (typeof input.dilutionFactor !== 'number' || !Number.isFinite(input.dilutionFactor) || input.dilutionFactor < 1)) throw new Error('Reciprocal dilution factor must be >= 1; use 1000 for a 1:1000 dilution.')
+  if (input.platedVolumeMl != null && (typeof input.platedVolumeMl !== 'number' || !Number.isFinite(input.platedVolumeMl) || input.platedVolumeMl <= 0)) throw new Error('Plated volume in mL must be positive or unknown.')
+  const dilutionFactor = input.dilutionFactor ?? null; const platedVolumeMl = input.platedVolumeMl ?? null
+  const cfuPerMl = dilutionFactor === null || platedVolumeMl === null ? null : input.colonyCount * dilutionFactor / platedVolumeMl
+  if (cfuPerMl !== null && !Number.isFinite(cfuPerMl)) throw new Error('CFU conversion exceeds numeric range.')
+  return { plateId: input.plateId.trim(), colonyCount: input.colonyCount, dilutionFactor, platedVolumeMl, cfuPerMl, flags: [input.colonyCount === 0 ? 'no_colonies_observed' : '', dilutionFactor === null ? 'dilution_unknown_count_only' : '', platedVolumeMl === null ? 'volume_unknown_count_only' : ''].filter(Boolean) }
 }
 
-export interface CfuImageConfig {
-  kind?: 'bacterial-cfu'; plateId: string; dilutionFactor: number; platedVolumeMl: number; threshold: number; minArea: number; maxArea: number
+export interface FijiImageReview { annotationRevisionId: string; excludedRoiIds: string[]; foregroundRoiIds?: string[]; reason: string }
+export interface FijiScratchTimeline { fieldId: string; timeHours: number; baselineRunId?: string; expectedHours: number[]; pixelSpacing: { x: number; y: number; unit: 'um' | 'mm'; source: string } }
+export interface FijiImageContext { review?: FijiImageReview }
+export interface CfuImageConfig extends FijiImageContext {
+  kind?: 'bacterial-cfu'; plateId: string; dilutionFactor?: number | null; platedVolumeMl?: number | null; threshold: number; minArea: number; maxArea: number
   polarity: 'bright' | 'dark'; roi: { x: number; y: number; width: number; height: number }
 }
-export interface ScratchImageConfig {
-  kind: 'scratch-wound'; sampleId: string; time: string; initialArea: number; threshold: number
+export interface ScratchImageConfig extends FijiImageContext {
+  kind: 'scratch-wound'; sampleId: string; time: string; initialArea: number; timeline?: FijiScratchTimeline; threshold: number
   polarity: 'bright' | 'dark'; roi: { x: number; y: number; width: number; height: number }
 }
-export interface ColonyImageConfig {
-  kind: 'colony-formation'; wellId: string; threshold: number; minArea: number; maxArea: number
+export interface ColonyImageConfig extends FijiImageContext {
+  kind: 'colony-formation'; wellId: string; plateId?: string; seededCells?: number | null; threshold: number; minArea: number; maxArea: number
   polarity: 'bright' | 'dark'; roi: { x: number; y: number; width: number; height: number }; stainUnit?: 'pixel' | 'um2' | 'mm2'; pixelArea?: number
 }
-export interface TubeImageConfig {
+export interface TubeImageConfig extends FijiImageContext {
   kind: 'tube-formation'; sampleId: string; threshold: number; polarity: 'bright' | 'dark'
   roi: { x: number; y: number; width: number; height: number }; unit: TubeMeasurement['unit']; unitScale: number
 }
@@ -105,7 +111,7 @@ export function analyzeColonyMask(input: { data: Uint8Array; width: number; heig
   if (config.stainUnit && !['pixel', 'um2', 'mm2'].includes(config.stainUnit)) throw new Error('Unknown stained area unit.')
   if (config.stainUnit && config.stainUnit !== 'pixel' && (typeof config.pixelArea !== 'number' || !Number.isFinite(config.pixelArea) || config.pixelArea <= 0)) throw new Error('Physical stained area requires a positive calibrated pixelArea.')
   const stainedArea = config.stainUnit ? kept.reduce((sum, area) => sum + area, 0) * (config.stainUnit === 'pixel' ? 1 : config.pixelArea!) : undefined
-  const measurement = colonyMeasurement({ wellId: config.wellId, independentCount: kept.length, ...(stainedArea === undefined ? {} : { stainedArea, stainUnit: config.stainUnit }) })
+  const measurement = colonyMeasurement({ wellId: config.wellId, independentCount: kept.length, ...(config.seededCells === undefined ? {} : { seededCells: config.seededCells }), ...(stainedArea === undefined ? {} : { stainedArea, stainUnit: config.stainUnit }) })
   return { measurement, width: mask.width, height: mask.height, foregroundPixels: input.width * input.height === 0 ? 0 : mask.foregroundPixels, componentAreas: kept, discardedComponents: all.length - kept.length, notes: ['4-connected component segmentation keeps independent count separate from stained area.', 'Physical area requires a positive pixelArea calibration; no clump is split automatically.'] }
 }
 
@@ -143,7 +149,7 @@ export function analyzeCfuMask(input: { data: Uint8Array; width: number; height:
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1 || data.length !== width * height) throw new Error('CFU image dimensions do not match grayscale pixels.')
   const positive = (value: unknown, name: string): number => { if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error(`${name} must be positive.`); return value }
   if (typeof config.plateId !== 'string' || !config.plateId.trim()) throw new Error('plateId is required.')
-  positive(config.dilutionFactor, 'dilutionFactor'); positive(config.platedVolumeMl, 'platedVolumeMl')
+  cfuMeasurement({ ...config, colonyCount: 0 })
   if (!Number.isFinite(config.threshold) || config.threshold < 0 || config.threshold > 255) throw new Error('threshold must be between 0 and 255.')
   if (!Number.isSafeInteger(config.minArea) || config.minArea < 1 || !Number.isSafeInteger(config.maxArea) || config.maxArea < config.minArea) throw new Error('CFU area bounds are invalid.')
   if (!['bright', 'dark'].includes(config.polarity)) throw new Error('CFU polarity must be bright or dark.')
@@ -167,7 +173,7 @@ export function analyzeCfuMask(input: { data: Uint8Array; width: number; height:
     }
     if (area >= config.minArea && area <= config.maxArea) areas.push(area); else discardedComponents++
   }
-  const measurement = cfuMeasurement({ plateId: config.plateId, colonyCount: areas.length, dilutionFactor: config.dilutionFactor, platedVolumeMl: config.platedVolumeMl })
+  const measurement = cfuMeasurement({ plateId: config.plateId, colonyCount: areas.length, dilutionFactor: config.dilutionFactor ?? null, platedVolumeMl: config.platedVolumeMl ?? null })
   return { measurement, width: rw, height: rh, foregroundPixels, componentAreas: areas, discardedComponents, notes: ['4-connected grayscale threshold segmentation over the declared plate ROI.', 'Components outside minArea/maxArea are discarded and reported.', 'CFU/mL uses supplied dilution and plated volume; segmentation alone is not a microbiological identity check.'] }
 }
 
@@ -185,7 +191,8 @@ export function tubeMeasurement(input: { sampleId: string; unit: TubeMeasurement
 export type FijiExperimentId = 'scratch-wound' | 'colony-formation' | 'bacterial-cfu' | 'tube-formation'
 export type FijiExperimentMeasurement = ScratchMeasurement | ColonyMeasurement | CfuMeasurement | TubeMeasurement
 export type FijiImageResult = CfuImageResult | ScratchImageResult | ColonyImageResult | TubeImageResult
-export interface FijiExperimentResult { format: 'zerowall-fiji-experiment'; version: 1; experiment: FijiExperimentId; measurements: FijiExperimentMeasurement[]; notes: string[]; imageAnalysis?: FijiImageResult }
+export interface FijiExperimentContext { sourceAssetId: string; sourceSha256: string; image: FijiImageConfig; width: number; height: number; annotationRevisionId: string | null; baselineResultSha256?: string }
+export interface FijiExperimentResult { format: 'zerowall-fiji-experiment'; version: 1; experiment: FijiExperimentId; measurements: FijiExperimentMeasurement[]; notes: string[]; imageAnalysis?: FijiImageResult; context?: FijiExperimentContext; reviewState?: 'current' | 'needs_recheck'; reviewReasons?: string[]; timeline?: { observedHours: number[]; missingHours: number[]; duplicateHours: number[] } }
 
 export function analyzeFijiExperiment(experiment: FijiExperimentId, values: unknown): FijiExperimentResult {
   if (!Array.isArray(values) || values.length < 1 || values.length > 10000) throw new Error('Fiji experiment measurements must contain 1–10,000 rows.')

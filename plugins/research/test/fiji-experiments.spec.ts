@@ -26,7 +26,7 @@ describe('deterministic Fiji experiment metrics', () => {
     expect(analyzeFijiExperiment('colony-formation', [{ wellId: 'A1', independentCount: 3 }]).measurements[0]).toMatchObject({ stainedArea: null })
     expect(analyzeFijiExperiment('bacterial-cfu', [{ plateId: 'P1', colonyCount: 10, dilutionFactor: 10, platedVolumeMl: 1 }]).measurements[0]).toMatchObject({ cfuPerMl: 100 })
     expect(analyzeFijiExperiment('tube-formation', [{ sampleId: 's', unit: 'pixel', unitScale: 1, length: 3, endpoints: 1, junctions: 0, segments: 1, meshes: 0 }]).measurements[0]).toMatchObject({ segments: 1 })
-    expect(() => analyzeFijiExperiment('bacterial-cfu', [{ plateId: 'P1', colonyCount: 10 }])).toThrow(/dilution/i)
+    expect(analyzeFijiExperiment('bacterial-cfu', [{ plateId: 'P1', colonyCount: 10 }]).measurements[0]).toMatchObject({ colonyCount: 10, cfuPerMl: null, flags: ['dilution_unknown_count_only', 'volume_unknown_count_only'] })
   })
 
   it('segments bright colonies from a declared ROI and reports filtered components', () => {

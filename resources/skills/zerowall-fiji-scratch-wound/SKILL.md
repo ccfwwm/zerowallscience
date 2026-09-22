@@ -45,3 +45,10 @@ description: 使用 ImageJ 对划痕图像 ROI 分割并计算相对同一样本
   }
 }
 ```
+
+
+### 关联真实基线
+
+新图像时间序列使用 `image.timeline={fieldId,timeHours,baselineRunId?,expectedHours,pixelSpacing:{x,y,unit,source}}`。时间单位固定 h；expectedHours 包含 0 和当前点且不能重复。像素间距来源必须真实可核验。0h 不传 baselineRunId，Runner 从当前接受掩膜计算 baseline 初始面积；后续点必须引用成功基线，Host 忽略用户手填 initialArea 并取基线实算面积。样本/视野、ROI、间距/单位和预定时间点须对应。当前不执行空间配准或跨尺度面积换算。
+
+同一 baseline/timeHours 原子复用同一计算；参数变化触发幂等冲突，修改序列需要新的基线/方案版本，不创建两个同时间点观察。状态列出 observedHours/missingHours，缺点不插值，负闭合率保留。基线源改变或基线标注过期，使后续读取标记 needs_recheck。
