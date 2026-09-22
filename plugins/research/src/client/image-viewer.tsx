@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '../../lib/typert.remote-client.js'
 import type { AnnotationRevisionRecord, DataAssetRecord, ImageAnnotations, ImageRoi, ViewerSessionRecord } from '@zerowallscience/research-store/types'
-import type { ImageAnalysis, ImagePreview, ImageViewState, ScienceViewerRequest, ScientificEngineLaunchResult } from '../shared/types.js'
+import type { ImageAnalysis, ImageMaskAnalysis, ImagePreview, ImageViewState, ScienceViewerRequest, ScientificEngineLaunchResult } from '../shared/types.js'
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import { WesternBlotPanel } from './western-blot-panel.js'
 
@@ -24,10 +24,11 @@ function pageForOmePosition(order: string, sizes: Record<string, number>, positi
 export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
   const [assets, setAssets] = useState<DataAssetRecord[]>([])
   const [views, setViews] = useState<ViewerSessionRecord[]>([])
-  const [assetId, setAssetId] = useState(''); const [importId, setImportId] = useState('')
+  const [assetId, setAssetId] = useState(''); const [importId, setImportId] = useState(''); const [maskAssetId, setMaskAssetId] = useState(''); const [maskLabels, setMaskLabels] = useState('')
   const [viewer, setViewer] = useState<ViewerSessionRecord>()
   const [image, setImage] = useState<ImagePreview>()
   const [imageAnalysis, setImageAnalysis] = useState<ImageAnalysis>()
+  const [imageMaskAnalysis, setImageMaskAnalysis] = useState<ImageMaskAnalysis>()
   const [analysisArtifact, setAnalysisArtifact] = useState<{ id: string; uri: string; checksum?: string }>()
   const [axisPosition, setAxisPosition] = useState<{ z?: number; c?: number; t?: number }>({})
   const [state, setState] = useState(initialView)
@@ -52,7 +53,7 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
   }
   useEffect(() => {
     const current = ++generation.current
-    setViewer(undefined); setImage(undefined); setImageAnalysis(undefined); setAnalysisArtifact(undefined); setDraft(undefined); setViews([]); setAssets([]); setDirty(false); setBusy(false); locked.current = false; setMessage(''); setAssetId(''); setImportId(''); setPolygon([])
+    setViewer(undefined); setImage(undefined); setImageAnalysis(undefined); setImageMaskAnalysis(undefined); setAnalysisArtifact(undefined); setDraft(undefined); setViews([]); setAssets([]); setDirty(false); setBusy(false); locked.current = false; setMessage(''); setAssetId(''); setImportId(''); setMaskAssetId(''); setMaskLabels(''); setPolygon([])
     void list(current).catch(error => { if (current === generation.current) setMessage(String(error)) })
     return () => { generation.current++ }
   }, [remote, sessionId])
@@ -75,6 +76,10 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
         setImageAnalysis(response.imageAnalysis)
         setAnalysisArtifact(response.artifact ? { id: response.artifact.id, uri: response.artifact.uri, checksum: response.artifact.checksum } : undefined)
       }
+      if (response.imageMaskAnalysis) {
+        setImageMaskAnalysis(response.imageMaskAnalysis)
+        setAnalysisArtifact(response.artifact ? { id: response.artifact.id, uri: response.artifact.uri, checksum: response.artifact.checksum } : undefined)
+      }
       if (response.annotations) setAnnotations(response.annotations)
       if (response.annotationSave?.conflict) {
         setMessage('并发修改：你的标注已保存为冲突分支，当前标注没有被覆盖。请对比修订，再选择要采用的内容。')
@@ -84,7 +89,7 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
         setDraft(response.annotationHead?.payload ?? (response.image ? { coordinates: response.image.coordinates, rois: [] } : draft))
         setDirty(false); setPolygon([])
       }
-      if (response.imageAnalysis && response.artifact) setMessage(`已登记图像强度分析产物：${response.artifact.id}\n${response.artifact.uri}\nSHA-256: ${response.artifact.checksum}`)
+      if ((response.imageAnalysis || response.imageMaskAnalysis) && response.artifact) setMessage(`已登记图像分析产物：${response.artifact.id}\n${response.artifact.uri}\nSHA-256: ${response.artifact.checksum}`)
       else if (response.artifact && !response.annotationSave?.conflict) setMessage(`已登记标注产物：${response.artifact.id}\n${response.artifact.uri}\nSHA-256: ${response.artifact.checksum}`)
       if (response.launch) setMessage(`已启动 ${response.launch.id} 标注交换。请在原生工具中编辑并点击 Save ROI return，然后回到此处收取；仅启动进程不代表窗口就绪。`)
       await list(current)
@@ -94,6 +99,12 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
   const head = annotations.filter(item => item.status === 'accepted').at(-1)
   const viewDirty = Boolean(viewer && Object.entries(state).some(([key, value]) => viewer.state[key] !== value))
   const unsaved = dirty || polygon.length > 0
+  const selectedMaskLabels = (): number[] | undefined => {
+    const value = maskLabels.trim()
+    if (!value) return undefined
+    const labels = value.split(',').map(item => Number(item.trim()))
+    return labels.length > 0 && labels.every(item => Number.isSafeInteger(item) && item >= 0) ? [...new Set(labels)] : undefined
+  }
   const add = (roi: ImageRoi) => { setDraft(previous => previous ? { ...previous, rois: [...previous.rois, roi] } : previous); setDirty(true) }
   const location = (event: React.PointerEvent<SVGSVGElement>): [number, number] => {
     const box = event.currentTarget.getBoundingClientRect()
@@ -160,6 +171,20 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
         <button type="button" disabled={!unsaved} onClick={()=>{setDraft(head?.payload??{coordinates:image.coordinates,rois:[]});setBase(head?.id??null);setDirty(false);setPolygon([])}}>放弃未保存标注</button>
         <button type="button" disabled={!head || unsaved || viewDirty} onClick={()=>void run({action:'annotation_export',viewerId:viewer.id,expectedVersion:viewer.version})}>导出当前 ROI</button>
         <button type="button" disabled={!head || unsaved || viewDirty || busy} onClick={()=>void run({action:'image_analyze',viewerId:viewer.id,expectedVersion:viewer.version})}>ROI 强度分析</button>
+        <section aria-label="标签掩膜分析" style={{ marginTop: 12, borderTop: '1px solid var(--dsw-alias-border-l1)', paddingTop: 10 }}>
+          <h4>标签掩膜分析</h4>
+          <p>选择与源图像几何和页数完全一致的单通道整数掩膜。结果按 ROI 和标签分组统计源图像原始像素；不会自动缩放、配准或把标签解释为生物学类别。</p>
+          <label>掩膜资产 <select aria-label="标签掩膜资产" value={maskAssetId} onChange={event => setMaskAssetId(event.target.value)}><option value="">选择标签掩膜</option>{assets.filter(asset => asset.id !== assetId && /\.(png|jpe?g|tiff?|pgm)$/iu.test(asset.uri)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+          <label>标签集合（可选，逗号分隔） <input aria-label="标签集合" value={maskLabels} placeholder="例如 1,2,5" onChange={event => setMaskLabels(event.target.value)} /></label>
+          <button type="button" disabled={!head || unsaved || viewDirty || !maskAssetId || (maskLabels.trim().length > 0 && !selectedMaskLabels()) || busy} onClick={() => void run({ action: 'image_mask_analyze', viewerId: viewer.id, expectedVersion: viewer.version, maskAssetId, ...(selectedMaskLabels() ? { maskLabels: selectedMaskLabels() } : {}) })}>标签掩膜分析</button>
+          {imageMaskAnalysis && <section aria-label="标签掩膜分析结果" style={{ marginTop: 12 }}>
+            <h5>标签掩膜分析结果</h5>
+            <p>Runner：{imageMaskAnalysis.runner} · 掩膜：{imageMaskAnalysis.maskAssetId} · 标注修订：{imageMaskAnalysis.annotationRevisionId} · 科学复核：pending</p>
+            <table><thead><tr><th>ROI</th><th>页</th><th>标签</th><th>像素数</th><th>通道统计（均值 / 最小 / 最大 / 标准差）</th></tr></thead><tbody>{imageMaskAnalysis.rois.flatMap(roi => roi.labels.map(label => <tr key={`${roi.roiId}:${label.label}`}><td>{roi.name}</td><td>{roi.page}</td><td>{label.label}</td><td>{label.pixelCount}</td><td>{label.mean.map((mean, channel) => `C${channel + 1}: ${mean} / ${label.min[channel]} / ${label.max[channel]} / ${label.standardDeviation[channel]}`).join('；')}</td></tr>))}</tbody></table>
+            <ul>{imageMaskAnalysis.notes.map(note => <li key={note}>{note}</li>)}</ul>
+            {analysisArtifact && <p>Artifact：{analysisArtifact.id} · {analysisArtifact.uri} · SHA-256：{analysisArtifact.checksum ?? '未提供'}</p>}
+          </section>}
+        </section>
         {imageAnalysis && <section aria-label="ROI 强度分析结果" style={{ marginTop: 12, borderTop: '1px solid var(--dsw-alias-border-l1)', paddingTop: 10 }}>
           <h4>ROI 强度分析结果</h4>
           <p>Runner：{imageAnalysis.runner} · 标注修订：{imageAnalysis.annotationRevisionId} · {imageAnalysis.sourceWidth}×{imageAnalysis.sourceHeight} · {imageAnalysis.sourcePages} 页 · 科学复核：pending</p>
@@ -168,7 +193,7 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
           {analysisArtifact && <p>Artifact：{analysisArtifact.id} · {analysisArtifact.uri} · SHA-256：{analysisArtifact.checksum ?? '未提供'}</p>}
         </section>}
         <div>{(['fiji','napari'] as const).map(engine=><button key={engine} type="button" disabled={!head || unsaved || viewDirty || image.coordinates.pages!==1} onClick={()=>void run({action:'annotation_launch',viewerId:viewer.id,expectedVersion:viewer.version,engine})}>在 {engine} 中编辑 ROI</button>)}</div>
-        <p>原生 ROI 交换目前支持单页图像的矩形、多边形和单点。Fiji 中须将新增选区加入 ROI Manager；每次编辑保存一份不可覆盖的回传文件。标签掩膜和多维图层另行适配。</p>
+        <p>原生 ROI 交换目前支持单页图像的矩形、多边形和单点。Fiji 中须将新增选区加入 ROI Manager；每次编辑保存一份不可覆盖的回传文件。标签掩膜分析要求独立、同几何掩膜，并保留待科学复核状态。</p>
         <ul aria-label="原生标注交换">{launches.filter(item=>item.annotationBridge?.viewerId===viewer.id).map(item=><li key={item.launchId}>{item.id} · {item.createdAt} · {item.status}<button type="button" disabled={unsaved || viewDirty} onClick={()=>void run({action:'annotation_collect',viewerId:viewer.id,expectedVersion:viewer.version,launchId:item.launchId})}>收取 {item.id} 标注回传</button></li>)}</ul>
         <div><label>回传标注 JSON <select aria-label="回传标注资产" value={importId} onChange={event=>setImportId(event.target.value)}><option value="">选择已登记交换文件</option>{assets.filter(asset=>/\.json$/iu.test(asset.uri)).map(asset=><option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
           <button type="button" disabled={!importId || unsaved || viewDirty} onClick={()=>void run({action:'annotation_import',viewerId:viewer.id,expectedVersion:viewer.version,importAssetId:importId})}>导入回传修订</button>

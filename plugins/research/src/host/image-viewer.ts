@@ -6,13 +6,14 @@ import sharp from 'sharp'
 import type { ResearchStore } from '@zerowallscience/research-store'
 import { validateAnnotationPayload } from '@zerowallscience/research-store'
 import type { DataAssetRecord, ImageAnnotations, ImageRoi, ProjectRecord, ViewerSessionRecord } from '@zerowallscience/research-store/types'
-import type { ImageAnalysis, ImagePreview, ImageRoiStatistics, ImageViewState, ScienceViewerRequest, ScienceViewerResponse } from '../shared/types.js'
+import type { ImageAnalysis, ImageMaskAnalysis, ImageMaskLabelStatistics, ImageMaskRoiStatistics, ImagePreview, ImageRoiStatistics, ImageViewState, ScienceViewerRequest, ScienceViewerResponse } from '../shared/types.js'
 import { containedFile } from './science-viewer.js'
 import type { NativeEngineService } from './native-engines.js'
 
 const MAX_IMAGE_BYTES = 128 * 1024 * 1024
 const MAX_PIXELS = 100000000
 export const IMAGE_ANALYSIS_RUNNER = 'zerowall-image-intensity/7.0.0-1'
+export const IMAGE_MASK_ANALYSIS_RUNNER = 'zerowall-image-mask/7.0.0-1'
 
 type RawDepth = 'char' | 'double' | 'float' | 'int' | 'short' | 'uchar' | 'uint' | 'ushort'
 
@@ -292,6 +293,104 @@ export class ImageViewerService {
         assertCurrent()
         const artifact = this.store.createArtifact({ projectId: project.id, name: 'Image ROI intensity analysis', uri: pathToFileURL(manifestPath).href, mediaType: 'application/json', checksum: createHash('sha256').update(manifest).digest('hex'), metadata: { runner: IMAGE_ANALYSIS_RUNNER, sourceAssetId: asset.id, sourceSha256: sha256, viewerId: viewer.id, viewerVersion: viewer.version, annotationRevisionId: selected.id, scientificReview: 'pending', kind: 'image-intensity-analysis' } })
         return { ...response(), imageAnalysis, artifact }
+      } catch (error) { await rm(destination, { recursive: true, force: true }); throw error }
+    }
+    if (input.action === 'image_mask_analyze') {
+      if (!viewer) throw new Error('An opened image viewer is required for label mask analysis.')
+      if (input.expectedVersion !== viewer.version) throw new Error(`Viewer revision conflict: current ${viewer.version}.`)
+      if (!input.maskAssetId) throw new Error('A registered label mask asset is required.')
+      const maskAsset = this.asset(project.id, input.maskAssetId)
+      if (maskAsset.id === asset.id) throw new Error('The source image and label mask must be different assets.')
+      const maskBytes = await readProjectAsset(project, maskAsset, MAX_IMAGE_BYTES)
+      const maskSha256 = createHash('sha256').update(maskBytes).digest('hex')
+      const maskMetadata = await sharp(maskBytes, { page: 0, pages: 1, limitInputPixels: MAX_PIXELS, failOn: 'error' }).metadata()
+      if (!['png', 'jpeg', 'tiff'].includes(maskMetadata.format ?? '')) throw new Error('The decoded label mask format is unsupported.')
+      const maskWidth = maskMetadata.width ?? 0; const maskHeight = maskMetadata.pageHeight ?? maskMetadata.height ?? 0; const maskPages = maskMetadata.pages ?? 1
+      if (maskWidth !== width || maskHeight !== height || maskPages !== pages) throw new Error('Label mask geometry or page count does not match the source image.')
+      const maskChannels = maskMetadata.channels ?? 0
+      if (maskChannels !== 1 && maskChannels !== 3) throw new Error('Label masks must decode to one channel or a grayscale RGB encoding; alpha and other multichannel masks are ambiguous.')
+      const maskDepth = maskMetadata.depth as RawDepth
+      if (!['uchar', 'ushort', 'uint'].includes(maskDepth)) throw new Error(`Label mask depth ${maskMetadata.depth} is not supported; use an unsigned integer mask.`)
+      const requested = input.maskLabels === undefined ? null : [...new Set(input.maskLabels)]
+      if (requested && (!requested.length || requested.length > 256 || requested.some(value => !Number.isSafeInteger(value) || value < 0 || value > 0xffffffff))) throw new Error('maskLabels must contain 1–256 unique non-negative integer labels.')
+      const annotations = history()
+      const selected = input.annotationRevisionId
+        ? annotations.find(item => item.id === input.annotationRevisionId)
+        : annotations.filter(item => item.status === 'accepted').at(-1)
+      if (!selected) throw new Error('Save or select an accepted annotation revision before label mask analysis.')
+      if (selected.status !== 'accepted') throw new Error('Label mask analysis requires an accepted annotation revision; conflict branches need explicit adoption first.')
+      const payload = validateAnnotationPayload(selected.payload)
+      if (payload.coordinates.width !== width || payload.coordinates.height !== height || payload.coordinates.pages !== pages) throw new Error('Annotation dimensions do not match the decoded image.')
+      if (!payload.rois.length) throw new Error('Label mask analysis requires at least one accepted ROI.')
+      const sourceDepth = metadata.depth as RawDepth
+      if (!['char', 'double', 'float', 'int', 'short', 'uchar', 'uint', 'ushort'].includes(sourceDepth)) throw new Error(`Image depth ${metadata.depth} is not supported by the label mask Runner.`)
+      const sourcePages = new Map<number, { raw: Buffer; width: number; height: number; channels: number }>()
+      const maskPagesRaw = new Map<number, Buffer>()
+      const loadSource = async (page: number) => {
+        const existing = sourcePages.get(page); if (existing) return existing
+        const decoded = await sharp(bytes, { page, pages: 1, limitInputPixels: MAX_PIXELS, failOn: 'error' }).raw({ depth: sourceDepth }).toBuffer({ resolveWithObject: true })
+        const info = decoded.info as typeof decoded.info & { depth?: string }
+        if (info.width !== width || info.height !== height || info.channels !== (metadata.channels ?? info.channels) || info.depth !== sourceDepth) throw new Error('Source decoder changed pixel geometry or depth.')
+        const value = { raw: decoded.data, width, height, channels: info.channels }
+        sourcePages.set(page, value); return value
+      }
+      const loadMask = async (page: number) => {
+        const existing = maskPagesRaw.get(page); if (existing) return existing
+        const decoded = await sharp(maskBytes, { page, pages: 1, limitInputPixels: MAX_PIXELS, failOn: 'error' }).raw({ depth: maskDepth }).toBuffer({ resolveWithObject: true })
+        const info = decoded.info as typeof decoded.info & { depth?: string }
+        if (info.width !== width || info.height !== height || info.channels !== maskChannels || info.depth !== maskDepth) throw new Error('Label mask decoder changed pixel geometry or depth.')
+        const sampleBytes = rawDepthBytes(maskDepth); const expectedBytes = width * height * maskChannels * sampleBytes
+        if (decoded.data.byteLength !== expectedBytes) throw new Error('Label mask decoder returned an unexpected buffer length.')
+        if (maskChannels === 3) {
+          const mono = Buffer.alloc(width * height * sampleBytes)
+          for (let pixel = 0; pixel < width * height; pixel++) {
+            const first = readRawSample(decoded.data, pixel * 3 * sampleBytes, maskDepth)
+            for (let channel = 1; channel < 3; channel++) if (readRawSample(decoded.data, pixel * 3 * sampleBytes + channel * sampleBytes, maskDepth) !== first) throw new Error('RGB label mask channels disagree; provide a single-channel or grayscale RGB mask.')
+            decoded.data.copy(mono, pixel * sampleBytes, pixel * 3 * sampleBytes, pixel * 3 * sampleBytes + sampleBytes)
+          }
+          maskPagesRaw.set(page, mono); return mono
+        }
+        maskPagesRaw.set(page, decoded.data); return decoded.data
+      }
+      const perRoi: ImageMaskRoiStatistics[] = []
+      for (const roi of payload.rois) {
+        const sourcePage = await loadSource(roi.page); const maskRaw = await loadMask(roi.page)
+        const bytesPerSource = rawDepthBytes(sourceDepth); const bytesPerMask = rawDepthBytes(maskDepth)
+        const stats = new Map<number, { count: number; sum: number[]; sumSquared: number[]; min: number[]; max: number[] }>()
+        for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+          if (!roiContains(roi, x, y)) continue
+          const maskValue = readRawSample(maskRaw, (y * width + x) * bytesPerMask, maskDepth)
+          if (!Number.isInteger(maskValue) || maskValue < 0) throw new Error(`Label mask contains an invalid value in ROI ${roi.name}.`)
+          if (requested && !requested.includes(maskValue)) continue
+          let item = stats.get(maskValue)
+          if (!item) {
+            if (!requested && stats.size >= 256) throw new Error('Label mask contains more than 256 labels in one ROI; provide an explicit maskLabels subset.')
+            item = { count: 0, sum: Array.from({ length: sourcePage.channels }, () => 0), sumSquared: Array.from({ length: sourcePage.channels }, () => 0), min: Array.from({ length: sourcePage.channels }, () => Number.POSITIVE_INFINITY), max: Array.from({ length: sourcePage.channels }, () => Number.NEGATIVE_INFINITY) }
+            stats.set(maskValue, item)
+          }
+          item.count++
+          const pixelOffset = (y * width + x) * sourcePage.channels * bytesPerSource
+          for (let channel = 0; channel < sourcePage.channels; channel++) {
+            const value = readRawSample(sourcePage.raw, pixelOffset + channel * bytesPerSource, sourceDepth)
+            if (!Number.isFinite(value)) throw new Error(`ROI ${roi.name} contains a non-finite source pixel value.`)
+            item.sum[channel]! += value; item.sumSquared[channel]! += value * value
+            item.min[channel] = Math.min(item.min[channel]!, value); item.max[channel] = Math.max(item.max[channel]!, value)
+          }
+        }
+        const labels: ImageMaskLabelStatistics[] = [...stats.entries()].sort(([a], [b]) => a - b).map(([label, item]) => {
+          const mean = item.sum.map(value => value / item.count)
+          return { label, pixelCount: item.count, channels: sourcePage.channels, sum: item.sum, mean, min: item.min, max: item.max, standardDeviation: item.sum.map((value, channel) => Math.sqrt(Math.max(0, item.sumSquared[channel]! / item.count - mean[channel]! * mean[channel]!))) }
+        })
+        perRoi.push({ roiId: roi.id, name: roi.name, kind: roi.kind, page: roi.page, labels })
+      }
+      const imageMaskAnalysis: ImageMaskAnalysis = { runner: IMAGE_MASK_ANALYSIS_RUNNER, sourceAssetId: asset.id, sourceSha256: sha256, maskAssetId: maskAsset.id, maskSha256, viewerId: viewer.id, viewerVersion: viewer.version, annotationRevisionId: selected.id, sourceWidth: width, sourceHeight: height, sourcePages: pages, maskDepth, requestedLabels: requested, rois: perRoi, notes: ['标签来自独立的单通道无符号整数掩膜；0 标签也会保留，除非通过 maskLabels 排除。', '强度来自源图像原始解码像素，不来自预览 PNG。', '结果是带 ROI 和标签的描述性统计，必须经过科学复核，不构成诊断、治疗效果或生物学结论。'] }
+      const manifest = JSON.stringify({ format: 'zerowall-image-mask-analysis', version: 1, ...imageMaskAnalysis, scientificReview: 'pending' }, null, 2) + '\n'
+      const root = await realpath(project.rootPath); const parentPath = join(root, '.zerowall'); await mkdir(parentPath, { recursive: true }); const parent = await containedFile(root, parentPath); const exportsPath = join(parent, 'science-exports'); await mkdir(exportsPath, { recursive: true }); const destination = join(await containedFile(root, exportsPath), randomUUID()); await mkdir(destination)
+      const manifestPath = join(destination, 'image-mask-analysis.json')
+      try {
+        await writeFile(manifestPath, manifest, { flag: 'wx' }); assertCurrent()
+        const artifact = this.store.createArtifact({ projectId: project.id, name: 'Image label mask analysis', uri: pathToFileURL(manifestPath).href, mediaType: 'application/json', checksum: createHash('sha256').update(manifest).digest('hex'), metadata: { runner: IMAGE_MASK_ANALYSIS_RUNNER, sourceAssetId: asset.id, sourceSha256: sha256, maskAssetId: maskAsset.id, maskSha256, viewerId: viewer.id, viewerVersion: viewer.version, annotationRevisionId: selected.id, scientificReview: 'pending', kind: 'image-mask-analysis' } })
+        return { ...response(), imageMaskAnalysis, artifact }
       } catch (error) { await rm(destination, { recursive: true, force: true }); throw error }
     }
     if (!['image_open', 'image_read', 'image_save'].includes(input.action)) throw new Error('Unsupported image viewer action.')

@@ -66,9 +66,22 @@ export interface ImageAnalysis {
   runner: string; sourceAssetId: string; sourceSha256: string; viewerId: string; viewerVersion: number; annotationRevisionId: string
   sourceWidth: number; sourceHeight: number; sourcePages: number; calibration: ImageCoordinates['calibration']; rois: ImageRoiStatistics[]; notes: string[]
 }
+export interface ImageMaskLabelStatistics {
+  label: number; pixelCount: number; channels: number
+  sum: number[]; mean: number[]; min: number[]; max: number[]; standardDeviation: number[]
+}
+export interface ImageMaskRoiStatistics {
+  roiId: string; name: string; kind: ImageRoi['kind']; page: number; labels: ImageMaskLabelStatistics[]
+}
+export interface ImageMaskAnalysis {
+  runner: string; sourceAssetId: string; sourceSha256: string; maskAssetId: string; maskSha256: string
+  viewerId: string; viewerVersion: number; annotationRevisionId: string
+  sourceWidth: number; sourceHeight: number; sourcePages: number; maskDepth: string
+  requestedLabels: number[] | null; rois: ImageMaskRoiStatistics[]; notes: string[]
+}
 export interface ScienceViewerRequest {
   sessionId: string
-  action: 'list' | 'open' | 'read' | 'save' | 'analyze' | 'export' | 'launch_native' | 'native_status' | 'image_open' | 'image_read' | 'image_save' | 'image_analyze' | 'annotation_save' | 'annotation_export' | 'annotation_import' | 'annotation_launch' | 'annotation_collect' | 'sanger_open' | 'sanger_analyze' | 'sanger_export' | 'sanger_review' | 'flow_open' | 'flow_analyze' | 'flow_export' | 'he_open' | 'he_analyze' | 'he_export' | 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view' | 'brain_open' | 'brain_read' | 'brain_analyze' | 'brain_export' | 'brain_cells' | 'brain_trajectory' | 'brain_register' | 'brain_cellfinder' | 'brain_render' | 'canvas_render' | 'canvas_export'
+  action: 'list' | 'open' | 'read' | 'save' | 'analyze' | 'export' | 'launch_native' | 'native_status' | 'image_open' | 'image_read' | 'image_save' | 'image_analyze' | 'image_mask_analyze' | 'annotation_save' | 'annotation_export' | 'annotation_import' | 'annotation_launch' | 'annotation_collect' | 'sanger_open' | 'sanger_analyze' | 'sanger_export' | 'sanger_review' | 'flow_open' | 'flow_analyze' | 'flow_export' | 'he_open' | 'he_analyze' | 'he_export' | 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view' | 'brain_open' | 'brain_read' | 'brain_analyze' | 'brain_export' | 'brain_cells' | 'brain_trajectory' | 'brain_register' | 'brain_cellfinder' | 'brain_render' | 'canvas_render' | 'canvas_export'
   sanger?: SangerRequest
   flow?: FlowRequest
   he?: HeRequest
@@ -95,6 +108,8 @@ export interface ScienceViewerRequest {
   imageState?: ImageViewState
   annotation?: { expectedRevisionId: string | null; payload: ImageAnnotations }
   annotationRevisionId?: string
+  maskAssetId?: string
+  maskLabels?: number[]
   importAssetId?: string
   embedding?: string; embeddingLimit?: number; gene?: string; cellLimit?: number; groupBy?: string
   cellSelection?: CellSelection | null
@@ -115,6 +130,7 @@ export interface ScienceViewerResponse {
   annotationHead?: AnnotationRevisionRecord
   annotationSave?: AnnotationSaveResult
   imageAnalysis?: ImageAnalysis
+  imageMaskAnalysis?: ImageMaskAnalysis
   sanger?: SangerResponse
   flow?: FlowResponse
   he?: HeResponse

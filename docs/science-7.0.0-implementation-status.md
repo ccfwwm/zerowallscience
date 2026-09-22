@@ -239,6 +239,14 @@ This establishes an HE input/ROI baseline only. It is insufficient evidence for 
 - 检查结果分为 `usable`、`pending`、`not-applicable`，其中 `usable` 只说明声明的契约字段齐全，不证明实际变量值、下载内容、调查设计或模型结果正确。多周期不会触发通用“除以周期数”规则，预览截断和组件/权重冲突会阻断分析。
 - 新增三项确定性契约测试并通过 Research Host 类型检查。它已接入 `research_study`，可在肥胖—脱发方案冻结前形成可追踪的适用性证据；真实远程 R survey 运行、独立参考数值和官方代码本核对仍待完成。
 
+## 2026-09-22 continuation: traceable image label-mask analysis
+
+- 新增 `zerowall-image-mask/7.0.0-1` 确定性 Runner，并接入 `science_viewer` 的 `image_mask_analyze` 操作。工作台现在可以选择项目内登记的独立掩膜资产，输入可选标签集合，按已接受 ROI 对每个整数标签计算像素数、总和、均值、最小值、最大值和总体标准差。
+- Runner 对源图与掩膜进行 SHA-256、宽高、页数、通道和无符号整数深度校验；不允许静默缩放、配准、透明度解释或 RGB 通道不一致的掩膜。结果 Artifact 保存源/掩膜资产、哈希、Viewer 版本、ROI 修订、Runner 版本、参数和 `scientificReview: pending`。
+- UI 已展示每个 ROI/标签的统计表、限制说明、Artifact URI 和校验值；未选择掩膜、存在未保存标注或输入非法标签时阻断提交。新增 UI 回归覆盖标签筛选、结果展示和未选择掩膜的阻断。
+
+验证：图像 Host、工作台 UI 和 Skill 绑定定向测试通过。该能力是描述性标签分层统计，不等同于分割质量评估、细胞分类、诊断或治疗效果；OME-Zarr/金字塔分块、大规模掩膜性能和 Fiji 原生标签回传仍待独立适配。
+
 ## 2026-09-22 continuation: managed BrainGlobe capability probe
 
 - `probeScientificEngines` 不再静态返回 BrainGlobe 能力；当配置 `ZEROWALL_BRAINGLOBE_PYTHON` 时，会在独立 Python 中探测 `brainglobe-atlasapi`、`brainreg`、`cellfinder`、`brainrender` 的版本，并明确缺失组件、退出码、超时和不可解析输出。

@@ -31,7 +31,7 @@ export const researchToolConfig = {
     ['zerowall-mr', ['r-compute', 'r-files']], ['zerowall-colocalization', ['r-compute', 'r-files']],
     ['zerowall-intervention-response', ['omicverse', 'r-compute']], ['zerowall-fiji', ['science-viewer', 'r-files', 'r-compute']],
     ['zerowall-napari', ['science-viewer', 'r-files']], ['zerowall-brainglobe', ['r-compute', 'r-files']],
-    ['zerowall-image-intensity', ['science-viewer']],
+    ['zerowall-image-intensity', ['science-viewer']], ['zerowall-image-mask', ['science-viewer']],
     ['zerowall-cells', ['science-viewer', 'r-files', 'omicverse']],
     ['zerowall-he', ['r-compute', 'r-files']], ['zerowall-sanger', ['r-files']],
     ['zerowall-flow', ['r-compute', 'r-files']], ['zerowall-sequence', ['science-viewer', 'r-files']],

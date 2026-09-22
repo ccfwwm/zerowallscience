@@ -165,3 +165,32 @@ it('blocks intensity analysis without an accepted ROI revision and after a stale
   await expect(execute({ action: 'image_analyze', viewerId: opened.viewer!.id, expectedVersion: 1 })).rejects.toThrow('accepted annotation revision')
   await expect(execute({ action: 'image_analyze', viewerId: opened.viewer!.id, expectedVersion: 2 })).rejects.toThrow('current 1')
 })
+
+it('computes traceable per-label mask statistics from a separate integer mask asset', async () => {
+  const { store, project, opened, execute } = await intensityFixture([1, 2, 3, 4, 5, 6, 7, 8, 9], 3, 3)
+  const maskPath = join(project.rootPath, 'labels.tif')
+  const maskValues = Buffer.from([0, 1, 1, 0, 2, 2, 1, 2, 0])
+  await sharp(maskValues, { raw: { width: 3, height: 3, channels: 1 } }).tiff({ compression: 'none' }).toFile(maskPath)
+  const mask = store.createDataAsset({ projectId: project.id, name: 'Labels', uri: pathToFileURL(maskPath).href, location: 'local', mediaType: 'image/tiff' })
+  const payload = { coordinates: opened.image!.coordinates, rois: [{ id: 'all', name: 'all pixels', kind: 'rectangle', page: 0, x: 0, y: 0, width: 3, height: 3 }] }
+  await execute({ action: 'annotation_save', viewerId: opened.viewer!.id, expectedVersion: 1, annotation: { expectedRevisionId: null, payload } })
+  const result = await execute({ action: 'image_mask_analyze', viewerId: opened.viewer!.id, expectedVersion: 1, maskAssetId: mask.id, maskLabels: [1, 2] })
+  expect(result.imageMaskAnalysis).toMatchObject({ runner: 'zerowall-image-mask/7.0.0-1', sourceWidth: 3, sourceHeight: 3, maskAssetId: mask.id, requestedLabels: [1, 2], annotationRevisionId: expect.any(String) })
+  expect(result.imageMaskAnalysis!.rois[0]!.labels).toEqual([
+    expect.objectContaining({ label: 1, pixelCount: 3, sum: [12, 12, 12] }),
+    expect.objectContaining({ label: 2, pixelCount: 3, sum: [19, 19, 19] }),
+  ])
+  expect(result.artifact).toMatchObject({ metadata: { kind: 'image-mask-analysis', scientificReview: 'pending', maskAssetId: mask.id } })
+  const manifest = JSON.parse(await readFile(fileURLToPath(result.artifact!.uri), 'utf8'))
+  expect(manifest).toMatchObject({ format: 'zerowall-image-mask-analysis', sourceAssetId: result.imageMaskAnalysis!.sourceAssetId, maskSha256: result.imageMaskAnalysis!.maskSha256, scientificReview: 'pending' })
+})
+
+it('rejects RGB masks and mismatched mask geometry', async () => {
+  const { store, project, opened, execute } = await intensityFixture([1, 2, 3, 4], 2, 2)
+  const maskPath = join(project.rootPath, 'bad-mask.png')
+  await sharp({ create: { width: 3, height: 2, channels: 3, background: '#ffffff' } }).png().toFile(maskPath)
+  const mask = store.createDataAsset({ projectId: project.id, name: 'Bad labels', uri: pathToFileURL(maskPath).href, location: 'local', mediaType: 'image/png' })
+  const payload = { coordinates: opened.image!.coordinates, rois: [{ id: 'all', name: 'all pixels', kind: 'rectangle', page: 0, x: 0, y: 0, width: 2, height: 2 }] }
+  await execute({ action: 'annotation_save', viewerId: opened.viewer!.id, expectedVersion: 1, annotation: { expectedRevisionId: null, payload } })
+  await expect(execute({ action: 'image_mask_analyze', viewerId: opened.viewer!.id, expectedVersion: 1, maskAssetId: mask.id })).rejects.toThrow('geometry or page count')
+})
