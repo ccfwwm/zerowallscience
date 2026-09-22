@@ -84,13 +84,17 @@ allowed-tools: tool_search tool_dispatch read
 
 ensure.available 可启动下载，虽无 confirm 也不是 query。datasets.ensure_available=true 同样可能写缓存；此类分析使用 run。
 
-下载终态成功后，计算 2017–2018 年龄的访谈权重均值：
+正式研究分析通过 `research_study` 的 `run_nhanes_survey` 执行。先登记 DatasetContract、研究任务和 AnalysisPlan；工作台“研究计划”页也能选择同一记录并执行。
 
 ```json
-{"name":"research_workflow","arguments":{"action":"run","workflow_id":"r.nhanes","parameters":{"operation":"r.nhanes.survey.summary","arguments":{"project_id":"rmcp-demo","datasets":[{"cycle":"2017-2018","domain":"Demographics","dataset":"DEMO_J","ensure_available":false}],"variable":"RIDAGEYR","weight":"WTINT2YR","strata":"SDMVSTRA","psu":"SDMVPSU"},"request_id":"demo-nhanes-age-summary-1"}}}
+{"name":"research_study","arguments":{"action":"run_nhanes_survey","study_id":"<study-id>","contract_id":"<saved-contract-id>","plan_id":"<saved-plan-id>","task_id":"<plan-task-id>","expected_revision":1,"request_id":"<stable-request-id>"}}
 ```
 
-该操作同步返回统计结果，检查 `result` 的样本数、加权估计与标准误，远程 `job_id` 可以为空。访谈变量使用访谈权重；MEC 指标和子样本实验指标必须选择相应权重。若列缺失，先用 `r.nhanes.describe.dataset` 核对周期和变量；若出现孤立 PSU 或非正权重，检查纳排和设计设置，不自动改成无权分析。
+以上 ID 与版本必须替换为真实登记记录。计划的 `inputs` 首版仅引用本次契约，`taskIds` 包含任务 ID，`nhanesSurvey` 为 `{ "kind":"summary", "variable":"RIDAGEYR" }` 或 `{ "kind":"regression", "outcome":"…", "predictors":["…"], "family":"gaussian" }`，并保存 `method`、`stoppingConditions`、`exploratory`。任务的探索身份必须与计划一致。验证任务须经人工门禁一且计划、契约与冻结快照一致。
+
+契约必须记录 `applicability=usable`、`sourceStatus=supported`、真实 `source`、`fullDataset=true`、`previewTruncated=false`。`datasets` 每项含周期、component、dataset、weight、codebook；设计含明确的 key、weight、strata、psu、availableVariables、specialMissingCodes（无特殊码也显式 []）、isolatedPsuHandling、lonelyPsu。多组件说明 `componentWeightRationale`；多周期选 `cycleStrategy`，正式合并还要 `combinedWeightSource` 与逐周期 `cycleWeightMultipliers`。子人群用 `domainDesign=survey-domain`、可读 `domainExpression` 和 `{variable,operator,value}` 数组 `surveyDomain`，只支持 eq/gte/lte；不能预过滤原始样本后伪装完整调查设计。DXX_H 必须在代码本年龄范围内，并显式应用 RIDAGEYR 下限和上限。Unknown 信息不能补写成已验证。
+
+Host 将这些记录编译成 `7.0.0-nhanes-survey.1` 严格契约，通过现有 `r.nhanes` 执行。该操作同步返回统计结果，远程 job ID 可以为空，但本地 Run、manifest Artifact 和待复核 evidence 必须实存。后端未认证严格契约时保留产物、禁止登记为已完成分析。访谈变量使用访谈权重；MEC 指标和子样本实验指标必须选择相应权重。若列缺失，先用 `r.nhanes.describe.dataset` 核对周期和变量；若出现孤立 PSU 或非正权重，检查纳排和设计设置，不自动改成无权分析。同步成功不等于科学批准，允许主张仅为加权描述或观察性关联。
 
 异步任务的 queued/running 不是成功。只有终态 succeeded 且所需产物存在才报告完成；使用结果内 Manifest 的 project_id/path/bytes/sha256 下载。连接中断先查 status/历史，不换 request_id 重算。参数错回 describe；数据错核对路径、物种和矩阵；缺依赖查环境；权限错返回明确原因；计算错查看日志。
 

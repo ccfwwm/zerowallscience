@@ -2,6 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import {
   type ArtifactRecord, type AuditEventRecord, type CreateArtifactInput, type CreateDataAssetInput,
   type CreateDecisionInput, type CreateExecutionContextInput, type CreatePaperInput, type CreateResearchEdgeInput,
@@ -19,8 +20,13 @@ import { ResearchStore } from '@zerowallscience/research-store'
 import type {} from 'zod'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { assemblySessionId, researchContextText } from './research-context.js'
+import { installResearchRuntimeProvenance } from './runtime-provenance.js'
 import { evaluateMethod } from './method-check.js'
 import { validateNhanesContract } from './nhanes-contract.js'
+import { NhanesSurveyService } from './nhanes-runner.js'
+import { GeneticAnalysisService, type GeneticWorkflow } from './genetic-runner.js'
+import { PILOT_VERSION, PilotEvaluationService, type PilotSpec } from './pilot-evaluation.js'
+import type { NhanesSurveyRequest, GeneticAnalysisRequest, GeneticRefreshRequest } from '../shared/types.js'
 import { validateGeneticContract } from './genetic-contract.js'
 import { OBESITY_ALOPECIA_RECON_QUERIES, buildReconFindings, buildReconRecord, summarizeReconRemoteRuns } from './obesity-alopecia-recon.js'
 import { ScienceViewerService } from './science-viewer.js'
@@ -30,8 +36,13 @@ import { FijiExperimentService } from './fiji-experiments.js'
 import { SangerService } from './sanger.js'
 import { FlowService } from './flow.js'
 import { HeService } from './he.js'
+import { MoleculeService } from './molecule.js'
+import { MoleculeDockingService } from './molecule-docking.js'
+import type { MoleculeDockingRequest } from '../shared/molecule-docking.js'
+import type { MoleculeRequest } from '../shared/types.js'
 import { CanvasService } from './canvas.js'
 import { ReportService } from './report.js'
+import { registerLocalAsset } from './local-assets.js'
 import { CellViewerService } from './cell-viewer.js'
 import { BrainAtlasService } from './brain-atlas.js'
 import type { CanvasRequest, FijiExperimentRequest, FijiExperimentResponse, FlowRequest, HeRequest, SangerRequest } from '../shared/types.js'
@@ -39,7 +50,7 @@ import type { FijiWorkflowRequest, FijiWorkflowResponse } from '../shared/types.
 import { engineEnvironment, engineExecutable, NativeEngineService } from './native-engines.js'
 import { readFile, stat, access } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
-import { relative, resolve } from 'node:path'
+import { basename, isAbsolute, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ScientificPreviewPayload, ScientificEngineLaunchResult, ScientificEngineStatus, ScienceViewerRequest, ScienceViewerResponse, CellViewerRequest, BrainAtlasRequest } from '../shared/types.js'
 
@@ -49,7 +60,7 @@ export const inject = ['tools'] as const
 declare module '@deepseek-ai/cordis' {
   interface Context { zerowallResearch: ZeroWallResearchService }
   interface Context { localScienceWorkflow: LocalScienceWorkflow }
-  interface Context { researchWorkflow?: { get(): { run(id: string, parameters: JsonObject, exec: ToolRunContext): Promise<JsonObject> } } }
+  interface Context { researchWorkflow?: { get(): GeneticWorkflow } }
 }
 
 export class ZeroWallResearchService extends TypertRemoteService {
@@ -62,16 +73,22 @@ export class ZeroWallResearchService extends TypertRemoteService {
   private readonly sanger: SangerService
   private readonly flow: FlowService
   private readonly he: HeService
+  private readonly molecule: MoleculeService
+  private readonly docking: MoleculeDockingService
   private readonly canvas: CanvasService
   private readonly reports: ReportService
   private readonly cells: CellViewerService
   private readonly brain: BrainAtlasService
+  private readonly nhanes: NhanesSurveyService
+  private readonly genetics: GeneticAnalysisService
+  private readonly pilot: PilotEvaluationService
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallResearch')
     const path = process.env.ZEROWALL_RESEARCH_DB?.trim()
     if (!path) throw new Error('ZEROWALL_RESEARCH_DB is required.')
     this.store = new ResearchStore(path)
+    this.pilot = new PilotEvaluationService(this.store)
     this.viewer = new ScienceViewerService(this.store)
     this.nativeEngines = new NativeEngineService(this.store)
     this.imageViewer = new ImageViewerService(this.store, this.nativeEngines)
@@ -80,16 +97,29 @@ export class ZeroWallResearchService extends TypertRemoteService {
     this.sanger = new SangerService(this.store)
     this.flow = new FlowService(this.store)
     this.he = new HeService(this.store)
+    this.molecule = new MoleculeService(this.store)
+    this.docking = new MoleculeDockingService(this.store, () => this.ctx.get('researchWorkflow')?.get(), async (input, exec) => {
+      const result = await this.ctx.tools.execute({ name: 'r_files', arguments: { action: input.action, project_id: input.projectId, remote_path: input.remotePath, local_path: input.localPath, ...(input.action === 'upload_workspace' ? { confirm: true } : {}) }, callId: ToolCallId(`docking-files-${Date.now()}`), signal: exec.signal, parent: exec.token, ...(exec.agent ? { agent: exec.agent } : {}) })
+      if (result.isError) throw new Error(result.content.map(item => item.type === 'text' ? item.text : '').filter(Boolean).join('\n') || 'Docking file transfer failed.')
+      return result.value as JsonObject
+    })
     this.canvas = new CanvasService(this.store)
     this.reports = new ReportService(this.store)
     this.cells = new CellViewerService(this.store)
     this.brain = new BrainAtlasService(this.store)
+    this.nhanes = new NhanesSurveyService(this.store, () => this.ctx.get('researchWorkflow')?.get())
+    this.genetics = new GeneticAnalysisService(this.store, () => this.ctx.get('researchWorkflow')?.get(), async (input, exec) => {
+      const result = await this.ctx.tools.execute({ name: 'r_files', arguments: { action: 'download_workspace', project_id: input.projectId, remote_path: input.remotePath, local_path: input.localPath }, callId: ToolCallId(`genetics-files-${Date.now()}`), signal: exec.signal, parent: exec.token, ...(exec.agent ? { agent: exec.agent } : {}) })
+      if (result.isError) throw new Error(result.content.map(item => item.type === 'text' ? item.text : '').filter(Boolean).join('\n') || 'Genetics artifact download failed.')
+      return result.value as JsonObject
+    })
+    installResearchRuntimeProvenance(ctx, this.store, sessionId => this.getActiveResearchStudy({ sessionId }))
     ctx.provide('localScienceWorkflow', {
       list: () => ({ workflow_id: 'fiji', skill: 'zerowall-fiji', operation_count: 5, location: 'local' }),
       describe: operation => {
         const id = operation ?? 'fiji.western-blot'
         if(!['fiji.western-blot','fiji.scratch-wound','fiji.colony-formation','fiji.bacterial-cfu','fiji.tube-formation'].includes(id)) throw new Error('UNKNOWN_LOCAL_OPERATION')
-        return id === 'fiji.western-blot' ? { workflow_id: 'fiji', id, skill: 'zerowall-fiji-western-blot', location: 'local', runner_version: 1, summary: 'ImageJ raw grayscale blot quantification with ROI/background/saturation/loading/control audit', parameters: { request_id: 'Stable idempotency key', operation: id, arguments: { viewerId: 'Image viewer ID', expectedVersion: 'Current viewer integer revision', annotationRevisionId: 'Current accepted ROI revision ID', plan: { polarity: 'dark|bright', saturation: { lower: 'number', upper: 'number', source: 'acquisition specification' }, normalization: 'none|housekeeping|total-protein', controlGroup: 'group name or null', lanes: [{ sampleId: 'unique lane ID', biologicalReplicate: 'actual biological replicate', group: 'group name', bandRoiId: 'ROI ID', backgroundRoiId: 'ROI ID', loadingRoiId: 'required when normalized', loadingBackgroundRoiId: 'required when normalized' }] } } } } : { workflow_id: 'fiji', id, skill: 'zerowall-fiji', location: 'local', runner_version: 1, summary: id === 'fiji.bacterial-cfu' ? 'Deterministic CFU metrics plus optional project-local grayscale ROI colony segmentation' : 'Deterministic traceable Fiji experiment metric runner; image segmentation remains linked through the calling run.', parameters: { request_id: 'Stable idempotency key', operation: id, arguments: { measurements: 'Array of experiment-specific measurements with explicit sample/time/well/plate identifiers and units.', sourceAssetId: 'Required for bacterial-cfu image mode.', image: 'bacterial-cfu only: ROI, threshold, polarity, min/max component area, dilution and plated volume.' } } }
+        return id === 'fiji.western-blot' ? { workflow_id: 'fiji', id, skill: 'zerowall-fiji-western-blot', location: 'local', runner_version: 1, summary: 'ImageJ raw grayscale blot quantification with ROI/background/saturation/loading/control audit', parameters: { request_id: 'Stable idempotency key', operation: id, arguments: { viewerId: 'Image viewer ID', expectedVersion: 'Current viewer integer revision', annotationRevisionId: 'Current accepted ROI revision ID', plan: { polarity: 'dark|bright', saturation: { lower: 'number', upper: 'number', source: 'acquisition specification' }, normalization: 'none|housekeeping|total-protein', controlGroup: 'group name or null', lanes: [{ sampleId: 'unique lane ID', biologicalReplicate: 'actual biological replicate', group: 'group name', bandRoiId: 'ROI ID', backgroundRoiId: 'ROI ID', loadingRoiId: 'required when normalized', loadingBackgroundRoiId: 'required when normalized' }] } } } } : { workflow_id: 'fiji', id, skill: 'zerowall-fiji', location: 'local', runner_version: 1, summary: id === 'fiji.bacterial-cfu' ? 'Deterministic CFU metrics plus optional project-local grayscale ROI colony segmentation' : 'Deterministic traceable Fiji experiment metric runner; image segmentation remains linked through the calling run.', parameters: { request_id: 'Stable idempotency key', operation: id, arguments: { measurements: 'Array of experiment-specific measurements with explicit sample/time/well/plate identifiers and units.', sourceAssetId: 'Required for image mode.', image: 'Declared experiment kind, ROI, threshold, polarity and experiment-specific metadata: scratch initial area/time, colony calibrated area, CFU dilution/volume, or tube scale.' } } }
       },
       execute: async (sessionId,action,parameters,runId) => {
         if(action === 'run' && typeof parameters.operation === 'string' && parameters.operation !== 'fiji.western-blot') {
@@ -97,6 +127,11 @@ export class ZeroWallResearchService extends TypertRemoteService {
           const project = this.projectForSession({ sessionId }); if (!project) throw new Error('An active registered project session is required.')
           const args = requireJsonObject(parameters.arguments)
           const result = await this.fijiExperiments.execute(project, { sessionId, action: 'analyze', experiment, requestId: String(parameters.request_id ?? ''), ...(args.measurements === undefined ? {} : { measurements: requireJsonArray(args.measurements).map(requireJsonObject) }), ...(args.sourceAssetId === undefined ? {} : { sourceAssetId: String(args.sourceAssetId) }), ...(args.image === undefined ? {} : { image: requireJsonObject(args.image) as any }) })
+          return JSON.parse(JSON.stringify({ workflow_id: 'fiji', run_id: result.run?.id, status: result.run?.status, ...result })) as JsonObject
+        }
+        if (runId && action !== 'run' && this.store.getRun(runId)?.leaseOwner === 'fiji-experiment') {
+          const project = this.projectForSession({ sessionId }); if (!project) throw new Error('An active registered project session is required.')
+          const result = action === 'cancel' ? await this.fijiExperiments.cancel(project, runId) : await this.fijiExperiments.status(project, runId)
           return JSON.parse(JSON.stringify({ workflow_id: 'fiji', run_id: result.run?.id, status: result.run?.status, ...result })) as JsonObject
         }
         const args = action === 'run' ? requireJsonObject(parameters.arguments) : {}
@@ -134,7 +169,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
         })
       }
     })
-    ctx.effect(() => () => { this.fijiWorkflows.dispose(); this.nativeEngines.dispose(); this.store.close() }, 'zerowall-research: close research store')
+    ctx.effect(() => () => { this.he.dispose(); this.fijiExperiments.dispose(); this.fijiWorkflows.dispose(); this.nativeEngines.dispose(); this.store.close() }, 'zerowall-research: close research store')
   }
 
   @Remote('createExecutionContext') createExecutionContext(input: CreateExecutionContextInput): ExecutionContextRecord { return this.store.createExecutionContext(input) }
@@ -148,6 +183,18 @@ export class ZeroWallResearchService extends TypertRemoteService {
     if (!project) throw new Error('An active registered project session is required.')
     return this.fijiExperiments.execute(project, input)
   }
+  async executeMoleculeDocking(input: MoleculeDockingRequest, exec: ToolRunContext): Promise<JsonObject> {
+    const sessionId = String(exec.agent?.session.id ?? '')
+    if (sessionId !== input.sessionId) throw new Error('Docking request session does not match the execution context.')
+    const project = this.projectForSession({ sessionId })
+    if (!project) throw new Error('An active registered project session is required.')
+    return this.docking.execute(project, input, exec)
+  }
+  @Remote('moleculeDocking') async moleculeDocking(input: MoleculeDockingRequest): Promise<JsonObject> {
+    const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
+    if (!session) throw new Error('An active session is required.')
+    return this.executeMoleculeDocking(input, { agent: { session }, callId: `rpc:docking:${input.requestId ?? input.runId ?? 'list'}`, signal: new AbortController().signal } as unknown as ToolRunContext)
+  }
   @Remote('scienceViewer') async scienceViewer(input: ScienceViewerRequest): Promise<ScienceViewerResponse> {
     const project = this.projectForSession({ sessionId: input.sessionId })
     if (!project) throw new Error('An active registered project session is required.')
@@ -160,6 +207,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
       const request: SangerRequest = { ...(input.sanger ?? {}), sessionId: input.sessionId, action: input.action.slice(7) as SangerRequest['action'] }
       if (input.assetId !== undefined) request.assetId = input.assetId
       if (input.viewerId !== undefined) request.viewerId = input.viewerId
+      if (input.expectedReverseVersion !== undefined) request.expectedReverseVersion = input.expectedReverseVersion
       if (input.reverseViewerId !== undefined) request.reverseViewerId = input.reverseViewerId
       if (input.expectedVersion !== undefined) request.expectedVersion = input.expectedVersion
       if (input.threshold !== undefined) request.threshold = input.threshold
@@ -169,6 +217,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     }
     if (input.action.startsWith('flow_')) {
       const request: FlowRequest = { ...(input.flow ?? {}), sessionId: input.sessionId, action: input.action.slice(5) as FlowRequest['action'] }
+      if (input.importAssetId !== undefined) request.importAssetId = input.importAssetId
       if (input.assetId !== undefined) request.assetId = input.assetId
       if (input.viewerId !== undefined) request.viewerId = input.viewerId
       if (input.expectedVersion !== undefined) request.expectedVersion = input.expectedVersion
@@ -186,6 +235,13 @@ export class ZeroWallResearchService extends TypertRemoteService {
       if (input.expectedVersion !== undefined) request.expectedVersion = input.expectedVersion
       if (input.region !== undefined) request.region = input.region
       return { he: await this.he.execute(project, request) }
+    }
+    if (input.action.startsWith('molecule_')) {
+      const request: MoleculeRequest = { ...(input.molecule ?? {}), sessionId: input.sessionId, action: input.action.slice(9) as MoleculeRequest['action'] }
+      if (input.assetId !== undefined) request.assetId = input.assetId
+      if (input.viewerId !== undefined) request.viewerId = input.viewerId
+      if (input.expectedVersion !== undefined) request.expectedVersion = input.expectedVersion
+      return { molecule: await this.molecule.execute(project, request) }
     }
     if (input.action.startsWith('canvas_')) {
       if (!input.canvas) throw new Error('A canvas specification is required.')
@@ -235,6 +291,11 @@ export class ZeroWallResearchService extends TypertRemoteService {
   }
   @Remote('listExecutionContexts') listExecutionContexts(projectId: string): ExecutionContextRecord[] { return this.store.listExecutionContexts(projectId) }
   @Remote('createDataAsset') createDataAsset(input: CreateDataAssetInput): DataAssetRecord { return this.store.createDataAsset(input) }
+  @Remote('registerLocalAsset') async registerLocalAsset(input: { sessionId: string; path: string }): Promise<DataAssetRecord> {
+    const project = this.projectForSession(input)
+    if (!project) throw new Error('Register the current workspace before adding assets.')
+    return registerLocalAsset(this.store, project, input.path)
+  }
   @Remote('listDataAssets') listDataAssets(projectId: string): DataAssetRecord[] { return this.store.listDataAssets(projectId) }
   @Remote('createRun') createRun(input: CreateRunInput): RunRecord { return this.store.createRun(input) }
   @Remote('updateRun') updateRun(input: { id: string; changes: UpdateRunChanges }): RunRecord { return this.store.updateRun(input.id, input.changes) }
@@ -256,7 +317,24 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('createResearchDocument') createResearchDocument(input: CreateResearchDocumentInput): ResearchDocumentRecord { return this.store.createResearchDocument(input) }
   @Remote('getResearchDocument') getResearchDocument(documentId: string): ResearchDocumentRecord | undefined { return this.store.getResearchDocument(documentId) }
   @Remote('listResearchDocuments') listResearchDocuments(input: { studyId: string; kind?: ResearchRecordKind }): ResearchDocumentRecord[] { return this.store.listResearchDocuments(input.studyId, input.kind) }
-  @Remote('updateResearchDocument') updateResearchDocument(input: { id: string; changes: UpdateResearchDocumentInput }): ResearchDocumentRecord { return this.store.updateResearchDocument(input.id, input.changes) }
+  @Remote('updateResearchDocument') updateResearchDocument(input: { id: string; changes: UpdateResearchDocumentInput }): ResearchDocumentRecord {
+    if (this.store.getResearchDocument(input.id)?.payload.schema === PILOT_VERSION || input.changes.payload.schema === PILOT_VERSION) throw new Error('Frozen pilot evaluations can only be changed by the pilot service.')
+    return this.store.updateResearchDocument(input.id, input.changes)
+  }
+  @Remote('pilotEvaluation') pilotEvaluation(input: { sessionId: string; studyId: string; action: 'catalog' | 'list' | 'freeze' | 'summary'; evaluationId?: string; spec?: JsonObject }): JsonObject {
+    const project = this.projectForSession({ sessionId: input.sessionId })
+    const study = this.store.getResearchStudy(input.studyId)
+    if (!project || !study || study.projectId !== project.id) throw new Error('Pilot study is not in the active project.')
+    let response: unknown
+    if (input.action === 'catalog') response = this.pilot.catalog()
+    else if (input.action === 'list') response = { evaluations: this.store.listResearchDocuments(study.id, 'evaluation').filter(doc => doc.payload.schema === PILOT_VERSION).map(doc => this.pilot.summary(project.id, doc.id)) }
+    else if (input.action === 'freeze') response = this.pilot.freeze(project.id, study.id, input.spec as unknown as PilotSpec)
+    else if (input.action === 'summary') {
+      if (this.store.getResearchDocument(input.evaluationId ?? '')?.studyId !== study.id) throw new Error('Pilot evaluation is not in the active study.')
+      response = this.pilot.summary(project.id, input.evaluationId ?? '')
+    } else throw new Error('Unsupported pilot action.')
+    return JSON.parse(JSON.stringify(response)) as JsonObject
+  }
   @Remote('validateAnalysisPlan') validateAnalysisPlan(planId: string): ResearchDocumentRecord { return this.store.validateAnalysisPlan(planId) }
   @Remote('methodCheckEvaluate') methodCheckEvaluate(input: { studyId: string; method: string; assumptions?: JsonObject }): JsonObject {
     const study = this.store.getResearchStudy(input.studyId)
@@ -280,6 +358,37 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('validateNhanesContract') validateNhanesContractRemote(input: { studyId: string; contract: JsonObject }): JsonObject {
     if (!this.store.getResearchStudy(input.studyId)) throw new Error('Research study was not found.')
     return { studyId: input.studyId, ...validateNhanesContract(input.contract), checkedAt: new Date().toISOString() }
+  }
+  async runNhanesSurvey(input: NhanesSurveyRequest, exec: ToolRunContext): Promise<JsonObject> {
+    const project = this.projectForSession({ sessionId: String(exec.agent?.session.id ?? '') })
+    if (!project) throw new Error('An active registered project session is required.')
+    return this.nhanes.execute(project, input, exec)
+  }
+  @Remote('runNhanesSurvey') async runNhanesSurveyRemote(input: NhanesSurveyRequest & { sessionId: string }): Promise<JsonObject> {
+    const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
+    if (!session) throw new Error('An active session is required.')
+    const exec = { agent: { session }, callId: `rpc:nhanes-survey:${input.requestId}`, rootCallId: `rpc:nhanes-survey:${input.requestId}`, signal: new AbortController().signal } as unknown as ToolRunContext
+    return this.runNhanesSurvey(input, exec)
+  }
+  async runGeneticAnalysis(input: GeneticAnalysisRequest, exec: ToolRunContext): Promise<JsonObject> {
+    const project = this.projectForSession({ sessionId: String(exec.agent?.session.id ?? '') })
+    if (!project) throw new Error('An active registered project session is required.')
+    return this.genetics.execute(project, input, exec)
+  }
+  async refreshGeneticAnalysis(input: GeneticRefreshRequest, exec: ToolRunContext): Promise<JsonObject> {
+    const project = this.projectForSession({ sessionId: String(exec.agent?.session.id ?? '') })
+    if (!project) throw new Error('An active registered project session is required.')
+    return this.genetics.refresh(project, input, exec)
+  }
+  @Remote('runGeneticAnalysis') async runGeneticAnalysisRemote(input: GeneticAnalysisRequest & { sessionId: string }): Promise<JsonObject> {
+    const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
+    if (!session) throw new Error('An active session is required.')
+    return this.runGeneticAnalysis(input, { agent: { session }, callId: `rpc:genetics:${input.requestId}`, signal: new AbortController().signal } as unknown as ToolRunContext)
+  }
+  @Remote('refreshGeneticAnalysis') async refreshGeneticAnalysisRemote(input: GeneticRefreshRequest & { sessionId: string }): Promise<JsonObject> {
+    const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
+    if (!session) throw new Error('An active session is required.')
+    return this.refreshGeneticAnalysis(input, { agent: { session }, callId: `rpc:genetics-refresh:${input.runId}`, signal: new AbortController().signal } as unknown as ToolRunContext)
   }
   @Remote('validateGeneticContract') validateGeneticContractRemote(input: { studyId: string; contract: JsonObject }): JsonObject {
     if (!this.store.getResearchStudy(input.studyId)) throw new Error('Research study was not found.')
@@ -322,7 +431,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     const responses: Array<{ query: (typeof OBESITY_ALOPECIA_RECON_QUERIES)[number]; response?: unknown; error?: string; remote?: JsonObject }> = []
     for (const query of OBESITY_ALOPECIA_RECON_QUERIES) {
       try {
-        const remote = await workflow.run('r.nhanes.search.variables', {
+        const remote = await workflow.run('r.nhanes', {
           operation: 'r.nhanes.search.variables',
           request_id: `obesity-alopecia-recon-${study.id}-${query.key}`,
           arguments: { q: query.query, limit: 100 },
@@ -404,6 +513,18 @@ export class ZeroWallResearchService extends TypertRemoteService {
     const cwd = session?.header.cwd
     return cwd === undefined ? undefined : this.store.listProjects().filter(item => isWithin(cwd, item.rootPath)).sort((a, b) => b.rootPath.length - a.rootPath.length)[0]
   }
+  @Remote('registerSessionProject') async registerSessionProject(input: { sessionId: string }): Promise<ProjectRecord> {
+    const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
+    const cwd = session?.header.cwd
+    if (!cwd || !isAbsolute(cwd)) throw new Error('An active local workspace session with an absolute path is required.')
+    if (!(await stat(cwd)).isDirectory()) throw new Error('The current workspace is not an existing directory.')
+    // Check again after asynchronous filesystem validation so repeated UI requests
+    // in this Host cannot register duplicate projects. Never create a study here.
+    const existing = this.projectForSession(input)
+    if (existing) return existing
+    const rootPath = resolve(cwd)
+    return this.store.createProject({ name: basename(rootPath) || rootPath, rootPath })
+  }
   @Remote('getActiveResearchStudy') getActiveResearchStudy(input: { sessionId: string }): ResearchStudyRecord | undefined {
     const project = this.projectForSession(input)
     return project ? this.store.getSessionResearchStudy(project.id, input.sessionId) : undefined
@@ -453,11 +574,16 @@ function registerResearchTools(ctx: Context): void {
     name: 'science_viewer',
     description: 'View registered AnnData H5AD (local h5py/NumPy required; first-N previews and whole-X descriptive QC), FASTA (<=16 MiB), SCF/AB1 Sanger traces, and PNG/JPEG/TIFF (<=128 MiB); analyze sequences, Sanger traces, accepted image ROIs and single-channel integer label masks with bounded raw-pixel statistics, export/import traceable results. Launch local Fiji/napari and inspect process status (not GUI readiness). No study required. Sequence coordinates 1-based inclusive; image coordinates original pixel edges with 0-based page (not assumed Z/T). Image intensity and mask results are descriptive and remain pending scientific review. Sanger quality is stored-call confidence, not a Phred score; incomplete AB1 tags are rejected.',
       parameters: {
-      action: { type: 'string', required: true, enum: ['list', 'open', 'read', 'save', 'analyze', 'export', 'launch_native', 'native_status', 'image_open', 'image_read', 'image_save', 'image_analyze', 'image_mask_analyze', 'annotation_save', 'annotation_export', 'annotation_import', 'annotation_launch', 'annotation_collect', 'sanger_open', 'sanger_analyze', 'sanger_export', 'sanger_review', 'flow_open', 'flow_analyze', 'flow_export', 'he_open', 'he_analyze', 'he_export', 'canvas_render', 'canvas_export', 'cell_open', 'cell_read', 'cell_analyze', 'cell_export', 'cell_select', 'cell_export_selection', 'cell_view', 'brain_open', 'brain_read', 'brain_analyze', 'brain_export', 'brain_cells', 'brain_trajectory', 'brain_register', 'brain_cellfinder', 'brain_render'] },
+      he: { type: 'json', description: 'HE segmentation parameters: requestId/runId, viewerId, expectedVersion, region and segmentation {tileSize,halo,probabilityThreshold,nmsThreshold,threads}; operates within the active project.' },
+      docking: { type: 'json', description: 'Docking request: receptorAssetId, ligandAssetId, expectedReceptorVersion, expectedLigandVersion, preparationSource, box {center:[x,y,z],size:[x,y,z]} in angstroms, threads 1–8, requestId or runId. Submit uploads the selected prepared receptor to the configured remote service.' },
+      action: { type: 'string', required: true, enum: ['list', 'open', 'read', 'save', 'analyze', 'export', 'launch_native', 'native_status', 'image_open', 'image_read', 'image_save', 'image_analyze', 'image_mask_analyze', 'annotation_save', 'annotation_export', 'annotation_import', 'annotation_launch', 'annotation_collect', 'sanger_open', 'sanger_analyze', 'sanger_export', 'sanger_review', 'flow_open', 'flow_analyze', 'flow_export', 'flow_import', 'he_open', 'he_read', 'he_analyze', 'he_export', 'he_segment', 'he_status', 'he_cancel', 'canvas_render', 'canvas_export', 'cell_open', 'cell_read', 'cell_analyze', 'cell_export', 'cell_select', 'cell_export_selection', 'cell_view', 'brain_open', 'brain_read', 'brain_analyze', 'brain_export', 'brain_cells', 'brain_trajectory', 'brain_register', 'brain_cellfinder', 'brain_render', 'dock_list', 'dock_submit', 'dock_status', 'dock_cancel', 'molecule_open', 'molecule_read', 'molecule_save', 'molecule_measure', 'molecule_export'] },
+      molecule: { type: 'json', description: 'Molecule actions: state {chain:null|string,residueId:null|string,representation:ball-and-stick/cartoon/molecular-surface,camera:null|snapshot,atomA:null|index,atomB:null|index}; atomA/atomB are 0-based source-first-model atom indices. PDB/mmCIF <=16 MiB, first model <=100000 atoms. Distances are source Cartesian angstroms; exports retain original structure and provenance. No Vina/docking claim.' },
       engine: { type: 'string', enum: ['fiji', 'napari'], description: 'Required for launch_native; optional asset_id must reference a local project TIFF/PNG/JPEG/BMP.' },
       asset_id: { type: 'string' }, viewer_id: { type: 'string' }, reverse_viewer_id: { type: 'string' }, expected_revision: { type: 'integer' },
       state: { type: 'json', description: 'recordIndex (0-based), start, count (<=10,000), selectionStart and selectionEnd (1-based inclusive).' },
-      operation: { type: 'string', enum: ['reverse-complement', 'translate', 'restriction', 'crispr'] }, crispr_target: { type: 'string', description: 'Optional 20-base SpCas9 guide target.' }, crispr_max_mismatches: { type: 'integer', description: 'SpCas9 candidate mismatch bound, 0–3.' },
+      reverse_expected_revision: { type: 'integer', description: 'Required reverse trace viewer revision for bidirectional Sanger review.' },
+      sequence_options: { type: 'json', description: 'PCR primers/annealing lengths/topology or ordered assembly fragments/minimumOverlap/enzyme; validated by the deterministic sequence simulator.' },
+      operation: { type: 'string', enum: ['reverse-complement', 'translate', 'restriction', 'crispr', 'pcr', 'gibson', 'golden-gate'] }, crispr_target: { type: 'string', description: 'Optional 20-base SpCas9 guide target.' }, crispr_max_mismatches: { type: 'integer', description: 'SpCas9 candidate mismatch bound, 0–3.' },
       threshold: { type: 'number', description: 'Sanger end-trimming stored-call probability threshold (0–1).' },
       window: { type: 'integer', description: 'Sanger quality window metadata (1–100); retained in the trace analysis manifest.' },
       reference: { type: 'string', description: 'Optional DNA reference for bounded global Needleman–Wunsch comparison (<=100,000 bases).' },
@@ -469,7 +595,7 @@ function registerResearchTools(ctx: Context): void {
       region: { type: 'json', description: 'HE ROI in original pixels: x, y, width, height and optional page.' },
       source_asset_id: { type: 'string', description: 'Fiji image segmentation source asset; must be a local asset in the active project.' },
       image: { type: 'json', description: 'Image-backed Fiji analysis. kind matches experiment: bacterial-cfu {plateId,dilutionFactor,platedVolumeMl,threshold,minArea,maxArea,polarity,roi}; scratch-wound {sampleId,time,initialArea,threshold,polarity,roi}; colony-formation {wellId,threshold,minArea,maxArea,polarity,roi,stainUnit?}; tube-formation {sampleId,threshold,polarity,roi,unit,unitScale}.' },
-      canvas_spec: { type: 'json', description: 'Canvas project: title, width, height, xLabel, yLabel, series[{id,name,color,points[{x,y,label?}]}], annotations and source references.' },
+      canvas_spec: { type: 'json', description: 'Canvas project: title, width, height, xLabel, yLabel, series[{id,name,color,mode,points[{x,y,label?}]}], annotations, xRange/yRange, showLegend and source references. Optional panels are up to eight additional complete non-nested specs; columns 1–3.' },
       image_state: { type: 'json', description: 'Image view: page (0-based; not assumed Z/T), zoom (0.1–20), panX, panY.' },
       annotation: { type: 'json', description: 'expectedRevisionId (string or null), payload: coordinates {convention: pixel-edge-top-left, width, height, pages, calibration: null or {x,y,unit: um/mm,source}}, rois [{id,name,page,kind: rectangle/point/polygon,...coordinates}]. Stale saves are preserved as conflict branches.' },
       annotation_revision_id: { type: 'string', description: 'Optional accepted annotation revision to analyze or export; defaults to the current accepted head.' },
@@ -490,6 +616,9 @@ function registerResearchTools(ctx: Context): void {
     async execute(args, exec: ToolRunContext) {
       const sessionId = exec.agent?.session.id
       if (!sessionId) throw new Error('An active project session is required.')
+      if (String(args.action).startsWith('dock_')) {
+        return ctx.zerowallResearch.executeMoleculeDocking({ ...requireJsonObject(args.docking ?? {}), sessionId: String(sessionId), action: String(args.action).slice(5) } as unknown as MoleculeDockingRequest, exec)
+      }
       const result = await ctx.zerowallResearch.scienceViewer({
         sessionId: String(sessionId), action: args.action as ScienceViewerRequest['action'],
         ...(args.engine === undefined ? {} : { engine: args.engine as 'fiji' | 'napari' }),
@@ -497,18 +626,22 @@ function registerResearchTools(ctx: Context): void {
         ...(args.viewer_id === undefined ? {} : { viewerId: String(args.viewer_id) }),
         ...(args.expected_revision === undefined ? {} : { expectedVersion: Number(args.expected_revision) }),
         ...(args.state === undefined ? {} : { state: requireJsonObject(args.state) as unknown as NonNullable<ScienceViewerRequest['state']> }),
+        ...(args.sequence_options === undefined ? {} : { sequenceOptions: requireJsonObject(args.sequence_options) as NonNullable<ScienceViewerRequest['sequenceOptions']> }),
         ...(args.operation === undefined ? {} : { operation: args.operation as NonNullable<ScienceViewerRequest['operation']> }), ...(args.crispr_target === undefined ? {} : { crisprTarget: String(args.crispr_target) }), ...(args.crispr_max_mismatches === undefined ? {} : { crisprMaxMismatches: Number(args.crispr_max_mismatches) }),
         ...((args.threshold === undefined && args.window === undefined && args.reference === undefined && args.reverse_viewer_id === undefined) ? {} : { sanger: {
           sessionId: String(sessionId),
           action: String(args.action).slice(7) as NonNullable<ScienceViewerRequest['sanger']>['action'],
           ...(args.asset_id === undefined ? {} : { assetId: String(args.asset_id) }),
           ...(args.viewer_id === undefined ? {} : { viewerId: String(args.viewer_id) }),
+          ...(args.reverse_expected_revision === undefined ? {} : { expectedReverseVersion: Number(args.reverse_expected_revision) }),
           ...(args.reverse_viewer_id === undefined ? {} : { reverseViewerId: String(args.reverse_viewer_id) }),
           ...(args.expected_revision === undefined ? {} : { expectedVersion: Number(args.expected_revision) }),
           ...(args.threshold === undefined ? {} : { threshold: Number(args.threshold) }),
           ...(args.window === undefined ? {} : { window: Number(args.window) }),
         ...(args.reference === undefined ? {} : { reference: String(args.reference) }),
         } }),
+        ...(args.he === undefined ? {} : { he: { ...requireJsonObject(args.he), sessionId: String(sessionId), action: String(args.action).slice(3) } as unknown as HeRequest }),
+        ...(args.molecule === undefined ? {} : { molecule: { ...requireJsonObject(args.molecule), sessionId: String(sessionId), action: String(args.action).slice(9) } as unknown as MoleculeRequest }),
         ...(args.region === undefined ? {} : { region: requireJsonObject(args.region) as unknown as NonNullable<ScienceViewerRequest['region']> }),
         ...(args.canvas_spec === undefined ? {} : { canvas: { sessionId: String(sessionId), action: String(args.action).slice(7) as 'render' | 'export', spec: requireJsonObject(args.canvas_spec) as unknown as NonNullable<ScienceViewerRequest['canvas']>['spec'] } }),
         ...((args.transform === undefined && args.cofactor === undefined && args.apply_compensation === undefined && args.gates === undefined && args.preview_limit === undefined) ? {} : { flow: {
@@ -548,13 +681,17 @@ function registerResearchTools(ctx: Context): void {
         const preview = result.cell.preview
         return { ...result, cell: { ...result.cell, preview: { ...preview, cells: preview.cells.slice(0,100), ...(preview.embedding ? { embedding: { ...preview.embedding, returnedPointCount: preview.embedding.points.length, points: preview.embedding.points.slice(0,100) } } : {}), ...(preview.expression ? { expression: { ...preview.expression, values: preview.expression.values.slice(0,100) } } : {}), agentTextSampleOnly: true }, ...(result.cell.selection ? { selection: { ...result.cell.selection, previewIndices: result.cell.selection.previewIndices.slice(0,100) } } : {}) } } as unknown as JsonObject
       }
+      if (result.canvas?.canvas) {
+        const { svg, ...summary } = result.canvas.canvas
+        return { ...result, canvas: { ...result.canvas, canvas: { ...summary, svgBytes: Buffer.byteLength(svg), svgOmittedFromAgentText: true } } } as unknown as JsonObject
+      }
       return result as unknown as JsonObject
     },
   })), 'zerowall-research: register science_viewer tool')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'research_study',
     description: 'Read and update structured research records. Human gate approval and plan freezing remain UI-only actions.',
-    parameters: { action: { type: 'string', required: true, enum: ['list', 'get', 'documents', 'create_document', 'register_evidence', 'audit_claim', 'method_check_evaluate', 'validate_nhanes_contract', 'validate_genetic_contract', 'obesity_alopecia_recon', 'generate_report', 'tasks', 'create_task', 'update_task', 'refresh_tasks', 'task_budget', 'reconcile_task_run'] }, project_id: { type: 'string' }, study_id: { type: 'string' }, task_id: { type: 'string' }, claim_id: { type: 'string' }, task: { type: 'json' }, expected_version: { type: 'integer' }, kind: { type: 'string' }, payload: { type: 'json' }, method: { type: 'string' }, assumptions: { type: 'json' }, contract: { type: 'json' }, report_mode: { type: 'string', enum: ['draft', 'final'] } },
+    parameters: { action: { type: 'string', required: true, enum: ['list', 'get', 'documents', 'create_document', 'register_evidence', 'audit_claim', 'method_check_evaluate', 'validate_nhanes_contract', 'run_nhanes_survey', 'run_genetic_analysis', 'refresh_genetic_analysis', 'validate_genetic_contract', 'obesity_alopecia_recon', 'generate_report', 'tasks', 'create_task', 'update_task', 'refresh_tasks', 'task_budget', 'reconcile_task_run', 'pilot_catalog', 'pilot_summary'] }, project_id: { type: 'string' }, study_id: { type: 'string' }, task_id: { type: 'string' }, claim_id: { type: 'string' }, evaluation_id: { type: 'string' }, task: { type: 'json' }, expected_version: { type: 'integer' }, kind: { type: 'string' }, payload: { type: 'json' }, method: { type: 'string' }, assumptions: { type: 'json' }, contract: { type: 'json' }, run_id: { type: 'string' }, contract_id: { type: 'string' }, plan_id: { type: 'string' }, request_id: { type: 'string' }, expected_revision: { type: 'integer', description: 'Expected analysis plan version for run_nhanes_survey. The saved plan must contain nhanesSurvey and reference contract_id in inputs.' }, report_mode: { type: 'string', enum: ['draft', 'final'] } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args, exec: ToolRunContext) {
       const service = ctx.zerowallResearch
@@ -568,6 +705,7 @@ function registerResearchTools(ctx: Context): void {
       const study = args.study_id ? service.getResearchStudy(String(args.study_id)) : undefined
       if (!study || study.projectId !== project.id) throw new Error('Research study is not in the active project.')
       if (args.action === 'get') return { study: study as unknown as JsonObject }
+      if (args.action === 'pilot_catalog' || args.action === 'pilot_summary') return service.pilotEvaluation({ sessionId: String(exec.agent?.session.id ?? ''), studyId: study.id, action: args.action === 'pilot_catalog' ? 'catalog' : 'summary', ...(args.evaluation_id === undefined ? {} : { evaluationId: String(args.evaluation_id) }) })
       if (args.action === 'documents') return { documents: service.listResearchDocuments({ studyId: String(args.study_id) }) as unknown as JsonObject }
       if (args.action === 'obesity_alopecia_recon') return service.runObesityAlopeciaRecon(study.id, exec)
       if (args.action === 'generate_report') return await service.generateResearchReport({ sessionId: String(exec.agent?.session.id ?? ''), studyId: study.id, mode: args.report_mode === 'final' ? 'final' : 'draft' })
@@ -592,7 +730,7 @@ function registerResearchTools(ctx: Context): void {
         if (!service.listResearchTasks(study.id).some(task => task.id === taskId)) throw new Error('Research task is not in the active study.')
         return { task: service.reconcileResearchTaskRun({ id: taskId, ...(args.expected_version === undefined ? {} : { expectedVersion: Number(args.expected_version) }) }) as unknown as JsonObject }
       }
-      if (args.action === 'register_evidence') return { document: service.registerResearchEvidence({ sessionId: String(exec.agent?.session.id ?? ''), projectId: project.id, studyId: study.id, payload: requireJsonObject(args.payload) }) as unknown as JsonObject }
+      if (args.action === 'register_evidence') return { document: service.registerResearchEvidence({ sessionId: String(exec.agent?.session.id ?? ''), projectId: project.id, studyId: study.id, payload: { ...requireJsonObject(args.payload), needsReview: true } }) as unknown as JsonObject }
       if (args.action === 'audit_claim') return { document: service.auditResearchClaim({ sessionId: String(exec.agent?.session.id ?? ''), claimId: String(args.claim_id ?? ''), expectedVersion: Number(args.expected_version ?? 0) }) as unknown as JsonObject }
       if (args.action === 'create_document') {
         const kind = args.kind ?? 'observation'
@@ -600,6 +738,9 @@ function registerResearchTools(ctx: Context): void {
         return { document: service.createResearchDocument({ projectId: project.id, studyId: study.id, kind: kind as ResearchRecordKind, payload: requireJsonObject(args.payload) }) as unknown as JsonObject }
       }
       if (args.action === 'method_check_evaluate') return service.methodCheckEvaluate({ studyId: String(args.study_id), method: String(args.method ?? ''), ...(args.assumptions === undefined ? {} : { assumptions: requireJsonObject(args.assumptions) }) })
+      if (args.action === 'run_genetic_analysis') return service.runGeneticAnalysis({ studyId: study.id, contractId: String(args.contract_id ?? ''), planId: String(args.plan_id ?? study.currentPlanId ?? ''), taskId: String(args.task_id ?? ''), requestId: String(args.request_id ?? ''), expectedPlanVersion: Number(args.expected_revision ?? 0) }, exec)
+      if (args.action === 'refresh_genetic_analysis') return service.refreshGeneticAnalysis({ studyId: study.id, runId: String(args.run_id ?? '') }, exec)
+      if (args.action === 'run_nhanes_survey') return service.runNhanesSurvey({ studyId: study.id, contractId: String(args.contract_id ?? ''), planId: String(args.plan_id ?? study.currentPlanId ?? ''), taskId: String(args.task_id ?? ''), requestId: String(args.request_id ?? ''), expectedPlanVersion: Number(args.expected_revision ?? 0) }, exec)
       if (args.action === 'validate_nhanes_contract') return service.validateNhanesContractRemote({ studyId: String(args.study_id), contract: requireJsonObject(args.contract) })
       if (args.action === 'validate_genetic_contract') return service.validateGeneticContractRemote({ studyId: String(args.study_id), contract: requireJsonObject(args.contract) })
       throw new Error('Unsupported research study action.')

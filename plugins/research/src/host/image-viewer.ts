@@ -114,7 +114,7 @@ export class ImageViewerService {
       if (!viewer) throw new Error('Image viewer is not in the active project.')
     }
     const asset = this.asset(project.id, viewer?.assetId ?? input.assetId)
-    const path = fileURLToPath(asset.uri)
+    const path = await containedFile(project.rootPath, fileURLToPath(asset.uri))
     if ((await stat(path)).isDirectory()) return this.executeOmeZarr(project, asset, viewer, input)
     if (!/\.(png|jpe?g|tiff?|pgm)$/iu.test(path)) throw new Error('Image preview currently accepts PNG, JPEG, TIFF and PGM. Large tiled images require a tiled adapter.')
     const bytes = await readProjectAsset(project, asset, MAX_IMAGE_BYTES)
@@ -418,17 +418,35 @@ export class ImageViewerService {
   private async executeOmeZarr(project: ProjectRecord, asset: DataAssetRecord, viewer: ViewerSessionRecord | undefined, input: ScienceViewerRequest): Promise<ScienceViewerResponse> {
     if (!['image_open', 'image_read', 'image_save'].includes(input.action)) throw new Error('OME-Zarr currently supports bounded viewing and saved view state only; ROI analysis requires a chunk-aware analysis Runner.')
     const metadata = await readOmeZarrMetadata(fileURLToPath(asset.uri))
-    const sourceSha256 = asset.checksum ?? metadata.fingerprint
+    // A directory metadata fingerprint is never a checksum of all pixel chunks.
+    const sourceSha256 = metadata.fingerprint
+    if (asset.provenance.metadataFingerprint && asset.provenance.metadataFingerprint !== metadata.fingerprint) throw new Error('OME-Zarr metadata changed. Register a new asset revision before viewing.')
     if (viewer && viewer.state.sourceSha256 !== sourceSha256) throw new Error('OME-Zarr metadata or asset checksum changed. Open a new image view; old annotations remain linked to the previous fingerprint.')
     const state = this.state(input.action === 'image_save' ? input.imageState : viewer?.state ?? { page: 0, zoom: 1, panX: 0, panY: 0 }, metadata.pages)
     if (viewer && input.action !== 'image_read' && input.expectedVersion !== viewer.version) throw new Error(`Viewer revision conflict: current ${viewer.version}.`)
-    const plane = await readOmeZarrPlane(fileURLToPath(asset.uri), metadata, state.page)
     if (metadata.width * metadata.height > MAX_PIXELS) throw new Error('This OME-Zarr plane exceeds the bounded preview limit; use a remote tiled viewer.')
-    const thumbnail = await sharp(plane.raw, { raw: { width: plane.width, height: plane.height, channels: 1, depth: plane.depth } as any }).resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true }).png().toBuffer({ resolveWithObject: true })
+    const plane = await readOmeZarrPlane(fileURLToPath(asset.uri), metadata, state.page)
+    // Display mapping is explicit and does not modify the source measurement buffer.
+    if (!['char', 'uchar', 'short', 'ushort', 'int', 'uint', 'float', 'double'].includes(plane.depth)) throw new Error('Unsupported decoded OME-Zarr pixel depth.')
+    const depth = plane.depth as RawDepth
+    const stride = rawDepthBytes(depth)
+    let displayMin = Infinity; let displayMax = -Infinity; let nonFinite = 0
+    for (let offset = 0; offset < plane.raw.length; offset += stride) {
+      const value = readRawSample(plane.raw, offset, depth)
+      if (Number.isFinite(value)) { displayMin = Math.min(displayMin, value); displayMax = Math.max(displayMax, value) }
+      else nonFinite++
+    }
+    const pixels = Buffer.alloc(plane.width * plane.height)
+    const displayRange = displayMax - displayMin
+    for (let i = 0; i < pixels.length; i++) {
+      const value = readRawSample(plane.raw, i * stride, depth)
+      pixels[i] = Number.isFinite(value) ? (displayRange > 0 ? Math.round((value - displayMin) / displayRange * 255) : 127) : 0
+    }
+    const thumbnail = await sharp(pixels, { raw: { width: plane.width, height: plane.height, channels: 1 } }).resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true }).png().toBuffer({ resolveWithObject: true })
     if (!viewer) viewer = this.store.createViewerSession({ projectId: project.id, assetId: asset.id, tool: 'image', state: { ...state, sourceSha256 } })
     else if (input.action === 'image_save') viewer = this.store.updateViewerSession(project.id, viewer.id, { expectedVersion: viewer.version, state: { ...state, sourceSha256 } })
     const axes: ImagePreview['axes'] = { order: metadata.order, sizes: metadata.sizes, storage: 'ome-zarr', ...(metadata.physicalSize ? { physicalSize: metadata.physicalSize } : {}), position: omeZarrPagePosition(metadata, state.page) }
-    const image: ImagePreview = { sourceSha256, coordinates: { convention: 'pixel-edge-top-left', width: metadata.width, height: metadata.height, pages: metadata.pages, calibration: null }, format: 'ome-zarr', channels: metadata.channels, depth: metadata.depth, page: state.page, previewWidth: thumbnail.info.width, previewHeight: thumbnail.info.height, pngBase64: thumbnail.data.toString('base64'), axes, notes: ['OME-Zarr 元数据和当前分块平面已读取；预览来自受限 chunk 解码。', '当前支持无压缩和 gzip/zlib chunk；其他压缩格式交给受管理 Python/远程适配器。', 'sourceSha256 未提供时使用元数据与 chunk 布局指纹，不等同于全量像素内容哈希。', '当前仅支持查看和保存视角；ROI、标签掩膜和强度分析需要独立的 chunk-aware Runner。'] }
+    const image: ImagePreview = { sourceSha256, coordinates: { convention: 'pixel-edge-top-left', width: metadata.width, height: metadata.height, pages: metadata.pages, calibration: null }, format: 'ome-zarr', channels: metadata.channels, depth: metadata.depth, page: state.page, previewWidth: thumbnail.info.width, previewHeight: thumbnail.info.height, pngBase64: thumbnail.data.toString('base64'), axes, notes: [`显示对比度按当前平面有限值范围 ${displayMin}–${displayMax} 线性映射为 0–255；恒定平面显示为灰色，非有限值 ${nonFinite} 个显示为黑色。跨平面亮度不代表相同强度，原始数据不变。`, 'OME-Zarr 元数据和当前分块平面已读取；预览来自受限 chunk 解码。', '当前支持无压缩和 gzip/zlib chunk；其他压缩格式交给受管理 Python/远程适配器。', 'sourceSha256 未提供时使用元数据与 chunk 布局指纹，不等同于全量像素内容哈希。', '当前仅支持查看和保存视角；ROI、标签掩膜和强度分析需要独立的 chunk-aware Runner。'] }
     return { viewer, image, viewers: this.store.listViewerSessions(project.id) }
   }
   private state(value: unknown, pages: number): ImageViewState {

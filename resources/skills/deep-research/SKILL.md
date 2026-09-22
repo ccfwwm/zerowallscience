@@ -14,6 +14,10 @@ metadata:
 
 # Deep Research — Universal Academic Research Agent Team
 
+## ZeroWall Research route
+
+When supporting an active ZeroWall ResearchStudy, load [the shared research writing policy](../zerowall-research-orchestrator/references/research-writing-policy.md) relative to the returned `resourceBase`. Data candidates and literature findings remain observations until checked; frozen questions/methods and the two scientific gates come from ResearchStore. Independent literature research, fact checking and ordinary document work retain the standalone modes below.
+
 Universal deep research tool — a domain-agnostic 13-agent team for rigorous academic research on any topic.
 
 **v2.4** adds writing quality improvements to the report compiler:

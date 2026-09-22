@@ -11,6 +11,7 @@ dist
 /desktop/build/runtime-skills/
 /store/lib/
 /plugins/*/lib/
+/plugins/*/.build/
 # tsc incremental caches: machine-local, absolute-path bearing, never committed
 *.tsbuildinfo
 .zerowall/

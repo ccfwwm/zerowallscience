@@ -454,8 +454,25 @@ const MIGRATIONS = [
       CREATE INDEX viewer_sessions_project_idx ON viewer_sessions(project_id, updated_at DESC);
     `,
   },
+  {
+    version: 17,
+    sql: `
+      CREATE TABLE viewer_sessions_v17 (
+        id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        asset_id TEXT NOT NULL REFERENCES data_assets(id) ON DELETE CASCADE,
+        tool TEXT NOT NULL CHECK(tool IN ('sequence','image','flow','cells','brain','molecule')),
+        state_json TEXT NOT NULL DEFAULT '{}', version INTEGER NOT NULL CHECK(version > 0),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      INSERT INTO viewer_sessions_v17 SELECT id, project_id, asset_id, tool, state_json, version, created_at, updated_at FROM viewer_sessions;
+      DROP TABLE viewer_sessions;
+      ALTER TABLE viewer_sessions_v17 RENAME TO viewer_sessions;
+      CREATE INDEX viewer_sessions_project_idx ON viewer_sessions(project_id, updated_at DESC);
+    `,
+  },
 ] as const
-const CURRENT_SCHEMA_VERSION = 16
+const CURRENT_SCHEMA_VERSION = 17
 
 export class ResearchStore {
   private readonly database: DatabaseSync
@@ -632,6 +649,11 @@ export class ResearchStore {
     if (study.status === 'archived') throw new Error('Archived research studies cannot be changed.')
     if (study.currentFreezeId && ['question', 'dataset-contract', 'analysis-plan'].includes(input.kind)) throw new Error('Frozen study documents require an amendment.')
     const payload = jsonObject(input.payload, 'Research document payload')
+    if (input.kind === 'evidence') {
+      if (payload.needsReview !== undefined && typeof payload.needsReview !== 'boolean') throw new Error('Evidence needsReview must be boolean.')
+      payload.needsReview = payload.needsReview !== false
+      this.validateResearchEvidenceReferences(input.projectId, input.studyId, payload)
+    }
     const now = new Date().toISOString()
     const record: ResearchDocumentRecord = { id: randomUUID(), projectId: input.projectId, studyId: input.studyId, kind: input.kind, payload, version: 1, createdAt: now, updatedAt: now }
     this.database.prepare('INSERT INTO research_documents (id, project_id, study_id, kind, payload_json, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
@@ -645,10 +667,41 @@ export class ResearchStore {
   /** Register an executed result as evidence; agents cannot mint evidence through the generic document action. */
   registerResearchEvidence(input: RegisterResearchEvidenceInput): ResearchDocumentRecord {
     const payload = jsonObject(input.payload, 'Evidence payload')
+    if (payload.needsReview !== undefined && typeof payload.needsReview !== 'boolean') throw new Error('Evidence needsReview must be boolean.')
+    return this.createResearchDocument({ projectId: input.projectId, studyId: input.studyId, kind: 'evidence', payload: { ...payload, needsReview: payload.needsReview !== false } })
+  }
+
+  private validateResearchEvidenceReferences(projectId: string, studyId: string, payload: JsonObject): void {
     const sourceKeys = ['artifactId', 'runId', 'assetId', 'documentId', 'source']
     if (!sourceKeys.some(key => typeof payload[key] === 'string' && String(payload[key]).trim())) throw new Error('Evidence must reference an artifact, run, asset, document or source.')
+    for (const key of sourceKeys) if (payload[key] !== undefined && (typeof payload[key] !== 'string' || !String(payload[key]).trim())) throw new Error(`Evidence ${key} must be a non-empty string.`)
     if (payload.needsReview !== undefined && typeof payload.needsReview !== 'boolean') throw new Error('Evidence needsReview must be boolean.')
-    return this.createResearchDocument({ projectId: input.projectId, studyId: input.studyId, kind: 'evidence', payload: { ...payload, needsReview: payload.needsReview === true } })
+    const study = this.getResearchStudy(studyId)
+    if (!study || study.projectId !== projectId) throw new Error('Evidence study does not belong to the project.')
+    const artifactId = typeof payload.artifactId === 'string' ? payload.artifactId.trim() : undefined
+    if (artifactId) {
+      const artifact = this.listArtifacts(projectId).find(item => item.id === artifactId)
+      if (!artifact) throw new Error('Evidence artifactId must reference an Artifact in the same project.')
+      if (payload.artifactSha256 !== undefined && payload.artifactSha256 !== artifact.checksum) throw new Error('Evidence artifactSha256 does not match the registered Artifact checksum.')
+      if (artifact.runId && payload.needsReview === false && this.getRun(artifact.runId)?.status !== 'succeeded') throw new Error('Evidence without review cannot reference a non-succeeded Artifact Run.')
+    }
+    const runId = typeof payload.runId === 'string' ? payload.runId.trim() : undefined
+    if (runId) {
+      const run = this.getRun(runId)
+      if (!run || run.projectId !== projectId) throw new Error('Evidence runId must reference a Run in the same project.')
+      if (payload.needsReview === false && run.status !== 'succeeded') throw new Error('Evidence without review cannot reference a non-succeeded Run.')
+      if (artifactId) {
+        const artifact = this.listArtifacts(projectId).find(item => item.id === artifactId)
+        if (artifact?.runId && artifact.runId !== runId) throw new Error('Evidence Artifact and Run references do not match.')
+      }
+    }
+    const assetId = typeof payload.assetId === 'string' ? payload.assetId.trim() : undefined
+    if (assetId && !this.listDataAssets(projectId).some(item => item.id === assetId)) throw new Error('Evidence assetId must reference a DataAsset in the same project.')
+    const documentId = typeof payload.documentId === 'string' ? payload.documentId.trim() : undefined
+    if (documentId) {
+      const document = this.getResearchDocument(documentId)
+      if (!document || document.studyId !== studyId) throw new Error('Evidence documentId must reference a document in the same study.')
+    }
   }
 
   /** Deterministically audit a claim's evidence references and persist the audit outcome. */
@@ -664,7 +717,11 @@ export class ResearchStore {
       seen.add(ref)
       const evidence = this.getResearchDocument(ref)
       if (!evidence || evidence.studyId !== claim.studyId || evidence.kind !== 'evidence') errors.push(`missing evidence: ${ref}`)
-      else if (evidence.payload.needsReview === true) errors.push(`evidence needs review: ${ref}`)
+      else {
+        if (evidence.payload.needsReview !== false) errors.push(`evidence needs review: ${ref}`)
+        try { this.validateResearchEvidenceReferences(claim.projectId, claim.studyId, evidence.payload) }
+        catch (error) { errors.push(`invalid evidence ${ref}: ${error instanceof Error ? error.message : String(error)}`) }
+      }
     }
     const payload = { ...claim.payload, auditStatus: errors.length === 0 ? 'passed' : 'failed', needsReview: errors.length !== 0, auditErrors: errors }
     return this.updateResearchDocument(claim.id, { expectedVersion, payload })
@@ -695,6 +752,10 @@ export class ResearchStore {
     if (current.kind === 'annotation-revision') throw new Error('Annotation revisions are immutable; create a new revision.')
     if (['question', 'dataset-contract', 'analysis-plan'].includes(current.kind) && this.listStudyFreezes(study.id).some(f => frozenDocumentIds(f.snapshot).has(current.id))) throw new Error('Frozen study documents require a new amendment record; the frozen record is immutable.')
     const updated: ResearchDocumentRecord = { ...current, payload: jsonObject(changes.payload, 'Research document payload'), version: current.version + 1, updatedAt: new Date().toISOString() }
+    if (current.kind === 'evidence') {
+      if (updated.payload.needsReview === undefined) updated.payload.needsReview = true
+      this.validateResearchEvidenceReferences(current.projectId, current.studyId, updated.payload)
+    }
     this.database.prepare('UPDATE research_documents SET payload_json=?, version=?, updated_at=? WHERE id=?').run(JSON.stringify(updated.payload), updated.version, updated.updatedAt, updated.id)
     this.invalidateResearchStudy(study.id, current.kind)
     this.recordAuditEvent(updated.projectId, `research-${updated.kind}.updated`, { studyId: updated.studyId, documentId: updated.id, version: updated.version })
@@ -742,7 +803,8 @@ export class ResearchStore {
           if (!Array.isArray(refs) || !refs.length) throw new Error('Core claim requires evidence references.')
           for (const ref of refs) {
             const evidence = typeof ref === 'string' ? this.getResearchDocument(ref) : undefined
-            if (!evidence || evidence.studyId !== studyId || evidence.kind !== 'evidence' || evidence.payload.needsReview === true) throw new Error('Claim evidence is missing or stale.')
+            if (!evidence || evidence.studyId !== studyId || evidence.kind !== 'evidence' || evidence.payload.needsReview !== false) throw new Error('Claim evidence is missing or stale.')
+            this.validateResearchEvidenceReferences(study.projectId, studyId, evidence.payload)
           }
         }
       }
@@ -766,7 +828,8 @@ export class ResearchStore {
     if (question === undefined || question.kind !== 'question' || question.studyId !== study.id) throw new Error('Current research question is invalid.')
     if (plan.studyId !== study.id) throw new Error('Current analysis plan is invalid.')
     const previous = (this.database.prepare('SELECT COALESCE(MAX(version), 0) AS version FROM study_freezes WHERE study_id = ?').get(study.id) as { version: number }).version
-    const freeze: StudyFreezeRecord = { id: randomUUID(), projectId: study.projectId, studyId: study.id, version: previous + 1, snapshot: JSON.parse(JSON.stringify({ study, question, plan, contracts: plan.payload.inputs, documents: this.listResearchDocuments(studyId).filter(d => ['question', 'dataset-contract', 'analysis-plan'].includes(d.kind)) })), createdAt: new Date().toISOString() }
+    const runtimeProvenance = this.listResearchRuntimeEvents(studyId)
+    const freeze: StudyFreezeRecord = { id: randomUUID(), projectId: study.projectId, studyId: study.id, version: previous + 1, snapshot: JSON.parse(JSON.stringify({ study, question, plan, contracts: plan.payload.inputs, documents: this.listResearchDocuments(studyId).filter(d => ['question', 'dataset-contract', 'analysis-plan'].includes(d.kind)), runtimeProvenance })), createdAt: new Date().toISOString() }
     freeze.snapshot.sha256 = createHash('sha256').update(JSON.stringify(freeze.snapshot)).digest('hex')
     this.database.prepare('INSERT INTO study_freezes (id, project_id, study_id, version, snapshot_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .run(freeze.id, freeze.projectId, freeze.studyId, freeze.version, JSON.stringify(freeze.snapshot), freeze.createdAt)
@@ -1188,12 +1251,14 @@ export class ResearchStore {
   reserveScientificRun(input: CreateRunInput, requestId: string, fingerprint: string): { run: RunRecord; created: boolean } {
     return this.withTransaction(() => {
       if (!/^[A-Za-z0-9_.:-]{1,128}$/u.test(requestId) || !/^[a-f0-9]{64}$/u.test(fingerprint)) throw new Error('Scientific request key and SHA-256 fingerprint are required.')
-      const existing = this.listRuns(input.projectId).find(run => run.leaseOwner === 'fiji-workflow' && run.inputs.some(item => item.name === 'request_id' && item.uri === requestId))
+      const owner = input.leaseOwner ?? 'fiji-workflow'
+      if (!['fiji-workflow', 'fiji-experiment', 'he-segmentation'].includes(owner)) throw new Error('Unsupported scientific run owner.')
+      const existing = this.listRuns(input.projectId).find(run => run.leaseOwner === owner && run.inputs.some(item => item.name === 'request_id' && item.uri === requestId))
       if (existing) {
         if (!existing.inputs.some(item => item.name === 'fingerprint' && item.uri === fingerprint)) throw new Error('IDEMPOTENCY_CONFLICT: this request key belongs to different inputs or parameters.')
         return { run: existing, created: false }
       }
-      const run = this.createRun({ ...input, leaseOwner: 'fiji-workflow', inputs: [...(input.inputs ?? []), { name: 'request_id', uri: requestId }, { name: 'fingerprint', uri: fingerprint }] })
+      const run = this.createRun({ ...input, leaseOwner: owner, inputs: [...(input.inputs ?? []), { name: 'request_id', uri: requestId }, { name: 'fingerprint', uri: fingerprint }] })
       return { run, created: true }
     })
   }
@@ -1201,7 +1266,7 @@ export class ResearchStore {
   finishScientificRun(projectId: string, runId: string, artifacts: CreateArtifactInput[]): RunRecord {
     return this.withTransaction(() => {
       const run = this.getRun(runId)
-      if (!run || run.projectId !== projectId || run.leaseOwner !== 'fiji-workflow') throw new Error('Scientific run is not owned by this project.')
+      if (!run || run.projectId !== projectId || !['fiji-workflow', 'fiji-experiment', 'he-segmentation'].includes(run.leaseOwner ?? '')) throw new Error('Scientific run is not owned by this project.')
       if (run.status === 'succeeded') return run
       if (!['submitted','running'].includes(run.status) || artifacts.length === 0) throw new Error('Scientific run cannot accept successful artifacts in this state.')
       for (const artifact of artifacts) {
@@ -1310,6 +1375,10 @@ export class ResearchStore {
     })
   }
 
+  createArtifacts(inputs: CreateArtifactInput[]): ArtifactRecord[] {
+    return this.withTransaction(() => inputs.map(input => this.createArtifact(input)))
+  }
+
   listArtifacts(projectId: string): ArtifactRecord[] {
     this.requireProject(projectId)
     return (this.database.prepare('SELECT * FROM artifacts WHERE project_id = ? ORDER BY updated_at DESC, id').all(projectId) as Array<Record<string, unknown>>).map(artifactFromRow)
@@ -1373,6 +1442,13 @@ export class ResearchStore {
   listAuditEvents(projectId: string): AuditEventRecord[] {
     this.requireProject(projectId)
     return (this.database.prepare('SELECT * FROM audit_events WHERE project_id = ? ORDER BY created_at, id').all(projectId) as Array<Record<string, unknown>>).map(auditFromRow)
+  }
+
+  /** Host-observed policy and usage, isolated by the persistent study identity. */
+  listResearchRuntimeEvents(studyId: string): AuditEventRecord[] {
+    const study = this.getResearchStudy(studyId)
+    if (!study) throw new Error('Research study was not found.')
+    return (this.database.prepare("SELECT * FROM audit_events WHERE project_id = ? AND json_extract(details_json, '$.studyId') = ? AND action IN ('research-runtime.request', 'research-runtime.skill-context', 'research-runtime.outcome') ORDER BY created_at, rowid").all(study.projectId, study.id) as Array<Record<string, unknown>>).map(auditFromRow)
   }
 
   /** Record a bounded, redacted runtime event from the DSH session bus. */
@@ -2618,7 +2694,7 @@ function validateResearchSnapshot(input: ResearchProjectSnapshot): void {
     const viewIds = new Set<string>()
     for (const view of input.viewerSessions ?? []) {
       if (view.projectId !== input.project.id || !input.dataAssets.some(asset => asset.id === view.assetId)) throw new Error('Viewer snapshot contains a foreign asset.')
-      if (ids.has(view.id) || viewIds.has(view.id) || !Number.isSafeInteger(view.version) || view.version < 1 || !['sequence','image','flow','cells','brain'].includes(view.tool)) throw new Error('Invalid viewer snapshot.')
+      if (ids.has(view.id) || viewIds.has(view.id) || !Number.isSafeInteger(view.version) || view.version < 1 || !['sequence','image','flow','cells','brain','molecule'].includes(view.tool)) throw new Error('Invalid viewer snapshot.')
       viewIds.add(view.id); jsonObject(view.state, 'Viewer state')
     }
     if (input.annotationRevisions !== undefined && !Array.isArray(input.annotationRevisions)) throw new Error('Invalid annotation revisions.')

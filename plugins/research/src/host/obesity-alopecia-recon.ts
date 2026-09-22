@@ -38,25 +38,29 @@ function entries(value: unknown): ReconEntry[] {
   return value.filter(item => item !== null && typeof item === 'object' && !Array.isArray(item)).slice(0, 100) as ReconEntry[]
 }
 
+function catalogRows(value: unknown): unknown[] | undefined {
+  const root = object(value)
+  if (root.ok === false || root.isError === true || root.error) return undefined
+  for (const candidate of [root, object(root.result ?? root.payload ?? root.catalog)]) {
+    if (candidate.ok === false || candidate.isError === true || candidate.error) return undefined
+    for (const key of ['variables', 'results', 'items', 'rows', 'matches', 'data']) {
+      const rows = candidate[key]
+      if (Array.isArray(rows)) return rows
+    }
+  }
+  return undefined
+}
+
 /** Extracts bounded catalog rows without treating arbitrary text as a match. */
 export function catalogEntries(value: unknown): ReconEntry[] {
-  const root = object(value)
-  for (const key of ['variables', 'results', 'items', 'rows', 'matches', 'data']) {
-    const found = entries(root[key])
-    if (found.length > 0) return found
-  }
-  const nested = object(root.result ?? root.payload ?? root.catalog)
-  for (const key of ['variables', 'results', 'items', 'rows', 'matches', 'data']) {
-    const found = entries(nested[key])
-    if (found.length > 0) return found
-  }
-  return []
+  return entries(catalogRows(value))
 }
 
 export function buildReconFindings(results: Array<{ query: ReconQuery; response?: unknown; error?: string }>): ReconFinding[] {
   return results.map(({ query, response, error }) => {
     if (error) return { ...query, status: 'unavailable', matches: [], error: error.slice(0, 500) }
-    if (response === undefined || response === null || typeof response !== 'object') return { ...query, status: 'invalid-response', matches: [], error: 'NHANES catalog returned no structured response.' }
+    const rows = catalogRows(response)
+    if (!rows || rows.some(row => row === null || typeof row !== 'object' || Array.isArray(row) || Object.keys(row).length === 0)) return { ...query, status: 'invalid-response', matches: [], error: 'NHANES catalog returned no valid structured row collection; this is not evidence of an absent phenotype.' }
     const matches = catalogEntries(response)
     return { ...query, status: matches.length > 0 ? 'matched' : 'no-match', matches }
   })

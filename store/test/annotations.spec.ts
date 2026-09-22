@@ -103,5 +103,5 @@ it('backs up schema 11 before migration and reads old snapshots without annotati
   const db = new DatabaseSync(path)
   db.exec('DROP TABLE annotation_revisions; DELETE FROM schema_migrations WHERE version>=12'); db.close()
   const migrated = new ResearchStore(path)
-  try { expect(migrated.schemaVersion()).toBe(16); expect(existsSync(`${path}.pre-research-v16.sqlite`)).toBe(true) } finally { migrated.close() }
+  try { expect(migrated.schemaVersion()).toBe(17); expect(existsSync(`${path}.pre-research-v17.sqlite`)).toBe(true) } finally { migrated.close() }
 })

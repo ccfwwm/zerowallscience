@@ -108,13 +108,22 @@ def matrix_statistics(x, n, p, gene, full, limit):
             if gene is not None: expression[start:stop] = block[:, gene]
     else:
         csr = scalar(x.attrs['encoding-type']) == 'csr_matrix'; ptr = x['indptr'][:]
+        # Cache bounded contiguous sparse storage blocks. Per-row HDF5 reads turn
+        # a 100k-cell CSR preview into hundreds of thousands of dataset accesses.
+        cache_start = -1; cached_ix = None; cached_data = None
         majors = range(n if full else count) if csr else (range(p) if full else ([] if gene is None else [gene]))
         bound = p if csr else n
         for major in majors:
             previous = -1
-            for start in range(int(ptr[major]), int(ptr[major+1]), BLOCK):
-                stop = min(int(ptr[major+1]), start + BLOCK)
-                ix = np.asarray(x['indices'][start:stop], dtype=np.int64); data = numeric(x['data'][start:stop])
+            start = int(ptr[major]); end = int(ptr[major+1])
+            while start < end:
+                block_start = start // BLOCK * BLOCK
+                if cache_start != block_start:
+                    cache_start = block_start
+                    cached_ix = np.asarray(x['indices'][block_start:block_start+BLOCK], dtype=np.int64)
+                    cached_data = numeric(x['data'][block_start:block_start+BLOCK])
+                stop = min(end, block_start + BLOCK)
+                ix = cached_ix[start-block_start:stop-block_start]; data = cached_data[start-block_start:stop-block_start]
                 # Reject noncanonical sparse input rather than dropping duplicate entries silently.
                 if len(ix) and (ix[0] <= previous or ix[-1] >= bound or np.any(ix[1:] <= ix[:-1])): raise ValueError('Sparse indices must be sorted, unique and in bounds')
                 if len(ix): previous = int(ix[-1])
@@ -125,11 +134,28 @@ def matrix_statistics(x, n, p, gene, full, limit):
                     keep = ix < count; ix, data = ix[keep], data[keep]
                     if full: totals[ix] += data; detected[ix] += (data != 0)
                     if major == gene: expression[ix] = data
+                start = stop
     if not np.isfinite(totals).all(): raise ValueError('Expression sum overflow')
     return totals, detected, expression
 
 def stats(values):
     return {'min': float(np.min(values)), 'max': float(np.max(values)), 'mean': float(np.mean(values))}
+
+def peak_memory():
+    if sys.platform == 'win32':
+        import ctypes
+        from ctypes import wintypes
+        class Counters(ctypes.Structure):
+            _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD)] + [(name, ctypes.c_size_t) for name in ('PeakWorkingSetSize', 'WorkingSetSize', 'QuotaPeakPagedPoolUsage', 'QuotaPagedPoolUsage', 'QuotaPeakNonPagedPoolUsage', 'QuotaNonPagedPoolUsage', 'PagefileUsage', 'PeakPagefileUsage')]
+        counters = Counters(); counters.cb = ctypes.sizeof(counters)
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True); kernel.GetCurrentProcess.restype = wintypes.HANDLE
+        query = ctypes.WinDLL('psapi', use_last_error=True).GetProcessMemoryInfo
+        query.argtypes = [wintypes.HANDLE, ctypes.POINTER(Counters), wintypes.DWORD]
+        if query(kernel.GetCurrentProcess(), ctypes.byref(counters), counters.cb): return int(counters.PeakWorkingSetSize)
+        return None
+    import resource
+    value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return int(value if sys.platform == 'darwin' else value * 1024)
 
 def selected_points(points, polygon):
     x, y = points[:,0], points[:,1]
@@ -207,7 +233,7 @@ def main(req):
                             if len(buckets) > 10000: raise ValueError('Group column exceeds 10000 categories')
                     analysis['groups'] = [{'group': v[0], 'cells': v[1], 'meanTotalCounts': v[2]/v[1]} for v in buckets.values()]
                 result['analysis'] = analysis
-        result['runtime'] = {'python': sys.version.split()[0], 'h5py': h5py.__version__, 'numpy': np.__version__, 'matrixBlockElements': BLOCK}
+        result['runtime'] = {'python': sys.version.split()[0], 'h5py': h5py.__version__, 'numpy': np.__version__, 'matrixBlockElements': BLOCK, 'peakResidentMemoryBytes': peak_memory()}
         print(json.dumps(result, ensure_ascii=True, allow_nan=False))
 
 try:

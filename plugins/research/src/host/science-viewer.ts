@@ -8,7 +8,7 @@ import type { ScienceViewerRequest, ScienceViewerResponse, SequenceAnalysis, Seq
 import { analyzeSequence, parseFasta, parseGenBank, sequenceWindow, type NucleotideRecord } from './sequence.js'
 
 const MAX_FASTA_BYTES = 16 * 1024 * 1024
-const RUNNER = 'zerowall-sequence/7.0.0-1'
+const RUNNER = 'zerowall-sequence/7.0.0-3'
 
 /** One service for UI and Agent access. Callers supply only the resolved session project. */
 export class ScienceViewerService {
@@ -40,7 +40,7 @@ export class ScienceViewerService {
     if (request.action !== 'analyze' && request.action !== 'export') throw new Error('Unknown viewer action.')
     if (!request.operation) throw new Error('A sequence operation is required.')
     const state = this.state(viewer.state)
-    const analysis = analyzeSequence(input.records, request.operation, state.recordIndex, state.selectionStart, state.selectionEnd, request.crisprTarget, request.crisprMaxMismatches)
+    const analysis = analyzeSequence(input.records, request.operation, state.recordIndex, state.selectionStart, state.selectionEnd, request.crisprTarget, request.crisprMaxMismatches,request.sequenceOptions)
     if (request.action === 'analyze') return { viewer, analysis }
     const artifact = await this.export(project, asset, viewer, input.sha256, analysis)
     return { viewer, analysis, artifact }
@@ -86,7 +86,8 @@ export class ScienceViewerService {
     const object = value as Record<string, unknown>
     const keys = ['recordIndex', 'start', 'count', 'selectionStart', 'selectionEnd'] as const
     for (const key of keys) if (!Number.isSafeInteger(object[key])) throw new Error(`Invalid view state: ${key}.`)
-    return Object.fromEntries(keys.map(key => [key, object[key]])) as unknown as SequenceViewState
+    if (object.mapMode !== undefined && !['linear', 'circular'].includes(String(object.mapMode))) throw new Error('Invalid sequence map mode.')
+    return { ...Object.fromEntries(keys.map(key => [key, object[key]])), ...(object.mapMode ? { mapMode: object.mapMode } : {}) } as unknown as SequenceViewState
   }
 
   private window(records: NucleotideRecord[], state: SequenceViewState): SequenceWindow {
@@ -112,13 +113,13 @@ export class ScienceViewerService {
     try {
       await writeFile(path, result, { flag: 'wx' })
       if (analysis.sequence !== undefined) {
-        const header = `>${analysis.operation} record=${analysis.recordIndex + 1} source=${analysis.start}-${analysis.end}`
+        const header = analysis.simulation ? `>${analysis.operation} topology=${analysis.simulation.topology} records=${analysis.simulation.sourceRecordIndices.map(i=>i+1).join(',')} length=${analysis.sequence.length}` : `>${analysis.operation} record=${analysis.recordIndex + 1} source=${analysis.start}-${analysis.end}`
         await writeFile(join(destination, 'sequence.fasta'), `${header}\n${analysis.sequence.match(/.{1,80}/gu)?.join('\n') ?? ''}\n`, { flag: 'wx' })
       }
       // Check again after asynchronous I/O; never register a stale view as current.
       const current = this.store.listViewerSessions(project.id).find(item => item.id === viewer.id)
       if (current?.version !== viewer.version) throw new Error('Viewer changed during export; retry from the current revision.')
-      return this.store.createArtifact({ projectId: project.id, name: `Sequence ${analysis.operation}`, uri: pathToFileURL(path).href, mediaType: 'application/json', checksum: createHash('sha256').update(result).digest('hex'), metadata: { runner: RUNNER, sourceAssetId: asset.id, sourceSha256, viewerId: viewer.id, viewerVersion: viewer.version, parameters: { operation: analysis.operation, recordIndex: analysis.recordIndex, start: analysis.start, end: analysis.end }, ...(analysis.sequence === undefined ? {} : { fastaUri: pathToFileURL(join(destination, 'sequence.fasta')).href }) } })
+      return this.store.createArtifact({ projectId: project.id, name: `Sequence ${analysis.operation}`, uri: pathToFileURL(path).href, mediaType: 'application/json', checksum: createHash('sha256').update(result).digest('hex'), metadata: { runner: RUNNER, sourceAssetId: asset.id, sourceSha256, viewerId: viewer.id, viewerVersion: viewer.version, parameters: { operation: analysis.operation, recordIndex: analysis.recordIndex, start: analysis.start, end: analysis.end, ...(analysis.simulation?{simulation:JSON.parse(JSON.stringify(analysis.simulation))}:{}) }, ...(analysis.sequence === undefined ? {} : { fastaUri: pathToFileURL(join(destination, 'sequence.fasta')).href }) } })
     } catch (error) {
       await rm(destination, { recursive: true, force: true })
       throw error

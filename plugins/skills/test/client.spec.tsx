@@ -17,6 +17,7 @@ describe('Skills settings tab', () => {
     const getSkill = vi.fn().mockResolvedValue({
       name: 'literature-review', description: '文献综述', source: 'bundled', provider: 'scientific',
       modelInvocable: true, userInvocable: true, content: '# Literature Review\n\n完整科研流程',
+      declaredVersion: '7.0.0-1', contentHash: 'a'.repeat(64),
     })
     render(<SkillsSettingsTab t={translator()} listSkills={listSkills} getSkill={getSkill} />)
 
@@ -27,6 +28,8 @@ describe('Skills settings tab', () => {
     fireEvent.click(screen.getByText('literature-review'))
     await waitFor(() => expect(getSkill).toHaveBeenCalledWith('literature-review'))
     expect(screen.getByText((_, element) => element?.tagName === 'PRE' && element.textContent?.includes('完整科研流程') === true)).toBeTruthy()
+    expect(screen.getByText('v7.0.0-1')).toBeTruthy()
+    expect(screen.getByTitle('a'.repeat(64)).textContent).toBe('SHA-256: aaaaaaaaaaaa')
   })
 
   it('keeps disabled imported Skills visible and allows enabling them again', async () => {

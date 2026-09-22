@@ -28,9 +28,9 @@
 
 | 命令 | 结果 | 证明范围 |
 |---|---|---|
-| `pnpm --filter @zerowallscience/plugin-research test` | 90 项通过 | 研究上下文、方法检查、H5AD 细胞查看、序列/Sanger/Flow/HE/Canvas 服务/UI、原生启动/UI、真实 ToolRuntime；不代表九类工具完成 |
-| `pnpm --filter @zerowallscience/research-store test` | 31 项通过 | 包含 schema 15、任务图非拓扑快照导入、预算阻断、失败传播、ViewerSession 版本/隔离/快照和注释分支 |
-| `pnpm --filter @zerowallscience/plugin-base exec vitest run --config ../../vitest.plugins.config.ts test/research-skill-bindings.spec.ts` | 17 项通过 | 技能加载后的工具绑定；该测试使用 fixture tool，不能替代领域实算 |
+| research 回归与本轮定向测试 | 最新整合 272 项通过、2 项跳过（52文件，52.90秒） | 具体批次见历史章节；并行改动后全量结果待主任务合并核验，不把这些批次数相加为全量成绩 |
+| `pnpm --filter @zerowallscience/research-store test` | 最新整合 36 项通过 | 持久研究对象、冻结、预算、ViewerSession、注释分支与运行策略来源；并行最终整合仍需统一回归 |
+| `pnpm --filter @zerowallscience/plugin-base exec vitest run --config ../../vitest.plugins.config.ts test/research-skill-bindings.spec.ts` | 25 项通过 | 含四个学术写作入口研究路由的技能/工具绑定；不能替代领域实算 |
 | `pnpm plugins:typert` | 13 个远程插件生成成功 | 包含新原生启动 RPC 与 `science_viewer` 类型 |
 | `pnpm --filter @zerowallscience/plugin-research run typecheck` | 通过 | Host、Sanger 面板和新增工作台严格检查 |
 | `pnpm --filter @zerowallscience/plugin-research run bundle` | 通过 | 研究插件 Host/client 构建；不是 Electron 安装包 |
@@ -42,23 +42,23 @@
 | P0：全软件与双仓能力审计 | 本地 Store、研究插件、引擎局部验证 | 全量能力矩阵、raiagentai 对应提交/依赖、全领域适用性审计 |
 | P1：研究底座与编排 | 研究对象、冻结/修订/门禁、会话上下文已有基础 | 完整任务图/预算/重启恢复、角色权限、下游失效传播、报告、成功与合理停止端到端 |
 | 六页工作台与共同资产 | 页面骨架、序列会话、原生打开 | 各类工具资产/产物直达、完整多标签恢复、聊天选区引用、坐标契约、画布联通 |
-| 细胞 | H5AD/AnnData backed 元数据、obs/var、UMAP/PCA 预览、基因表达预览、QC/分组统计和带哈希 Artifact 已通过真实 h5py 测试；ViewerSession 已接入工作台和 `science_viewer`；新增全量多边形圈选及 CSV 集合导出 | 标签、WebGL、聚类、marker、供者级 pseudobulk/差异表达和 10 万细胞完整交互性能 |
-| ImageJ/多维图像 | 原生启动及序列之外的图像文件传递 | 内置 TIFF/OME-TIFF/OME-Zarr、轴/尺度/ROI、五类实验宏和参考数据、原生修订回传/冲突、10 GiB 性能 |
-| HE | SVS/NDPI/TIFF 受限首层解码、原图坐标 ROI、颜色/亮度统计、核样本启发式比例和 JSON 产物已接入工作台与 `science_viewer` | OpenSlide 瓦片流、物理标定、StarDist CPU 分块、组织区域模型、批处理和诊断边界仍未验收 |
-| 分子结构 | 既有能力待复核 | Mol* PDB/mmCIF/SDF 交互、准备、搜索盒、RDKit/Meeko/Vina 与构象复核 |
-| 序列 | FASTA 核酸查看、反向互补、翻译、五种线性精确酶位点 | GenBank/图谱/注释、引物/PCR、Gibson/Golden Gate、固定参考 SpCas9/NGG 三错配检索 |
+| 细胞 | H5AD/AnnData backed 元数据、obs/var、UMAP/PCA 预览、基因表达预览、QC/分组统计和带哈希 Artifact 已通过真实 h5py 测试；ViewerSession 已接入工作台和 `science_viewer`；新增全量多边形圈选及 CSV 集合导出 | 标签、WebGL、聚类、marker 的完整交互链；10 万细胞查看/QC/圈选已有实际性能和独立参考，供者级 pseudobulk/差异表达后端已完成合成参考，尚需生产部署及工作台端到端 |
+| ImageJ/多维图像 | 原生启动、ROI 修订回传/冲突、受限 TIFF/OME-TIFF/OME-Zarr 查看与 Z/C/T、原像素 ROI 强度、Western blot Runner 已有运行证据 | OME-Zarr 完整 chunk-aware 分析、五类实验全部数值基准、标签/掩膜、10 GiB 受限平面查看已通过；完整 XY 瓦片和安装包视觉验收 |
+| HE | 独立 OpenSlide 环境、真实三层金字塔按层/ROI PNG、缩放平移、物理标定、视图恢复及带 SHA-256 的 PNG/JSON 导出；实际 React→Host→OpenSlide smoke 通过 | StarDist CPU 分块、组织区域、批处理、多边形、瓦片缓存、真实 SVS/NDPI 厂商覆盖、10GiB 性能和安装包验收 |
+| 分子结构 | 本地 Mol* 5.11.0 按需加载；PDB/mmCIF 链/残基/表面、距离、视角恢复、PNG/源文件导出真实浏览器验收 | SDF、真实 Vina 远程任务及构象取回已通过；packaged PDB 显示/5Å测距/PNG导出通过；完整结构准备、多构象复核和更多真实样本仍待验收 |
+| 序列 | FASTA/GenBank 严格解析、环形/线性图谱、join/complement 注释、区域选择/恢复/导出、反向互补和翻译；实际 Chromium 工作台及 Biopython 独立参考通过 | 引物/PCR、Gibson/Golden Gate、固定参考基因组 SpCas9/NGG 三错配搜索；当前候选枚举不能冒充脱靶检查 |
 | Sanger | SCF 1/2/3 与 ABIF/AB1 常见 DATA9–12/PBAS/PLOC/PCON 解析、四色峰图、PCON→Phred 存储置信度、移动窗口端点裁剪、全局参考比对、双向反向互补核对、JSON/FASTA 产物导出和源哈希/版本校验已实现；内置工作台面板与 `science_viewer` 的 `sanger_open/analyze/export/review` 已接入 | 峰图人工修订、混合峰/IUPAC 证据和真实仪器回归仍未验收 |
-| 流式 | FCS 3.0 有界解析、整数/32 位浮点事件、显式 spillover 补偿、none/arcsinh 变换、顺序矩形与多边形门控、散点预览和 Polygon GatingML 子集导出已接入工作台与 `science_viewer` | FlowJo 子集兼容、补偿独立参考、批处理和 100 万事件性能仍未验收 |
-| 科研画布 | 既有产物入口待复核 | 可编辑多面板、轴/图例/比例尺、数据溯源、PNG/SVG/PDF |
+| 流式 | FCS 3.0 按 8192 事件分块、显式 spillover 补偿、none/arcsinh、层级矩形/多边形门、精确均值/中位数、保存恢复和 GatingML 子集导出；100 万事件独立 NumPy/FlowIO 数值参考及真实 React/Host/Chromium 交互性能已通过 | GatingML 2.0 限定子集导入/导出已通过 FlowKit/XSD 双向参考；FlowJo 子集兼容、批处理与 packaged Electron 验收仍未完成 |
+| 科研画布 | 1–9面板、线性轴范围/刻度、图例/配色、折线/散点、源项目隔离、草稿恢复和SVG/PNG/PDF/可编辑JSON原子导出；真实React/Host验收通过；PDF标明rasterized | 图像面板、拖拽排版、比例尺、误差线/更多统计图形、出版级人工复核及安装包验收 |
 | 脑图谱 | Allen CCF 25 µm atlasapi 查看、切片/脑区/坐标查询；brainreg 输出审计；真实 cellfinder 检测与 brainrender PNG/HTML 场景已接入 | brainreg 解剖配准质量基准、cellfinder 真实阳性参考、跨坐标变换/脑区统计、CPU 性能门仍需扩展 |
-| P2：临床/遗传/组学 | 确定性 metadata 方法检查，不等于执行 Runner | NHANES 通用契约/权重/domain；MR/共定位/MVMR 隔离环境与数值参考；bulk 配对/协变量、单细胞 pseudobulk、干预重复测量 |
-| 肥胖—脱发案例 | 模板，表型待核验 | 真实数据侦察、人工门禁一、可用分支/合理停止、证据与冲突、IMRAD 和人工门禁二 |
-| 系统提示词与 Skills | 核心提示词、动态研究上下文与部分 Skills | 全量技能审计、角色规则/规范哈希、覆盖来源展示、学术写作主张审计、所有领域真实工具链 |
-| P4：先导与对照 | 未运行 | 12 项冻结基准、四条件 48 次、预算/评分/失败/成本、独立复核状态 |
-| rdatalinux | 本轮未部署或修改生产环境 | raiagentai 独立服务/队列、限额、隔离依赖、Gateway/r_files、幂等/断网/排空/回滚 |
-| P5：打包和发布候选 | 源码版本标为 7.0.0，研究插件可构建 | 全软件回归、迁移/旧快照/跨项目、packaged Host/Electron、Windows x64 安装包实际安装启动、引擎包/许可证/哈希/离线导入/回滚 |
+| P2：临床/遗传/组学 | NHANES 真实周期均值/SE/domain 独立参考；bulk 配对/协变量和 donor pseudobulk PyDESeq2 数值参考；固定 MR/coloc Runner、持久队列与 Windows 合成数值参考 | 远程生产部署、真实案例适用性、Linux 固定 genetics 环境、GWAS获取/LD/完整协调、MVMR/SuSiE 路径和多时间点重复测量 |
+| 肥胖—脱发案例 | 首轮真实 NHANES 目录侦察 7 个 Run succeeded；4 个脱发检索无匹配，BMI/腰围/体脂候选18/24/3；契约 pending、草稿保留门禁缺口 | 官方代码本与其他数据源侦察、表型/数据契约核验、门禁一、适用分支分析与证据、IMRAD 和门禁二；无匹配不能推断所有 NHANES 无该表型 |
+| 系统提示词与 Skills | 核心/研究/角色分层、实际 llm/stream 策略哈希入审计；267 目录/266 Registry 技能审计；四个写作入口统一两门禁/主张审计；来源/版本/哈希可见 | 72 项待适配资源引用、152 项依赖未验证、用户覆盖兼容差异、所有领域真实技能→工具→产物链；审计数字不等于已实算 |
+| P4：先导与对照 | 12×4 冻结执行台账、Host/UI 配置导入/冻结/状态、fixture 契约测试已实现；真实 48 次未运行 | 真实输入/参考冻结、实际模型条件适配器、盲评/评分、真实预算/失败/成本和独立复核 |
+| rdatalinux | 生产只读健康/队列核验；独立暂存 checkout 构建、25 项 Gateway 测试、8 项部署 fixture；离线 bundle 与影响分类已准备 | 生产已切至36ea1bc；五服务active，MR/coloc/r_files/Vina实算通过；检查时R队列queued=0/running=0，历史失败保持原记录 |
+| P5：打包和发布候选 | 7.0.0本地安装包已生成；packaged启动/版本/设置/研究恢复/分子显示导出通过；HE和StarDist按需包通过离线安装/回滚 | 全软件回归、迁移/旧快照/跨项目、packaged Host/Electron、Windows x64 安装包实际安装启动、引擎包/许可证/哈希/离线导入/回滚 |
 
-下一实施链路：先补齐 Sanger 的 AB1 独立解析评估、双向核对和人工修订记录，再补齐图像多维/分块契约、Fiji 另外四类 Runner 及样例；同时继续 P1 编排和 P2 方法层，不将专业工具卡片或技能目录当作交付。只有完整方案逐项具备代码、运行产物和适当验收证据，才能将总目标标记完成。
+下一实施链路：并行推进肥胖—脱发真实数据侦察、遗传工作流 Host/远程衔接、独立 Linux 环境和部署排空；补齐专业模块尚缺的科学分析和基准，统一运行整合回归。48 次先导、真实安装包和生产切换各自保留独立验收门禁，不将专业工具卡片或技能目录当作交付。只有完整方案逐项具备代码、运行产物和适当验收证据，才能将总目标标记完成。
 
 ## 2026-09-21 continuation: native ROI bridge and Western blot Runner
 
@@ -352,3 +352,181 @@ This establishes an HE input/ROI baseline only. It is insufficient evidence for 
 - OME-Zarr 预览、ViewerSession 和图像工作台会明确标注 `storage: ome-zarr`、轴尺寸、物理像素尺寸、当前位置和 `fingerprintScope: metadata-and-chunk-layout`。当前仅开放查看和视角保存，ROI 强度、标签掩膜、Fiji 原生回传和远程重计算继续阻断，直到实现 chunk-aware Runner。
 - 定向 OME-Zarr 测试覆盖无压缩页读取、gzip 解码、页坐标和不支持压缩阻断；研究插件完整回归为 28 个测试文件、134 项通过，Host/Client TypeScript 检查和 bundle 均通过。
 - 未完成边界：多尺度金字塔选择、真正瓦片请求、fill value/非 C-order 数据布局的完整兼容、10 GiB 性能验收和 chunk-aware 分析。该能力证明受限查看链路可用，不代表完成大图像科研分析。
+
+## 2026-09-22 continuation: strict NHANES survey contract and remote synthetic reference
+
+- `raiagentai` 增加版本化 NHANES Runner `7.0.0-nhanes-survey.1`。它要求显式周期、组件、数据集、连接键、权重、分层和 PSU；多周期只能按 `per-cycle` 分开运行或提供带规则来源和逐周期乘数的 `official-combined` 方案，不再从列名猜测权重或使用文字触发的通用 `/2`。
+- Runner 在完整设计上建立 survey design，再应用结构化 `survey_domain`；显式缺失码、权重有效性、唯一键、输入行上限、预览截断和 lonely PSU 策略均由代码阻断或记录。返回 `analysis_complete=true`、`scientific_review=pending`、输入文件 SHA-256、设计自由度、样本流和周期规则。
+- 12 行无患者合成夹具通过独立加权比率/Taylor PSU 公式、domain、加权回归系数、缺失码和周期合并参考；另验证重复键、缺权重替换、无效表型、预览截断、前置过滤、无效二项结局和自由度不足的合理停止。该测试未连接或修改 rdatalinux 生产环境。
+- Gateway MCP 契约测试通过：严格字段原样传递到 `/nhanes/survey-summary`、`/survey-regression` 和 `/survey-tabulate`，非法版本、周期乘数、domain 运算符、缺失码和 lonely PSU 在 HTTP 请求前拒绝。`raiagentai` 的 `npm test` 22 项、`npm run build` 和 R 合成验收均通过。
+- 当前边界：远程生产尚未部署；真实 NHANES 周期、脱发表型代码本、调查权重适用性和“肥胖—脱发”科学主张尚未由该合成验收证明。ZeroWall 仍需接入生成的工具目录 schema，并完成真实数据侦察、门禁一、参考周期回归及 P2/P4/P5 发布验收。
+
+### rdatalinux 临时目录真实数值参考
+
+- 将 Runner 和测试复制到 `/tmp/zerowall-nhanes-v7-reference.le4qqX`，使用服务器已有 R 4.3.3、survey 4.5、haven 2.5.5 执行合成参考和只读公开数据参考；没有安装包、修改共享库、操作业务队列或重启服务。
+- 2017–2018 DEMO_J/BMX_J 的 BMI 查看与加权计算读取真实 XPT；有效设计 8,704 行、BMI 非缺失 8,005 行，加权均值 `27.671223658131773`、SE `0.23634739790008367`。成人 domain（RIDAGEYR ≥ 20）保留原设计 8,704 行，domain 5,265 行、BMI 非缺失 5,175 行，均值 `29.833835234138419`、SE `0.26113954122628091`。
+- 两组均值和 SE 与独立 base R 合并、比率估计及按 PSU 的 Taylor 方差公式一致，最大绝对误差 `5.56e-17`，预先指定容差 `1e-9`。没有下载受试者行或输出个体数据。
+- 真实运行识别并修复 survey 的跨平台 data.frame 标准误列名差异，严格输出固定 `SE`；参考测试同时断言输出字段的长度与有限性，避免空向量比较误判通过。
+- 脱敏报告：`C:\softworks\gpt-tools\raiagentai\output\nhanes-v7-reference\nhanes-public-reference.json`，SHA-256 `b9fae833ad87f2001a70a1566ddd035d95872a9d8e323f6e39024da87ed5554e`；含源码、原始 XPT SHA-256、版本、设计元数据和误差。其结论仅为数值参考通过，不是脱发表型、肥胖—脱发关联或研究门禁批准。
+
+## 2026-09-22 continuation: parallel prompt, evidence, genetic applicability and bulk work
+
+- 核心提示词为 `7.0.0-core.2`，研究上下文为 `7.0.0-context.1`，明确持久研究状态是数据。新增 `zerowall-claim-audit`，证据综合技能绑定 `research_study`；5 个研究 Skill 声明 metadata 版本。Skills 详情显示 registry 实际来源、声明版本和正文 SHA-256，不信任技能自称 bundled。该分支报告 base 聚焦 23 项、研究上下文 2 项、skills 全量 10 项通过；三插件 typecheck 通过。各 Skill 哈希的研究/评估全链路持久化和全量技能审计仍需继续。
+- `genetic-contract.2`：MR-Egger 工具数小于 3、IVW 小于 2、generic MR 单工具输入被判不适用；单工具需明确 Wald。MVMR 条件 F 必须为有限正数，两步 MR 的 mediationEstimand 必须为非空字符串。遗传＋侦察聚焦 16 项通过。
+- 侦察将后端错误和损坏的行结构记为 `invalid-response`，不再当作 `no-match`。侦察测试 12 项通过。
+- 证据引用必须指向同项目的实际 Artifact/Run/Asset/Document，校验 checksum、Artifact 与 Run 一致性；failed Run 不能产生 `needsReview:false` 证据，新证据默认 pending。主张审计与 Gate 2 再核验引用。Store 33 项通过。
+- `raiagentai` bulk 结构化设计已实现批次、数值协变量和两条件完整配对供者；检查样本 ID、原始整数计数、重复数、供者独立性、完整配对、混杂秩亏和残差自由度。远程临时目录使用既有 PyDESeq2 0.5.4 对 12 样本×250 基因合成数据进行 legacy、adjusted、paired 三种原生公式参考，19 项通过，最大绝对差 `5.684e-14`；本地 Node 23 项和 build 通过。结果日志在 `raiagentai/output/bulk-v7-reference-20260922.log`，未部署服务。
+- bulk 当前不含混合效应或交互项；协变量限定数值，供者独立性仍需来源核验，最低重复数不代表功效充分。该合成验收不是减重手术对脱发的机制证据。
+
+## 2026-09-22 continuation: frozen 12-task by 4-condition pilot execution ledger
+
+- 既有 Store 只有 `benchmark-task`/`evaluation` 文档种类，未找到先导调度实现。新增 `PilotEvaluationService`，固定方案中的 12 个任务和 4 个条件，在完整输入 Artifact、参考 Artifact、评分规则、数值容差、重大错误、实际模型/provider、规范 provenance、运行时哈希和统一预算具备后，生成 48 个 `not-run` 单元并保存不可静默修改的内容哈希。
+- 同一单元仅允许从未运行状态提交实际 adapter；先保存 running，再调用执行器。输出必须引用同项目的 succeeded Run 和 checksum/Run 匹配的 Artifact，禁止一个 Run 冒充多个独立试次。中断状态保留为需要对账，不盲目重跑。所有角色合计成本从实际 adapter 返回并保存，超预算单列，失败时未知成本明确计数。
+- 参考答案、评分规则和预期结论不传入执行 Agent。已执行和已评分分开：当前没有自动评分、平台优越性结论或虚构的 48 次结果。
+- 当前 11 项 Service、真实 ToolRuntime/Host 与 UI 测试通过：48 格待运行矩阵、未注册 adapter 阻断、执行引用和参考答案隔离、超预算、失败/未知成本、冻结修订与中断。Host 入口 `pilotEvaluation` 支持 catalog/list/freeze/summary，Agent 只开放 catalog/summary；报告与评估页支持 JSON 配置导入、冻结和状态刷新，没有虚假的执行按钮。
+- 冻结与执行的 policyProvenanceIds 必须引用同研究的实际模型 request 审计事件，model/provider 必须匹配，runtimeHashes 必须匹配事件中的系统/上下文/技能/工具 schema 哈希。参考 Artifact 和执行输入同 ID 或同 SHA-256 时拒绝。每次台账变更写入 append-only audit checkpoint，读取时检查完整 payload 指纹和 48 个单元身份/状态；普通文档更新入口不能修改冻结先导台账。
+- 仍需四个实际模型条件适配器、预先冻结的真实 12 任务材料、盲评导出/评分，以及实际 48 次运行；本模块测试使用隔离 fixture，不计入先导成绩。Typert 13 个合同生成通过；整体类型检查与最终回归由并行分支合并后统一执行。
+
+## 2026-09-22 continuation: donor pseudobulk and actual runtime provenance
+
+- `raiagentai` 的单细胞入口增加显式 pseudobulk 参数，按 donor×condition×celltype 从选定的 dense/CSR H5AD 原始整数计数进行分块聚合。保存计数、样本元数据、设计、可执行 bulk 请求、排除记录和 Manifest；prepared/blocked/partial/failed/completed 分开，不把有细胞数当作有独立生物学重复。
+- 远程临时目录使用现有 PyDESeq2 0.5.4，72 cells、6 donors、120 genes、T/B 两类的合成基准与独立 pandas 求和及原生公式对照，10 项通过，最大绝对差 `2.842e-14`。日志为 `raiagentai/output/pseudobulk-v7-reference-20260922.log`；Node 全量 24 项、构建、Python 编译通过，未部署生产。
+- 限制：CSC 需预转 CSR，配对仅完整两条件，不自动执行上游 QC，不替用户确认 raw-count 来源和生物学独立性；多重校正限各细胞类型内。该测试不是医学结论或 10 万细胞性能验收。
+- Host 在实际 `llm/stream` 边界记录系统提示、动态研究上下文、送入模型的 Skill 内容和工具 schema 哈希，以及 provider/model 和观察到的 token counters；只保留哈希与计数，不保存提示正文或凭据。冻结快照和报告引用这些实际事件，缺失费用保持未知。runtime-provenance 独立 5 项与 Store 33 项通过，NHANES 执行中方案改版保护 20 项通过。
+
+## 2026-09-22 continuation: full registry-based Skills audit and research writing route
+
+- 新增可重跑工具 `tools/integration/audit-science-skills.ts`。它实际启动隔离 DSH Skill Registry/文件系统 provider 和 Research ToolRuntime，读取解析后的 Skill、实际 source/provider/resourceBase/版本/正文哈希、Host schema 及生成的远程 catalog schema，并复用 Python AST/安装声明依赖扫描。默认只审计内置目录；`--user-skills=` 可在不修改文件的情况下检查指定用户覆盖来源。
+- 本次扫描 267 个目录，实际加载 266 项，未解析/未被选中的 Skill 为 0。分类为：可直接复用 3、需适配 72、依赖未验证 152、仅文档 39。分类数量不是科研计算完成度；“可直接复用”仅表示该项路由、资源及 schema 检查通过，“仅文档”仍可能是有效写作规范。
+- 需适配条目的主要依据为待核对的本地资源引用。报告保留 source 和 target；其中可能包含生成输出示例，不能把所有不存在的链接都断言为运行时依赖缺失。依赖候选没有被写成已安装，远程声明 schema 没有被写成已连接。工具本次没有运行科研计算或安装依赖。
+- 产物位于 `.build/science-skills-audit/skill-runtime-audit.json`、同名 `.md` 和 `dependency-candidates.json`。仅引用已存在 NHANES 真实周期数值参考及 bulk/pseudobulk 合成参考报告，并附它们的 SHA-256 与适用边界；这些记录不冒充完整 Skill 选择到实算的链路验收。
+- 为 academic-pipeline、academic-paper、academic-paper-reviewer、deep-research 新增共同的研究任务路由，权威规范保存为 `zerowall-research-orchestrator/references/research-writing-policy.md`。活跃 ResearchStudy 使用持久状态、两个人工科研门禁和正式报告核心主张审计；研究任务不再采用每个写作阶段确认或 `ARS_CLAIM_AUDIT` 默认关闭。独立写作、普通编辑和文献工作保留原有范围；科学完整性问题仍阻断对应动作，人工确认不能把无证据结果变为已验证。
+- 四个写作入口已绑定 `research_study`，真实技能加载/工具分发现有测试扩展为 25 项并通过；工作区插件配置已重新生成。上游许多外部客户端路径和缺失辅助材料仅完成审计记录，不能宣称全部 266 项技能已适配完成。
+
+## 2026-09-22 continuation: GatingML 2.0 standard subset and import/export
+
+- Flow runner updated to `zerowall-flow/7.0.0-4`. Added namespace-aware, bounded XML parsing with DTD/entity rejection, active-project DataAsset lookup, source checksum/mtime checks, viewer revision checks, and persisted GatingML source identity. Import accepts only the verified standard subset: rectangle/polygon gates, forward parent references, FCS or one square spectrum matrix, and the scaled `fasinh` form equivalent to the workbench arcsinh cofactor. Ellipsoid, Boolean, Quadrant, mixed transforms/compensation, unresolved references, malformed ordering and unknown attributes are explicit errors; definitions are never silently discarded.
+- Standard gate semantics are explicit: `min <= value < max` for rectangles and nonzero winding for polygons. Existing gates without `boundaryMode` retain the legacy inclusive/tolerant calculation. Export refuses legacy gates instead of silently changing counts; the UI exposes conversion before export and an import action. Standard output includes official Gating-ML 2.0 namespaces, dimension compensation references, parent IDs, optional transformation and spectrum matrix declarations, and a SHA-256-tracked XML Artifact sidecar.
+- 14 focused parser/service/UI tests pass, including same-project registered DataAsset import, revision conflict, foreign-project rejection, malformed/unsupported XML, forward parent ordering, standard boundary counts, source persistence and roundtrip. Independent FlowKit 1.2.3 (lxml schema validation), FlowUtils 1.1.0 and NumPy 1.26.4 check passed for rectangle/polygon/parent counts and raw plus square-compensation/arcsinh bidirectional roundtrips. Report: `.build/gating-ml-reference/2026-09-22T03-45-18.942Z/report.json`.
+- Real million-event React/Host/Chromium smoke now also exports, registers and re-imports its own standard GatingML asset. Report `.build/flow-viewer-smoke/2026-09-22T03-47-12.097Z/report.json`; import result visible in 2.69 s, source ID persisted, preview remains bounded. Screenshot `gatingml-imported.png` records the UI state. FlowJo workspace compatibility is intentionally not claimed.
+
+## 2026-09-22 continuation: sequence and HE actual viewer integration
+
+- 并行序列分支报告：真实 React → ScienceViewerService → Chromium 操作覆盖环形查看、35–50 区间选择与保存、线性切换、刷新恢复和导出。解析结果与独立 Biopython 1.88 对照，GenBank 严格检查长度、字母表、行序、边界，保留 join/complement 分段与不支持项警告；19 项 service/UI 测试及 typecheck 通过。交互证据为 `.build/sequence-viewer-smoke/2026-09-22T02-18-36.744Z/report.json` 和两张 PNG。该记录不代表引物、酶切、组装或参考基因组脱靶流程已验收。
+- 并行 HE 分支报告：新增 OpenSlide 真实三层金字塔按层和 ROI 读取 PNG，支持第 0 层坐标框选、缩放、平移、恢复，以及不同 x/y 像素尺度和 bounds。导出 PNG＋JSON 包含校验和并登记 `needsReview=true` 的 Artifact；使用独立 `he-7.0.0/venv`、openslide-python 1.4.6、openslide-bin 4.0.1.2（library 4.0.1）。reader 嵌入 Host bundle，避免依赖开发目录。
+- HE 验证为 5 项测试、research typecheck/bundle 和真实 React＋Chromium＋Host＋OpenSlide smoke；交互报告 `.build/he-viewer-smoke/2026-09-22T02-27-52.393Z/report.json`。当前限制为 4MP/4096 单轴 tile、最多两个子进程；20GiB 流式哈希限制不是已完成性能验收。StarDist、批处理队列、OpenSeadragon/cache、多边形标注、真实 SVS/NDPI 厂商覆盖、10GiB 性能和安装包验收仍未完成。
+
+## 2026-09-22 continuation: remote deployment preparation
+
+- 只读核验生产 `raiagentai` HEAD 为 `6faa6ca3db533e5353e8d3490b0d211cffb5d5a0` 且无工作树改动；Gateway、Plumber、R worker、OmicVerse 四服务均 active。2026-09-22 02:24 UTC 队列快照均无 queued/running；这是当时快照，不能代替实际切换时的入口排空与复核。
+- 独立 `/tmp/zerowall-v7-deploy-audit.rY0t0N/source` 从生产只读共享对象及本地离线 bundle 准备到 `3b95d0c6d85e36ce38885dd8f27a28889adf489f`，没有更改生产 checkout、配置、共享库、服务或业务队列。暂存 Linux 环境构建与 25 项 Gateway 测试通过，部署 fixture 8 项通过；实际影响分类仅 Gateway、Plumber、R worker、OmicVerse。
+- 修复部署影响分类器遗漏 `genetics/` 的问题；新方法资产保守归入 Plumber＋worker，并要求任务排空。部署流程尚需处理：dry-run 提前返回并不检查队列、检查后无提交入口排空锁、OmicVerse env 未纳入原脚本读入、旧版部署 helper 不认识 genetics、OmicVerse 回滚覆盖复制可能保留新增文件。未进行生产激活。
+- 独立探测显示 Linux R 4.3.3 初始未安装 coloc、susieR、TwoSampleMR、ieugwasr、MVMR；当前正在临时目录准备固定 coloc/susieR 依赖库及数值测试。Windows R lock 不能替代 Linux 方法环境验收。暂存 npm 还报告 `@hono/node-server@2.1.1` 需要 Node ≥20，而当前 `/usr/bin/node` 为 18.19.1；测试通过不消除该支持版本差异。
+
+## 2026-09-22 continuation: real obesity–alopecia catalogue reconnaissance
+
+- 主任务实际连接目录执行 7 个研究 Run，全部以真实返回登记为 succeeded。alopecia、areata、hair loss、baldness 检索均 no-match；BMI、腰围、bodyfat 分别命中 18、24、3 条目录候选。证据位于 `plugins/research/.build/obesity-alopecia-live/2026-09-22T02-32-05.434Z/report.json`。这是目录检索完成，不是脱发表型不存在的普遍结论，也不是医学关联分析。
+- 数据契约保持 pending，没有自动冻结方案、登记计算证据或主张；新增 gated live integration test。ReportService 现在草稿和正式报告共用门禁/阻断列表，草稿明确显示未批准事项，正式版仍拒绝交付；6 项报告/来源测试通过。该案例目前只输出侦察和限制草稿，门禁一仍待可用数据和明确主问题形成。
+
+## 2026-09-22 continuation: molecular SDF viewing and independent RDKit reference
+
+- 分子工作台在现有本地 Mol* PDB/mmCIF 之上支持单记录 SDF V2000，以及中性、顺序原子编号、无附加属性的 V3000 子集。Host 核验终止符、计数、坐标、键界限/唯一性，保存形式电荷，禁止小分子卡通。Mol* 5.11 未解析的 V3000 附加电荷/立体等属性会被明确拒绝；不把 2D 图当作准备好的 3D 构象，不自动加氢或推断质子化。
+- 实际 React/Host/Mol*/Chromium 完成两种 SDF 打开、球棍、链/残基筛选、1.5 Å 测距、PNG 与字节相同的原 SDF 导出、刷新恢复。RDKit 2026.03.6 在 rdatalinux 现有独立 Biomni Python 只读运行合成参考，V2000/V3000/带氧负电荷 V2000 的原子、键、形式电荷和坐标全部匹配，最大坐标误差 0，容差 `1e-9`。没有安装或服务变更，也没有上传用户分子。
+- 7 项 molecule Host 测试、research Host/client typecheck 和包含本地 runtime 的 bundle 通过。最新完整 PDB/mmCIF/SDF smoke 报告和图像 `.build/molecule-viewer-smoke/2026-09-22T03-54-32.836Z`，无页面错误、无浏览器外联。复现脚本 `tools/integration/molecule-viewer-smoke.ts` 与 `molecule-sdf-reference.py`；独立参考需要 rdatalinux SSH/RDKit。安装包内 Electron/CSP 验收由发布阶段另行完成。
+- 只读确认 raiagentai Biomni 存在 `docking_autodock_vina`，有显式盒、Meeko、ETKDG、固定 seed 和 PDBQT 姿态输出；本次仅核实源码可复用性。批量分子库、准备界面、搜索盒交互、任务/产物接入和姿态复核尚未验收，不能将此项宣称为工作台 Vina 完成。
+
+## 2026-09-22 continuation: 100k CSR cell viewer numerical and browser acceptance
+
+- 可复现夹具与独立参考为 `tools/integration/cell-100k-reference.py`；自动真实浏览器验收为 `tools/integration/cell-viewer-100k-acceptance.ts --run`。使用标准 AnnData dataframe/categorical/CSR 编码，100,000 细胞、256 features、200,000 非零 counts、20 donor、4 group，以及明确为合成网格的 `X_umap`。不是公开患者数据或真实 UMAP 推断；原始计数矩阵不会发送到浏览器。
+- React → Host → h5py → SQLite → Chromium 实际完成打开、供者分组、G7 表达、全量 QC、鼠标多边形圈选、CSV 导出、相机缩放/保存、Host service 重建和刷新恢复、分析产物登记。独立 SciPy CSR `sum/getnnz/column` 与 NumPy 矩形区间判断核对全部 100,000 表达值、20 donor 分组、QC 和 27,944 条选中细胞 CSV，绝对容差 `1e-12`、相对容差 0，通过；G7 非零细胞为 782、均值 0.01173。没有供者级差异推断或医学结论。
+- 实际证据 `.build/cell-viewer-100k-acceptance/2026-09-22T03-42-53.201Z/report.json`；四张截图保存首屏、供者配色、圈选和恢复导出。首屏点击至绘制 1,061.84 ms，供者分组 1,201.58 ms，基因表达 1,881.36 ms，QC 2,294.94 ms，圈选 2,228.57 ms，CSV 导出 2,331.49 ms，分析导出 2,935.04 ms，缩放可见变化 50.88 ms。零浏览器异常、零外部网络请求。
+- CSR/CSC reader 改为最多 262,144 元素连续存储缓存，消除 CSR 每个细胞重复 HDF5 dataset 读取；保留排序、唯一、界限检查。14 项既有 reader/plot/UI 测试通过，另新增并通过跨缓存边界重复索引与空行回归（共 15 项）。runtime 记录 Python 进程 JSON 序列化前的 OS 峰值 RSS。
+- 本次 Python 峰值 RSS（序列化前）112,873,472 B；Node Host 包含 Vite/tsx 的 25 ms 采样 RSS 峰值 483,635,200 B；CDP 检查点 JS heap 最高 57,517,188 B，不含浏览器/GPU 全进程内存。最大 HTTP 测试 RPC 响应 7,834,221 B。Python 输出硬上限 32 MiB、超时 120 秒；元数据预览 2,000 行、嵌入上限 200,000 点、源文件上限 20 GiB，不代表 20 GiB 已实测。全量维度最多 200 万 cells×20 万 features，嵌入前 N 点不是随机抽样。
+- Windows、Intel i7-12700、20 逻辑 CPU、约 64 GiB RAM、Python 3.12.10/h5py 3.16.0/NumPy 2.1.3、Chromium 151.0.7922.34，允许 SwiftShader 软件 WebGL。该记录是 loopback HTTP 适配器下的源码验收，不是 Typert/Electron IPC、安装包或专用 GPU 性能验收。聚类、marker、真实组织数据与远程供者级推断仍需各自验收；每次读取的全文件流式哈希仍可能成为大型文件延迟来源。
+
+## 2026-09-22 continuation: bounded million-event flow analysis and browser acceptance
+
+- `FlowService` runner 升级为 `zerowall-flow/7.0.0-3`。先读取至多 1 MiB 的 header/TEXT，再以至多 8192 事件的块解码；源哈希也按 1 MiB 流式计算。Host 不保留完整事件矩阵，补偿、arcsinh、顺序层级矩形/多边形门和补偿求和均逐块执行。响应仍只返回至多 5000 个原始预览和 10000 个分析预览。
+- 精确中位数使用任务拥有的临时 population 文件和逐通道外排序，每个排序 run 最多 65536 个值，在最多 200 万事件限制下最多 31 个 run，通过有界缓冲最小堆合并定位中位数。临时磁盘保守上限 2 GiB，提交前检查上界与可用空间；最多 128 门、128 通道、512 MiB 源文件。超限明确拒绝；成功、解码失败与源变更都只清理 mkdtemp 创建的本任务子目录，保留邻近用户文件。
+- 定向 `flow.spec.ts` + `flow-viewer-ui.spec.tsx` 共 10 项通过。覆盖跨块和多个排序 run、奇偶/空群体中位数、层级计数、源变更、预算拒绝、失败清理与正常 UI。此测试数量不是 Research 全量回归总数。
+- 独立数值/性能报告：`.build/flow-reference/streaming-8192-20260922/report.json`。100 万事件、4 通道、合成 FCS，与 NumPy 2.3.3 / FlowIO 1.4.0 的 raw 及补偿＋arcsinh 参考比较，矩形/多边形/层级门计数、均值、精确中位数、预览和产物哈希全部通过，0 失败。Host-only open 33.97 ms，raw 分析及导出 2578.23 ms，补偿＋arcsinh 3290.78 ms；进程 OS 峰值工作集 239,038,464 B。相同夹具此前全内存实现峰值为 1,130,246,144 B，当前未以全量载入冒充流式。
+- 真实 React → FlowService → SQLite → Chromium 交互报告：`.build/flow-viewer-smoke/2026-09-22T03-26-41.329Z/report.json`，截图 `first-screen.png` 和 `gates-restored-exported.png` 已查看。点击打开至 5000 点首屏 2558.41 ms；UI 创建矩形及子多边形门，点击计算至结果显示 2453.42 ms；刷新、标签恢复至结果显示 2418.53 ms；导出至 Artifact 登记显示 2423.86 ms。实际全数据门计数 436495 / 167307，导出均值/中位数仍匹配独立参考，父门/边界/多边形顶点在刷新后恢复。
+- 浏览器 RPC 逐条测量：打开响应 374052 B；分析响应 908464 B；含 Artifact 的导出响应 909437 B。所有响应最多 5000 raw + 5000 analyzed 预览，DOM 仅 5000 个 circle，无百万事件客户端数组。该批 Host 含 Vite/tsx 的峰值工作集 608,079,872 B；20 ms 采样的 Host＋Chromium/子进程 RSS 合计峰值 1,230,364,672 B（共享页可能重复计数），不能与 Host-only 峰值混同。
+- 硬件：Windows 10.0.26100、Intel i7-12700、20 逻辑 CPU、68,391,665,664 B RAM、Node 24.9.0。以上是源码运行与无头 Chromium 的合成验收，不是 packaged Electron、真实生物学结论或 FlowJo 兼容性声明；FlowJo 子集和批处理仍待交付；GatingML 标准子集导入/互操作已由上文独立 FlowKit 报告验证。
+
+## 2026-09-22：10 GiB OME-Zarr 显示缺陷修复与真实验收
+
+- 合成数据由 5120 个实际 2 MiB chunk 文件构成，共 10 GiB，未使用 sparse 文件；形状 5120×1024×1024，uint16。
+- 截图检查发现原预览因 16 位到 8 位转换而近乎全黑。已改为当前平面有限值 min/max 线性显示映射，页面明确标注范围、非有限像素数及跨平面亮度不可直接比较；计算原始像素不变。
+- 新测试解码浏览器实际使用的 PNG，独立核对第一行 256 个灰度值 0–255，避免只凭 img 元素存在就判定显示成功。20 项 image/OME-Zarr 测试通过。
+- 最终证据 `.build/ome-zarr-large-smoke/2026-09-22T03-44-27.254Z/report.json`；本机 warm-cache 首屏约 273 ms，峰值 Host/Vite RSS 514,895,872 bytes（不包含 Chromium）。切片 0/255/5119 原始像素独立匹配，最后切片视角可刷新恢复。已人工查看修复后灰度条纹截图。
+- 范围仍是 Zarr v2、受限单平面和支持的压缩，不代表完整 XY 瓦片、多级金字塔选择、全图分块分析、全量像素哈希或安装包验收。
+
+## 2026-09-22：整合回归记录
+
+- Store 34 项通过；Base 40 项通过、1 项跳过；Skills 10 项通过。
+- 首轮 Research 全量 234 项通过、1 项跳过、1 项画布导出 5 秒超时；单独复查画布 3 项通过。限制测试并发后的完整重跑正在记录，超时不会从原始日志中删除。
+- 代码与打包版本维持 7.0.0；未执行七牛云或 GitHub 发布。
+
+
+## 2026-09-22 continuation: native ImageJ scratch, colony and CFU
+
+- `fiji-experiments.ts` 的图像划痕、克隆形成、细菌菌落路径改为真实已安装 ImageJ 1.54p／Java 21.0.7 执行。固定 Jython Runner 使用原始 8 位灰度单平面数据、ImageJ LUT 阈值及 ParticleAnalyzer（8 连通），不再将 TypeScript 阈值算法称为 ImageJ。RGB、多页及其它位深拒绝隐式转换；测量数组汇总保留独立路径。
+- 图像先经已登记哈希校验及 128 MiB 有界读取，执行使用独立快照；请求指纹包含源哈希与 Runner 哈希。512 MiB Java 堆、2 个活动处理器、120 秒超时、单实例计算槽，只终止本任务拥有的进程。结果 Manifest 校验请求及每个产物哈希；项目路径在逐层创建后核验真实路径。
+- 每次原生执行保存 `mask.png`、`overlay.png`、ImageJ `.roi`、`roi.json`、`particles.csv`、原生结果、完成 Manifest、参数、固定脚本与日志。原图坐标与 ROI 局部坐标分别声明。工作台可选已登记图像并直接显示掩膜／边界叠加、测量结果；重复提交相同参数复用幂等键。
+- 克隆形成物理面积必须提供正数 `pixelArea`（每像素对应所选面积单位），不允许仅填写 `mm2` 就把像素数标为平方毫米。原生颗粒统计和染色面积分开；触碰颗粒不自动分裂，碎屑按明确 minArea/maxArea 排除并保留表中记录。
+- 验证：Fiji 数值及真实 Host 集成共 28 项通过，面板资产选择→分析→掩膜显示→幂等重试 1 项通过；Research Host／Client 严格类型检查通过。真实原生几何样例：划痕 19 像素、闭合 50%；克隆 2 个、18 像素、校准 0.18 mm²；CFU 2,000/mL；非全图 ROI 单独验证，已修复 ImageJ 重复获取处理器重置 ROI 的问题。
+- 尚未完成：成管原生插件与其网孔/分段定义验证、时间序列缺失检查、孔／平板排除区域与人工修订、批处理、多页／多通道、真实生物样例与 packaged Electron 显示验收。成管现有路径明确标为 `builtin-exploratory`，不能把其拓扑结果称为 Angiogenesis Analyzer 输出。本节不宣称 Fiji 五类实验全部完成。
+
+
+## 2026-09-22 continuation: native tube topology and five experiment Skills
+
+- 成管图像现也使用真实 ImageJ：载入现有 `Skeletonize3D_-2.1.1.jar` 和 `AnalyzeSkeleton_-3.4.2.jar`，二值mask→原生细化→无剪枝骨架分析；记录插件文件名和SHA-256，不覆盖用户安装。新增 skeleton.png、原始标签 skeleton-tags.tif、skeleton-topology.json；面板显示骨架。
+- 长度为按用户明确等距标定的AnalyzeSkeleton边长之和，pixel单位必须unitScale=1。端点／连接点／分段来自插件字段；`meshes`标识为独立图环Σ(E−V+1)，不冒充空间网孔个数／面积或Angiogenesis Analyzer字段。保留原生每树字段、顶点坐标、边／slab轨迹、端点和junction坐标，空图插件null数组保留null。
+- 三类几何独立验收：13像素直线/.5um每像素→6um、2端点、1段、0环；单闭环→0端点、1独立环；空图→0长度、0段、0环。原生插件结果有别于此前探索性TS骨架统计；本轮Host已不再路由TS成管实现。
+- 新增五个专项 Skills：zerowall-fiji-western-blot、zerowall-fiji-scratch-wound、zerowall-fiji-colony-formation、zerowall-fiji-bacterial-cfu、zerowall-fiji-tube-formation；共用规则集中在zerowall-fiji，专项参数／边界分开。示例遵循实际research_workflow包装，资源由返回resourceBase解析。
+- 非WB实验改用持久化事务reserveScientificRun，owner明确为fiji-experiment；相同请求跨Store连接只建一Run，改参数冲突；完成时全部Artifact和succeeded同事务提交。提供状态／取消／Host退出收尾；取消只对当前Host拥有的子进程。失去执行所有权的Run在超时后明确失败并保留日志，不自动续算、不使用历史PID杀进程。
+- 这完成了原生执行和合成参考验证，不等于全实验流程验收：时间序列映射、批处理、孔位与接种量、反光排除区、手工修订、粘连分离、真实生物数据和独立科学复核仍是明确缺口。
+
+
+## 2026-09-22：画布多面板与工程导出
+
+- 画布新增最多9个面板、1–3列，编辑标题/轴标签/线性范围/图例/系列颜色和折线或散点；支持添加、删除和前移附加面板。JSON仍可编辑数据、注释和来源，支持重新导入已导出的工程；草稿按会话保存，编辑后清除旧预览。
+- 每面板有独立坐标轴和裁剪区域，明确刻度；不自动推断误差线或统计显著性。以迭代方式求范围，修复10万点以上spread参数导致的栈溢出风险；空数据使用明确的0–1轴。
+- Host核验全部面板的来源ID属于当前项目，登记来源版本和摘要，继承来源产物的needsReview。SVG、PNG、rasterized PDF和可编辑JSON采用一次Store事务登记，失败不遗留部分Artifact记录。
+- 6项数值/Host/来源隔离/事务检查及2项React编辑/恢复检查通过。真实React→Host→Chromium两面板预览、刷新恢复、四格式导出和文件哈希通过：`.build/canvas-viewer-smoke/2026-09-22T05-11-48.822Z/report.json`。已查看实际双面板截图；六个点与手工坐标基准一致。
+- 仍未包括图片拼版、自由拖拽、带物理标定的图像比例尺、误差线/统计图全覆盖和出版级人工复核。数据点由用户指定，引用校验不等于已独立复算点值。
+
+## 2026-09-22：本地安装包与真实引擎包
+
+- 初次7.0.0安装包已实际生成，packaged运行通过启动/版本/语言设置和研究工作台/分子端到端；这些测试使用独立profile，未覆盖用户正在运行的安装。后续新增HE/序列/画布代码仍须重新构建安装包。
+- Windows Host的两份Sharp曾分别为0.35.3与0.34.5，导致分子PNG导出真实失败。已在权威workspace generator统一0.35.3，重新准备依赖闭包，增加打包验证约束，packaged实际PNG导出已通过。
+- 独立HE StarDist包65依赖/294成员/496153296bytes已构建。19项契约、两次真实离线导入/CPU模型推理、损坏拒绝和回滚通过，详见`docs/science-engine-packages.md`。需要外部Python3.11 x64；不冒充可移植运行时或完整切片质量验证。
+- 已补7.0.0本地构建说明和本地更新元数据；未上传七牛云/GitHub。主安装包尚未签名，实际安装/升级和完整九工具packaged验收仍未完成。
+
+
+## 2026-09-22：生产验收、Sanger与严格客户端检查
+
+- backend生产提交36ea1bc8ec351534a557d0f470c53d6418c0d8d4；Gateway/Plumber/worker/OmicVerse/Biomni均active。实际MR、coloc、r_files写入/读取/树/manifest和Vina通过，详见另一仓库`raiagentai/docs/production-7.0.0-acceptance.md`。检查时持久R队列queued=0、running=0；历史86 failed和6 timed_out没有抹除或改写成功。仅是软件/合成计算验收，非医学证据。
+- Sanger工作台补上真实双向核对操作，Host核验两边revision和source hash，拒绝用同一视图当双向读段；SCF IUPAC原调用不再被最大信号碱基替代。峰图按原样本坐标有界显示，避免对长数组spread求峰值导致栈溢出。10项解析/Host/UI测试通过；人工碱基修订仍未交付。
+- 科研插件常规typecheck由权威generator加入`tsconfig.workbench.json`，保证严格客户端检查不被原`noCheck`配置掩盖。修复本轮分子、流式、图像、先导面板等exact optional/RemoteResult类型问题；最新严格检查通过。
+- 最新整合Research 272 passed/2 skipped；Store 36 passed；核心提示词/Skill绑定29 passed；引擎包契约19 passed。尚在进行的HE和序列最终交互验收及后续修改另行记录。
+
+
+## 2026-09-22 HE CPU StarDist 执行与复核补充
+
+此前仅有 RGB 连通域启发式统计的描述已过时。当前 HE 适配器已经接入 OpenSlide 金字塔局部读取及独立 CPU StarDist `2D_versatile_he` 核分割，二者在界面和结果中明确区分。
+
+- 隔离引擎：Python 3.11.9、TensorFlow 2.15.1、StarDist 0.9.1、csbdeep 0.8.1、NumPy 1.26.4、setuptools 80.9.0，65 个固定版本依赖；不修改原 OpenSlide、Fiji 或 napari 环境。
+- 模型下载 ZIP SHA-256：`f1696ef0631bd7e1c0e5c0d3017e2b4c6a95e284c6aab9c22fc2f08317817b28`。许可证据、冻结文件哈希、CPU 健康脚本随外置引擎配置维护。
+- 方法：固定 Python Runner，OpenSlide 懒读取；最多 64 个 128×128 样本块估计公共归一化；带 context 与 overlap 的 StarDist 原生 `predict_instances_big` 责任区拼接；标签使用磁盘 memmap 和分块 TIFF 输出；预览不全量读取 RGB。轴补齐使用原生对应的反射边界。
+- 任务：数据库原子预留与登记、请求幂等、单个本地重任务、线程上限 8、默认 30 分钟、取消、退出/超时失败、完成 Manifest 恢复、源文件及模型/脚本/产物哈希检查。不会根据历史 PID 杀进程，不把旧失联进程当作自动恢复。
+- 输出：核标签 TIFF、核 CSV、轮廓 NPZ、带边界标记的 PNG、参数/计数 JSON、脚本/请求/日志/完成清单。未知校准保持未知；核密度分母是 ROI 几何面积，不是组织掩膜面积。
+
+数值验收保留了预先设定的严格容差：IoU ≥0.9 匹配时额外预测=0、遗漏=0，平均真实匹配 IoU ≥0.995。重复公共 HE 软件样例（1500×1200，20 个解码块）与同版本原生整图预测得到 **2131 对 2131 个核、FP=0、FN=0、平均 IoU=0.9999982815**。报告：`.build/he-stardist-reference/2026-09-22T05-26-45.734Z/report.json`。先前使用 edge padding 导致外侧两核偏差的失败记录保留在 `.build/he-stardist-reference/2026-09-22T04-44-02.627Z/`，修复为 reflect 后通过；未为追平计数删除候选或放宽容差。
+
+真实源代码 React → Host → OpenSlide → StarDist → 结果叠加 → 刷新恢复 → 新任务取消通过。公共单 patch 实际检测 182 个核，恢复没有创建第二个运行；报告和截图：`.build/he-stardist-viewer-smoke/2026-09-22T05-31-38.749Z/`。实际图像来源为 StarDist 公共 HE 样例。
+
+针对 HE、HE 生命周期、HE UI 及 Flow UI 的 4 个文件 **11 项测试通过**。新增生命周期测试确认进程无 Manifest 退出后立即失败。`tsconfig.host.json` 与实际严格客户端 `tsconfig.workbench.json` 均通过。`zerowall-he` Skill 已按当前真实 schema、参数、产物坐标与范围更新。
+
+尚未交付的边界：一次任务限制单个 ROI、最多 6400 万采样像素及 10 万核；没有整片批处理、经验证的组织区域模型或临床诊断模型；没有独立医学人工标注真值验证；没有硬性 OS 进程内存上限。公共 patch 重复只验证软件分块一致性，不构成独立生物学样本。这些源界面检查不替代最终安装包 Electron 验收。

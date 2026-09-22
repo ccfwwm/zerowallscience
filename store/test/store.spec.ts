@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -14,15 +15,37 @@ function databasePath(): string {
 }
 
 describe('ResearchStore', () => {
+  it('backs up schema 16 and preserves existing views while adding molecular sessions', () => {
+    const path = databasePath()
+    const before = new ResearchStore(path)
+    const project = before.createProject({ name: 'Migration', rootPath: 'C:/science/migration' })
+    const asset = before.createDataAsset({ projectId: project.id, name: 'Structure', uri: 'file:///C:/science/migration/model.pdb', location: 'local', mediaType: 'chemical/x-pdb' })
+    const oldView = before.createViewerSession({ projectId: project.id, assetId: asset.id, tool: 'image', state: { zoom: 2 } })
+    before.close()
+    const legacy = new DatabaseSync(path)
+    legacy.exec("DELETE FROM schema_migrations WHERE version=17; ALTER TABLE viewer_sessions RENAME TO viewer_sessions_new; DROP INDEX viewer_sessions_project_idx; CREATE TABLE viewer_sessions (id TEXT PRIMARY KEY NOT NULL, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, asset_id TEXT NOT NULL REFERENCES data_assets(id) ON DELETE CASCADE, tool TEXT NOT NULL CHECK(tool IN ('sequence','image','flow','cells','brain')), state_json TEXT NOT NULL DEFAULT '{}', version INTEGER NOT NULL CHECK(version > 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL); INSERT INTO viewer_sessions SELECT * FROM viewer_sessions_new; DROP TABLE viewer_sessions_new; CREATE INDEX viewer_sessions_project_idx ON viewer_sessions(project_id, updated_at DESC);")
+    legacy.close()
+    const after = new ResearchStore(path)
+    try {
+      expect(after.schemaVersion()).toBe(17)
+      expect(existsSync(path + '.pre-research-v17.sqlite')).toBe(true)
+      expect(after.listViewerSessions(project.id)).toEqual([oldView])
+      const molecular = after.createViewerSession({ projectId: project.id, assetId: asset.id, tool: 'molecule', state: { selectedAtom: 1 } })
+      const imported = after.importResearchSnapshot(after.exportResearchSnapshot(project.id))
+      expect(after.listViewerSessions(imported.id).find(item => item.tool === 'molecule')?.state).toEqual(molecular.state)
+    } finally { after.close() }
+    const backup = new DatabaseSync(path + '.pre-research-v17.sqlite', { readOnly: true })
+    try { expect(backup.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toMatchObject({ version: 16 }) } finally { backup.close() }
+  })
   it('applies migrations idempotently and persists projects across restart', () => {
     const path = databasePath()
     const first = new ResearchStore(path)
-    expect(first.schemaVersion()).toBe(16)
+    expect(first.schemaVersion()).toBe(17)
     const created = first.createProject({ name: 'Genome Study', rootPath: 'C:/science/genome' })
     first.close()
 
     const reopened = new ResearchStore(path)
-    expect(reopened.schemaVersion()).toBe(16)
+    expect(reopened.schemaVersion()).toBe(17)
     expect(reopened.listProjects()).toEqual([created])
     reopened.close()
   })
@@ -381,7 +404,9 @@ describe('ResearchStore', () => {
       const linked = store.updateResearchStudy(study.id, { expectedVersion: store.getResearchStudy(study.id)!.version, currentQuestionId: question.id, currentPlanId: plan.id })
       const gate1 = store.approveResearchGate(study.id, 1, 'approved', linked.version, 'fixture plan')
       store.freezeResearchStudy(study.id, gate1.version)
-      const evidence = store.registerResearchEvidence({ projectId: project.id, studyId: study.id, payload: { artifactId: 'artifact-1', evidenceType: 'computed', needsReview: false } })
+      const run = store.createRun({ projectId: project.id, name: 'fixture evidence run', command: 'fixture', workingDirectory: project.rootPath, status: 'succeeded', progress: 1 })
+      const artifact = store.createArtifact({ projectId: project.id, runId: run.id, name: 'fixture evidence artifact', uri: 'file:///fixture-result.json', mediaType: 'application/json', checksum: 'a'.repeat(64) })
+      const evidence = store.registerResearchEvidence({ projectId: project.id, studyId: study.id, payload: { artifactId: artifact.id, runId: run.id, artifactSha256: artifact.checksum, evidenceType: 'computed', needsReview: false } })
       const claim = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'claim', payload: { text: 'bounded fixture claim', evidenceIds: [evidence.id] } })
       const audited = store.auditResearchClaim(claim.id, claim.version)
       expect(audited.payload).toMatchObject({ auditStatus: 'passed', needsReview: false, auditErrors: [] })
@@ -389,6 +414,32 @@ describe('ResearchStore', () => {
       expect(store.approveResearchGate(study.id, 2, 'approved', current.version, 'evidence audit passed').gate2).toBe('approved')
       const stale = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'claim', payload: { text: 'missing source', evidenceIds: ['missing'] } })
       expect(store.auditResearchClaim(stale.id, stale.version).payload).toMatchObject({ auditStatus: 'failed', needsReview: true })
+    } finally { store.close() }
+  })
+
+  it('rejects invented, cross-project and inconsistent evidence sources and defaults to review', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const project = store.createProject({ name: 'Evidence scope', rootPath: 'C:/science/evidence-scope' })
+      const other = store.createProject({ name: 'Other evidence', rootPath: 'C:/science/evidence-other' })
+      const study = store.createResearchStudy({ projectId: project.id, title: 'Integrity' })
+      const register = (payload: Record<string, any>) => store.registerResearchEvidence({ projectId: project.id, studyId: study.id, payload })
+      const foreign = store.createArtifact({ projectId: other.id, name: 'Other result', uri: 'file:///other.json', mediaType: 'application/json' })
+      expect(() => register({ artifactId: 'invented', needsReview: false })).toThrow('same project')
+      expect(() => register({ artifactId: foreign.id, source: 'some source' })).toThrow('same project')
+      expect(() => register({ runId: 1, source: 'some source' })).toThrow('non-empty string')
+      const failed = store.createRun({ projectId: project.id, name: 'Failed analysis', command: 'fixture', workingDirectory: project.rootPath, status: 'failed' })
+      expect(() => register({ runId: failed.id, needsReview: false })).toThrow('non-succeeded')
+      const record = register({ runId: failed.id })
+      expect(record.payload.needsReview).toBe(true)
+      expect(() => store.updateResearchDocument(record.id, { expectedVersion: record.version, payload: { runId: 'invented', needsReview: false } })).toThrow('same project')
+      const run = store.createRun({ projectId: project.id, name: 'Computed analysis', command: 'fixture', workingDirectory: project.rootPath, status: 'succeeded' })
+      const artifact = store.createArtifact({ projectId: project.id, runId: run.id, name: 'Actual result', uri: 'file:///actual.json', mediaType: 'application/json', checksum: 'a'.repeat(64) })
+      expect(() => register({ artifactId: artifact.id, artifactSha256: 'b'.repeat(64) })).toThrow('checksum')
+      expect(() => register({ artifactId: artifact.id, runId: failed.id })).toThrow('do not match')
+      const evidence = register({ artifactId: artifact.id, runId: run.id, needsReview: false })
+      const claim = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'claim', payload: { evidenceIds: [evidence.id] } })
+      expect(store.auditResearchClaim(claim.id, claim.version).payload.auditStatus).toBe('passed')
     } finally { store.close() }
   })
 

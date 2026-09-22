@@ -50,7 +50,7 @@ export function validateNhanesContract(input: JsonObject): JsonObject {
   const strata = text(input.strata); const psu = text(input.psu); const primaryWeight = text(input.weight)
   if (!strata) missing.push('strata'); if (!psu) missing.push('psu')
   if (!primaryWeight && datasets.length > 0) missing.push('weight')
-  if (components.size > 1) add('mixed-components', '多个 NHANES 组件不能共享一个未说明的权重；按组件拆分或明确连接与权重。')
+  if (components.size > 1 && !text(input.componentWeightRationale)) add('mixed-components', '多个 NHANES 组件必须说明按最受限组件选择权重的依据，并核验连接与样本交集。')
   if (primaryWeight && datasets.some(raw => raw && typeof raw === 'object' && text((raw as Record<string, unknown>).weight) !== primaryWeight)) add('weight-mismatch', 'DatasetContract 的主权重与数据集声明不一致。')
   const strategy = text(input.cycleStrategy)
   if (cycles.size > 1 && !['per-cycle', 'official-combined'].includes(strategy)) missing.push('cycleStrategy')
@@ -63,8 +63,9 @@ export function validateNhanesContract(input: JsonObject): JsonObject {
   const previewRows = number(input.previewRows); const analysisRows = number(input.analysisRows)
   if (previewRows !== undefined && analysisRows !== undefined && previewRows < analysisRows) add('preview-is-truncated', '预览行数少于正式分析行数；必须确认正式任务没有复用预览截断数据。', 'warning')
   if (input.previewTruncated === true) add('preview-truncated', '当前输入明确标记为截断预览，不能作为完整调查分析数据。')
-  if (input.dxxH === true && [...cycles].some(cycle => /2013.?2014/u.test(cycle))) {
-    const ageMin = number(input.ageMin); const ageMax = number(input.ageMax)
+  const dxx = datasets.find(raw => raw && typeof raw === 'object' && text((raw as Record<string, unknown>).dataset).toUpperCase().replace(/\.[^.]+$/u, '') === 'DXX_H') as Record<string, unknown> | undefined
+  if ((input.dxxH === true || dxx) && [...cycles].some(cycle => /2013.?2014/u.test(cycle))) {
+    const ageMin = number(input.ageMin ?? dxx?.ageMin); const ageMax = number(input.ageMax ?? dxx?.ageMax)
     if (ageMin === undefined || ageMax === undefined) missing.push('dxxH.ageMin/dxxH.ageMax')
     else if (ageMin < 8 || ageMax > 69) add('dxxH-age-range', '2013–2014 DXX_H 仅适用于其规定年龄范围；当前契约超出 8–69 岁，标记为不适用。')
   }

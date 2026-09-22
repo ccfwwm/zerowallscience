@@ -1,6 +1,11 @@
 ---
 name: zerowall-data-contract
 description: 核验研究数据的来源、表型、变量、供者、权限与方法适用范围，并形成数据契约；用于研究前的数据侦察和错配审查。
+metadata:
+  zerowall:
+    schema_version: 1
+    version: 7.0.0-1
+    source: bundled
 ---
 
 检索命中、可下载和科学适用是不同状态。逐项记录真实来源、版本、变量定义与单位、观察单位、供者/配对关系、祖源、组织、缺失码、访问条件与独立性；未知信息保持 null 或未登记，不由模型填补。同一供者的不同 accession 不是独立验证。

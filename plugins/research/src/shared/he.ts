@@ -1,4 +1,16 @@
 export interface HeRegion { x: number; y: number; width: number; height: number; page?: number }
+export interface HeSlideMetadata {
+  width: number; height: number; pages: number; format: string
+  engine: 'openslide' | 'sharp-single-tiff'; engineVersion?: string; bindingVersion?: string
+  levels: Array<{ level: number; width: number; height: number; downsample: number }>
+  calibration: { x: number; y: number; unit: 'um'; source: string } | null
+  bounds: { x: number; y: number; width: number; height: number; source: string }
+  notes: string[]
+}
+export interface HeTile {
+  region: Required<HeRegion>; width: number; height: number; downsample: number
+  coverageLevel0: { width: number; height: number }; pngBase64: string
+}
 export interface HeAnalysis {
   format: 'zerowall-he-analysis'
   version: 1
@@ -13,14 +25,27 @@ export interface HeAnalysis {
   nucleiAreas: number[]
   flags: string[]
   notes: string[]
+  pyramidLevel?: number
+  downsample?: number
+  calibration?: HeSlideMetadata['calibration']
+  physical?: { roiWidthUm: number; roiHeightUm: number; roiAreaUm2: number; samplePixelSizeUm: { x: number; y: number } }
 }
 
-export function validateHeRegion(value: unknown, width: number, height: number, pages: number): Required<HeRegion> {
+export function validateHeRegion(value: unknown, width: number, height: number, pages: number, maxPixels = 25_000_000): Required<HeRegion> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('HE region is required.')
   const input = value as Record<string, unknown>; const integer = (key: string): number => { const result = Number(input[key]); if (!Number.isSafeInteger(result)) throw new Error(`HE ${key} must be an integer.`); return result }
   const region = { x: integer('x'), y: integer('y'), width: integer('width'), height: integer('height'), page: input.page === undefined ? 0 : integer('page') }
   if (region.x < 0 || region.y < 0 || region.width < 1 || region.height < 1 || region.x + region.width > width || region.y + region.height > height || region.page < 0 || region.page >= pages) throw new Error('HE region is outside the decoded slide page.')
-  if (region.width * region.height > 25_000_000) throw new Error('HE ROI exceeds the bounded 25-million-pixel CPU analysis limit.')
+  if (region.width * region.height > maxPixels) throw new Error('HE ROI exceeds the bounded CPU analysis limit.')
+  return region
+}
+
+export function validateHeTileRegion(value: unknown, slide: HeSlideMetadata): Required<HeRegion> {
+  const region = validateHeRegion(value, slide.width, slide.height, slide.pages, Number.MAX_SAFE_INTEGER)
+  const level = slide.levels[region.page]
+  if (!level || !Number.isFinite(level.downsample) || level.downsample < 1) throw new Error('Invalid HE pyramid level metadata.')
+  const width = Math.ceil(region.width / level.downsample); const height = Math.ceil(region.height / level.downsample)
+  if (width * height > 4_194_304 || width > 4096 || height > 4096) throw new Error('HE tile exceeds 4 megapixels/4096 per axis; choose a coarser level or smaller ROI.')
   return region
 }
 

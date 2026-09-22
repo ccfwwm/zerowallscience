@@ -70,6 +70,7 @@ allowBuilds:
   node-addon-require-builtin: false
   # Registry release includes compiled host/client entries; no install build needed.
   dsh-zotero: false
+  '@scarf/scarf': false
 
 minimumReleaseAgeExclude:
   # Explicitly requested integration pin, published today.

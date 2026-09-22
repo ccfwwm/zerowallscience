@@ -60,26 +60,37 @@ try:
         coordinates = request.get("coordinates") or []
         units = request.get("coordinateUnits", "voxel")
         if units not in ("voxel", "micron"): fail("coordinateUnits must be voxel or micron")
-        if len(coordinates) > int(request.get("maxCells", 100000)): fail("coordinate count exceeds the configured bound")
+        if not isinstance(coordinates, list): fail("coordinates must be an array of atlas-axis triplets")
+        max_cells = request.get("maxCells", 100000)
+        if isinstance(max_cells, bool) or not isinstance(max_cells, int) or not 1 <= max_cells <= 100000: fail("maxCells must be an integer from 1 to 100000")
+        if len(coordinates) > max_cells: fail("coordinate count exceeds the configured bound")
+        if str(atlas.orientation).lower() != "asr": fail("Unexpected atlas orientation: expected asr (AP, SI, RL array axes)")
+        shape = np.asarray(atlas.shape, dtype=float); resolution = np.asarray(atlas.resolution, dtype=float)
+        if shape.shape != (3,) or resolution.shape != (3,) or not np.isfinite(resolution).all() or np.any(resolution <= 0): fail("Invalid atlas coordinate geometry")
         rows = []; counts = {}
         for index, raw in enumerate(coordinates):
-            if not isinstance(raw, (list, tuple)) or len(raw) != 3: fail("each coordinate must contain x,y,z")
+            if not isinstance(raw, (list, tuple)) or len(raw) != 3: fail("each coordinate must contain atlas AP,SI,RL array-axis values")
+            if any(isinstance(x, bool) or not isinstance(x, (int, float)) for x in raw): fail("coordinate components must be numeric, not strings or booleans")
             point = [float(x) for x in raw]
             if not all(np.isfinite(point)): fail("coordinates must be finite")
-            try:
-                region_id = atlas.structure_from_coords(point, microns=(units == "micron"), as_acronym=False)
-                if isinstance(region_id, str): acronym = region_id; rid = region_id; hemisphere = "outside"
-                else:
-                    info = structures[int(region_id)]; rid = int(region_id); acronym = str(info.get("acronym", "")); hemisphere = str(atlas.hemisphere_from_coords(point, microns=(units == "micron"), as_string=True))
-                counts[(str(rid), acronym)] = counts.get((str(rid), acronym), 0) + 1
-                rows.append({"index": index, "coordinate": point, "regionId": rid, "acronym": acronym, "hemisphere": hemisphere})
-            except Exception:
+            voxel = np.asarray(point) / resolution if units == "micron" else np.asarray(point)
+            # Atlasapi casts to int and then indexes NumPy directly. Bounds must
+            # be checked first: negative indices would otherwise wrap to tissue.
+            outside = bool(np.any(voxel < 0) or np.any(voxel >= shape))
+            region_id = 0 if outside else int(atlas.structure_from_coords(point, microns=(units == "micron"), as_acronym=False))
+            if outside or region_id == 0:
                 counts[("outside", "outside")] = counts.get(("outside", "outside"), 0) + 1
                 rows.append({"index": index, "coordinate": point, "regionId": "outside", "acronym": "outside", "hemisphere": "outside"})
+                continue
+            if region_id not in structures: fail(f"Annotation label {region_id} is missing from the atlas ontology")
+            info = structures[region_id]; acronym = str(info.get("acronym", "")); hemisphere = str(atlas.hemisphere_from_coords(point, microns=(units == "micron"), as_string=True))
+            counts[(str(region_id), acronym)] = counts.get((str(region_id), acronym), 0) + 1
+            rows.append({"index": index, "coordinate": point, "regionId": region_id, "acronym": acronym, "hemisphere": hemisphere})
+        coordinate_note = "Coordinates are zero-based atlas array axes AP,SI,RL (orientation asr; anterior/superior/right origin), not cellfinder x,y,z. Microns are measured from that origin; finite bounds are checked before floor-to-voxel indexing. Raw sample coordinates require a separately validated registration transform."
         by_region = [{"regionId": (int(rid) if rid.isdigit() else rid), "acronym": acronym, "count": count} for (rid, acronym), count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))]
         if operation == "trajectory":
-            print(json.dumps({"analysis": {"total": len(rows), "mapped": len(rows) - counts.get(("outside", "outside"), 0), "outside": counts.get(("outside", "outside"), 0), "byRegion": by_region, "cells": rows, "notes": ["Coordinates were mapped with BrainGlobeAtlas.structure_from_coords.", "A trajectory is an ordered coordinate annotation; it is not a tractography result."]}}, ensure_ascii=False)); raise SystemExit(0)
-        print(json.dumps({"analysis": {"total": len(rows), "mapped": len(rows) - counts.get(("outside", "outside"), 0), "outside": counts.get(("outside", "outside"), 0), "byRegion": by_region, "cells": rows, "notes": ["Coordinates were mapped with BrainGlobeAtlas.structure_from_coords.", "Cell rows are bounded and preserve input order."]}}, ensure_ascii=False)); raise SystemExit(0)
+            print(json.dumps({"analysis": {"total": len(rows), "mapped": len(rows) - counts.get(("outside", "outside"), 0), "outside": counts.get(("outside", "outside"), 0), "byRegion": by_region, "cells": rows, "notes": [coordinate_note, "A trajectory is an ordered coordinate annotation; it is not a tractography result."]}}, ensure_ascii=False)); raise SystemExit(0)
+        print(json.dumps({"analysis": {"total": len(rows), "mapped": len(rows) - counts.get(("outside", "outside"), 0), "outside": counts.get(("outside", "outside"), 0), "byRegion": by_region, "cells": rows, "notes": [coordinate_note, "Cell rows are bounded and preserve input order."]}}, ensure_ascii=False)); raise SystemExit(0)
     fail("Unsupported BrainGlobe operation")
 except SystemExit:
     raise

@@ -18,12 +18,12 @@ BrainGlobe is a separate managed environment. Do not modify the user napari envi
 
 - `brain_open`：登记 Allen 小鼠 CCF 25 µm 图谱 ViewerSession，返回真实分辨率、体积尺寸和结构摘要。
 - `brain_analyze`：传 `brain_axis`、`brain_index`、`brain_downsample` 查看真实 annotation 切片，或传 `brain_region` 查询结构并可得到体素体积。
-- `brain_cells`：传 `brain_coordinates` 与 `brain_coordinate_units=voxel|micron`，将坐标映射到结构和左右半球。
+- `brain_cells`：传 `brain_coordinates` 与 `brain_coordinate_units=voxel|micron`，将坐标映射到结构和左右半球。坐标必须为 Allen 图谱数组 AP、SI、RL 轴序、ASR 原点，从零开始；micron 同样从该原点量取。禁止直接传 cellfinder 的 x,y,z 或样本坐标，必须有独立核验的配准变换。Host/Runner 拒绝非有限值，负数和达到/超过轴长度的坐标记为图谱外，绝不利用负索引回绕。
 - `brain_trajectory`：按输入顺序登记坐标轨迹；这是有序脑区标注，不是纤维束追踪。
 - `brain_export`：将切片、脑区或坐标分析写入带 Runner、atlas 版本、Viewer 修订和 `scientificReview: pending` 的 Artifact。
 - `brain_register`：对项目内本地图像堆栈执行受限 brainreg CLI；必须通过 `brainreg.json`、注册图谱文件、非空输出和 SHA-256 审计后才登记 Artifact。
 - `brain_cellfinder`：对项目内 `.npy`/TIFF 三维信号体执行真实 cellfinder；支持零背景或同尺寸背景、平面范围和检测模式，输出保留原始像素坐标与源哈希，不自动映射脑区。
 - `brain_render`：用真实 brainrender 生成 PNG 和 HTML 三维场景；脑区使用 atlas 名称/缩写，坐标必须明确为 micron，场景是可追踪可视化产物，不是解剖或机制证据。
 
-图谱元数据和 annotation 来自实际 BrainGlobe atlasapi。传输的结构列表、坐标行和切片标签有界；任何超出 atlas、未知单位或缺失受管理目录的情况都必须报告并停止。cellfinder 检测、brainreg 配准和 brainrender 场景仍需人工科学复核，不能由 Runner 成功退出或图像存在推断为已验证结论。
+图谱元数据和 annotation 来自实际 BrainGlobe atlasapi。传输的结构列表、坐标行和切片标签有界；图谱外坐标明确单列计数，未知单位/方向、损坏的 ontology 或缺失受管理目录必须报告并停止。cellfinder 检测、brainreg 配准和 brainrender 场景仍需人工科学复核，不能由 Runner 成功退出或图像存在推断为已验证结论。
 

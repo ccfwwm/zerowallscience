@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import { createHash } from 'node:crypto'
 import { cp, mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
@@ -236,6 +237,7 @@ async function disabledSkill(name: string): Promise<ZeroWallSkillDetail | undefi
     modelInvocable: false,
     userInvocable: false,
     content: parsed.content,
+    contentHash: createHash('sha256').update(parsed.content).digest('hex'),
   }
 }
 
@@ -252,7 +254,13 @@ function skillSummary(skill: SkillSummary): ZeroWallSkillSummary {
 }
 
 function skillDetail(skill: SkillDefinition): ZeroWallSkillDetail {
-  return { ...skillSummary(skill), content: skill.content }
+  const metadata = skill.metadata?.zerowall
+  const version = metadata && typeof metadata === 'object' ? (metadata as Record<string, unknown>).version : undefined
+  return {
+    ...skillSummary(skill), content: skill.content,
+    contentHash: createHash('sha256').update(skill.content).digest('hex'),
+    ...(typeof version === 'string' && /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/u.test(version) ? { declaredVersion: version } : {}),
+  }
 }
 
 export function apply(ctx: Context): void {

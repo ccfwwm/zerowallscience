@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<g:Gating-ML xmlns:g="http://www.isac-net.org/std/Gating-ML/v2.0/gating" xmlns:d="http://www.isac-net.org/std/Gating-ML/v2.0/datatypes">
+ <g:PolygonGate g:id="child" g:parent_id="parent">
+  <g:dimension g:compensation-ref="uncompensated"><d:fcs-dimension d:name="X"/></g:dimension>
+  <g:dimension g:compensation-ref="uncompensated"><d:fcs-dimension d:name="Y"/></g:dimension>
+  <g:vertex><g:coordinate d:value="0"/><g:coordinate d:value="0"/></g:vertex>
+  <g:vertex><g:coordinate d:value="10"/><g:coordinate d:value="0"/></g:vertex>
+  <g:vertex><g:coordinate d:value="0"/><g:coordinate d:value="10"/></g:vertex>
+ </g:PolygonGate>
+ <g:RectangleGate g:id="parent"><g:dimension g:compensation-ref="uncompensated" g:min="0" g:max="10"><d:fcs-dimension d:name="X"/></g:dimension></g:RectangleGate>
+</g:Gating-ML>

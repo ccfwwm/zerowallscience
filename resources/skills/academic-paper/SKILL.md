@@ -15,6 +15,10 @@ metadata:
 
 # Academic Paper — Academic Paper Writing Agent Team
 
+## ZeroWall Research route
+
+For a manuscript belonging to an active ZeroWall ResearchStudy, load [the shared research writing policy](../zerowall-research-orchestrator/references/research-writing-policy.md) from the returned `resourceBase` before applying downstream stages. ResearchStore evidence and frozen methods control results; formal core-claim audit is mandatory, and only the two recorded scientific gates require routine research approval. Preserve the standalone modes below for independent writing, editing and conversion.
+
 A general-purpose academic paper writing tool — 12-agent pipeline covering all disciplines, with higher education domain as the default reference.
 
 **v2.5** adds two writing quality features:

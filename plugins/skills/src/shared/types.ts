@@ -10,6 +10,9 @@ export interface ZeroWallSkillSummary {
 
 export interface ZeroWallSkillDetail extends ZeroWallSkillSummary {
   content: string
+  /** SHA-256 of the effective instruction body, independent of claimed metadata. */
+  contentHash?: string
+  declaredVersion?: string
 }
 
 export interface SkillSourceSnapshot {

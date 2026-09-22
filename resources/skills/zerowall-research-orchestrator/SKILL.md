@@ -1,6 +1,11 @@
 ---
 name: zerowall-research-orchestrator
 description: 管理已建立研究的问题、数据契约、分析方案与恢复；用于连续科研编排，不用于普通文件查看或单次绘图。
+metadata:
+  zerowall:
+    schema_version: 1
+    version: 7.0.0-1
+    source: bundled
 ---
 
 先发现 `research_study` 并调用 `{"action":"list"}`。Host 以当前真实会话解析项目；不要猜测或借用其他项目 ID。使用 `get` / `documents` 加 `study_id` 读取持久状态，不能仅根据聊天摘要推断是否冻结。

@@ -10,5 +10,11 @@ Use the persisted ZeroWall research objects and the current Host/Runner schemas.
 
 ## Domain constraints
 
-The current adapter validates bounded structured point-series specifications, preserves source asset/artifact IDs and parameters, renders deterministic SVG with axes, legends and annotations, and exports an editable JSON manifest beside the SVG artifact. PNG/PDF conversion, Plotly/Fabric multi-panel editing and linking to a computational Run are not yet available; do not present SVG baseline output as a complete publication figure workflow.
+Use `science_viewer` for local plotting. Pass `action: "canvas_render" | "canvas_export"` and the JSON specification in `canvas_spec`. The execution session supplies the project. The desktop RPC has a different nested `canvas` envelope; do not copy RPC payloads into the Agent tool. Discover the live schema before calling.
+
+The primary spec includes `title`, `width`, `height`, `xLabel`, `yLabel`, and `series: [{id,name,color,points:[{x,y}],mode:"line"|"scatter"}]`. Optional `xRange`/`yRange` are finite increasing bounds; `showLegend` controls the legend. `annotations` use data coordinates. `panels` may contain eight additional complete, non-nested specs, arranged in 1–3 `columns`; all panels use the root figure dimensions and independent linear axes. Each panel must have sufficient room. At most 100,000 points per series and 500,000 across the figure are supported.
+
+Retain `sourceAssetIds` and `sourceArtifactIds` for every panel. Host rejects cross-project or missing references and stores source versions/checksums. References do not prove plotted numbers: derive points from actual result files, preserve units and record transformations. Never invent significance, uncertainty or statistical sample sizes.
+
+Export registers SVG, PNG, rasterized PDF and an editable JSON project in one transaction. JSON can be imported in the workbench; local drafts persist per session. PDF is an image wrapper, not vector artwork. Image-panel collage, physical image scale bars, error-bar/statistical chart coverage and freeform drag layout remain unavailable. Do not claim complete publication figure validation. Use existing FigureYa capabilities for supported advanced figures, preserving its Run and Artifact references.
 

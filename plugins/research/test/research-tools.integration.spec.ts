@@ -34,9 +34,23 @@ async function fixture() {
   await ctx.plugin(SystemPrompt); await ctx.plugin(ToolRuntime); await ctx.plugin(Research)
   cleanups.push(async () => { await ctx.fiber.dispose(); store.close(); await rm(root, { recursive: true, force: true }) })
   const call = (name: string, args: object, session = 'a') => ctx.tools.execute({ name, arguments: args, callId: ToolCallId('integration'), signal: new AbortController().signal, agent: { session: sessions.get(session) } as any })
-  return { ctx, store, project, foreign, asset, call, reconCalls }
+  return { ctx, store, project, foreign, asset, call, reconCalls, sessions, root }
 }
 function value(result: any): any { expect(result.isError, JSON.stringify(result.content)).toBe(false); return result.value }
+
+it('registers only an existing session workspace idempotently and without creating a study', async () => {
+  const { ctx, store, root, sessions } = await fixture()
+  const cwd = join(root, 'ordinary-workspace'); await mkdir(cwd)
+  sessions.set('ordinary', { id: 'ordinary', header: { cwd } })
+  const [first, second] = await Promise.all([ctx.zerowallResearch.registerSessionProject({ sessionId: 'ordinary' }), ctx.zerowallResearch.registerSessionProject({ sessionId: 'ordinary' })])
+  expect(first.id).toBe(second.id)
+  expect(first.rootPath).toBe(cwd)
+  expect(store.listProjects().filter(project => project.rootPath === cwd)).toHaveLength(1)
+  expect(store.listResearchStudies(first.id)).toEqual([])
+  await expect(ctx.zerowallResearch.registerSessionProject({ sessionId: 'missing' })).rejects.toThrow('active local workspace')
+  sessions.set('bad', { id: 'bad', header: { cwd: join(root, 'absent') } })
+  await expect(ctx.zerowallResearch.registerSessionProject({ sessionId: 'bad' })).rejects.toThrow()
+})
 
 it('dispatches actual H5AD cell tools and exports results with project isolation', async () => {
   const { store, project, call } = await fixture()
@@ -110,6 +124,19 @@ it('discovers and executes the real sequence asset-to-artifact tool with project
   expect(store.listResearchStudies(project.id)).toEqual([])
 })
 
+it('runs the canvas Agent schema through Host and returns source-linked artifacts without SVG text', async () => {
+  const { ctx, project, asset, call } = await fixture()
+  expect(ctx.tools.get('science_viewer')).toBeDefined()
+  const spec = { title: 'Actual tool route', width: 640, height: 400, xLabel: 'x', yLabel: 'y', sourceAssetIds: [asset.id], series: [{ id: 's', name: 'Reference', color: '#2255aa', points: [{ x: 0, y: 1 }, { x: 1, y: 2 }] }] }
+  const result = value(await call('science_viewer', { action: 'canvas_export', canvas_spec: spec }))
+  expect(result.canvas.canvas.pointCount).toBe(2)
+  expect(result.canvas.canvas.svgOmittedFromAgentText).toBe(true)
+  expect(result.canvas.canvas).not.toHaveProperty('svg')
+  expect(result.canvas.artifacts).toHaveLength(4)
+  expect(result.canvas.artifacts.every((a: any) => a.projectId === project.id)).toBe(true)
+  expect((await call('science_viewer', { action: 'canvas_export', canvas_spec: spec }, 'b')).isError).toBe(true)
+})
+
 it('keeps gates and computed evidence out of the Agent proposal tool', async () => {
   const { ctx, store, project, foreign, call } = await fixture()
   const study = store.createResearchStudy({ projectId: project.id, title: 'Local study' })
@@ -119,10 +146,13 @@ it('keeps gates and computed evidence out of the Agent proposal tool', async () 
   expect((await call('research_study', { action: 'get', study_id: other.id })).isError).toBe(true)
   expect((await call('research_study', { action: 'list', project_id: foreign.id })).isError).toBe(true)
   value(await call('research_study', { action: 'create_document', study_id: study.id, kind: 'observation', payload: { status: 'unverified', text: 'Observed by user, not yet replicated.' } }))
-  const evidence = value(await call('research_study', { action: 'register_evidence', study_id: study.id, payload: { runId: 'run-fixture', evidenceType: 'computed', needsReview: false } }))
+  const run = store.createRun({ projectId: project.id, name: 'fixture', command: 'fixture', workingDirectory: project.rootPath, status: 'succeeded' })
+  expect((await call('research_study', { action: 'register_evidence', study_id: study.id, payload: { runId: 'missing', evidenceType: 'computed' } })).isError).toBe(true)
+  const evidence = value(await call('research_study', { action: 'register_evidence', study_id: study.id, payload: { runId: run.id, evidenceType: 'computed', needsReview: false } }))
+  expect(evidence.document.payload.needsReview).toBe(true)
   const claim = await ctx.zerowallResearch.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'claim', payload: { text: 'fixture claim', evidenceIds: [evidence.document.id] } })
   const audited = value(await call('research_study', { action: 'audit_claim', study_id: study.id, claim_id: claim.id, expected_version: 1 }))
-  expect(audited.document.payload).toMatchObject({ auditStatus: 'passed', needsReview: false })
+  expect(audited.document.payload).toMatchObject({ auditStatus: 'failed', needsReview: true })
   expect(store.listResearchDocuments(study.id)).toHaveLength(3)
   expect(store.getResearchStudy(study.id)).toMatchObject({ gate1: 'pending', gate2: 'pending' })
 })
@@ -164,7 +194,7 @@ it('exposes the genetic contract gate and keeps it project-scoped', async () => 
   const study = store.createResearchStudy({ projectId: project.id, title: 'Genetic contract' })
   const contract = { method: 'coloc', exposureDefinition: 'BMI QTL', outcomeDefinition: 'alopecia GWAS', ancestry: 'EUR', genomeBuild: 'GRCh37', effectUnit: 'SD', sampleOverlapChecked: true, harmonized: true, completeRegion: true, requiredFields: true, leadSnpOnly: true }
   const result = value(await call('research_study', { action: 'validate_genetic_contract', study_id: study.id, contract }))
-  expect(result).toMatchObject({ studyId: study.id, status: 'not-applicable', contract: '7.0.0-genetic-contract.1' })
+  expect(result).toMatchObject({ studyId: study.id, status: 'not-applicable', contract: '7.0.0-genetic-contract.2' })
   expect((await call('research_study', { action: 'validate_genetic_contract', study_id: study.id, project_id: foreign.id, contract })).isError).toBe(true)
 })
 
@@ -182,7 +212,8 @@ it('generates a traceable IMRAD draft and blocks an unreviewed final report', as
   const { store, project, call } = await fixture()
   const study = store.createResearchStudy({ projectId: project.id, title: '肥胖—脱发报告链路', phase: 'evidence' })
   store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'question', payload: { text: 'BMI 与明确脱发表型的关系待核验。' } })
-  store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'evidence', payload: { result: '目录侦察完成', artifactId: 'artifact-catalog', needsReview: true } })
+  const catalog = store.createArtifact({ projectId: project.id, name: 'Catalog fixture', uri: 'file:///catalog.json', mediaType: 'application/json' })
+  store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'evidence', payload: { result: '目录侦察完成', artifactId: catalog.id, needsReview: true } })
   const draft = value(await call('research_study', { action: 'generate_report', study_id: study.id }))
   expect(draft.report.uri).toMatch(/^file:/)
   expect(await readFile(fileURLToPath(draft.report.uri), 'utf8')).toContain('Introduction')
@@ -277,13 +308,14 @@ it('runs CFU image segmentation from a project image and records source provenan
   const pixels = Buffer.alloc(16 * 12)
   const paint = (x: number, y: number, points: Array<[number, number]>) => { for (const [dx, dy] of points) pixels[(y + dy) * 16 + x + dx] = 255 }
   paint(1, 1, [[0,0],[1,0],[0,1],[1,1]]); paint(9, 2, [[0,0],[1,0],[0,1],[1,1],[0,2],[1,2]])
-  await sharp(pixels, { raw: { width: 16, height: 12, channels: 1 } }).png().toFile(path)
+  await sharp(pixels, { raw: { width: 16, height: 12, channels: 1 } }).toColourspace('b-w').png().toFile(path)
   const asset = store.createDataAsset({ projectId: project.id, name: 'plate.png', uri: pathToFileURL(path).href, location: 'local', mediaType: 'image/png' })
   const result = await ctx.zerowallResearch.fijiExperiment({ sessionId: 'a', action: 'analyze', experiment: 'bacterial-cfu', requestId: 'cfu-image-1', sourceAssetId: asset.id, image: { plateId: 'P1', dilutionFactor: 100, platedVolumeMl: .1, threshold: 200, minArea: 2, maxArea: 10, polarity: 'bright', roi: { x: 0, y: 0, width: 16, height: 12 } } })
   expect(result.result?.imageAnalysis).toMatchObject({ foregroundPixels: 10, componentAreas: [4, 6], discardedComponents: 0 })
   expect(result.result?.measurements[0]).toMatchObject({ colonyCount: 2, cfuPerMl: 2000 })
-  expect(result.artifacts?.[0]?.metadata).toMatchObject({ experiment: 'bacterial-cfu', scientificReview: 'pending' })
-})
+  expect(result.artifacts?.[0]?.metadata).toMatchObject({ experiment: 'bacterial-cfu', scientificReview: 'pending', engine: 'imagej' })
+  expect(result.artifacts?.map(item => item.name)).toEqual(expect.arrayContaining(['mask.png', 'overlay.png', 'particles.csv', 'analysis.roi', 'completion.json']))
+}, 60000)
 
 it('runs scratch, colony and tube image protocols through the Host artifact path', async () => {
   const { ctx, store, project } = await fixture()
@@ -292,7 +324,7 @@ it('runs scratch, colony and tube image protocols through the Host artifact path
   for (let x = 4; x < 20; x++) pixels[8 * 24 + x] = 255
   for (let y = 6; y < 12; y++) pixels[y * 24 + 12] = 255
   const path = join(project.rootPath, 'protocols.png')
-  await sharp(pixels, { raw: { width: 24, height: 16, channels: 1 } }).png().toFile(path)
+  await sharp(pixels, { raw: { width: 24, height: 16, channels: 1 } }).toColourspace('b-w').png().toFile(path)
   const asset = store.createDataAsset({ projectId: project.id, name: 'protocols.png', uri: pathToFileURL(path).href, location: 'local', mediaType: 'image/png' })
   const common = { sessionId: 'a', action: 'analyze' as const, sourceAssetId: asset.id }
   const scratch = await ctx.zerowallResearch.fijiExperiment({ ...common, experiment: 'scratch-wound', requestId: 'scratch-image-1', image: { kind: 'scratch-wound', sampleId: 's1', time: '24h', initialArea: 40, threshold: 200, polarity: 'bright', roi: { x: 0, y: 0, width: 12, height: 8 } } })
@@ -301,5 +333,7 @@ it('runs scratch, colony and tube image protocols through the Host artifact path
   expect(colony.result?.measurements[0]).toMatchObject({ independentCount: 1, stainedArea: 24 })
   const tube = await ctx.zerowallResearch.fijiExperiment({ ...common, experiment: 'tube-formation', requestId: 'tube-image-1', image: { kind: 'tube-formation', sampleId: 't1', threshold: 200, polarity: 'bright', roi: { x: 0, y: 7, width: 24, height: 9 }, unit: 'pixel', unitScale: 1 } })
   expect((tube.result?.measurements[0] as any).segments).toBeGreaterThan(0)
-  expect(store.listArtifacts(project.id)).toHaveLength(3)
-})
+  expect(store.listArtifacts(project.id).filter(item => item.name === 'result.json')).toHaveLength(3)
+  expect(scratch.artifacts?.map(item => item.name)).toContain('mask.png')
+  expect(colony.artifacts?.map(item => item.name)).toContain('overlay.png')
+}, 60000)

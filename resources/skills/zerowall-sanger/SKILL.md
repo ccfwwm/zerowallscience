@@ -10,5 +10,9 @@ Use the persisted ZeroWall research objects and the current Host/Runner schemas.
 
 ## Domain constraints
 
-Validate SCF quality, trimming and bounded reference alignment. The current deterministic adapter accepts SCF 1/2/3 only, exposes stored-call probability (not Phred), preserves source hashes and 1-based call coordinates, and exports a manifest plus trimmed FASTA. AB1 parsing, reverse-complemented read pairing, bidirectional confirmation, mixed-base/IUPAC review and manual peak revisions remain unavailable until their own parser and validation fixtures exist; stop with an explicit limitation instead of substituting a different format.
+Use `science_viewer` actions `sanger_open`, `sanger_analyze`, `sanger_export` and `sanger_review`. Open project-local SCF 1/2/3 or common ABIF v1 AB1 assets. Subsequent actions require the returned viewer ID and `expected_revision`; bidirectional review also requires `reverse_viewer_id` and `reverse_expected_revision` for a distinct, unchanged reverse trace. Host rechecks both source hashes and revisions. Do not reuse stale views.
+
+SCF quality is the maximum stored base probability divided by 255, not Phred. AB1 PCON is instrument Phred Q; trimming confidence is `1 - 10^(-Q/10)`. Missing PCON remains unknown and blocks quality trimming. Existing IUPAC ambiguity calls are preserved, not inferred from a second peak. Call positions are one-based; displayed sample windows use original zero-based sample coordinates.
+
+Trimming and bounded reference alignment retain parameters, source hashes and limitations. Bidirectional review reverse-complements the reverse read, exposes disagreements, and does not establish a mutation or diagnostic interpretation. Export produces a checksummed result manifest and trimmed FASTA. Manual base/peak revisions, mixed-peak inference and a broad real-instrument compatibility benchmark remain unverified; report these limits.
 

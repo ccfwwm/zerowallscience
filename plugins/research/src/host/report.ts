@@ -6,7 +6,7 @@ import type { ResearchStore } from '@zerowallscience/research-store'
 import type { JsonObject, ProjectRecord, ResearchDocumentRecord, ResearchStudySnapshot } from '@zerowallscience/research-store/types'
 import { containedFile } from './science-viewer.js'
 
-const RUNNER = 'zerowall-science-imrad-report/7.0.0-1'
+const RUNNER = 'zerowall-science-imrad-report/7.0.0-2'
 
 export type ReportMode = 'draft' | 'final'
 export interface ReportResponse {
@@ -108,14 +108,19 @@ export class ReportService {
     const study = this.store.getResearchStudy(studyId)
     if (!study || study.projectId !== project.id) throw new Error('Research study is not in the active project.')
     const snapshot = this.store.getResearchStudySnapshot(studyId)
+    const runtimeProvenance = this.store.listResearchRuntimeEvents(studyId)
     const evidence = snapshot.documents.filter(document => document.kind === 'evidence')
     const claims = snapshot.documents.filter(document => document.kind === 'claim')
     const blockers: string[] = []
-    if (mode === 'final' && study.gate2 !== 'approved') blockers.push('Gate 2 尚未批准')
-    if (mode === 'final' && claims.length === 0) blockers.push('没有主张记录')
+    // Drafts display the same outstanding scientific gates as final exports.
+    // The export mode controls whether blockers stop writing, not their truth.
+    if (study.gate1 !== 'approved') blockers.push('Gate 1 尚未批准')
+    if (!study.currentFreezeId) blockers.push('研究方案尚未冻结')
+    if (study.gate2 !== 'approved') blockers.push('Gate 2 尚未批准')
+    if (claims.length === 0) blockers.push('没有主张记录')
     const unaudited = claims.filter(document => document.payload.auditStatus !== 'passed')
-    if (mode === 'final' && unaudited.length) blockers.push(`${unaudited.length} 条主张尚未通过证据审计`)
-    if (mode === 'final' && evidence.some(document => document.payload.needsReview === true)) blockers.push('存在待人工复核证据')
+    if (unaudited.length) blockers.push(`${unaudited.length} 条主张尚未通过证据审计`)
+    if (evidence.some(document => document.payload.needsReview === true)) blockers.push('存在待人工复核证据')
     if (mode === 'final' && blockers.length) throw new Error(`不能生成正式 IMRAD 报告：${blockers.join('；')}`)
 
     const root = await realpath(project.rootPath)
@@ -128,11 +133,13 @@ export class ReportService {
     const generatedAt = new Date().toISOString()
     const markdown = renderMarkdown(snapshot, mode, generatedAt, blockers)
     const manifestValue: JsonObject = {
-      format: 'zerowall-science-imrad-report', version: 1, runner: RUNNER, mode, generatedAt,
+      format: 'zerowall-science-imrad-report', version: 2, runner: RUNNER, mode, generatedAt,
       studyId, studyVersion: study.version, gate1: study.gate1, gate2: study.gate2,
       documentIds: snapshot.documents.map(document => document.id),
       evidenceIds: evidence.map(document => document.id), claimIds: claims.map(document => document.id),
       taskIds: (snapshot.tasks ?? []).map(task => task.id), freezes: snapshot.freezes.map(freeze => freeze.id),
+      runtimeProvenance: JSON.parse(JSON.stringify(runtimeProvenance)),
+      provenanceScope: 'Observed provider-neutral requests only; absent history, provider wire transforms and unlinked subagents are not inferred.',
       blockers, needsReview: mode !== 'final' || blockers.length > 0,
     }
     const reportPath = join(directory, 'imrad-report.md')

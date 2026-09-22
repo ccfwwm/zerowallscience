@@ -38,6 +38,12 @@ it('rejects malformed and unsupported SCF input', () => {
   expect(() => parseScf(bytes, 'sha')).toThrow('Unsupported SCF version')
 })
 
+it('preserves SCF IUPAC calls instead of replacing them with a highest-signal base', () => {
+  const bytes = scf3(); const baseOffset = 160; const probabilityStart = baseOffset + 4 * 4
+  bytes[probabilityStart + 4 * 4] = 'R'.charCodeAt(0)
+  expect(parseScf(bytes, 'ambiguous').bases[0]!.base).toBe('R')
+})
+
 function ab1(): Uint8Array {
   const directoryOffset = 34; const entries = 8; const entrySize = 28; const dataOffset = directoryOffset + entries * entrySize
   const bytes = new Uint8Array(2048)
@@ -72,4 +78,14 @@ it('reviews reverse-complemented reads without hiding disagreements', () => {
   const reverse = { ...forward, trim: { ...forward.trim, sequence: 'AAAA' } }
   expect(reviewBidirectionalSanger(forward, reverse).status).toBe('discordant')
   expect(reviewBidirectionalSanger(forward, reverse).disagreements.length).toBeGreaterThan(0)
+})
+
+it('does not report concordance from shared prefixes, unknown bases or incomplete coverage', () => {
+  const base = analyzeSanger(parseScf(scf3(), 'sha'), 0, 1)
+  const read = (sequence: string) => ({ ...base, trim: { ...base.trim, sequence } })
+  expect(reviewBidirectionalSanger(read('ACGT'), read('ACGT')).status).toBe('concordant')
+  expect(reviewBidirectionalSanger(read('ACGT'), read('GT')).status).toBe('insufficient')
+  expect(reviewBidirectionalSanger(read('NNNN'), read('NNNN')).status).toBe('insufficient')
+  expect(reviewBidirectionalSanger(read('ARYT'), read('ARYT')).reverseComplement).toBe('ARYT')
+  expect(reviewBidirectionalSanger(read('ARYT'), read('ARYT')).status).toBe('insufficient')
 })

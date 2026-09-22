@@ -40,10 +40,18 @@ describe.runIf(Boolean(process.env.R_PLATFORM_MCP_AUTHORIZATION))('compact R MCP
       await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')?.runtimeState, { timeout: 20_000, interval: 100 }).toBe('active')
       const server = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')
       expect(server?.runtimeState, server?.runtimeError).toBe('active')
-      // The compact surface may grow by adding a new aggregate domain, but
-      // must remain bounded and never regress to the legacy raw routes.
+      // Check the aggregate capability boundary itself. A historical tool count
+      // rejected valid OmicVerse domain additions without detecting raw routes.
+      const aggregateNames = [
+        'r_runtime', 'r_project', 'r_files', 'r_execute', 'r_jobs', 'r_packages',
+        'r_geo_catalog', 'r_geo_analysis', 'r_geo_artifacts',
+        'r_nhanes_catalog', 'r_nhanes_analysis', 'r_nhanes_artifacts',
+        'r_figureya_catalog', 'r_figureya_plan', 'r_figureya_run', 'r_figureya_artifacts',
+        ...['omicverse', 'biomni'].flatMap(domain => ['runtime', 'catalog', 'execute', 'jobs', 'artifacts'].map(operation => `${domain}_${operation}`)),
+      ].map(name => `mcp__rmcp__${name}`)
       expect(server?.tools.length).toBeGreaterThanOrEqual(17)
-      expect(server?.tools.length).toBeLessThanOrEqual(24)
+      expect(server?.tools.length).toBeLessThanOrEqual(aggregateNames.length)
+      expect(server?.tools.filter(name => !aggregateNames.includes(name))).toEqual([])
       expect(server?.tools).toContain('mcp__rmcp__r_runtime')
       expect(server?.tools).toContain('mcp__rmcp__r_jobs')
       expect(server?.tools).toContain('mcp__rmcp__r_figureya_artifacts')
@@ -90,4 +98,3 @@ describe.runIf(Boolean(process.env.R_PLATFORM_MCP_AUTHORIZATION))('compact R MCP
     }
   }, 30_000)
 })
-

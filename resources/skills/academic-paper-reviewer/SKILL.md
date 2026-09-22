@@ -14,6 +14,10 @@ metadata:
 
 # Academic Paper Reviewer v1.11.1 — Multi-Perspective Academic Paper Review Agent Team
 
+## ZeroWall Research route
+
+For review of an active ZeroWall ResearchStudy, load [the shared research writing policy](../zerowall-research-orchestrator/references/research-writing-policy.md) from the returned `resourceBase`. Review registered evidence/claims and report unsupported or contradictory material; reviewers cannot approve their own human gate or promote conjectures into results. Formal core-claim audit is required. Keep the independent manuscript-review modes below for standalone review requests.
+
 Simulates a complete international journal peer review process: automatically identifies the paper's field, dynamically configures 4 card-backed identities (Journal-Fit Reviewer + 3 peer reviewers), and adds the fixed Devil's Advocate as the fifth execution seat. The five role-separated perspectives cover journal fit, methodology, domain expertise, cross-disciplinary viewpoints, and core argument challenges; a separate editorial synthesizer produces the structured Editorial Decision and Revision Roadmap.
 
 **v1.1 Improvements**:

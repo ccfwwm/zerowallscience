@@ -46,7 +46,7 @@ export interface ScratchImageConfig {
 }
 export interface ColonyImageConfig {
   kind: 'colony-formation'; wellId: string; threshold: number; minArea: number; maxArea: number
-  polarity: 'bright' | 'dark'; roi: { x: number; y: number; width: number; height: number }; stainUnit?: string
+  polarity: 'bright' | 'dark'; roi: { x: number; y: number; width: number; height: number }; stainUnit?: 'pixel' | 'um2' | 'mm2'; pixelArea?: number
 }
 export interface TubeImageConfig {
   kind: 'tube-formation'; sampleId: string; threshold: number; polarity: 'bright' | 'dark'
@@ -102,9 +102,11 @@ export function analyzeColonyMask(input: { data: Uint8Array; width: number; heig
   if (!Number.isSafeInteger(config.minArea) || config.minArea < 1 || !Number.isSafeInteger(config.maxArea) || config.maxArea < config.minArea) throw new Error('Colony area bounds are invalid.')
   const mask = thresholdMask({ ...input, threshold: config.threshold, polarity: config.polarity, roi: config.roi })
   const all = componentAreas(mask.mask, mask.width, mask.height, false); const kept = all.filter(area => area >= config.minArea && area <= config.maxArea)
-  const stainedArea = config.stainUnit?.trim() ? kept.reduce((sum, area) => sum + area, 0) : undefined
+  if (config.stainUnit && !['pixel', 'um2', 'mm2'].includes(config.stainUnit)) throw new Error('Unknown stained area unit.')
+  if (config.stainUnit && config.stainUnit !== 'pixel' && (typeof config.pixelArea !== 'number' || !Number.isFinite(config.pixelArea) || config.pixelArea <= 0)) throw new Error('Physical stained area requires a positive calibrated pixelArea.')
+  const stainedArea = config.stainUnit ? kept.reduce((sum, area) => sum + area, 0) * (config.stainUnit === 'pixel' ? 1 : config.pixelArea!) : undefined
   const measurement = colonyMeasurement({ wellId: config.wellId, independentCount: kept.length, ...(stainedArea === undefined ? {} : { stainedArea, stainUnit: config.stainUnit }) })
-  return { measurement, width: mask.width, height: mask.height, foregroundPixels: input.width * input.height === 0 ? 0 : mask.foregroundPixels, componentAreas: kept, discardedComponents: all.length - kept.length, notes: ['4-connected component segmentation keeps independent count separate from stained area.', 'Area units are pixels unless an explicit calibrated stainUnit is supplied; no clump is split automatically.'] }
+  return { measurement, width: mask.width, height: mask.height, foregroundPixels: input.width * input.height === 0 ? 0 : mask.foregroundPixels, componentAreas: kept, discardedComponents: all.length - kept.length, notes: ['4-connected component segmentation keeps independent count separate from stained area.', 'Physical area requires a positive pixelArea calibration; no clump is split automatically.'] }
 }
 
 function thinZhangSuen(source: Uint8Array, width: number, height: number): Uint8Array {

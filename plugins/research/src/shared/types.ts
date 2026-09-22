@@ -4,11 +4,15 @@ import type { WesternBlotPlan, WesternBlotResult } from './western-blot.js'
 import type { FijiExperimentId, FijiExperimentResult, FijiImageConfig } from './fiji-experiments.js'
 import type { BidirectionalSangerReview, SangerAnalysis, SangerTrace } from './sanger.js'
 import type { FlowAnalysis, FlowDataset, FlowGate } from './flow.js'
-import type { HeAnalysis, HeRegion } from './he.js'
+import type { HeSegmentationParameters, HeSegmentationResult } from './he-segmentation.js'
+import type { HeAnalysis, HeRegion, HeSlideMetadata, HeTile } from './he.js'
 import type { CanvasRender, CanvasSpec } from './canvas.js'
-import type { CrisprCandidate } from '../host/sequence.js'
+import type { CrisprCandidate, SequenceFeature } from '../host/sequence.js'
 import type { CellSelection, CellSelectionResult } from './cell-selection.js'
 import type { CellCamera } from './cell-camera.js'
+import type { MoleculeMeasurement, MoleculeRuntime, MoleculeSummary, MoleculeViewState } from './molecule.js'
+export interface MoleculeRequest { sessionId: string; action: 'runtime' | 'open' | 'read' | 'save' | 'measure' | 'export'; assetId?: string; viewerId?: string; expectedVersion?: number; state?: MoleculeViewState; atomA?: number; atomB?: number; pngBase64?: string }
+export interface MoleculeResponse { viewer?: ViewerSessionRecord; summary?: MoleculeSummary; state?: MoleculeViewState; source?: string; measurement?: MoleculeMeasurement; artifact?: ArtifactRecord; runtime?: MoleculeRuntime }
 export interface BrainAtlasRequest {
   sessionId: string; action: 'open' | 'read' | 'analyze' | 'export' | 'cells' | 'trajectory' | 'register' | 'cellfinder' | 'render'
   viewerId?: string; expectedVersion?: number; atlas?: string; axis?: 0 | 1 | 2; index?: number; downsample?: number
@@ -28,12 +32,12 @@ export interface CellPreview { summary: CellDatasetSummary; sampling: 'first-n';
 export interface CellQcSummary { cells: number; genes: number; totalCounts: { min: number; max: number; mean: number }; detectedGenes: { min: number; max: number; mean: number }; notes: string[] }
 export interface CellAnalysis { qc: CellQcSummary; groups?: Array<{ group: string | number | boolean | null; cells: number; meanTotalCounts: number }>; gene?: { gene: string; cells: number; detectedCells: number; mean: number; max: number } }
 export interface CellResponse { preview?: CellPreview; analysis?: CellAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; selection?: CellSelectionResult }
-export interface SangerRequest { sessionId: string; action: 'open' | 'analyze' | 'export' | 'review'; assetId?: string; viewerId?: string; reverseViewerId?: string; expectedVersion?: number; threshold?: number; window?: number; reference?: string }
+export interface SangerRequest { sessionId: string; action: 'open' | 'analyze' | 'export' | 'review'; assetId?: string; viewerId?: string; reverseViewerId?: string; expectedReverseVersion?: number; expectedVersion?: number; threshold?: number; window?: number; reference?: string }
 export interface SangerResponse { trace?: SangerTrace; analysis?: SangerAnalysis; review?: BidirectionalSangerReview; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord }
-export interface FlowRequest { sessionId: string; action: 'open' | 'analyze' | 'export'; assetId?: string; viewerId?: string; expectedVersion?: number; transform?: 'none' | 'arcsinh'; cofactor?: number; applyCompensation?: boolean; gates?: FlowGate[]; previewLimit?: number }
+export interface FlowRequest { sessionId: string; action: 'open' | 'analyze' | 'export' | 'import'; importAssetId?: string; assetId?: string; viewerId?: string; expectedVersion?: number; transform?: 'none' | 'arcsinh'; cofactor?: number; applyCompensation?: boolean; gates?: FlowGate[]; previewLimit?: number }
 export interface FlowResponse { dataset?: FlowDataset; analysis?: FlowAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord }
-export interface HeRequest { sessionId: string; action: 'open' | 'analyze' | 'export'; assetId?: string; viewerId?: string; expectedVersion?: number; region?: HeRegion }
-export interface HeResponse { analysis?: HeAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; he?: { width: number; height: number; pages: number; format: string; notes: string[] } }
+export interface HeRequest { sessionId: string; action: 'open' | 'read' | 'analyze' | 'export' | 'segment' | 'status' | 'cancel'; requestId?: string; runId?: string; segmentation?: HeSegmentationParameters; assetId?: string; viewerId?: string; expectedVersion?: number; region?: HeRegion }
+export interface HeResponse { run?: RunRecord; artifacts?: ArtifactRecord[]; segmentation?: HeSegmentationResult; analysis?: HeAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; he?: HeSlideMetadata; tile?: HeTile }
 export interface CanvasRequest { sessionId: string; action: 'render' | 'export'; spec: CanvasSpec }
 export interface CanvasResponse { canvas?: CanvasRender; artifact?: ArtifactRecord; artifacts?: ArtifactRecord[] }
 export interface FijiWorkflowRequest { sessionId: string; action: 'list' | 'submit' | 'status' | 'cancel'; runId?: string; requestId?: string; researchTaskId?: string; viewerId?: string; expectedVersion?: number; annotationRevisionId?: string; plan?: WesternBlotPlan }
@@ -50,9 +54,9 @@ export interface ScientificEngineLaunchResult {
   annotationBridge?: { viewerId: string; baseRevisionId: string; sourceSha256: string; returnPath: string; adapterSha256: string }
 }
 export interface SequenceRecordInfo { index: number; name: string; description: string; length: number; gcPercent: number | null; ambiguousBases: number }
-export interface SequenceWindow { records: SequenceRecordInfo[]; recordIndex: number; start: number; end: number; sequence: string; coordinateSystem: '1-based-inclusive' }
-export interface SequenceAnalysis { operation: 'reverse-complement' | 'translate' | 'restriction' | 'crispr'; recordIndex: number; start: number; end: number; sequence?: string; sites?: Array<{ enzyme: string; recognitionStart: number; cutAfter: number }>; candidates?: CrisprCandidate[]; notes: string[] }
-export interface SequenceViewState { recordIndex: number; start: number; count: number; selectionStart: number; selectionEnd: number }
+export interface SequenceWindow { records: SequenceRecordInfo[]; recordIndex: number; start: number; end: number; sequence: string; coordinateSystem: '1-based-inclusive'; topology?: 'linear' | 'circular' | 'unknown'; features?: SequenceFeature[]; featureCount?: number; featureWarnings?: string[] }
+export interface SequenceAnalysis { operation: 'reverse-complement' | 'translate' | 'restriction' | 'crispr' | 'pcr' | 'gibson' | 'golden-gate'; recordIndex: number; start: number; end: number; sequence?: string; sites?: Array<{ enzyme: string; recognitionStart: number; cutAfter: number }>; candidates?: CrisprCandidate[]; simulation?: import('./sequence.js').SequenceSimulationResult; notes: string[] }
+export interface SequenceViewState { recordIndex: number; start: number; count: number; selectionStart: number; selectionEnd: number; mapMode?: 'linear' | 'circular' }
 export interface ImageViewState { page: number; zoom: number; panX: number; panY: number }
 export interface ImagePreview {
   sourceSha256: string; coordinates: ImageCoordinates; format: string; channels: number; depth: string
@@ -81,8 +85,10 @@ export interface ImageMaskAnalysis {
 }
 export interface ScienceViewerRequest {
   sessionId: string
-  action: 'list' | 'open' | 'read' | 'save' | 'analyze' | 'export' | 'launch_native' | 'native_status' | 'image_open' | 'image_read' | 'image_save' | 'image_analyze' | 'image_mask_analyze' | 'annotation_save' | 'annotation_export' | 'annotation_import' | 'annotation_launch' | 'annotation_collect' | 'sanger_open' | 'sanger_analyze' | 'sanger_export' | 'sanger_review' | 'flow_open' | 'flow_analyze' | 'flow_export' | 'he_open' | 'he_analyze' | 'he_export' | 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view' | 'brain_open' | 'brain_read' | 'brain_analyze' | 'brain_export' | 'brain_cells' | 'brain_trajectory' | 'brain_register' | 'brain_cellfinder' | 'brain_render' | 'canvas_render' | 'canvas_export'
+  action: 'list' | 'open' | 'read' | 'save' | 'analyze' | 'export' | 'launch_native' | 'native_status' | 'image_open' | 'image_read' | 'image_save' | 'image_analyze' | 'image_mask_analyze' | 'annotation_save' | 'annotation_export' | 'annotation_import' | 'annotation_launch' | 'annotation_collect' | 'sanger_open' | 'sanger_analyze' | 'sanger_export' | 'sanger_review' | 'flow_open' | 'flow_analyze' | 'flow_export' | 'flow_import' | 'he_open' | 'he_read' | 'he_analyze' | 'he_export' | 'he_segment' | 'he_status' | 'he_cancel' | 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view' | 'brain_open' | 'brain_read' | 'brain_analyze' | 'brain_export' | 'brain_cells' | 'brain_trajectory' | 'brain_register' | 'brain_cellfinder' | 'brain_render' | 'canvas_render' | 'canvas_export'
+    | 'molecule_runtime' | 'molecule_open' | 'molecule_read' | 'molecule_save' | 'molecule_measure' | 'molecule_export'
   sanger?: SangerRequest
+  molecule?: MoleculeRequest
   flow?: FlowRequest
   he?: HeRequest
   canvas?: CanvasRequest
@@ -90,6 +96,7 @@ export interface ScienceViewerRequest {
   brain?: BrainAtlasRequest
   launchId?: string
   reverseViewerId?: string
+  expectedReverseVersion?: number
   engine?: ScientificEngineId
   assetId?: string
   viewerId?: string
@@ -105,6 +112,7 @@ export interface ScienceViewerRequest {
   region?: HeRegion
   state?: SequenceViewState
   operation?: SequenceAnalysis['operation']; crisprTarget?: string; crisprMaxMismatches?: number
+  sequenceOptions?: import('./sequence.js').SequenceSimulationOptions
   imageState?: ImageViewState
   annotation?: { expectedRevisionId: string | null; payload: ImageAnnotations }
   annotationRevisionId?: string
@@ -132,9 +140,24 @@ export interface ScienceViewerResponse {
   imageAnalysis?: ImageAnalysis
   imageMaskAnalysis?: ImageMaskAnalysis
   sanger?: SangerResponse
+  molecule?: MoleculeResponse
   flow?: FlowResponse
   he?: HeResponse
   canvas?: CanvasResponse
   cell?: CellResponse
   brain?: BrainAtlasResponse
 }
+export interface NhanesSurveyRequest {
+  studyId: string
+  contractId: string
+  planId: string
+  taskId: string
+  requestId: string
+  expectedPlanVersion: number
+}
+export interface GeneticAnalysisRequest extends NhanesSurveyRequest {}
+export interface GeneticRefreshRequest { studyId: string; runId: string }
+
+export type { MoleculeDockingRequest } from './molecule-docking.js'
+
+export type { SequenceSimulationOptions, SequenceSimulationResult } from './sequence.js'

@@ -28,9 +28,41 @@ describe('bounded nucleotide FASTA analysis', () => {
 })
 
 it('parses bounded GenBank origin and feature coordinates', () => {
-  const records = parseGenBank('LOCUS       demo       30 bp    DNA     circular\nDEFINITION  demo record\nFEATURES             Location/Qualifiers\n     gene            1..20\nORIGIN\n        1 atgcatgcatgcatgcatgca\n//\n')
-  expect(records[0]).toMatchObject({ name: 'demo', circular: true, sequence: 'ATGCATGCATGCATGCATGCA' })
+  const records = parseGenBank('LOCUS       demo       20 bp    DNA     circular\nDEFINITION  demo record\nFEATURES             Location/Qualifiers\n     gene            1..20\nORIGIN\n        1 atgcatgcatgcatgcatgc\n//\n')
+  expect(records[0]).toMatchObject({ name: 'demo', circular: true, sequence: 'ATGCATGCATGCATGCATGC' })
   expect(records[0]?.features[0]).toMatchObject({ type: 'gene', start: 1, end: 20, strand: 1 })
+})
+
+describe('GenBank annotation integrity and bounded feature maps', () => {
+  const record = (location: string, sequence = 'ATGCA'.repeat(4), extra = '') => `LOCUS       plasmid 20 bp DNA circular\nDEFINITION  Example\nFEATURES             Location/Qualifiers\n     CDS             ${location}\n                     /gene="example"\n${extra}ORIGIN\n        1 ${sequence}\n//\n`
+  it('retains complement(join) segment order, labels, origin wraps and partial bounds', () => {
+    const records = parseGenBank(record('complement(join(<18..20,\n                     1..>6))'))
+    expect(records[0]?.features[0]).toMatchObject({ label: 'example', strand: -1, start: 1, end: 20, segments: [
+      { start: 1, end: 6, strand: -1, partialStart: false, partialEnd: true },
+      { start: 18, end: 20, strand: -1, partialStart: true, partialEnd: false },
+    ] })
+    expect(sequenceWindow(records)).toMatchObject({ topology: 'circular', featureCount: 1, features: [{ label: 'example' }] })
+  })
+  it('keeps unsupported location evidence visible instead of inventing contiguous annotations', () => {
+    const data = parseGenBank(record('order(1..3,7..9)', undefined, '     misc_feature    X123.1:1..5\n'))
+    expect(data[0]?.features).toEqual([])
+    expect(data[0]?.featureWarnings).toHaveLength(2)
+    expect(sequenceWindow(data).featureWarnings?.[0]).toContain('order')
+  })
+  it('rejects mismatched length, invalid alphabet, coordinates and missing record termination', () => {
+    expect(() => parseGenBank(record('1..20').replace('20 bp', '21 bp'))).toThrow('length')
+    expect(() => parseGenBank(record('1..20', 'ATGCA'.repeat(3) + 'ATGCE'))).toThrow('symbol')
+    expect(() => parseGenBank(record('1..21'))).toThrow('outside')
+    expect(() => parseGenBank(record('1..20').replace('//', ''))).toThrow('terminator')
+    expect(() => parseGenBank(record('1..20').replace('        1 ', '        2 '))).toThrow('out-of-order')
+    expect(() => parseGenBank(record('1..20').replace('20 bp', '20 aa'))).toThrow('nucleotide')
+  })
+  it('reports CRISPR coordinates in the source record and never treats unknown bases as known guides', () => {
+    const sequence = 'TTTTT' + 'A'.repeat(20) + 'AGG'
+    expect(analyzeSequence(parseFasta(`>x\n${sequence}`), 'crispr', 0, 6, 28).candidates?.[0]).toMatchObject({ start: 6, end: 28, strand: 1 })
+    expect(findSpCas9Candidates('N' + 'A'.repeat(19) + 'AGG')).toEqual([])
+    expect(() => findSpCas9Candidates(sequence, 'N'.repeat(20))).toThrow('unambiguous')
+  })
 })
 
 it('finds SpCas9 NGG candidates with an explicit mismatch bound', () => {

@@ -7,6 +7,7 @@ import { afterEach, expect, it } from 'vitest'
 import { ResearchStore } from '../../../store/src/index.js'
 import { ImageViewerService, omePageForPosition, omePagePosition } from '../src/host/image-viewer.js'
 import { NativeEngineService } from '../src/host/native-engines.js'
+import { registerLocalAsset } from '../src/host/local-assets.js'
 
 const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose() })
@@ -38,6 +39,26 @@ async function fixture() {
   const annotation = {expectedRevisionId:null,payload:{coordinates:opened.image!.coordinates,rois:[{id:'r1',name:'8x8 region',kind:'rectangle',page:0,x:10,y:20,width:8,height:8}]}}
   return {root,store,project,path,asset,execute,opened,viewerId,annotation,service}
 }
+it('registers a Zarr directory without claiming a pixel checksum and preserves typed source depth in preview', async () => {
+  const { project, store, execute } = await fixture()
+  const root = join(project.rootPath, 'volume.zarr'); await mkdir(join(root, '0'), { recursive: true })
+  await writeFile(join(root, '.zattrs'), JSON.stringify({ multiscales: [{ axes: ['y', 'x'], datasets: [{ path: '0' }] }] }))
+  await writeFile(join(root, '0', '.zarray'), JSON.stringify({ zarr_format: 2, shape: [2, 2], chunks: [2, 2], dtype: '<f4', compressor: null, fill_value: 0, order: 'C' }))
+  const bytes = Buffer.alloc(16); [30, 70, 150, 220].forEach((value, i) => bytes.writeFloatLE(value, i * 4))
+  await writeFile(join(root, '0', '0.0'), bytes)
+  const asset = await registerLocalAsset(store, project, 'volume.zarr')
+  expect(asset.checksum).toBeUndefined()
+  expect(asset.provenance.pixelContentVerified).toBe(false)
+  expect((await registerLocalAsset(store, project, 'volume.zarr')).id).toBe(asset.id)
+  const opened = await execute({ action: 'image_open', assetId: asset.id })
+  const actual = await sharp(Buffer.from(opened.image!.pngBase64, 'base64')).greyscale().raw().toBuffer()
+  expect([...actual]).toEqual([0, 54, 161, 255])
+  expect(opened.image!.notes.join(' ')).toContain('30–220')
+  expect(opened.image!.depth).toBe('float')
+  await writeFile(join(root, '0', '.zarray'), JSON.stringify({ zarr_format: 2, shape: [2, 2], chunks: [2, 2], dtype: '<f4', compressor: null, fill_value: 3, order: 'C' }))
+  await expect(execute({ action: 'image_read', viewerId: opened.viewer!.id })).rejects.toThrow('metadata changed')
+  expect((await registerLocalAsset(store, project, 'volume.zarr')).id).not.toBe(asset.id)
+})
 it('previews without changing original coordinates and persists page/zoom/pan separately from ROIs',async()=>{
   const {store,project,execute,opened,viewerId,annotation}=await fixture()
   expect(opened.image).toMatchObject({coordinates:{width:2000,height:1000,pages:1,calibration:null},previewWidth:1200,previewHeight:600})

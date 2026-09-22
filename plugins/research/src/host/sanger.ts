@@ -16,7 +16,10 @@ export class SangerService {
     const viewer = this.store.listViewerSessions(project.id).find(item => item.id === request.viewerId && item.state.traceTool === 'sanger'); if (!viewer) throw new Error('Sanger viewer is not in the active project.')
     if (request.action === 'review') {
       const reverse = this.store.listViewerSessions(project.id).find(item => item.id === request.reverseViewerId && item.state.traceTool === 'sanger'); if (!reverse) throw new Error('Reverse Sanger viewer is not in the active project.')
+      if (reverse.id === viewer.id) throw new Error('Bidirectional review requires two distinct trace views.')
+      if (request.expectedVersion !== viewer.version || request.expectedReverseVersion !== reverse.version) throw new Error('Sanger review revision conflict; refresh both trace views.')
       const forwardInput = await this.read(project, this.asset(project.id, viewer.assetId)); const reverseInput = await this.read(project, this.asset(project.id, reverse.assetId))
+      if (forwardInput.sha256 !== viewer.state.sourceSha256 || reverseInput.sha256 !== reverse.state.sourceSha256) throw new Error('Sanger source changed; reopen both traces before review.')
       const forward = analyzeSanger(forwardInput.trace, request.threshold ?? Number(viewer.state.threshold), request.window ?? Number(viewer.state.window), request.reference)
       const reverseAnalysis = analyzeSanger(reverseInput.trace, request.threshold ?? Number(reverse.state.threshold), request.window ?? Number(reverse.state.window))
       return { trace: forwardInput.trace, analysis: forward, review: reviewBidirectionalSanger(forward, reverseAnalysis), viewer }

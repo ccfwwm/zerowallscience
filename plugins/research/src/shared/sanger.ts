@@ -73,7 +73,7 @@ export function parseScf(bytes: Uint8Array, sourceSha256: string): SangerTrace {
       called = String.fromCharCode(bytes[offset + 8]!)
     }
     const ranked = dna.toSorted((a, b) => calls[b]! - calls[a]!); const max = calls[ranked[0]!]!; const normalized = called?.toUpperCase()
-    const base = normalized && /^[ACGTN]$/u.test(normalized) ? normalized as SangerBase['base'] : max === 0 ? 'N' : ranked[0]!
+    const base = normalized && /^[ACGTNRYSWKMBDHV]$/u.test(normalized) ? normalized as SangerBase['base'] : max === 0 ? 'N' : ranked[0]!
     bases.push({ position: index + 1, peak, calls, base, quality: max / 255 })
   }
   return { format: 'scf', version, sampleCount, sampleSize: sampleWidth, bases, channels, sourceSha256, notes: [major >= 3 ? 'SCF 3 sample channels are decoded as A,C,G,T second differences and reconstructed before display.' : 'SCF 1/2 sample points are decoded as interleaved A,C,G,T unsigned values.', 'SCF 3 sequence data is decoded from peak indexes, probability planes and called bases.', 'Quality is the highest stored base probability divided by 255; it is not a Phred score.', 'Peak coordinates remain in the original trace sample coordinate system.'] }
@@ -161,10 +161,10 @@ export function analyzeSanger(trace: SangerTrace, threshold: number, window: num
 export function reviewBidirectionalSanger(forward: SangerAnalysis, reverse: SangerAnalysis): BidirectionalSangerReview {
   const a = forward.trim.sequence; const b = revCompDna(reverse.trim.sequence); const length = Math.min(a.length, b.length); const disagreements: BidirectionalSangerReview['disagreements'] = []
   for (let index = 0; index < length; index++) if (a[index] !== b[index] && a[index] !== 'N' && b[index] !== 'N') disagreements.push({ position: index + 1, forward: a[index]!, reverse: b[index]! })
-  const notes = ['Reverse read is reverse-complemented before position-wise comparison; indels and alignment are not silently normalized.', 'Concordance is read-level evidence only and does not establish phenotype or clinical significance.']
-  return { forward: a, reverseComplement: b, disagreements, status: !a.length || !b.length ? 'insufficient' : disagreements.length ? 'discordant' : 'concordant', notes }
+  const notes = ['Reverse read is reverse-complemented before position-wise comparison; indels and alignment are not silently normalized.', 'Unequal read lengths or ambiguity calls without a direct disagreement remain insufficient; shared prefixes and unknown bases cannot establish concordance.', 'Concordance is read-level evidence only and does not establish phenotype or clinical significance.']
+  return { forward: a, reverseComplement: b, disagreements, status: !a.length || !b.length ? 'insufficient' : disagreements.length ? 'discordant' : a.length !== b.length || /[^ACGT]/u.test(a + b) ? 'insufficient' : 'concordant', notes }
 }
-const revCompDna = (sequence: string): string => Array.from(sequence).reverse().map(base => ({ A: 'T', T: 'A', C: 'G', G: 'C', N: 'N' } as Record<string, string>)[base] ?? 'N').join('')
+const revCompDna = (sequence: string): string => Array.from(sequence).reverse().map(base => ({ A: 'T', T: 'A', C: 'G', G: 'C', N: 'N', R: 'Y', Y: 'R', S: 'S', W: 'W', K: 'M', M: 'K', B: 'V', V: 'B', D: 'H', H: 'D' } as Record<string, string>)[base] ?? 'N').join('')
 
 function alignSanger(read: string, reference: string): { alignedRead: string; alignedReference: string; mismatches: NonNullable<SangerAnalysis['reference']>['mismatches']; identity: number } {
   const rows = read.length + 1; const columns = reference.length + 1; if (rows * columns > 20000000) throw new Error('Reference alignment exceeds the interactive cell limit.')

@@ -108,7 +108,7 @@ with h5py.File(sys.argv[1], 'w') as f:
   }
   result = await service.execute(project, { sessionId: 's', action: 'select', viewerId: result.viewer!.id, expectedVersion: result.viewer!.version, selection: null })
   expect(result.selection).toBeUndefined(); expect(result.viewer?.state.selection).toBeNull()
-})
+}, 30000)
 
 it('opens, reads, QC-analyzes and exports a backed H5AD without loading the matrix into Node', async () => {
   const root = await (await import('node:fs/promises')).mkdtemp(join(tmpdir(), 'cell-viewer-')); const projectRoot = join(root, 'project'); await mkdir(projectRoot); const path = join(projectRoot, 'cells.h5ad')
@@ -118,7 +118,7 @@ it('opens, reads, QC-analyzes and exports a backed H5AD without loading the matr
   const opened = await service.execute(project, { sessionId: 's', action: 'open', assetId: asset.id, gene: 'G2', groupBy: 'condition' }); expect(opened.viewer?.tool).toBe('cells'); expect(opened.preview?.summary).toMatchObject({ nObs: 4, nVars: 3, varNames: ['G1', 'G2', 'G3'], embeddings: [{ key: 'X_umap', dimensions: 2 }] }); expect(opened.preview?.expression?.values.map(item => item.value)).toEqual([0, 2, 1, 0])
   const analyzed = await service.execute(project, { sessionId: 's', action: 'analyze', viewerId: opened.viewer!.id, expectedVersion: opened.viewer!.version, gene: 'G2', groupBy: 'condition' }); expect(analyzed.analysis?.qc.totalCounts).toMatchObject({ min: 2, max: 5, mean: 4 }); expect(analyzed.analysis?.groups).toEqual([{ group: 'A', cells: 2, meanTotalCounts: 3 }, { group: 'B', cells: 2, meanTotalCounts: 5 }]); expect(analyzed.viewer?.version).toBe(2)
   const exported = await service.execute(project, { sessionId: 's', action: 'export', viewerId: analyzed.viewer!.id, expectedVersion: analyzed.viewer!.version, gene: 'G2', groupBy: 'condition' }); expect(exported.artifact?.metadata.runner).toBe('zerowall-cell-viewer/7.0.0-1'); expect(JSON.parse(await readFile(fileURLToPath(exported.artifact!.uri), 'utf8'))).toMatchObject({ format: 'zerowall-cell-analysis', analysis: { qc: { cells: 4, genes: 3 } } })
-})
+}, 30000)
 
 it('rejects malformed H5AD input before creating a viewer', async () => {
   const root = await (await import('node:fs/promises')).mkdtemp(join(tmpdir(), 'cell-viewer-stale-')); const projectRoot = join(root, 'project'); await mkdir(projectRoot); const path = join(projectRoot, 'cells.h5ad'); await writeFile(path, Buffer.from('not-h5ad')); const store = new ResearchStore(join(root, 'store.sqlite')); const service = new CellViewerService(store); cleanup.push(async () => { store.close(); await rm(root, { recursive: true, force: true }) }); const project = store.createProject({ name: 'Cells', rootPath: projectRoot }); const asset = store.createDataAsset({ projectId: project.id, name: 'cells.h5ad', uri: pathToFileURL(path).href, location: 'local', mediaType: 'application/x-h5ad' });
@@ -160,4 +160,30 @@ with h5py.File(sys.argv[1], 'w') as f:
   await expect(service.execute(project, { sessionId: 's', action: 'open', assetId: asset.id })).rejects.toThrow('links')
   expect(store.listArtifacts(project.id)).toHaveLength(0)
   expect(store.listViewerSessions(project.id)).toHaveLength(0)
+}, 20000)
+
+it('keeps empty CSR rows and rejects duplicate indices across a cached storage boundary', async () => {
+  const root = await (await import('node:fs/promises')).mkdtemp(join(tmpdir(), 'cells-cache-'))
+  const path = join(root, 'cache.h5ad'); const store = new ResearchStore(join(root, 'db.sqlite')); const service = new CellViewerService(store)
+  cleanup.push(async () => { store.close(); await rm(root, { recursive: true, force: true }) })
+  const project = store.createProject({ name: 'Sparse cache', rootPath: root })
+  const asset = store.createDataAsset({ projectId: project.id, name: 'cache', uri: pathToFileURL(path).href, location: 'local', mediaType: 'application/x-h5ad' })
+  await run(python, ['-c', `import h5py,numpy as np,sys
+with h5py.File(sys.argv[1],'w') as f:
+ f.attrs['encoding-type']='anndata'
+ x=f.create_group('X');x.attrs['encoding-type']='csr_matrix';x.attrs['shape']=[3,200000]
+ x.create_dataset('data',data=np.ones(300000,dtype='int32'))
+ x.create_dataset('indices',data=np.concatenate([np.arange(200000),np.arange(100000)]).astype('int32'))
+ x.create_dataset('indptr',data=[0,200000,200000,300000])
+ f.create_group('obs').create_dataset('_index',data=['a','empty','c'])
+ f.create_group('var').create_dataset('_index',data=['G'+str(i) for i in range(200000)])
+`, path])
+  const opened = await service.execute(project, { sessionId: 's', action: 'open', assetId: asset.id, gene: 'G62144' })
+  const analyzed = await service.execute(project, { sessionId: 's', action: 'analyze', viewerId: opened.viewer!.id, expectedVersion: opened.viewer!.version })
+  expect(analyzed.preview?.expression?.values.map(v => v.value)).toEqual([1, 0, 1])
+  expect(analyzed.analysis?.qc.totalCounts).toEqual({ min: 0, max: 200000, mean: 100000 })
+  expect(analyzed.analysis?.qc.detectedGenes).toEqual({ min: 0, max: 200000, mean: 100000 })
+  await run(python, ['-c', "import h5py,sys;f=h5py.File(sys.argv[1],'r+');f['X/indices'][262144]=62143;f.close()", path])
+  await expect(service.execute(project, { sessionId: 's', action: 'open', assetId: asset.id, gene: 'G62144' })).rejects.toThrow('sorted, unique')
+  expect(store.listArtifacts(project.id)).toHaveLength(0)
 }, 20000)

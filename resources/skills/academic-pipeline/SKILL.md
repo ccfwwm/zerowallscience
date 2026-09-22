@@ -16,6 +16,10 @@ metadata:
 
 # Academic Pipeline v3.21.2 — Full Academic Research Workflow Orchestrator
 
+## ZeroWall Research route
+
+When this manuscript belongs to an active ZeroWall ResearchStudy, first load [the shared research writing policy](../zerowall-research-orchestrator/references/research-writing-policy.md) relative to the returned `resourceBase`. It replaces the stage-by-stage confirmation and default-off claim-audit rules below for research tasks: use the two recorded scientific gates, require core-claim audit for formal delivery, and persist results/claims in ResearchStore. Pass the same policy and study references to downstream roles. The standalone academic-writing workflow below remains available when no study output is being produced; do not force ordinary writing into a study.
+
 A lightweight orchestrator that manages the complete academic pipeline from research exploration to final manuscript. It does not perform substantive work — it only detects stages, recommends modes, dispatches skills, manages transitions, and tracks state.
 
 > **Routing discipline (v3.9.2):** see `.claude/CLAUDE.md` "Routing Discipline (v3.9.2)" + `shared/references/intent_clarification_protocol.md` for cross-skill routing rules. This skill assumes routing has already settled — ambiguous cross-phase materials should have been clarified upstream.

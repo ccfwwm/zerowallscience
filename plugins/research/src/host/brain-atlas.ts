@@ -10,7 +10,7 @@ import type { BrainAtlasRequest, BrainAtlasResponse, BrainAtlasSummary, BrainCel
 import { containedFile } from './science-viewer.js'
 import { BRAIN_GLOBE_RUNNER, BRAINRENDER_RUNNER, CELLFINDER_RUNNER } from './brainglobe-runner.js'
 
-const RUNNER = 'zerowall-brainglobe/7.0.0-1'
+const RUNNER = 'zerowall-brainglobe/7.0.0-2'
 const ATLAS = 'allen_mouse_25um'
 
 export function validateBrainregOutputs(names: string[]): { valid: boolean; missing: string[] } {
@@ -140,6 +140,9 @@ export class BrainAtlasService {
     const index = request.index ?? (Number.isInteger(state.index) ? Number(state.index) : 0); if (!Number.isSafeInteger(index) || index < 0) throw new Error('Brain atlas slice index must be a non-negative integer.')
     const downsample = request.downsample ?? (Number.isInteger(state.downsample) ? Number(state.downsample) : 8); if (!Number.isSafeInteger(downsample) || downsample < 1 || downsample > 64) throw new Error('Brain atlas downsample must be between 1 and 64.')
     const coordinates = request.coordinates
+    if(request.maxCells!==undefined&&(!Number.isSafeInteger(request.maxCells)||request.maxCells<1||request.maxCells>100000))throw new Error('maxCells must be an integer from 1 to 100000.')
+    if(request.coordinateUnits!==undefined&&!['voxel','micron'].includes(request.coordinateUnits))throw new Error('Atlas coordinate units must be voxel or micron.')
+    if(coordinates!==undefined&&(!Array.isArray(coordinates)||coordinates.some(point=>!Array.isArray(point)||point.length!==3||point.some(value=>typeof value!=='number'||!Number.isFinite(value)))))throw new Error('Coordinates require finite numeric atlas AP,SI,RL axis triplets; sample x,y,z requires a validated transform.')
     if (coordinates !== undefined && coordinates.length > (request.maxCells ?? 100000)) throw new Error('Brain coordinate count exceeds maxCells.')
     return { axis: axis as 0 | 1 | 2, index, downsample, ...(request.region === undefined ? {} : { region: request.region }), ...(coordinates === undefined ? {} : { coordinates }), ...(request.coordinateUnits === undefined ? {} : { coordinateUnits: request.coordinateUnits }), ...(request.maxCells === undefined ? {} : { maxCells: request.maxCells }) }
   }

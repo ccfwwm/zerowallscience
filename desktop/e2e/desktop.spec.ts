@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 import { locatePackagedApp } from '../scripts/packaged-app.mjs'
+import { moleculePdb } from '../../plugins/research/test/molecule-fixture.js'
 
 const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const roots: string[] = []
@@ -74,7 +75,12 @@ afterAll(async () => {
   for (const target of roots.splice(0)) rmSync(target, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 })
 
-afterEach(async () => {
+afterEach(async context => {
+  if (context.task.result?.state === 'fail') {
+    const diagnostic = join(desktopRoot, 'dist', 'verification-7.0.0'); mkdirSync(diagnostic, { recursive: true })
+    await page.screenshot({ path: join(diagnostic, 'failed-workbench.png') }).catch(() => undefined)
+    console.log('Failed packaged UI', (await page.locator('body').innerText().catch(() => '')).slice(-16000), rendererOutput.filter(line => line.startsWith('[pageerror]')).slice(-5))
+  }
   await page.setViewportSize({ width: 1280, height: 900 })
   const settings = page.getByRole('dialog', { name: /^(设置|Settings)$/ })
   if (await settings.isVisible().catch(() => false)) {
@@ -221,6 +227,98 @@ describe('ZeroWall Science Electron', () => {
     expect(readFileSync(join(workspacePath, 'report.md'), 'utf8')).toBe(source)
     mkdirSync(join(desktopRoot, 'dist', 'verification-6.0.1'), { recursive: true })
     await page.screenshot({ path: join(desktopRoot, 'dist', 'verification-6.0.1', 'markdown-images.png') })
+  })
+
+  it('registers a workspace and restores its research workbench in the packaged application', async () => {
+    const pane = page.locator('[data-sidebar-right-panel]')
+    await pane.getByRole('button', { name: '新标签页', exact: true }).click()
+    await pane.locator('[data-sidebar-right-guide-entry$="science-workbench"]').click()
+    await pane.getByRole('heading', { name: '科研可视化与分析工作台', exact: true }).waitFor()
+    await pane.getByRole('button', { name: '登记当前工作区', exact: true }).click()
+    await pane.getByRole('button', { name: '登记当前工作区', exact: true }).waitFor({ state: 'hidden' })
+    expect(await pane.getByLabel('选择研究', { exact: true }).locator('option').count()).toBe(1)
+    await pane.getByLabel('研究标题', { exact: true }).fill('7.0.0 安装包工作台验收')
+    await pane.getByRole('button', { name: '新建研究', exact: true }).click()
+    await pane.getByText('7.0.0 安装包工作台验收', { exact: true }).waitFor()
+    const navigation = pane.getByRole('navigation', { name: '工作台页面' })
+    expect(await navigation.getByRole('button').count()).toBe(6)
+    await navigation.getByRole('button', { name: '研究计划', exact: true }).click()
+    await pane.getByRole('heading', { name: 'MR 与区域共定位', exact: true }).waitFor()
+    expect(await pane.getByRole('button', { name: '冻结研究方案', exact: true }).isEnabled()).toBe(false)
+    await navigation.getByRole('button', { name: '报告与评估', exact: true }).click()
+    await pane.getByRole('button', { name: '生成 IMRAD 草稿', exact: true }).click()
+    await pane.getByText('Gate 1 尚未批准', { exact: false }).waitFor()
+    expect(await pane.getByRole('button', { name: '生成正式报告', exact: true }).isEnabled()).toBe(false)
+    await page.reload()
+    await page.getByText('Markdown preview regression', { exact: true }).first().waitFor()
+    await page.getByText('Markdown preview regression', { exact: true }).first().click()
+    const expand = page.locator('[data-sidebar-right-expand]').first()
+    if (await expand.isVisible()) await expand.click()
+    await pane.locator('[data-sidebar-right-guide-entry$="science-workbench"]').click()
+    await pane.getByRole('heading', { name: '科研可视化与分析工作台', exact: true }).waitFor()
+
+    await pane.getByText('7.0.0 安装包工作台验收', { exact: true }).waitFor()
+    expect(await pane.getByRole('button', { name: '登记当前工作区', exact: true }).count()).toBe(0)
+    const output = join(desktopRoot, 'dist', 'verification-7.0.0')
+    mkdirSync(output, { recursive: true })
+    await page.screenshot({ path: join(output, 'science-workbench-restored.png') })
+    await navigation.getByRole('button', { name: '专业工具', exact: true }).click()
+    await pane.getByRole('button', { name: '打开Motif 序列工作台', exact: true }).click()
+    await pane.getByLabel('序列资产', { exact: true }).waitFor()
+    await page.screenshot({ path: join(output, 'science-workbench-tools.png') })
+    writeFileSync(join(root, 'markdown-images', 'reference.pdb'), moleculePdb)
+    await navigation.getByRole('button', { name: '数据与资料', exact: true }).click()
+    await pane.getByLabel('科研文件路径', { exact: true }).fill('reference.pdb')
+    await pane.getByRole('button', { name: '登记文件资产', exact: true }).click()
+    await pane.getByText('已登记 reference.pdb。', { exact: false }).waitFor()
+    await navigation.getByRole('button', { name: '专业工具', exact: true }).click()
+    await pane.getByRole('button', { name: '打开分子结构', exact: true }).click()
+    const molecule = pane.getByRole('region', { name: '分子结构工作台', exact: true })
+    const option = molecule.getByLabel('分子资产', { exact: true }).locator('option').filter({ hasText: 'reference.pdb' })
+    await option.waitFor({ state: 'attached' })
+    await molecule.getByLabel('分子资产', { exact: true }).selectOption((await option.getAttribute('value'))!)
+    await molecule.getByRole('button', { name: '打开结构', exact: true }).click()
+    await molecule.locator('[data-testid="molecule-canvas"][data-ready="true"]').waitFor({ timeout: 60000 })
+    await molecule.getByLabel('测距原子 1', { exact: true }).selectOption('0')
+    await molecule.getByLabel('测距原子 2', { exact: true }).selectOption('8')
+    await molecule.getByRole('button', { name: '计算原子距离', exact: true }).click()
+    await molecule.getByLabel('原子距离', { exact: true }).filter({ hasText: '5.0000' }).waitFor()
+    await molecule.getByRole('button', { name: '导出图像与结构并登记', exact: true }).click()
+    await molecule.getByRole('status').filter({ hasText: '已登记分子产物：' }).waitFor()
+    await molecule.scrollIntoViewIfNeeded()
+    await page.screenshot({ path: join(output, 'molecule-packaged.png') })
+
+    await pane.getByRole('button', { name: '打开科研画布', exact: true }).click()
+    const canvas = pane.getByRole('region', { name: '科研画布', exact: true })
+    await canvas.getByRole('button', { name: '添加面板', exact: true }).click()
+    await canvas.getByLabel('面板标题', { exact: true }).fill('Packaged panel B')
+    await canvas.getByRole('button', { name: '预览 SVG', exact: true }).click()
+    await canvas.getByLabel('科研画布预览').locator('svg').first().waitFor()
+    await canvas.getByRole('button', { name: '导出 SVG/PNG/PDF', exact: true }).click()
+    await canvas.getByRole('status').filter({ hasText: '已登记 4 个产物' }).waitFor()
+    await canvas.getByLabel('科研画布预览').screenshot({ path: join(output, 'canvas-packaged.png') })
+
+    if (process.env.ZEROWALL_E2E_HE_REFERENCE) {
+      writeFileSync(join(root, 'markdown-images', 'he-reference.tif'), readFileSync(process.env.ZEROWALL_E2E_HE_REFERENCE))
+      await navigation.getByRole('button', { name: '数据与资料', exact: true }).click()
+      await pane.getByLabel('科研文件路径', { exact: true }).fill('he-reference.tif')
+      await pane.getByRole('button', { name: '登记文件资产', exact: true }).click()
+      await pane.getByText('已登记 he-reference.tif。', { exact: false }).waitFor()
+      await navigation.getByRole('button', { name: '专业工具', exact: true }).click()
+      await pane.getByRole('button', { name: '打开HE 查看器', exact: true }).click()
+      const he = pane.getByRole('region', { name: 'HE 组织切片查看与分析', exact: true })
+      const heOption = he.getByLabel('HE 资产', { exact: true }).locator('option').filter({ hasText: 'he-reference.tif' })
+      await heOption.waitFor({ state: 'attached' })
+      await he.getByLabel('HE 资产', { exact: true }).selectOption((await heOption.getAttribute('value'))!)
+      await he.getByRole('button', { name: '打开切片', exact: true }).click()
+      await he.getByRole('img', { name: 'HE 瓦片与 ROI 选择', exact: true }).waitFor()
+      await he.getByRole('button', { name: 'StarDist 核分割', exact: true }).click()
+      await he.getByRole('img', { name: 'HE 核分割叠加', exact: true }).waitFor({ timeout: 120000 })
+      await he.getByLabel('HE 分割任务', { exact: true }).filter({ hasText: 'succeeded' }).waitFor()
+      await he.getByRole('img', { name: 'HE 核分割叠加', exact: true }).screenshot({ path: join(output, 'he-stardist-packaged.png') })
+      writeFileSync(join(output, 'he-stardist-packaged-evidence.json'), JSON.stringify({ scope: 'Packaged Electron/Host plus explicitly configured external engine; public example, not medical validation', text: await he.innerText(), source: process.env.ZEROWALL_E2E_HE_REFERENCE }, null, 2))
+    }
+
   })
 
   it('keeps shortcuts compact and opens WeChat configuration from its status', async () => {

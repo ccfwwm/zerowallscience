@@ -14,7 +14,7 @@ export interface SkillSummaryView {
   userInvocable: boolean
 }
 
-export interface SkillDetailView extends SkillSummaryView { content: string }
+export interface SkillDetailView extends SkillSummaryView { content: string; contentHash?: string; declaredVersion?: string }
 
 export interface SkillSourceView { enabled: string[]; disabled: string[] }
 
@@ -136,6 +136,8 @@ export function SkillsSettingsTab(props: Props) {
           </div>}
           <div className={css.badges}>
             <span>{detail.source}</span>
+            {detail.declaredVersion && <span>v{detail.declaredVersion}</span>}
+            {detail.contentHash && <span title={detail.contentHash}>SHA-256: {detail.contentHash.slice(0, 12)}</span>}
             <span data-enabled={detail.modelInvocable}>{props.t(detail.modelInvocable ? 'skills.modelEnabled' : 'skills.modelDisabled')}</span>
             <span data-enabled={detail.userInvocable}>{props.t(detail.userInvocable ? 'skills.userEnabled' : 'skills.userDisabled')}</span>
           </div>

@@ -2,7 +2,7 @@
 export const rWorkflows = {
   "protocol_version": 2,
   "catalog_version": "2026-09-20.1",
-  "content_sha256": "d97af66a6e1c5035a8a82df1919947bf254f7ab78a1b3f41d3781f443b99a752",
+  "content_sha256": "70114af0efc6253c842d3822d2a35bc585e879a8b04d96b92b18bbe203b1b0b8",
   "modules": [
     {
       "id": "omicverse",
@@ -169,7 +169,7 @@ export const rWorkflows = {
           "id": "omicverse.run.singlecell",
           "public_tool": "omicverse_execute",
           "category": "omicverse_execute",
-          "summary": "CPU QC, normalization, PCA, neighbors, UMAP, Leiden, markers and H5AD checkpoint using verified input.",
+          "summary": "CPU QC, embeddings and descriptive markers. Optional pseudobulk replaces this QC route with explicit raw-count H5AD donor/cell-type aggregation and donor-level PyDESeq2; cells are never independent replicates. Supports dense/CSR matrices, sequential cell types and 512 MiB aggregate cap.",
           "input_schema": {
             "type": "object",
             "properties": {
@@ -204,6 +204,102 @@ export const rWorkflows = {
                 "minimum": 0,
                 "maximum": 100,
                 "default": 20
+              },
+              "pseudobulk": {
+                "type": "object",
+                "properties": {
+                  "donor": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                  },
+                  "cell_type": {
+                    "$ref": "#/properties/pseudobulk/properties/donor"
+                  },
+                  "condition": {
+                    "$ref": "#/properties/pseudobulk/properties/donor"
+                  },
+                  "cell_types": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "minItems": 1,
+                    "maxItems": 20
+                  },
+                  "test": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reference": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "counts_source": {
+                    "type": "string",
+                    "enum": [
+                      "X",
+                      "layer"
+                    ]
+                  },
+                  "counts_layer": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_.-]+$"
+                  },
+                  "raw_counts_confirmed": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "biological_replicates_confirmed": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "min_cells_per_sample": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100000,
+                    "default": 10
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "prepare",
+                      "analyze"
+                    ],
+                    "default": "analyze"
+                  },
+                  "design": {
+                    "type": "object",
+                    "properties": {
+                      "batch": {
+                        "$ref": "#/properties/pseudobulk/properties/donor"
+                      },
+                      "covariates": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/properties/pseudobulk/properties/donor"
+                        },
+                        "maxItems": 20
+                      },
+                      "paired": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "donor",
+                  "cell_type",
+                  "condition",
+                  "cell_types",
+                  "test",
+                  "reference",
+                  "counts_source",
+                  "raw_counts_confirmed",
+                  "biological_replicates_confirmed"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
@@ -241,7 +337,7 @@ export const rWorkflows = {
           "id": "omicverse.run.bulk",
           "public_tool": "omicverse_execute",
           "category": "omicverse_execute",
-          "summary": "PyDESeq2 raw count differential expression with aligned biological replicate metadata.",
+          "summary": "PyDESeq2 raw count differential expression with explicit biological replicate design checks. Legacy factor-only calls remain supported but pairing is never inferred; structured design may include batch, numeric covariates and donor. donor_pseudobulk requires already aggregated counts for one cell type per donor/condition. Paired mode supports exactly two complete conditions.",
           "input_schema": {
             "type": "object",
             "properties": {
@@ -275,10 +371,50 @@ export const rWorkflows = {
                 "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "test": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1
               },
               "reference": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1
+              },
+              "design": {
+                "type": "object",
+                "properties": {
+                  "batch": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                  },
+                  "covariates": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                    }
+                  },
+                  "donor": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                  },
+                  "paired": {
+                    "type": "boolean"
+                  },
+                  "observation_unit": {
+                    "type": "string",
+                    "enum": [
+                      "sample",
+                      "donor_pseudobulk"
+                    ]
+                  },
+                  "biological_replicates_confirmed": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": [
+                  "biological_replicates_confirmed"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
@@ -2094,6 +2230,900 @@ export const rWorkflows = {
           "availability": "requires_runtime_check",
           "verification": "registered",
           "output": "Immediate structured result; no background task is implied."
+        }
+      ]
+    },
+    {
+      "id": "r.genetics",
+      "skill": "zerowall-mr",
+      "groups": [
+        "r_execute",
+        "r_jobs"
+      ],
+      "operations": [
+        {
+          "id": "r.get.sc.tenifold.run",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Get the asynchronous state and manifest summary for a remote scTenifoldKnk run.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id"
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "project_id",
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.cancel.sc.tenifold.run",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Cancel a queued or running remote scTenifoldKnk run. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id"
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "project_id",
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.sc.tenifold.manifest",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "List output artifacts produced by a remote scTenifoldKnk run.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id"
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "project_id",
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Get current state, timestamps, exit code, failure reason, and result summary for an R job.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id"
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "project_id",
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.wait.job",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Wait up to 30 seconds for a queued or running job to change state, then return its latest record. Call again while still queued or running.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id"
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 30000,
+                "default": 10000
+              }
+            },
+            "required": [
+              "project_id",
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.list.jobs",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "List up to 100 recent asynchronous R jobs for a project.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 20
+              }
+            },
+            "required": [
+              "project_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job.log",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Read bounded stdout and stderr tails for an R job.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id"
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4000000,
+                "default": 256000
+              }
+            },
+            "required": [
+              "project_id",
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.cancel.job",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Request cancellation of a queued or running R job. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id"
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "confirm": {
+                "type": "boolean",
+                "default": false,
+                "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+              }
+            },
+            "required": [
+              "project_id",
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "write",
+          "query_allowed": false,
+          "execution": "sync",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job.manifest",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "List result files produced in R_PLATFORM_RESULT_DIR with MIME type, byte size, and SHA-256.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id"
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              }
+            },
+            "required": [
+              "project_id",
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.get.job.result",
+          "public_tool": "r_jobs",
+          "category": "r_jobs",
+          "summary": "Read a job result by manifest path. Text is returned as text, images as native MCP images, and other binary data as bounded base64 chunks.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "description": "ZeroWall project id"
+              },
+              "job_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "R job id returned by r_submit_script"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1024,
+                "default": "",
+                "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4194304,
+                "default": 1048576
+              }
+            },
+            "required": [
+              "project_id",
+              "job_id"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "read",
+          "query_allowed": true,
+          "execution": "sync",
+          "confirmation_fields": [],
+          "requires_confirmation": false,
+          "lifecycle": null,
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Immediate structured result; no background task is implied."
+        },
+        {
+          "id": "r.genetics.run",
+          "public_tool": "r_execute",
+          "category": "r_execute",
+          "summary": "Run versioned prepared MR or complete-region coloc in the existing persistent R queue. Idempotent request_id; deterministic templates only. Results/manifest are retrieved with r.get.job.manifest and r_files. Missing methods or dependencies stop explicitly. Requires confirm=true.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._-]{1,128}$"
+              },
+              "request_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+              },
+              "request": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "runner_contract": {
+                        "type": "string",
+                        "const": "7.0.0-genetics.1"
+                      },
+                      "study_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      "task_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "plan_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "freeze_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "exploratory": {
+                        "type": "boolean"
+                      },
+                      "analysis": {
+                        "type": "string",
+                        "const": "mr"
+                      },
+                      "exposure": {
+                        "type": "object",
+                        "properties": {
+                          "trait": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "unit": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "ancestry": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "genome_build": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "source": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "sample_size": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "required": [
+                          "trait",
+                          "unit",
+                          "ancestry",
+                          "genome_build",
+                          "source",
+                          "sample_size"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "outcome": {
+                        "$ref": "#/properties/request/anyOf/0/properties/exposure"
+                      },
+                      "methods": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "wald",
+                            "ivw",
+                            "egger"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 3
+                      },
+                      "min_f": {
+                        "type": "number",
+                        "minimum": 10
+                      },
+                      "egger_min_i2gx": {
+                        "type": "number",
+                        "minimum": 0.9,
+                        "maximum": 1
+                      },
+                      "ld_independent": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "ld_source": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "sample_overlap": {
+                        "type": "string",
+                        "const": "none"
+                      },
+                      "sample_overlap_source": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "harmonization_source": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "instruments": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "snp": {
+                              "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                            },
+                            "beta_exposure": {
+                              "type": "number"
+                            },
+                            "se_exposure": {
+                              "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                            },
+                            "beta_outcome": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/beta_exposure"
+                            },
+                            "se_outcome": {
+                              "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                            },
+                            "exposure_effect_allele": {
+                              "type": "string",
+                              "enum": [
+                                "A",
+                                "C",
+                                "G",
+                                "T"
+                              ]
+                            },
+                            "exposure_other_allele": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/exposure_effect_allele"
+                            },
+                            "outcome_effect_allele": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/exposure_effect_allele"
+                            },
+                            "outcome_other_allele": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/exposure_effect_allele"
+                            },
+                            "harmonization_status": {
+                              "type": "string",
+                              "enum": [
+                                "aligned",
+                                "unresolved",
+                                "mismatched"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "snp",
+                            "beta_exposure",
+                            "se_exposure",
+                            "beta_outcome",
+                            "se_outcome",
+                            "exposure_effect_allele",
+                            "exposure_other_allele",
+                            "outcome_effect_allele",
+                            "outcome_other_allele",
+                            "harmonization_status"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "minItems": 1,
+                        "maxItems": 100000
+                      }
+                    },
+                    "required": [
+                      "runner_contract",
+                      "exploratory",
+                      "analysis",
+                      "exposure",
+                      "outcome",
+                      "methods",
+                      "min_f",
+                      "ld_independent",
+                      "ld_source",
+                      "sample_overlap",
+                      "sample_overlap_source",
+                      "harmonization_source",
+                      "instruments"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "runner_contract": {
+                        "$ref": "#/properties/request/anyOf/0/properties/runner_contract"
+                      },
+                      "study_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                      },
+                      "task_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/task_id"
+                      },
+                      "plan_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/plan_id"
+                      },
+                      "freeze_id": {
+                        "$ref": "#/properties/request/anyOf/0/properties/freeze_id"
+                      },
+                      "exploratory": {
+                        "$ref": "#/properties/request/anyOf/0/properties/exploratory"
+                      },
+                      "analysis": {
+                        "type": "string",
+                        "const": "coloc"
+                      },
+                      "trait1": {
+                        "type": "object",
+                        "properties": {
+                          "trait": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "unit": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "ancestry": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "genome_build": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "source": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "sample_size": {
+                            "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "quant",
+                              "cc"
+                            ]
+                          },
+                          "sdY": {
+                            "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                          },
+                          "case_fraction": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "exclusiveMaximum": 1
+                          }
+                        },
+                        "required": [
+                          "trait",
+                          "unit",
+                          "ancestry",
+                          "genome_build",
+                          "source",
+                          "sample_size",
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "trait2": {
+                        "$ref": "#/properties/request/anyOf/1/properties/trait1"
+                      },
+                      "complete_region": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "single_causal_variant_assumption": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "region": {
+                        "type": "object",
+                        "properties": {
+                          "chromosome": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "start": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "end": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "genome_build": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          },
+                          "source": {
+                            "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                          }
+                        },
+                        "required": [
+                          "chromosome",
+                          "start",
+                          "end",
+                          "genome_build",
+                          "source"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "priors": {
+                        "type": "object",
+                        "properties": {
+                          "p1": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "exclusiveMaximum": 1
+                          },
+                          "p2": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "exclusiveMaximum": 1
+                          },
+                          "p12": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "exclusiveMaximum": 1
+                          }
+                        },
+                        "required": [
+                          "p1",
+                          "p2",
+                          "p12"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "variants": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "snp": {
+                              "$ref": "#/properties/request/anyOf/0/properties/study_id"
+                            },
+                            "position": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0
+                            },
+                            "beta1": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/beta_exposure"
+                            },
+                            "beta2": {
+                              "$ref": "#/properties/request/anyOf/0/properties/instruments/items/properties/beta_exposure"
+                            },
+                            "varbeta1": {
+                              "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                            },
+                            "varbeta2": {
+                              "$ref": "#/properties/request/anyOf/0/properties/exposure/properties/sample_size"
+                            },
+                            "maf": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 0.5
+                            }
+                          },
+                          "required": [
+                            "snp",
+                            "position",
+                            "beta1",
+                            "beta2",
+                            "varbeta1",
+                            "varbeta2",
+                            "maf"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "minItems": 2,
+                        "maxItems": 1000000
+                      }
+                    },
+                    "required": [
+                      "runner_contract",
+                      "exploratory",
+                      "analysis",
+                      "trait1",
+                      "trait2",
+                      "complete_region",
+                      "single_causal_variant_assumption",
+                      "region",
+                      "priors",
+                      "variants"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "threads": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8,
+                "default": 1
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 14400000,
+                "default": 1800000
+              },
+              "confirm": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": [
+              "project_id",
+              "request_id",
+              "request",
+              "confirm"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          },
+          "effects": "execute",
+          "query_allowed": false,
+          "execution": "async_or_cached",
+          "confirmation_fields": [
+            "confirm"
+          ],
+          "requires_confirmation": true,
+          "lifecycle": {
+            "id_fields": [
+              "job_id",
+              "id"
+            ],
+            "argument": "job_id",
+            "status": "r.get.job",
+            "cancel": "r.cancel.job",
+            "manifest": "r.get.job.manifest",
+            "log": "r.get.job.log"
+          },
+          "availability": "requires_runtime_check",
+          "verification": "registered",
+          "output": "Submission with remote identifier; status and manifest are separate operations."
         }
       ]
     },
@@ -12205,6 +13235,98 @@ export const rWorkflows = {
               "all": {
                 "type": "boolean",
                 "default": false
+              },
+              "runner_contract": {
+                "type": "string",
+                "const": "7.0.0-nhanes-survey.1"
+              },
+              "survey_domain": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "variable": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "operator": {
+                      "type": "string",
+                      "enum": [
+                        "gte",
+                        "lte",
+                        "eq"
+                      ]
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "variable",
+                    "operator",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50
+              },
+              "missing_codes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "maxItems": 100
+                }
+              },
+              "lonely_psu": {
+                "type": "string",
+                "enum": [
+                  "fail",
+                  "adjust",
+                  "average",
+                  "certainty",
+                  "remove"
+                ]
+              },
+              "cycle_strategy": {
+                "type": "string",
+                "enum": [
+                  "single-cycle",
+                  "per-cycle",
+                  "official-combined"
+                ]
+              },
+              "combined_weight_source": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "cycle_weight_multipliers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "preview_truncated": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -12320,6 +13442,98 @@ export const rWorkflows = {
               "all": {
                 "type": "boolean",
                 "default": false
+              },
+              "runner_contract": {
+                "type": "string",
+                "const": "7.0.0-nhanes-survey.1"
+              },
+              "survey_domain": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "variable": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "operator": {
+                      "type": "string",
+                      "enum": [
+                        "gte",
+                        "lte",
+                        "eq"
+                      ]
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "variable",
+                    "operator",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50
+              },
+              "missing_codes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "maxItems": 100
+                }
+              },
+              "lonely_psu": {
+                "type": "string",
+                "enum": [
+                  "fail",
+                  "adjust",
+                  "average",
+                  "certainty",
+                  "remove"
+                ]
+              },
+              "cycle_strategy": {
+                "type": "string",
+                "enum": [
+                  "single-cycle",
+                  "per-cycle",
+                  "official-combined"
+                ]
+              },
+              "combined_weight_source": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "cycle_weight_multipliers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "preview_truncated": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -12419,6 +13633,98 @@ export const rWorkflows = {
               "all": {
                 "type": "boolean",
                 "default": false
+              },
+              "runner_contract": {
+                "type": "string",
+                "const": "7.0.0-nhanes-survey.1"
+              },
+              "survey_domain": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "variable": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "operator": {
+                      "type": "string",
+                      "enum": [
+                        "gte",
+                        "lte",
+                        "eq"
+                      ]
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "variable",
+                    "operator",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50
+              },
+              "missing_codes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "maxItems": 100
+                }
+              },
+              "lonely_psu": {
+                "type": "string",
+                "enum": [
+                  "fail",
+                  "adjust",
+                  "average",
+                  "certainty",
+                  "remove"
+                ]
+              },
+              "cycle_strategy": {
+                "type": "string",
+                "enum": [
+                  "single-cycle",
+                  "per-cycle",
+                  "official-combined"
+                ]
+              },
+              "combined_weight_source": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "cycle_weight_multipliers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "preview_truncated": {
+                "type": "boolean"
               }
             },
             "required": [

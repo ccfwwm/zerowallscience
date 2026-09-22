@@ -26,9 +26,18 @@ description: 在 ZeroWall 查看图像、管理 ROI 修订并通过本机 Fiji �
 
 Fiji 使用独立实例启动参数。关闭工作台页签不关闭原生窗口；关闭 Host 保留原生窗口以免丢失未保存编辑。
 
-后续五类实验的结果必须来自已验证 Runner：Western blot 保存条带与背景 ROI、饱和检查和归一化；划痕保存时间映射、掩膜和初始面积；克隆形成分开记录计数与染色量；细菌菌落仅在稀释和体积可用时计算 CFU；成管保存骨架、拓扑原始字段及长度单位。当前启动能力不等同于这些分析能力。
+## 实验分析共同规范
 
-实验指标的共享确定性口径已经固化：划痕以同一样本的初始面积计算闭合率，面积扩大保留为质控标记；克隆形成的独立菌落数与染色面积始终分列；菌落只有同时有稀释倍数和铺板体积才计算 CFU/mL；成管保留端点、连接点、分段、网孔和长度单位。缺少这些输入时应交付缺口或描述性结果，不能用默认值补齐。
+加载技能时使用系统返回的 `resourceBase` 解析相对资源；不要拼接开发机路径。先发现 `research_workflow`，再 `action=describe, workflow_id=fiji, operation=所选ID` 获取真实契约。业务调用用 `action=run`，`parameters.operation` 和 `parameters.arguments`，同一提交重试复用 `parameters.request_id`；输入变化使用新 ID。结果数值只读取真实 Run 的产物。运行完成、科学复核和人工认可分别记录，不把成功退出当作科学通过。
 
-当前 `fiji` 本地工作流提供四个可追踪的指标 Runner：`fiji.scratch-wound`、`fiji.colony-formation`、`fiji.bacterial-cfu`、`fiji.tube-formation`。它们的 `arguments.measurements` 必须是结构化数组，使用稳定 `request_id`，结果登记为项目 Artifact 并保留 `scientificReview: pending`。四类都支持项目内单张灰度图的确定性 ROI 分析：CFU 使用 4-连接组件和稀释/体积；划痕使用显式初始面积和阈值掩膜；克隆形成分开保留独立菌落数与染色面积；成管先执行 Zhang-Suen 细化，再登记骨架像素、端点、连接点、分段、网孔和单位换算。传 `sourceAssetId` 与相应 `image.kind` 配置，产物写入源 SHA-256、ROI、组件/拓扑字段和质量说明。它们仍不提供菌落身份、诊断、治疗效果或独立生物学重复推断；分割和骨架结果必须经过人工科研复核。
+- [Western blot](../zerowall-fiji-western-blot/SKILL.md)：已保存并接受的条带／背景／加载对照 ROI、饱和阈值和归一化。
+- [划痕](../zerowall-fiji-scratch-wound/SKILL.md)：样本／时间映射、基线面积与分割复核。
+- [克隆形成](../zerowall-fiji-colony-formation/SKILL.md)：独立颗粒计数、染色面积和物理标定。
+- [细菌菌落](../zerowall-fiji-bacterial-cfu/SKILL.md)：平板 ROI、碎屑范围、稀释和体积。
+- [成管](../zerowall-fiji-tube-formation/SKILL.md)：Skeletonize3D／AnalyzeSkeleton 原生字段、骨架长度和独立图环。
 
+除 Western blot 外，图像路径要求已登记的本地原始 8 位灰度单平面 PNG/TIFF/PGM（128 MiB、2500 万像素内），传 `arguments.sourceAssetId` 与 `arguments.image`。原生 ImageJ 拒绝 RGB／多页／其它位深的隐式转换；不从显示预览反推定量像素。所有 ROI 坐标和阈值必须来自当前原图；不能把示例数字当作待分析图像参数。原生运行输出 `result.json`、分割 `mask.png`、边界 `overlay.png`、`analysis.roi`、颗粒／边表 `particles.csv`、原生结果、请求、固定脚本和 SHA-256 完成清单。原图坐标和 ROI 局部坐标分开；保留失败日志。
+
+`arguments.measurements` 是人工或外部工具已有测量的汇总路径；不得声称这些输入是本轮 ImageJ 从图像计算得到。涉及完整研究的正式验证遵循已冻结计划，两个人工门禁沿用研究底座；普通查看、已授权定量和恢复不增加逐阶段确认。
+
+缺失的标定、样本映射、稀释、接种量和生物学重复保持未知。阈值与参数优化属于探索，不能选取显著性更强的版本代替冻结分析。当前没有批处理、自动处理粘连、手工掩膜修订或疾病诊断；必要时交付明确限制与人工复核任务。

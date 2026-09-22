@@ -2,8 +2,17 @@
 name: method-choice
 description: Use when the user asks whether the statistical method or test in a plan, analysis, or report is the right choice for the data — paired vs independent tests, parametric assumptions vs the distribution, multiple-comparison correction, group count vs test. You EXTRACT a structured description of the analysis; ZeroWall's deterministic engine judges the fit. Flags method-fit risks; never certifies the analysis is correct.
 license: MIT
+metadata:
+  zerowall:
+    schema_version: 1
+    version: 7.0.0-1
+    source: bundled
 zerowall:
   schema_version: 1
+  version: 7.0.0-1
+  source: bundled
+  binding: method_check_evaluate
+  deterministic: true
   domains: [general]
   research_stages: [analysis, validation]
   roles: [critic, validator]

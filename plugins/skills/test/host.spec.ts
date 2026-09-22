@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
@@ -16,6 +17,50 @@ const summary = {
 }
 
 describe('ZeroWall capabilities Remote', () => {
+  it('loads the versioned research Skills through the real filesystem parser', async () => {
+    const previousBundled = process.env.ZEROWALL_BUNDLED_SKILLS
+    const previousUser = process.env.ZEROWALL_USER_SKILLS
+    process.env.ZEROWALL_BUNDLED_SKILLS = resolve(import.meta.dirname, '../../../resources/skills')
+    process.env.ZEROWALL_USER_SKILLS = await mkdtemp(join(tmpdir(), 'zerowall-research-skill-versions-'))
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SkillRegistry)
+      const service = new ZeroWallCapabilitiesService(ctx)
+      for (const name of ['method-choice', 'zerowall-research-orchestrator', 'zerowall-data-contract', 'zerowall-research-evidence', 'zerowall-claim-audit']) {
+        const detail = await service.getSkill(name)
+        expect(detail.source).toBe('bundled')
+        expect(detail.declaredVersion).toBe('7.0.0-1')
+        expect(detail.contentHash).toMatch(/^[a-f0-9]{64}$/u)
+        expect(detail.content).not.toContain('search_mcp_tools')
+      }
+    } finally {
+      await ctx.fiber.dispose()
+      if (previousBundled === undefined) delete process.env.ZEROWALL_BUNDLED_SKILLS
+      else process.env.ZEROWALL_BUNDLED_SKILLS = previousBundled
+      if (previousUser === undefined) delete process.env.ZEROWALL_USER_SKILLS
+      else process.env.ZEROWALL_USER_SKILLS = previousUser
+    }
+  })
+
+  it('fingerprints the effective Skill and keeps provider source separate from declared metadata', async () => {
+    const ctx = new Context()
+    let content = '# Custom user workflow'
+    ctx.provide('skills', { list: async () => [], get: async () => ({
+      ...summary, source: 'user', provider: 'zerowall-user-skills', content,
+      metadata: { zerowall: { version: '7.0.0-1', source: 'bundled' } },
+    }) } as never)
+    const service = new ZeroWallCapabilitiesService(ctx)
+    const original = await service.getSkill(summary.name)
+    expect(original).toMatchObject({
+      source: 'user', provider: 'zerowall-user-skills', declaredVersion: '7.0.0-1',
+      contentHash: createHash('sha256').update(content).digest('hex'),
+    })
+    content = '# Revised user workflow'
+    const revised = await service.getSkill(summary.name)
+    expect(revised.declaredVersion).toBe(original.declaredVersion)
+    expect(revised.contentHash).not.toBe(original.contentHash)
+  })
+
   it('returns sanitized Skill summaries and loads full content only on demand', async () => {
     const ctx = new Context()
     const list = async () => [summary]

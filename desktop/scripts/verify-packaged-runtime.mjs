@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { access, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -54,12 +54,19 @@ if (packagedBuildReceipt.commit !== pinnedUpstream.commit
   || JSON.stringify(packagedBuildReceipt) !== JSON.stringify(runtimeBuildReceipt)) {
   throw new Error('Packaged Harness receipt differs from the current pinned build. Repackage the current runtime.')
 }
-for (const file of ['lib/client.js', 'lib/index.js']) {
-  const path = `node_modules/@zerowallscience/plugin-mcp/${file}`
+for (const [plugin, file] of ['mcp', 'research'].flatMap(plugin => ['lib/client.js', 'lib/index.js'].map(file => [plugin, file]))) {
+  const path = `node_modules/@zerowallscience/plugin-${plugin}/${file}`
   if (!readArchiveFile(path).equals(await readFile(resolve(repositoryRoot, '.build/runtime', path)))) {
-    throw new Error(`Packaged MCP ${file} is stale. Repackage the current runtime.`)
+    throw new Error(`Packaged ${plugin} ${file} is stale. Repackage the current runtime.`)
   }
 }
+const moleculePrefix = 'node_modules/@zerowallscience/plugin-research/lib/'
+const moleculeManifest = JSON.parse(readArchiveFile(`${moleculePrefix}molecule-runtime.manifest.json`).toString('utf8'))
+const moleculeRuntime = readArchiveFile(`${moleculePrefix}molecule-runtime.js`)
+if (moleculeManifest.version !== '5.11.0' || moleculeRuntime.length !== moleculeManifest.size || createHash('sha256').update(moleculeRuntime).digest('hex') !== moleculeManifest.sha256) {
+  throw new Error('Packaged molecular viewer runtime differs from its fixed version/hash manifest.')
+}
+if (!readArchiveFile(`${moleculePrefix}molecule-runtime.LICENSE.txt`).toString('utf8').includes('MIT')) throw new Error('Packaged molecular viewer license is missing.')
 for (const entry of ['out/main/index.js', 'out/main/python-updater-worker.js', 'out/preload/index.cjs']) {
   if (!readArchiveFile(entry).equals(await readFile(resolve(packageRoot, entry)))) {
     throw new Error(`Packaged ${entry} differs from the completed desktop build. Rebuild before packaging.`)
@@ -241,6 +248,10 @@ async function verifyArchivePolicy() {
     'base', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mineru', 'mcp',
     'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications',
   ]
+  // Different Sharp native builds share libvips in one Windows Host process.
+  // Mixed versions can load successfully yet corrupt colourspace operations.
+  const sharpVersions = new Set(archiveFiles.filter(path => /(?:^|\/)node_modules\/sharp\/package\.json$/.test(path)).map(path => JSON.parse(readArchiveFile(path).toString('utf8')).version))
+  if (sharpVersions.size !== 1 || !sharpVersions.has('0.35.3')) throw new Error(`Packaged Host must use one Sharp 0.35.3 native ABI; found ${[...sharpVersions].join(', ')}.`)
   const betterSidebarPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-better-sidebar/package.json'))
   if (betterSidebarPackages.length !== 1) throw new Error(`dsh-better-sidebar must be packaged exactly once; found ${betterSidebarPackages.length}.`)
   const betterSidebarManifest = JSON.parse(readArchiveFile('node_modules/dsh-better-sidebar/package.json').toString('utf8'))

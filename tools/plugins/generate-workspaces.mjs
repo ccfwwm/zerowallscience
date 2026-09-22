@@ -106,7 +106,7 @@ const npmDependencies = {
   environment: { 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },
   mineru: { jszip: '3.10.1', 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },
   singlecell: { 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },
-  research: { '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
+  research: { '@zerowallscience/research-store': 'workspace:^', 'fast-xml-parser': '^5.11.0', 'lucide-react': '^0.468.0', molstar: '5.11.0', react: '^18.2.0', 'react-dom': '^18.2.0', sharp: '0.35.3', zod: '^4.4.3' },
   execution: { '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   runs: { '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   publications: { '@zerowallscience/research-store': 'workspace:^', jszip: '3.10.1', zod: '^4.4.3' },
@@ -206,9 +206,9 @@ for (const plugin of plugins) {
       migrationVersion: 1,
     },
     scripts: {
-      bundle: 'tsdown',
+      bundle: plugin.id === 'research' ? 'node ../../tools/science/build-molecule-runtime.mjs && tsdown' : 'tsdown',
       typecheck: plugin.client
-        ? 'tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit'
+        ? 'tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit' + (plugin.id === 'research' ? ' && tsc -p tsconfig.workbench.json --noEmit' : '')
         : 'tsc -p tsconfig.host.json --noEmit',
       test: 'vitest run --config ../../vitest.plugins.config.ts',
     },

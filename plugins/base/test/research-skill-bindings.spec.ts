@@ -19,10 +19,13 @@ const cases = [
   ['zerowall-bio', 'bio_local'], ['zerowall-python-packages', 'python_environment'],
   ['zerowall-ketcher', 'mcp__zerowall_managed_ketcher__open_sketcher'],
   ['zerowall-research-orchestrator', 'research_study'], ['method-choice', 'method_check_evaluate'],
+  ['zerowall-research-evidence', 'research_study'], ['zerowall-claim-audit', 'research_study'],
+  ['academic-pipeline', 'research_study'], ['academic-paper', 'research_study'], ['academic-paper-reviewer', 'research_study'], ['deep-research', 'research_study'],
   ['zerowall-sequence', 'science_viewer'],
   ['zerowall-image-intensity', 'science_viewer'], ['zerowall-image-mask', 'science_viewer'],
   ['zerowall-fiji', 'science_viewer'], ['zerowall-napari', 'science_viewer'],
   ['zerowall-cells', 'science_viewer'],
+  ['zerowall-mr', 'research_study'], ['zerowall-colocalization', 'research_study'],
 ]
 it.each(cases)('loads %s and dispatches its bound tool %s', async (skill, target) => {
   const ctx = new Context(); await ctx.plugin(SystemPrompt); await ctx.plugin(ToolRuntime)

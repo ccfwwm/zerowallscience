@@ -355,7 +355,7 @@ export interface ViewerSessionRecord {
   id: string
   projectId: string
   assetId: string
-  tool: 'sequence' | 'image' | 'flow' | 'cells' | 'brain'
+  tool: 'sequence' | 'image' | 'flow' | 'cells' | 'brain' | 'molecule'
   state: JsonObject
   version: number
   createdAt: string

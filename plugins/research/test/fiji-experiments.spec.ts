@@ -48,6 +48,9 @@ describe('deterministic Fiji experiment metrics', () => {
     expect(scratch.measurement).toMatchObject({ remainingArea: 12, closurePercent: 40 })
     const colony = analyzeColonyMask({ data, width: 12, height: 8, config: { kind: 'colony-formation', wellId: 'A1', threshold: 200, minArea: 2, maxArea: 20, polarity: 'bright', roi: { x: 0, y: 0, width: 12, height: 8 }, stainUnit: 'pixel' } })
     expect(colony.measurement).toMatchObject({ independentCount: 1, stainedArea: 12, stainUnit: 'pixel' })
+    const calibrated = { kind: 'colony-formation' as const, wellId: 'A1', threshold: 200, minArea: 2, maxArea: 20, polarity: 'bright' as const, roi: { x: 0, y: 0, width: 12, height: 8 }, stainUnit: 'mm2' as const }
+    expect(() => analyzeColonyMask({ data, width: 12, height: 8, config: calibrated })).toThrow('pixelArea')
+    expect(analyzeColonyMask({ data, width: 12, height: 8, config: { ...calibrated, pixelArea: 0.01 } }).measurement.stainedArea).toBe(0.12)
   })
 
   it('thins a synthetic tube and reports reviewable topology metrics', () => {

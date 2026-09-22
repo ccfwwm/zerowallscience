@@ -77,11 +77,11 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
       }
       if (response.imageAnalysis) {
         setImageAnalysis(response.imageAnalysis)
-        setAnalysisArtifact(response.artifact ? { id: response.artifact.id, uri: response.artifact.uri, checksum: response.artifact.checksum } : undefined)
+        setAnalysisArtifact(response.artifact ? { id: response.artifact.id, uri: response.artifact.uri, ...(response.artifact.checksum ? { checksum: response.artifact.checksum } : {}) } : undefined)
       }
       if (response.imageMaskAnalysis) {
         setImageMaskAnalysis(response.imageMaskAnalysis)
-        setAnalysisArtifact(response.artifact ? { id: response.artifact.id, uri: response.artifact.uri, checksum: response.artifact.checksum } : undefined)
+        setAnalysisArtifact(response.artifact ? { id: response.artifact.id, uri: response.artifact.uri, ...(response.artifact.checksum ? { checksum: response.artifact.checksum } : {}) } : undefined)
       }
       if (response.annotations) setAnnotations(response.annotations)
       if (response.annotationSave?.conflict) {
@@ -179,7 +179,7 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
           <p>选择与源图像几何和页数完全一致的单通道整数掩膜。结果按 ROI 和标签分组统计源图像原始像素；不会自动缩放、配准或把标签解释为生物学类别。</p>
           <label>掩膜资产 <select aria-label="标签掩膜资产" value={maskAssetId} onChange={event => setMaskAssetId(event.target.value)}><option value="">选择标签掩膜</option>{assets.filter(asset => asset.id !== assetId && /\.(png|jpe?g|tiff?|pgm)$/iu.test(asset.uri)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
           <label>标签集合（可选，逗号分隔） <input aria-label="标签集合" value={maskLabels} placeholder="例如 1,2,5" onChange={event => setMaskLabels(event.target.value)} /></label>
-          <button type="button" disabled={!head || unsaved || viewDirty || !maskAssetId || (maskLabels.trim().length > 0 && !selectedMaskLabels()) || busy} onClick={() => void run({ action: 'image_mask_analyze', viewerId: viewer.id, expectedVersion: viewer.version, maskAssetId, ...(selectedMaskLabels() ? { maskLabels: selectedMaskLabels() } : {}) })}>标签掩膜分析</button>
+          <button type="button" disabled={!head || unsaved || viewDirty || !maskAssetId || (maskLabels.trim().length > 0 && !selectedMaskLabels()) || busy} onClick={() => { const labels = selectedMaskLabels(); void run({ action: 'image_mask_analyze', viewerId: viewer.id, expectedVersion: viewer.version, maskAssetId, ...(labels ? { maskLabels: labels } : {}) }) }}>标签掩膜分析</button>
           {imageMaskAnalysis && <section aria-label="标签掩膜分析结果" style={{ marginTop: 12 }}>
             <h5>标签掩膜分析结果</h5>
             <p>Runner：{imageMaskAnalysis.runner} · 掩膜：{imageMaskAnalysis.maskAssetId} · 标注修订：{imageMaskAnalysis.annotationRevisionId} · 科学复核：pending</p>

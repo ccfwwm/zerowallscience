@@ -9,7 +9,7 @@ import type { CanvasRequest, CanvasResponse } from '../shared/types.js'
 import { containedFile } from './science-viewer.js'
 import sharp from 'sharp'
 
-const RUNNER = 'zerowall-science-canvas/7.0.0-1'
+const RUNNER = 'zerowall-science-canvas/7.0.0-2'
 
 /** Build a single-page PDF containing the rendered JPEG as an image XObject. */
 export function makeSingleImagePdf(jpeg: Buffer, width: number, height: number): Buffer {
@@ -35,9 +35,15 @@ export function makeSingleImagePdf(jpeg: Buffer, width: number, height: number):
 export class CanvasService {
   constructor(private readonly store: ResearchStore) {}
   async execute(project: ProjectRecord, request: CanvasRequest): Promise<CanvasResponse> {
-    const spec = validateCanvasSpec(request.spec); const canvas = renderCanvas(spec); if (request.action === 'render') return { canvas }
+    const spec = validateCanvasSpec(request.spec); const canvas = renderCanvas(spec)
+    const assets = this.store.listDataAssets(project.id); const sources = this.store.listArtifacts(project.id)
+    const sourceSnapshots = [
+      ...canvas.sourceAssetIds.map(id => { const item = assets.find(a => a.id === id); if (!item) throw new Error('Canvas source asset must belong to the active project.'); return { id, kind: 'asset', version: item.version, checksum: item.checksum ?? null } }),
+      ...canvas.sourceArtifactIds.map(id => { const item = sources.find(a => a.id === id); if (!item) throw new Error('Canvas source artifact must belong to the active project.'); return { id, kind: 'artifact', version: item.version, checksum: item.checksum ?? null } }),
+    ]
+    if (request.action === 'render') return { canvas }
     if (request.action !== 'export') throw new Error('Unsupported canvas action.')
-    const root = await realpath(project.rootPath); const basePath = join(root, '.zerowall'); await mkdir(basePath, { recursive: true }); const base = await containedFile(root, basePath); const exportPath = join(base, 'science-exports'); await mkdir(exportPath, { recursive: true }); const directory = join(await containedFile(root, exportPath), randomUUID()); await mkdir(directory); const svgPath = join(directory, 'figure.svg'); const jsonPath = join(directory, 'figure.json'); const svg = canvas.svg; const manifest = JSON.stringify({ format: 'zerowall-science-canvas-project', version: 1, runner: RUNNER, spec, canvas }, null, 2) + '\n'
+    const root = await realpath(project.rootPath); const basePath = join(root, '.zerowall'); await mkdir(basePath, { recursive: true }); const base = await containedFile(root, basePath); const exportPath = join(base, 'science-exports'); await mkdir(exportPath, { recursive: true }); const directory = join(await containedFile(root, exportPath), randomUUID()); await mkdir(directory); const svgPath = join(directory, 'figure.svg'); const jsonPath = join(directory, 'figure.json'); const svg = canvas.svg; const manifest = JSON.stringify({ format: 'zerowall-science-canvas-project', version: 1, runner: RUNNER, spec, canvas, sourceSnapshots }, null, 2) + '\n'
     const pngPath = join(directory, 'figure.png'); const pdfPath = join(directory, 'figure.pdf')
     try {
       await writeFile(svgPath, svg, { flag: 'wx' }); await writeFile(jsonPath, manifest, { flag: 'wx' })
@@ -45,11 +51,14 @@ export class CanvasService {
       const jpeg = await sharp(rendered.data).jpeg({ quality: 95, chromaSubsampling: '4:4:4' }).toBuffer()
       const pdf = makeSingleImagePdf(jpeg, canvas.width, canvas.height)
       await writeFile(pngPath, rendered.data, { flag: 'wx' }); await writeFile(pdfPath, pdf, { flag: 'wx' })
-      const metadata = { runner: RUNNER, manifestUri: pathToFileURL(jsonPath).href, sourceAssetIds: spec.sourceAssetIds ?? [], sourceArtifactIds: spec.sourceArtifactIds ?? [], pointCount: canvas.pointCount, needsReview: false }
-      const svgArtifact = this.store.createArtifact({ projectId: project.id, name: `科研画布：${spec.title} SVG`, uri: pathToFileURL(svgPath).href, mediaType: 'image/svg+xml', checksum: createHash('sha256').update(svg).digest('hex'), metadata })
-      const pngArtifact = this.store.createArtifact({ projectId: project.id, name: `科研画布：${spec.title} PNG`, uri: pathToFileURL(pngPath).href, mediaType: 'image/png', checksum: createHash('sha256').update(rendered.data).digest('hex'), metadata: { ...metadata, sourceSvgArtifactId: svgArtifact.id } })
-      const pdfArtifact = this.store.createArtifact({ projectId: project.id, name: `科研画布：${spec.title} PDF`, uri: pathToFileURL(pdfPath).href, mediaType: 'application/pdf', checksum: createHash('sha256').update(pdf).digest('hex'), metadata: { ...metadata, sourceSvgArtifactId: svgArtifact.id, rasterized: true } })
-      return { canvas, artifact: svgArtifact, artifacts: [svgArtifact, pngArtifact, pdfArtifact] }
+      const metadata = { runner: RUNNER, manifestUri: pathToFileURL(jsonPath).href, sourceAssetIds: canvas.sourceAssetIds, sourceArtifactIds: canvas.sourceArtifactIds, sourceSnapshots, pointCount: canvas.pointCount, needsReview: sources.some(a => canvas.sourceArtifactIds.includes(a.id) && a.metadata.needsReview === true) }
+      const artifacts = this.store.createArtifacts([
+        { projectId: project.id, name: `科研画布：${spec.title} SVG`, uri: pathToFileURL(svgPath).href, mediaType: 'image/svg+xml', checksum: createHash('sha256').update(svg).digest('hex'), metadata },
+        { projectId: project.id, name: `科研画布：${spec.title} PNG`, uri: pathToFileURL(pngPath).href, mediaType: 'image/png', checksum: createHash('sha256').update(rendered.data).digest('hex'), metadata },
+        { projectId: project.id, name: `科研画布：${spec.title} PDF`, uri: pathToFileURL(pdfPath).href, mediaType: 'application/pdf', checksum: createHash('sha256').update(pdf).digest('hex'), metadata: { ...metadata, rasterized: true } },
+        { projectId: project.id, name: `科研画布：${spec.title} 可编辑工程`, uri: pathToFileURL(jsonPath).href, mediaType: 'application/json', checksum: createHash('sha256').update(manifest).digest('hex'), metadata },
+      ])
+      return { canvas, artifact: artifacts[0]!, artifacts }
     } catch (error) { await rm(directory, { recursive: true, force: true }); throw error }
   }
 }

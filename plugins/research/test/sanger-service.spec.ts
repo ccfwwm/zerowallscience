@@ -34,3 +34,21 @@ it('rejects malformed AB1 input instead of silently treating it as SCF', async (
   const project = store.createProject({ name: 'Sanger', rootPath: projectRoot }); const path = join(projectRoot, 'read.ab1'); await writeFile(path, Buffer.alloc(128)); const asset = store.createDataAsset({ projectId: project.id, name: 'AB1', uri: pathToFileURL(path).href, location: 'local', mediaType: 'application/octet-stream' })
   await expect(service.execute(project, { sessionId: 's', action: 'open', assetId: asset.id })).rejects.toThrow('AB1 header')
 })
+
+it('requires fresh revisions and both unchanged sources for bidirectional review', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sanger-review-')); const store = new ResearchStore(join(root, 'store.sqlite')); const service = new SangerService(store)
+  cleanups.push(async () => { store.close(); await rm(root, { recursive: true, force: true }) })
+  const project = store.createProject({ name: 'Review', rootPath: root })
+  const views = []
+  for (const name of ['forward', 'reverse']) {
+    const path = join(root, `${name}.scf`); await writeFile(path, fixtureScf())
+    const asset = store.createDataAsset({ projectId: project.id, name, uri: pathToFileURL(path).href, location: 'local', mediaType: 'application/octet-stream' })
+    views.push((await service.execute(project, { sessionId: 's', action: 'open', assetId: asset.id })).viewer!)
+  }
+  const request = { sessionId: 's', action: 'review' as const, viewerId: views[0]!.id, reverseViewerId: views[1]!.id, expectedVersion: 1, expectedReverseVersion: 1, threshold: 0, window: 1 }
+  expect((await service.execute(project, request)).review?.status).toBe('discordant')
+  await expect(service.execute(project, { ...request, expectedReverseVersion: 0 })).rejects.toThrow('revision conflict')
+  await expect(service.execute(project, { ...request, reverseViewerId: views[0]!.id })).rejects.toThrow('distinct')
+  await writeFile(join(root, 'reverse.scf'), Buffer.concat([Buffer.from(fixtureScf()), Buffer.from([1])]))
+  await expect(service.execute(project, request)).rejects.toThrow('source changed')
+})
