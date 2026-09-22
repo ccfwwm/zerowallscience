@@ -1,8 +1,10 @@
-export interface CanvasPoint { x: number; y: number; label?: string }
+export interface CanvasPoint { x: number; y: number; label?: string; yLow?: number; yHigh?: number }
 import { renderCanvasLayout } from './canvas-render.js'
-export interface CanvasSeries { id: string; name: string; color: string; points: CanvasPoint[]; mode?: 'line' | 'scatter' }
+export interface CanvasSeries { id: string; name: string; color: string; points: CanvasPoint[]; mode?: 'line' | 'scatter'; intervalLabel?: string }
+export interface CanvasImage { kind: 'asset' | 'artifact'; id: string; sourceSha256?: string; sourceWidth?: number; sourceHeight?: number; scaleBar?: { length: number; unitsPerPixel: number; unit: string; calibrationSource: string } | undefined }
+export interface CanvasResolvedImage { dataUri: string; width: number; height: number; checksum: string }
 export interface CanvasAnnotation { text: string; x: number; y: number; color?: string }
-export interface CanvasSpec { title: string; width: number; height: number; xLabel: string; yLabel: string; series: CanvasSeries[]; annotations?: CanvasAnnotation[]; sourceAssetIds?: string[]; sourceArtifactIds?: string[]; xRange?: [number, number] | undefined; yRange?: [number, number] | undefined; showLegend?: boolean; columns?: number | undefined; panels?: CanvasSpec[] }
+export interface CanvasSpec { title: string; width: number; height: number; xLabel: string; yLabel: string; series: CanvasSeries[]; annotations?: CanvasAnnotation[]; sourceAssetIds?: string[]; sourceArtifactIds?: string[]; xRange?: [number, number] | undefined; yRange?: [number, number] | undefined; showLegend?: boolean; columns?: number | undefined; panels?: CanvasSpec[]; image?: CanvasImage | undefined }
 export interface CanvasRender { format: 'zerowall-science-canvas'; version: 1; svg: string; width: number; height: number; pointCount: number; sourceAssetIds: string[]; sourceArtifactIds: string[]; notes: string[] }
 
 const finite = (value: unknown, label: string): number => { if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${label} must be finite.`); return value }
@@ -11,10 +13,10 @@ export function validateCanvasSpec(value: unknown, nested = false): CanvasSpec {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Canvas specification is required.')
   const input = value as Record<string, unknown>; const text = (key: string, max: number): string => { if (typeof input[key] !== 'string' || !input[key].trim() || input[key].length > max) throw new Error(`Canvas ${key} is required.`); return input[key].trim() }
   const width = finite(input.width, 'Canvas width'); const height = finite(input.height, 'Canvas height'); if (!Number.isInteger(width) || !Number.isInteger(height) || width < 320 || width > 4000 || height < 240 || height > 4000) throw new Error('Canvas dimensions must be 320–4000 by 240–4000.')
-  if (!Array.isArray(input.series) || input.series.length < 1 || input.series.length > 20) throw new Error('Canvas requires 1–20 series.')
-  let pointCount = 0; const ids = new Set<string>(); const series = input.series.map((raw, seriesIndex) => { if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Canvas series must be objects.'); const item = raw as Record<string, unknown>; const id = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `series-${seriesIndex + 1}`; if (ids.has(id)) throw new Error('Canvas series IDs must be unique.'); ids.add(id); const name = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : id; const color = typeof item.color === 'string' && /^#[0-9a-f]{6}$/iu.test(item.color) ? item.color : '#2f6fbd'; if (!Array.isArray(item.points) || item.points.length > 100000) throw new Error('Canvas series points must be an array no longer than 100,000.'); pointCount += item.points.length; const points = item.points.map((point, index) => { if (!point || typeof point !== 'object' || Array.isArray(point)) throw new Error('Canvas point must be an object.'); const p = point as Record<string, unknown>; return { x: finite(p.x, `Canvas ${id} point ${index} x`), y: finite(p.y, `Canvas ${id} point ${index} y`), ...(typeof p.label === 'string' && p.label.length <= 200 ? { label: p.label } : {}) } })
+  if (!Array.isArray(input.series) || (input.series.length < 1 && input.image === undefined) || input.series.length > 20) throw new Error('Canvas requires 1–20 series.')
+  let pointCount = 0; const ids = new Set<string>(); const series = input.series.map((raw, seriesIndex) => { if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Canvas series must be objects.'); const item = raw as Record<string, unknown>; const id = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `series-${seriesIndex + 1}`; if (ids.has(id)) throw new Error('Canvas series IDs must be unique.'); ids.add(id); const name = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : id; const color = typeof item.color === 'string' && /^#[0-9a-f]{6}$/iu.test(item.color) ? item.color : '#2f6fbd'; if (!Array.isArray(item.points) || item.points.length > 100000) throw new Error('Canvas series points must be an array no longer than 100,000.'); pointCount += item.points.length; const points = item.points.map((point, index) => { if (!point || typeof point !== 'object' || Array.isArray(point)) throw new Error('Canvas point must be an object.'); const p = point as Record<string, unknown>; const interval = p.yLow !== undefined || p.yHigh !== undefined; const yLow = interval ? finite(p.yLow, 'Lower interval') : undefined; const yHigh = interval ? finite(p.yHigh, 'Upper interval') : undefined; if (interval && (yLow! > finite(p.y, 'Point estimate') || yHigh! < Number(p.y))) throw new Error('Interval must contain the point estimate.'); return { ...(interval ? { yLow: yLow!, yHigh: yHigh! } : {}), x: finite(p.x, `Canvas ${id} point ${index} x`), y: finite(p.y, `Canvas ${id} point ${index} y`), ...(typeof p.label === 'string' && p.label.length <= 200 ? { label: p.label } : {}) } })
     if (item.mode !== undefined && item.mode !== 'line' && item.mode !== 'scatter') throw new Error('Canvas series mode must be line or scatter.')
-    return { id, name, color, points, mode: item.mode === 'scatter' ? 'scatter' as const : 'line' as const }
+    const intervalLabel = typeof item.intervalLabel === 'string' ? item.intervalLabel.trim() : ''; if (points.some(p => p.yLow !== undefined) && (!intervalLabel || intervalLabel.length > 100)) throw new Error('Intervals require an explicit meaning, such as SD, SE or 95% CI.'); return { id, name, color, points, ...(intervalLabel ? { intervalLabel } : {}), mode: item.mode === 'scatter' ? 'scatter' as const : 'line' as const }
   }); if (pointCount > 500000) throw new Error('Canvas point count exceeds the 500,000-point bound.')
   const annotations = input.annotations === undefined ? [] : !Array.isArray(input.annotations) ? (() => { throw new Error('Canvas annotations must be an array.') })() : input.annotations.map(raw => { if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Canvas annotation must be an object.'); const item = raw as Record<string, unknown>; if (typeof item.text !== 'string' || !item.text.trim() || item.text.length > 500) throw new Error('Canvas annotation text is required.'); return { text: item.text.trim(), x: finite(item.x, 'Canvas annotation x'), y: finite(item.y, 'Canvas annotation y'), ...(typeof item.color === 'string' && /^#[0-9a-f]{6}$/iu.test(item.color) ? { color: item.color } : {}) } })
   const refs = (key: 'sourceAssetIds' | 'sourceArtifactIds'): string[] => input[key] === undefined ? [] : !Array.isArray(input[key]) ? (() => { throw new Error(`Canvas ${key} must be an array.`) })() : input[key].map(value => { if (typeof value !== 'string' || !value.trim() || value.length > 200) throw new Error(`Canvas ${key} contains an invalid reference.`); return value.trim() })
@@ -32,9 +34,28 @@ export function validateCanvasSpec(value: unknown, nested = false): CanvasSpec {
   if (panels.length && (width / columns < 320 || height / Math.ceil((panels.length + 1) / columns) < 260)) throw new Error('Canvas panel dimensions require at least 320 × 260; increase the canvas size.')
   pointCount += panels.reduce((n, p) => n + p.series.reduce((m, s) => m + s.points.length, 0), 0)
   if (pointCount > 500000) throw new Error('Canvas point count exceeds the 500,000-point bound.')
-  return { title: text('title', 200), width, height, xLabel: text('xLabel', 200), yLabel: text('yLabel', 200), series, annotations, sourceAssetIds: refs('sourceAssetIds'), sourceArtifactIds: refs('sourceArtifactIds'), xRange: range('xRange'), yRange: range('yRange'), showLegend: input.showLegend !== false, ...(panels.length ? { panels, columns } : {}) }
+  const image = input.image === undefined ? undefined : validateCanvasImage(input.image)
+  if (image && annotations.length) throw new Error('Image text annotations require an image-coordinate editor; remove plot annotations.')
+  if (image && series.some(s => s.points.length)) throw new Error('Image panels cannot also contain plotted data.')
+  return { ...(image ? { image } : {}), title: text('title', 200), width, height, xLabel: text('xLabel', 200), yLabel: text('yLabel', 200), series, annotations, sourceAssetIds: refs('sourceAssetIds'), sourceArtifactIds: refs('sourceArtifactIds'), ...(range('xRange') ? { xRange: range('xRange')! } : {}), ...(range('yRange') ? { yRange: range('yRange')! } : {}), showLegend: input.showLegend !== false, ...(panels.length ? { panels, columns } : {}) }
 }
 
-export function renderCanvas(spec: CanvasSpec): CanvasRender {
-  return renderCanvasLayout(validateCanvasSpec(spec))
+export function renderCanvas(spec: CanvasSpec, images?: Map<string, CanvasResolvedImage>): CanvasRender {
+  return renderCanvasLayout(validateCanvasSpec(spec), images)
+}
+
+export function validateCanvasImage(value: unknown): CanvasImage {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Canvas image reference is required.')
+  const v = value as Record<string, unknown>
+  if ((v.kind !== 'asset' && v.kind !== 'artifact') || typeof v.id !== 'string' || !v.id.trim() || v.id.length > 200) throw new Error('Canvas image requires a project asset or artifact ID.')
+  const bound = v.sourceSha256 !== undefined || v.sourceWidth !== undefined || v.sourceHeight !== undefined
+  if (bound && (typeof v.sourceSha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(v.sourceSha256) || !Number.isInteger(v.sourceWidth) || Number(v.sourceWidth) <= 0 || !Number.isInteger(v.sourceHeight) || Number(v.sourceHeight) <= 0)) throw new Error('Canvas image binding requires SHA-256 and positive source dimensions.')
+  let scaleBar: CanvasImage['scaleBar']
+  if (v.scaleBar !== undefined) {
+    if (!v.scaleBar || typeof v.scaleBar !== 'object') throw new Error('Scale bar calibration is required.')
+    const b = v.scaleBar as Record<string, unknown>; const length = finite(b.length, 'Scale bar length'); const unitsPerPixel = finite(b.unitsPerPixel, 'Scale calibration')
+    if (length <= 0 || unitsPerPixel <= 0 || !Number.isFinite(length / unitsPerPixel) || typeof b.unit !== 'string' || !b.unit.trim() || b.unit.length > 30 || typeof b.calibrationSource !== 'string' || !b.calibrationSource.trim() || b.calibrationSource.length > 500) throw new Error('Scale bar requires positive calibration, units and an explicit calibration source.')
+    scaleBar = { length, unitsPerPixel, unit: b.unit.trim(), calibrationSource: b.calibrationSource.trim() }
+  }
+  return { kind: v.kind, id: v.id.trim(), ...(bound ? { sourceSha256: String(v.sourceSha256), sourceWidth: Number(v.sourceWidth), sourceHeight: Number(v.sourceHeight) } : {}), ...(scaleBar ? { scaleBar } : {}) }
 }

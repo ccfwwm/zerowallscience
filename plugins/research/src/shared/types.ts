@@ -1,3 +1,4 @@
+import type { SangerEdit } from './sanger-revision.js'
 import type { BrainTransformRequest } from './brain-transform.js'
 import type { ArtifactRecord, DataAssetRecord, ViewerSessionRecord, ImageAnnotations, ImageCoordinates, AnnotationRevisionRecord, AnnotationSaveResult, JsonObject, ImageRoi } from '@zerowallscience/research-store/types'
 import type { RunRecord } from '@zerowallscience/research-store/types'
@@ -13,7 +14,7 @@ import type { CellSelection, CellSelectionResult } from './cell-selection.js'
 import type { CellCamera } from './cell-camera.js'
 import type { MoleculeMeasurement, MoleculeRuntime, MoleculeSummary, MoleculeViewState } from './molecule.js'
 export interface MoleculeRequest { sessionId: string; action: 'runtime' | 'open' | 'read' | 'save' | 'measure' | 'export'; assetId?: string; viewerId?: string; expectedVersion?: number; state?: MoleculeViewState; atomA?: number; atomB?: number; pngBase64?: string }
-export interface MoleculeResponse { viewer?: ViewerSessionRecord; summary?: MoleculeSummary; state?: MoleculeViewState; source?: string; measurement?: MoleculeMeasurement; artifact?: ArtifactRecord; runtime?: MoleculeRuntime }
+export interface MoleculeResponse { viewer?: ViewerSessionRecord; summary?: MoleculeSummary; state?: MoleculeViewState; source?: string; measurement?: MoleculeMeasurement; artifact?: ArtifactRecord; artifacts?: ArtifactRecord[]; runtime?: MoleculeRuntime }
 export interface BrainAtlasRequest {
   sessionId: string; action: 'open' | 'read' | 'analyze' | 'export' | 'cells' | 'trajectory' | 'register' | 'cellfinder' | 'render'
   viewerId?: string; expectedVersion?: number; atlas?: string; axis?: 0 | 1 | 2; index?: number; downsample?: number
@@ -33,15 +34,15 @@ export interface CellPreview { summary: CellDatasetSummary; sampling: 'first-n';
 export interface CellQcSummary { cells: number; genes: number; totalCounts: { min: number; max: number; mean: number }; detectedGenes: { min: number; max: number; mean: number }; notes: string[] }
 export interface CellAnalysis { qc: CellQcSummary; groups?: Array<{ group: string | number | boolean | null; cells: number; meanTotalCounts: number }>; gene?: { gene: string; cells: number; detectedCells: number; mean: number; max: number } }
 export interface CellResponse { preview?: CellPreview; analysis?: CellAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; selection?: CellSelectionResult }
-export interface SangerRequest { sessionId: string; action: 'open' | 'analyze' | 'export' | 'review'; assetId?: string; viewerId?: string; reverseViewerId?: string; expectedReverseVersion?: number; expectedVersion?: number; threshold?: number; window?: number; reference?: string }
+export interface SangerRequest { sessionId: string; action: 'open' | 'analyze' | 'export' | 'review' | 'revise'; edits?: SangerEdit[]; assetId?: string; viewerId?: string; reverseViewerId?: string; expectedReverseVersion?: number; expectedVersion?: number; threshold?: number; window?: number; reference?: string }
 export interface SangerResponse { trace?: SangerTrace; analysis?: SangerAnalysis; review?: BidirectionalSangerReview; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord }
-export interface FlowRequest { sessionId: string; action: 'open' | 'analyze' | 'export' | 'import' | 'workspace_import' | 'batch'; importAssetId?: string; assetId?: string; assetIds?: string[]; viewerId?: string; expectedVersion?: number; transform?: 'none' | 'arcsinh'; cofactor?: number; applyCompensation?: boolean; gates?: FlowGate[]; previewLimit?: number }
+export interface FlowRequest { sessionId: string; action: 'open' | 'analyze' | 'export' | 'import' | 'workspace_import' | 'batch_submit' | 'batch_status' | 'batch_cancel' | 'batch_list'; requestId?: string; runId?: string; importAssetId?: string; assetId?: string; assetIds?: string[]; viewerId?: string; expectedVersion?: number; transform?: 'none' | 'arcsinh'; cofactor?: number; applyCompensation?: boolean; gates?: FlowGate[]; previewLimit?: number }
 export interface FlowBatchItem { assetId: string; sourceSha256?: string; sampleId?: string; groups?: string[]; analysis?: FlowAnalysis; error?: string }
-export interface FlowResponse { dataset?: FlowDataset; analysis?: FlowAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; batch?: { items: FlowBatchItem[]; workspaceSha256?: string; notes: string[] } }
+export interface FlowResponse { dataset?: FlowDataset; analysis?: FlowAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; run?: RunRecord; runs?: RunRecord[]; batch?: { items: FlowBatchItem[]; workspaceSha256?: string; notes: string[] } }
 export interface HeRequest { sessionId: string; action: 'open' | 'read' | 'analyze' | 'export' | 'segment' | 'status' | 'cancel'; requestId?: string; runId?: string; segmentation?: HeSegmentationParameters; assetId?: string; viewerId?: string; expectedVersion?: number; region?: HeRegion }
 export interface HeResponse { run?: RunRecord; artifacts?: ArtifactRecord[]; segmentation?: HeSegmentationResult; analysis?: HeAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; he?: HeSlideMetadata; tile?: HeTile }
 export interface CanvasRequest { sessionId: string; action: 'render' | 'export'; spec: CanvasSpec }
-export interface CanvasResponse { canvas?: CanvasRender; artifact?: ArtifactRecord; artifacts?: ArtifactRecord[] }
+export interface CanvasResponse { spec?: CanvasSpec; canvas?: CanvasRender; artifact?: ArtifactRecord; artifacts?: ArtifactRecord[] }
 export interface FijiWorkflowRequest { sessionId: string; action: 'list' | 'submit' | 'status' | 'cancel'; runId?: string; requestId?: string; researchTaskId?: string; viewerId?: string; expectedVersion?: number; annotationRevisionId?: string; plan?: WesternBlotPlan }
 export interface FijiWorkflowResponse { run?: RunRecord; runs?: RunRecord[]; artifacts?: ArtifactRecord[]; result?: WesternBlotResult }
 export interface FijiExperimentRequest { sessionId: string; action: 'list' | 'analyze' | 'status' | 'cancel'; runId?: string; experiment?: FijiExperimentId; requestId?: string; measurements?: JsonObject[]; sourceAssetId?: string; image?: FijiImageConfig }
@@ -88,7 +89,7 @@ export interface ImageMaskAnalysis {
 export interface ScienceViewerRequest {
   brainTransform?: BrainTransformRequest
   sessionId: string
-  action: 'list' | 'open' | 'read' | 'save' | 'analyze' | 'export' | 'launch_native' | 'native_status' | 'image_open' | 'image_read' | 'image_save' | 'image_analyze' | 'image_mask_analyze' | 'annotation_save' | 'annotation_export' | 'annotation_import' | 'annotation_launch' | 'annotation_collect' | 'sanger_open' | 'sanger_analyze' | 'sanger_export' | 'sanger_review' | 'flow_open' | 'flow_analyze' | 'flow_export' | 'flow_import' | 'flow_workspace_import' | 'flow_batch' | 'he_open' | 'he_read' | 'he_analyze' | 'he_export' | 'he_segment' | 'he_status' | 'he_cancel' | 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view' | 'brain_open' | 'brain_read' | 'brain_analyze' | 'brain_export' | 'brain_cells' | 'brain_trajectory' | 'brain_register' | 'brain_cellfinder' | 'brain_render' | 'brain_transform' | 'canvas_render' | 'canvas_export'
+  action: 'list' | 'open' | 'read' | 'save' | 'analyze' | 'export' | 'launch_native' | 'native_status' | 'image_open' | 'image_read' | 'image_save' | 'image_analyze' | 'image_mask_analyze' | 'annotation_save' | 'annotation_export' | 'annotation_import' | 'annotation_launch' | 'annotation_collect' | 'sanger_open' | 'sanger_analyze' | 'sanger_export' | 'sanger_review' | 'sanger_revise' | 'flow_open' | 'flow_analyze' | 'flow_export' | 'flow_import' | 'flow_workspace_import' | 'flow_batch_submit' | 'flow_batch_status' | 'flow_batch_cancel' | 'flow_batch_list' | 'he_open' | 'he_read' | 'he_analyze' | 'he_export' | 'he_segment' | 'he_status' | 'he_cancel' | 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view' | 'brain_open' | 'brain_read' | 'brain_analyze' | 'brain_export' | 'brain_cells' | 'brain_trajectory' | 'brain_register' | 'brain_cellfinder' | 'brain_render' | 'brain_transform' | 'canvas_render' | 'canvas_export'
     | 'molecule_runtime' | 'molecule_open' | 'molecule_read' | 'molecule_save' | 'molecule_measure' | 'molecule_export'
   sanger?: SangerRequest
   molecule?: MoleculeRequest
@@ -112,6 +113,8 @@ export interface ScienceViewerRequest {
   applyCompensation?: boolean
   gates?: FlowGate[]
   previewLimit?: number
+  requestId?: string
+  runId?: string
   region?: HeRegion
   state?: SequenceViewState
   operation?: SequenceAnalysis['operation']; crisprTarget?: string; crisprMaxMismatches?: number
@@ -166,3 +169,5 @@ export interface GeneticRefreshRequest { studyId: string; runId: string }
 export type { MoleculeDockingRequest } from './molecule-docking.js'
 
 export type { SequenceSimulationOptions, SequenceSimulationResult } from './sequence.js'
+
+export type { BrainTransformRequest } from './brain-transform.js'

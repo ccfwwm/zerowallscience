@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 import { locatePackagedApp } from '../scripts/packaged-app.mjs'
+import { pcrTemplate, pcrForward, pcrReverse, pcrExpected } from '../../plugins/research/test/sequence-simulation-fixture.js'
 import { moleculePdb } from '../../plugins/research/test/molecule-fixture.js'
 
 const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -292,11 +293,82 @@ describe('ZeroWall Science Electron', () => {
     const canvas = pane.getByRole('region', { name: '科研画布', exact: true })
     await canvas.getByRole('button', { name: '添加面板', exact: true }).click()
     await canvas.getByLabel('面板标题', { exact: true }).fill('Packaged panel B')
+    await canvas.getByLabel('面板类型', { exact: true }).selectOption('image')
+    await canvas.getByRole('button', { name: '刷新图像', exact: true }).click()
+    const imageOption = canvas.getByLabel('项目图像', { exact: true }).locator('option').filter({ hasText: 'PNG' }).first()
+    await imageOption.waitFor({ state: 'attached' })
+    await canvas.getByLabel('项目图像', { exact: true }).selectOption((await imageOption.getAttribute('value'))!)
     await canvas.getByRole('button', { name: '预览 SVG', exact: true }).click()
     await canvas.getByLabel('科研画布预览').locator('svg').first().waitFor()
     await canvas.getByRole('button', { name: '导出 SVG/PNG/PDF', exact: true }).click()
     await canvas.getByRole('status').filter({ hasText: '已登记 4 个产物' }).waitFor()
     await canvas.getByLabel('科研画布预览').screenshot({ path: join(output, 'canvas-packaged.png') })
+
+    writeFileSync(join(root, 'markdown-images', 'pcr-reference.fasta'), `>reference\n${pcrTemplate}\n`)
+    await navigation.getByRole('button', { name: '数据与资料', exact: true }).click()
+    await pane.getByLabel('科研文件路径', { exact: true }).fill('pcr-reference.fasta')
+    await pane.getByRole('button', { name: '登记文件资产', exact: true }).click()
+    await pane.getByText('已登记 pcr-reference.fasta。', { exact: false }).waitFor()
+    await navigation.getByRole('button', { name: '专业工具', exact: true }).click()
+    await pane.getByRole('button', { name: '打开Motif 序列工作台', exact: true }).click()
+    const sequence = pane.getByRole('region', { name: '序列查看与分析', exact: true })
+    await sequence.getByRole('button', { name: '刷新资产', exact: true }).click()
+    const sequenceOption = sequence.getByLabel('序列资产', { exact: true }).locator('option').filter({ hasText: 'pcr-reference.fasta' })
+    await sequenceOption.waitFor({ state: 'attached' })
+    await sequence.getByLabel('序列资产', { exact: true }).selectOption((await sequenceOption.getAttribute('value'))!)
+    await sequence.getByRole('button', { name: '打开序列', exact: true }).click()
+    await sequence.getByLabel('选择终点', { exact: true }).fill(String(pcrTemplate.length))
+    await sequence.getByRole('button', { name: '保存并查看', exact: true }).click()
+    await sequence.getByLabel('序列分析操作', { exact: true }).selectOption('pcr')
+    await sequence.getByLabel('PCR 正向引物', { exact: true }).fill(pcrForward)
+    await sequence.getByLabel('PCR 反向引物', { exact: true }).fill(pcrReverse)
+    await sequence.getByLabel('PCR 正向退火长度', { exact: true }).fill('20')
+    await sequence.getByLabel('PCR 反向退火长度', { exact: true }).fill('20')
+    await sequence.getByRole('button', { name: '导出并登记产物', exact: true }).click()
+    await sequence.getByText(pcrExpected, { exact: true }).waitFor()
+    await sequence.screenshot({ path: join(output, 'sequence-pcr-packaged.png') })
+    if (process.env.ZEROWALL_E2E_SANGER_REFERENCE) {
+      writeFileSync(join(root, 'markdown-images', 'reference.ab1'), readFileSync(process.env.ZEROWALL_E2E_SANGER_REFERENCE))
+      await navigation.getByRole('button', { name: '数据与资料', exact: true }).click()
+      await pane.getByLabel('科研文件路径', { exact: true }).fill('reference.ab1')
+      await pane.getByRole('button', { name: '登记文件资产', exact: true }).click()
+      await pane.getByText('已登记 reference.ab1。', { exact: false }).waitFor()
+      await navigation.getByRole('button', { name: '专业工具', exact: true }).click()
+      await pane.getByRole('button', { name: '打开Sanger 峰图', exact: true }).click()
+      const sanger = pane.getByRole('region', { name: 'Sanger 峰图查看与分析', exact: true })
+      const option = sanger.getByLabel('Sanger 资产', { exact: true }).locator('option').filter({ hasText: 'reference.ab1' })
+      await option.waitFor({ state: 'attached' }); await sanger.getByLabel('Sanger 资产', { exact: true }).selectOption((await option.getAttribute('value'))!)
+      await sanger.getByRole('button', { name: '打开峰图', exact: true }).click()
+      await sanger.getByLabel('修订碱基位置', { exact: true }).fill('100')
+      await sanger.getByLabel('修订碱基', { exact: true }).selectOption('R')
+      await sanger.getByLabel('碱基修订依据').fill('Packaged software reference edit; no biological variant conclusion')
+      await sanger.getByRole('button', { name: '登记碱基修订', exact: true }).click()
+      await sanger.getByText('历史修订批次：1', { exact: true }).waitFor()
+      await sanger.getByRole('button', { name: '导出并登记', exact: true }).click()
+      await sanger.getByRole('status').filter({ hasText: '已登记产物' }).waitFor()
+      await sanger.screenshot({ path: join(output, 'sanger-revision-packaged.png') })
+    }
+
+    if (process.env.ZEROWALL_E2E_FLOW_REFERENCE) {
+      for (const name of ['sample-1.fcs', 'sample-2.fcs', 'gates.wsp']) {
+        writeFileSync(join(root, 'markdown-images', name), readFileSync(join(process.env.ZEROWALL_E2E_FLOW_REFERENCE, name)))
+        await navigation.getByRole('button', { name: '数据与资料', exact: true }).click()
+        await pane.getByLabel('科研文件路径', { exact: true }).fill(name)
+        await pane.getByRole('button', { name: '登记文件资产', exact: true }).click()
+        await pane.getByText(`已登记 ${name}。`, { exact: false }).waitFor()
+      }
+      await navigation.getByRole('button', { name: '专业工具', exact: true }).click()
+      await pane.getByRole('button', { name: '打开流式细胞', exact: true }).click()
+      const flow = pane.getByRole('region', { name: '流式细胞查看与分析', exact: true })
+      await flow.getByLabel('sample-1.fcs', { exact: true }).check()
+      await flow.getByLabel('sample-2.fcs', { exact: true }).check()
+      const wsp = flow.getByLabel('批处理 FlowJo WSP', { exact: true }).locator('option').filter({ hasText: 'gates.wsp' })
+      await wsp.waitFor({ state: 'attached' }); await flow.getByLabel('批处理 FlowJo WSP', { exact: true }).selectOption((await wsp.getAttribute('value'))!)
+      await flow.getByRole('button', { name: '运行批处理', exact: true }).click()
+      await flow.getByText('批处理状态：succeeded', { exact: false }).waitFor()
+      await flow.getByLabel('批处理结果', { exact: true }).waitFor()
+      await flow.screenshot({ path: join(output, 'flowjo-batch-packaged.png') })
+    }
 
     if (process.env.ZEROWALL_E2E_HE_REFERENCE) {
       writeFileSync(join(root, 'markdown-images', 'he-reference.tif'), readFileSync(process.env.ZEROWALL_E2E_HE_REFERENCE))
@@ -319,7 +391,7 @@ describe('ZeroWall Science Electron', () => {
       writeFileSync(join(output, 'he-stardist-packaged-evidence.json'), JSON.stringify({ scope: 'Packaged Electron/Host plus explicitly configured external engine; public example, not medical validation', text: await he.innerText(), source: process.env.ZEROWALL_E2E_HE_REFERENCE }, null, 2))
     }
 
-  })
+  }, 300_000)
 
   it('keeps shortcuts compact and opens WeChat configuration from its status', async () => {
     await page.getByRole('button', { name: '展开快捷入口', exact: true }).click()

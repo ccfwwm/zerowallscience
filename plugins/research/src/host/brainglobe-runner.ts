@@ -1,3 +1,4 @@
+import {BRAIN_RESOURCE_GUARD} from './brain-resource-guard.js'
 export const BRAIN_GLOBE_RUNNER = String.raw`import base64, csv, io, json, os, sys
 from pathlib import Path
 import numpy as np
@@ -104,7 +105,7 @@ except Exception as exc:
  * uses project-local .npy or TIFF volumes only; the Host checks containment
  * and hashes before invoking this script.
  */
-export const CELLFINDER_RUNNER = String.raw`import json, os, sys
+export const CELLFINDER_RUNNER = BRAIN_RESOURCE_GUARD + String.raw`import json, os, sys
 from pathlib import Path
 import numpy as np
 
@@ -125,8 +126,10 @@ def load_volume(path):
         fail("cellfinder accepts only project-local .npy or TIFF volumes in the first runner")
     if getattr(value, "ndim", 0) != 3:
         fail("cellfinder input must be a 3D z,y,x volume")
-    if not np.isfinite(np.asarray(value, dtype=np.float32)).all():
-        fail("cellfinder input contains non-finite values")
+    if value.dtype.kind not in ('u','i','f') or int(np.prod(value.shape)) > 256 * 256 * 256:
+        fail("cellfinder requires real numeric volumes of at most 256^3 voxels")
+    for plane in value:
+        if not np.isfinite(plane).all(): fail("cellfinder input contains non-finite values")
     return value
 
 try:
@@ -141,8 +144,12 @@ try:
     start = int(request.get("startPlane", 0)); end = int(request.get("endPlane", signal.shape[0]))
     if start < 0 or end <= start or end > signal.shape[0]: fail("cellfinder plane range is outside the input volume")
     from cellfinder.core.main import main
+    import psutil, torch
+    from importlib.metadata import version
+    available=int(psutil.cpu_count() or 1); free=max(int(request.get("nFreeCpus",2)),available-8)
+    torch.set_num_threads(min(8,available)); torch.set_num_interop_threads(1)
     cells = main(signal, background, voxels, start_plane=start, end_plane=end,
-                 n_free_cpus=int(request.get("nFreeCpus", 2)),
+                 n_free_cpus=free, torch_device="cpu", detection_batch_size=4,
                  skip_classification=bool(request.get("skipClassification", True)),
                  skip_detection=False)
     rows = []
@@ -150,7 +157,7 @@ try:
         try: record = cell.to_dict()
         except Exception: record = {"x": float(cell.x), "y": float(cell.y), "z": float(cell.z), "type": int(getattr(cell, "type", -1))}
         rows.append({"index": index, "x": float(record.get("x", 0)), "y": float(record.get("y", 0)), "z": float(record.get("z", 0)), "type": int(record.get("type", -1)), "metadata": record.get("metadata") or {}})
-    print(json.dumps({"analysis": {"total": len(rows), "cells": rows, "shape": [int(x) for x in signal.shape], "voxelSizes": list(voxels), "startPlane": start, "endPlane": end, "skipClassification": bool(request.get("skipClassification", True)), "notes": ["Detection was executed by cellfinder.core.main in the managed BrainGlobe environment.", "Coordinates are cellfinder pixel coordinates in x,y,z fields; no atlas registration or anatomical interpretation is inferred.", "Detection-only output requires scientific review before counting cells or making regional claims."]}}, ensure_ascii=False))
+    print(json.dumps({"analysis": {"total": len(rows), "cells": rows, "shape": [int(x) for x in signal.shape], "voxelSizes": list(voxels), "resourceLimits": {"maxThreads": 8, "effectiveThreads": min(8,max(1,available-free)), "nFreeCpus": free, "detectionBatchSize": 4, "device": "cpu", "maxVoxels": 256**3, "maxProcessTreeRssBytes": _zw_memory_limit, "peakProcessTreeRssBytes": _zw_peak_rss[0]}, "producer": {"cellfinder": version("cellfinder"), "torch": version("torch")}, "startPlane": start, "endPlane": end, "skipClassification": bool(request.get("skipClassification", True)), "notes": ["Detection was executed by cellfinder.core.main in the managed BrainGlobe environment.", "Coordinates are cellfinder pixel coordinates in x,y,z fields; no atlas registration or anatomical interpretation is inferred.", "Detection-only output requires scientific review before counting cells or making regional claims."]}}, ensure_ascii=False))
 except SystemExit:
     raise
 except Exception as exc:

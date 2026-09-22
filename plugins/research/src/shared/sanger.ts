@@ -160,7 +160,8 @@ export function analyzeSanger(trace: SangerTrace, threshold: number, window: num
 
 export function reviewBidirectionalSanger(forward: SangerAnalysis, reverse: SangerAnalysis): BidirectionalSangerReview {
   const a = forward.trim.sequence; const b = revCompDna(reverse.trim.sequence); const length = Math.min(a.length, b.length); const disagreements: BidirectionalSangerReview['disagreements'] = []
-  for (let index = 0; index < length; index++) if (a[index] !== b[index] && a[index] !== 'N' && b[index] !== 'N') disagreements.push({ position: index + 1, forward: a[index]!, reverse: b[index]! })
+  const bases: Record<string, string> = { A: 'A', C: 'C', G: 'G', T: 'T', R: 'AG', Y: 'CT', S: 'CG', W: 'AT', K: 'GT', M: 'AC', B: 'CGT', D: 'AGT', H: 'ACT', V: 'ACG', N: 'ACGT' }
+  for (let index = 0; index < length; index++) if (![...(bases[a[index]!] ?? 'ACGT')].some(base => (bases[b[index]!] ?? 'ACGT').includes(base))) disagreements.push({ position: index + 1, forward: a[index]!, reverse: b[index]! })
   const notes = ['Reverse read is reverse-complemented before position-wise comparison; indels and alignment are not silently normalized.', 'Unequal read lengths or ambiguity calls without a direct disagreement remain insufficient; shared prefixes and unknown bases cannot establish concordance.', 'Concordance is read-level evidence only and does not establish phenotype or clinical significance.']
   return { forward: a, reverseComplement: b, disagreements, status: !a.length || !b.length ? 'insufficient' : disagreements.length ? 'discordant' : a.length !== b.length || /[^ACGT]/u.test(a + b) ? 'insufficient' : 'concordant', notes }
 }

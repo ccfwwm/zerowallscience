@@ -1056,9 +1056,32 @@ export class ResearchStore {
       if (input.expectedVersion !== current.version) throw new Error(`Viewer revision conflict: current ${current.version}.`)
       const updated = { ...current, state: jsonObject(input.state, 'Viewer state'), version: current.version + 1, updatedAt: new Date().toISOString() }
       this.database.prepare('UPDATE viewer_sessions SET state_json=?, version=?, updated_at=? WHERE id=?').run(JSON.stringify(updated.state), updated.version, updated.updatedAt, id)
-      this.recordAuditEvent(projectId, 'viewer.updated', { viewerId: id, version: updated.version })
+      if (input.invalidateOutputs) this.invalidateViewerOutputs(projectId, id)
+      this.recordAuditEvent(projectId, 'viewer.updated', { viewerId: id, version: updated.version, outputsInvalidated: input.invalidateOutputs === true })
       return updated
     })
+  }
+
+  private invalidateViewerOutputs(projectId: string, viewerId: string): void {
+    const artifacts = this.listArtifacts(projectId)
+    const ids = new Set(artifacts.filter(a => a.metadata.viewerId === viewerId).map(a => a.id))
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const a of artifacts) if (!ids.has(a.id) && Array.isArray(a.metadata.sourceArtifactIds) && a.metadata.sourceArtifactIds.some(id => ids.has(String(id)))) { ids.add(a.id); changed = true }
+    }
+    const now = new Date().toISOString()
+    for (const a of artifacts.filter(a => ids.has(a.id))) this.database.prepare('UPDATE artifacts SET metadata_json=?,version=version+1,updated_at=? WHERE id=?').run(JSON.stringify({ ...a.metadata, needsReview: true, staleViewerId: viewerId }), now, a.id)
+    for (const study of this.listResearchStudies(projectId)) {
+      const docs = this.listResearchDocuments(study.id)
+      const evidence = docs.filter(d => d.kind === 'evidence' && (ids.has(String(d.payload.artifactId)) || (Array.isArray(d.payload.artifactIds) && d.payload.artifactIds.some(id => ids.has(String(id))))))
+      const evidenceIds = new Set(evidence.map(d => d.id))
+      let expanded = true
+      while (expanded) { expanded = false; for (const d of docs) if (d.kind === 'evidence' && !evidenceIds.has(d.id) && evidenceIds.has(String(d.payload.documentId))) { evidenceIds.add(d.id); evidence.push(d); expanded = true } }
+      const claims = docs.filter(d => d.kind === 'claim' && Array.isArray(d.payload.evidenceIds) && d.payload.evidenceIds.some(id => evidenceIds.has(String(id))))
+      for (const d of [...evidence, ...claims]) this.database.prepare('UPDATE research_documents SET payload_json=?,version=version+1,updated_at=? WHERE id=?').run(JSON.stringify({ ...d.payload, needsReview: true }), now, d.id)
+      if (evidence.length) this.database.prepare("UPDATE research_studies SET gate2='pending',version=version+1,updated_at=? WHERE id=?").run(now, study.id)
+    }
   }
 
   getSessionResearchStudy(projectId: string, sessionId: string): ResearchStudyRecord | undefined {
@@ -1375,8 +1398,18 @@ export class ResearchStore {
     })
   }
 
-  createArtifacts(inputs: CreateArtifactInput[]): ArtifactRecord[] {
-    return this.withTransaction(() => inputs.map(input => this.createArtifact(input)))
+  createArtifacts(inputs: CreateArtifactInput[], guard?: { projectId: string; viewer?: { id: string; version: number }; sources?: Array<{ id: string; kind: string; version: number; checksum: string | null }> }): ArtifactRecord[] {
+    return this.withTransaction(() => {
+      if (guard) {
+        if (inputs.some(input => input.projectId !== guard.projectId)) throw new Error('Artifact guard project mismatch.')
+        if (guard.viewer && this.listViewerSessions(guard.projectId).find(v => v.id === guard.viewer!.id)?.version !== guard.viewer.version) throw new Error('Viewer revision changed during export; refresh and retry.')
+        for (const snapshot of guard.sources ?? []) {
+          const current = snapshot.kind === 'asset' ? this.listDataAssets(guard.projectId).find(a => a.id === snapshot.id) : this.listArtifacts(guard.projectId).find(a => a.id === snapshot.id)
+          if (!current || current.version !== snapshot.version || (current.checksum ?? null) !== snapshot.checksum) throw new Error('Source revision changed during artifact registration.')
+        }
+      }
+      return inputs.map(input => this.createArtifact(input))
+    })
   }
 
   listArtifacts(projectId: string): ArtifactRecord[] {

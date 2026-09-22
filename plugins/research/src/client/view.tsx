@@ -36,9 +36,9 @@ const tools: Tool[] = [
   { id: 'he', name: 'HE 查看器', formats: 'SVS · NDPI · TIFF · 金字塔/标定 · CPU StarDist分块核分割/标签/计数', location: 'OpenSlide + 内置多层查看', state: 'partial' },
   { id: 'structure', name: '分子结构', formats: 'PDB · mmCIF · 链/残基 · 测距 · 表面 · SDF · 视角/PNG/结构导出 · Vina远程对接', location: '本地 Mol* 5.11.0', state: 'partial' },
   { id: 'sequence', name: 'Motif 序列工作台', formats: 'FASTA/GenBank · 环形/线性注释图谱 · 反向互补 · 翻译 · 五种限制酶 · PCR/Gibson/GoldenGate · SpCas9/NGG候选', location: '本地确定性计算', state: 'partial' },
-  { id: 'sanger', name: 'Sanger 峰图', formats: 'SCF/AB1 · 四色峰 · 质量裁剪 · 参考比对 · 双向核对', location: '内置解析', state: 'partial' },
-  { id: 'flow', name: '流式细胞', formats: 'FCS 3.0 · 补偿 · arcsinh · 矩形门控 · GatingML 子集', location: '内置交互；远程批处理待部署', state: 'partial' },
-  { id: 'canvas', name: '科研画布', formats: '多面板 · 坐标轴/图例/配色 · SVG/PNG/PDF/工程 · 源数据溯源', location: '内置确定性渲染', state: 'partial' },
+  { id: 'sanger', name: 'Sanger 峰图', formats: 'SCF/AB1 · 四色峰 · 质量裁剪 · 参考比对 · 双向核对 · 人工修订', location: '内置解析', state: 'partial' },
+  { id: 'flow', name: '流式细胞', formats: 'FCS 3.0 · 补偿 · arcsinh · 层级门控 · GatingML/FlowJo 子集 · 持久批任务', location: '本地交互与持久批处理', state: 'partial' },
+  { id: 'canvas', name: '科研画布', formats: '多面板/图像/比例尺 · 显式误差线 · SVG/PNG/PDF/工程 · 源数据溯源', location: '内置确定性渲染', state: 'partial' },
   { id: 'brainglobe', name: '脑图谱', formats: 'Allen 小鼠 25 µm · 脑区查询 · 坐标映射', location: '独立 BrainGlobe 引擎', state: 'partial' },
 ]
 const pages: Array<[Page, string]> = [['overview', '研究概览'], ['data', '数据与资料'], ['plan', '研究计划'], ['tools', '专业工具'], ['evidence', '证据与结论'], ['report', '报告与评估']]
@@ -241,7 +241,7 @@ export function ScienceWorkbench(props: TabComponentProps & { remote: Remote }):
         {id === 'flow' && <FlowViewer remote={remote} sessionId={sessionId} />}
         {id === 'he' && <HeViewer remote={remote} sessionId={sessionId} />}
         {id === 'structure' && <MoleculeViewer remote={remote} sessionId={sessionId} />}
-        {id === 'canvas' && <CanvasViewer remote={remote} sessionId={sessionId} />}
+        {id === 'canvas' && <CanvasViewer remote={remote} sessionId={sessionId} projectId={projectId} />}
         {id === 'brainglobe' && <BrainViewer remote={remote} sessionId={sessionId} />}
       </section>)}
     </div>}</div>

@@ -22,8 +22,11 @@ BrainGlobe is a separate managed environment. Do not modify the user napari envi
 - `brain_trajectory`：按输入顺序登记坐标轨迹；这是有序脑区标注，不是纤维束追踪。
 - `brain_export`：将切片、脑区或坐标分析写入带 Runner、atlas 版本、Viewer 修订和 `scientificReview: pending` 的 Artifact。
 - `brain_register`：对项目内本地图像堆栈执行受限 brainreg CLI；必须通过 `brainreg.json`、注册图谱文件、非空输出和 SHA-256 审计后才登记 Artifact。
+- `brain_transform`：通过 `brain_transform` JSON 参数传 `action=inspect|map`、`registrationArtifactId`；map 还需要 `coordinateSpace=brainreg-downsampled-asr-voxel` 和 `coordinates`。仅支持经核验的 brainreg 1.0.16 契约：源为产物内 downsampled.tiff 零起点 ASR 数组网格，三线性插值绝对 atlas-mm 场，导出 atlas-ASR-micron。Host 检查当前图谱版本/几何和执行前后文件哈希。原始相机坐标或 cellfinder XYZ 仍不可直接转换；不能猜测轴交换或缩放。
 - `brain_cellfinder`：对项目内 `.npy`/TIFF 三维信号体执行真实 cellfinder；支持零背景或同尺寸背景、平面范围和检测模式，输出保留原始像素坐标与源哈希，不自动映射脑区。
 - `brain_render`：用真实 brainrender 生成 PNG 和 HTML 三维场景；脑区使用 atlas 名称/缩写，坐标必须明确为 micron，场景是可追踪可视化产物，不是解剖或机制证据。
 
 图谱元数据和 annotation 来自实际 BrainGlobe atlasapi。传输的结构列表、坐标行和切片标签有界；图谱外坐标明确单列计数，未知单位/方向、损坏的 ontology 或缺失受管理目录必须报告并停止。cellfinder 检测、brainreg 配准和 brainrender 场景仍需人工科学复核，不能由 Runner 成功退出或图像存在推断为已验证结论。
+
+brainreg/cellfinder 使用 CPU，最多 8 个工作线程/CPU，监测本任务进程树 24 GiB RSS 预算（0.5 秒采样，超限中断），启动至少需 2 GiB 可用内存；cellfinder 首版仅接受 ≤256³ 体素，detection batch=4。预算不是操作系统级硬内存隔离。固定三点合成样例的默认检测只检出 2/3，已记录漏检，禁止声称生物灵敏度或完整阳性基准通过；完整解剖配准质量、分类模型和原始样本坐标变换仍未验收。
 

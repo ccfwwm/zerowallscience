@@ -53,7 +53,7 @@ try{
   await page.reload();await page.getByRole('tab').filter({hasText:'reference.pdb'}).click();await page.locator('[data-testid="molecule-canvas"][data-ready="true"]').waitFor();assert.equal(await page.getByLabel('分子链',{exact:true}).inputValue(),'B')
   await page.getByRole('button',{name:'导出图像与结构并登记',exact:true}).click();await page.getByRole('status').filter({hasText:'已登记分子产物'}).waitFor()
   await page.screenshot({path:join(root,'restored-export.png'),fullPage:true})
-  const artifact=store.listArtifacts(project.id)[0]!;const result=JSON.parse(await readFile(fileURLToPath(artifact.uri),'utf8'));assert.equal(result.measurement.distanceAngstrom,5);assert.equal(result.state.chain,'B');assert.ok(result.screenshot.sha256)
+  const artifact=store.listArtifacts(project.id).find(a=>a.mediaType==='application/json')!;const result=JSON.parse(await readFile(fileURLToPath(artifact.uri),'utf8'));assert.equal(result.measurement.distanceAngstrom,5);assert.equal(result.state.chain,'B');assert.ok(result.screenshot.sha256)
   const png=await readFile(fileURLToPath(String(artifact.metadata.imageUri)));assert.ok(png.length>5000);assert.deepEqual(errors,[]);assert.deepEqual(external,[])
   const sdfExports=[]
   for(const sdfAsset of sdfAssets){
@@ -61,7 +61,7 @@ try{
     await page.getByLabel('分子链',{exact:true}).selectOption('A');await page.getByLabel('分子残基',{exact:true}).selectOption(JSON.stringify(['A','1','','MOL']))
     await page.getByLabel('测距原子 1',{exact:true}).selectOption('0');await page.getByLabel('测距原子 2',{exact:true}).selectOption('1');await page.getByRole('button',{name:'计算原子距离',exact:true}).click();await page.getByLabel('原子距离',{exact:true}).filter({hasText:'1.5000 Å'}).waitFor()
     await page.getByRole('button',{name:'导出图像与结构并登记',exact:true}).click();await page.getByRole('status').filter({hasText:'已登记分子产物'}).waitFor();await page.screenshot({path:join(root,sdfAsset.name+'.png'),fullPage:true})
-    const exported=store.listArtifacts(project.id).find(a=>a.metadata.sourceAssetId===sdfAsset.id)!;const output=JSON.parse(await readFile(fileURLToPath(exported.uri),'utf8'));assert.equal(output.summary.format,'sdf');assert.equal(output.measurement.distanceAngstrom,1.5);assert.deepEqual(await readFile(fileURLToPath(String(exported.metadata.structureUri))),await readFile(fileURLToPath(sdfAsset.uri)));sdfExports.push(exported)
+    const exported=store.listArtifacts(project.id).find(a=>a.metadata.sourceAssetId===sdfAsset.id&&a.mediaType==='application/json')!;const output=JSON.parse(await readFile(fileURLToPath(exported.uri),'utf8'));assert.equal(output.summary.format,'sdf');assert.equal(output.measurement.distanceAngstrom,1.5);assert.deepEqual(await readFile(fileURLToPath(String(exported.metadata.structureUri))),await readFile(fileURLToPath(sdfAsset.uri)));sdfExports.push(exported)
   }
   await page.reload();await page.getByRole('tab').filter({hasText:'ethanol-v3000.sdf'}).click();await page.locator('[data-testid="molecule-canvas"][data-ready="true"]').waitFor();assert.equal(await page.getByLabel('分子链',{exact:true}).inputValue(),'A');await page.getByLabel('原子距离',{exact:true}).filter({hasText:'1.5000 Å'}).waitFor()
   const cases=[];for(const source of [moleculeSdf,moleculeSdfV3000,moleculeSdf.replace('M  END','M  CHG  1   3  -1\nM  END')]){const summary=await parseMolecule(source,'sdf');cases.push({source,summary,distance:measureMolecule(summary,0,1).distanceAngstrom})}

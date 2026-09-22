@@ -1,7 +1,8 @@
-import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import sharp from 'sharp'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, expect, it } from 'vitest'
 import { ResearchStore } from '../../../store/src/index.js'
 import { CanvasService, makeSingleImagePdf } from '../src/host/canvas.js'
@@ -61,4 +62,38 @@ it('rejects foreign source IDs, preserves source revisions and rolls back partia
   const prior = store.listArtifacts(project.id).length
   expect(() => store.createArtifacts([{ projectId: project.id, name: 'first', uri: 'file:///first.svg', mediaType: 'image/svg+xml' }, { projectId: project.id, name: '', uri: 'file:///bad.svg', mediaType: 'image/svg+xml' }])).toThrow()
   expect(store.listArtifacts(project.id)).toHaveLength(prior)
+})
+
+it('renders explicit uncertainty bounds and refuses unlabeled or misleading intervals', () => {
+  const series = [{ ...spec.series[0]!, intervalLabel: '95% CI', points: [{ x: 0, y: 2, yLow: 1, yHigh: 4 }] }]
+  const result = renderCanvas({ ...spec, series, annotations: [] })
+  expect(result.svg).toContain('data-interval="95% CI"')
+  expect(result.svg).toContain('95% CI: 1–4')
+  expect(result.svg).not.toMatch(/NaN|Infinity/)
+  expect(() => renderCanvas({ ...spec, series: [{ ...series[0]!, intervalLabel: '' }] })).toThrow('explicit meaning')
+  expect(() => renderCanvas({ ...spec, series: [{ ...series[0]!, points: [{ x: 0, y: 2, yLow: 3, yHigh: 4 }] }] })).toThrow('contain')
+})
+
+it('embeds registered images, preserves aspect ratio and records original pixel calibration with hashed sources', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'canvas-image-')); const store = new ResearchStore(join(root, 'store.sqlite')); cleanup.push(async () => { store.close(); await rm(root, { recursive: true, force: true }) })
+  const project = store.createProject({ name: 'Images', rootPath: root }); const path = join(root, 'image.png')
+  await sharp({ create: { width: 200, height: 100, channels: 3, background: '#cc3344' } }).png().toFile(path)
+  const image = store.createArtifact({ projectId: project.id, name: 'Microscopy', uri: pathToFileURL(path).href, mediaType: 'image/png', metadata: { scientificReview: 'pending' } })
+  const service = new CanvasService(store); const imageSpec = { ...spec, sourceAssetIds: [], series: [], annotations: [], image: { kind: 'artifact' as const, id: image.id, scaleBar: { length: 25, unitsPerPixel: 0.5, unit: 'µm', calibrationSource: 'Objective stage micrometer' } } }
+  const result = await service.execute(project, { sessionId: 's', action: 'export', spec: imageSpec })
+  expect(result.canvas.svg).toContain('width="608" height="304"')
+  expect(result.canvas.svg).toContain('h152') // 50 native pixels * 3.04 display scale
+  expect(result.canvas.svg).toContain('25 µm')
+  expect(result.canvas.sourceArtifactIds).toEqual([image.id])
+  expect(result.artifact!.metadata.needsReview).toBe(true)
+  expect(result.artifact!.metadata.scientificReview).toBe('pending')
+  const manifest = JSON.parse(await readFile(fileURLToPath(String(result.artifact!.metadata.manifestUri)), 'utf8'))
+  expect(manifest.imageSnapshots[0]).toMatchObject({ reference: `artifact:${image.id}`, width: 200, height: 100 })
+  expect(manifest.imageSnapshots[0].checksum).toMatch(/^[a-f0-9]{64}$/)
+  await expect(service.execute(project, { sessionId: 's', action: 'render', spec: { ...imageSpec, image: { ...imageSpec.image, id: 'foreign' } } })).rejects.toThrow('active project')
+  await expect(service.execute(project, { sessionId: 's', action: 'render', spec: { ...imageSpec, image: { ...imageSpec.image, scaleBar: { ...imageSpec.image.scaleBar, length: 1000 } } } })).rejects.toThrow('80%')
+  await sharp({ create: { width: 201, height: 100, channels: 3, background: '#55aacc' } }).png().toFile(path)
+  await expect(service.execute(project, { sessionId: 's', action: 'render', spec: manifest.spec })).rejects.toThrow('saved project')
+  await writeFile(path, '<svg xmlns="http://www.w3.org/2000/svg"/>')
+  await expect(service.execute(project, { sessionId: 's', action: 'render', spec: imageSpec })).rejects.toThrow('raster')
 })

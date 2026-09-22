@@ -24,7 +24,7 @@ it('opens, analyzes and exports a bounded SCF result with provenance', async () 
   const project = store.createProject({ name: 'Sanger', rootPath: projectRoot }); const path = join(projectRoot, 'read.scf'); await writeFile(path, fixtureScf()); const asset = store.createDataAsset({ projectId: project.id, name: 'Read', uri: pathToFileURL(path).href, location: 'local', mediaType: 'application/octet-stream' })
   const opened = await service.execute(project, { sessionId: 's', action: 'open', assetId: asset.id }); expect(opened.trace?.bases.map(base => base.base)).toEqual(['A', 'C']); const viewer = opened.viewer!
   const analyzed = await service.execute(project, { sessionId: 's', action: 'analyze', viewerId: viewer.id, expectedVersion: viewer.version, threshold: .8, window: 2, reference: 'AC' }); expect(analyzed.analysis?.reference?.identity).toBe(1)
-  const exported = await service.execute(project, { sessionId: 's', action: 'export', viewerId: viewer.id, expectedVersion: analyzed.viewer!.version, threshold: .8, window: 2 }); expect(exported.artifact?.metadata.runner).toBe('zerowall-sanger/7.0.0-1'); expect(JSON.parse(await readFile(fileURLToPath(exported.artifact!.uri), 'utf8')).format).toBe('zerowall-sanger-result')
+  const exported = await service.execute(project, { sessionId: 's', action: 'export', viewerId: viewer.id, expectedVersion: analyzed.viewer!.version, threshold: .8, window: 2 }); expect(exported.artifact?.metadata.runner).toBe('zerowall-sanger/7.0.0-2'); expect(JSON.parse(await readFile(fileURLToPath(exported.artifact!.uri), 'utf8')).format).toBe('zerowall-sanger-result')
   await writeFile(path, Buffer.concat([Buffer.from(fixtureScf()), Buffer.from([1])]))
   await expect(service.execute(project, { sessionId: 's', action: 'analyze', viewerId: viewer.id, expectedVersion: exported.viewer!.version })).rejects.toThrow('source changed')
 })
@@ -41,7 +41,7 @@ it('requires fresh revisions and both unchanged sources for bidirectional review
   const project = store.createProject({ name: 'Review', rootPath: root })
   const views = []
   for (const name of ['forward', 'reverse']) {
-    const path = join(root, `${name}.scf`); await writeFile(path, fixtureScf())
+    const path = join(root, `${name}.scf`); await writeFile(path, name === 'reverse' ? Buffer.concat([Buffer.from(fixtureScf()), Buffer.from([2])]) : fixtureScf())
     const asset = store.createDataAsset({ projectId: project.id, name, uri: pathToFileURL(path).href, location: 'local', mediaType: 'application/octet-stream' })
     views.push((await service.execute(project, { sessionId: 's', action: 'open', assetId: asset.id })).viewer!)
   }
@@ -51,4 +51,32 @@ it('requires fresh revisions and both unchanged sources for bidirectional review
   await expect(service.execute(project, { ...request, reverseViewerId: views[0]!.id })).rejects.toThrow('distinct')
   await writeFile(join(root, 'reverse.scf'), Buffer.concat([Buffer.from(fixtureScf()), Buffer.from([1])]))
   await expect(service.execute(project, request)).rejects.toThrow('source changed')
+})
+
+it('preserves manual IUPAC revisions, rejects stale edits and invalidates derived figures', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sanger-edits-')); const store = new ResearchStore(join(root, 'store.sqlite')); const service = new SangerService(store)
+  cleanups.push(async () => { store.close(); await rm(root, { recursive: true, force: true }) })
+  const project = store.createProject({ name: 'Edits', rootPath: root }); const path = join(root, 'read.scf'); await writeFile(path, fixtureScf())
+  const asset = store.createDataAsset({ projectId: project.id, name: 'Read', uri: pathToFileURL(path).href, location: 'local', mediaType: 'application/octet-stream' })
+  const opened = await service.execute(project, { sessionId: 's', action: 'open', assetId: asset.id }); const viewer = opened.viewer!
+  const original = await service.execute(project, { sessionId: 's', action: 'export', viewerId: viewer.id, expectedVersion: viewer.version, threshold: 0 })
+  const figure = store.createArtifact({ projectId: project.id, name: 'Derived figure', uri: pathToFileURL(join(root, 'figure.svg')).href, mediaType: 'image/svg+xml', metadata: { sourceArtifactIds: [original.artifact!.id], needsReview: false } })
+  const study = store.createResearchStudy({ projectId: project.id, title: 'Trace review' }); const evidence = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'evidence', payload: { artifactId: figure.id, needsReview: false } }); const claim = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'claim', payload: { evidenceIds: [evidence.id], needsReview: false } })
+  const revision = { sessionId: 's', action: 'revise' as const, viewerId: viewer.id, expectedVersion: original.viewer!.version, edits: [{ position: 1, from: 'A' as const, to: 'R' as const, reason: 'Manual mixed-peak review' }] }
+  const revised = await service.execute(project, revision)
+  expect(revised.trace!.bases[0]).toMatchObject({ base: 'R', quality: null, peak: 1 })
+  expect(revised.analysis!.trim.sequence).toBe('RC')
+  expect(revised.trace!.channels).toEqual(opened.trace!.channels)
+  expect(store.listArtifacts(project.id).find(a => a.id === figure.id)!.metadata.needsReview).toBe(true)
+  expect(store.getResearchDocument(evidence.id)!.payload.needsReview).toBe(true); expect(store.getResearchDocument(claim.id)!.payload.needsReview).toBe(true)
+  await expect(service.execute(project, revision)).rejects.toThrow('revision conflict')
+  await expect(service.execute(project, { ...revision, expectedVersion: revised.viewer!.version })).rejects.toThrow('current base')
+  await expect(service.execute(project, { ...revision, expectedVersion: revised.viewer!.version, edits: [{ position: 2, from: 'C', to: 'T', reason: '' }] })).rejects.toThrow('reason')
+  const restored = await service.execute(project, { sessionId: 's', action: 'analyze', viewerId: viewer.id, expectedVersion: revised.viewer!.version })
+  expect(restored.analysis!.trim.sequence).toBe('RC')
+  const exported = await service.execute(project, { sessionId: 's', action: 'export', viewerId: viewer.id, expectedVersion: restored.viewer!.version })
+  const data = JSON.parse(await readFile(fileURLToPath(exported.artifact!.uri), 'utf8'))
+  expect(data.editHistory[0].edits[0].reason).toBe('Manual mixed-peak review')
+  expect(exported.artifact!.metadata.needsReview).toBe(true)
+  expect(await readFile(path)).toEqual(Buffer.from(fixtureScf()))
 })

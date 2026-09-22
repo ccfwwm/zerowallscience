@@ -1,9 +1,10 @@
 # FlowJo workspace compatibility and FCS batch design
 
-This note defines the shipped minimum scope for the FlowJo/FCS workbench gate.
+This note records the shipped minimum scope for the FlowJo/FCS workbench gate.
 The product imports this strict subset through `flow_workspace_import` and
-executes registered local FCS assets through `flow_batch`; it does not claim
-general FlowJo compatibility.
+executes registered local FCS assets through the persistent
+`flow_batch_submit`, `flow_batch_status`, `flow_batch_cancel`, and
+`flow_batch_list` lifecycle. It does not claim general FlowJo compatibility.
 
 ## Reference implementation
 
@@ -56,6 +57,50 @@ present), sample ID, group memberships, applied compensation/transform, gate
 IDs, event count, statistics scale, artifact checksum, and an explicit
 `unsupported` list. No batch result is a biological conclusion.
 
+## Shipped lifecycle and isolation
+
+The batch runner records a generic existing `Run`, preserving the source
+request in `.zerowall/flow-batches/<run-id>/request.json`, a progressive
+`partial-result.json`, and a terminal `batch-result.json` Artifact. The request
+uses a stable `requestId` plus SHA-256 of canonical JSON. On recovery, the Host
+revalidates both the fingerprint and the complete 1–64 distinct-asset contract
+before it can start any saved request. A changed request ID with different
+inputs is refused.
+
+Flow batches have a single local execution slot. Further valid submissions stay
+`submitted`; queued time counts against the 30 minute timeout. Cancellation
+retains the request and partial file. A Host shutdown aborts owned work, waits
+for its tasks to reach a terminal Run state, and only then closes the Store.
+Unowned `running` records fail explicitly rather than being silently resumed.
+
+All batch directories and result files are resolved with the active-project
+containment check before use. Terminal result bytes are SHA-256 checked against
+the registered Artifact before a status response returns per-sample output.
+This is execution provenance and integrity checking, not scientific review;
+the terminal batch Artifact remains marked `needsReview: true`.
+
+## Actual 7.0.0 verification
+
+The independent reference command completed with FlowKit 1.3.2, FlowIO 1.4.0,
+and Python 3.12.10:
+
+```powershell
+uv run --quiet --with flowkit python tools/integration/flowjo-flowkit-reference.py --output .build/flowjo-flowkit-reference/2026-09-22T06-33-29
+```
+
+It produced two synthetic FCS inputs and a FlowJo 10 workspace whose two sample
+URIs omit `.fcs`, confirming the deliberately bounded basename/stem mapping.
+
+`tools/integration/flowjo-batch-viewer-smoke.ts --run` exercised actual source
+React `FlowViewer`, `FlowService`, `ResearchStore`, and Chromium. It selected
+two compatible synthetic FCS assets and one malformed FCS asset through the
+browser, applied the compatible per-sample WSP rectangle gates, observed the
+persistent `submitted` then `succeeded` Run states, preserved the individual
+refusal, and registered the result Artifact. The captured evidence is
+`.build/flowjo-batch-viewer-smoke/2026-09-22T06-33-29.417Z/report.json` and
+`flowjo-batch-result.png`. These synthetic checks do not establish compatibility
+with all FlowJo workspaces or biological validity.
+
 ## Compatibility refusal rules
 
 Reject before computation when a workspace cannot be mapped to registered FCS
@@ -70,8 +115,9 @@ compensation matrix, or treat FlowJo display settings as an analysis result.
 1. Run the independent reference script and retain its JSON snapshot.
 2. Compare product metadata against FlowKit for sample IDs, groups, channels,
    gate paths, and matrix dimensions.
-3. Run a two-file batch where one file is valid and one is deliberately missing;
-   verify partial success and an auditable refusal.
+3. Run a multi-file persistent batch with compatible samples and a deliberate
+   invalid input; verify partial success, the submitted/running/succeeded Run
+   lifecycle, checksum-verified output, and an auditable refusal.
 4. Run a workspace containing an ellipsoid or unknown transform; verify refusal
    rather than approximation.
 5. Verify all opened descriptors and temporary files are released after success,

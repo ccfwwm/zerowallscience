@@ -21,6 +21,9 @@ export function SangerViewer({ remote, sessionId }: { remote: Remote; sessionId:
   const [window, setWindow] = useState(5)
   const [reference, setReference] = useState('')
   const [reverseViewerId, setReverseViewerId] = useState('')
+  const [editPosition, setEditPosition] = useState(1)
+  const [editCall, setEditCall] = useState('N')
+  const [editReason, setEditReason] = useState('')
   const [sampleStart, setSampleStart] = useState(0)
   const [sampleWindow, setSampleWindow] = useState(2000)
   const [message, setMessage] = useState('')
@@ -28,22 +31,26 @@ export function SangerViewer({ remote, sessionId }: { remote: Remote; sessionId:
   const generation = useRef(0)
   const call = async (input: Omit<ScienceViewerRequest, 'sessionId'>): Promise<SangerResponse & { assets?: DataAssetRecord[]; viewers?: ViewerSessionRecord[] }> => { const result = unwrapRemoteResult('scienceViewer', await remote.scienceViewer({ ...input, sessionId })) as unknown as SangerResponse & { sanger?: SangerResponse; assets?: DataAssetRecord[]; viewers?: ViewerSessionRecord[] }; return result.sanger ?? result }
   const refresh = async (): Promise<void> => {
+    const current = generation.current
     const response = await call({ action: 'list' })
+    if (current !== generation.current) return
     setAssets(response.assets ?? []); setViewers((response.viewers ?? []).filter(item => item.state.traceTool === 'sanger'))
   }
-  useEffect(() => { const current = ++generation.current; setAssets([]); setViewers([]); setViewer(undefined); setTrace(undefined); setAnalysis(undefined); setMessage(''); void refresh().catch(error => { if (current === generation.current) setMessage(String(error)) }); return () => { generation.current++ } }, [remote, sessionId])
+  useEffect(() => { const current = ++generation.current; setAssets([]); setViewers([]); setAssetId(''); setReference(''); setThreshold(.8); setWindow(5); setViewer(undefined); setTrace(undefined); setAnalysis(undefined); setMessage(''); setBusy(false); setReview(undefined); setReverseViewerId(''); setEditPosition(1); setEditCall('N'); setEditReason(''); setSampleStart(0); void refresh().catch(error => { if (current === generation.current) setMessage(String(error)) }); return () => { generation.current++ } }, [remote, sessionId])
   const run = async (input: Omit<ScienceViewerRequest, 'sessionId'>): Promise<void> => {
     if (busy) return
+    const current = generation.current
     setBusy(true); setMessage('')
     try {
       const response = await call(input)
+      if (current !== generation.current) return
       if (response.viewer) { setViewer(response.viewer); setThreshold(Number(response.viewer.state.threshold)); setWindow(Number(response.viewer.state.window)); setReference(String(response.viewer.state.reference ?? '')) }
       if (response.trace) setTrace(response.trace)
-      if (response.analysis) setAnalysis(response.analysis)
+      setAnalysis(response.analysis)
       setReview(response.review)
       if (response.artifact) setMessage(`已登记产物：${response.artifact.name}\n${response.artifact.uri}\nSHA-256: ${response.artifact.checksum}`)
       await refresh()
-    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) } finally { setBusy(false) }
+    } catch (error) { if (current === generation.current) setMessage(error instanceof Error ? error.message : String(error)) } finally { if (current === generation.current) setBusy(false) }
   }
   const traces = useMemo(() => trace ? trace.channels : undefined, [trace])
   const start = Math.min(sampleStart, Math.max(0, (trace?.sampleCount ?? 1) - 1))
@@ -63,8 +70,9 @@ export function SangerViewer({ remote, sessionId }: { remote: Remote; sessionId:
       {viewer && trace && <>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '10px 0' }}><label>端点概率阈值 <input aria-label="端点概率阈值" type="number" min={0} max={1} step={.05} value={threshold} onChange={event => setThreshold(Number(event.target.value))} /></label><label>质量窗口 <input aria-label="质量窗口" type="number" min={1} max={100} value={window} onChange={event => setWindow(Number(event.target.value))} /></label><label style={{ flex: 1, minWidth: 260 }}>参考序列 <input aria-label="Sanger 参考序列" style={{ width: '100%' }} value={reference} onChange={event => setReference(event.target.value)} placeholder="可选，A/C/G/T/N" /></label></div>
         <div><label>显示起点 <input aria-label="峰图样本起点" type="number" min={0} max={Math.max(0, trace.sampleCount - 1)} value={start} onChange={e => setSampleStart(Math.max(0, Math.trunc(Number(e.target.value))))}/></label><label>显示窗口 <input aria-label="峰图样本窗口" type="number" min={50} max={10000} value={sampleWindow} onChange={e => setSampleWindow(Math.min(10000, Math.max(50, Math.trunc(Number(e.target.value)))))}/></label><span>显示样本 [{start}, {end})；原始峰数据和计算不降采样。</span></div>
-        <div aria-label="四色峰图" style={{ overflowX: 'auto', border: '1px solid var(--dsw-alias-border-l1)', padding: 6 }}><svg role="img" aria-label="四色 Sanger 峰图" width={width} height={height} viewBox={`0 0 ${width} ${height}`}><line x1="0" y1={height - 1} x2={width} y2={height - 1} stroke="currentColor" opacity=".35" />{(['A', 'C', 'G', 'T'] as const).map(base => <path key={base} d={path(displayed?.[base] ?? [])} fill="none" stroke={colours[base]} strokeWidth="1.3" />)}</svg></div>
+        <div aria-label="四色峰图" style={{ overflowX: 'auto', border: '1px solid var(--dsw-alias-border-l1)', padding: 6 }}><svg role="img" aria-label="四色 Sanger 峰图" width={width} height={height} viewBox={`0 0 ${width} ${height}`}><line x1="0" y1={height - 1} x2={width} y2={height - 1} stroke="currentColor" opacity=".35" />{(['A', 'C', 'G', 'T'] as const).map(base => <path key={base} d={path(displayed?.[base] ?? [])} fill="none" stroke={colours[base]} strokeWidth="1.3" />)}{trace.bases.filter(base => base.peak >= start && base.peak < end).slice(0, 300).map(base => <text key={base.position} x={(base.peak - start) / Math.max(1, end - start - 1) * width} y={13} fontSize={11} fill={base.quality === null ? '#9a3b9f' : 'currentColor'}><title>{`调用 ${base.position}，峰位 ${base.peak}，质量 ${base.quality ?? '未知'}`}</title>{base.base}</text>)}</svg></div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 6 }}>{(['A', 'C', 'G', 'T'] as const).map(base => <span key={base} style={{ color: colours[base] }}>■ {base}</span>)}<span>{trace.sampleCount} samples · {trace.bases.length} calls · {trace.format.toUpperCase()} {trace.version}</span></div>
+        <fieldset aria-label="人工碱基修订"><legend>人工碱基修订</legend><p>保留原始峰和调用历史；修订调用不继承仪器质量分数。修订后概率裁剪设为 0，旧产物和下游证据需要重新复核。</p><label>原始调用位置 <input aria-label="修订碱基位置" type="number" min={1} max={trace.bases.length} value={editPosition} onChange={e => { const position = Number(e.target.value); setEditPosition(position); const base = trace.bases[position - 1]; if (base) setSampleStart(Math.max(0, base.peak - 100)) }}/></label><span>当前调用：{trace.bases[editPosition - 1]?.base ?? '—'}，峰位：{trace.bases[editPosition - 1]?.peak ?? '—'}</span><label>修订为 <select aria-label="修订碱基" value={editCall} onChange={e => setEditCall(e.target.value)}>{'ACGTNRYSWKMBDHV'.split('').map(base => <option key={base}>{base}</option>)}</select></label><label>修订依据 <input aria-label="碱基修订依据" value={editReason} onChange={e => setEditReason(e.target.value)} placeholder="例如正反向峰图支持的混合峰"/></label><button type="button" disabled={!editReason.trim() || !trace.bases[editPosition - 1] || editCall === trace.bases[editPosition - 1]?.base} onClick={() => { const from = trace.bases[editPosition - 1]?.base; if (from) void run({ action: 'sanger_revise', viewerId: viewer.id, expectedVersion: viewer.version, sanger: { sessionId, action: 'revise', edits: [{ position: editPosition, from, to: editCall as typeof from, reason: editReason }] } }) }}>登记碱基修订</button><span>历史修订批次：{Array.isArray(viewer.state.editHistory) ? viewer.state.editHistory.length : 0}</span></fieldset>
         <div><label>反向读段 <select aria-label="反向读段" value={reverseViewerId} onChange={e => setReverseViewerId(e.target.value)}><option value="">选择已打开的另一峰图</option>{viewers.filter(v => v.id !== viewer.id).map(v => <option key={v.id} value={v.id}>{assets.find(a => a.id === v.assetId)?.name ?? v.id} · v{v.version}</option>)}</select></label><button type="button" disabled={!viewers.some(v => v.id === reverseViewerId && v.id !== viewer.id)} onClick={() => { const reverse = viewers.find(v => v.id === reverseViewerId); if (reverse) void run({ action: 'sanger_review', viewerId: viewer.id, expectedVersion: viewer.version, reverseViewerId: reverse.id, expectedReverseVersion: reverse.version, threshold, window, ...(reference.trim() ? { reference } : {}) }) }}>双向核对</button></div>
         <div style={{ marginTop: 10 }}><button type="button" onClick={() => void run({ action: 'sanger_analyze', viewerId: viewer.id, expectedVersion: viewer.version, threshold, window, ...(reference.trim() ? { reference } : {}) })}>裁剪并比对</button><button type="button" onClick={() => void run({ action: 'sanger_export', viewerId: viewer.id, expectedVersion: viewer.version, threshold, window, ...(reference.trim() ? { reference } : {}) })}>导出并登记</button></div>
       </>}

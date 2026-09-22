@@ -68,7 +68,7 @@ def generate(root):
                      'count':4,'withMetadata':{'reciprocalDilution':1000,'platedVolumeMl':0.1,'expectedCfuPerMl':40000},
                      'missingVolume':{'count':4,'cfuPerMl':None,'status':'metadata_incomplete'},
                      'invalidCases':['zero volume','negative reciprocal dilution','count-only export labelled CFU/mL','reflection ROI from wrong source hash'],
-                     'revisedCount':{'removeReviewedObjectIds':['nucleus-not-used: use stable colony ID instead'],'note':'Use source-bound object IDs; never apply edits by array position across reruns'}},
+                     'revisedCount':{'removeReviewedObjectIds':['reviewed-colony-4'],'note':'Use source-bound object IDs; never apply edits by array position across reruns'}},
         'tube':{'source':tube['path'],'reviewedMask':tube_open['path'],'expectedGraphCyclesBefore':1,'expectedGraphCyclesAfter':0,
                 'definition':'E-V+C from native AnalyzeSkeleton graph; not enclosed area',
                 'lengthAcceptance':'Compare against separately executed same-version native plugin; do not substitute pixel count for edge length',

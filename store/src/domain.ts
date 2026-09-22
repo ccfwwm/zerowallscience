@@ -363,7 +363,7 @@ export interface ViewerSessionRecord {
 }
 
 export interface CreateViewerSessionInput { projectId: string; assetId: string; tool: ViewerSessionRecord['tool']; state?: JsonObject }
-export interface UpdateViewerSessionInput { expectedVersion: number; state: JsonObject }
+export interface UpdateViewerSessionInput { expectedVersion: number; state: JsonObject; invalidateOutputs?: boolean }
 
 export interface ResearchProjectSnapshotV1 {
   format: 'zerowall-science-research-project'

@@ -182,8 +182,13 @@ export class MoleculeService {
       if (png) await writeFile(join(directory,'view.png'),png,{ flag:'wx' })
       const result={ format:'zerowall-molecular-view/v1',runner:RUNNER,sourceAssetId:asset.id,sourceSha256:input.summary.sourceSha256,sourceFile,viewerId:viewer.id,viewerVersion:viewer.version,state,measurement:measurement??null,summary:{ ...input.summary,atoms:undefined },screenshot:png?{ file:'view.png',sha256:hash(png),origin:'client Molstar rendering; Host validates PNG but cannot independently attest the rendered content' }:null,notes:input.summary.notes }
       const text=JSON.stringify(result,null,2)+'\n';const resultPath=join(directory,'result.json');await writeFile(resultPath,text,{ flag:'wx' })
-      const artifact=this.store.createArtifact({ projectId:project.id,name:'Molecular structure view and distance',uri:pathToFileURL(resultPath).href,mediaType:'application/json',checksum:hash(text),metadata:{ runner:RUNNER,sourceAssetId:asset.id,sourceSha256:input.summary.sourceSha256,viewerId:viewer.id,viewerVersion:viewer.version,structureUri:pathToFileURL(join(directory,sourceFile)).href,...(png?{ imageUri:pathToFileURL(join(directory,'view.png')).href }:{}),needsReview:true } })
-      return { ...response,artifact }
+      const metadata={ runner:RUNNER,sourceAssetId:asset.id,sourceSha256:input.summary.sourceSha256,viewerId:viewer.id,viewerVersion:viewer.version,structureUri:pathToFileURL(join(directory,sourceFile)).href,...(png?{ imageUri:pathToFileURL(join(directory,'view.png')).href }:{}),needsReview:true }
+      const artifacts=this.store.createArtifacts([
+        { projectId:project.id,name:'Molecular structure view and distance',uri:pathToFileURL(resultPath).href,mediaType:'application/json',checksum:hash(text),metadata },
+        ...(png?[{ projectId:project.id,name:'Molecular structure PNG',uri:pathToFileURL(join(directory,'view.png')).href,mediaType:'image/png',checksum:hash(png),metadata:{ ...metadata,manifestUri:pathToFileURL(resultPath).href,manifestSha256:hash(text) } }]:[]),
+      ])
+      return { ...response,artifact:artifacts[0]!,artifacts }
+
     } catch(error) { await rm(directory,{ recursive:true,force:true });throw error }
   }
   private async read(project:ProjectRecord,asset:DataAssetRecord):Promise<{ text:string;bytes:Buffer;summary:MoleculeSummary }> {

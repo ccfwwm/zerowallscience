@@ -28,9 +28,9 @@
 
 | 命令 | 结果 | 证明范围 |
 |---|---|---|
-| research 回归与本轮定向测试 | 最新整合 272 项通过、2 项跳过（52文件，52.90秒） | 具体批次见历史章节；并行改动后全量结果待主任务合并核验，不把这些批次数相加为全量成绩 |
+| research 回归与本轮定向测试 | 构建快照 fb935da4：277 项通过、2 项跳过（53 文件，49.95 秒） | 具体批次见历史章节；并行改动后全量结果待主任务合并核验，不把这些批次数相加为全量成绩 |
 | `pnpm --filter @zerowallscience/research-store test` | 最新整合 36 项通过 | 持久研究对象、冻结、预算、ViewerSession、注释分支与运行策略来源；并行最终整合仍需统一回归 |
-| `pnpm --filter @zerowallscience/plugin-base exec vitest run --config ../../vitest.plugins.config.ts test/research-skill-bindings.spec.ts` | 25 项通过 | 含四个学术写作入口研究路由的技能/工具绑定；不能替代领域实算 |
+| `pnpm --filter @zerowallscience/plugin-base exec vitest run --config ../../vitest.plugins.config.ts test/research-skill-bindings.spec.ts` | 构建快照 29 项通过 | 含四个学术写作入口研究路由的技能/工具绑定；不能替代领域实算 |
 | `pnpm plugins:typert` | 13 个远程插件生成成功 | 包含新原生启动 RPC 与 `science_viewer` 类型 |
 | `pnpm --filter @zerowallscience/plugin-research run typecheck` | 通过 | Host、Sanger 面板和新增工作台严格检查 |
 | `pnpm --filter @zerowallscience/plugin-research run bundle` | 通过 | 研究插件 Host/client 构建；不是 Electron 安装包 |
@@ -44,21 +44,21 @@
 | 六页工作台与共同资产 | 页面骨架、序列会话、原生打开 | 各类工具资产/产物直达、完整多标签恢复、聊天选区引用、坐标契约、画布联通 |
 | 细胞 | H5AD/AnnData backed 元数据、obs/var、UMAP/PCA 预览、基因表达预览、QC/分组统计和带哈希 Artifact 已通过真实 h5py 测试；ViewerSession 已接入工作台和 `science_viewer`；新增全量多边形圈选及 CSV 集合导出 | 标签、WebGL、聚类、marker 的完整交互链；10 万细胞查看/QC/圈选已有实际性能和独立参考，供者级 pseudobulk/差异表达后端已完成合成参考，尚需生产部署及工作台端到端 |
 | ImageJ/多维图像 | 原生启动、ROI 修订回传/冲突、受限 TIFF/OME-TIFF/OME-Zarr 查看与 Z/C/T、原像素 ROI 强度、Western blot Runner 已有运行证据 | OME-Zarr 完整 chunk-aware 分析、五类实验全部数值基准、标签/掩膜、10 GiB 受限平面查看已通过；完整 XY 瓦片和安装包视觉验收 |
-| HE | 独立 OpenSlide 环境、真实三层金字塔按层/ROI PNG、缩放平移、物理标定、视图恢复及带 SHA-256 的 PNG/JSON 导出；实际 React→Host→OpenSlide smoke 通过 | StarDist CPU 分块、组织区域、批处理、多边形、瓦片缓存、真实 SVS/NDPI 厂商覆盖、10GiB 性能和安装包验收 |
+| HE | 独立 OpenSlide 环境、真实三层金字塔按层/ROI PNG、缩放平移、物理标定、视图恢复及带 SHA-256 的 PNG/JSON 导出；实际 React→Host→OpenSlide smoke 通过 | StarDist CPU 分块已有独立 2131 核参考和 packaged 182 核验收；组织区域、整片批处理、人工多边形、瓦片缓存、真实 SVS/NDPI 厂商覆盖及 10GiB 性能仍待完善 |
 | 分子结构 | 本地 Mol* 5.11.0 按需加载；PDB/mmCIF 链/残基/表面、距离、视角恢复、PNG/源文件导出真实浏览器验收 | SDF、真实 Vina 远程任务及构象取回已通过；packaged PDB 显示/5Å测距/PNG导出通过；完整结构准备、多构象复核和更多真实样本仍待验收 |
-| 序列 | FASTA/GenBank 严格解析、环形/线性图谱、join/complement 注释、区域选择/恢复/导出、反向互补和翻译；实际 Chromium 工作台及 Biopython 独立参考通过 | 引物/PCR、Gibson/Golden Gate、固定参考基因组 SpCas9/NGG 三错配搜索；当前候选枚举不能冒充脱靶检查 |
-| Sanger | SCF 1/2/3 与 ABIF/AB1 常见 DATA9–12/PBAS/PLOC/PCON 解析、四色峰图、PCON→Phred 存储置信度、移动窗口端点裁剪、全局参考比对、双向反向互补核对、JSON/FASTA 产物导出和源哈希/版本校验已实现；内置工作台面板与 `science_viewer` 的 `sanger_open/analyze/export/review` 已接入 | 峰图人工修订、混合峰/IUPAC 证据和真实仪器回归仍未验收 |
-| 流式 | FCS 3.0 按 8192 事件分块、显式 spillover 补偿、none/arcsinh、层级矩形/多边形门、精确均值/中位数、保存恢复和 GatingML 子集导出；100 万事件独立 NumPy/FlowIO 数值参考及真实 React/Host/Chromium 交互性能已通过 | GatingML 2.0 限定子集导入/导出已通过 FlowKit/XSD 双向参考；FlowJo 子集兼容、批处理与 packaged Electron 验收仍未完成 |
-| 科研画布 | 1–9面板、线性轴范围/刻度、图例/配色、折线/散点、源项目隔离、草稿恢复和SVG/PNG/PDF/可编辑JSON原子导出；真实React/Host验收通过；PDF标明rasterized | 图像面板、拖拽排版、比例尺、误差线/更多统计图形、出版级人工复核及安装包验收 |
-| 脑图谱 | Allen CCF 25 µm atlasapi 查看、切片/脑区/坐标查询；brainreg 输出审计；真实 cellfinder 检测与 brainrender PNG/HTML 场景已接入 | brainreg 解剖配准质量基准、cellfinder 真实阳性参考、跨坐标变换/脑区统计、CPU 性能门仍需扩展 |
-| P2：临床/遗传/组学 | NHANES 真实周期均值/SE/domain 独立参考；bulk 配对/协变量和 donor pseudobulk PyDESeq2 数值参考；固定 MR/coloc Runner、持久队列与 Windows 合成数值参考 | 远程生产部署、真实案例适用性、Linux 固定 genetics 环境、GWAS获取/LD/完整协调、MVMR/SuSiE 路径和多时间点重复测量 |
+| 序列 | FASTA/GenBank 严格解析、环形/线性图谱、join/complement 注释、区域选择/恢复/导出、反向互补和翻译；实际 Chromium 工作台及 Biopython 独立参考通过 | PCR/Gibson/Golden Gate 的真实 UI 与 pydna/Biopython 参考已通过；自动 Primer3 引物设计、跨资产拼接、固定参考基因组 SpCas9/NGG 三错配搜索仍待实现 |
+| Sanger | SCF 1/2/3 与 ABIF/AB1 常见 DATA9–12/PBAS/PLOC/PCON 解析、四色峰图、PCON→Phred 存储置信度、移动窗口端点裁剪、全局参考比对、双向反向互补核对、JSON/FASTA 产物导出和源哈希/版本校验已实现；内置工作台面板与 `science_viewer` 的 `sanger_open/analyze/export/review` 已接入 | 人工 IUPAC 修订、实际 AB1 重开/导出与下游失效已有独立竞态和浏览器验证；自动混合峰推断、插入/删除和真实实验变异复核仍未验收 |
+| 流式 | FCS 3.0 按 8192 事件分块、显式 spillover 补偿、none/arcsinh、层级矩形/多边形门、精确均值/中位数、保存恢复和 GatingML 子集导出；100 万事件独立 NumPy/FlowIO 数值参考及真实 React/Host/Chromium 交互性能已通过 | GatingML 2.0 限定子集导入/导出已通过 FlowKit/XSD 双向参考；FlowJo 10 矩形/多边形子集与持久本地批任务已有真实 FlowKit/浏览器验证；复杂变换/矩阵兼容、远程批处理与 packaged Electron 全路径仍未完成 |
+| 科研画布 | 1–9面板、线性轴范围/刻度、图例/配色、折线/散点、源项目隔离、草稿恢复和SVG/PNG/PDF/可编辑JSON原子导出；真实React/Host验收通过；PDF标明rasterized | 图像面板、源哈希/尺寸绑定、显式标定比例尺、上下界误差线已通过实际浏览器；自由拖拽、更多统计图形、出版级人工复核与新增能力安装包验收仍待完善 |
+| 脑图谱 | Allen CCF 25 µm atlasapi 查看、切片/脑区/坐标查询；brainreg 输出审计；真实 cellfinder 检测与 brainrender PNG/HTML 场景已接入 | brainreg 下采样 ASR 网格变换经四组 NiftyReg 几何参考验证；cellfinder 3 个固定合成阳性检出 2 个，保留 partial；真实解剖质量、原始 XYZ 重采样及分类性能仍未验收 |
+| P2：临床/遗传/组学 | NHANES 真实周期均值/SE/domain 独立参考；bulk 配对/协变量和 donor pseudobulk PyDESeq2 数值参考；固定 MR/coloc Runner、持久队列与 Windows 合成数值参考 | 生产与独立 Linux genetics 环境已部署，MR/coloc/r_files/Vina 实算通过；真实案例适用性、GWAS获取/LD/完整协调、MVMR/SuSiE 和多时间点重复测量仍未完成 |
 | 肥胖—脱发案例 | 首轮真实 NHANES 目录侦察 7 个 Run succeeded；4 个脱发检索无匹配，BMI/腰围/体脂候选18/24/3；契约 pending、草稿保留门禁缺口 | 官方代码本与其他数据源侦察、表型/数据契约核验、门禁一、适用分支分析与证据、IMRAD 和门禁二；无匹配不能推断所有 NHANES 无该表型 |
-| 系统提示词与 Skills | 核心/研究/角色分层、实际 llm/stream 策略哈希入审计；267 目录/266 Registry 技能审计；四个写作入口统一两门禁/主张审计；来源/版本/哈希可见 | 72 项待适配资源引用、152 项依赖未验证、用户覆盖兼容差异、所有领域真实技能→工具→产物链；审计数字不等于已实算 |
+| 系统提示词与 Skills | 核心/研究/角色分层、实际 llm/stream 策略哈希入审计；273 目录/272 Registry 技能审计；四个写作入口统一两门禁/主张审计；来源/版本/哈希可见 | 73 项待适配、157 项依赖未验证、39 项仅文档、3 项直接复用、用户覆盖兼容差异、所有领域真实技能→工具→产物链；审计数字不等于已实算 |
 | P4：先导与对照 | 12×4 冻结执行台账、Host/UI 配置导入/冻结/状态、fixture 契约测试已实现；真实 48 次未运行 | 真实输入/参考冻结、实际模型条件适配器、盲评/评分、真实预算/失败/成本和独立复核 |
 | rdatalinux | 生产只读健康/队列核验；独立暂存 checkout 构建、25 项 Gateway 测试、8 项部署 fixture；离线 bundle 与影响分类已准备 | 生产已切至36ea1bc；五服务active，MR/coloc/r_files/Vina实算通过；检查时R队列queued=0/running=0，历史失败保持原记录 |
 | P5：打包和发布候选 | 7.0.0本地安装包已生成；packaged启动/版本/设置/研究恢复/分子显示导出通过；HE和StarDist按需包通过离线安装/回滚 | 全软件回归、迁移/旧快照/跨项目、packaged Host/Electron、Windows x64 安装包实际安装启动、引擎包/许可证/哈希/离线导入/回滚 |
 
-下一实施链路：并行推进肥胖—脱发真实数据侦察、遗传工作流 Host/远程衔接、独立 Linux 环境和部署排空；补齐专业模块尚缺的科学分析和基准，统一运行整合回归。48 次先导、真实安装包和生产切换各自保留独立验收门禁，不将专业工具卡片或技能目录当作交付。只有完整方案逐项具备代码、运行产物和适当验收证据，才能将总目标标记完成。
+下一实施链路：并行补齐 Fiji 人工修订/基线、FlowJo/FCS 批处理、brainreg 变换和科研画布，随后统一回归重建。48 次先导、真实安装包和生产切换各自保留独立验收门禁，不将专业工具卡片或技能目录当作交付。只有完整方案逐项具备代码、运行产物和适当验收证据，才能将总目标标记完成。
 
 ## 2026-09-21 continuation: native ROI bridge and Western blot Runner
 
@@ -530,3 +530,20 @@ This establishes an HE input/ROI baseline only. It is insufficient evidence for 
 针对 HE、HE 生命周期、HE UI 及 Flow UI 的 4 个文件 **11 项测试通过**。新增生命周期测试确认进程无 Manifest 退出后立即失败。`tsconfig.host.json` 与实际严格客户端 `tsconfig.workbench.json` 均通过。`zerowall-he` Skill 已按当前真实 schema、参数、产物坐标与范围更新。
 
 尚未交付的边界：一次任务限制单个 ROI、最多 6400 万采样像素及 10 万核；没有整片批处理、经验证的组织区域模型或临床诊断模型；没有独立医学人工标注真值验证；没有硬性 OS 进程内存上限。公共 patch 重复只验证软件分块一致性，不构成独立生物学样本。这些源界面检查不替代最终安装包 Electron 验收。
+
+## 2026-09-22 14:00 本地安装包快照
+
+- 本地 `desktop/dist/zerowall-science-7.0.0-win-x64.exe`：350,673,611 字节，SHA-256 `4d00d4a2154071403e06212486331876a31c0af7bebcb576add8945eac456bfd`，未数字签名。
+- 对应代码快照 `fb935da4`；此后源码改动不包含在这个安装包内，需要再次构建。
+- packaged Electron 启动 38,042 ms；About 7.0.0、语言设置、ASAR/runtime 策略通过。研究恢复、Mol* 5Å 测距/PNG、双面板画布四种导出、HE StarDist 182 核交互通过（2 tests passed，12 skipped）。日志 `.build/packaged-workbench-final-20260922.log`。
+- HE 用显式外部引擎路径连接，不冒充主安装包包含 Python/模型。两份按需引擎 ZIP、manifest、哈希和说明在 `desktop/dist/engines/`。
+- 收据 `desktop/dist/verification-7.0.0/build-receipt.json`。实际安装/升级、全部九工具 packaged 验收和 48 次先导未完成，尚不具备完整方案可发布状态。保留此前失败截图为历史证据，不作为当前通过证据。
+
+## 2026-09-22 本轮并行功能与独立复核
+
+- Fiji `4c297632`：CFU count-only、接种量、接受的 ROI 修订/排除/人工前景、划痕时间基线及 stale 检查。真实 ImageJ 与 UI 见 `docs/science-7.0.0-fiji-workflow-closure-design.md`。
+- Flow：FlowJo 10 限定门类型、逐样本失败保留、1–64 FCS 持久批任务。数值/浏览器/生命周期范围见 `docs/flowjo-compatibility-7.0.0.md`。
+- Brain：变换场与原图/图谱版本绑定，四组独立几何最大误差 0.000143 µm；cellfinder 2/3 检出，0 额外点。进程树/并发关闭保护已有测试。细节见 `docs/brain-transform-validation-7.0.0.md`。
+- Canvas：项目图片、显式比例尺、误差线、工程哈希/尺寸绑定与提交前事务核验；Mol* PNG 现在独立登记，可从画布选择。见 `docs/science-7.0.0-canvas-image-evidence.md`。
+- Sanger：带理由的 IUPAC 替换历史、未知修订质量、并发/会话保护和间接证据失效；五个独立竞态/误判反例转为回归，提交 `b42ea95c`。见 `docs/science-7.0.0-sanger-revisions.md`。
+- 原先 14:00 安装包仍仅对应旧快照，以上源码需统一重新打包。生产仍是 36ea1bc，五服务 active；本轮本地查看器修改未引入新的远程部署。

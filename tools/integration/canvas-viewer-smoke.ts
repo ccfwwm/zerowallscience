@@ -14,6 +14,7 @@ const { createServer } = await import(pathToFileURL(viteRequire.resolve('vite'))
 const { chromium } = createRequire(resolve('desktop/package.json'))('playwright') as typeof import('playwright')
 const root = resolve('.build/canvas-viewer-smoke', new Date().toISOString().replaceAll(':', '-')); await mkdir(root, { recursive: true })
 const store = new ResearchStore(join(root, 'store.sqlite')); const project = store.createProject({ name: 'Synthetic plotting reference', rootPath: root }); const service = new CanvasService(store)
+const sharp = require('sharp'); const imagePath = join(root, 'microscopy-reference.png'); await sharp({ create: { width: 200, height: 100, channels: 3, background: '#275d89' } }).png().toFile(imagePath); const imageArtifact = store.createArtifact({ projectId: project.id, name: 'Microscopy reference', uri: pathToFileURL(imagePath).href, mediaType: 'image/png' })
 const app = "import React from 'react';import {createRoot} from 'react-dom/client';import {CanvasViewer} from '/plugins/research/src/client/canvas-viewer.tsx';const remote={scienceViewer:async input=>fetch('/api',{method:'POST',body:JSON.stringify(input)}).then(r=>r.json())};createRoot(document.getElementById('root')).render(React.createElement(CanvasViewer,{remote,sessionId:'canvas-smoke'}));"
 const server = await createServer({ configFile: false, root: resolve('.'), cacheDir: join(root, 'vite-cache'), optimizeDeps: { noDiscovery: true, entries: [], include: ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom/client'] }, server: { host: '127.0.0.1', port: 0, watch: null }, esbuild: { jsx: 'automatic' }, resolve: { alias: [{ find: /^react$/u, replacement: require.resolve('react') }, { find: /^react\/jsx-runtime$/u, replacement: require.resolve('react/jsx-runtime') }, { find: /^react\/jsx-dev-runtime$/u, replacement: require.resolve('react/jsx-dev-runtime') }, { find: /^react-dom\/client$/u, replacement: require.resolve('react-dom/client') }] }, plugins: [{
   name: 'canvas-smoke', configureServer(server: any) { server.middlewares.use(async (req: any, res: any, next: () => void) => {
@@ -32,17 +33,18 @@ try {
   await page.getByRole('button', { name: '添加面板' }).click()
   await page.getByLabel('面板标题', { exact: true }).fill('Independent reference')
   const raw = JSON.parse(await page.getByLabel('科研画布 JSON').inputValue()); raw.panels[0].series[0].points = [{ x: -1, y: 4 }, { x: 0, y: 3 }, { x: 1, y: 5 }]; raw.panels[0].series[0].color = '#c64c40'; raw.panels[0].xRange = [-2, 2]
-  await page.getByLabel('科研画布 JSON').fill(JSON.stringify(raw, null, 2))
+  raw.panels[0].series[0].intervalLabel = '95% CI'; raw.panels[0].series[0].points = raw.panels[0].series[0].points.map((p: any) => ({ ...p, yLow: p.y - 0.5, yHigh: p.y + 0.8 })); await page.getByLabel('科研画布 JSON').fill(JSON.stringify(raw, null, 2))
+  await page.getByRole('button', { name: '添加面板' }).click(); await page.getByLabel('面板标题', { exact: true }).fill('Calibrated microscopy'); await page.getByLabel('面板类型', { exact: true }).selectOption('image'); await page.getByText('来源引用', { exact: true }).click(); await page.getByLabel('图像来源 ID', { exact: true }).fill(imageArtifact.id); await page.getByLabel('显示比例尺').check(); await page.getByLabel('标尺长度', { exact: true }).fill('25'); await page.getByLabel('每像素物理单位').fill('0.5'); await page.getByLabel('标定来源').fill('Synthetic independent 0.5 µm/px reference')
   await page.getByRole('button', { name: '预览 SVG' }).click()
   await page.getByLabel('科研画布预览').locator('svg').first().waitFor()
   await page.getByLabel('科研画布预览').screenshot({ path: join(root, 'two-panel-preview.png') })
   await page.reload(); assert.match(await page.getByLabel('科研画布 JSON').inputValue(), /Independent reference/)
   await page.getByRole('button', { name: '导出 SVG/PNG/PDF' }).click(); await page.getByRole('status').filter({ hasText: '已登记 4 个产物' }).waitFor()
-  const artifacts = store.listArtifacts(project.id); assert.equal(artifacts.length, 4)
+  const artifacts = store.listArtifacts(project.id).filter(a => a.id !== imageArtifact.id); assert.equal(artifacts.length, 4)
   for (const artifact of artifacts) assert.equal(createHash('sha256').update(await readFile(fileURLToPath(artifact.uri))).digest('hex'), artifact.checksum)
-  const manifest = JSON.parse(await readFile(fileURLToPath(artifacts.find(a => a.mediaType === 'application/json')!.uri), 'utf8')); assert.equal(manifest.canvas.pointCount, 6); assert.equal(manifest.spec.panels.length, 1)
-  const exported = await readFile(fileURLToPath(artifacts.find(a => a.mediaType === 'image/svg+xml')!.uri), 'utf8'); assert.equal((exported.match(/<circle /g) ?? []).length, 6); assert.ok(exported.includes('cx="263.50"')); assert.deepEqual(errors, [])
+  const manifest = JSON.parse(await readFile(fileURLToPath(artifacts.find(a => a.mediaType === 'application/json')!.uri), 'utf8')); assert.equal(manifest.canvas.pointCount, 6); assert.equal(manifest.spec.panels.length, 2); assert.equal(manifest.imageSnapshots[0].width, 200)
+  const exported = await readFile(fileURLToPath(artifacts.find(a => a.mediaType === 'image/svg+xml')!.uri), 'utf8'); assert.equal((exported.match(/<circle /g) ?? []).length, 6); assert.ok(exported.includes('cx="263.50"')); assert.ok(exported.includes('25 µm')); assert.equal((exported.match(/data-interval=/g) ?? []).length, 3); assert.deepEqual(errors, [])
   await page.screenshot({ path: join(root, 'restored-export.png'), fullPage: true })
-  await writeFile(join(root, 'report.json'), JSON.stringify({ status: 'passed', scope: 'Synthetic two-panel actual React/Host/Chromium; not packaged Electron or publication review', pointCount: 6, panelCount: 2, artifacts, screenshots: ['two-panel-preview.png', 'restored-export.png'], errors }, null, 2))
+  await writeFile(join(root, 'report.json'), JSON.stringify({ status: 'passed', scope: 'Synthetic plot/interval/image panel actual React/Host/Chromium; not packaged Electron or publication review', pointCount: 6, panelCount: 3, artifacts, screenshots: ['two-panel-preview.png', 'restored-export.png'], errors }, null, 2))
   console.log(JSON.stringify({ status: 'passed', root }))
 } finally { await browser?.close(); await server.close(); store.close() }
