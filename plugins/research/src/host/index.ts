@@ -44,6 +44,8 @@ import { CanvasService } from './canvas.js'
 import { ReportService } from './report.js'
 import { registerLocalAsset } from './local-assets.js'
 import { CellViewerService } from './cell-viewer.js'
+import { BrainTransformService } from './brain-transform.js'
+import type { BrainTransformRequest } from '../shared/brain-transform.js'
 import { BrainAtlasService } from './brain-atlas.js'
 import type { CanvasRequest, FijiExperimentRequest, FijiExperimentResponse, FlowRequest, HeRequest, SangerRequest } from '../shared/types.js'
 import type { FijiWorkflowRequest, FijiWorkflowResponse } from '../shared/types.js'
@@ -78,6 +80,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
   private readonly canvas: CanvasService
   private readonly reports: ReportService
   private readonly cells: CellViewerService
+  private readonly brainTransforms: BrainTransformService
   private readonly brain: BrainAtlasService
   private readonly nhanes: NhanesSurveyService
   private readonly genetics: GeneticAnalysisService
@@ -106,6 +109,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     this.canvas = new CanvasService(this.store)
     this.reports = new ReportService(this.store)
     this.cells = new CellViewerService(this.store)
+    this.brainTransforms = new BrainTransformService(this.store)
     this.brain = new BrainAtlasService(this.store)
     this.nhanes = new NhanesSurveyService(this.store, () => this.ctx.get('researchWorkflow')?.get())
     this.genetics = new GeneticAnalysisService(this.store, () => this.ctx.get('researchWorkflow')?.get(), async (input, exec) => {
@@ -195,6 +199,11 @@ export class ZeroWallResearchService extends TypertRemoteService {
     if (!session) throw new Error('An active session is required.')
     return this.executeMoleculeDocking(input, { agent: { session }, callId: `rpc:docking:${input.requestId ?? input.runId ?? 'list'}`, signal: new AbortController().signal } as unknown as ToolRunContext)
   }
+  @Remote('brainTransform') async brainTransform(input: BrainTransformRequest): Promise<JsonObject> {
+    const project = this.projectForSession({ sessionId: input.sessionId })
+    if (!project) throw new Error('An active registered project session is required.')
+    return this.brainTransforms.execute(project, input)
+  }
   @Remote('scienceViewer') async scienceViewer(input: ScienceViewerRequest): Promise<ScienceViewerResponse> {
     const project = this.projectForSession({ sessionId: input.sessionId })
     if (!project) throw new Error('An active registered project session is required.')
@@ -261,6 +270,10 @@ export class ZeroWallResearchService extends TypertRemoteService {
       if (input.cellSelection !== undefined) request.selection = input.cellSelection
       if (input.cellCamera !== undefined) request.camera = input.cellCamera
       return { cell: await this.cells.execute(project, request) }
+    }
+    if (input.action === 'brain_transform') {
+      if (!input.brainTransform) throw new Error('Brain transform request is required.')
+      return { brainTransform: await this.brainTransforms.execute(project, { ...input.brainTransform, sessionId: input.sessionId }) }
     }
     if (input.action.startsWith('brain_')) {
       const request: BrainAtlasRequest = { ...(input.brain ?? {}), sessionId: input.sessionId, action: input.action.slice(6) as BrainAtlasRequest['action'] }
@@ -576,7 +589,7 @@ function registerResearchTools(ctx: Context): void {
       parameters: {
       he: { type: 'json', description: 'HE segmentation parameters: requestId/runId, viewerId, expectedVersion, region and segmentation {tileSize,halo,probabilityThreshold,nmsThreshold,threads}; operates within the active project.' },
       docking: { type: 'json', description: 'Docking request: receptorAssetId, ligandAssetId, expectedReceptorVersion, expectedLigandVersion, preparationSource, box {center:[x,y,z],size:[x,y,z]} in angstroms, threads 1–8, requestId or runId. Submit uploads the selected prepared receptor to the configured remote service.' },
-      action: { type: 'string', required: true, enum: ['list', 'open', 'read', 'save', 'analyze', 'export', 'launch_native', 'native_status', 'image_open', 'image_read', 'image_save', 'image_analyze', 'image_mask_analyze', 'annotation_save', 'annotation_export', 'annotation_import', 'annotation_launch', 'annotation_collect', 'sanger_open', 'sanger_analyze', 'sanger_export', 'sanger_review', 'flow_open', 'flow_analyze', 'flow_export', 'flow_import', 'he_open', 'he_read', 'he_analyze', 'he_export', 'he_segment', 'he_status', 'he_cancel', 'canvas_render', 'canvas_export', 'cell_open', 'cell_read', 'cell_analyze', 'cell_export', 'cell_select', 'cell_export_selection', 'cell_view', 'brain_open', 'brain_read', 'brain_analyze', 'brain_export', 'brain_cells', 'brain_trajectory', 'brain_register', 'brain_cellfinder', 'brain_render', 'dock_list', 'dock_submit', 'dock_status', 'dock_cancel', 'molecule_open', 'molecule_read', 'molecule_save', 'molecule_measure', 'molecule_export'] },
+      action: { type: 'string', required: true, enum: ['list', 'open', 'read', 'save', 'analyze', 'export', 'launch_native', 'native_status', 'image_open', 'image_read', 'image_save', 'image_analyze', 'image_mask_analyze', 'annotation_save', 'annotation_export', 'annotation_import', 'annotation_launch', 'annotation_collect', 'sanger_open', 'sanger_analyze', 'sanger_export', 'sanger_review', 'flow_open', 'flow_analyze', 'flow_export', 'flow_import', 'flow_workspace_import', 'flow_batch', 'he_open', 'he_read', 'he_analyze', 'he_export', 'he_segment', 'he_status', 'he_cancel', 'canvas_render', 'canvas_export', 'cell_open', 'cell_read', 'cell_analyze', 'cell_export', 'cell_select', 'cell_export_selection', 'cell_view', 'brain_open', 'brain_read', 'brain_analyze', 'brain_export', 'brain_cells', 'brain_trajectory', 'brain_register', 'brain_cellfinder', 'brain_render', 'brain_transform', 'dock_list', 'dock_submit', 'dock_status', 'dock_cancel', 'molecule_open', 'molecule_read', 'molecule_save', 'molecule_measure', 'molecule_export'] },
       molecule: { type: 'json', description: 'Molecule actions: state {chain:null|string,residueId:null|string,representation:ball-and-stick/cartoon/molecular-surface,camera:null|snapshot,atomA:null|index,atomB:null|index}; atomA/atomB are 0-based source-first-model atom indices. PDB/mmCIF <=16 MiB, first model <=100000 atoms. Distances are source Cartesian angstroms; exports retain original structure and provenance. No Vina/docking claim.' },
       engine: { type: 'string', enum: ['fiji', 'napari'], description: 'Required for launch_native; optional asset_id must reference a local project TIFF/PNG/JPEG/BMP.' },
       asset_id: { type: 'string' }, viewer_id: { type: 'string' }, reverse_viewer_id: { type: 'string' }, expected_revision: { type: 'integer' },
@@ -602,9 +615,11 @@ function registerResearchTools(ctx: Context): void {
       mask_asset_id: { type: 'string', description: 'Registered local single-channel unsigned integer label mask for image_mask_analyze; geometry, pages and source hash are recorded separately.' },
       mask_labels: { type: 'json', description: 'Optional explicit non-negative integer label subset (1–256 values). If omitted, at most 256 labels are discovered per ROI.' },
       import_asset_id: { type: 'string', description: 'Registered local annotation exchange JSON asset for annotation_import.' },
+      asset_ids: { type: 'json', description: 'For flow_batch, 1–64 registered local FCS asset IDs. Each file is validated and reported independently.' },
       launch_id: { type: 'string', description: 'Native annotation launch to collect after the user saves the return in Fiji/napari. Repeated collection is idempotent.' },
       cell_camera: { type: 'json', description: '{zoom:1..100,panX:-200..200,panY:-200..200}; normalized clip-space camera. cell_view saves without reading H5AD. Existing-view actions may preserve the current camera; switching embedding resets it.' },
       cell_selection: { type: 'json', description: 'Cell polygon in stored embedding coordinates: {embedding, axes:[0,1], polygon:[[x,y],...]}. 3–128 vertices. Applies to ALL observations, not just preview. Null clears. Required saved geometry for cell_export_selection.' },
+      brain_transform: { type: 'json', description: 'Brainreg transform request: action inspect|map, registrationArtifactId, coordinateSpace brainreg-downsampled-asr-voxel and coordinates. Original sample/cellfinder XYZ is not accepted.' },
       brain_axis: { type: 'integer', description: 'Brain atlas slice axis 0, 1 or 2.' }, brain_index: { type: 'integer', description: 'Brain atlas slice index.' }, brain_downsample: { type: 'integer', description: 'Brain atlas slice downsample factor 1–64.' }, brain_region: { type: 'string', description: 'Brain atlas region name, acronym or numeric ID.' }, brain_regions: { type: 'json', description: 'Brainrender region acronyms/names, maximum 16.' }, brain_title: { type: 'string', description: 'Optional brainrender scene title.' }, brain_point_radius: { type: 'number', description: 'Brainrender point radius in microns, 1–200.' }, brain_coordinates: { type: 'json', description: 'Ordered brain coordinates [[x,y,z],...], voxel or micron units.' }, brain_coordinate_units: { type: 'string', enum: ['voxel', 'micron'] }, brain_voxel_sizes: { type: 'json', description: 'brainreg input voxel sizes in microns: [x,y,z].' }, brain_orientation: { type: 'string', description: 'brainreg three-letter sample orientation, for example asr.' }, brain_n_free_cpus: { type: 'integer', description: 'CPU cores left unused by brainreg/cellfinder, 0–64.' }, brain_start_plane: { type: 'integer', description: 'Optional first z plane for cellfinder, inclusive.' }, brain_end_plane: { type: 'integer', description: 'Optional last z plane for cellfinder, exclusive.' }, brain_skip_classification: { type: 'boolean', description: 'Cellfinder detection-only mode; classification is not run and results require review.' }, background_asset_id: { type: 'string', description: 'Optional project-local background volume for cellfinder.' }, max_cells: { type: 'integer', description: 'Maximum brain coordinate rows, up to 100000.' },
       embedding: { type: 'string', description: 'AnnData obsm embedding key, for example X_umap or X_pca.' },
       embedding_limit: { type: 'integer', description: 'Maximum embedding points returned to the viewer (1–200,000); Agent text includes only a sample.' },
@@ -644,7 +659,7 @@ function registerResearchTools(ctx: Context): void {
         ...(args.molecule === undefined ? {} : { molecule: { ...requireJsonObject(args.molecule), sessionId: String(sessionId), action: String(args.action).slice(9) } as unknown as MoleculeRequest }),
         ...(args.region === undefined ? {} : { region: requireJsonObject(args.region) as unknown as NonNullable<ScienceViewerRequest['region']> }),
         ...(args.canvas_spec === undefined ? {} : { canvas: { sessionId: String(sessionId), action: String(args.action).slice(7) as 'render' | 'export', spec: requireJsonObject(args.canvas_spec) as unknown as NonNullable<ScienceViewerRequest['canvas']>['spec'] } }),
-        ...((args.transform === undefined && args.cofactor === undefined && args.apply_compensation === undefined && args.gates === undefined && args.preview_limit === undefined) ? {} : { flow: {
+        ...((args.transform === undefined && args.cofactor === undefined && args.apply_compensation === undefined && args.gates === undefined && args.preview_limit === undefined && args.asset_ids === undefined) ? {} : { flow: {
           sessionId: String(sessionId),
           action: String(args.action).slice(5) as NonNullable<ScienceViewerRequest['flow']>['action'],
           ...(args.asset_id === undefined ? {} : { assetId: String(args.asset_id) }),
@@ -655,6 +670,7 @@ function registerResearchTools(ctx: Context): void {
           ...(args.apply_compensation === undefined ? {} : { applyCompensation: Boolean(args.apply_compensation) }),
           ...(args.gates === undefined ? {} : { gates: requireJsonArray(args.gates) as unknown as Exclude<NonNullable<ScienceViewerRequest['flow']>['gates'], undefined> }),
           ...(args.preview_limit === undefined ? {} : { previewLimit: Number(args.preview_limit) }),
+          ...(args.asset_ids === undefined ? {} : { assetIds: requireJsonArray(args.asset_ids).map(String) }),
         } }),
         ...(args.image_state === undefined ? {} : { imageState: requireJsonObject(args.image_state) as unknown as NonNullable<ScienceViewerRequest['imageState']> }),
         ...(args.annotation === undefined ? {} : { annotation: requireJsonObject(args.annotation) as unknown as NonNullable<ScienceViewerRequest['annotation']> }),
@@ -670,6 +686,7 @@ function registerResearchTools(ctx: Context): void {
         ...(args.group_by === undefined ? {} : { groupBy: String(args.group_by) }),
         ...(args.cell_camera === undefined ? {} : { cellCamera: requireJsonObject(args.cell_camera) as unknown as NonNullable<ScienceViewerRequest['cellCamera']> }),
         ...(args.cell_selection === undefined ? {} : { cellSelection: args.cell_selection === null ? null : requireJsonObject(args.cell_selection) as unknown as NonNullable<ScienceViewerRequest['cellSelection']> }),
+        ...(args.brain_transform === undefined ? {} : { brainTransform: { ...requireJsonObject(args.brain_transform), sessionId: String(exec.agent?.session.id ?? '') } as unknown as BrainTransformRequest }),
         ...(args.brain_axis === undefined ? {} : { brainAxis: Number(args.brain_axis) as 0 | 1 | 2 }), ...(args.brain_index === undefined ? {} : { brainIndex: Number(args.brain_index) }), ...(args.brain_downsample === undefined ? {} : { brainDownsample: Number(args.brain_downsample) }), ...(args.brain_region === undefined ? {} : { brainRegion: String(args.brain_region) }), ...(args.brain_regions === undefined ? {} : { brainRegions: requireJsonArray(args.brain_regions).map(String).slice(0, 16) }), ...(args.brain_title === undefined ? {} : { brainTitle: String(args.brain_title).slice(0, 200) }), ...(args.brain_point_radius === undefined ? {} : { brainPointRadius: Number(args.brain_point_radius) }), ...(args.brain_coordinates === undefined ? {} : { brainCoordinates: requireJsonArray(args.brain_coordinates).map(value => { const row = requireJsonArray(value); if (row.length !== 3) throw new Error('Brain coordinates must contain 3 values.'); return row.map(Number) as [number, number, number] }) }), ...(args.brain_coordinate_units === undefined ? {} : { brainCoordinateUnits: args.brain_coordinate_units as 'voxel' | 'micron' }), ...(args.brain_voxel_sizes === undefined ? {} : { brainVoxelSizes: requireJsonArray(args.brain_voxel_sizes).map(Number) as [number, number, number] }), ...(args.brain_orientation === undefined ? {} : { brainOrientation: String(args.brain_orientation) }), ...(args.brain_n_free_cpus === undefined ? {} : { brainNFreeCpus: Number(args.brain_n_free_cpus) }), ...(args.brain_start_plane === undefined ? {} : { brainStartPlane: Number(args.brain_start_plane) }), ...(args.brain_end_plane === undefined ? {} : { brainEndPlane: Number(args.brain_end_plane) }), ...(args.brain_skip_classification === undefined ? {} : { brainSkipClassification: Boolean(args.brain_skip_classification) }), ...(args.background_asset_id === undefined ? {} : { backgroundAssetId: String(args.background_asset_id) }), ...(args.max_cells === undefined ? {} : { maxCells: Number(args.max_cells) }),
       })
       // Preview pixels go to the viewer RPC only, not into an Agent's text context.

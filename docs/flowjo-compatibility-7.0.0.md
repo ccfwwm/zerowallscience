@@ -1,8 +1,9 @@
 # FlowJo workspace compatibility and FCS batch design
 
-This note is the frozen minimum scope for the FlowJo/FCS workbench gate. It is
-an implementation contract and independent reference result; it does not claim
-that FlowJo support is already wired into the product.
+This note defines the shipped minimum scope for the FlowJo/FCS workbench gate.
+The product imports this strict subset through `flow_workspace_import` and
+executes registered local FCS assets through `flow_batch`; it does not claim
+general FlowJo compatibility.
 
 ## Reference implementation
 
@@ -21,7 +22,7 @@ synthetic and is only a parser/contract check.
 
 ## Accepted workspace subset
 
-The product should accept a `.wsp` only when all of the following hold:
+The product accepts a `.wsp` only when all of the following hold:
 
 - XML is well formed, uses the FlowJo workspace shape with `Groups` and
   `SampleList`, and is no larger than 64 MiB.
@@ -34,20 +35,16 @@ The product should accept a `.wsp` only when all of the following hold:
   with a single parent path and dimensions that resolve to FCS channel labels.
   Boolean, quadrant, ellipsoid, ratio, and instrument-specific custom gates are
   reported as unsupported and do not silently become rectangles.
-- Compensation matrices must be square, finite, channel-resolvable, and
-  explicitly labelled. A workspace compensation matrix is metadata until the
-  user chooses `applyCompensation` in the existing flow analysis path.
-- Transform definitions are retained as provenance. The validated execution
-  subset is linear and arcsinh/logicle only when the existing Flow runner has a
-  matching explicit transform; unknown FlowJo transforms are preserved in the
-  report and block numerical gating rather than being approximated.
+- Workspace compensation matrices and workspace transform definitions are
+  rejected in 7.0.0. Users may explicitly apply an FCS-declared spillover matrix
+  or import the separately validated GatingML compensation/arcsinh subset.
 - Gating boundaries retain FlowJo's untransformed-space declaration and the
   source XML hash. They are converted to the existing standard gate boundary
   mode only through an explicit user action.
 
 ## FCS batch contract
 
-Batch input is a list of registered `.fcs` assets plus an optional compatible
+Batch input is a list of 1–64 registered `.fcs` assets plus an optional compatible
 workspace. Each file is opened and closed independently through the existing
 `FcsReader`, with SHA-256 and size/mtime/ctime checked before and after decode.
 Batch execution is bounded to the existing 512 MiB/file, 2M events, 128

@@ -25,3 +25,19 @@ it('opens FCS, adds a gate, analyzes and exports', async () => {
   expect(await screen.findByText(/Gate 1/)).toBeTruthy()
   expect(scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action: 'flow_analyze', viewerId: 'v1', expectedVersion: 1, gates: [expect.objectContaining({ id: 'gate-1' })] }))
 })
+
+it('submits selected FCS assets and an optional FlowJo workspace as a batch', async () => {
+  const scienceViewer = vi.fn(async input => {
+    if (input.action === 'list') return ok({ assets: [{ id: 'a1', name: 'sample-1.fcs', uri: 'file:///sample-1.fcs' }, { id: 'a2', name: 'sample-2.fcs', uri: 'file:///sample-2.fcs' }, { id: 'w1', name: 'gates.wsp', uri: 'file:///gates.wsp' }], viewers: [] })
+    if (input.action === 'flow_batch') return ok({ flow: { batch: { items: [{ assetId: 'a1', analysis: {} }, { assetId: 'a2', error: 'missing channel' }], notes: [] }, artifact: { name: 'Flow cytometry batch analysis', uri: 'file:///batch.json', checksum: 'sha' } } })
+    return ok({})
+  })
+  render(<FlowViewer remote={{ scienceViewer } as any} sessionId="s1" />)
+  await screen.findByRole('group', { name: 'FCS 批处理' })
+  fireEvent.click(screen.getByLabelText('sample-1.fcs'))
+  fireEvent.click(screen.getByLabelText('sample-2.fcs'))
+  fireEvent.change(screen.getByLabelText('批处理 FlowJo WSP'), { target: { value: 'w1' } })
+  fireEvent.click(screen.getByRole('button', { name: '运行批处理' }))
+  await waitFor(() => expect(scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action: 'flow_batch', assetIds: ['a1', 'a2'], importAssetId: 'w1' })))
+  expect(await screen.findByText(/missing channel/)).toBeTruthy()
+})

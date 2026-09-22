@@ -7,6 +7,7 @@ import { ResearchStore } from '../../../store/src/index.js'
 import { FlowService } from '../src/host/flow.js'
 import { analyzeFlowStream, FcsReader, FLOW_STREAM_LIMITS } from '../src/host/flow-reader.js'
 import { analyzeFlow, gatingMlSubset, parseFcs } from '../src/shared/flow.js'
+import { parseFlowJoWorkspace } from '../src/host/flowjo.js'
 
 const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose() })
@@ -67,7 +68,7 @@ it('opens, analyzes and exports a traceable FCS result', async () => {
   const root = await mkdtemp(join(tmpdir(), 'flow-service-')); const projectRoot = join(root, 'project'); await mkdir(projectRoot); const store = new ResearchStore(join(root, 'store.sqlite')); const service = new FlowService(store); cleanup.push(async () => { store.close(); await rm(root, { recursive: true, force: true }) })
   const project = store.createProject({ name: 'Flow', rootPath: projectRoot }); const path = join(projectRoot, 'sample.fcs'); await writeFile(path, fcs([[10, 20], [50, 50]])); const asset = store.createDataAsset({ projectId: project.id, name: 'Sample', uri: pathToFileURL(path).href, location: 'local', mediaType: 'application/octet-stream' })
   const opened = await service.execute(project, { sessionId: 's', action: 'open', assetId: asset.id }); const viewer = opened.viewer!
-  const exported = await service.execute(project, { sessionId: 's', action: 'export', viewerId: viewer.id, expectedVersion: viewer.version, gates: [{ id: 'all', name: 'All', boundaryMode: 'gatingml', x: { channel: 'FSC-A', min: 0, max: 100 } }] }); expect(exported.artifact?.metadata.runner).toBe('zerowall-flow/7.0.0-4'); expect(JSON.parse(await readFile(fileURLToPath(exported.artifact!.uri), 'utf8')).format).toBe('zerowall-flow-result')
+  const exported = await service.execute(project, { sessionId: 's', action: 'export', viewerId: viewer.id, expectedVersion: viewer.version, gates: [{ id: 'all', name: 'All', boundaryMode: 'gatingml', x: { channel: 'FSC-A', min: 0, max: 100 } }] }); expect(exported.artifact?.metadata.runner).toBe('zerowall-flow/7.0.0-5'); expect(JSON.parse(await readFile(fileURLToPath(exported.artifact!.uri), 'utf8')).format).toBe('zerowall-flow-result')
   await writeFile(path, Buffer.concat([Buffer.from(fcs([[10, 20], [50, 50]])), Buffer.from([1])]))
   await expect(service.execute(project, { sessionId: 's', action: 'analyze', viewerId: viewer.id, expectedVersion: exported.viewer!.version })).rejects.toThrow('source changed')
 })
@@ -133,4 +134,23 @@ it('imports a registered same-project GatingML asset, persists its source and re
   const restored = await service.execute(project, { sessionId: 's', action: 'export', viewerId: viewer.id, expectedVersion: imported.viewer!.version })
   expect(restored.analysis?.gates.map(gate => gate.count)).toEqual([4, 2])
   expect(await readFile(fileURLToPath(String(restored.artifact!.metadata.gatingMlUri)), 'utf8')).toContain('gating:parent_id="parent"')
+})
+
+function flowJoWorkspace(sampleUri = 'sample.fcs'): string {
+  return `<?xml version="1.0" encoding="UTF-8"?><Workspace xmlns:gating="http://www.isac-net.org/std/Gating-ML/v2.0/gating" xmlns:data-type="http://www.isac-net.org/std/Gating-ML/v2.0/datatypes" version="20.0" flowJoVersion="10.6.2"><Matrices/><Groups><GroupNode name="All Samples"><Group><SampleRefs><SampleRef sampleID="1"/></SampleRefs></Group></GroupNode></Groups><SampleList><Sample><DataSet uri="${sampleUri}" sampleID="1"/><Transformations/><SampleNode name="sample"><Subpopulations><Population name="Cells"><Gate><gating:RectangleGate gating:id="cells"><gating:dimension gating:min="0" gating:max="10"><data-type:fcs-dimension data-type:name="FSC-A"/></gating:dimension></gating:RectangleGate></Gate><Subpopulations><Population name="High"><Gate><gating:RectangleGate gating:id="high"><gating:dimension gating:min="5" gating:max="10"><data-type:fcs-dimension data-type:name="FSC-A"/></gating:dimension></gating:RectangleGate></Gate></Population></Subpopulations></Population></Subpopulations></SampleNode></Sample></SampleList></Workspace>`
+}
+
+it('imports the strict FlowJo rectangle subset and records a per-sample batch refusal without leaking success', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'flowjo-service-')); const store = new ResearchStore(join(root, 'store.sqlite')); cleanup.push(async () => { store.close(); await rm(root, { recursive: true, force: true }) })
+  const project = store.createProject({ name: 'FlowJo', rootPath: root }); const service = new FlowService(store)
+  const fcsPath = join(root, 'sample.fcs'); await writeFile(fcsPath, fcs([[1, 1], [6, 1], [11, 1]])); const source = store.createDataAsset({ projectId: project.id, name: 'sample.fcs', uri: pathToFileURL(fcsPath).href, location: 'local', mediaType: 'application/octet-stream' })
+  const workspacePath = join(root, 'gates.wsp'); await writeFile(workspacePath, flowJoWorkspace('sample')); const workspace = store.createDataAsset({ projectId: project.id, name: 'gates.wsp', uri: pathToFileURL(workspacePath).href, location: 'local', mediaType: 'application/xml' })
+  expect(parseFlowJoWorkspace(await readFile(workspacePath, 'utf8')).samples[0]?.gates.map(gate => gate.id)).toEqual(['cells', 'high'])
+  const opened = await service.execute(project, { sessionId: 's', action: 'open', assetId: source.id })
+  const imported = await service.execute(project, { sessionId: 's', action: 'workspace_import', viewerId: opened.viewer!.id, expectedVersion: opened.viewer!.version, importAssetId: workspace.id })
+  expect(imported.analysis?.gates.map(gate => gate.count)).toEqual([2, 1]); expect(imported.viewer?.state.gatingMlSource).toMatchObject({ format: 'flowjo-wsp', assetId: workspace.id, sampleId: '1' })
+  const batch = await service.execute(project, { sessionId: 's', action: 'batch', assetIds: [source.id, 'missing'], importAssetId: workspace.id })
+  expect(batch.batch?.items.map(item => Boolean(item.analysis))).toEqual([true, false]); expect(batch.batch?.items[1]?.error).toContain('not in the active project'); expect(JSON.parse(await readFile(fileURLToPath(batch.artifact!.uri), 'utf8')).format).toBe('zerowall-flow-batch-result')
+  await writeFile(workspacePath, flowJoWorkspace('sample').replace('<Transformations/>', '<Transformations><Unsupported/></Transformations>'))
+  await expect(service.execute(project, { sessionId: 's', action: 'workspace_import', viewerId: opened.viewer!.id, expectedVersion: imported.viewer!.version, importAssetId: workspace.id })).rejects.toThrow('transformations are not enabled')
 })
