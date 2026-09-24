@@ -31,6 +31,13 @@
 - 七牛云版本化安装包：[zerowall-science-7.0.4-win-x64.exe](https://zerowall.chengxunkeji.cn/stable/releases/7.0.4/zerowall-science-7.0.4-win-x64.exe)。
 - Stable 更新入口已刷新为 7.0.4：`stable/latest.yml`、`stable/releases/latest.json` 和 `stable/releases-zerowallsciencedev/latest.json`。
 - 六个公开对象均从公网完整读取并与本地产物匹配：安装包 469632269 字节，SHA-256 `7506cf946259b6d4d13f06390f59983f39fe79aec9e24b14ae7cc653b39547c3`；blockmap 489236 字节，SHA-256 `1f5de0d803bc42761b660057d43dfaa10b730bd803057d6dbeb7126aacb3e560`；版本 JSON 6485 字节，SHA-256 `a21d4f3b132517bee2a99000b07e29f7d1fadf47611c95630ebe126087b50edb`；`latest.yml` 6463 字节，SHA-256 `e0a548834ed32ab72cae7d3a34f4bafd340ce42ab32fd0d25de485e25845aa65`。
-- 证据文件：`desktop/dist/verification-7.0.4/qiniu-public-assets.json`。GitHub 发布完成后会在本节追加 Release URL、tag 状态和公网附件校验结果。
+- 证据文件：`desktop/dist/verification-7.0.4/qiniu-public-assets.json`。
+
+## GitHub 公网验证
+
+- GitHub Release：[v7.0.4](https://github.com/ccfwwm/zerowallscience/releases/tag/v7.0.4)。Release 为正式、非草稿、非预发布，并标记为 Latest。
+- 六个附件均为 `uploaded`；GitHub API 报告的大小和 SHA-256 与七牛云及本地一致。EXE 和 blockmap 已完整下载校验；四个 JSON/YAML 小文件通过带重试的独立公网下载校验。
+- GitHub 附件大小和 SHA-256：EXE `469632269` / `7506cf946259b6d4d13f06390f59983f39fe79aec9e24b14ae7cc653b39547c3`；blockmap `489236` / `1f5de0d803bc42761b660057d43dfaa10b730bd803057d6dbeb7126aacb3e560`；版本 JSON `6485` / `a21d4f3b132517bee2a99000b07e29f7d1fadf47611c95630ebe126087b50edb`；`latest.yml` `6463` / `e0a548834ed32ab72cae7d3a34f4bafd340ce42ab32fd0d25de485e25845aa65`。
+- 发布提交：`8d6d923e6f7e3a1b02b46815802adde711e336c4`；tag `v7.0.4` 指向同一发布提交。GitHub 远端分支最终仅保留 `main`。
 
 基础运行时自动安装；科学依赖清单的后续同步仍由用户在 Python 环境页面启动。未对真实用户目录执行升级安装，首次迁移实测在隔离目录和 Junction 回归测试中完成。
