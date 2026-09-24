@@ -18,7 +18,7 @@ it('launches only the selected registered image through the session RPC', async 
   render(<NativeEnginePanel remote={remote as any} sessionId="s1" />)
   await screen.findByRole('option', { name: 'Image A' })
   expect(screen.queryByRole('option', { name: 'Macro' })).toBeNull()
-  fireEvent.change(screen.getByLabelText('原生图像资产'), { target: { value: 'image' } })
+  fireEvent.change(screen.getByLabelText('图像资产'), { target: { value: 'image' } })
   fireEvent.click(screen.getByRole('button', { name: '打开 Fiji' }))
   await screen.findByText('进程已启动；GUI 待检查。')
   expect(remote.launchScientificEngine).toHaveBeenCalledWith({ sessionId: 's1', engine: 'fiji', assetId: 'image' })

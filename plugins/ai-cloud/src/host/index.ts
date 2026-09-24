@@ -317,13 +317,27 @@ function managedApi(modelId: string): 'openai-responses' | 'anthropic-messages' 
 }
 
 function managedReasoning(modelId: string): Pick<NonNullable<PiAiProviderProfile['models']>[number], 'reasoningEfforts'> | Record<string, never> {
-  const isGpt5 = /^gpt-5\.(?:5|6)(?:[-_].*)?$/iu.test(modelId)
-  const isDeepSeek = /(?:deepseek.*(?:reasoner|r1|v4)|(?:reasoner|r1).*deepseek)/iu.test(modelId)
+  // Capability is decided by model FAMILY, not by exact release ids. A gateway
+  // publishes whatever aliases it likes, and an allowlist of exact names
+  // silently strips the reasoning selector the moment the gateway ships a
+  // release the list has never heard of — while the model itself reasons
+  // perfectly well. Family matching widens on its own. The id is lowercased
+  // first so alias casing never decides.
+  const id = modelId.toLowerCase()
+  // OpenAI reasoning lines: gpt-5 and later, an optional point release, then
+  // any alias suffix (gpt-5.6-sol, gpt-6-astra, gpt-7.1-flux).
+  const isGpt = /^gpt-[5-9](?:\.\d+)?(?:[._-].*)?$/.test(id)
+  // Legacy conversational lines carry no effort parameter at all; naming one
+  // would dispatch a field the gateway rejects, so they are carved back out.
+  const isLegacyGpt = /^gpt-[5-9](?:\.\d+)?[._-](?:chat|mini|nano|turbo|instruct)$/.test(id)
+  const isDeepSeek = /(?:deepseek.*(?:reasoner|r1|v4)|(?:reasoner|r1).*deepseek)/.test(id)
   // Modern Claude routes expose Anthropic adaptive-thinking effort levels.
-  // Compatibility gateways commonly publish aliases such as claude-sonnet-5;
-  // capability is tied to the modern family, not to one exact vendor name.
-  const isModernClaude = /^claude-(?:3-(?:7|8)|4|sonnet-5|opus-4|haiku-4)/iu.test(modelId)
-  if (!isGpt5 && !isDeepSeek && !isModernClaude) return {}
+  // Compatibility gateways commonly publish aliases such as claude-sonnet-5 or
+  // claude-fable-5-1; capability is tied to the modern family — numbered
+  // generations, and named tiers at major version 3 and up — not to one exact
+  // vendor name.
+  const isModernClaude = /^claude-(?:[3-9](?:[._-]\d+)?|(?:opus|sonnet|haiku|fable|mythos)(?:[._-]\d+)*)(?:[._-].*)?$/.test(id)
+  if ((!isGpt || isLegacyGpt) && !isDeepSeek && !isModernClaude) return {}
   if (isModernClaude) {
     return {
       reasoningEfforts: { off: null, low: 'low', medium: 'medium', high: 'high', max: 'max' },

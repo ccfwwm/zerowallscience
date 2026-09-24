@@ -1,64 +1,42 @@
-# ZeroWall Python environment
+# ZeroWall Science 共享 Python 环境
 
-The Windows x64 shared CPU research environment uses **CPython 3.12.10**.
-Environment release **1.4.0 / revision 1** is versioned independently of Python
-and the desktop application. Existing 1.3.0 assets remain available for rollback.
+桌面应用、MCP、Python Agent 工具、图像工具和科学插件共用 CPython 3.12.10。Windows 的真实运行目录固定为 `%APPDATA%\zerowall-science\Python`，包实际安装和扫描目录为 `%APPDATA%\zerowall-science\Python\Lib\site-packages`。该目录是普通目录，不是指向 slot 或快照的 Junction。
 
-## Dependency inputs
+## 稳定目录和旧版本迁移
 
-| File | Purpose |
-| --- | --- |
-| `requirements-base.txt`, `requirements-science.txt` | Existing MCP, documents, statistics and biology |
-| `requirements-science.lock`, `requirements-managed-compatible.lock` | Preserve existing core versions |
-| `requirements-integrity.txt`, `requirements-integrity.lock` | Image comparison and PDF integrity |
-| `requirements-research.txt` | Broad CPU research, medical imaging, geography and PyZotero |
-| `requirements-research.lock` | Complete resolution with upstream distribution hashes |
-| `requirements-windows.lock` | Exact release wheels, including locally built pure Python wheels |
-| `skill-dependency-policy.json` | Import aliases and independent environment exceptions |
-| `skill-dependencies.json` | Source evidence, installed versions and isolated verification |
+首次启动时，应用会在工作台可用后自动安装安装包内的签名基础 Python 环境，并显示下载、解压和验证进度；首次准备不要求用户手动点击安装。已有 `zerowall-python/current.json` 时，应用先读取旧版活动环境，将运行时和用户包复制到稳定 Python 目录，验证解释器及包状态，然后更新 `current.json`、`runtime.json` 和 `Python/manifest.json`。迁移失败时保留原环境并写入诊断，自动安装流程会继续尝试准备有效的基础环境，不会将半成品标记为活动环境。
 
-Only `opencv-python-headless` is installed in the shared environment. Scanpy,
-Leiden, scientific image libraries and the Playwright Python API are included.
-Playwright browsers, Torch/CUDA, model weights, complete OCR stacks and system
-tools are provisioned separately. Aeon, Cobra, NeuroKit2, MatchMS, BioServices
-and scVelo require independent environments because of core version constraints.
-PySAM and ETE4 are excluded until supported Windows wheels are available.
+迁移完成后，Python 启动、包清单扫描和依赖安装均直接使用稳定目录。后台保留 `zerowall-python` 下的队列、计划、下载缓存、迁移兼容元数据和旧历史记录；普通依赖更新不会创建 `slots/local-*`，也不会切换活动环境 Junction。轮子、源码归档和临时解包结果只存放在管理缓存中，单包验证通过后才将文件写入稳定 `site-packages`。
 
-## Reproducible build
+## 安装、验证和再次检测
 
-1. Resolve the research input for Windows x64 / Python 3.12 with the existing
-   science, compatibility and integrity constraints. Do not downgrade core pins.
-2. Run `py -3.12 tools/release/prepare-python-environment.py --work .build/python-1.4.0`.
-   The build interpreter must be exactly 3.12.10. Wheels are hash checked; the
-   final environment is installed offline into a clean staging directory.
-3. Run the staged `bio-tools/python/python.exe -s -B` with the absolute path to
-   `tools/release/verify-python-environment.py --output .build/python-1.4.0/verification.json`.
-   This disables personal packages and tests actual image, medical, Office,
-   Zotero, statistical, biological, chemical and quantum operations.
-4. Run image workflow integration, desktop Python tool, MCP and update tests.
-   Build with `ZEROWALL_MCP_ENVIRONMENT_STAGING`, `ZEROWALL_MCP_ENVIRONMENT_OUTPUT`,
-   `ZEROWALL_PYTHON_VERIFICATION`, `ZEROWALL_MCP_REBUILD_PYTHON=0`, version 1.4.0,
-   Python version 3.12.10 and the existing stable-3 signing key file configured.
-   `node tools/release/build-mcp-environment.mjs` checks the lock, installed
-   metadata and verification inventory agree before generating schema 2 assets.
+签名依赖清单校验身份、版本、来源和签名。预览只解析变更；应用后按包安装。每个 wheel 先下载到临时目录，检查文件长度、SHA-256 和 ZIP CRC，再解包到独立暂存目录。写入稳定目录前记录旧 distribution 的 `RECORD` 文件；若该包写入或导入验证失败，只恢复这个包，其他成功的包会保留。
 
-The auditor reads Python AST imports, dynamic imports, Markdown declarations
-and examples, requirements and vendor sources. Source documents are audit data.
-`managed` requires installation and isolated verification evidence, and version
-mismatches remain visible. Standard-library and Skill-local imports are filtered.
-Optional examples, development dependencies and external services are recorded
-separately; static analysis cannot prove that every arbitrary dynamic import was found.
+安装结束后重新扫描真实 `site-packages`，运行导入检查和 `pip check`，刷新运行时元数据及 `dependency-sync/status.json`。当前清单的依赖差异由已扫描的包名和版本重新计算，所以再次检测时已经安装成功的同版本包不会再次显示为待同步；失败包继续出现在差异中供重试。界面会区分全部成功、部分成功、失败和无变化。
 
-## Publication and updates
+已发布依赖清单中的 `sha256`（若提供）绑定 wheel 或源码归档。普通镜像解析的 wheel 也会将解析报告给出的 SHA-256 写进安装计划；每次断流重试先清理上一次临时文件，再下载并重新校验，不接受校验不完整的包进入 `site-packages`。用户选定的镜像保持不变，失败信息包含包名、镜像、重试次数和原始诊断。
 
-`node scripts/publish-mcp-environment.mjs` first uploads immutable versioned ZIP
-and signed manifest. It verifies the public signature, complete size and SHA-256
-before promoting `latest.json`, then checks the exact URL used by desktop clients.
-Never overwrite an existing version archive. Credentials and signing keys remain
-outside the archive and source control.
+源码依赖先校验归档，再使用临时构建目录和临时解释器副本执行 PEP 517。临时构建工具链不替换活动 Python，也不改变稳定目录中的 `._pth`。构建 wheel 继续校验源归档、wheel 和构建收据。
 
-The desktop installs into the inactive slot and checks health before switching
-`current.json`. The `python-overlay/python-3.12` directory is retained across
-updates, including the six existing user extensions. Rollback retains the old
-slot; a failed update must leave the previous working environment selected.
-Comprehensive checks run during the build; client startup keeps lightweight checks.
+## 镜像
+
+默认镜像为中科大：`https://mirrors.ustc.edu.cn/pypi/simple`。镜像下拉列表提供阿里云、清华大学、中科大、腾讯云、华为云、官方 PyPI 和自定义镜像。自定义地址放在高级设置中；应用只保存自身配置，不修改全局 `pip.ini`。
+
+pip 调用会隔离外部 pip 配置并显式传入当前镜像，提高连接重试和读取超时。损坏下载会删除后退避重试；不会在用户未选择的情况下从阿里云切换到其他镜像。桌面提供的系统信任 CA 用于 HTTPS，不通过关闭证书验证绕过 TLS。
+
+## 科研工作台文件导入
+
+“选择文件”使用桌面文件选择器。选中的项目外文件会复制到项目 `.zerowall/imports/`，检查支持的类型、大小、源文件是否变化、复制长度和 SHA-256 后登记为项目资产。工作台刷新查看器资产，并按照文件扩展名切换到相应工具、选中资产并打开。
+
+- PNG/JPEG/TIFF：ImageJ 图像查看器，调用 `image_open`。
+- SVS/NDPI，以及在 HE 查看器中选择的 TIFF：HE 切片查看器，调用 `he_open`。
+- FASTA/GenBank、SCF/AB1 和 PDB/CIF/SDF：各自的序列、Sanger 和分子查看器。
+- `.zarr` 目录使用专用目录选择流程。
+
+外部 ImageJ 或 napari 未配置时会显示引擎状态；原生进程启动而窗口未确认时不会报告为已就绪。
+
+## 支持接口和诊断
+
+桌面 `python_environment` 接口支持环境状态、依赖清单检查和预览、同步、包列表、镜像配置、诊断及兼容的回滚操作。相同 `requestId` 对应持久请求收据；相同 ID 配不同参数会被拒绝。同步状态和 Python 环境文件用于确认安装结果，不能只依据进度条判断安装成功。
+
+本地构建和验收应记录：Python 版本、稳定目录路径、包计数、导入检查、`pip check`、同步前后的待安装差异、镜像与失败诊断、科研工作台导入/打开行为以及桌面安装包 SHA-256。发布渠道由单独操作控制。

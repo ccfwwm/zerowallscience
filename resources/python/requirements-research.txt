@@ -56,3 +56,28 @@ qiskit[visualization]>=2.5
 playwright==1.62.0
 pycryptodome==3.23.0
 tomli==2.2.1
+# BrainGlobe atlas and registration stack. brain-atlas.ts and brain-transform.ts
+# both refuse to run unless brainreg reports exactly 1.0.16, and the atlas API
+# must agree with the managed atlas on disk, so these are pinned rather than
+# floated. torch arrives transitively through cellfinder and stays in the
+# science layer — it is downloaded on demand, never shipped in the archive.
+brainglobe
+brainglobe-atlasapi
+brainglobe-utils
+brainreg==1.0.16
+cellfinder
+brainrender
+# HE StarDist segmentation. he-segmentation-runner.ts imports numpy, openslide,
+# tifffile, tensorflow, stardist and csbdeep at module scope, so the shared
+# environment must supply all of them; HE no longer gets a private venv.
+# Resolved against the same three constraint locks as the rest of this file, so
+# tensorflow keeps the shared numpy 2.5.3 / protobuf / keras pins. These stay in
+# the on-demand science layer: they are installed through the signed dependency
+# manifest and are never shipped inside the installer archive.
+stardist
+csbdeep
+tensorflow
+# openslide-python needs the native OpenSlide DLLs on Windows; openslide-bin
+# supplies them as a wheel instead of an external installer.
+openslide-python
+openslide-bin

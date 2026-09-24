@@ -2,13 +2,42 @@ import { useEffect, useRef, useState } from 'react'
 import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '../../lib/typert.remote-client.js'
 import type { DataAssetRecord } from '@zerowallscience/research-store/types'
-import type { ScientificEngineId, ScientificEngineLaunchResult } from '../shared/types.js'
+import type { ScientificEngineLaunchResult } from '../shared/types.js'
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
+import { WORKBENCH_LOCALES } from './tool-descriptors.js'
+import styles from './engine-settings.module.css'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
-const labels = { starting: '正在启动', spawned: '进程已启动，窗口待检查', exited: '启动进程已退出', failed: '进程失败', unobserved: '窗口状态待核对' }
 
-export function NativeEnginePanel({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
+type LaunchKey = keyof typeof WORKBENCH_LOCALES.zh
+const copyZh = WORKBENCH_LOCALES.zh as Record<string, string>
+const copyEn = WORKBENCH_LOCALES.en as Record<string, string>
+const translate = (locale: 'zh' | 'en', key: LaunchKey, params?: Record<string, unknown>): string => {
+  let value = (locale === 'en' ? copyEn : copyZh)[key] ?? key
+  for (const [name, replacement] of Object.entries(params ?? {})) value = value.replaceAll(`{${name}}`, String(replacement))
+  return value
+}
+
+const LAUNCH_STATUS: Record<ScientificEngineLaunchResult['status'], LaunchKey> = {
+  starting: 'science.engine.launch.starting',
+  spawned: 'science.engine.launch.spawned',
+  exited: 'science.engine.launch.exited',
+  failed: 'science.engine.launch.failed',
+  unobserved: 'science.engine.launch.unobserved',
+}
+
+/**
+ * Native window launcher and launch history.
+ *
+ * This panel is deliberately NOT a configuration surface any more. It used to
+ * carry its own Fiji/napari path inputs and rebuild a `ScientificEngineConfig`
+ * from a bare string on every save, which overwrote the scope the settings
+ * dialog had chosen with `source: 'user'`, reset `status` to `unknown`, and
+ * dropped `javaPath`. Configuration now has exactly one owner,
+ * `EngineSettingsDialog`, which renders this panel for the launch controls.
+ */
+export function NativeEnginePanel({ remote, sessionId, locale = 'zh' }: { remote: Remote; sessionId: string; locale?: 'zh' | 'en' }): JSX.Element {
+  const t = (key: LaunchKey, params?: Record<string, unknown>): string => translate(locale, key, params)
   const [assets, setAssets] = useState<DataAssetRecord[]>([])
   const [assetId, setAssetId] = useState('')
   const [launches, setLaunches] = useState<ScientificEngineLaunchResult[]>([])
@@ -17,7 +46,7 @@ export function NativeEnginePanel({ remote, sessionId }: { remote: Remote; sessi
   const generation = useRef(0)
   const locked = useRef(false)
 
-  const refresh = async (current: number) => {
+  const refresh = async (current: number): Promise<void> => {
     const records = unwrapRemoteResult('listScientificEngineLaunches', await remote.listScientificEngineLaunches({ sessionId }))
     if (current === generation.current) setLaunches(records)
   }
@@ -25,7 +54,7 @@ export function NativeEnginePanel({ remote, sessionId }: { remote: Remote; sessi
     const current = ++generation.current
     let timer: ReturnType<typeof setTimeout> | undefined
     setAssets([]); setAssetId(''); setLaunches([]); setMessage(''); setBusy(false); locked.current = false
-    const poll = async () => {
+    const poll = async (): Promise<void> => {
       try { await refresh(current) } catch (error) { if (current === generation.current) setMessage(String(error)) }
       if (current === generation.current) timer = setTimeout(() => void poll(), 4000)
     }
@@ -37,7 +66,7 @@ export function NativeEnginePanel({ remote, sessionId }: { remote: Remote; sessi
     return () => { generation.current++; clearTimeout(timer) }
   }, [remote, sessionId])
 
-  const launch = async (engine: ScientificEngineId) => {
+  const launch = async (engine: 'fiji' | 'napari'): Promise<void> => {
     if (locked.current) return
     locked.current = true; setBusy(true); setMessage('')
     const current = generation.current
@@ -50,22 +79,27 @@ export function NativeEnginePanel({ remote, sessionId }: { remote: Remote; sessi
     finally { if (current === generation.current) { locked.current = false; setBusy(false) } }
   }
 
-  return <section aria-label="原生图像工具" style={{ border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
-    <h3>Fiji / napari 原生图像工具</h3>
-    <p>在本机窗口查看和分析图像。切换工作台页面不会关闭原生窗口；请在原生工具中另存修改。标注自动回传尚未接入。</p>
-    <fieldset disabled={busy} style={{ border: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-      <label>图像资产 <select aria-label="原生图像资产" value={assetId} onChange={event => setAssetId(event.target.value)}>
-        <option value="">启动空白窗口</option>
-        {assets.filter(asset => asset.location === 'local' && /\.(tiff?|png|jpe?g|bmp)$/iu.test(asset.uri)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
-      </select></label>
-      <button type="button" onClick={() => void launch('fiji')}>打开 Fiji</button>
-      <button type="button" onClick={() => void launch('napari')}>打开 napari</button>
+  return <section aria-label={t('science.engine.launch.title')} className={styles.card}>
+    <h3 className={styles.sectionTitle}>{t('science.engine.launch.title')}</h3>
+    <p className={styles.cardNote}>{t('science.engine.launch.note')}</p>
+    <fieldset disabled={busy} className={styles.field}>
+      <label className={styles.field}>
+        <span className={styles.fieldLabel}>{t('science.engine.launch.asset')}</span>
+        <select className={styles.input} aria-label={t('science.engine.launch.asset')} value={assetId} onChange={event => setAssetId(event.target.value)}>
+          <option value="">{t('science.engine.launch.blank')}</option>
+          {assets.filter(asset => asset.location === 'local' && /\.(tiff?|png|jpe?g|bmp)$/iu.test(asset.uri)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+        </select>
+      </label>
     </fieldset>
-    {message && <p role="status">{message}</p>}
-    {launches.length > 0 && <ul aria-label="原生引擎启动记录">{launches.map(item => <li key={item.launchId}>
-      <strong>{item.id} · {labels[item.status]}</strong> · {item.assetId ? assets.find(asset => asset.id === item.assetId)?.name ?? '已登记资产' : '空白窗口'}
-      <p>{item.message}</p>
-      {item.diagnosticTail && <details><summary>启动日志</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{item.diagnosticTail}</pre></details>}
+    <div className={styles.actions}>
+      <button type="button" className={styles.button} disabled={busy} onClick={() => void launch('fiji')}>{t('science.engine.launch.fiji')}</button>
+      <button type="button" className={styles.button} disabled={busy} onClick={() => void launch('napari')}>{t('science.engine.launch.napari')}</button>
+    </div>
+    {message && <p className={styles.message} role="status">{message}</p>}
+    {launches.length > 0 && <ul aria-label={t('science.engine.launch.history')} className={styles.section}>{launches.map(item => <li key={item.launchId} className={styles.status}>
+      <strong>{item.id} · {t(LAUNCH_STATUS[item.status])}</strong> · {item.assetId ? assets.find(asset => asset.id === item.assetId)?.name ?? t('science.engine.launch.registeredAsset') : t('science.engine.launch.blank')}
+      <p className={styles.cardNote}>{item.message}</p>
+      {item.diagnosticTail && <details><summary>{t('science.engine.launch.log')}</summary><pre className={styles.diagnostic}>{item.diagnosticTail}</pre></details>}
     </li>)}</ul>}
   </section>
 }

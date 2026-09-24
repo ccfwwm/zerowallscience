@@ -1,10 +1,11 @@
 export * from './view.js'
+export * from './scientific-engine-center.js'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { FlaskConical } from 'lucide-react'
 import { createElement } from 'react'
 import { ScienceWorkbench } from './view.js'
 
-export const inject = ['betterSidebar', 'remote', 'remote.zerowallResearch'] as const
+export const inject = ['betterSidebar', 'remote', 'remote.zerowallResearch', 'conversation'] as const
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.betterSidebar.registerTab({
@@ -14,6 +15,10 @@ export function apply(ctx: ClientContext): void {
     icon: size => createElement(FlaskConical, { size }),
     single: true,
     order: 20,
-    component: props => createElement(ScienceWorkbench, { ...props, remote: (ctx as any).remote.zerowallResearch }),
+    component: props => createElement(ScienceWorkbench, {
+      ...props,
+      remote: (ctx as any).remote.zerowallResearch,
+      onSendMessage: (text: string) => ctx.conversation.send(text),
+    }),
   }), 'zerowall: science workbench')
 }

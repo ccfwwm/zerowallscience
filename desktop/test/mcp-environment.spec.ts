@@ -1,5 +1,5 @@
 import { createHash, generateKeyPairSync, sign } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -11,6 +11,15 @@ const keys = generateKeyPairSync('ed25519')
 const testArchive = await new JSZip()
   .file('bio-tools/python/python.exe', '')
   .file('bio-tools/python/Lib/site-packages/.keep', '')
+  .file('bio-tools/run_server.py', '')
+  .file('ketcher-chemistry/server.js', '')
+  .file('sci/dist/cli.mjs', '')
+  .file('sci/dist/mcp.cjs', '')
+  .file('skills/example/SKILL.md', '')
+  .generateAsync({ type: 'nodebuffer' })
+const sharedTestArchive = await new JSZip()
+  .file('Python/python.exe', 'fixture interpreter')
+  .file('Python/Lib/site-packages/.keep', '')
   .file('bio-tools/run_server.py', '')
   .file('ketcher-chemistry/server.js', '')
   .file('sci/dist/cli.mjs', '')
@@ -32,6 +41,17 @@ function signedManifest(version = '4.1.9', keyId = 'stable-1', environmentVersio
   return manifest
 }
 
+function signedSharedManifest(): McpEnvironmentManifest {
+  const manifest = signedManifest()
+  manifest.environmentId = 'zerowall-python'
+  manifest.python.relativeExecutable = 'Python/python.exe'
+  manifest.python.relativeSitePackages = 'Python/Lib/site-packages'
+  manifest.archiveSha256 = createHash('sha256').update(sharedTestArchive).digest('hex')
+  manifest.archiveSize = sharedTestArchive.byteLength
+  manifest.signature.value = sign(null, canonicalManifest(manifest), keys.privateKey).toString('base64')
+  return manifest
+}
+
 async function environment(root: string, manifest: McpEnvironmentManifest): Promise<void> {
   for (const relative of [manifest.python.relativeExecutable, 'bio-tools/run_server.py', 'ketcher-chemistry/server.js', manifest.sci.cli, manifest.sci.mcp]) {
     const path = join(root, relative)
@@ -46,6 +66,62 @@ async function environment(root: string, manifest: McpEnvironmentManifest): Prom
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
 describe('MCP environment upgrades', () => {
+  it('installs a verified bundled base without contacting the legacy network feed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-bundled-base-')); roots.push(root)
+    const manifest = signedManifest()
+    const bundledManifestPath = join(root, 'base.json'); const bundledArchivePath = join(root, 'base.zip')
+    await writeFile(bundledManifestPath, JSON.stringify(manifest)); await writeFile(bundledArchivePath, testArchive)
+    const fetcher = vi.fn(async () => { throw new Error('Network must not be used for bundled base') })
+    const controller = new McpEnvironmentController({ root, bundledManifestPath, bundledArchivePath, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(), fetcher, healthCheck: async () => {}, publish() {} })
+    const status = await controller.initialize()
+    expect(status, JSON.stringify(status)).toMatchObject({ phase: 'ready', environmentVersion: '1.0.0' })
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('rejects a corrupted bundled base rather than falling back to the network', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-corrupt-base-')); roots.push(root)
+    const manifest = signedManifest()
+    const bundledManifestPath = join(root, 'base.json'); const bundledArchivePath = join(root, 'base.zip')
+    await writeFile(bundledManifestPath, JSON.stringify(manifest)); await writeFile(bundledArchivePath, Buffer.alloc(testArchive.byteLength))
+    const fetcher = vi.fn(async () => { throw new Error('No remote fallback') })
+    const controller = new McpEnvironmentController({ root, bundledManifestPath, bundledArchivePath, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(), fetcher, healthCheck: async () => {}, publish() {} })
+    await expect(controller.initialize()).resolves.toMatchObject({ phase: 'failed', message: expect.stringContaining('SHA-256') })
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('recovers from a compact legacy current record whose standalone manifest is missing', async () => {
+    const userData = await mkdtemp(join(tmpdir(), 'zerowall-python-stale-current-')); roots.push(userData)
+    const root = join(userData, 'zerowall-python'); const stale = join(root, 'slots', 'a')
+    await mkdir(stale, { recursive: true })
+    const manifest = signedManifest()
+    const bundledManifestPath = join(userData, 'base.json'); const bundledArchivePath = join(userData, 'base.zip')
+    await writeFile(bundledManifestPath, JSON.stringify(manifest)); await writeFile(bundledArchivePath, testArchive)
+    await writeFile(join(root, 'current.json'), JSON.stringify({ root: stale, slot: 'a', health: 'ready', manifest: { environmentVersion: '1.0.0', python: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } }, manifestPath: 'manifest.json' }))
+    const controller = new McpEnvironmentController({ root, bundledManifestPath, bundledArchivePath, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(), healthCheck: async () => {}, verifySharedPython: async () => {}, publish() {} })
+
+    const status = await controller.initialize()
+    expect(status, JSON.stringify(status)).toMatchObject({ phase: 'ready', environmentVersion: '1.0.0' })
+    const current = JSON.parse(await readFile(join(root, 'current.json'), 'utf8'))
+    expect(current.root).not.toBe(stale)
+    expect(current.slot).toBe('b')
+    expect((await lstat(stale)).isDirectory()).toBe(true)
+  })
+
+  it('installs the bundled shared runtime into a real stable directory on first run', async () => {
+    const userData = await mkdtemp(join(tmpdir(), 'zerowall-python-first-run-')); roots.push(userData)
+    const root = join(userData, 'zerowall-python'); const manifest = signedSharedManifest()
+    const bundledManifestPath = join(userData, 'base.json'); const bundledArchivePath = join(userData, 'base.zip')
+    await writeFile(bundledManifestPath, JSON.stringify(manifest)); await writeFile(bundledArchivePath, sharedTestArchive)
+    const controller = new McpEnvironmentController({ root, bundledManifestPath, bundledArchivePath, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(), healthCheck: async () => {}, verifySharedPython: async () => {}, publish() {} })
+
+    await expect(controller.initialize()).resolves.toMatchObject({ phase: 'ready', environmentVersion: '1.0.0' })
+    const stablePython = join(userData, 'Python')
+    expect(await readFile(join(stablePython, 'python.exe'), 'utf8')).toBe('fixture interpreter')
+    expect(await readFile(join(stablePython, 'Lib', 'site-packages', '.keep'), 'utf8')).toBe('')
+    expect((await lstat(stablePython)).isSymbolicLink()).toBe(false)
+    expect(JSON.parse(await readFile(join(root, 'current.json'), 'utf8')).runtimeRoot).toBe(userData)
+  })
+
   it('recognizes a committed package job after a crash before job completion was recorded', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-package-commit-')); roots.push(root)
     const installed = join(root, 'slots', 'committed')

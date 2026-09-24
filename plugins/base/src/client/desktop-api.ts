@@ -32,8 +32,9 @@ export interface McpEnvironmentStatus {
   python?: { ready: boolean; version?: string; executable?: string; sitePackages?: string; overlayPath?: string; packageCount?: number; message?: string }
 }
 
-export interface McpPythonPackage { dependencies?: string[]; upgradeHistory?: Array<{ from?: string; to: string; verifiedAt: string }>; verificationMessage?: string; previousVersion?: string; customized?: boolean; shadowedVersion?: string; latestError?: string; compatibleVersion?: string;  name: string; version: string; location?: string; source: 'core' | 'overlay'; requiredVersion?: string; latestVersion?: string; updateAvailable?: boolean; health: 'healthy' | 'update-available' | 'locked' }
+export interface McpPythonPackage { capabilities?: string[]; sha256?: string; dependencies?: string[]; upgradeHistory?: Array<{ from?: string; to: string; verifiedAt: string }>; verificationMessage?: string; previousVersion?: string; customized?: boolean; shadowedVersion?: string; latestError?: string; compatibleVersion?: string;  name: string; version: string; location?: string; source: 'core' | 'overlay'; requiredVersion?: string; latestVersion?: string; updateAvailable?: boolean; health: 'healthy' | 'update-available' | 'locked' }
 export interface McpPythonInfo {
+  runtimeRoot?: string
   profiles?: Array<{ name: string; status: 'ready' | 'stale'; sitePackages: string; packages: Array<{ name: string; version: string }> }>
   snapshotId?: string
   environmentVersion?: string
@@ -51,13 +52,49 @@ export interface McpPythonInfo {
   overlayPackageCount?: number
   packages: McpPythonPackage[]
   skillAudit?: McpSkillAudit
-  verification?: { imports: boolean; pipCheck: boolean; message: string }
+  verification?: { imports: boolean; pipCheck: boolean; message: string; installed?: number; failedPackages?: string[]; upToDate?: boolean }
   message?: string
+}
+
+export interface PythonEnvironmentDiagnostics {
+  checkedAt: string
+  python: { status: string; message?: string }
+  pip: { status: string; message?: string }
+  tls: { status: string; message?: string; caPath?: string }
+  mirror: { status: string; message?: string }
+}
+export interface PythonMirrorPresetInfo {
+  id: string
+  label: string
+  indexUrl: string
+  custom: boolean
+}
+export interface PythonEnvironmentResponse {
+  requestId: string
+  revision?: number
+  mirrorUrl?: string
+  /** Selectable mirrors; the saved index is appended when it is not a preset. */
+  mirrorPresets?: PythonMirrorPresetInfo[]
+  /** Default index, so the panel can show which preset is active without guessing. */
+  defaultMirrorUrl?: string
+  diagnostics?: PythonEnvironmentDiagnostics
+  plan?: PythonPackagePlan & { manifestRevision?: string }
+  manifest?: { revision: string; packageCount: number }
+  taskId?: string
+  status?: McpEnvironmentStatus
+  inventory?: McpPythonInfo
+  /** `sync` only: the changes it is applying, and whether it found anything to do. */
+  changes?: Array<{ name: string; from?: string; to: string }>
+  upToDate?: boolean
+  previousRevision?: string
+  dependencies?: { revision: number; manifestRevision: string; manifestSha256: string; checkedAt: string; changes: Array<{ name: string; from?: string; to: string; required: boolean; capabilities: string[] }>; source: 'remote' | 'bundled' | 'cache' }
+  events?: Array<{ action: string; requestId: string; createdAt: string; status: 'succeeded' | 'failed'; message?: string; taskId?: string }>
 }
 
 export interface ZeroWallDesktopApi {
   info(): Promise<{ version: string; platform: string; architecture: string }>
   chooseDirectory(): Promise<string | null>
+  chooseScienceFile?(): Promise<string | null>
   revealPath?(path: string): Promise<boolean>
   openFolder?(path: string): Promise<boolean>
   openPptx?(path: string): Promise<boolean>
@@ -77,6 +114,7 @@ export interface ZeroWallDesktopApi {
   installMcpPythonPackage?(spec: string): Promise<{ taskId: string }>
   checkMcpPythonPackageUpdates?(names?: string[]): Promise<McpPythonInfo>
   updateMcpPythonPackages?(names?: string[]): Promise<{ taskId: string }>
+  pythonEnvironment?(request: { action: 'status' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'; requestId: string; planId?: string; manifestRevision?: string; mirrorUrl?: string; expectedRevision?: number; confirm?: boolean }): Promise<PythonEnvironmentResponse>
   pauseMcpEnvironment?(): Promise<McpEnvironmentStatus>
   rollbackMcpEnvironment?(): Promise<{ taskId: string }>
   previewMcpPythonPackages?(names: string[]): Promise<PythonPackagePlan>

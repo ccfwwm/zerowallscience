@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { expect, it } from 'vitest'
 import { ResearchStore } from '../../../store/src/index.js'
-import { registerLocalAsset } from '../src/host/local-assets.js'
+import { importLocalAsset, registerLocalAsset } from '../src/host/local-assets.js'
 
 it('registers local bytes in place, deduplicates unchanged assets and preserves changed source revisions', async () => {
   const root = await mkdtemp(join(tmpdir(), 'local-assets-'))
@@ -36,6 +36,38 @@ it('rejects outside files, directory assets and junctions escaping the project',
     await expect(registerLocalAsset(store, project, '../outside/source.fa')).rejects.toThrow('outside')
     await expect(registerLocalAsset(store, project, 'escape/source.fa')).rejects.toThrow('outside')
     await expect(registerLocalAsset(store, project, '.')).rejects.toThrow('regular file')
+    expect(store.listDataAssets(project.id)).toHaveLength(0)
+  } finally { store.close(); await rm(root, { recursive: true, force: true }) }
+})
+
+it('copies an external scientific file into .zerowall/imports and registers verified bytes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'local-asset-import-'))
+  const workspace = join(root, 'workspace'); const sourceRoot = join(root, 'external')
+  await mkdir(workspace); await mkdir(sourceRoot)
+  const source = join(sourceRoot, 'sample.fasta'); const content = '>sample\nATGC\n'; await writeFile(source, content)
+  const store = new ResearchStore(join(root, 'store.sqlite'))
+  try {
+    const project = store.createProject({ name: 'Import', rootPath: workspace })
+    const asset = await importLocalAsset(store, project, source)
+    const importedPath = new URL(asset.uri)
+    const bytes = await readFile(importedPath)
+    expect(importedPath.pathname).toContain('/.zerowall/imports/')
+    expect(bytes.toString()).toBe(content)
+    expect(asset.checksum).toBe(createHash('sha256').update(content).digest('hex'))
+    expect(asset.provenance.registration).toBe('imported-external-file')
+    expect(asset.provenance.sourceName).toBe('sample.fasta')
+    expect(store.listResearchStudies(project.id)).toHaveLength(0)
+  } finally { store.close(); await rm(root, { recursive: true, force: true }) }
+})
+
+it('rejects unsupported external files before copying them into a project', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'local-asset-import-reject-'))
+  const workspace = join(root, 'workspace'); await mkdir(workspace)
+  const source = join(root, 'image.exe'); await writeFile(source, 'executable')
+  const store = new ResearchStore(join(root, 'store.sqlite'))
+  try {
+    const project = store.createProject({ name: 'Import', rootPath: workspace })
+    await expect(importLocalAsset(store, project, source)).rejects.toThrow('Unsupported science file type')
     expect(store.listDataAssets(project.id)).toHaveLength(0)
   } finally { store.close(); await rm(root, { recursive: true, force: true }) }
 })

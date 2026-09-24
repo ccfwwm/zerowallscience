@@ -7,6 +7,7 @@ import zipfile
 
 staging, root, archive = map(Path, sys.argv[1:4])
 hashes = {}
+entries = set()
 with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as z:
     for source, prefix in [(staging, ''), (root/'resources/skills', 'skills/'), (root/'resources/python', 'python/')]:
         for p in sorted(source.rglob('*')):
@@ -22,11 +23,20 @@ with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED, compresslev
             if p.name.startswith('.env') and p.suffix in ('.example', '.sample', '.template'):
                 continue
             relative = p.relative_to(source).as_posix()
+            # Installed runtime staging contains older copies of these assets.
+            # The repository is authoritative and is added once below.
+            if not prefix and relative.split('/', 1)[0].lower() in ('skills', 'python'):
+                continue
             if '.secrets' in p.parts or p.name.startswith('.env'):
                 raise RuntimeError(f'Secret-like file in archive input: {relative}')
             if prefix=='python/' and not (p.name.startswith('requirements-') or p.name.startswith('skill-dependenc')):
                 continue
-            z.write(p, prefix+relative)
+            entry = prefix+relative
+            normalized = entry.casefold()
+            if normalized in entries:
+                raise RuntimeError(f'Duplicate archive entry: {entry}')
+            entries.add(normalized)
+            z.write(p, entry)
             if not prefix:
                 with p.open('rb') as f: hashes[relative] = hashlib.file_digest(f,'sha256').hexdigest()
 with archive.open('rb') as f: digest=hashlib.file_digest(f,'sha256').hexdigest()

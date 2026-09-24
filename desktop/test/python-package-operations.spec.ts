@@ -1,7 +1,7 @@
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { expect, it } from 'vitest'
 import { canonicalManifest, McpEnvironmentController } from '../src/main/mcp-environment.js'
 import { replayCustomizations } from '../src/main/python-packages.js'
@@ -11,7 +11,15 @@ import { replayCustomizations } from '../src/main/python-packages.js'
 it.skipIf(!process.env.ZEROWALL_TEST_PYTHON_SNAPSHOT)('previews, installs, uninstalls, replays removals and rolls back safely on real Python', async () => {
   const source = process.env.ZEROWALL_TEST_PYTHON_SNAPSHOT!
   const root = await mkdtemp(join(tmpdir(), 'zerowall-package-operations-'))
+  const startedAt = Date.now()
+  const evidenceRoot = process.env.ZEROWALL_TEST_PYTHON_EVIDENCE ? resolve(process.env.ZEROWALL_TEST_PYTHON_EVIDENCE) : undefined
+  const evidence: { source: string; temporaryRoot: string; startedAt: string; ok: boolean; error?: string; steps: Array<{ stage: string; elapsedMs: number; detail?: unknown }> } = { source, temporaryRoot: root, startedAt: new Date(startedAt).toISOString(), ok: false, steps: [] }
+  const record = async (stage: string, detail?: unknown) => {
+    evidence.steps.push({ stage, elapsedMs: Date.now() - startedAt, detail })
+    if (evidenceRoot) { await mkdir(evidenceRoot, { recursive: true }); await writeFile(join(evidenceRoot, 'operations-evidence.json'), JSON.stringify(evidence, null, 2)) }
+  }
   try {
+    await record('copy-isolated-interpreter')
     const slot = join(root, 'slots', 'a')
     const manifest = JSON.parse(await readFile(join(source, 'manifest.json'), 'utf8'))
     const pythonDirectory = dirname(manifest.python.relativeExecutable)
@@ -27,7 +35,7 @@ it.skipIf(!process.env.ZEROWALL_TEST_PYTHON_SNAPSHOT)('previews, installs, unins
     for (const entry of await readdir(join(slot, pythonDirectory))) if (entry.endsWith('._pth')) await writeFile(join(slot, pythonDirectory, entry), `python312.zip\n.\n${relative(join(slot, pythonDirectory), site)}\nimport site\n`)
     for (const path of ['bio-tools/run_server.py', 'ketcher-chemistry/server.js', manifest.sci.cli, manifest.sci.mcp]) { await mkdir(dirname(join(slot, path)), { recursive: true }); await writeFile(join(slot, path), '') }
     await mkdir(join(slot, manifest.skillsRoot), { recursive: true })
-    manifest.python.modules = ['pip', 'packaging']; manifest.pythonHealth.imports = ['pip', 'packaging']; manifest.dependencies = { ...manifest.dependencies, corePackages: [] }
+    manifest.python.modules = ['pip', 'packaging']; manifest.pythonHealth.imports = ['pip', 'packaging']; manifest.dependencies = { ...manifest.dependencies, indexUrl: 'https://mirrors.aliyun.com/pypi/simple', corePackages: [] }
     const keys = generateKeyPairSync('ed25519')
     manifest.signature.keyId = 'stable-1'
     manifest.signature.value = sign(null, canonicalManifest(manifest), keys.privateKey).toString('base64')
@@ -37,27 +45,45 @@ it.skipIf(!process.env.ZEROWALL_TEST_PYTHON_SNAPSHOT)('previews, installs, unins
     const controller = new McpEnvironmentController({ root, manifestUrl: 'https://fixture.invalid', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(), publish() {}, healthCheck: async () => { if (failHealth) throw new Error('injected failure') } })
     const initial = await controller.pythonInfo()
     expect(initial.version, JSON.stringify(initial)).toBe('3.12.10')
+    await record('preview-six', { python: initial.version, indexUrl: manifest.dependencies.indexUrl })
     const plan = await controller.previewPackages(['six==1.17.0'])
     expect(plan.error).toBeUndefined(); expect(plan.changes).toContainEqual(expect.objectContaining({ name: 'six', to: '1.17.0' }))
     expect((await controller.pythonInfo()).packages.some(p => p.name === 'six')).toBe(false)
+    const storedPlan = JSON.parse(await readFile(join(root, 'plans', `${plan.planId}.json`), 'utf8'))
+    expect(storedPlan.wheels.every((wheel: { url: string }) => new URL(wheel.url).hostname === 'mirrors.aliyun.com')).toBe(true)
+    await record('apply-six', storedPlan)
     const installed = await controller.applyPackagePlan(plan.planId)
     expect(installed.packages.find(p => p.name === 'six')?.version).toBe('1.17.0')
+    await record('installed-six', { snapshotId: installed.snapshotId, six: installed.packages.find(p => p.name === 'six') })
     await expect(controller.previewUninstall(['pip'])).rejects.toThrow('必需依赖')
     const uninstall = await controller.previewUninstall(['six'])
     failHealth = true
+    await record('inject-failed-health')
     await expect(controller.applyPackagePlan(uninstall.planId)).rejects.toThrow('injected failure')
     expect((await controller.pythonInfo()).snapshotId).toBe(installed.snapshotId)
+    await record('failed-health-kept-active-snapshot', { snapshotId: installed.snapshotId })
     failHealth = false
     const removed = await controller.applyPackagePlan(uninstall.planId)
     expect(removed.packages.some(p => p.name === 'six')).toBe(false)
+    await record('uninstalled-six', { snapshotId: removed.snapshotId })
     const pointer = JSON.parse(await readFile(join(root, 'current.json'), 'utf8'))
     expect(pointer.removedPackages).toContain('six')
     const replay = join(root, 'slots', 'replay')
     await cp(installed.snapshotId!, replay, { recursive: true })
     await replayCustomizations(replay, manifest, join(replay, 'user-overlay'), {}, ['six'])
     expect((await readdir(join(replay, manifest.python.relativeSitePackages))).some(name => name.startsWith('six-'))).toBe(false)
+    await record('replayed-removal')
     await expect(controller.applyPackagePlan(plan.planId)).rejects.toThrow('环境已变化')
     await controller.rollback()
     expect((await controller.pythonInfo()).packages.find(p => p.name === 'six')?.version).toBe('1.17.0')
-  } finally { await rm(root, { recursive: true, force: true, maxRetries: 3 }) }
-}, 180_000)
+    evidence.ok = true
+    await record('rollback-restored-six')
+  } catch (error) {
+    evidence.error = error instanceof Error ? error.stack : String(error)
+    await record('failed')
+    throw error
+  } finally {
+    // Test owns only this mkdtemp tree, never the source runtime.
+    await rm(root, { recursive: true, force: true, maxRetries: 3 })
+  }
+}, 600_000)

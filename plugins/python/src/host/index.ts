@@ -3,6 +3,7 @@ import { registerEnvironmentTool } from './environment-tool.js'
 import { registerBioLocal } from './bio-local.js'
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
+import { statSync } from 'node:fs'
 import { access, lstat, readFile, mkdir, writeFile, rm } from 'node:fs/promises'
 import { delimiter, isAbsolute, join, relative, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -15,7 +16,7 @@ interface PythonArgs { code: string; description: string; timeoutMs?: number; wo
 interface PythonResult { exitCode: number; timedOut: boolean; stdout: string; stderr: string; python: string }
 interface RArgs { code: string; description: string; timeoutMs?: number; workdir?: string }
 interface RResult { exitCode: number; timedOut: boolean; stdout: string; stderr: string; rscript: string }
-interface CurrentRecord { overlayPath?: string; root?: unknown; health?: unknown; manifest?: Manifest }
+interface CurrentRecord { overlayPath?: string; root?: unknown; health?: unknown; manifest?: Manifest; runtimeRoot?: string; runtimeExecutable?: string; runtimeSitePackages?: string }
 interface Manifest {
   version?: unknown
   python?: { version?: unknown; relativeExecutable?: unknown; relativeSitePackages?: unknown }
@@ -43,6 +44,8 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
   if (current.health !== 'ready' || typeof current.root !== 'string' || current.root.trim() === '') {
     throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python is not healthy. Retry initialization.')
   }
+  // Pin each task and its lease to the immutable snapshot. The public Python
+  // junction is for discovery; updates must not redirect a running task.
   const installRoot = resolve(current.root)
   const manifest = current.manifest ?? JSON.parse(await readFile(join(installRoot, 'manifest.json'), 'utf8')) as Manifest
   const relativeExecutable = manifest.python?.relativeExecutable
@@ -54,7 +57,7 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
   const executable = resolve(installRoot, relativeExecutable)
   const sitePackages = resolve(installRoot, relativeSitePackages)
   const runtime = typeof manifest.python?.version === 'string' ? manifest.python.version.match(/^\d+\.\d+/u)?.[0] ?? '3.12' : '3.12'
-  const overlayPath = current.overlayPath ?? resolve(root, 'python-overlay', `python-${runtime.replace(/[^A-Za-z0-9.-]/gu, '-')}`)
+  const overlayPath = relativeSitePackages === 'Python/Lib/site-packages' ? sitePackages : current.overlayPath ?? resolve(root, 'python-overlay', `python-${runtime.replace(/[^A-Za-z0-9.-]/gu, '-')}`)
   const isContained = (candidate: string): boolean => {
     const containment = relative(installRoot, candidate)
     return containment !== '..' && !containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(containment)
@@ -74,6 +77,20 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
 }
 
 function bounded(value: string): string { return value.length <= MAX_OUTPUT ? value : value.slice(-MAX_OUTPUT) }
+
+export function pythonChildEnvironment(sitePackages: string): NodeJS.ProcessEnv {
+  const env = { ...process.env }
+  const ca = join(sitePackages, 'certifi', 'cacert.pem')
+  const validFile = (path: string): boolean => { try { return statSync(path).isFile() } catch { return false } }
+  for (const key of ['SSL_CERT_FILE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', 'PIP_CERT']) {
+    let path = env[key]?.trim().replace(/^['"]|['"]$/gu, '')
+    if (path && /^[A-Za-z]:\\/u.test(path)) path = path.replaceAll('\\\\', '\\')
+    if (validFile(ca)) env[key] = ca
+    else if (path && validFile(path)) env[key] = path
+    else delete env[key]
+  }
+  return env
+}
 
 async function runPython(args: PythonArgs, exec: { signal: AbortSignal; agent?: { session: { header: { cwd?: string } } } }): Promise<PythonResult> {
   const resolved = await resolveManagedPython()
@@ -96,11 +113,13 @@ async function runPython(args: PythonArgs, exec: { signal: AbortSignal; agent?: 
   const abort = () => controller.abort()
   exec.signal.addEventListener('abort', abort, { once: true })
   try { return await new Promise<PythonResult>((resolveResult, reject) => {
-    const bootstrap = `import sys\nsys.path.insert(0, ${JSON.stringify(resolved.overlayPath)})\n${args.code}`
+    // Old embeddable installations ignore PYTHONPATH; retain their import
+    // bridge until migration. Shared layouts have just one package directory.
+    const bootstrap = `import sys\nsys.path[:0] = ${JSON.stringify([...new Set([resolved.overlayPath, resolved.sitePackages])])}\n${args.code}`
     const child = spawn(resolved.executable, ['-c', bootstrap], {
       cwd: workdir,
       windowsHide: true,
-      env: { ...process.env, ZEROWALL_PYTHON_OVERLAY: resolved.overlayPath, ZEROWALL_NODE: process.execPath, ZEROWALL_INTEGRITY_WORKER: createRequire(import.meta.url).resolve('@zerowallscience/integrity-runtime/worker').replace(/app\.asar([\\/])/u, 'app.asar.unpacked$1'), PYTHONNOUSERSITE: '1', PYTHONPATH: [resolved.overlayPath, resolved.sitePackages].join(delimiter) },
+      env: { ...pythonChildEnvironment(resolved.sitePackages), ZEROWALL_PYTHON_OVERLAY: resolved.overlayPath, ZEROWALL_NODE: process.execPath, ZEROWALL_INTEGRITY_WORKER: createRequire(import.meta.url).resolve('@zerowallscience/integrity-runtime/worker').replace(/app\.asar([\\/])/u, 'app.asar.unpacked$1'), PYTHONNOUSERSITE: '1', PYTHONPATH: [...new Set([resolved.overlayPath, resolved.sitePackages])].join(delimiter) },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let stdout = ''; let stderr = ''; let timedOut = false; let settled = false

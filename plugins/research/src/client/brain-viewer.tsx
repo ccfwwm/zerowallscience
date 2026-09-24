@@ -4,6 +4,7 @@ import type { ArtifactRecord, ViewerSessionRecord } from '@zerowallscience/resea
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { BrainAtlasResponse, BrainAtlasSummary, BrainCellAnalysis, BrainRegionResult, BrainSlice } from '../shared/types.js'
 import {BrainTransformPanel} from './brain-transform-panel.js'
+import { useWorkbenchSelection } from './workbench-selection.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 type BrainEnvelope = { brain?: BrainAtlasResponse; artifact?: ArtifactRecord }
@@ -33,6 +34,7 @@ export function BrainViewer({ remote, sessionId }: { remote: Remote; sessionId: 
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const generation = useRef(0)
+  const selection = useWorkbenchSelection()
 
   const call = async (action: BrainAction, input: Record<string, unknown> = {}): Promise<BrainAtlasResponse> => {
     const result = unwrapRemoteResult('scienceViewer', await remote.scienceViewer({
@@ -54,19 +56,53 @@ export function BrainViewer({ remote, sessionId }: { remote: Remote; sessionId: 
     if (response.rendering) setMessage(`brainrender 已生成 PNG/HTML 场景。结果仍需科学复核。\nPNG: ${response.rendering.pngUri}\nHTML: ${response.rendering.htmlUri}`)
   }
 
+  // `current` is captured before the request and re-checked before anything is painted:
+  // switching session mid-flight bumps `generation`, so a slow brain_analyze of the
+  // previous study can no longer land on top of the new session's slice or region.
   const run = async (action: BrainAction, input: Record<string, unknown> = {}): Promise<void> => {
     if (busy) return
+    const current = generation.current
     setBusy(true); setMessage('')
-    try { apply(await call(action, { ...input, ...(viewer ? { viewerId: viewer.id, expectedVersion: viewer.version } : {}) })) }
-    catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
-    finally { setBusy(false) }
+    try {
+      const response = await call(action, { ...input, ...(viewer ? { viewerId: viewer.id, expectedVersion: viewer.version } : {}) })
+      if (current !== generation.current) return
+      apply(response)
+    }
+    catch (error) { if (current === generation.current) setMessage(error instanceof Error ? error.message : String(error)) }
+    finally { if (current === generation.current) setBusy(false) }
   }
 
+  // Of the three asset slots this viewer exposes, registrationAsset is the one that
+  // binds an asset to the workbench flow: brainreg stacks are the same file: URIs
+  // registered under a study that show up in the sidebar, while cellfinder signal and
+  // background volumes are chosen ad hoc inside the panel. Auto-filling those two from
+  // a sidebar pick would silently point cell detection at an unrelated file.
+  useEffect(() => { if (selection.assetId) setRegistrationAsset(selection.assetId) }, [selection.assetId])
+
+  /**
+   * The automatic open, deduplicated per session.
+   *
+   * This effect used to call `call('brain_open')` directly, which bypassed the
+   * `busy` guard `run()` applies. A remount — a tab switch, a shell re-render
+   * that changes `remote` identity, React's development double-invoke — then
+   * issued a second open while the first was still starting the interpreter, and
+   * the host correctly refused the second one as "runner is busy". Holding the
+   * in-flight promise in a ref means every mount of the same session shares one
+   * host call; the generation counter still decides which result may paint.
+   */
+  const openOnce = useRef<{ session: string; promise: Promise<BrainAtlasResponse> }>()
   useEffect(() => {
     const current = ++generation.current
     setViewer(undefined); setSummary(undefined); setSlice(undefined); setRegion(undefined); setAnalysis(undefined); setMessage('')
+    if (openOnce.current?.session !== sessionId) {
+      openOnce.current = { session: sessionId, promise: call('brain_open') }
+      // A failed open must be retryable rather than cached forever: dropping the
+      // entry lets the next remount try again after the user installs the
+      // dependencies the message asked for.
+      openOnce.current.promise.catch(() => { if (openOnce.current?.session === sessionId) openOnce.current = undefined })
+    }
     void Promise.all([
-      call('brain_open'),
+      openOnce.current.promise,
       remote.scienceViewer({ sessionId, action: 'list' }).then(value => unwrapRemoteResult('scienceViewer', value) as unknown as { assets?: Asset[] }),
     ]).then(([response, listed]) => { if (current === generation.current) { apply(response); setAssets(listed.assets ?? []) } }).catch(error => { if (current === generation.current) setMessage(error instanceof Error ? error.message : String(error)) })
     return () => { generation.current++ }

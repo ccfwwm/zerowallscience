@@ -158,6 +158,7 @@ export class ImageViewerService {
       const payload = validateAnnotationPayload(document.payload)
       if (payload.coordinates.width !== width || payload.coordinates.height !== height || payload.coordinates.pages !== pages) throw new Error('Native return changed image geometry.')
       assertCurrent()
+      if (launch.id !== 'fiji' && launch.id !== 'napari') throw new Error('Unsupported native annotation origin.')
       const result = this.store.collectNativeAnnotation({ projectId: project.id, assetId: asset.id, sourceSha256: sha256, expectedRevisionId: bridge.baseRevisionId, payload, origin: launch.id }, launch.launchId, { projectId: project.id, name: `${launch.id} ROI return`, uri, mediaType: 'application/json', checksum: createHash('sha256').update(returned).digest('hex'), metadata: { viewerId: viewer!.id } })
       return { ...response(), ...result }
     }
@@ -169,7 +170,7 @@ export class ImageViewerService {
         const document = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await readProjectAsset(project, imported, 8 * 1024 * 1024)))
         if (document.format !== 'zerowall-image-annotations' || document.version !== 1 || document.assetId !== asset.id || document.sourceSha256 !== sha256 || document.projectId !== project.id) throw new Error('Annotation exchange does not match the project, asset or source hash.')
         if (!['workbench', 'fiji', 'napari'].includes(document.origin)) throw new Error('Unknown annotation exchange origin.')
-        payload = validateAnnotationPayload(document.payload); expectedRevisionId = document.baseRevisionId; origin = document.origin
+        payload = validateAnnotationPayload(document.payload); expectedRevisionId = document.baseRevisionId; origin = document.origin as 'workbench' | 'fiji' | 'napari'
       } else {
         if (!input.annotation) throw new Error('Annotation payload and expected revision are required.')
         payload = validateAnnotationPayload(input.annotation.payload); expectedRevisionId = input.annotation.expectedRevisionId

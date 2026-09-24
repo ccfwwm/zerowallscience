@@ -6,6 +6,7 @@ import type { MoleculeRequest, MoleculeResponse } from '../shared/types.js'
 import { INITIAL_MOLECULE_STATE, type MoleculeMeasurement, type MoleculeRuntime, type MoleculeSummary, type MoleculeViewState } from '../shared/molecule.js'
 import { MoleculeDockingPanel } from './molecule-docking-panel.js'
 import type { MoleculeController, MoleculeRuntimeApi } from './molecule-runtime.js'
+import { useWorkbenchSelection } from './workbench-selection.js'
 
 type Remote=TypertRemoteNamespaceMap['zerowallResearch']
 let runtimePromise:Promise<MoleculeRuntimeApi>|undefined
@@ -30,6 +31,7 @@ export function MoleculeViewer({remote,sessionId}:{remote:Remote;sessionId:strin
   const [state,setState]=useState<MoleculeViewState>(INITIAL_MOLECULE_STATE);const [measurement,setMeasurement]=useState<MoleculeMeasurement>()
   const [busy,setBusy]=useState(false);const [message,setMessage]=useState('');const [ready,setReady]=useState(false)
   const container=useRef<HTMLDivElement>(null);const controller=useRef<MoleculeController>();const generation=useRef(0)
+  const selection=useWorkbenchSelection();const handled=useRef('')
   const call=async(action:MoleculeRequest['action'],data:Partial<MoleculeRequest>={}):Promise<MoleculeResponse>=>{
     const response=unwrapRemoteResult('scienceViewer',await remote.scienceViewer({sessionId,action:('molecule_'+action) as 'molecule_open',molecule:{...data,sessionId,action}}))
     return (response as unknown as {molecule:MoleculeResponse}).molecule
@@ -65,6 +67,21 @@ export function MoleculeViewer({remote,sessionId}:{remote:Remote;sessionId:strin
     }catch(error){if(current===generation.current)setMessage(error instanceof Error?error.message:String(error))}
     finally{if(current===generation.current)setBusy(false)}
   }
+  // Mirror the workbench sidebar pick into the local dropdown, so the panel shows
+  // the file the user selected. An empty selection leaves the dropdown untouched,
+  // because then the user is choosing inside the viewer.
+  useEffect(()=>{if(selection.assetId)setAssetId(selection.assetId)},[selection.assetId])
+  useEffect(()=>{
+    if(!selection.assetId||selection.revision==null)return
+    // Keyed by revision: selecting the same asset again is a second request, but a
+    // re-render of the same selection must not reissue the remote open call.
+    const key=`${selection.assetId}:${selection.revision}`
+    if(handled.current===key)return
+    handled.current=key
+    // Fired from the effect, so it runs before any user interaction can flip run()'s
+    // busy guard and swallow the requested open.
+    void run('open',{assetId:selection.assetId})
+  },[selection.assetId,selection.revision])
   const change=async(next:MoleculeViewState):Promise<void>=>{
     if(busy)return;setBusy(true)
     try{await controller.current?.apply({...next,camera:controller.current.camera()});setState(next);setMeasurement(undefined)}catch(error){setMessage(String(error))}finally{setBusy(false)}

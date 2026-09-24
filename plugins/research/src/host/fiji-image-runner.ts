@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { open, readFile, readdir, writeFile } from 'node:fs/promises'
 import { delimiter, dirname, join } from 'node:path'
-import { fijiJava } from './fiji-workflow.js'
+import { fijiJava, type FijiJavaResolver } from './fiji-workflow.js'
 import { cfuMeasurement, colonyMeasurement, scratchWoundMeasurement, tubeMeasurement, type FijiImageConfig, type FijiImageResult } from '../shared/fiji-experiments.js'
 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
@@ -131,13 +131,13 @@ System.exit(0)
 `
 
 let active = false
-export async function runImageJExperiment(directory: string, source: Buffer, config: FijiImageConfig, signal?: AbortSignal, review?: { annotationRevisionId: string; excludedRoiIds: string[]; foregroundRoiIds?: string[]; reason: string; payload: ImageAnnotations }): Promise<{ analysis: FijiImageResult; files: Array<{ name: string; checksum: string }>; runnerSha256: string }> {
+export async function runImageJExperiment(directory: string, source: Buffer, config: FijiImageConfig, signal?: AbortSignal, review?: { annotationRevisionId: string; excludedRoiIds: string[]; foregroundRoiIds?: string[]; reason: string; payload: ImageAnnotations }, javaResolver?: FijiJavaResolver, project?: import('@zerowallscience/research-store/types').ProjectRecord): Promise<{ analysis: FijiImageResult; files: Array<{ name: string; checksum: string }>; runnerSha256: string }> {
   signal?.throwIfAborted()
   if (config.review && !review) throw new Error('Mask review requires Host-validated accepted annotation data.')
   if (active) throw new Error('Another local ImageJ experiment is running; retry after it completes.')
   active = true
   try {
-    const java = await fijiJava(); const sourcePath=join(directory,'source-image'); const requestPath=join(directory,'imagej-request.json'); const scriptPath=join(directory,'imagej-runner.py')
+    const java = javaResolver ? await javaResolver(project) : await fijiJava(); const sourcePath=join(directory,'source-image'); const requestPath=join(directory,'imagej-request.json'); const scriptPath=join(directory,'imagej-runner.py')
     const plugins:Array<{name:string;sha256:string}>=[]; const pluginPaths:string[]=[]
     if(config.kind==='tube-formation'){
       const pluginDirectory=join(dirname(dirname(java.jars)),'plugins');const names=await readdir(pluginDirectory)

@@ -2,7 +2,7 @@ import { attachPythonBroker } from './python-broker.js'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { appendFile, cp, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { access, appendFile, cp, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, WebContentsView, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
@@ -17,6 +17,8 @@ import { resolveDesktopIdentity } from './identity.js'
 import { findDesktopWorkspaceRoot, resolveDesktopIconPath, resolveDesktopResourcePath } from './paths.js'
 import { stopBeforeExit } from './shutdown.js'
 import { PythonUpdaterService } from './python-updater-service.js'
+import { PythonSyncService } from './python-sync.js'
+import { PythonEnvironmentApi, type PythonEnvironmentRequest } from './python-environment-api.js'
 import { mcpEnvironmentDiagnostic, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
 import { registerWindowControls } from './window-controls.js'
@@ -377,6 +379,22 @@ async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
   }
 }
 
+async function resolveManagedPythonExecutable(root: string): Promise<string | undefined> {
+  try {
+    const current = JSON.parse(await readFile(join(root, 'current.json'), 'utf8')) as { root?: unknown; health?: unknown; manifest?: { python?: { relativeExecutable?: unknown } } }
+    if (current.health !== 'ready' || typeof current.root !== 'string' || current.root.trim() === '') return undefined
+    const installRoot = resolve(current.root)
+    const manifest = current.manifest ?? JSON.parse(await readFile(join(installRoot, 'manifest.json'), 'utf8')) as { python?: { relativeExecutable?: unknown } }
+    const relativeExecutable = manifest.python?.relativeExecutable
+    if (typeof relativeExecutable !== 'string' || relativeExecutable.trim() === '' || isAbsolute(relativeExecutable)) return undefined
+    const executable = resolve(installRoot, relativeExecutable)
+    const containment = relative(installRoot, executable)
+    if (containment === '..' || containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(containment)) return undefined
+    await access(executable)
+    return executable
+  } catch { return undefined }
+}
+
 async function launch(): Promise<void> {
   publishStartup({ progress: 35, message: '正在加载核心服务与插件' })
   await runtime?.start(join(app.getPath('userData'), 'workspace'))
@@ -406,6 +424,11 @@ if (ownsInstance) app.whenReady().then(async () => {
   process.env.ZEROWALL_KETCHER_ROOT = app.isPackaged ? join(process.resourcesPath, 'ketcher-chemistry') : join(findWorkspaceRoot(), 'resources', 'mcp', 'ketcher-chemistry')
   // Compatibility for older bundled plugins and already-running sessions.
   process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = mcpEnvironmentRoot
+  // BrainGlobe resolves current.json for each job. Do not freeze a managed
+  // snapshot into an inherited environment variable across updates. An
+  // explicitly configured external BrainGlobe interpreter remains supported.
+  // Managed Python operations pass the configured mirror explicitly. Do not
+  // mutate the user's global pip.ini; it may belong to another project.
   // Do not block the entire desktop when the OS credential provider is not
   // available (for example, a packaged smoke run in a headless profile).
   // CredentialVault still receives the safeStorage callbacks and will fail
@@ -424,7 +447,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   const scheduleMcpEnvironmentUpdate = (): void => {
     if (mcpEnvironmentStartTimer !== undefined) return
     mcpEnvironmentStartTimer = setTimeout(() => {
-      void mcpEnvironment.autoUpdate().catch(() => undefined)
+      void checkPythonUpdates()
     }, 5_000)
     mcpEnvironmentStartTimer.unref()
   }
@@ -471,6 +494,8 @@ if (ownsInstance) app.whenReady().then(async () => {
   mcpEnvironment = new PythonUpdaterService({
     coordinateHost: true,
     root: mcpEnvironmentRoot,
+    bundledManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'base-manifest.json') : join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-1.4.1', 'latest.json'),
+    bundledArchivePath: app.isPackaged ? join(process.resourcesPath, 'python', 'base-runtime.zip') : join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-1.4.1', 'zerowall-python-windows-x64-1.4.1.zip'),
     manifestUrl: process.env.ZEROWALL_PYTHON_MANIFEST ?? process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python/windows-x64/latest.json',
     publicKey: process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? MCP_ENVIRONMENT_PUBLIC_KEY,
     publicKeys: MCP_ENVIRONMENT_KEYRING,
@@ -486,6 +511,28 @@ if (ownsInstance) app.whenReady().then(async () => {
       }
     },
   })
+  const pythonSync = new PythonSyncService({
+    updater: mcpEnvironment,
+    root: mcpEnvironmentRoot,
+    keys: MCP_ENVIRONMENT_KEYRING,
+    applicationVersion: app.getVersion(),
+    feedUrl: process.env.ZEROWALL_PYTHON_DEPENDENCY_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-science-python/windows-x64/latest.json',
+    bundledManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'dependency-manifest.json') : join(app.getAppPath(), '..', 'resources', 'python', 'dependency-manifest.json'),
+  })
+  const pythonEnvironmentApi = new PythonEnvironmentApi(mcpEnvironmentRoot, mcpEnvironment, pythonSync)
+  mcpEnvironment.setEnvironmentHandler(request => pythonEnvironmentApi.request(request))
+  const checkPythonUpdates = async (): Promise<void> => {
+    // The signed base runtime is installed automatically on first launch; this
+    // runs after the workbench becomes usable and streams progress to the
+    // Python environment panel. Subsequent runtime and package updates remain
+    // read-only until the user chooses to apply them.
+    const status = await mcpEnvironment.autoUpdate().catch(error => {
+      console.warn('Python runtime check:', error instanceof Error ? error.message : String(error))
+      return undefined
+    })
+    if (!status || (status.phase !== 'ready' && status.phase !== 'manual')) return
+    await pythonEnvironmentApi.request({ action: 'check_manifest', requestId: `startup-${Date.now()}` }).catch(error => console.warn('Python dependency check:', error instanceof Error ? error.message : String(error)))
+  }
 
   app.once('before-quit', () => mcpEnvironment.stop())
 
@@ -547,6 +594,14 @@ if (ownsInstance) app.whenReady().then(async () => {
     const result = mainWindow && !mainWindow.isDestroyed()
       ? await dialog.showOpenDialog(mainWindow, options)
       : await dialog.showOpenDialog(options)
+    return result.canceled ? null : result.filePaths[0] ?? null
+  })
+  ipcMain.handle('desktop:choose-science-file', async () => {
+    const options: OpenDialogOptions = { properties: ['openFile'], filters: [
+      { name: '科研文件', extensions: ['png', 'jpg', 'jpeg', 'tif', 'tiff', 'svs', 'ndpi', 'fasta', 'fa', 'gb', 'gbk', 'scf', 'ab1', 'pdb', 'cif', 'mmcif', 'sdf', 'fcs', 'h5ad', 'zarr'] },
+      { name: '所有文件', extensions: ['*'] },
+    ] }
+    const result = mainWindow && !mainWindow.isDestroyed() ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options)
     return result.canceled ? null : result.filePaths[0] ?? null
   })
   ipcMain.handle('desktop:reveal-path', (_event, path: unknown) => {
@@ -682,6 +737,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:mcp-python:install', (_event, spec?: unknown) => mcpEnvironment.installPythonPackage(typeof spec === 'string' ? spec : ''))
   ipcMain.handle('desktop:mcp-python:check-updates', (_event, names?: string[]) => mcpEnvironment.checkPythonPackageUpdates(Array.isArray(names) ? names : []))
   ipcMain.handle('desktop:mcp-python:update', (_event, names?: unknown) => mcpEnvironment.updatePythonPackages(Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : []))
+  ipcMain.handle('desktop:python-environment', (_event, request: PythonEnvironmentRequest) => pythonEnvironmentApi.request(request))
   ipcMain.handle('desktop:mcp-environment:retry', () => mcpEnvironment.retry())
   ipcMain.handle('desktop:mcp-environment:select-path', async () => {
     const result = await dialog.showOpenDialog(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined as never, { properties: ['openDirectory'] })
@@ -692,10 +748,10 @@ if (ownsInstance) app.whenReady().then(async () => {
   await launch()
   await navigation
   // Environment updates run independently from desktop updates. Startup and
-  // hourly checks both install a newer signed revision automatically. The
+  // hourly checks discover signed revisions without applying them. The
   // first update begins only after the authenticated workbench is visible so
   // a large archive cannot delay the first usable window.
-  const mcpEnvironmentInterval = setInterval(() => { void mcpEnvironment.autoUpdate().catch(() => undefined) }, UPDATE_CHECK_INTERVAL_MS)
+  const mcpEnvironmentInterval = setInterval(() => { void checkPythonUpdates() }, UPDATE_CHECK_INTERVAL_MS)
   mcpEnvironmentInterval.unref()
   const updateRecordPath = join(userData, 'updates', 'last-check.json')
   const runScheduledUpdateCheck = async (): Promise<void> => {

@@ -1,0 +1,172 @@
+/* One column: the shell already owns a sidebar, and a second nav rail inside it
+   gave the 主页 tab three stacked rails and a squeezed viewer. */
+.homeShell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.homeMain {
+  min-width: 0;
+}
+
+/* Page entries wrap into a row of chips instead of a vertical rail, so they
+   read as navigation between pages rather than a competing tool list. */
+.pageNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pageCard,
+.pageCardActive {
+  flex: 1 1 168px;
+}
+
+/* The research pages are sidebar destinations rather than tabs, so each entry
+   reads as a card and keeps its own selected state. */
+.pageCard,
+.pageCardActive {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--zw-line, #cfe0d8);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pageCardActive {
+  border-color: var(--zw-accent, #3f806b);
+  background-color: var(--zw-soft-2, #dcece4);
+}
+
+.pageCard span,
+.pageCardActive span {
+  color: var(--zw-muted, #6d8078);
+  font-size: 12px;
+}
+
+.grid,
+.homeGrid {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.homeGrid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.panel {
+  border: 1px solid var(--zw-line, #cfe0d8);
+  background: var(--zw-surface, #fff);
+  border-radius: 8px;
+  padding: 14px;
+  min-width: 0;
+}
+
+.panel h3 {
+  margin-top: 0;
+}
+
+.status {
+  display: flex;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--zw-line, #cfe0d8);
+  align-items: baseline;
+}
+
+.metricGrid {
+  display: grid;
+  gap: 2px;
+}
+
+.inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.muted {
+  color: var(--zw-muted, #6d8078);
+  margin-bottom: 0;
+}
+
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 10px;
+  font-family: ui-monospace, monospace;
+}
+
+.details {
+  border: 1px solid var(--zw-line, #cfe0d8);
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 14px;
+}
+
+.toolBar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+/* The scrim owns the click-outside dismissal and hides the page behind the
+   dialog, which a bare inset box left readable and clickable. */
+.dialogScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(24, 41, 35, .38);
+}
+
+.engineDialog {
+  display: flex;
+  flex-direction: column;
+  width: min(880px, 100%);
+  max-height: min(760px, 88vh);
+  overflow: hidden;
+  background: var(--zw-surface, #fff);
+  border: 1px solid var(--zw-line, #cfe0d8);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(16, 32, 26, .32);
+}
+
+.dialogHeader {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--zw-line, #cfe0d8);
+  background: var(--zw-soft, #eaf4ef);
+}
+
+.dialogHeader h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.dialogBody {
+  min-height: 0;
+  padding: 16px;
+  overflow: auto;
+}
+
+@media (max-width: 760px) {
+  .homeShell,
+  .homeGrid {
+    grid-template-columns: 1fr !important;
+  }
+}

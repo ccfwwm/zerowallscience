@@ -6,6 +6,7 @@ import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { ScienceViewerRequest, SequenceAnalysis, SequenceViewState, SequenceWindow } from '../shared/types.js'
 import { SequenceFeatureMap } from './sequence-feature-map.js'
 import type { SequenceSimulationOptions } from '../shared/sequence.js'
+import { useWorkbenchSelection } from './workbench-selection.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 const defaults: SequenceViewState = { recordIndex: 0, start: 1, count: 2400, selectionStart: 1, selectionEnd: 1 }
@@ -30,17 +31,22 @@ export function SequenceViewer({ remote, sessionId }: { remote: Remote; sessionI
   const [busy, setBusy] = useState(false)
   const generation = useRef(0)
   const locked = useRef(false)
+  const workbench = useWorkbenchSelection()
+  const handled = useRef('')
 
   const call = async (input: Omit<ScienceViewerRequest, 'sessionId'>) => unwrapRemoteResult('scienceViewer', await remote.scienceViewer({ ...input, sessionId }))
   const list = async () => {
     const current = generation.current
     const response = await call({ action: 'list' })
     if (current !== generation.current) return
-    setAssets(response.assets ?? []); setViewers(response.viewers?.filter(item => item.tool === 'sequence') ?? [])
+    // Sanger trace sessions are also stored under tool 'sequence' (host sanger.ts), so
+    // the discriminator is state.traceTool: without it, traces would be listed here and
+    // would open the wrong viewer.
+    setAssets(response.assets ?? []); setViewers(response.viewers?.filter(item => item.tool === 'sequence' && item.state.traceTool !== 'sanger') ?? [])
   }
   useEffect(() => {
-    generation.current++
-    const current = generation.current
+    const current = ++generation.current
+    locked.current = false
     setViewer(undefined); setWindow(undefined); setAnalysis(undefined); setAssets([]); setViewers([]); setAssetId(''); setMessage('')
     setForwardPrimer('');setReversePrimer('');setForwardAnneal('');setReverseAnneal('');setTemplateTopology('linear');setFragmentOrder('1+, 2+');setProductTopology('circular');setMinimumOverlap(20);setEnzyme('BsaI');setOperation('translate');setCrisprTarget('')
     void list().catch(error => { if (current === generation.current) setMessage(String(error)) })
@@ -65,8 +71,26 @@ export function SequenceViewer({ remote, sessionId }: { remote: Remote; sessionI
       if (response.artifact) setMessage(`已登记产物：${response.artifact.name}\n${response.artifact.uri}\nSHA-256: ${response.artifact.checksum}`)
       await list()
     } catch (error) { if (current === generation.current) setMessage(error instanceof Error ? error.message : String(error)) }
-    finally { locked.current = false; if (current === generation.current) setBusy(false) }
+    // The lock is released only for the request that still owns this session: a
+    // superseded open must not clear the lock its replacement is holding, nor may it
+    // leave the lock held after the panel has moved on.
+    finally { if (current === generation.current) { locked.current = false; setBusy(false) } }
   }
+  // Mirror the workbench sidebar pick into the local dropdown, so the panel shows
+  // the file the user selected. An empty selection leaves the dropdown untouched,
+  // because then the user is choosing inside the viewer.
+  useEffect(() => { if (workbench.assetId) setAssetId(workbench.assetId) }, [workbench.assetId])
+  useEffect(() => {
+    if (!workbench.assetId || workbench.revision == null) return
+    // Keyed by revision: selecting the same asset again is a second request, but a
+    // re-render of the same selection must not reissue the remote open call.
+    const key = `${workbench.assetId}:${workbench.revision}`
+    if (handled.current === key) return
+    handled.current = key
+    // Fired from the effect, so it runs before any user interaction can flip run()'s
+    // locked guard and swallow the requested open.
+    void run({ action: 'open', assetId: workbench.assetId })
+  }, [workbench.assetId, workbench.revision])
   const savedState = viewer?.state
   const simulate=(action:'analyze'|'export')=>{
     if(!viewer)return

@@ -10,14 +10,39 @@ import { validateHeRegion, type HeSlideMetadata } from '../shared/he.js'
 import { validateHeSegmentationParameters, type HeSegmentationRequest, type HeSegmentationResponse, type HeSegmentationResult } from '../shared/he-segmentation.js'
 import { containedFile } from './science-viewer.js'
 import { readProjectAsset } from './image-viewer.js'
+import { pythonChildEnvironment } from './python-env.js'
 import { HE_SEGMENTATION_RUNNER } from './he-segmentation-runner.js'
 import { HE_STARDIST_MODEL } from './he-stardist-model.js'
+import { resolveManagedSciencePython, scienceBootstrap } from './managed-python.js'
 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
 const terminal = new Set(['succeeded', 'failed', 'cancelled', 'timed_out'])
 export function heSegmentationRoot(): string { return join(process.env.LOCALAPPDATA || process.env.HOME || '', 'ZeroWallScience', 'science-engines', 'he-stardist-7.0.0') }
-export function heSegmentationPython(): string { return process.env.ZEROWALL_HE_STARDIST_PYTHON?.trim() || join(heSegmentationRoot(), 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python') }
+/**
+ * The StarDist weights are frozen data, not an environment: they stay in their
+ * own directory and are checksum-verified before every run. Only the
+ * interpreter moved to the shared environment.
+ */
 export function heSegmentationModel(): string { return process.env.ZEROWALL_HE_STARDIST_MODEL?.trim() || join(heSegmentationRoot(), 'payload', 'model', '2D_versatile_he') }
+/**
+ * The interpreter HE StarDist runs in.
+ *
+ * This is the shared managed environment, not a private venv. The runner's
+ * imports — numpy, openslide, tifffile, tensorflow, stardist, csbdeep — are
+ * declared in `resources/python/requirements-research.txt` and installed on
+ * demand through the signed dependency manifest, so a second environment would
+ * only duplicate that install, drift from its versions, and need its own update
+ * path. An explicit ZEROWALL_HE_STARDIST_PYTHON still wins for a user-managed
+ * interpreter, which is the one case where a private environment is the
+ * operator's choice rather than ours.
+ */
+export async function resolveHeSegmentationPython(): Promise<{ executable: string; bootstrap: string }> {
+  const explicit = process.env.ZEROWALL_HE_STARDIST_PYTHON?.trim()
+  if (explicit) return { executable: explicit, bootstrap: '' }
+  const managed = await resolveManagedSciencePython()
+  if (!managed) throw new Error('未找到受管理的 ZeroWall Python 环境；HE StarDist 共用该环境，不创建独立 venv。')
+  return { executable: managed.executable, bootstrap: scienceBootstrap(managed) }
+}
 async function hashFile(path: string, algorithm = 'sha256'): Promise<string> { const h = createHash(algorithm); for await (const chunk of createReadStream(path, { highWaterMark: 1024 * 1024 })) h.update(chunk); return h.digest('hex') }
 type PreparedInput = { path: string; sha256: string; he: HeSlideMetadata; asset: DataAssetRecord; viewer: ViewerSessionRecord }
 
@@ -54,8 +79,11 @@ export class HeSegmentationService {
     try {
       if (this.live.size || this.preparing) throw new Error('Another local StarDist task is running; CPU segmentation concurrency is 1.')
       this.preparing = true; ownsPreparation = true
-      const python = this.options.pythonPath ?? heSegmentationPython(); const modelDirectory = this.options.modelDirectory ?? heSegmentationModel()
-      if (!(await stat(python).catch(() => undefined))?.isFile()) throw new Error('Managed HE StarDist engine is not installed; import the he-stardist engine package.')
+      const resolvedPython = this.options.pythonPath
+        ? { executable: this.options.pythonPath, bootstrap: '' }
+        : await resolveHeSegmentationPython()
+      const python = resolvedPython.executable; const modelDirectory = this.options.modelDirectory ?? heSegmentationModel()
+      if (!(await stat(python).catch(() => undefined))?.isFile()) throw new Error('Shared ZeroWall Python is not installed; HE StarDist runs in it and does not keep a private venv.')
       for (const file of HE_STARDIST_MODEL.files) if (await hashFile(join(modelDirectory, file.path)) !== file.sha256) throw new Error('Frozen StarDist model checksum mismatch: ' + file.path)
       let directory = project.rootPath
       for (const name of ['.zerowall', 'he-segmentation', run.id]) { const next = join(directory, name); await mkdir(next, { recursive: true }); directory = await containedFile(project.rootPath, next) }
@@ -65,7 +93,15 @@ export class HeSegmentationService {
       await writeFile(requestPath, JSON.stringify(payload, null, 2) + '\n', { flag: 'wx' }); await writeFile(scriptPath, HE_SEGMENTATION_RUNNER, { flag: 'wx' })
       if (this.disposed) throw new Error('Host stopped before the HE process could start.')
       const log = await open(join(directory, 'runner.log'), 'wx')
-      const child = spawn(python, ['-I', scriptPath], { windowsHide: true, shell: false, cwd: directory, env: { ...process.env, ZEROWALL_HE_REQUEST: requestPath }, stdio: ['ignore', log.fd, log.fd] })
+      // The managed interpreter is an embeddable build whose overlay and
+      // site-packages are not reachable through PYTHONPATH under -E/-P, so the
+      // bootstrap inserts them before the runner is entered. The runner stays a
+      // real file on disk because it is the audit artifact for the run; runpy
+      // points at it after the paths are in place. An explicit
+      // ZEROWALL_HE_STARDIST_PYTHON is a normal interpreter, so it keeps -I.
+      const child = resolvedPython.bootstrap
+        ? spawn(python, ['-E', '-P', '-c', `${resolvedPython.bootstrap}import runpy,sys\nsys.argv=[${JSON.stringify(scriptPath)}]\nrunpy.run_path(sys.argv[0],run_name='__main__')`], { windowsHide: true, shell: false, cwd: directory, env: pythonChildEnvironment(undefined, { ZEROWALL_HE_REQUEST: requestPath }), stdio: ['ignore', log.fd, log.fd] })
+        : spawn(python, ['-I', scriptPath], { windowsHide: true, shell: false, cwd: directory, env: pythonChildEnvironment(undefined, { ZEROWALL_HE_REQUEST: requestPath }), stdio: ['ignore', log.fd, log.fd] })
       const timer = setTimeout(() => {
         if (this.disposed) return
         this.store.updateRun(run.id, { status: 'timed_out', error: 'HE CPU segmentation exceeded the task time budget; partial outputs retained.' }); child.kill()

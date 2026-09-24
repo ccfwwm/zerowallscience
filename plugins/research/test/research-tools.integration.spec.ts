@@ -12,7 +12,6 @@ import * as Research from '../src/host/index.js'
 import sharp from 'sharp'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { buildReconFindings, buildReconRecord, OBESITY_ALOPECIA_RECON_QUERIES, summarizeReconRemoteRuns } from '../src/host/obesity-alopecia-recon.js'
 
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.unstubAllEnvs() })
@@ -29,12 +28,10 @@ async function fixture() {
   const ctx = new Context()
   const sessions = new Map([['a', { id: 'a', header: { cwd: project.rootPath } }], ['b', { id: 'b', header: { cwd: foreign.rootPath } }]])
   ctx.provide('sessions', { get: (id: string) => sessions.get(id) } as any)
-  const reconCalls: string[] = []
-  ctx.provide('researchWorkflow', { get: () => ({ run: async (_id: string, parameters: any) => { reconCalls.push(String(parameters.arguments?.q ?? '')); return { run_id: `recon-${reconCalls.length}`, result: { variables: [] } } } }) } as any)
   await ctx.plugin(SystemPrompt); await ctx.plugin(ToolRuntime); await ctx.plugin(Research)
   cleanups.push(async () => { await ctx.fiber.dispose(); store.close(); await rm(root, { recursive: true, force: true }) })
   const call = (name: string, args: object, session = 'a') => ctx.tools.execute({ name, arguments: args, callId: ToolCallId('integration'), signal: new AbortController().signal, agent: { session: sessions.get(session) } as any })
-  return { ctx, store, project, foreign, asset, call, reconCalls, sessions, root }
+  return { ctx, store, project, foreign, asset, call, sessions, root }
 }
 function value(result: any): any { expect(result.isError, JSON.stringify(result.content)).toBe(false); return result.value }
 
@@ -198,16 +195,6 @@ it('exposes the genetic contract gate and keeps it project-scoped', async () => 
   expect((await call('research_study', { action: 'validate_genetic_contract', study_id: study.id, project_id: foreign.id, contract })).isError).toBe(true)
 })
 
-it('records bounded obesity—alopecia NHANES reconnaissance without selecting a phenotype', async () => {
-  const { store, project, call, reconCalls } = await fixture()
-  const study = store.createResearchStudy({ projectId: project.id, title: '肥胖—脱发侦察' })
-  const result = value(await call('research_study', { action: 'obesity_alopecia_recon', study_id: study.id }))
-  expect(reconCalls).toHaveLength(OBESITY_ALOPECIA_RECON_QUERIES.length)
-  expect(result.record).toMatchObject({ status: 'no-phenotype-match', freezeRequired: true })
-  expect(result.contract.payload).toMatchObject({ applicability: 'pending', sourceStatus: 'catalog-only' })
-  expect(store.listResearchDocuments(study.id).map(item => item.kind).sort()).toEqual(['dataset-contract', 'observation'])
-})
-
 it('generates a traceable IMRAD draft and blocks an unreviewed final report', async () => {
   const { store, project, call } = await fixture()
   const study = store.createResearchStudy({ projectId: project.id, title: '肥胖—脱发报告链路', phase: 'evidence' })
@@ -219,27 +206,6 @@ it('generates a traceable IMRAD draft and blocks an unreviewed final report', as
   expect(await readFile(fileURLToPath(draft.report.uri), 'utf8')).toContain('Introduction')
   expect(JSON.parse(await readFile(fileURLToPath(draft.manifest.uri), 'utf8'))).toMatchObject({ format: 'zerowall-science-imrad-report', needsReview: true })
   expect((await call('research_study', { action: 'generate_report', study_id: study.id, report_mode: 'final' })).isError).toBe(true)
-})
-
-it('classifies catalog matches and unavailable responses deterministically', () => {
-  const findings = buildReconFindings([
-    { query: OBESITY_ALOPECIA_RECON_QUERIES[0], response: { variables: [{ name: 'ALQ', label: 'Alopecia areata' }] } },
-    { query: OBESITY_ALOPECIA_RECON_QUERIES[4], response: { variables: [] } },
-    { query: OBESITY_ALOPECIA_RECON_QUERIES[5], error: 'backend unavailable' },
-  ])
-  expect(findings.map(item => item.status)).toEqual(['matched', 'no-match', 'unavailable'])
-  expect(buildReconRecord(findings)).toMatchObject({ status: 'partially-unavailable', matchedPhenotypes: ['androgenetic-alopecia'], matchedExposures: [] })
-})
-
-it('keeps reconnaissance remote Run and Manifest references bounded and query-addressable', () => {
-  const summary = summarizeReconRemoteRuns([
-    { query: OBESITY_ALOPECIA_RECON_QUERIES[0], remote: { run_id: 'local-1', remote_id: 'job-1', status: 'succeeded', artifacts: [{ name: 'variables.json' }, { path: 'manifest.json' }] } },
-    { query: OBESITY_ALOPECIA_RECON_QUERIES[1], remote: { run_id: 'local-2', status: 'failed', artifacts: { files: [{ uri: 'error.log' }] } } },
-  ])
-  expect(summary).toEqual([
-    { queryKey: 'androgenetic-alopecia', localRunId: 'local-1', remoteId: 'job-1', status: 'succeeded', artifactCount: 2, artifactNames: ['variables.json', 'manifest.json'] },
-    { queryKey: 'alopecia-areata', localRunId: 'local-2', status: 'failed', artifactCount: 1, artifactNames: ['error.log'] },
-  ])
 })
 
 it('runs the managed Allen 25 um BrainGlobe atlas through the science viewer when configured', async () => {

@@ -38,12 +38,12 @@ def execute(envelope):
     action = envelope.get('action', 'list')
     op = envelope.get('operation')
     if action == 'list':
-        return {'operations': [{'id': key, 'summary': (inspect.getdoc(fn) or '').split('\n')[0], 'default_backend': 'bio-tools' if key in DEFAULT_DATABASE else 'biogenie', 'dependency_profile': PROFILES.get(key, 'shared')} for key, fn in bio_ops.OPS.items()]}
+        return {'operations': [{'id': key, 'summary': (inspect.getdoc(fn) or '').split('\n')[0], 'default_backend': 'bio-tools' if key in DEFAULT_DATABASE else 'biogenie', 'dependency_profile': 'shared'} for key, fn in bio_ops.OPS.items()]}
     if op not in bio_ops.OPS:
         raise ValueError('UNKNOWN_OPERATION: use bio_local list')
     function = bio_ops.OPS[op]
     if action == 'describe':
-        return {'id': op, 'description': inspect.getdoc(function), 'parameters': signature(function), 'dependency_profile': PROFILES.get(op, 'shared'), 'network': op in NETWORK_OPS}
+        return {'id': op, 'description': inspect.getdoc(function), 'parameters': signature(function), 'dependency_profile': 'shared', 'network': op in NETWORK_OPS}
     if action != 'run':
         raise ValueError('Unknown action')
     args = envelope.get('arguments', {})
@@ -55,9 +55,6 @@ def execute(envelope):
         raise ValueError('Use Bio Tools database entry by default; backend=biogenie explicitly selects this implementation')
     if op == 'blast_search' and not envelope.get('confirm_remote_upload'):
         raise ValueError('REMOTE_UPLOAD_CONFIRMATION_REQUIRED: BLAST sends sequence data to a remote service')
-    profile = PROFILES.get(op)
-    if profile and os.environ.get('ZEROWALL_BIO_PROFILE') != profile:
-        raise ModuleNotFoundError('ISOLATED_PROFILE_REQUIRED: ' + profile + '; use python_environment preview with profile')
     workspace = Path.cwd().resolve()
 
     def check_path(value):

@@ -9,6 +9,7 @@ import { containedFile } from './science-viewer.js'
 import { readProjectAsset } from './image-viewer.js'
 import { acceptedFijiReview, validateScratchTimeline, matchScratchBaseline } from './fiji-review.js'
 import { fijiImageRunner, runImageJExperiment } from './fiji-image-runner.js'
+import type { FijiJavaResolver } from './fiji-workflow.js'
 
 const experiments: FijiExperimentId[] = ['scratch-wound', 'colony-formation', 'bacterial-cfu', 'tube-formation']
 const sha256 = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex')
@@ -17,7 +18,7 @@ const inside = (root: string, candidate: string): string => { const base = resol
 export class FijiExperimentService {
   private readonly owned = new Map<string, AbortController>()
   private disposed = false
-  constructor(private readonly store: ResearchStore) {}
+  constructor(private readonly store: ResearchStore, private readonly javaResolver?: FijiJavaResolver) {}
   dispose(): void {
     this.disposed = true
     for (const [runId, controller] of this.owned) {
@@ -94,7 +95,7 @@ export class FijiExperimentService {
       let provenance: JsonObject = {}
       if (input.image && image && asset && source && sourceSha256) {
         {
-          const native = await runImageJExperiment(directory, source, image, controller.signal, review)
+          const native = await runImageJExperiment(directory, source, image, controller.signal, review, this.javaResolver, project)
           if (image.kind === 'scratch-wound' && image.timeline?.timeHours === 0) {
             const area = native.analysis.foregroundPixels
             native.analysis.measurement = scratchWoundMeasurement({ sampleId: image.sampleId, time: '0h', initialArea: area, remainingArea: area })

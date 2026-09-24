@@ -27,7 +27,10 @@ afterEach(() => {
   delete process.env.DSH_HOME
   delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
   delete process.env.ZEROWALL_MCP_ENVIRONMENT_POLL_MS
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+  // A managed server's stdio child can still be releasing its handle on the
+  // fixture executable when teardown runs, and Windows refuses the unlink for
+  // a short window afterwards. Retry rather than failing an otherwise green run.
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
 })
 
 describe('ZeroWall MCP Cordis lifecycle', () => {
@@ -239,7 +242,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       }
       await expect.poll(async () => (await ctx.zerowallMcp.list()).filter(item => item.serverName.startsWith('zerowall_managed_')).every(item => item.runtimeState === 'blocked'), { timeout: 10_000, interval: 25 }).toBe(true)
       mkdirSync(environmentStore, { recursive: true })
-      writeFileSync(join(environmentStore, 'current.json'), JSON.stringify({ version: '4.1.10', root: installed, health: 'ready' }))
+      writeFileSync(join(environmentStore, 'current.json'), JSON.stringify({ version: '4.1.10', root: installed, health: 'ready', manifest: { python: { relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/Lib/site-packages' } } }))
       const timer = timers.mock.calls.find(call => call[1] === 1000)
       expect(timer).toBeDefined()
       // Fire the production callback to verify the compact-pointer refresh.

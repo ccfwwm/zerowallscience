@@ -5,9 +5,11 @@ import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { HeAnalysis, HeRegion, HeSlideMetadata, HeTile } from '../shared/he.js'
 import type { HeSegmentationResult } from '../shared/he-segmentation.js'
 import type { HeResponse, ScienceViewerRequest } from '../shared/types.js'
+import { useWorkbenchSelection } from './workbench-selection.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 export function HeViewer({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
+  const selection = useWorkbenchSelection()
   const [assets,setAssets] = useState<DataAssetRecord[]>([])
   const [viewers,setViewers] = useState<ViewerSessionRecord[]>([])
   const [assetId,setAssetId] = useState('')
@@ -24,6 +26,9 @@ export function HeViewer({ remote, sessionId }: { remote: Remote; sessionId: str
   const [busy,setBusy] = useState(false)
   const generation = useRef(0)
   const drag = useRef<{ x:number;y:number }>()
+  // The sidebar only bumps `revision` per explicit pick, so this pairing is what
+  // separates a new request from a re-render of the one already handled.
+  const openedSelection = useRef('')
   const call = async (input: Omit<ScienceViewerRequest,'sessionId'>): Promise<HeResponse & { assets?:DataAssetRecord[];viewers?:ViewerSessionRecord[] }> => {
     const result = unwrapRemoteResult('scienceViewer',await remote.scienceViewer({ ...input,sessionId })) as unknown as { he?:HeResponse;assets?:DataAssetRecord[];viewers?:ViewerSessionRecord[] }
     return (result.he ?? result) as HeResponse & { assets?:DataAssetRecord[];viewers?:ViewerSessionRecord[] }
@@ -63,6 +68,16 @@ export function HeViewer({ remote, sessionId }: { remote: Remote; sessionId: str
     } catch (error) { if (current === generation.current) setMessage(error instanceof Error ? error.message : String(error)) }
     finally { if (current === generation.current) setBusy(false) }
   }
+  // Declared after the mount reset so this assignment wins on first render; an
+  // empty sidebar value leaves the user's own picker choice untouched.
+  useEffect(() => { if (selection.assetId) setAssetId(selection.assetId) }, [selection.assetId])
+  useEffect(() => {
+    if (!selection.assetId || selection.revision == null) return
+    const key = `${selection.assetId}:${selection.revision}`
+    if (openedSelection.current === key) return
+    openedSelection.current = key
+    void run({ action:'he_open',assetId:selection.assetId })
+  }, [selection.assetId, selection.revision, remote, sessionId])
   useEffect(() => {
     if (!segmentationRun || ['succeeded','failed','cancelled','timed_out'].includes(segmentationRun.status)) return
     const current=generation.current;let disposed=false;let timer:ReturnType<typeof setTimeout>|undefined
@@ -92,7 +107,7 @@ export function HeViewer({ remote, sessionId }: { remote: Remote; sessionId: str
     return { x:Math.round(Math.max(0,Math.min(slide!.width,tile!.region.x+(event.clientX-box.left)/Math.max(1,box.width)*tile!.coverageLevel0.width))),
       y:Math.round(Math.max(0,Math.min(slide!.height,tile!.region.y+(event.clientY-box.top)/Math.max(1,box.height)*tile!.coverageLevel0.height))) }
   }
-  const selection = (event: PointerEvent<SVGSVGElement>): void => {
+  const selectRegion = (event: PointerEvent<SVGSVGElement>): void => {
     if (!drag.current || !tile) return
     const end = point(event); const start = drag.current
     if (start.x === end.x || start.y === end.y) return
@@ -132,7 +147,7 @@ export function HeViewer({ remote, sessionId }: { remote: Remote; sessionId: str
           <svg aria-label="HE 瓦片与 ROI 选择" role="img" viewBox={'0 0 '+tile.width+' '+tile.height} width={tile.width} height={tile.height}
             style={{ width:'100%',maxWidth:900,height:'auto',display:'block',background:'#fff',cursor:'crosshair',touchAction:'none' }}
             onPointerDown={event => { if (busy) return; drag.current=point(event); event.currentTarget.setPointerCapture?.(event.pointerId) }}
-            onPointerMove={selection} onPointerUp={event => { selection(event); drag.current=undefined }} onPointerCancel={() => { drag.current=undefined }}>
+            onPointerMove={selectRegion} onPointerUp={event => { selectRegion(event); drag.current=undefined }} onPointerCancel={() => { drag.current=undefined }}>
             <image href={'data:image/png;base64,'+tile.pngBase64} width={tile.width} height={tile.height} />
             <rect x={(region.x-tile.region.x)/tile.downsample} y={(region.y-tile.region.y)/tile.downsample} width={region.width/tile.downsample} height={region.height/tile.downsample} fill="none" stroke="#d81b60" strokeWidth={2} vectorEffect="non-scaling-stroke" />
           </svg>

@@ -1,16 +1,18 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { access, mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ResearchStore } from '@zerowallscience/research-store'
 import type { DataAssetRecord, JsonObject, ProjectRecord, ViewerSessionRecord } from '@zerowallscience/research-store/types'
-import type { BrainAtlasRequest, BrainAtlasResponse, BrainAtlasSummary, BrainCellAnalysis, BrainRegionResult, BrainSlice } from '../shared/types.js'
+import type { BrainAtlasRequest, BrainAtlasResponse, BrainAtlasSummary, BrainCellAnalysis, BrainRegionResult, BrainSlice, ScientificEngineStatus } from '../shared/types.js'
 import { containedFile } from './science-viewer.js'
 import { BRAIN_GLOBE_RUNNER, BRAINRENDER_RUNNER, CELLFINDER_RUNNER } from './brainglobe-runner.js'
 import {createBrainTransformContract} from './brain-transform.js'
-import {BrainJobScope,stopBrainProcess} from './brain-process.js'
+import {BrainJobScope,settleRunner,stopBrainProcess} from './brain-process.js'
 import {BRAIN_RESOURCE_GUARD} from './brain-resource-guard.js'
+import { pythonChildEnvironment } from './python-env.js'
 
 const RUNNER = 'zerowall-brainglobe/7.0.0-3'
 const ATLAS = 'allen_mouse_25um'
@@ -21,6 +23,167 @@ export function validateBrainregOutputs(names: string[]): { valid: boolean; miss
   if (!lower.has('brainreg.json')) missing.push('brainreg.json')
   if (!lower.has('registered_atlas.tiff') && !lower.has('registered_atlas.nii')) missing.push('registered_atlas.tiff|registered_atlas.nii')
   return { valid: missing.length === 0, missing }
+}
+
+/**
+ * The managed-interpreter helpers now live in `managed-python.ts`, because HE
+ * StarDist and the engine probes resolve the same environment. They stay
+ * re-exported here under their original names so existing callers and tests
+ * keep working.
+ */
+import {
+  defaultAtlasDirectory,
+  resolveManagedSciencePython as resolveManagedBrainPython,
+  scienceBootstrap as brainBootstrap,
+  scienceEnvironmentRoot as brainEnvironmentRoot,
+  type ManagedSciencePython as ManagedBrainPython,
+} from './managed-python.js'
+
+export { defaultAtlasDirectory, resolveManagedBrainPython, brainBootstrap, brainEnvironmentRoot, type ManagedBrainPython }
+
+/** Which of the four BrainGlobe distributions this interpreter can actually import. */
+const BRAIN_PACKAGE_PROBE = 'import json, importlib.metadata as m\nnames=["brainglobe-atlasapi","brainreg","cellfinder","brainrender"]\ndef version(n):\n try: return m.version(n)\n except m.PackageNotFoundError: return None\nprint(json.dumps({"packages":{n:version(n) for n in names}}))'
+
+export interface BrainAtlasStatus {
+  installed: boolean; directory: string; name: string
+  atlasVersion?: string | null; shape?: [number, number, number]; resolution?: [number, number, number]
+  regionCount?: number; annotationBytes?: number; annotationSha256?: string
+}
+
+/**
+ * The runner needs an atlas realpath to put in its config, so the directory is
+ * created here rather than demanded from the operator. Nothing is downloaded by
+ * this function: it only proves whether an installed atlas is already present,
+ * and the atlas volume files are what distinguishes a real install from a stub.
+ */
+export async function atlasStatus(directory?: string): Promise<BrainAtlasStatus> {
+  const target = directory ?? defaultAtlasDirectory()
+  if (!target) return { installed: false, directory: '', name: ATLAS }
+  const manifestPath = join(target, ATLAS, 'zerowall-atlas.json')
+  let manifest: Record<string, unknown>
+  try { manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown> } catch { return { installed: false, directory: target, name: ATLAS } }
+  const files = Array.isArray(manifest.files) ? manifest.files as Array<Record<string, unknown>> : []
+  const annotation = files.find(file => String(file.name ?? '').startsWith('annotation'))
+  let volumeBytes = 0
+  try { volumeBytes = (await stat(join(target, ATLAS, String(manifest.annotationFile ?? '')))).size } catch { volumeBytes = 0 }
+  /** A manifest is not an install: it must still point at a non-empty volume. */
+  const installed = volumeBytes > 0 && manifest.atlas === ATLAS
+  return {
+    installed, directory: target, name: ATLAS,
+    ...(typeof manifest.atlasVersion === 'string' || manifest.atlasVersion === null ? { atlasVersion: manifest.atlasVersion as string | null } : {}),
+    ...(Array.isArray(manifest.shape) && manifest.shape.length === 3 ? { shape: manifest.shape.map(Number) as [number, number, number] } : {}),
+    ...(Array.isArray(manifest.resolution) && manifest.resolution.length === 3 ? { resolution: manifest.resolution.map(Number) as [number, number, number] } : {}),
+    ...(typeof manifest.regionCount === 'number' ? { regionCount: manifest.regionCount } : {}),
+    ...(annotation && typeof annotation.bytes === 'number' ? { annotationBytes: annotation.bytes } : {}),
+    ...(annotation && typeof annotation.sha256 === 'string' ? { annotationSha256: annotation.sha256 } : {}),
+  }
+}
+
+/**
+ * Atlas download runs in its own bounded process rather than reusing
+ * BRAIN_GLOBE_RUNNER: a half-downloaded atlas must not be able to fail the
+ * viewer, and the atlasapi cache layout is version-dependent, so the script
+ * verifies the real volume after the download instead of trusting the call.
+ * Re-running it is cheap because atlasapi skips already-valid local volumes.
+ */
+export const BRAIN_ATLAS_INSTALL_RUNNER = BRAIN_RESOURCE_GUARD + String.raw`import configparser, hashlib, json, os, sys
+from pathlib import Path
+
+ATLAS = "allen_mouse_25um"
+
+def fail(message):
+    print(json.dumps({"error": str(message)}, ensure_ascii=False)); raise SystemExit(2)
+
+try:
+    request = json.load(sys.stdin)
+    atlas_name = str(request.get("atlas", ATLAS))
+    if atlas_name != ATLAS: fail("Only the Allen adult mouse 25 um atlas is enabled for managed installation.")
+    directory = Path(str(request.get("atlasDirectory") or "")).resolve()
+    if not str(directory): fail("A managed BrainGlobe atlas directory is required.")
+    directory.mkdir(parents=True, exist_ok=True)
+    config_dir = Path(str(request.get("configDirectory") or "")).resolve()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    conf = configparser.ConfigParser()
+    conf["default_dirs"] = {"brainglobe_dir": str(directory), "interm_download_dir": str(directory)}
+    with (config_dir / "bg_config.conf").open("w") as handle: conf.write(handle)
+    os.environ["BRAINGLOBE_CONFIG_DIR"] = str(config_dir)
+    from importlib.metadata import version
+    from brainglobe_atlasapi import BrainGlobeAtlas
+    atlas = BrainGlobeAtlas(atlas_name, brainglobe_dir=str(directory), check_latest=False)
+    annotation_path = Path(atlas.root_dir) / "annotation.tiff"
+    if not annotation_path.is_file():
+        candidates = sorted(Path(atlas.root_dir).glob("annotation.*"))
+        if not candidates: fail("Downloaded atlas does not contain an annotation volume")
+        annotation_path = candidates[0]
+    digest = hashlib.sha256()
+    with annotation_path.open("rb") as handle:
+        for block in iter(lambda: handle.read(4 * 1024 * 1024), b""): digest.update(block)
+    annotation = annotation_path.stat()
+    if annotation.st_size == 0: fail("Downloaded annotation volume is empty")
+    shape = [int(value) for value in atlas.shape]
+    resolution = [float(value) for value in atlas.resolution]
+    if len(shape) != 3 or any(value <= 0 for value in shape): fail("Downloaded atlas metadata has an invalid shape")
+    if len(resolution) != 3 or any(value <= 0 for value in resolution): fail("Downloaded atlas metadata has an invalid resolution")
+    metadata = atlas.metadata
+    print(json.dumps({
+        "atlas": atlas_name,
+        "atlasVersion": str(metadata.get("version")) if metadata.get("version") is not None else None,
+        "shape": shape,
+        "resolution": resolution,
+        "regionCount": len(atlas.structures),
+        "rootDirectory": str(atlas.root_dir),
+        "annotationFile": annotation_path.name,
+        "builder": {"brainglobe-atlasapi": version("brainglobe-atlasapi")},
+        "files": [{"name": annotation_path.name, "bytes": annotation.st_size, "sha256": digest.hexdigest()}],
+        "notes": ["The atlas volume was downloaded into the managed directory and verified after download.", "Installation does not imply scientific review of any analysis that uses this atlas."],
+    }, ensure_ascii=False))
+except SystemExit:
+    raise
+except Exception as exc:
+    fail(f"{type(exc).__name__}: {exc}")
+`
+
+/**
+ * Probe the explicit BrainGlobe interpreter or, when that is unset, the managed
+ * ZeroWall interpreter. The bare "python" fallback is never probed: reporting a
+ * system Python as the BrainGlobe environment would be a false claim.
+ */
+export async function probeBrainGlobe(): Promise<ScientificEngineStatus> {
+  const explicit = process.env.ZEROWALL_BRAINGLOBE_PYTHON?.trim()
+  let executable = explicit
+  let managed = false
+  if (!executable) {
+    const resolved = await resolveManagedBrainPython()
+    if (!resolved) return { id: 'brainglobe', name: 'BrainGlobe managed environment', available: false, reason: '未配置 ZEROWALL_BRAINGLOBE_PYTHON，且未找到受管理的 ZeroWall Python 环境；不会修改现有 napari 环境。' }
+    executable = resolved.executable
+    managed = true
+  }
+  try { await access(executable) } catch { return { id: 'brainglobe', name: 'BrainGlobe managed environment', available: false, path: executable, reason: `未找到受管理 Python：${executable}` } }
+  const atlas = await atlasStatus()
+  return await new Promise(resolvePromise => {
+    // spawn() throws synchronously for a non-executable path on Windows, so an
+    // unusable interpreter must be reported rather than escaping the executor.
+    let child: ReturnType<typeof spawn>
+    try { child = spawn(executable!, ['-E', '-P', '-c', BRAIN_PACKAGE_PROBE], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }) }
+    catch (cause) { resolvePromise({ id: 'brainglobe', name: 'BrainGlobe managed environment', available: false, path: executable!, reason: cause instanceof Error ? cause.message : String(cause) }); return }
+    let output = ''; let error = ''; let settled = false
+    const finish = (result: ScientificEngineStatus): void => { if (settled) return; settled = true; resolvePromise(result) }
+    const base = { id: 'brainglobe', name: 'BrainGlobe managed environment', path: executable!, ...(managed ? { source: 'environment' as const } : {}) }
+    const timer = setTimeout(() => { child.kill(); finish({ ...base, available: false, reason: 'BrainGlobe 环境探测超时。' }) }, 8000)
+    child.stdout!.on('data', chunk => { output += String(chunk).slice(0, 8000) })
+    child.stderr!.on('data', chunk => { error = (error + String(chunk)).slice(-2000) })
+    child.on('error', cause => { clearTimeout(timer); finish({ ...base, available: false, reason: cause.message, diagnostic: error }) })
+    child.on('close', code => {
+      clearTimeout(timer)
+      if (code !== 0) { finish({ ...base, available: false, reason: error.trim() || `BrainGlobe Python exited with code ${code}.` }); return }
+      let packages: Record<string, string | null>
+      try { packages = (JSON.parse(output.trim()) as { packages?: Record<string, string | null> }).packages ?? {} } catch { finish({ ...base, available: false, reason: 'BrainGlobe 环境版本输出不可解析。' }); return }
+      const missing = Object.entries(packages).filter(([, version]) => version == null).map(([name]) => name)
+      const version = Object.entries(packages).map(([name, value]) => `${name}=${value ?? 'missing'}`).join(', ')
+      const atlasDiagnostic = atlas.installed ? `图谱：${atlas.name} ${atlas.atlasVersion ?? ''} ${atlas.shape ? `${atlas.shape.join('×')} 体素` : ''}`.trim() : `图谱：未安装（${atlas.directory}）`
+      finish({ ...base, available: missing.length === 0, status: missing.length === 0 ? (atlas.installed ? 'available' : 'degraded') : 'degraded', version, reason: missing.length ? `缺少 BrainGlobe 组件：${missing.join(', ')}` : atlas.installed ? 'BrainGlobe 组件与图谱均已就绪。' : `BrainGlobe 组件已安装，但托管图谱尚未下载：${atlas.directory}`, diagnostic: atlasDiagnostic })
+    })
+  })
 }
 
 export function parseBrainregMetadata(text: string): { valid: boolean; metadata?: JsonObject; error?: string } {
@@ -85,16 +248,167 @@ export async function auditBrainregOutputDirectory(directory: string): Promise<B
 }
 
 export class BrainAtlasService {
-  private busy = false
+  /**
+   * The single in-flight BrainGlobe operation, or undefined when the runner is
+   * free. This was a boolean, which reported only that *something* held the
+   * runner — never what, and never for how long, so a caller that leaked the
+   * flag was indistinguishable from a genuine concurrent request.
+   */
+  private active: { action: string; startedAt: number } | undefined
   private jobs=new BrainJobScope()
-  constructor(private readonly store: ResearchStore) {}
+  constructor(private readonly store: ResearchStore, private readonly options: { pythonPath?: string; atlasDirectory?: string } = {}) {}
+
+  /** Claim the runner, or refuse with the holder's identity and elapsed time. */
+  private acquire(action: string): void {
+    if (this.active) {
+      const seconds = Math.round((Date.now() - this.active.startedAt) / 1000)
+      throw new Error(`BrainGlobe runner is busy with ${this.active.action} (running ${seconds}s); retry after it finishes.`)
+    }
+    this.active = { action, startedAt: Date.now() }
+  }
+  private release(): void { this.active = undefined }
+
+  /**
+   * Whether the shared environment can actually import the BrainGlobe stack.
+   *
+   * This runs *before* the runner slot is claimed. A missing dependency used to
+   * be discovered inside `run()` — several seconds into a failing interpreter
+   * start, while the slot was held — so the next request was rejected as
+   * "runner is busy" and the real reason never reached the user. Probing first
+   * means the caller is told the truth: which packages are missing, and where to
+   * install them.
+   */
+  private dependencyProbe: { checkedAt: number; missing: string[] } | undefined
+  private async missingBrainDependencies(): Promise<string[]> {
+    const cached = this.dependencyProbe
+    // The installed package set is stable within a session and the probe costs a
+    // process start, so a click must not re-run it every time.
+    if (cached && Date.now() - cached.checkedAt < 60_000) return cached.missing
+    const { executable, bootstrap } = await this.interpreter()
+    const missing = await new Promise<string[]>(resolvePromise => {
+      let child: ReturnType<typeof spawn>
+      try { child = spawn(executable, ['-E', '-P', '-c', bootstrap + BRAIN_PACKAGE_PROBE], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: pythonChildEnvironment() }) }
+      catch { resolvePromise(['Python 解释器无法启动']); return }
+      let output = ''
+      const timer = setTimeout(() => { stopBrainProcess(child); resolvePromise(['依赖探测超时']) }, 20_000)
+      child.stdout?.on('data', chunk => { output = (output + String(chunk)).slice(0, 8000) })
+      child.on('error', () => { clearTimeout(timer); resolvePromise(['Python 解释器无法启动']) })
+      child.on('close', () => {
+        clearTimeout(timer)
+        try {
+          const packages = (JSON.parse(output.trim()) as { packages?: Record<string, string | null> }).packages ?? {}
+          resolvePromise(Object.entries(packages).filter(([, version]) => version == null).map(([name]) => name))
+          // Unparseable output is a runner problem, not a dependency one: report
+          // nothing missing rather than blocking on a probe that misfired.
+        } catch { resolvePromise([]) }
+      })
+    })
+    this.dependencyProbe = { checkedAt: Date.now(), missing }
+    return missing
+  }
+
+  private async assertBrainDependencies(): Promise<void> {
+    const missing = await this.missingBrainDependencies()
+    if (missing.length === 0) return
+    throw new Error(`脑图谱运行环境缺少依赖：${missing.join('、')}。请到「设置 → Python 环境」点击「一键同步」安装科研依赖，装完再回到脑图谱。该引擎与全软件共用同一个 Python 环境，不会创建独立环境。`)
+  }
+
+  /**
+   * Interpreters are resolved per call, not cached, because the managed
+   * environment is replaced in place by the desktop installer and a stale
+   * absolute path would keep pointing at a retired generation.
+   * Precedence: explicit option, dedicated env var, managed environment, bare python.
+   */
+  private async interpreter(): Promise<{ executable: string; bootstrap: string }> {
+    const explicit = this.options.pythonPath ?? process.env.ZEROWALL_BRAINGLOBE_PYTHON?.trim()
+    if (explicit) return { executable: explicit, bootstrap: '' }
+    const managed = await resolveManagedBrainPython()
+    if (managed) return { executable: managed.executable, bootstrap: brainBootstrap(managed) }
+    return { executable: process.env.ZEROWALL_PYTHON?.trim() || 'python', bootstrap: '' }
+  }
+
+  /**
+   * The managed directory is created lazily so BrainGlobe works out of the box
+   * without the operator exporting ZEROWALL_BRAINGLOBE_DIR; the explicit
+   * variable still wins for a user-managed atlas on another volume.
+   */
+  private async atlasDirectory(purpose: string): Promise<string> {
+    // Truthiness, not ??: a blank ZEROWALL_BRAINGLOBE_DIR is not nullish and
+    // would otherwise short-circuit past the managed default.
+    const directory = this.options.atlasDirectory?.trim() || process.env.ZEROWALL_BRAINGLOBE_DIR?.trim() || defaultAtlasDirectory()
+    if (!directory) throw new Error(`ZEROWALL_BRAINGLOBE_DIR is required for ${purpose}; install the managed atlas first.`)
+    this.jobs.assertActive(); await mkdir(directory, { recursive: true })
+    return directory
+  }
   private get activeStore():ResearchStore{this.jobs.assertActive();return this.store}
+  /**
+   * Download the managed atlas into the resolved directory and verify it.
+   * Idempotent: atlasapi short-circuits when the local volume already validates,
+   * so a second call reports already-present rather than re-downloading.
+   */
+  async installAtlas(options: { atlasDirectory?: string } = {}): Promise<JsonObject> {
+    // The download needs brainglobe-atlasapi, so it fails the same way an
+    // analysis does; checking first keeps that failure actionable.
+    await this.assertBrainDependencies()
+    this.acquire('installAtlas')
+    try { return await this.jobs.run(() => this.installAtlasOne(options)) } finally { this.release() }
+  }
+
+  private async installAtlasOne(options: { atlasDirectory?: string }): Promise<JsonObject> {
+    const directory = options.atlasDirectory?.trim() || await this.atlasDirectory('managed atlas installation')
+    const before = await atlasStatus(directory)
+    const { executable, bootstrap } = await this.interpreter()
+    // The atlasapi config lives inside the managed directory so the download
+    // cannot silently fall back to a developer ~/.brainglobe cache.
+    const configDirectory = join(directory, 'config')
+    this.jobs.assertActive(); await mkdir(configDirectory, { recursive: true })
+    const child = this.jobs.spawn(executable, ['-E', '-P', '-c', bootstrap + BRAIN_ATLAS_INSTALL_RUNNER], { shell: false, detached: process.platform !== 'win32', windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: pythonChildEnvironment(undefined, { OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1' }) })
+    const chunks: Buffer[] = []; let stderr = ''; let size = 0; let failure: Error | undefined
+    const output = await new Promise<string>((resolvePromise, reject) => {
+      const timer = setTimeout(() => { failure = new Error('Managed atlas download exceeded the 20-minute limit.'); stopBrainProcess(child) }, 20 * 60 * 1000)
+      child.stdout.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 16 * 1024 * 1024) { failure = new Error('Managed atlas install output exceeds 16 MiB.'); stopBrainProcess(child) } else chunks.push(chunk) })
+      child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-8000) })
+      child.on('error', error => { clearTimeout(timer); reject(error) })
+      // The download spawns helper processes that can outlive the direct child
+      // while holding the inherited pipes; 'close' would then never fire and
+      // installAtlas would keep its busy flag set for the rest of the session.
+      const settle = settleRunner(child, code => {
+        clearTimeout(timer)
+        if (failure) { reject(failure); return }
+        if (code === null) { reject(new Error(stderr.trim() || 'Managed atlas installer exited without reporting a status.')); return }
+        const text = Buffer.concat(chunks).toString('utf8')
+        if (code !== 0) reject(new Error(stderr.trim() || text.slice(0, 8000) || `Managed atlas installer exited with ${code}`))
+        else resolvePromise(text)
+      })
+      child.on('exit', code => settle.gone(code))
+      child.stdin.end(JSON.stringify({ atlas: ATLAS, atlasDirectory: directory, configDirectory }))
+    })
+    let reported: JsonObject
+    try {
+      reported = JSON.parse(output) as JsonObject
+      if (reported.error) throw new Error(String(reported.error))
+    } catch (error) {
+      if (error instanceof Error && error.message && !error.message.startsWith('Unexpected token')) throw error
+      throw new Error('Managed atlas installer returned invalid JSON.')
+    }
+    const verified = await atlasStatus(directory)
+    if (!verified.installed) throw new Error(`Managed atlas verification failed; no non-empty annotation volume was found in ${directory}.`)
+    const manifest = { format: 'zerowall-managed-atlas', version: 1, runner: `${RUNNER}+atlasapi`, atlas: ATLAS, atlasVersion: verified.atlasVersion ?? null, shape: verified.shape ?? null, resolution: verified.resolution ?? null, regionCount: verified.regionCount ?? null, annotationFile: reported.annotationFile ?? null, files: Array.isArray(reported.files) ? reported.files : [], builder: reported.builder ?? {}, installedAt: new Date().toISOString(), scientificReview: 'pending', notes: ['The atlas volume was downloaded by brainglobe_atlasapi into the managed directory and verified on disk.', 'Installing the atlas is not scientific review of any analysis that used it.'] }
+    const manifestPath = join(directory, ATLAS, 'zerowall-atlas.json')
+    const text = JSON.stringify(manifest, null, 2) + '\n'
+    this.jobs.assertActive(); await writeFile(manifestPath, text, { flag: 'w' })
+    const status = before.installed ? 'already-present' : 'installed'
+    return { atlas: { status, directory, name: ATLAS, atlasVersion: verified.atlasVersion ?? null, shape: verified.shape ?? null, resolution: verified.resolution ?? null, regionCount: verified.regionCount ?? null, annotationBytes: verified.annotationBytes ?? null, annotationSha256: verified.annotationSha256 ?? null, manifestPath, notes: [`Managed atlas ${status === 'installed' ? 'was downloaded and verified' : 'was already present and re-verified'} at ${directory}.`, 'Cell detection, registration and regional claims still require scientific review.'] } } as unknown as JsonObject
+  }
+
   dispose():Promise<void>{return this.jobs.dispose()}
 
   async execute(project: ProjectRecord, request: BrainAtlasRequest): Promise<BrainAtlasResponse> {
-    if (this.busy) throw new Error('BrainGlobe runner is busy; retry after the current operation finishes.')
-    this.busy = true
-    try { return await this.jobs.run(()=>this.executeOne(project, request)) } finally { this.busy = false }
+    // Checked before the slot is claimed: a missing dependency must be reported
+    // as a missing dependency, not as a concurrent operation.
+    await this.assertBrainDependencies()
+    this.acquire(request.action)
+    try { return await this.jobs.run(()=>this.executeOne(project, request)) } finally { this.release() }
   }
 
   private async executeOne(project: ProjectRecord, request: BrainAtlasRequest): Promise<BrainAtlasResponse> {
@@ -157,16 +471,19 @@ export class BrainAtlasService {
   private async exportDirectory(project: ProjectRecord): Promise<string> { const root = await realpath(project.rootPath); const raw = join(root, '.zerowall', 'science-exports', randomUUID()); this.jobs.assertActive(); await mkdir(raw, { recursive: true }); return containedFile(root, raw) }
 
   private async run(request: JsonObject): Promise<JsonObject> {
-    const python = process.env.ZEROWALL_BRAINGLOBE_PYTHON?.trim() || process.env.ZEROWALL_PYTHON?.trim() || 'python'
-    const atlasDir = process.env.ZEROWALL_BRAINGLOBE_DIR?.trim(); if (!atlasDir) throw new Error('ZEROWALL_BRAINGLOBE_DIR is required for BrainGlobe analysis; install the managed atlas first.')
+    const { executable, bootstrap } = await this.interpreter()
+    const atlasDir = await this.atlasDirectory('BrainGlobe analysis')
     return await new Promise((resolve, reject) => {
-      const child = this.jobs.spawn(python, ['-E', '-P', '-c', BRAIN_GLOBE_RUNNER], { shell: false, detached: process.platform !== 'win32', windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1' } })
+      const child = this.jobs.spawn(executable, ['-E', '-P', '-c', bootstrap + BRAIN_GLOBE_RUNNER], { shell: false, detached: process.platform !== 'win32', windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: pythonChildEnvironment(undefined, { OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1' }) })
       const chunks: Buffer[] = []; let stderr = ''; let size = 0; let failure: Error | undefined
       const timer = setTimeout(() => { failure = new Error('BrainGlobe runner exceeded the 180-second limit.'); stopBrainProcess(child) }, 180000)
       child.stdout.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 64 * 1024 * 1024) { failure = new Error('BrainGlobe output exceeds 64 MiB.'); stopBrainProcess(child) } else chunks.push(chunk) })
       child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-8000) })
       child.on('error', error => { clearTimeout(timer); reject(error) })
-      child.on('close', code => { clearTimeout(timer); const output = Buffer.concat(chunks).toString('utf8'); if (failure) reject(failure); else if (code !== 0) reject(new Error(stderr.trim() || output.slice(0, 8000) || `BrainGlobe runner exited with ${code}`)); else { try { const parsed = JSON.parse(output) as JsonObject; if (parsed.error) reject(new Error(String(parsed.error))); else resolve(parsed) } catch { reject(new Error('BrainGlobe runner returned invalid JSON.')) } } })
+      // NiftyReg workers can outlive the direct child while holding the pipes,
+      // so settlement follows 'exit' instead of waiting on an unbounded 'close'.
+      const settle = settleRunner(child, code => { clearTimeout(timer); const output = Buffer.concat(chunks).toString('utf8'); if (failure) reject(failure); else if (code === null) reject(new Error(stderr.trim() || 'BrainGlobe runner exited without reporting a status.')); else if (code !== 0) reject(new Error(stderr.trim() || output.slice(0, 8000) || `BrainGlobe runner exited with ${code}`)); else { try { const parsed = JSON.parse(output) as JsonObject; if (parsed.error) reject(new Error(String(parsed.error))); else resolve(parsed) } catch { reject(new Error('BrainGlobe runner returned invalid JSON.')) } } })
+      child.on('exit', code => settle.gone(code))
       child.stdin.end(JSON.stringify({ ...request, brainglobeDir: atlasDir }))
     })
   }
@@ -215,16 +532,19 @@ export class BrainAtlasService {
   }
 
   private async runCellfinder(request: JsonObject): Promise<JsonObject> {
-    const python = process.env.ZEROWALL_BRAINGLOBE_PYTHON?.trim() || process.env.ZEROWALL_PYTHON?.trim() || 'python'
-    const atlasDir = process.env.ZEROWALL_BRAINGLOBE_DIR?.trim(); if (!atlasDir) throw new Error('ZEROWALL_BRAINGLOBE_DIR is required for cellfinder analysis; install the managed atlas first.')
+    const { executable, bootstrap } = await this.interpreter()
+    const atlasDir = await this.atlasDirectory('cellfinder analysis')
     return await new Promise((resolve, reject) => {
-      const child = this.jobs.spawn(python, ['-E', '-P', '-c', CELLFINDER_RUNNER], { shell: false, detached: process.platform !== 'win32', windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1' } })
+      const child = this.jobs.spawn(executable, ['-E', '-P', '-c', bootstrap + CELLFINDER_RUNNER], { shell: false, detached: process.platform !== 'win32', windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: pythonChildEnvironment(undefined, { OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1' }) })
       const chunks: Buffer[] = []; let stderr = ''; let size = 0; let failure: Error | undefined
       const timer = setTimeout(() => { failure = new Error('cellfinder runner exceeded the 300-second limit.'); stopBrainProcess(child) }, 300000)
       child.stdout.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 64 * 1024 * 1024) { failure = new Error('cellfinder output exceeds 64 MiB.'); stopBrainProcess(child) } else chunks.push(chunk) })
       child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-12000) })
       child.on('error', error => { clearTimeout(timer); reject(error) })
-      child.on('close', code => { clearTimeout(timer); const output = Buffer.concat(chunks).toString('utf8'); if (failure) reject(failure); else if (code !== 0) reject(new Error(stderr.trim() || output.slice(0, 8000) || `cellfinder runner exited with ${code}`)); else { try { const parsed = JSON.parse(output) as JsonObject; if (parsed.error) reject(new Error(String(parsed.error))); else resolve(parsed) } catch { reject(new Error('cellfinder runner returned invalid JSON.')) } } })
+      // The torch worker cellfinder starts outlives the direct child and holds
+      // the inherited pipes, so settlement follows 'exit' rather than 'close'.
+      const settle = settleRunner(child, code => { clearTimeout(timer); const output = Buffer.concat(chunks).toString('utf8'); if (failure) reject(failure); else if (code === null) reject(new Error(stderr.trim() || 'cellfinder runner exited without reporting a status.')); else if (code !== 0) reject(new Error(stderr.trim() || output.slice(0, 8000) || `cellfinder runner exited with ${code}`)); else { try { const parsed = JSON.parse(output) as JsonObject; if (parsed.error) reject(new Error(String(parsed.error))); else resolve(parsed) } catch { reject(new Error('cellfinder runner returned invalid JSON.')) } } })
+      child.on('exit', code => settle.gone(code))
       child.stdin.end(JSON.stringify({ ...request, brainglobeDir: atlasDir }))
     })
   }
@@ -259,16 +579,18 @@ export class BrainAtlasService {
   }
 
   private async runBrainrender(request: JsonObject): Promise<JsonObject> {
-    const python = process.env.ZEROWALL_BRAINGLOBE_PYTHON?.trim() || process.env.ZEROWALL_PYTHON?.trim() || 'python'
-    const atlasDir = process.env.ZEROWALL_BRAINGLOBE_DIR?.trim(); if (!atlasDir) throw new Error('ZEROWALL_BRAINGLOBE_DIR is required for brainrender; install the managed atlas first.')
+    const { executable, bootstrap } = await this.interpreter()
+    const atlasDir = await this.atlasDirectory('brainrender')
     return await new Promise((resolve, reject) => {
-      const child = this.jobs.spawn(python, ['-E', '-P', '-c', BRAINRENDER_RUNNER], { shell: false, detached: process.platform !== 'win32', windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1', MPLBACKEND: 'Agg' } })
+      const child = this.jobs.spawn(executable, ['-E', '-P', '-c', bootstrap + BRAINRENDER_RUNNER], { shell: false, detached: process.platform !== 'win32', windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: pythonChildEnvironment(undefined, { OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1', MPLBACKEND: 'Agg' }) })
       const chunks: Buffer[] = []; let stderr = ''; let size = 0; let failure: Error | undefined
       const timer = setTimeout(() => { failure = new Error('brainrender runner exceeded the 180-second limit.'); stopBrainProcess(child) }, 180000)
       child.stdout.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 16 * 1024 * 1024) { failure = new Error('brainrender output exceeds 16 MiB.'); stopBrainProcess(child) } else chunks.push(chunk) })
       child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-12000) })
       child.on('error', error => { clearTimeout(timer); reject(error) })
-      child.on('close', code => { clearTimeout(timer); const output = Buffer.concat(chunks).toString('utf8'); if (failure) reject(failure); else if (code !== 0) reject(new Error(stderr.trim() || output.slice(0, 8000) || `brainrender runner exited with ${code}`)); else { try { const parsed = JSON.parse(output) as JsonObject; if (parsed.error) reject(new Error(String(parsed.error))); else resolve(parsed) } catch { reject(new Error('brainrender runner returned invalid JSON.')) } } })
+      // brainrender starts a rendering worker that can hold the pipes past exit.
+      const settle = settleRunner(child, code => { clearTimeout(timer); const output = Buffer.concat(chunks).toString('utf8'); if (failure) reject(failure); else if (code === null) reject(new Error(stderr.trim() || 'brainrender runner exited without reporting a status.')); else if (code !== 0) reject(new Error(stderr.trim() || output.slice(0, 8000) || `brainrender runner exited with ${code}`)); else { try { const parsed = JSON.parse(output) as JsonObject; if (parsed.error) reject(new Error(String(parsed.error))); else resolve(parsed) } catch { reject(new Error('brainrender runner returned invalid JSON.')) } } })
+      child.on('exit', code => settle.gone(code))
       child.stdin.end(JSON.stringify({ ...request, brainglobeDir: atlasDir }))
     })
   }
@@ -302,21 +624,24 @@ export class BrainAtlasService {
     // for file assets while retaining directories as-is.
     const inputArgument = join(outputDirectory, 'brainreg-inputs.txt')
     this.jobs.assertActive(); await writeFile(inputArgument,sourceManifest.map(file=>file.path).join('\n')+'\n',{flag:'wx'})
-    const atlasDirectory=process.env.ZEROWALL_BRAINGLOBE_DIR?.trim();if(!atlasDirectory)throw new Error('A managed atlas directory is required for registration.')
+    const atlasDirectory=await this.atlasDirectory('registration')
     // Resolve the CPU count inside the same Python/psutil used by brainreg.
     // Explicitly bind its atlas config so it cannot select another installation.
     const launcher=BRAIN_RESOURCE_GUARD+`import sys,os,runpy,configparser\nfrom pathlib import Path\nimport psutil\noutput=Path(sys.argv[2]);config=output/'atlas-config';config.mkdir(exist_ok=True)\nc=configparser.ConfigParser();c['default_dirs']={'brainglobe_dir':os.environ['ZEROWALL_BRAINGLOBE_DIR'],'interm_download_dir':os.environ['ZEROWALL_BRAINGLOBE_DIR']}\nwith (config/'bg_config.conf').open('w') as f:c.write(f)\nos.environ['BRAINGLOBE_CONFIG_DIR']=str(config)\nargs=sys.argv[1:];i=args.index('--n-free-cpus')+1;args[i]=str(max(int(args[i]),(psutil.cpu_count() or 1)-8));sys.argv=['brainreg']+args\nrunpy.run_module('brainreg.core.cli',run_name='__main__')`
-    const args = ['-E', '-P', '-c',launcher,inputArgument, outputDirectory, '--atlas', ATLAS, '--voxel-sizes', ...voxelSizes.map(String), '--orientation', orientation, '--n-free-cpus', String(nFreeCpus)]
-    const python = process.env.ZEROWALL_BRAINGLOBE_PYTHON?.trim() || process.env.ZEROWALL_PYTHON?.trim() || 'python'
+    const { executable: python, bootstrap } = await this.interpreter()
+    const args = ['-E', '-P', '-c',bootstrap+launcher,inputArgument, outputDirectory, '--atlas', ATLAS, '--voxel-sizes', ...voxelSizes.map(String), '--orientation', orientation, '--n-free-cpus', String(nFreeCpus)]
     const startedAt = Date.now()
     await new Promise<void>((resolve, reject) => {
-      const child = this.jobs.spawn(python, args, { shell: false, detached: process.platform !== 'win32', windowsHide: true, cwd: dirname(inputPath), stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env,ZEROWALL_BRAINGLOBE_DIR:atlasDirectory, OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1' } })
+      const child = this.jobs.spawn(python, args, { shell: false, detached: process.platform !== 'win32', windowsHide: true, cwd: dirname(inputPath), stdio: ['ignore', 'pipe', 'pipe'], env: pythonChildEnvironment(undefined, { ZEROWALL_BRAINGLOBE_DIR: atlasDirectory, OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1' }) })
       let stderr = ''; let stdout = ''; let timedOut = false
       const timer = setTimeout(() => { timedOut = true; stopBrainProcess(child); reject(new Error('brainreg exceeded the 30-minute bounded runner limit.')) }, 30 * 60 * 1000)
       child.stdout.on('data', chunk => { stdout = (stdout + chunk.toString()).slice(-12000) })
       child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-12000) })
       child.on('error', error => { clearTimeout(timer); reject(error) })
-      child.on('close', code => { clearTimeout(timer); if (timedOut) return; if (code !== 0) reject(new Error(`brainreg exited with ${code}: ${(stderr || stdout).trim().slice(-8000)}`)); else resolve() })
+      // NiftyReg is started as a grandchild and keeps the inherited pipes open
+      // after brainreg itself is reaped; 'close' alone would never fire here.
+      const settle = settleRunner(child, code => { clearTimeout(timer); if (timedOut) return; if (code === null) reject(new Error(`brainreg exited without reporting a status: ${(stderr || stdout).trim().slice(-8000)}`)); else if (code !== 0) reject(new Error(`brainreg exited with ${code}: ${(stderr || stdout).trim().slice(-8000)}`)); else resolve() })
+      child.on('exit', code => settle.gone(code))
     })
     const outputAudit = await auditBrainregOutputDirectory(outputDirectory)
     if (!outputAudit.valid) {

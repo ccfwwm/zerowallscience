@@ -8,7 +8,7 @@ describe('ZeroWall Science system prompt', () => {
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('capability_search')
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('mcp__rmcp__')
     expect(SCIENCE_SYSTEM_PROMPT).toContain(SCIENCE_SYSTEM_PROMPT_VERSION)
-    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toMatch(/^7\.0\.0-/u)
+    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toMatch(/^7\.0\.3-/u)
   })
 
   it('keeps the research layer explicit and bounded', () => {

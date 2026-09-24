@@ -5,6 +5,7 @@ import type { AnnotationRevisionRecord, DataAssetRecord, ImageAnnotations, Image
 import type { ImageAnalysis, ImageMaskAnalysis, ImagePreview, ImageViewState, ScienceViewerRequest, ScientificEngineLaunchResult } from '../shared/types.js'
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import { WesternBlotPanel } from './western-blot-panel.js'
+import { useWorkbenchSelection } from './workbench-selection.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 const initialView: ImageViewState = { page: 0, zoom: 1, panX: 0, panY: 0 }
@@ -25,6 +26,7 @@ function pageForOmePosition(order: string, sizes: Record<string, number>, positi
 function isImageAsset(asset: DataAssetRecord): boolean { return /\.(png|jpe?g|tiff?|pgm|zarr)(?:[\\/]|$)/iu.test(asset.uri) || asset.mediaType === 'application/vnd.ome.zarr' }
 
 export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
+  const selection = useWorkbenchSelection()
   const [assets, setAssets] = useState<DataAssetRecord[]>([])
   const [views, setViews] = useState<ViewerSessionRecord[]>([])
   const [assetId, setAssetId] = useState(''); const [importId, setImportId] = useState(''); const [maskAssetId, setMaskAssetId] = useState(''); const [maskLabels, setMaskLabels] = useState('')
@@ -46,11 +48,17 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
   const [polygon, setPolygon] = useState<Array<[number, number]>>([])
   const drag = useRef<[number, number]>()
   const generation = useRef(0); const locked = useRef(false)
+  // The sidebar only bumps `revision` per explicit pick, so the pairing below is
+  // what distinguishes a new request from a re-render of the same one.
+  const openedSelection = useRef('')
   const call = async (input: Omit<ScienceViewerRequest, 'sessionId'>) => unwrapRemoteResult('scienceViewer', await remote.scienceViewer({ ...input, sessionId }))
   const list = async (current: number) => {
     const response = await call({ action: 'list' })
     if (current !== generation.current) return
-    setAssets(response.assets ?? []); setViews(response.viewers?.filter(item => item.tool === 'image') ?? [])
+    // HE sessions are also stored under tool 'image' (host he.ts), so the discriminator
+    // is state.heTool: without it, HE slides would be listed here and would fail to open
+    // against this viewer's TIFF page geometry.
+    setAssets(response.assets ?? []); setViews(response.viewers?.filter(item => item.tool === 'image' && item.state.heTool !== 'he') ?? [])
     const native = await call({ action: 'native_status' })
     if (current === generation.current) setLaunches(native.launches ?? [])
   }
@@ -99,6 +107,16 @@ export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: 
     } catch (error) { if (current === generation.current) setMessage(error instanceof Error ? error.message : String(error)) }
     finally { if (current === generation.current) { locked.current = false; setBusy(false) } }
   }
+  // Declared after the mount reset so this assignment wins on first render; an
+  // empty sidebar value leaves the user's own picker choice untouched.
+  useEffect(() => { if (selection.assetId) setAssetId(selection.assetId) }, [selection.assetId])
+  useEffect(() => {
+    if (!selection.assetId || selection.revision == null) return
+    const key = `${selection.assetId}:${selection.revision}`
+    if (openedSelection.current === key) return
+    openedSelection.current = key
+    void run({ action: 'image_open', assetId: selection.assetId })
+  }, [selection.assetId, selection.revision, remote, sessionId])
   const head = annotations.filter(item => item.status === 'accepted').at(-1)
   const viewDirty = Boolean(viewer && Object.entries(state).some(([key, value]) => viewer.state[key] !== value))
   const unsaved = dirty || polygon.length > 0

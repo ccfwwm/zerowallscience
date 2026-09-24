@@ -11,6 +11,9 @@ Set-Content -LiteralPath (Join-Path $outputDir 'brand.rc') -Value ('1 ICON "' + 
 $png = (Join-Path $repoRoot 'resources/brand/app-icons/icon.png').Replace('\','/')
 Add-Content -LiteralPath (Join-Path $outputDir 'brand.rc') -Value ('101 RCDATA "' + $png + '"') -Encoding ascii
 $command = '@call "' + $vsRoot + '\VC\Auxiliary\Build\vcvars64.bat" >nul' + "`r`n" + 'rc /nologo brand.rc' + "`r`n" + 'cl /nologo /std:c++17 /utf-8 /EHsc /O2 /MT /DWINVER=0x0A00 /D_WIN32_WINNT=0x0A00 "' + $source + '" brand.res /Fe:modern-installer.exe /link /SUBSYSTEM:WINDOWS /DYNAMICBASE /NXCOMPAT' + "`r`n" + 'exit /b %errorlevel%'
-Set-Content -LiteralPath (Join-Path $outputDir 'build.cmd') -Value $command -Encoding ascii
+$script = Join-Path $outputDir 'build.cmd'
+Set-Content -LiteralPath $script -Value $command -Encoding ascii
 Push-Location $outputDir
-try { & cmd.exe /d /c build.cmd; if ($LASTEXITCODE -ne 0) { throw 'Installer UI compilation failed.' } } finally { Pop-Location }
+# Resolve the batch by absolute path: a machine with NoDefaultCurrentDirectoryInExePath=1
+# makes cmd refuse the bare `build.cmd` form from the current directory.
+try { & cmd.exe /d /c "`"$script`""; if ($LASTEXITCODE -ne 0) { throw 'Installer UI compilation failed.' } } finally { Pop-Location }

@@ -4,10 +4,11 @@ import type { Context, Fiber } from '@deepseek-ai/cordis'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, readdirSync, renameSync, rmSync, statSync, mkdirSync, writeFileSync } from 'node:fs'
 import { lstat, mkdir, open, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
+import { rootCertificates } from 'node:tls'
 import { ToolCallId, type ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
@@ -1364,6 +1365,158 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
 function dshHome(): string { return resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh')) }
 function defaultMcpMarkerPath(): string { return join(dshHome(), 'zerowall-mcp-defaults-v1.json') }
+
+/** CA overrides that make `requests`/`pip` abandon their bundled certificates. */
+const MANAGED_CA_ENV_KEYS = ['SSL_CERT_FILE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', 'PIP_CERT'] as const
+
+/**
+ * A CA path is only usable when it is a real, non-empty file. A stale value
+ * left by a previous runtime layout (for example
+ * ``slots\\b\\bio-tools\\python\\site-packages\\certifi\\cacert.pem``) still
+ * exists as a string but resolves to nothing, and `requests` raises
+ * "Could not find a suitable TLS CA certificate bundle" before any request is
+ * attempted. Symlinks are rejected so a junction pointing at a removed slot
+ * cannot masquerade as a bundle.
+ */
+function usableCaFile(path: string | undefined): path is string {
+  if (!path) return false
+  try {
+    if (!existsSync(path)) return false
+    const info = statSync(path)
+    if (!info.isFile() || info.size === 0) return false
+    return !lstatSync(path).isSymbolicLink()
+  } catch {
+    return false
+  }
+}
+
+function publicCaBundlePath(): string {
+  const appData = process.env.APPDATA?.trim() || join(homedir(), 'AppData', 'Roaming')
+  return join(appData, 'zerowall-science', 'certificates', 'zerowall-public-ca.pem')
+}
+
+/**
+ * Write the application-owned public CA bundle, atomically. An earlier version
+ * wrote in place, so a crash mid-write left a truncated PEM that later checks
+ * accepted on `size > 0` alone; the temp file plus rename means the bundle is
+ * either the previous good copy or the complete new one.
+ */
+function ensurePublicCaBundle(target: string): boolean {
+  if (usableCaFile(target)) return true
+  const temporary = `${target}.${process.pid}.tmp`
+  try {
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(temporary, `${rootCertificates.join('\n')}\n`, 'utf8')
+    if (!usableCaFile(temporary)) return false
+    renameSync(temporary, target)
+  } catch {
+    try { rmSync(temporary, { force: true }) } catch { /* best effort */ }
+    return false
+  }
+  return usableCaFile(target)
+}
+
+/**
+ * Resolve a CA bundle for managed Python/MCP processes. The managed wheel
+ * layer may be installed on demand, so certifi is not guaranteed to exist at
+ * launch time. Keep one application-owned fallback outside the environment;
+ * this also avoids malformed Windows paths being passed through JSON or shell
+ * escaping (for example ``\\b`` becoming a backspace).
+ *
+ * The active runtime record wins over the caller-supplied root: callers have
+ * been observed holding a pre-migration slot path, and a root that is no longer
+ * the live environment must never decide which certificate the child trusts.
+ */
+/**
+ * Absolute site-package directories the interpreter will actually search,
+ * taken from the embedded CPython path file rather than inferred from a layout.
+ *
+ * For embeddable CPython the `pythonXY._pth` file is authoritative: it replaces
+ * `sys.path` bootstrapping, so it — not `sys.prefix`, not `PYTHONPATH`, not the
+ * signed manifest — decides which `certifi` a child imports, and therefore
+ * which `cacert.pem` `certifi.where()` returns. A flat-layout environment lists
+ * `site-packages` directly; a shared environment lists `Lib/site-packages`.
+ * Reading the file is the only way to cover both without a hard-coded guess.
+ */
+function interpreterSitePackages(root: string, relativeExecutable: string | undefined): string[] {
+  const found: string[] = []
+  if (!relativeExecutable) return found
+  const interpreter = resolve(root, relativeExecutable)
+  const directory = dirname(interpreter)
+  let names: string[]
+  try { names = readdirSync(directory) } catch { return found }
+  for (const name of names.filter(entry => entry.endsWith('._pth')).sort()) {
+    let content: string
+    try { content = readFileSync(join(directory, name), 'utf8') } catch { continue }
+    for (const raw of content.split(/\r?\n/u)) {
+      const line = raw.trim()
+      // `import site` and comments are directives, not search directories.
+      if (line === '' || line.startsWith('#') || line.startsWith('import ')) continue
+      const entry = resolve(directory, line.replace(/[\\/]+$/u, ''))
+      // Ignore entries that climb out of the managed environment. The overlay is
+      // reached through `overlayPath` and never holds certificates.
+      const local = relative(root, entry)
+      if (local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) continue
+      if (basename(entry) !== 'site-packages') continue
+      if (!found.includes(entry)) found.push(entry)
+    }
+  }
+  return found
+}
+
+/**
+ * Best-effort site-packages directory for a manifest that omits the field. The
+ * interpreter's own path file wins; only if it yields nothing do we probe the
+ * two directory shapes that have ever been shipped, so the caller never ends up
+ * joining a literal that cannot exist.
+ */
+function derivedSitePackages(root: string, relativeExecutable?: string): string {
+  const interpreter = relativeExecutable ?? 'Python/python.exe'
+  const fromPathFile = interpreterSitePackages(root, interpreter)[0]
+  if (fromPathFile) return relative(root, fromPathFile)
+  for (const candidate of ['Python/Lib/site-packages', 'bio-tools/python/Lib/site-packages', 'bio-tools/python/site-packages']) {
+    if (existsSync(join(root, candidate, 'certifi'))) return candidate
+  }
+  return 'Python/Lib/site-packages'
+}
+
+function managedPythonCaFile(root: string, relativeSitePackages: string): string | undefined {
+  const active = managedEnvironmentRecord()
+  const candidates: Array<[string, string]> = []
+  if (active?.root) {
+    candidates.push([active.root, active.manifest?.python?.relativeSitePackages ?? relativeSitePackages])
+  }
+  candidates.push([root, relativeSitePackages])
+  for (const [candidateRoot, candidateRelative] of candidates) {
+    const bundled = join(candidateRoot, candidateRelative, 'certifi', 'cacert.pem')
+    if (usableCaFile(bundled)) return bundled
+  }
+  // Neither record described a bundle that exists. Ask the interpreter where it
+  // will really import `certifi` from, and trust a bundle found there over the
+  // application-owned fallback: that bundle belongs to the environment the child
+  // is about to run in.
+  for (const [candidateRoot, candidateExecutable] of [[root, undefined], [active?.root, active?.manifest?.python?.relativeExecutable]] as Array<[string | undefined, string | undefined]>) {
+    if (!candidateRoot) continue
+    for (const site of interpreterSitePackages(candidateRoot, candidateExecutable ?? derivedExecutable(candidateRoot))) {
+      const bundled = join(site, 'certifi', 'cacert.pem')
+      if (usableCaFile(bundled)) return bundled
+    }
+  }
+  const fallback = publicCaBundlePath()
+  if (ensurePublicCaBundle(fallback)) return fallback
+  return undefined
+}
+
+/** Interpreter path for a record whose manifest cannot be read: whichever of the
+ * two shipped layouts actually has an interpreter. Resolution only — nothing is
+ * launched from the result. */
+function derivedExecutable(root: string): string | undefined {
+  for (const candidate of ['Python/python.exe', 'bio-tools/python/python.exe']) {
+    if (existsSync(join(root, candidate))) return candidate
+  }
+  return undefined
+}
+
 export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.ProcessEnv, hostCwd = process.cwd(), enabledTools?: string[], candidate?: ManagedEnvironmentRecord): ResolvedMcpConfig {
   const missing = new Set<string>()
   const resolveRefs = (refs: Record<string, string>): Record<string, string> => Object.fromEntries(
@@ -1390,10 +1543,19 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
       launch.args = launch.args.map(arg => arg.replace(currentRoot, candidate.root!))
       launch.cwd = launch.cwd.replace(currentRoot, candidate.root)
     } else {
-      const relative = record.command === 'zerowall-managed:bio-tools' ? ['bio-tools/python/python.exe', 'bio-tools/run_server.py', 'mcp_bio'] : record.command === 'zerowall-managed:ketcher' ? ['', 'ketcher-chemistry/server.js'] : ['', 'sci/zerowall-mcp-launcher.cjs']
+      // The live environment is unavailable, so there is no root to relocate
+      // from and no manifest to read a layout out of. Deriving one from a
+      // hard-coded flat layout put a stale interpreter path in front of Python;
+      // only the entry scripts below are layout-independent.
+      const relative = record.command === 'zerowall-managed:bio-tools' ? ['', 'bio-tools/run_server.py', 'mcp_bio'] : record.command === 'zerowall-managed:ketcher' ? ['', 'ketcher-chemistry/server.js'] : ['', 'sci/zerowall-mcp-launcher.cjs']
       launch.command = relative[0] ? join(candidate.root, relative[0]) : process.execPath
       launch.args = [join(candidate.root, relative[1]!), ...relative.slice(2)]
       launch.cwd = candidate.root
+    }
+    if (record.command === 'zerowall-managed:bio-tools') {
+      launch.command = managedPythonExecutable(candidate)
+      launch.args = [join(candidate.root, 'bio-tools', 'run_server.py'), 'mcp_bio']
+      launch.cwd = join(candidate.root, 'bio-tools')
     }
   }
   if (record.transport === 'stdio' && record.command === 'zerowall-managed:bio-tools') {
@@ -1403,8 +1565,25 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
     if (root && version) {
       const pythonVersion = managed.manifest?.python?.version?.match(/^\d+\.\d+/u)?.[0] ?? managed.manifest?.python?.version ?? version
       const overlay = managed.overlayPath ?? resolve(root, '..', '..', 'python-overlay', `python-${pythonVersion.replace(/[^A-Za-z0-9.-]/gu, '-')}`)
-      values.PYTHONPATH = [overlay, join(root, managed.manifest?.python?.relativeSitePackages ?? 'bio-tools/python/Lib/site-packages')].join(';')
+      // The manifest is the only authority for where packages live. The former
+      // literal `bio-tools/python/Lib/site-packages` described a layout that no
+      // installed environment has (the flat layout has no `Lib` level), so a
+      // manifest without the field put both PYTHONPATH and the CA lookup on a
+      // directory that does not exist. Derive it from the interpreter instead.
+      const relativeSitePackages = managed.manifest?.python?.relativeSitePackages ?? derivedSitePackages(root)
+      values.PYTHONPATH = [overlay, join(root, relativeSitePackages)].join(';')
       values.PYTHONNOUSERSITE = '1'
+      // The stdio transport merges these values over the inherited parent
+      // environment (`{ ...scrubbedParentEnv(), ...extra }`). Assigning only on
+      // success left the keys absent from `values`, so a stale CA path that the
+      // Electron process itself had inherited survived the spread verbatim and
+      // reached Python — the reported `slots\b\...\certifi\cacert.pem` failure.
+      // Set or delete, never skip: an absent key is an inherited key.
+      const caFile = managedPythonCaFile(root, relativeSitePackages)
+      for (const key of MANAGED_CA_ENV_KEYS) {
+        if (caFile === undefined) delete values[key]
+        else values[key] = caFile
+      }
     }
   }
   return {
@@ -1438,11 +1617,29 @@ export function resolveStdioLaunch(record: Pick<McpServerRecord, 'command' | 'ar
 
 function isManagedMcp(serverName: string): boolean { return serverName === 'zerowall_managed_bio_tools' || serverName === 'zerowall_managed_ketcher' || serverName === 'zerowall_managed_scimaster' }
 
-type ManagedEnvironmentRecord = { overlayPath?: string; root?: string; health?: string; version?: string; environmentVersion?: string; contentRevision?: number; archiveSha256?: string; mode?: string; manifest?: { python?: { version?: string; relativeSitePackages?: string } } }
+type ManagedEnvironmentRecord = { overlayPath?: string; root?: string; health?: string; version?: string; environmentVersion?: string; contentRevision?: number; archiveSha256?: string; mode?: string; manifest?: { python?: { version?: string; relativeExecutable?: string; relativeSitePackages?: string } } }
+
+/**
+ * The signed manifest decides where the interpreter lives. An earlier build
+ * fell back to the flat ``bio-tools/python/python.exe`` layout whenever the
+ * manifest was absent; that layout has no ``Lib`` level and no longer exists in
+ * current environments, so the fallback silently produced a path that resolved
+ * to nothing and the failure only surfaced much later as an interpreter error.
+ * Refusing here names the real problem at the point of use.
+ */
+function managedPythonExecutable(record: ManagedEnvironmentRecord): string {
+  const root = resolve(record.root!)
+  const path = record.manifest?.python?.relativeExecutable
+  if (!path) throw new Error('Managed environment manifest is missing python.relativeExecutable.')
+  const executable = resolve(root, path)
+  const local = relative(root, executable)
+  if (isAbsolute(path) || local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) throw new Error('Unsafe managed Python executable')
+  return executable
+}
 let managedEnvironmentCache: { path: string; fileSignature: string; record: ManagedEnvironmentRecord | undefined } | undefined
 
 function managedEnvironmentPath(): string | undefined {
-  const root = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
+  const root = process.env.ZEROWALL_PYTHON_ROOT?.trim() || process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
   return root ? join(root, 'current.json') : undefined
 }
 
@@ -1479,7 +1676,7 @@ function managedEnvironmentReady(): boolean {
   const record = managedEnvironmentRecord()
   const root = record?.root
   if (!root || record?.health !== 'ready') return false
-  return existsSync(join(root, 'bio-tools', 'python', 'python.exe'))
+  return existsSync(managedPythonExecutable(record))
     && existsSync(join(root, 'bio-tools', 'run_server.py'))
     && existsSync(join(root, 'ketcher-chemistry', 'server.js'))
     && existsSync(join(root, 'sci', 'dist', 'mcp.cjs'))
@@ -1499,9 +1696,10 @@ function compareMcpServers(left: McpServerRecord, right: McpServerRecord): numbe
 }
 
 function resolveManagedLaunch(command: string): { command: string; args: string[]; cwd: string } | undefined {
-  const root = managedEnvironmentRecord()?.root
+  const record = managedEnvironmentRecord()
+  const root = record?.root
   if (!root || !['zerowall-managed:bio-tools', 'zerowall-managed:ketcher', 'zerowall-managed:scimaster'].includes(command)) return undefined
-  if (command === 'zerowall-managed:bio-tools') return { command: join(root, 'bio-tools', 'python', 'python.exe'), args: [join(root, 'bio-tools', 'run_server.py'), 'mcp_bio'], cwd: join(root, 'bio-tools') }
+  if (command === 'zerowall-managed:bio-tools') return { command: managedPythonExecutable(record!), args: [join(root, 'bio-tools', 'run_server.py'), 'mcp_bio'], cwd: join(root, 'bio-tools') }
   if (command === 'zerowall-managed:ketcher') {
     const bundled = process.env.ZEROWALL_KETCHER_ROOT
     const ketcherRoot = bundled && existsSync(join(bundled, 'server.js')) ? bundled : join(root, 'ketcher-chemistry')

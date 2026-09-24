@@ -120,7 +120,7 @@ if (missing.length > 0) throw new Error(`Pinned DSH runtime packages are missing
 
 // An interrupted refresh must never retain a receipt from the prior tree.
 await rm(resolve(expectedOutputParent, 'build-receipt.json'), { force: true })
-await rm(outputRoot, { recursive: true, force: true })
+await removeTree(outputRoot)
 await mkdir(outputRoot, { recursive: true })
 
 const queue = [...new Set([...dshNames, ...workspacePackages.keys(), ...desktopRuntimeSeeds])].map(name => ({ name, optional: false }))
@@ -171,6 +171,24 @@ while (queue.length > 0) {
 
 await writeFile(resolve(expectedOutputParent, 'build-receipt.json'), JSON.stringify(buildReceipt, null, 2))
 console.log(`Prepared ${copiedTargets.size} production runtime package locations (${incompatible} incompatible packages skipped).`)
+
+// Windows removes a large tree while the indexing service and Defender may
+// still be walking it, so a recursive delete can fail with ENOTEMPTY or EPERM
+// even though nothing holds a handle. Retry with a short backoff before giving
+// up; a single transient failure here otherwise aborts the refresh after the
+// receipt has already been deleted, which leaves the runtime stale and makes
+// the next packaging run report a version mismatch.
+async function removeTree(target) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rm(target, { recursive: true, force: true })
+      return
+    } catch (error) {
+      if (attempt >= 5) throw error
+      await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)))
+    }
+  }
+}
 
 async function resolvePackage(name, parentRoot) {
   const workspace = workspacePackages.get(name)

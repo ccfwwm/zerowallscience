@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
   },
   info: async (): Promise<DesktopInfo> => await ipcRenderer.invoke('desktop:info') as DesktopInfo,
   chooseDirectory: async (): Promise<string | null> => await ipcRenderer.invoke('desktop:choose-directory') as string | null,
+  chooseScienceFile: async (): Promise<string | null> => await ipcRenderer.invoke('desktop:choose-science-file') as string | null,
   revealPath: async (path: string): Promise<boolean> => await ipcRenderer.invoke('desktop:reveal-path', path) as boolean,
   openFolder: async (path: string): Promise<boolean> => await ipcRenderer.invoke('desktop:open-folder', path) as boolean,
   openPptx: async (path: string): Promise<boolean> => await ipcRenderer.invoke('desktop:open-pptx', path) as boolean,
@@ -52,6 +53,7 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
   installMcpPythonPackage: async (spec: string): Promise<{ taskId: string }> => await ipcRenderer.invoke('desktop:mcp-python:install', spec) as { taskId: string },
   checkMcpPythonPackageUpdates: async (names?: string[]): Promise<McpPythonInfo> => await ipcRenderer.invoke('desktop:mcp-python:check-updates', names) as McpPythonInfo,
   updateMcpPythonPackages: async (names?: string[]): Promise<{ taskId: string }> => await ipcRenderer.invoke('desktop:mcp-python:update', names) as { taskId: string },
+  pythonEnvironment: async (request: Record<string, unknown>): Promise<Record<string, unknown>> => await ipcRenderer.invoke('desktop:python-environment', request) as Record<string, unknown>,
   onMcpEnvironmentStatus: (listener: (status: McpEnvironmentStatus) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, status: McpEnvironmentStatus) => listener(status)
     ipcRenderer.on('desktop:mcp-environment:status-changed', handler)

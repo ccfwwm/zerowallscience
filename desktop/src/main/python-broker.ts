@@ -15,6 +15,11 @@ export function attachPythonBroker(child: ChildProcess, manager: () => PythonUpd
         return args[0] as string[]
       }
       switch (message.operation) {
+        case 'request': {
+          const request = args[0]
+          if (!request || typeof request !== 'object' || typeof (request as { action?: unknown }).action !== 'string' || typeof (request as { requestId?: unknown }).requestId !== 'string') throw new Error('Invalid Python environment request')
+          return service.environmentRequest(request as never)
+        }
         case 'info': return service.pythonInfo(typeof args[0] === 'string' ? args[0] : '')
         case 'versions': return service.checkPythonPackageUpdates(names())
         case 'preview': return args[1] === 'uninstall' ? service.previewUninstall(names()) : service.previewPackages(names(), typeof args[2] === 'string' ? args[2] : undefined)

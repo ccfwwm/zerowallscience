@@ -10,29 +10,16 @@ type RunPython = (args: { code: string; description: string; timeoutMs?: number 
 
 export function registerBioLocal(ctx: Context, runPython: RunPython): void {
   ctx.tools.register(defineTool({
-    name: 'bio_local', description: 'BioGenie local sequence/file/analysis operations using managed Python. List and describe before running. Database lookup defaults to Bio Tools; conflicting packages use isolated dependency profiles. Never installs automatically.',
+    name: 'bio_local', description: 'BioGenie local sequence/file/analysis operations using managed Python. List and describe before running. Database lookup defaults to Bio Tools; dependencies use the application shared Python environment. Never installs automatically.',
     parameters: { action: { type: 'string', required: true, enum: ['list', 'describe', 'run'] }, operation: { type: 'string' }, arguments: { type: 'json' }, backend: { type: 'string', enum: ['biogenie'] }, confirm_remote_upload: { type: 'boolean' }, timeout_ms: { type: 'integer' } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args, exec) {
       const payloadRoot = process.env.ZEROWALL_BIOGENIE_ROOT
       const workspace = exec.agent?.session.header.cwd
       if (!payloadRoot || !workspace) throw new Error('BioGenie requires the bundled payload and an active workspace.')
-      const profile = ['sbol_write', 'sbol_read'].includes(args.operation ?? '') ? 'sbol' : ['circuit_compile', 'circuit_simulate'].includes(args.operation ?? '') ? 'circuit' : undefined
-      let isolatedPath: string | undefined
-      if (profile && args.action === 'run') {
-        const root = process.env.ZEROWALL_PYTHON_ROOT ?? process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
-        if (!root) throw new Error('Managed Python root unavailable')
-        const pointer = await readFile(join(root, 'profiles', profile, 'current.json'), 'utf8').then(JSON.parse, () => undefined)
-        const current = JSON.parse(await readFile(join(root, 'current.json'), 'utf8'))
-        if (!pointer || pointer.snapshotId !== current.root) return { ok: false, status: 'missing_dependency', profile, repair: 'Preview and approve this profile with python_environment; interpreter snapshot changed or profile is missing.' }
-        const rel = relative(resolve(root, 'profiles', profile), resolve(pointer.sitePackages))
-        if (rel.startsWith('..') || isAbsolute(rel)) throw new Error('Invalid profile path')
-        isolatedPath = pointer.sitePackages
-      }
       const envelope = { ...args, arguments: args.arguments ?? {} }
       const code = [
         'import sys,os,json',
-        ...(isolatedPath ? [`sys.path[:]=[p for p in sys.path if 'site-packages' not in p.lower() and 'overlay' not in p.lower()]`, `sys.path.insert(0,${JSON.stringify(isolatedPath)})`, `os.environ['ZEROWALL_BIO_PROFILE']=${JSON.stringify(profile)}`] : []),
         `sys.path.insert(0,${JSON.stringify(join(payloadRoot, 'python'))})`,
         'from zerowall_bridge import main',
         `print(main(json.loads(${JSON.stringify(JSON.stringify(envelope))})))`,

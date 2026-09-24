@@ -25,17 +25,30 @@ export function environmentRequest(operation: string, args: unknown[]): Promise<
 export function registerEnvironmentTool(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'python_environment',
-    description: 'Inspect managed Python and package versions; preview install/upgrade/uninstall, apply an approved plan, track progress, or roll back. Never invokes system Python.',
+    description: 'Inspect and synchronize the shared ZeroWall Science Python runtime used by all scientific tools and MCP consumers. Manifest checks and previews are read-only; applying a dependency plan requires explicit confirmation. Never invokes system Python.',
     parameters: {
-      action: { type: 'string', required: true, enum: ['info', 'versions', 'preview', 'apply', 'status', 'rollback'] },
+      action: { type: 'string', required: true, enum: ['info', 'versions', 'preview', 'apply', 'status', 'rollback', 'check_manifest', 'preview_sync', 'apply_sync', 'list_packages', 'diagnose', 'configure'] },
       query: { type: 'string' }, packages: { type: 'array', items: { type: 'string' } },
       operation: { type: 'string', enum: ['install', 'uninstall'] },
-      profile: { type: 'string', description: 'Optional isolated dependency directory, e.g. sbol; uses the same managed interpreter.' },
+      profile: { type: 'string', description: 'Deprecated. Shared runtime installations use one package directory; separate profiles are rejected.' },
       plan_id: { type: 'string' }, task_id: { type: 'string' }, confirm: { type: 'boolean' },
+      request_id: { type: 'string' }, manifest_revision: { type: 'string' }, mirror_url: { type: 'string' }, expected_revision: { type: 'integer' },
+      requestId: { type: 'string' }, manifestRevision: { type: 'string' }, planId: { type: 'string' }, mirrorUrl: { type: 'string' }, expectedRevision: { type: 'integer' },
     },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args) {
+      if (args.requestId !== undefined) args.request_id ??= args.requestId
+      if (args.manifestRevision !== undefined) args.manifest_revision ??= args.manifestRevision
+      if (args.planId !== undefined) args.plan_id ??= args.planId
+      if (args.mirrorUrl !== undefined) args.mirror_url ??= args.mirrorUrl
+      if (args.expectedRevision !== undefined) args.expected_revision ??= args.expectedRevision
+      if (args.profile) throw new Error('SHARED_RUNTIME_ONLY: preview compatible packages in the shared environment. Conflicts must be resolved without a second package directory.')
       if (['apply', 'rollback'].includes(args.action) && args.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: show the concrete change plan and obtain approval first.')
+      if (['apply_sync', 'configure'].includes(args.action) && args.action === 'apply_sync' && args.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: show the signed dependency plan and obtain approval first.')
+      if (['check_manifest', 'preview_sync', 'apply_sync', 'list_packages', 'diagnose', 'configure', 'rollback'].includes(args.action) || (args.action === 'status' && !args.task_id)) {
+        const requestId = typeof args.request_id === 'string' && args.request_id.trim() ? args.request_id : randomUUID()
+        return environmentRequest('request', [{ action: args.action, requestId, ...(args.plan_id ? { planId: args.plan_id } : {}), ...(args.manifest_revision ? { manifestRevision: args.manifest_revision } : {}), ...(args.mirror_url ? { mirrorUrl: args.mirror_url } : {}), ...(args.expected_revision !== undefined ? { expectedRevision: args.expected_revision } : {}), ...(args.confirm !== undefined ? { confirm: args.confirm } : {}) }])
+      }
       switch (args.action) {
         case 'info': return environmentRequest('info', [args.query ?? ''])
         case 'versions':

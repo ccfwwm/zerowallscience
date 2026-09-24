@@ -22,6 +22,20 @@ it('opens a backed cell asset and renders its embedding', async () => {
   await waitFor(() => expect(scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action: 'cell_read', viewerId: 'v1', expectedVersion: 1, gene: 'G2' })))
 })
 
+it('still draws a decimated embedding when WebGL is unavailable above the SVG ceiling', async () => {
+  const points = Array.from({ length: 12000 }, (_, index) => ({ index, x: index % 100, y: (index * 7) % 100 }))
+  const large = { ...preview, embedding: { key: 'X_umap', dimensions: 2, points } }
+  const scienceViewer = vi.fn(async input => input.action === 'list' ? { ok: true, value: { assets: [{ id: 'a1', name: 'cells.h5ad' }], viewers: [] } } : { ok: true, value: { cell: { preview: large, viewer } } })
+  render(<CellViewer remote={{ scienceViewer } as any} sessionId="s1" />)
+  fireEvent.change(await screen.findByLabelText('H5AD 数据资产'), { target: { value: 'a1' } })
+  fireEvent.click(screen.getByRole('button', { name: '打开' }))
+  // Regression: the fallback used to stop at 10,000 points, so a WebGL-less machine
+  // got an empty rectangle. It now strides through the list and says how many it drew.
+  await waitFor(() => expect(screen.getByText(/SVG 回退按步长抽稀显示 4,000 \/ 12,000 点/)).toBeTruthy())
+  const svg = screen.getByRole('img', { name: 'X_umap scatter' })
+  expect(svg.querySelectorAll('circle').length).toBeGreaterThan(0)
+})
+
 it('maps letterboxed SVG clicks into embedding coordinates and exports the saved set', async () => {
   let version = 1
   const scienceViewer = vi.fn(async input => {

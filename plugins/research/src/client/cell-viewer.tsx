@@ -8,6 +8,7 @@ import type { CellSelection, CellSelectionResult } from '../shared/cell-selectio
 import { DEFAULT_CELL_CAMERA, cameraForward, cameraInverse, zoomCellCamera, type CellCamera } from '../shared/cell-camera.js'
 import { prepareCellPlot } from './cell-webgl.js'
 import { CellGpuCanvas } from './cell-gpu-canvas.js'
+import { useWorkbenchSelection } from './workbench-selection.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 export function CellViewer({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
@@ -27,6 +28,8 @@ export function CellViewer({ remote, sessionId }: { remote: Remote; sessionId: s
   const [busy, setBusy] = useState(false)
   const generation = useRef(0)
   const inFlight = useRef(false)
+  const workbench = useWorkbenchSelection()
+  const handled = useRef('')
   const call = async (input: Omit<ScienceViewerRequest, 'sessionId'>): Promise<ScienceViewerResponse> =>
     unwrapRemoteResult('scienceViewer', await remote.scienceViewer({ ...input, sessionId })) as ScienceViewerResponse
 
@@ -42,14 +45,16 @@ export function CellViewer({ remote, sessionId }: { remote: Remote; sessionId: s
     return () => { generation.current++ }
   }, [remote, sessionId])
 
-  const run = async (action: 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view', restore?: ViewerSessionRecord, geometry?: CellSelection | null): Promise<void> => {
+  // assetOverride lets the workbench-selection effect open an asset in the same tick
+  // it sets the dropdown, before React has committed that state back into assetId.
+  const run = async (action: 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view', restore?: ViewerSessionRecord, geometry?: CellSelection | null, assetOverride?: string): Promise<void> => {
     if (inFlight.current) return
     inFlight.current = true; setBusy(true); setMessage('')
     const id = generation.current
     const selected = restore ?? viewer
     try {
       const result = await call({
-        action, ...(action === 'cell_open' ? { assetId } : selected ? { viewerId: selected.id, expectedVersion: selected.version } : {}),
+        action, ...(action === 'cell_open' ? { assetId: assetOverride ?? assetId } : selected ? { viewerId: selected.id, expectedVersion: selected.version } : {}),
         gene: restore ? String(restore.state.gene ?? '') : gene.trim(),
         groupBy: restore ? String(restore.state.groupBy ?? '') : groupBy,
         embedding: geometry?.embedding ?? (restore ? String(restore.state.embedding ?? '') : embedding),
@@ -71,6 +76,22 @@ export function CellViewer({ remote, sessionId }: { remote: Remote; sessionId: s
     } catch (error) { if (id === generation.current) setMessage(error instanceof Error ? error.message : String(error)) }
     finally { if (id === generation.current) { setBusy(false); inFlight.current = false } }
   }
+
+  // Mirror the workbench sidebar pick into the local dropdown, so the panel shows
+  // the file the user selected. An empty selection leaves the dropdown untouched,
+  // because then the user is choosing inside the viewer.
+  useEffect(() => { if (workbench.assetId) setAssetId(workbench.assetId) }, [workbench.assetId])
+  useEffect(() => {
+    if (!workbench.assetId || workbench.revision == null) return
+    // Keyed by revision: selecting the same asset again is a second request, but a
+    // re-render of the same selection must not reissue the remote open call.
+    const key = `${workbench.assetId}:${workbench.revision}`
+    if (handled.current === key) return
+    handled.current = key
+    // The sibling effect only queues the dropdown update, so this request carries the
+    // sidebar pick explicitly instead of reading a stale assetId out of state.
+    void run('cell_open', undefined, undefined, workbench.assetId)
+  }, [workbench.assetId, workbench.revision])
 
   return <section style={{ border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, padding: 14, marginTop: 14 }}>
     <h3 style={{ marginTop: 0 }}>细胞查看器 · H5AD / AnnData</h3>
@@ -125,6 +146,9 @@ function EmbeddingPlot({ preview, groupBy, selection, busy, camera, onCamera, on
   const {minX,maxX,minY,maxY}=data.bounds
   const points=preview.embedding?.points ?? []
   const screen=(x:number,y:number):[number,number]=>{ const [cx,cy]=cameraForward(maxX===minX?0:2*(x-minX)/(maxX-minX)-1,maxY===minY?0:2*(y-minY)/(maxY-minY)-1,camera);return [24+(cx+1)*236,256-(cy+1)*116] }
+  // Colour and expression lookups are positional in the full point list, so the
+  // decimated subset carries the original slot instead of its own new index.
+  const pointSlots=useMemo(()=>new Map(points.map((p,i)=>[p,i])),[points])
   const clip=(clientX:number,clientY:number):[number,number] | undefined=>{
     const box=svg.current!.getBoundingClientRect();const scale=Math.min(box.width/520,box.height/280)
     if(!(scale>0))return
@@ -143,10 +167,20 @@ function EmbeddingPlot({ preview, groupBy, selection, busy, camera, onCamera, on
     return()=>element.removeEventListener('wheel',wheel)
   },[camera,busy,drawing,onCamera])
   const polygon=drawing ? vertices : selection?.geometry.polygon ?? []
+  // WebGL is the fast path, but it is also the only path on a machine without a
+  // GPU context. The SVG fallback used to draw nothing above 10,000 points, which
+  // left the panel an empty box on exactly the files that need a preview most, so
+  // it now strides through the point list instead of giving up: the shape of the
+  // embedding survives, and the caption says how many points are shown.
+  const fallback=useMemo(()=>{
+    if(points.length<=10000) return points
+    const step=Math.ceil(points.length/5000)
+    return points.filter((_,index)=>index%step===0)
+  },[points])
   return <div>
     <p>{preview.embedding?.key} · 前两维 · {points.length.toLocaleString()} 点 · {mode==='webgl'?'WebGL':'WebGL 不可用'} · 缩放 {camera.zoom.toFixed(2)}×{data.expressionRange ? ' · '+preview.expression?.gene+' 表达 '+data.expressionRange.join('–') : ''}</p>
     {groupBy && !data.expressionRange && <p>分组：{data.groups.slice(0,16).join(' · ')}{data.groups.length>8?'（颜色按 8 色循环）':''}</p>}
-    {mode==='unavailable' && <p role="status">{points.length<=10000 ? '当前使用有界 SVG 回退。' : '当前设备未提供 WebGL；请选择 2,000 点并刷新查看。'}</p>}
+    {mode==='unavailable' && <p role="status">{fallback.length===points.length ? '当前使用有界 SVG 回退。' : `当前设备未提供 WebGL；SVG 回退按步长抽稀显示 ${fallback.length.toLocaleString()} / ${points.length.toLocaleString()} 点，QC 与圈选仍处理全量。`}</p>}
     <div>
       <button type="button" disabled={busy} onClick={()=>onCamera(DEFAULT_CELL_CAMERA)}>重置视角</button>
       <button type="button" disabled={busy || maxX===minX || maxY===minY} onClick={()=>{setDrawing(true);setVertices([])}}>绘制多边形选区</button>
@@ -163,7 +197,7 @@ function EmbeddingPlot({ preview, groupBy, selection, busy, camera, onCamera, on
         onClick={event=>{if(!drawing||busy||vertices.length>=128)return;const p=clip(event.clientX,event.clientY);if(!p||Math.abs(p[0])>1||Math.abs(p[1])>1)return;const [x,y]=cameraInverse(p[0],p[1],camera);setVertices(v=>[...v,[minX+(x+1)/2*(maxX-minX),minY+(y+1)/2*(maxY-minY)]])}}
         style={{position:'absolute',inset:0,width:'100%',height:'100%',touchAction:'none',cursor:drawing?'crosshair':'grab',outline:'1px solid var(--dsw-alias-border-l1)'}}>
         <line x1="24" y1="256" x2="496" y2="256" stroke="currentColor" opacity=".25" /><line x1="24" y1="24" x2="24" y2="256" stroke="currentColor" opacity=".25" />
-        {mode==='unavailable' && points.length<=10000 && points.map((p,i)=>{const [x,y]=screen(p.x,p.y);return x>=24&&x<=496&&y>=24&&y<=256 ? <circle key={p.index} cx={x} cy={y} r="3" fill={'rgb('+[0,1,2].map(c=>Math.round(data.colors[4*i+c]!*255)).join(',')+')'} opacity={data.colors[4*i+3]}><title>{p.index}: ({p.x}, {p.y})</title></circle>:null})}
+        {mode==='unavailable' && fallback.map(p=>{const i=pointSlots.get(p);if(i===undefined)return null;const [x,y]=screen(p.x,p.y);return x>=24&&x<=496&&y>=24&&y<=256 ? <circle key={p.index} cx={x} cy={y} r="3" fill={'rgb('+[0,1,2].map(c=>Math.round(data.colors[4*i+c]!*255)).join(',')+')'} opacity={data.colors[4*i+3]}><title>{p.index}: ({p.x}, {p.y})</title></circle>:null})}
         {polygon.length>0 && <polyline points={[...polygon,...(drawing?[]:[polygon[0]!])].map(p=>screen(p[0],p[1]).join(',')).join(' ')} fill={drawing?'none':'#2563eb12'} stroke="#2563eb" strokeWidth="2" pointerEvents="none" />}
       </svg>
     </div>

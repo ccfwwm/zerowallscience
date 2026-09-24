@@ -8,7 +8,7 @@ process.on('message', async (message: any) => {
     return
   }
   try {
-    const allowed = ['initialize', 'localStatus', 'pythonInfo', 'checkForUpdates', 'checkPythonPackageUpdates', 'installPythonPackage', 'updatePythonPackages', 'selectManual', 'rollback', 'previewPackages', 'previewUninstall', 'applyPackagePlan']
+    const allowed = ['initialize', 'localStatus', 'pythonInfo', 'checkForUpdates', 'checkPythonPackageUpdates', 'installPythonPackage', 'updatePythonPackages', 'selectManual', 'rollback', 'previewPackages', 'previewUninstall', 'applyPackagePlan', 'previewDependencyManifest']
     if (!controller || !allowed.includes(message.method)) throw new Error('Unknown updater operation')
     const result = await (controller as any)[message.method](...(message.args ?? []))
     process.send?.({ id: message.id, result })

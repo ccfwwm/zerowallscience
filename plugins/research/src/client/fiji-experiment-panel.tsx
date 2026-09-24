@@ -5,6 +5,7 @@ import type { DataAssetRecord, RunRecord } from '@zerowallscience/research-store
 import { FijiReviewControls } from './fiji-review-controls.js'
 import type { FijiExperimentRequest, FijiExperimentResponse } from '../shared/types.js'
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
+import { useWorkbenchSelection } from './workbench-selection.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 const examples: Record<FijiExperimentId, string> = {
@@ -22,6 +23,7 @@ const imageExamples: Record<FijiExperimentId, object> = {
 }
 
 export function FijiExperimentPanel({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
+  const selection = useWorkbenchSelection()
   const [experiment, setExperiment] = useState<FijiExperimentId>('scratch-wound')
   const [text, setText] = useState(examples['scratch-wound'])
   const [mode, setMode] = useState<'measurements' | 'image'>('measurements')
@@ -30,6 +32,9 @@ export function FijiExperimentPanel({ remote, sessionId }: { remote: Remote; ses
   const generation = useRef(0); const request = useRef<{ signature: string; id: string }>()
   const [assets, setAssets] = useState<DataAssetRecord[]>([]); const [assetId, setAssetId] = useState('')
   useEffect(() => { let current = true; generation.current++; setAssets([]); setAssetId(''); setPreviews([]); setMeasurements([]); setDetails(undefined); setHistory([]); setSelectedRun(''); setBusy(false); request.current = undefined; void remote.scienceViewer({ sessionId, action: 'list' }).then(value => { if (current) setAssets((unwrapRemoteResult('scienceViewer', value).assets ?? []).filter(asset => asset.location === 'local' && /\.(png|tiff?|pgm)$/iu.test(asset.uri))) }).catch(error => { if (current) setMessage(String(error)) }); return () => { current = false; generation.current++ } }, [remote, sessionId])
+  // State sync only: this panel analyses on demand with user-supplied parameters,
+  // so a sidebar pick must not spend compute on the user's behalf.
+  useEffect(() => { if (selection.assetId) setAssetId(selection.assetId) }, [selection.assetId])
   const [history,setHistory]=useState<RunRecord[]>([])
   const previewName=(name:string)=>({'mask.png':'接受的分割掩膜','automatic-mask.png':'原始自动掩膜','exclusion-mask.png':'反光及边缘排除掩膜','overlay.png':'边界质控叠加','skeleton.png':'原生骨架'}[name]??name)
   const [details,setDetails]=useState<FijiExperimentResponse>()
@@ -75,7 +80,7 @@ export function FijiExperimentPanel({ remote, sessionId }: { remote: Remote; ses
     {previews.length > 0 && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{previews.map(preview => <figure key={preview.name}><img src={preview.src} alt={previewName(preview.name)} style={{ width: 260, maxWidth: '100%', maxHeight: 260, objectFit: 'contain', imageRendering: 'pixelated' }} /><figcaption>{previewName(preview.name)+'（ROI 局部坐标）'}</figcaption></figure>)}</div>}
     {details?.result?.reviewState==='needs_recheck'&&<p role="alert">结果需要重新复核：{details.result.reviewReasons?.join(', ')}</p>}
     {details?.result?.timeline&&<p>已观察时间：{details.result.timeline.observedHours.join(', ')} h；缺失：{details.result.timeline.missingHours.join(', ')||'无'}；重复记录：{details.result.timeline.duplicateHours.join(', ')||'无'}</p>}
-    {selectedRun&&<button type="button" onClick={()=>void call({sessionId,action:'status',runId:selectedRun}).then(result=>{setDetails(result);setMeasurements(result.result?.measurements??[])}).catch(reason=>setMessage(String(reason)))}>检查结果与源修订</button>}
+    {selectedRun&&<button type="button" disabled={busy} onClick={()=>{const current=generation.current;void call({sessionId,action:'status',runId:selectedRun}).then(result=>{if(current!==generation.current)return;setDetails(result);setMeasurements(result.result?.measurements??[])}).catch(reason=>{if(current===generation.current)setMessage(String(reason))})}}>检查结果与源修订</button>}
     {measurements.length > 0 && <pre aria-label="实验结果" style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(measurements, null, 2)}</pre>}
     {message && <pre style={{ whiteSpace: 'pre-wrap' }} role="status">{message}</pre>}
   </section>

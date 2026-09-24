@@ -1,10 +1,12 @@
 import { mkdtemp, writeFile, mkdir, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { existsSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ResearchStore } from '../../../store/src/index.js'
-import { engineArguments, engineEnvironment, NativeEngineService } from '../src/host/native-engines.js'
+import { defaultScientificEngineConfig, discoverFijiExecutable, engineArguments, engineEnvironment, engineExecutable, NativeEngineService } from '../src/host/native-engines.js'
+import { BrainAtlasService, atlasStatus, defaultAtlasDirectory, resolveManagedBrainPython } from '../src/host/brain-atlas.js'
 
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.unstubAllEnvs() })
@@ -21,6 +23,36 @@ async function fixture() {
 }
 
 describe('native engine lifecycle and project boundary', () => {
+  it('discovers a Fiji executable from either a directory or an explicit entrypoint', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'fiji-discovery-'))
+    try {
+      const entry = process.platform === 'win32' ? 'fiji.bat' : 'fiji'
+      await writeFile(join(root, entry), process.platform === 'win32' ? '@echo off\r\n' : '#!/bin/sh\n')
+      expect(discoverFijiExecutable(root)).toBe(join(root, entry))
+      expect(discoverFijiExecutable(join(root, entry))).toBe(join(root, entry))
+      expect(defaultScientificEngineConfig('fiji').installDirectory).toBe('C:\\softworks\\Fiji')
+    } finally { await rm(root, { recursive: true, force: true }) }
+  })
+  it('keeps an explicitly invalid Fiji path instead of silently falling back', () => {
+    const explicit = 'C:\\does-not-exist\\fiji.exe'
+    expect(engineExecutable('fiji', { executablePath: explicit })).toBe(explicit)
+    expect(engineExecutable('napari', { pythonPath: explicit })).toBe(explicit)
+  })
+  it.runIf(process.platform === 'win32' && existsSync('C:\\softworks\\Fiji\\fiji-windows-x64.exe'))('probes the installed Fiji Java without launching the GUI', async () => {
+    const { project, service } = await fixture()
+    const status = await service.probe(project.id, 'fiji')
+    expect(status).toMatchObject({ id: 'fiji', path: 'C:\\softworks\\Fiji\\fiji-windows-x64.exe' })
+    expect(status.diagnostic).toContain('Java=')
+  })
+  it('replaces a competing path when project configuration changes', async () => {
+    const { project, service } = await fixture()
+    const first = await service.setConfig(project.id, { id: 'fiji', executablePath: 'C:\\first\\fiji.exe' })
+    expect(first.executablePath).toBe('C:\\first\\fiji.exe')
+    const second = await service.setConfig(project.id, { id: 'fiji', installDirectory: 'C:\\second\\Fiji' })
+    expect(second.installDirectory).toBe('C:\\second\\Fiji')
+    expect(second.executablePath).toBeUndefined()
+    await expect(service.resolveExecutable(project.id, 'fiji')).rejects.toThrow('显式路径无效')
+  })
   it('records a real spawn separately from process failure and never claims GUI readiness', async () => {
     const { store, project, service } = await fixture()
     const launched = await service.launch(project, 's1', 'napari')
@@ -77,5 +109,80 @@ describe('native engine lifecycle and project boundary', () => {
     expect(env.CONDA_PREFIX).toBe(root)
     expect(process.env.PATH).toBe(originalPath)
     expect(await engineEnvironment('fiji', join(root, 'fiji.exe'))).toEqual(process.env)
+  })
+})
+
+/**
+ * The BrainGlobe default atlas directory is proven here at the resolution and
+ * guard layer only.  No atlas is downloaded and no Python is executed, so the
+ * assertions cover path resolution, containment and the empty-install report;
+ * the download itself and the shape/size verification after it are covered only
+ * by real execution against a managed environment, which this suite does not do.
+ */
+describe('managed BrainGlobe atlas resolution', () => {
+  const previousRoot = process.env.ZEROWALL_PYTHON_ROOT
+  const previousAtlas = process.env.ZEROWALL_BRAINGLOBE_DIR
+  const previousManaged = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
+  afterEach(() => {
+    if (previousRoot === undefined) delete process.env.ZEROWALL_PYTHON_ROOT
+    else process.env.ZEROWALL_PYTHON_ROOT = previousRoot
+    if (previousAtlas === undefined) delete process.env.ZEROWALL_BRAINGLOBE_DIR
+    else process.env.ZEROWALL_BRAINGLOBE_DIR = previousAtlas
+    if (previousManaged === undefined) delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
+    else process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = previousManaged
+  })
+  async function managedRoot(): Promise<string> {
+    const store = await mkdtemp(join(tmpdir(), 'zerowall-brain-managed-'))
+    const installed = join(store, 'versions', '7.0.2')
+    const sitePackages = join(installed, 'bio-tools', 'python', 'Lib', 'site-packages')
+    await mkdir(sitePackages, { recursive: true })
+    await writeFile(join(installed, 'bio-tools', 'python', 'python.exe'), 'fixture')
+    const manifest = { python: { version: '3.12.8', relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/Lib/site-packages' } }
+    await writeFile(join(store, 'current.json'), JSON.stringify({ root: installed, health: 'ready', manifest }))
+    cleanups.push(async () => rm(store, { recursive: true, force: true }))
+    return store
+  }
+  it('resolves the managed interpreter and a default atlas directory without ZEROWALL_BRAINGLOBE_DIR', async () => {
+    const store = await managedRoot()
+    delete process.env.ZEROWALL_BRAINGLOBE_DIR
+    delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
+    vi.stubEnv('ZEROWALL_PYTHON_ROOT', store)
+    expect(defaultAtlasDirectory()).toBe(join(store, 'brainglobe-managed'))
+    const resolved = await resolveManagedBrainPython()
+    expect(resolved).toMatchObject({ root: join(store, 'versions', '7.0.2'), executable: join(store, 'versions', '7.0.2', 'bio-tools', 'python', 'python.exe') })
+    // The service must create the default directory lazily instead of throwing.
+    const service = new BrainAtlasService(new ResearchStore(':memory:'))
+    await expect((service as unknown as { atlasDirectory(purpose: string): Promise<string> }).atlasDirectory('BrainGlobe analysis')).resolves.toBe(join(store, 'brainglobe-managed'))
+    await service.dispose()
+  })
+  it('reports an installed atlas only from a non-empty volume, never from a manifest alone', async () => {
+    const store = await managedRoot()
+    delete process.env.ZEROWALL_BRAINGLOBE_DIR
+    vi.stubEnv('ZEROWALL_PYTHON_ROOT', store)
+    const directory = join(store, 'brainglobe-managed')
+    // A manifest with no annotation volume must not be reported as installed.
+    await mkdir(join(directory, 'allen_mouse_25um'), { recursive: true })
+    await writeFile(join(directory, 'allen_mouse_25um', 'zerowall-atlas.json'), JSON.stringify({ format: 'zerowall-managed-atlas', atlas: 'allen_mouse_25um', annotationFile: 'annotation.tiff', shape: [528, 320, 456] }))
+    await expect(atlasStatus(directory)).resolves.toMatchObject({ installed: false, name: 'allen_mouse_25um' })
+    await writeFile(join(directory, 'allen_mouse_25um', 'annotation.tiff'), Buffer.from([1, 2, 3, 4]))
+    await expect(atlasStatus(directory)).resolves.toMatchObject({ installed: true, shape: [528, 320, 456] })
+  })
+  it('refuses an interpreter that escapes the managed install root', async () => {
+    const store = await managedRoot()
+    delete process.env.ZEROWALL_BRAINGLOBE_DIR
+    vi.stubEnv('ZEROWALL_PYTHON_ROOT', store)
+    const installed = join(store, 'versions', '7.0.2')
+    await writeFile(join(store, 'current.json'), JSON.stringify({ root: installed, health: 'ready', manifest: { python: { relativeExecutable: '../../escape.exe', relativeSitePackages: 'bio-tools/python/Lib/site-packages' } } }))
+    await expect(resolveManagedBrainPython()).resolves.toBeUndefined()
+  })
+  it('still reports the explicit requirement when no managed root exists at all', async () => {
+    delete process.env.ZEROWALL_PYTHON_ROOT
+    delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
+    delete process.env.ZEROWALL_BRAINGLOBE_DIR
+    expect(defaultAtlasDirectory()).toBeUndefined()
+    const store = new ResearchStore(':memory:')
+    const service = new BrainAtlasService(store)
+    await expect((service as unknown as { atlasDirectory(purpose: string): Promise<string> }).atlasDirectory('BrainGlobe analysis')).rejects.toThrow('ZEROWALL_BRAINGLOBE_DIR is required')
+    await service.dispose(); store.close()
   })
 })

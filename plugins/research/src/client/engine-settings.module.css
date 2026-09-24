@@ -1,0 +1,245 @@
+/* Engine settings dialog. One module owns the overlay, the three dialog bands
+   and the engine card, so no TSX in this feature needs an inline style object.
+   Every colour goes through a --zw-* token with a literal fallback, because the
+   desktop locale bag is not guaranteed to define the theme on first paint. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(16, 32, 27, .42);
+  backdrop-filter: blur(2px);
+}
+
+.dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(920px, 100%);
+  max-height: min(84vh, 100%);
+  background: var(--zw-surface, #fff);
+  color: var(--zw-text, #16241f);
+  border: 1px solid var(--zw-line, #cfe0d8);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(16, 32, 27, .32);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--zw-line, #cfe0d8);
+  background: var(--zw-soft, #eef5f1);
+}
+
+.headerText {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--zw-text, #16241f);
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--zw-muted, #6d8078);
+}
+
+.closeButton {
+  flex: none;
+  padding: 6px 12px;
+  border: 1px solid var(--zw-line, #cfe0d8);
+  border-radius: 6px;
+  background: var(--zw-surface, #fff);
+  color: var(--zw-text, #16241f);
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  border-color: var(--zw-accent, #3f806b);
+  color: var(--zw-accent-strong, #2c5c4c);
+}
+
+.body {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 16px 20px;
+  overflow: auto;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--zw-line, #cfe0d8);
+  background: var(--zw-soft, #eef5f1);
+}
+
+.intro {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--zw-muted, #6d8078);
+}
+
+.card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--zw-line, #cfe0d8);
+  border-radius: 10px;
+  background: var(--zw-surface, #fff);
+}
+
+.cardMuted {
+  background: var(--zw-soft, #eef5f1);
+}
+
+.cardHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cardNote {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--zw-muted, #6d8078);
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  color: var(--zw-muted, #6d8078);
+}
+
+.input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--zw-line, #cfe0d8);
+  border-radius: 6px;
+  background: var(--zw-surface, #fff);
+  color: var(--zw-text, #16241f);
+  font: inherit;
+}
+
+.input:disabled {
+  background: var(--zw-soft-2, #dcece4);
+  color: var(--zw-muted, #6d8078);
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.button {
+  padding: 5px 10px;
+  border: 1px solid var(--zw-line, #cfe0d8);
+  border-radius: 6px;
+  background: var(--zw-surface, #fff);
+  color: var(--zw-text, #16241f);
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--zw-accent, #3f806b);
+  color: var(--zw-accent-strong, #2c5c4c);
+}
+
+.button:disabled {
+  cursor: progress;
+  color: var(--zw-muted, #6d8078);
+}
+
+.status {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--zw-muted, #6d8078);
+  overflow-wrap: anywhere;
+}
+
+.badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--zw-line, #cfe0d8);
+  font-size: 11px;
+  color: var(--zw-muted, #6d8078);
+}
+
+.diagnostic {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--zw-soft, #eef5f1);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.message {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--zw-accent-strong, #2c5c4c);
+}
+
+.section {
+  display: grid;
+  gap: 10px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .overlay {
+    padding: 0;
+  }
+
+  .dialog {
+    width: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+}

@@ -1,0 +1,4606 @@
+{
+  "schema": 3,
+  "kind": "zerowall-science-python",
+  "runtimeId": "zerowall-science-python",
+  "platform": "win32-x64",
+  "environmentVersion": "1.4.1",
+  "revision": "1.4.1-r7",
+  "pythonVersion": "3.12.10",
+  "createdAt": "2026-09-23T18:38:49.510Z",
+  "index": {
+    "indexUrl": "https://pypi.tuna.tsinghua.edu.cn/simple",
+    "trustedHost": "pypi.tuna.tsinghua.edu.cn"
+  },
+  "packages": [
+    {
+      "name": "about-time",
+      "version": "4.2.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "absl-py",
+      "version": "2.5.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "acres",
+      "version": "0.5.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "aiobotocore",
+      "version": "3.9.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "aiohappyeyeballs",
+      "version": "2.7.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "aiohttp",
+      "version": "3.14.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "aioitertools",
+      "version": "0.13.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "aiosignal",
+      "version": "1.4.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "alive-progress",
+      "version": "3.3.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "anndata",
+      "version": "0.13.3.post0",
+      "required": true,
+      "capabilities": [
+        "anndata",
+        "cellxgene-census",
+        "deepspot-m",
+        "lamindb",
+        "pydeseq2",
+        "scgpt",
+        "singlecell-milor"
+      ]
+    },
+    {
+      "name": "annotated-doc",
+      "version": "0.0.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "annotated-types",
+      "version": "0.8.0",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "anyio",
+      "version": "4.15.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "anywidget",
+      "version": "0.11.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "app-model",
+      "version": "0.5.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "argon2-cffi",
+      "version": "25.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "argon2-cffi-bindings",
+      "version": "26.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "array-api-compat",
+      "version": "1.15.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "arro3-core",
+      "version": "0.8.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "arrow",
+      "version": "1.4.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "arviz",
+      "version": "1.3.0",
+      "required": true,
+      "capabilities": [
+        "pymc",
+        "statistical-analysis"
+      ]
+    },
+    {
+      "name": "arviz-base",
+      "version": "1.3.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "arviz-plots",
+      "version": "1.3.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "arviz-stats",
+      "version": "1.3.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "astropy",
+      "version": "8.0.1",
+      "required": true,
+      "capabilities": [
+        "astropy",
+        "large-file"
+      ]
+    },
+    {
+      "name": "astropy-iers-data",
+      "version": "0.2026.9.14.0.56.43",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "asttokens",
+      "version": "3.0.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "astunparse",
+      "version": "1.6.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "async-lru",
+      "version": "2.3.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "attrs",
+      "version": "26.1.0",
+      "required": true,
+      "capabilities": [
+        "esmfold2"
+      ]
+    },
+    {
+      "name": "autograd",
+      "version": "1.9.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "autograd-gamma",
+      "version": "0.5.0",
+      "sha256": "f27abb7b8bb9cffc8badcbf59f3fe44a9db39e124ecacf1992b6d952934ac9c4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ],
+      "source": "sdist",
+      "filename": "autograd-gamma-0.5.0.tar.gz"
+    },
+    {
+      "name": "babel",
+      "version": "2.18.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "beautifulsoup4",
+      "version": "4.15.0",
+      "required": true,
+      "capabilities": [
+        "paper-download"
+      ]
+    },
+    {
+      "name": "bermuda",
+      "version": "0.1.7",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "bibtexparser",
+      "version": "1.4.4",
+      "sha256": "093b6c824f7a71d3a748867c4057b71f77c55b8dbc07efc993b781771520d8fb",
+      "required": true,
+      "capabilities": [
+        "pyzotero"
+      ],
+      "source": "sdist",
+      "filename": "bibtexparser-1.4.4.tar.gz"
+    },
+    {
+      "name": "bids-validator",
+      "version": "1.14.7.post0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "bidsschematools",
+      "version": "1.2.7",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "biom-format",
+      "version": "2.1.17",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "biopython",
+      "version": "1.88",
+      "required": true,
+      "capabilities": [
+        "benchling-integration",
+        "biopython",
+        "bioservices",
+        "esmfold2",
+        "exploratory-data-analysis",
+        "ligandmpnn"
+      ]
+    },
+    {
+      "name": "biothings-client",
+      "version": "0.5.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "blake3",
+      "version": "1.0.9",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "bleach",
+      "version": "6.4.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "blosc2",
+      "version": "4.13.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "boto3",
+      "version": "1.43.75",
+      "required": true,
+      "capabilities": [
+        "benchling-integration",
+        "openfold3"
+      ]
+    },
+    {
+      "name": "botocore",
+      "version": "1.43.75",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "brainglobe",
+      "version": "3.0.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "brainglobe-atlasapi",
+      "version": "3.0.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "brainglobe-heatmap",
+      "version": "0.6.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "brainglobe-napari-io",
+      "version": "0.5.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "brainglobe-segmentation",
+      "version": "1.3.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "brainglobe-space",
+      "version": "1.0.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "brainglobe-utils",
+      "version": "0.11.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "brainreg",
+      "version": "1.0.16",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "brainrender",
+      "version": "2.2.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "brainrender-napari",
+      "version": "0.2.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "brotli",
+      "version": "1.2.0",
+      "required": true,
+      "capabilities": [
+        "esmfold2"
+      ]
+    },
+    {
+      "name": "bs4",
+      "version": "0.0.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "build",
+      "version": "1.6.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cached-property",
+      "version": "2.0.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cachetools",
+      "version": "6.2.6",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cachey",
+      "version": "0.2.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cattrs",
+      "version": "26.2.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cellfinder",
+      "version": "1.10.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "certifi",
+      "version": "2026.7.22",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cffi",
+      "version": "2.1.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cftime",
+      "version": "1.6.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "chardet",
+      "version": "7.6.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "charset-normalizer",
+      "version": "3.5.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "click",
+      "version": "8.5.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "click-default-group",
+      "version": "1.2.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cloud-files",
+      "version": "6.4.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cloud-volume",
+      "version": "12.15.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cloudpickle",
+      "version": "3.1.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cloudscraper",
+      "version": "1.2.71",
+      "required": true,
+      "capabilities": [
+        "paper-download"
+      ]
+    },
+    {
+      "name": "cma",
+      "version": "4.5.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cobble",
+      "version": "0.1.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "colorama",
+      "version": "0.4.6",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "coloredlogs",
+      "version": "15.0.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "comm",
+      "version": "0.2.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "compressed-segmentation",
+      "version": "2.3.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "configobj",
+      "version": "5.0.9",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "contourpy",
+      "version": "1.3.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "crc32c",
+      "version": "2.9.post0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cryptography",
+      "version": "50.0.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "csbdeep",
+      "version": "0.8.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "cycler",
+      "version": "0.12.1",
+      "required": true,
+      "capabilities": [
+        "matplotlib"
+      ]
+    },
+    {
+      "name": "dask",
+      "version": "2026.8.0",
+      "required": true,
+      "capabilities": [
+        "astropy",
+        "dask",
+        "geomaster",
+        "optimize-for-gpu",
+        "scanpy",
+        "vaex",
+        "zarr-python"
+      ]
+    },
+    {
+      "name": "datamol",
+      "version": "0.13.0",
+      "required": true,
+      "capabilities": [
+        "datamol",
+        "medchem",
+        "molfeat"
+      ]
+    },
+    {
+      "name": "debugpy",
+      "version": "1.8.22",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "decorator",
+      "version": "5.3.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "deepcomparer",
+      "version": "0.4.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "deflate",
+      "version": "0.9.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "defusedxml",
+      "version": "0.7.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "deltalake",
+      "version": "1.5.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "deprecated",
+      "version": "1.3.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "deprecation",
+      "version": "2.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "dill",
+      "version": "0.4.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "distributed",
+      "version": "2026.8.0",
+      "required": true,
+      "capabilities": [
+        "arboreto"
+      ]
+    },
+    {
+      "name": "docopt",
+      "version": "0.6.2",
+      "sha256": "49b3a825280bd66b3aa83585ef59c4a8c82f2c8a522dbe754a8bc8d08c85c491",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ],
+      "source": "sdist",
+      "filename": "docopt-0.6.2.tar.gz"
+    },
+    {
+      "name": "docstring-parser",
+      "version": "0.18.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "donfig",
+      "version": "0.8.1.post1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "dracopy",
+      "version": "1.7.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "ecos",
+      "version": "2.0.14",
+      "required": true,
+      "capabilities": [
+        "scikit-survival"
+      ]
+    },
+    {
+      "name": "emmet-core",
+      "version": "0.87.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "et-xmlfile",
+      "version": "2.0.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "executing",
+      "version": "2.2.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "fancylog",
+      "version": "0.8.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "fast-array-utils",
+      "version": "1.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "fasteners",
+      "version": "0.20",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "fastjsonschema",
+      "version": "2.22.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "fastremap",
+      "version": "1.20.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "feedparser",
+      "version": "6.0.14",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "feedparser-sgmllib",
+      "version": "2.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "filelock",
+      "version": "4.0.1",
+      "required": true,
+      "capabilities": [
+        "esmfold2"
+      ]
+    },
+    {
+      "name": "flatbuffers",
+      "version": "25.12.19",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "flexcache",
+      "version": "0.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "flexparser",
+      "version": "0.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "flowio",
+      "version": "1.4.0",
+      "sha256": "c205efcecd1da7da29a1a55c30e09daa7fc132b997cd88910ef06a490755ecf7",
+      "required": true,
+      "capabilities": [
+        "flowio"
+      ],
+      "source": "sdist",
+      "filename": "flowio-1.4.0.tar.gz"
+    },
+    {
+      "name": "flox",
+      "version": "0.10.8",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "fonttools",
+      "version": "4.64.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "formulaic",
+      "version": "1.2.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "formulaic-contrasts",
+      "version": "1.0.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "fqdn",
+      "version": "1.5.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "freetype-py",
+      "version": "2.5.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "frozendict",
+      "version": "2.4.7",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "frozenlist",
+      "version": "1.8.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "fsspec",
+      "version": "2026.9.0",
+      "required": true,
+      "capabilities": [
+        "anndata"
+      ]
+    },
+    {
+      "name": "future",
+      "version": "1.0.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "gast",
+      "version": "0.7.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "gcsfs",
+      "version": "2026.8.1",
+      "required": true,
+      "capabilities": [
+        "dask",
+        "datamol",
+        "imaging-data-commons",
+        "vaex",
+        "zarr-python"
+      ]
+    },
+    {
+      "name": "geopandas",
+      "version": "1.1.4",
+      "required": true,
+      "capabilities": [
+        "geomaster",
+        "geopandas",
+        "networkx",
+        "optimize-for-gpu"
+      ]
+    },
+    {
+      "name": "gevent",
+      "version": "26.9.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "google",
+      "version": "3.0.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "google-api-core",
+      "version": "2.38.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "google-auth",
+      "version": "2.58.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "google-auth-oauthlib",
+      "version": "1.4.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "google-cloud-core",
+      "version": "2.7.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "google-cloud-storage",
+      "version": "3.14.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "google-cloud-storage-control",
+      "version": "1.15.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "google-crc32c",
+      "version": "1.8.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "google-pasta",
+      "version": "0.2.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "google-resumable-media",
+      "version": "2.10.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "googleapis-common-protos",
+      "version": "1.75.3",
+      "required": true,
+      "capabilities": [
+        "geomaster",
+        "imaging-data-commons",
+        "polars"
+      ]
+    },
+    {
+      "name": "gprofiler-official",
+      "version": "1.0.0",
+      "required": true,
+      "capabilities": [
+        "pathway-enrichment"
+      ]
+    },
+    {
+      "name": "graphemeu",
+      "version": "0.7.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "greenlet",
+      "version": "3.5.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "grpc-google-iam-v1",
+      "version": "0.14.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "grpcio",
+      "version": "1.84.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "grpcio-status",
+      "version": "1.84.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "gseapy",
+      "version": "1.3.1",
+      "required": true,
+      "capabilities": [
+        "pathway-enrichment"
+      ]
+    },
+    {
+      "name": "h11",
+      "version": "0.16.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "h2",
+      "version": "4.4.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "h5py",
+      "version": "3.16.0",
+      "required": true,
+      "capabilities": [
+        "anndata",
+        "dask",
+        "exploratory-data-analysis",
+        "fluidsim",
+        "large-file",
+        "matlab",
+        "zarr-python"
+      ]
+    },
+    {
+      "name": "hdbscan",
+      "version": "0.8.44",
+      "required": true,
+      "capabilities": [
+        "umap-learn"
+      ]
+    },
+    {
+      "name": "heapdict",
+      "version": "1.0.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "hpack",
+      "version": "4.2.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "hsluv",
+      "version": "5.0.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "httpcore",
+      "version": "1.0.9",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "httpcore2",
+      "version": "2.13.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "httpx",
+      "version": "0.28.1",
+      "required": true,
+      "capabilities": [
+        "benchling-integration",
+        "esmfold2",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "httpx-sse",
+      "version": "0.4.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "httpx2",
+      "version": "2.13.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "humanfriendly",
+      "version": "10.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "hyperframe",
+      "version": "6.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "idna",
+      "version": "3.19",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "igraph",
+      "version": "1.0.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "imagecodecs",
+      "version": "2026.8.16",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "imagehash",
+      "version": "4.3.2",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "imageio",
+      "version": "2.37.4",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "importlib-resources",
+      "version": "7.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "in-n-out",
+      "version": "0.2.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "inflect",
+      "version": "7.5.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "inflection",
+      "version": "0.5.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "iniconfig",
+      "version": "2.3.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "interface-meta",
+      "version": "2.0.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "intervaltree",
+      "version": "3.2.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "ipykernel",
+      "version": "6.31.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "ipython",
+      "version": "9.17.1",
+      "required": true,
+      "capabilities": [
+        "sympy"
+      ]
+    },
+    {
+      "name": "ipython-pygments-lexers",
+      "version": "1.1.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "ipywidgets",
+      "version": "8.1.9",
+      "required": true,
+      "capabilities": [
+        "histolab",
+        "seaborn",
+        "sympy"
+      ]
+    },
+    {
+      "name": "isoduration",
+      "version": "20.11.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "itkwasm",
+      "version": "1.0b201",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "itkwasm-downsample",
+      "version": "2.0.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "itkwasm-downsample-wasi",
+      "version": "2.0.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jedi",
+      "version": "0.20.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jinja2",
+      "version": "3.1.6",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jmespath",
+      "version": "1.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "joblib",
+      "version": "1.6.0",
+      "required": true,
+      "capabilities": [
+        "lamindb",
+        "pymoo",
+        "scikit-learn",
+        "scikit-survival"
+      ]
+    },
+    {
+      "name": "json5",
+      "version": "0.15.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jsonpointer",
+      "version": "3.1.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jsonschema",
+      "version": "4.26.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jsonschema-specifications",
+      "version": "2025.9.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jupyter-builder",
+      "version": "1.2.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jupyter-client",
+      "version": "8.10.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jupyter-core",
+      "version": "5.9.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jupyter-events",
+      "version": "0.12.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jupyter-lsp",
+      "version": "2.3.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jupyter-server",
+      "version": "2.21.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jupyter-server-terminals",
+      "version": "0.5.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jupyterlab",
+      "version": "4.6.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jupyterlab-pygments",
+      "version": "0.3.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jupyterlab-server",
+      "version": "2.28.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "jupyterlab-widgets",
+      "version": "3.0.17",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "k3d",
+      "version": "3.1.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "keras",
+      "version": "3.15.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "kiwisolver",
+      "version": "1.5.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "lark",
+      "version": "1.3.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "latexcodec",
+      "version": "3.0.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "lazy-loader",
+      "version": "0.5",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "legacy-api-wrap",
+      "version": "1.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "leidenalg",
+      "version": "0.12.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "libclang",
+      "version": "18.1.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "lifelines",
+      "version": "0.30.0",
+      "required": true,
+      "capabilities": [
+        "statistical-power"
+      ]
+    },
+    {
+      "name": "liteparse",
+      "version": "2.14.4",
+      "required": true,
+      "capabilities": [
+        "liteparse"
+      ]
+    },
+    {
+      "name": "llvmlite",
+      "version": "0.49.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "locket",
+      "version": "1.0.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "loguru",
+      "version": "0.7.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "lxml",
+      "version": "6.1.3",
+      "required": true,
+      "capabilities": [
+        "paper-download",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "magicgui",
+      "version": "0.10.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "magika",
+      "version": "0.6.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "mammoth",
+      "version": "1.11.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "markdown",
+      "version": "3.10.3",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "markdown-it-py",
+      "version": "4.2.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "markdownify",
+      "version": "1.2.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "markitdown",
+      "version": "0.1.7",
+      "required": true,
+      "capabilities": [
+        "markitdown"
+      ]
+    },
+    {
+      "name": "markupsafe",
+      "version": "3.0.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "matplotlib",
+      "version": "3.11.1",
+      "required": true,
+      "capabilities": [
+        "academic-paper",
+        "aeon",
+        "astropy",
+        "bioinfor-figure-export",
+        "biopython",
+        "cirq",
+        "cobrapy",
+        "deepspot-m",
+        "esm",
+        "figure-style",
+        "geomaster",
+        "geopandas",
+        "gget",
+        "histolab",
+        "matplotlib",
+        "molecular-dynamics",
+        "networkx",
+        "neuropixels-analysis",
+        "openpiv",
+        "optimize-for-gpu",
+        "pennylane",
+        "phylogenetics",
+        "publication-figures",
+        "pydeseq2",
+        "pymc",
+        "pymoo",
+        "pyopenms",
+        "pytorch-lightning",
+        "qiskit",
+        "qutip",
+        "relsa-severity-assessment",
+        "scanpy",
+        "scikit-bio",
+        "scikit-learn",
+        "scvelo",
+        "seaborn",
+        "shap",
+        "singlecell-qc",
+        "statistical-analysis",
+        "statistical-power",
+        "statsmodels",
+        "sympy",
+        "timesfm-forecasting",
+        "umap-learn",
+        "vaex"
+      ]
+    },
+    {
+      "name": "matplotlib-inline",
+      "version": "0.2.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "mcp",
+      "version": "1.30.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "mdurl",
+      "version": "0.1.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "medchem",
+      "version": "2.1.0",
+      "required": true,
+      "capabilities": [
+        "medchem"
+      ]
+    },
+    {
+      "name": "meshio",
+      "version": "5.3.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "microviewer",
+      "version": "1.21.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "mistune",
+      "version": "3.3.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "ml-dtypes",
+      "version": "0.6.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "monai",
+      "version": "1.6.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "monty",
+      "version": "2026.7.16",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "moocore",
+      "version": "0.3.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "more-itertools",
+      "version": "11.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "morphapi",
+      "version": "0.3.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "morphio",
+      "version": "3.5.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "mp-api",
+      "version": "0.46.5",
+      "required": true,
+      "capabilities": [
+        "pymatgen"
+      ]
+    },
+    {
+      "name": "mpmath",
+      "version": "1.3.0",
+      "required": true,
+      "capabilities": [
+        "sympy"
+      ]
+    },
+    {
+      "name": "msgpack",
+      "version": "1.2.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "multidict",
+      "version": "6.9.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "multiprocess",
+      "version": "0.70.19",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "mygene",
+      "version": "3.2.2",
+      "required": true,
+      "capabilities": [
+        "pathway-enrichment"
+      ]
+    },
+    {
+      "name": "myterial",
+      "version": "1.2.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "namex",
+      "version": "0.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "napari",
+      "version": "0.9.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "napari-console",
+      "version": "0.1.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "napari-metadata",
+      "version": "0.4.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "napari-ndtiffs",
+      "version": "0.2.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "napari-plugin-engine",
+      "version": "0.2.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "napari-plugin-manager",
+      "version": "0.1.11",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "napari-svg",
+      "version": "0.2.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "narwhals",
+      "version": "2.25.0",
+      "required": true,
+      "capabilities": [
+        "scikit-survival"
+      ]
+    },
+    {
+      "name": "natsort",
+      "version": "8.4.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "nbclient",
+      "version": "0.11.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "nbconvert",
+      "version": "7.17.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "nbformat",
+      "version": "5.11.1",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "ndindex",
+      "version": "1.10.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "neo4j",
+      "version": "6.3.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "nest-asyncio",
+      "version": "1.6.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "netcdf4",
+      "version": "1.7.4",
+      "required": true,
+      "capabilities": [
+        "large-file"
+      ]
+    },
+    {
+      "name": "networkx",
+      "version": "3.6.1",
+      "required": true,
+      "capabilities": [
+        "bioservices",
+        "cirq",
+        "esmfold2",
+        "geomaster",
+        "networkx",
+        "optimize-for-gpu",
+        "pennylane",
+        "torch-geometric",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "neurom",
+      "version": "4.0.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "ngff-zarr",
+      "version": "0.36.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "nglview",
+      "version": "4.0.1",
+      "sha256": "1e15b819b9f8ada3e521e587d24cc3754573203cc99ee5d801cef28d992865a5",
+      "required": true,
+      "capabilities": [
+        "molecular-dynamics"
+      ],
+      "source": "sdist",
+      "filename": "nglview-4.0.1.tar.gz"
+    },
+    {
+      "name": "nibabel",
+      "version": "5.4.2",
+      "required": true,
+      "capabilities": [
+        "bids"
+      ]
+    },
+    {
+      "name": "notebook",
+      "version": "7.6.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "notebook-shim",
+      "version": "0.2.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "npe2",
+      "version": "0.9.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "num2words",
+      "version": "0.5.14",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "numba",
+      "version": "0.67.0",
+      "required": true,
+      "capabilities": [
+        "optimize-for-gpu",
+        "umap-learn",
+        "vaex"
+      ]
+    },
+    {
+      "name": "numcodecs",
+      "version": "0.16.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "numexpr",
+      "version": "2.14.2",
+      "required": true,
+      "capabilities": [
+        "scikit-survival"
+      ]
+    },
+    {
+      "name": "numpy",
+      "version": "2.5.3",
+      "required": true,
+      "capabilities": [
+        "academic-paper",
+        "aeon",
+        "anndata",
+        "arboreto",
+        "astropy",
+        "biopython",
+        "cirq",
+        "dask",
+        "datamol",
+        "deepchem",
+        "deepspot-m",
+        "depmap",
+        "esm",
+        "esmfold2",
+        "experimental-design",
+        "exploratory-data-analysis",
+        "figure-style",
+        "flowio",
+        "geomaster",
+        "geopandas",
+        "gget",
+        "histolab",
+        "imaging-data-commons",
+        "ligandmpnn",
+        "matchms",
+        "matplotlib",
+        "molecular-dynamics",
+        "molfeat",
+        "networkx",
+        "neurokit2",
+        "neuropixels-analysis",
+        "omero-integration",
+        "openpiv",
+        "optimize-for-gpu",
+        "pathml",
+        "pathway-enrichment",
+        "pennylane",
+        "pkpd-modeling",
+        "polars",
+        "proteinmpnn",
+        "pufferlib",
+        "pydeseq2",
+        "pydicom",
+        "pymc",
+        "pymoo",
+        "pyopenms",
+        "qiskit",
+        "qutip",
+        "relsa-severity-assessment",
+        "scanpy",
+        "scikit-bio",
+        "scikit-learn",
+        "scikit-survival",
+        "scvelo",
+        "scvi-tools",
+        "seaborn",
+        "shap",
+        "singlecell-qc",
+        "solublempnn",
+        "stable-baselines3",
+        "statistical-analysis",
+        "statistical-power",
+        "statsmodels",
+        "sympy",
+        "timesfm-forecasting",
+        "transformers",
+        "umap-learn",
+        "uncertainty-and-units",
+        "vaex",
+        "zarr-python",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "numpy-groupies",
+      "version": "0.11.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "oauthlib",
+      "version": "3.3.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "onnxruntime",
+      "version": "1.20.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "opencv-python-headless",
+      "version": "4.13.0.92",
+      "required": true,
+      "capabilities": [
+        "geomaster",
+        "histolab",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "openpiv",
+      "version": "0.26.1",
+      "required": true,
+      "capabilities": [
+        "openpiv"
+      ]
+    },
+    {
+      "name": "openpyxl",
+      "version": "3.1.5",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "openslide-bin",
+      "version": "4.0.1.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "openslide-python",
+      "version": "1.4.6",
+      "required": true,
+      "capabilities": [
+        "deepspot-m",
+        "pathml"
+      ]
+    },
+    {
+      "name": "opentelemetry-api",
+      "version": "1.44.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "opt-einsum",
+      "version": "3.4.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "optree",
+      "version": "0.20.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "orjson",
+      "version": "3.12.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "osqp",
+      "version": "1.1.3",
+      "required": true,
+      "capabilities": [
+        "scikit-survival"
+      ]
+    },
+    {
+      "name": "osteoid",
+      "version": "0.7.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "packaging",
+      "version": "26.3",
+      "required": true,
+      "capabilities": [
+        "esmfold2",
+        "geopandas",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "palettable",
+      "version": "3.3.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pandas",
+      "version": "3.0.5",
+      "required": true,
+      "capabilities": [
+        "anndata",
+        "arboreto",
+        "astropy",
+        "bids",
+        "bioservices",
+        "bulk-rnaseq",
+        "cirq",
+        "cobrapy",
+        "dask",
+        "datamol",
+        "deepspot-m",
+        "depmap",
+        "esmfold2",
+        "experimental-design",
+        "exploratory-data-analysis",
+        "flowio",
+        "geomaster",
+        "geopandas",
+        "gget",
+        "glycoengineering",
+        "histolab",
+        "imaging-data-commons",
+        "lamindb",
+        "large-file",
+        "matplotlib",
+        "medchem",
+        "molecular-dynamics",
+        "networkx",
+        "neurokit2",
+        "neuropixels-analysis",
+        "optimize-for-gpu",
+        "pathway-enrichment",
+        "polars",
+        "polars-bio",
+        "primekg",
+        "pydeseq2",
+        "pymc",
+        "pyopenms",
+        "relsa-severity-assessment",
+        "rowan",
+        "scanpy",
+        "scikit-bio",
+        "scikit-learn",
+        "scikit-survival",
+        "scvi-tools",
+        "seaborn",
+        "shap",
+        "singlecell-milor",
+        "singlecell-qc",
+        "statistical-analysis",
+        "statistical-power",
+        "stats-integrity",
+        "statsmodels",
+        "timesfm-forecasting",
+        "torch-geometric",
+        "usfiscaldata",
+        "vaex"
+      ]
+    },
+    {
+      "name": "pandas-flavor",
+      "version": "0.8.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pandocfilters",
+      "version": "1.5.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "parso",
+      "version": "0.8.7",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "partd",
+      "version": "1.4.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pathlib-abc",
+      "version": "0.5.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pathos",
+      "version": "0.3.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "patsy",
+      "version": "1.0.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pdfminer-six",
+      "version": "20260107",
+      "required": true,
+      "capabilities": [
+        "traceability-review"
+      ]
+    },
+    {
+      "name": "pdfplumber",
+      "version": "0.11.10",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "pikepdf",
+      "version": "10.13.0.post1",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "pillow",
+      "version": "12.3.0",
+      "required": true,
+      "capabilities": [
+        "deepspot-m",
+        "exploratory-data-analysis",
+        "figure-composer",
+        "figure-style",
+        "geomaster",
+        "histolab",
+        "omero-integration",
+        "pathml",
+        "pdf-explore",
+        "pydicom",
+        "timesfm-forecasting",
+        "transformers",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "pillow-heif",
+      "version": "1.7.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pingouin",
+      "version": "0.6.1",
+      "required": true,
+      "capabilities": [
+        "statistical-analysis",
+        "statistical-power"
+      ]
+    },
+    {
+      "name": "pint",
+      "version": "0.26.1",
+      "required": true,
+      "capabilities": [
+        "uncertainty-and-units"
+      ]
+    },
+    {
+      "name": "pip",
+      "version": "26.2.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "platformdirs",
+      "version": "4.11.12",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "playwright",
+      "version": "1.62.0",
+      "required": true,
+      "capabilities": [
+        "paper-download"
+      ]
+    },
+    {
+      "name": "plotly",
+      "version": "6.9.0",
+      "required": true,
+      "capabilities": [
+        "networkx",
+        "vaex"
+      ]
+    },
+    {
+      "name": "pluggy",
+      "version": "1.6.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "polars",
+      "version": "1.44.1",
+      "required": true,
+      "capabilities": [
+        "exploratory-data-analysis",
+        "polars",
+        "polars-bio"
+      ]
+    },
+    {
+      "name": "polars-runtime-32",
+      "version": "1.44.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pooch",
+      "version": "1.9.0",
+      "required": true,
+      "capabilities": [
+        "histolab"
+      ]
+    },
+    {
+      "name": "pox",
+      "version": "0.3.7",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "ppft",
+      "version": "1.7.8",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "prometheus-client",
+      "version": "0.26.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "prompt-toolkit",
+      "version": "3.0.53",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "propcache",
+      "version": "0.5.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "proto-plus",
+      "version": "1.28.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "protobuf",
+      "version": "7.36.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "psutil",
+      "version": "7.2.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "psygnal",
+      "version": "0.16.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pubchempy",
+      "version": "1.0.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pure-eval",
+      "version": "0.2.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "py",
+      "version": "1.11.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "py-cpuinfo",
+      "version": "9.0.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyarrow",
+      "version": "21.0.0",
+      "required": true,
+      "capabilities": [
+        "geniml",
+        "geomaster",
+        "geopandas",
+        "large-file",
+        "polars",
+        "vaex"
+      ]
+    },
+    {
+      "name": "pyasn1",
+      "version": "0.6.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyasn1-modules",
+      "version": "0.4.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pybids",
+      "version": "0.22.0",
+      "required": true,
+      "capabilities": [
+        "bids"
+      ]
+    },
+    {
+      "name": "pybind11",
+      "version": "3.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pybiomart",
+      "version": "0.2.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pybtex",
+      "version": "0.26.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyconify",
+      "version": "0.2.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pycparser",
+      "version": "3.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pycryptodome",
+      "version": "3.23.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pydantic",
+      "version": "2.13.5",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "pydantic-core",
+      "version": "2.46.5",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "pydantic-extra-types",
+      "version": "2.11.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pydantic-settings",
+      "version": "2.15.0",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "pydeseq2",
+      "version": "0.5.4",
+      "required": true,
+      "capabilities": [
+        "pydeseq2"
+      ]
+    },
+    {
+      "name": "pydicom",
+      "version": "3.0.2",
+      "required": true,
+      "capabilities": [
+        "bids",
+        "imaging-data-commons",
+        "pathml",
+        "pydicom"
+      ]
+    },
+    {
+      "name": "pydoe3",
+      "version": "1.6.2",
+      "required": true,
+      "capabilities": [
+        "experimental-design"
+      ]
+    },
+    {
+      "name": "pydot",
+      "version": "4.0.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyee",
+      "version": "13.0.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyerfa",
+      "version": "2.0.1.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pygments",
+      "version": "2.21.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyinspect",
+      "version": "0.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyjpegls",
+      "version": "1.5.1",
+      "required": true,
+      "capabilities": [
+        "pydicom"
+      ]
+    },
+    {
+      "name": "pyjwt",
+      "version": "2.13.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pylatexenc",
+      "version": "2.11",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pylibjpeg",
+      "version": "2.1.0",
+      "required": true,
+      "capabilities": [
+        "pydicom"
+      ]
+    },
+    {
+      "name": "pylibjpeg-libjpeg",
+      "version": "2.4.0",
+      "required": true,
+      "capabilities": [
+        "pydicom"
+      ]
+    },
+    {
+      "name": "pylibjpeg-openjpeg",
+      "version": "2.5.0",
+      "required": true,
+      "capabilities": [
+        "pydicom"
+      ]
+    },
+    {
+      "name": "pylibjpeg-rle",
+      "version": "2.2.0",
+      "required": true,
+      "capabilities": [
+        "pydicom"
+      ]
+    },
+    {
+      "name": "pymatgen",
+      "version": "2026.5.4",
+      "required": true,
+      "capabilities": [
+        "pymatgen"
+      ]
+    },
+    {
+      "name": "pymatgen-core",
+      "version": "2026.8.30",
+      "required": true,
+      "capabilities": [
+        "pymatgen"
+      ]
+    },
+    {
+      "name": "pymatgen-io-validation",
+      "version": "0.1.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pymc",
+      "version": "6.3.2",
+      "required": true,
+      "capabilities": [
+        "pymc",
+        "statistical-analysis"
+      ]
+    },
+    {
+      "name": "pymoo",
+      "version": "0.6.2",
+      "required": true,
+      "capabilities": [
+        "pymoo"
+      ]
+    },
+    {
+      "name": "pymupdf",
+      "version": "1.28.2",
+      "required": true,
+      "capabilities": [
+        "pdf-explore",
+        "traceability-review",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "pynndescent",
+      "version": "0.6.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pynrrd",
+      "version": "1.1.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyogrio",
+      "version": "0.13.0",
+      "required": true,
+      "capabilities": [
+        "geopandas"
+      ]
+    },
+    {
+      "name": "pyopengl",
+      "version": "3.1.10",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyopenms",
+      "version": "3.5.0",
+      "required": true,
+      "capabilities": [
+        "pyopenms"
+      ]
+    },
+    {
+      "name": "pyparsing",
+      "version": "3.3.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pypdf",
+      "version": "6.18.0",
+      "required": true,
+      "capabilities": [
+        "paper-download",
+        "pdf-explore"
+      ]
+    },
+    {
+      "name": "pypdfium2",
+      "version": "5.13.0",
+      "required": true,
+      "capabilities": [
+        "pdf-explore"
+      ]
+    },
+    {
+      "name": "pyproj",
+      "version": "3.8.0",
+      "required": true,
+      "capabilities": [
+        "geomaster",
+        "geopandas"
+      ]
+    },
+    {
+      "name": "pyproject-hooks",
+      "version": "1.3.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyqt6",
+      "version": "6.11.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyqt6-qt6",
+      "version": "6.11.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyqt6-sip",
+      "version": "13.12.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyreadline3",
+      "version": "3.5.6",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pysimdjson",
+      "version": "7.0.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pytensor",
+      "version": "3.3.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pytest",
+      "version": "9.1.1",
+      "required": true,
+      "capabilities": [
+        "paper-download",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "python-dateutil",
+      "version": "2.9.0.post0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "python-docx",
+      "version": "1.2.0",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "python-dotenv",
+      "version": "1.2.3",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "python-json-logger",
+      "version": "4.2.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "python-jsonschema-objects",
+      "version": "0.5.7",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "python-multipart",
+      "version": "0.0.32",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "python-pptx",
+      "version": "1.0.2",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "pytximport",
+      "version": "0.13.0",
+      "required": true,
+      "capabilities": [
+        "bulk-rnaseq"
+      ]
+    },
+    {
+      "name": "pytz",
+      "version": "2026.3.post1",
+      "required": true,
+      "capabilities": [
+        "astropy"
+      ]
+    },
+    {
+      "name": "pywavelets",
+      "version": "1.10.0",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "pywin32",
+      "version": "312",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pywinpty",
+      "version": "3.0.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyyaml",
+      "version": "6.0.3",
+      "required": true,
+      "capabilities": [
+        "esmfold2",
+        "geomaster",
+        "hypogenic",
+        "paper-download",
+        "skill-creator",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "pyzmq",
+      "version": "27.2.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "pyzotero",
+      "version": "1.15.2",
+      "required": true,
+      "capabilities": [
+        "pyzotero"
+      ]
+    },
+    {
+      "name": "qiskit",
+      "version": "2.5.2",
+      "required": true,
+      "capabilities": [
+        "qiskit"
+      ]
+    },
+    {
+      "name": "qt-niu",
+      "version": "0.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "qtconsole",
+      "version": "5.7.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "qtpy",
+      "version": "2.4.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "qutip",
+      "version": "5.3.1",
+      "required": true,
+      "capabilities": [
+        "qutip"
+      ]
+    },
+    {
+      "name": "rapidfuzz",
+      "version": "3.14.6",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "rapidyaml",
+      "version": "0.15.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "rdkit",
+      "version": "2026.3.6",
+      "required": true,
+      "capabilities": [
+        "datamol",
+        "domain-check",
+        "esmfold2",
+        "medchem",
+        "rdkit",
+        "rowan"
+      ]
+    },
+    {
+      "name": "referencing",
+      "version": "0.37.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "reportlab",
+      "version": "4.5.1",
+      "required": true,
+      "capabilities": [
+        "biopython",
+        "paper-download"
+      ]
+    },
+    {
+      "name": "requests",
+      "version": "2.34.2",
+      "required": true,
+      "capabilities": [
+        "depmap",
+        "esm",
+        "genomic-intelligence",
+        "geomaster",
+        "glycoengineering",
+        "imaging-data-commons",
+        "lamindb",
+        "latex-posters",
+        "open-notebook",
+        "paper-download",
+        "tamarind",
+        "usfiscaldata"
+      ]
+    },
+    {
+      "name": "requests-cache",
+      "version": "1.3.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "requests-oauthlib",
+      "version": "2.0.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "requests-toolbelt",
+      "version": "1.0.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "retry",
+      "version": "0.9.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "rfc3339-validator",
+      "version": "0.1.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "rfc3986-validator",
+      "version": "0.1.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "rfc3987-syntax",
+      "version": "1.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "rich",
+      "version": "14.3.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "rich-argparse",
+      "version": "1.8.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "rpds-py",
+      "version": "2026.6.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "rsa",
+      "version": "4.9.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "ruamel-yaml",
+      "version": "0.19.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "rustworkx",
+      "version": "0.18.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "s3fs",
+      "version": "2026.9.0",
+      "required": true,
+      "capabilities": [
+        "dask",
+        "datamol",
+        "imaging-data-commons",
+        "vaex",
+        "zarr-python"
+      ]
+    },
+    {
+      "name": "s3transfer",
+      "version": "0.19.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "scanpy",
+      "version": "1.12.4",
+      "required": true,
+      "capabilities": [
+        "anndata",
+        "cellxgene-census",
+        "geniml",
+        "gget",
+        "scanpy",
+        "scvelo",
+        "scvi-tools",
+        "singlecell-qc"
+      ]
+    },
+    {
+      "name": "scikit-bio",
+      "version": "0.7.3",
+      "required": true,
+      "capabilities": [
+        "scikit-bio"
+      ]
+    },
+    {
+      "name": "scikit-image",
+      "version": "0.26.0",
+      "required": true,
+      "capabilities": [
+        "geomaster",
+        "optimize-for-gpu",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "scikit-learn",
+      "version": "1.9.0",
+      "required": true,
+      "capabilities": [
+        "aeon",
+        "anndata",
+        "datamol",
+        "deepchem",
+        "esm",
+        "esmfold2",
+        "geomaster",
+        "molfeat",
+        "optimize-for-gpu",
+        "scikit-learn",
+        "scikit-survival",
+        "shap",
+        "statistical-analysis",
+        "statsmodels",
+        "timesfm-forecasting",
+        "torch-geometric",
+        "umap-learn",
+        "vaex"
+      ]
+    },
+    {
+      "name": "scikit-survival",
+      "version": "0.28.0",
+      "required": true,
+      "capabilities": [
+        "scikit-survival"
+      ]
+    },
+    {
+      "name": "scipy",
+      "version": "1.18.1",
+      "required": true,
+      "capabilities": [
+        "academic-paper",
+        "anndata",
+        "arboreto",
+        "cirq",
+        "dask",
+        "datamol",
+        "depmap",
+        "figure-style",
+        "geomaster",
+        "matlab",
+        "matplotlib",
+        "molecular-dynamics",
+        "networkx",
+        "neuropixels-analysis",
+        "optimize-for-gpu",
+        "pennylane",
+        "pkpd-modeling",
+        "qiskit",
+        "relsa-severity-assessment",
+        "scanpy",
+        "scikit-learn",
+        "scikit-survival",
+        "seaborn",
+        "singlecell-qc",
+        "statistical-analysis",
+        "statistical-power",
+        "statsmodels",
+        "sympy",
+        "uncertainty-and-units",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "scverse-misc",
+      "version": "0.1.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "seaborn",
+      "version": "0.13.2",
+      "required": true,
+      "capabilities": [
+        "academic-paper",
+        "cobrapy",
+        "histolab",
+        "scikit-bio",
+        "scikit-learn",
+        "seaborn",
+        "singlecell-qc",
+        "statistical-analysis",
+        "vaex"
+      ]
+    },
+    {
+      "name": "selfies",
+      "version": "2.2.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "send2trash",
+      "version": "2.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "session-info",
+      "version": "1.0.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "session-info2",
+      "version": "0.4.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "setuptools",
+      "version": "84.0.0",
+      "required": true,
+      "capabilities": [
+        "esmfold2",
+        "pytdc"
+      ]
+    },
+    {
+      "name": "shap",
+      "version": "0.52.0",
+      "required": true,
+      "capabilities": [
+        "geomaster",
+        "shap"
+      ]
+    },
+    {
+      "name": "shapely",
+      "version": "2.1.2",
+      "required": true,
+      "capabilities": [
+        "geomaster",
+        "geopandas",
+        "optimize-for-gpu"
+      ]
+    },
+    {
+      "name": "shellingham",
+      "version": "1.5.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "simpleitk",
+      "version": "2.5.6",
+      "required": true,
+      "capabilities": [
+        "imaging-data-commons"
+      ]
+    },
+    {
+      "name": "simplejpeg",
+      "version": "1.9.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "simpy",
+      "version": "4.1.2",
+      "required": true,
+      "capabilities": [
+        "simpy"
+      ]
+    },
+    {
+      "name": "six",
+      "version": "1.17.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "slicer",
+      "version": "0.0.8",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "slurmio",
+      "version": "0.1.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "sortedcontainers",
+      "version": "2.4.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "soupsieve",
+      "version": "2.9.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "spglib",
+      "version": "2.7.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "sqlalchemy",
+      "version": "2.0.52",
+      "required": true,
+      "capabilities": [
+        "geopandas",
+        "lamindb",
+        "polars",
+        "vaex"
+      ]
+    },
+    {
+      "name": "sse-starlette",
+      "version": "3.4.11",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "stack-data",
+      "version": "0.6.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "stardist",
+      "version": "0.9.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "starlette",
+      "version": "1.6.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "statsmodels",
+      "version": "0.15.0",
+      "required": true,
+      "capabilities": [
+        "relsa-severity-assessment",
+        "statistical-analysis",
+        "statistical-power",
+        "statsmodels",
+        "timesfm-forecasting"
+      ]
+    },
+    {
+      "name": "stdlib-list",
+      "version": "0.12.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "stevedore",
+      "version": "5.9.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "structlog",
+      "version": "26.1.0",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "superqt",
+      "version": "0.8.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "sympy",
+      "version": "1.14.0",
+      "required": true,
+      "capabilities": [
+        "cirq",
+        "sympy"
+      ]
+    },
+    {
+      "name": "tables",
+      "version": "3.11.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "tabulate",
+      "version": "0.10.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "tblib",
+      "version": "3.2.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "tenacity",
+      "version": "9.1.4",
+      "required": true,
+      "capabilities": [
+        "esmfold2",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "tensorboard",
+      "version": "2.20.0",
+      "required": true,
+      "capabilities": [
+        "pytorch-lightning"
+      ]
+    },
+    {
+      "name": "tensorboard-data-server",
+      "version": "0.7.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "tensorflow",
+      "version": "2.20.0",
+      "required": true,
+      "capabilities": [
+        "aeon",
+        "umap-learn",
+        "vaex"
+      ]
+    },
+    {
+      "name": "termcolor",
+      "version": "3.3.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "terminado",
+      "version": "0.18.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "texttable",
+      "version": "1.7.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "threadpoolctl",
+      "version": "3.6.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "tifffile",
+      "version": "2026.9.15",
+      "required": true,
+      "capabilities": [
+        "exploratory-data-analysis",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "tinycss2",
+      "version": "1.5.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "tomli",
+      "version": "2.2.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "tomli-w",
+      "version": "1.2.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "toolz",
+      "version": "1.1.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "torch",
+      "version": "2.14.0",
+      "required": true,
+      "capabilities": [
+        "deepchem",
+        "deepspot-m",
+        "esm",
+        "esmfold2",
+        "fair-esm2",
+        "geomaster",
+        "hugging-science",
+        "ligandmpnn",
+        "molfeat",
+        "neuropixels-analysis",
+        "optimize-for-gpu",
+        "pathml",
+        "pennylane",
+        "proteinmpnn",
+        "pyhealth",
+        "pytorch-lightning",
+        "solublempnn",
+        "timesfm-forecasting",
+        "torch-geometric",
+        "torchdrug",
+        "transformers"
+      ]
+    },
+    {
+      "name": "tornado",
+      "version": "6.5.10",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "tqdm",
+      "version": "4.70.0",
+      "required": true,
+      "capabilities": [
+        "esm",
+        "medchem"
+      ]
+    },
+    {
+      "name": "traitlets",
+      "version": "5.16.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "traittypes",
+      "version": "0.2.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "treelib",
+      "version": "1.8.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "truststore",
+      "version": "0.10.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "typeguard",
+      "version": "4.6.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "typer",
+      "version": "0.27.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "typing-extensions",
+      "version": "4.16.0",
+      "required": true,
+      "capabilities": [
+        "esmfold2",
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "typing-inspection",
+      "version": "0.4.4",
+      "required": true,
+      "capabilities": [
+        "zerowall-image-dup"
+      ]
+    },
+    {
+      "name": "tzdata",
+      "version": "2026.3",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "tzlocal",
+      "version": "5.4.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "umap-learn",
+      "version": "0.5.12",
+      "required": true,
+      "capabilities": [
+        "scikit-learn",
+        "umap-learn"
+      ]
+    },
+    {
+      "name": "uncertainties",
+      "version": "3.2.3",
+      "required": true,
+      "capabilities": [
+        "uncertainty-and-units"
+      ]
+    },
+    {
+      "name": "universal-pathlib",
+      "version": "0.3.10",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "uri-template",
+      "version": "1.3.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "url-normalize",
+      "version": "3.0.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "urllib3",
+      "version": "2.7.0",
+      "required": true,
+      "capabilities": [
+        "paper-download"
+      ]
+    },
+    {
+      "name": "uvicorn",
+      "version": "0.52.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "vedo",
+      "version": "2026.6.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "vispy",
+      "version": "0.16.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "vtk",
+      "version": "9.6.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "wasmtime",
+      "version": "48.0.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "wcwidth",
+      "version": "0.8.4",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "webcolors",
+      "version": "25.10.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "webencodings",
+      "version": "0.6.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "websocket-client",
+      "version": "1.9.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "werkzeug",
+      "version": "3.1.8",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "wheel",
+      "version": "0.48.0",
+      "required": true,
+      "capabilities": [
+        "esmfold2"
+      ]
+    },
+    {
+      "name": "whenever",
+      "version": "0.10.5",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "widgetsnbextension",
+      "version": "4.0.16",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "win32-setctime",
+      "version": "1.2.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "wrapt",
+      "version": "2.4.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "xarray",
+      "version": "2026.7.0",
+      "required": true,
+      "capabilities": [
+        "dask",
+        "geomaster",
+        "zarr-python"
+      ]
+    },
+    {
+      "name": "xarray-einstats",
+      "version": "0.11.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "xgboost",
+      "version": "3.4.1",
+      "required": true,
+      "capabilities": [
+        "geomaster",
+        "vaex"
+      ]
+    },
+    {
+      "name": "xlrd",
+      "version": "2.0.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "xlsxwriter",
+      "version": "3.2.9",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "yarl",
+      "version": "1.25.1",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "zarr",
+      "version": "3.3.0",
+      "required": true,
+      "capabilities": [
+        "dask",
+        "geomaster",
+        "optimize-for-gpu",
+        "zarr-python"
+      ]
+    },
+    {
+      "name": "zict",
+      "version": "3.0.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "zope-event",
+      "version": "6.2",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "zope-interface",
+      "version": "8.6",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "name": "zstandard",
+      "version": "0.25.0",
+      "required": true,
+      "capabilities": [
+        "shared-runtime"
+      ]
+    }
+  ],
+  "compatibility": {
+    "minApplicationVersion": "7.0.3"
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "stable-3",
+    "value": "5u3P3MbwKBEsj83QGwRbIjUrcyT1YJ5Uh4YfnE+l6TzVnxw/utyhqD//SSjl2zG/oOlHKq9LL53bo9mPG0WxDA=="
+  },
+  "source": {
+    "lockSha256": "c51756df5b2509d0587c90d58ff5c7349b8a68dd63503658e38ea54a11fa20ce",
+    "sourceLockSha256": "71f44f211afb5094c73ffe0127362643e35411479f0646a294a3e329f6ff08f1",
+    "auditGeneratedAt": "2026-09-17T11:49:40.911892+00:00"
+  }
+}

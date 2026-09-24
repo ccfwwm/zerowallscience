@@ -17,6 +17,7 @@ const terminal = new Set(['succeeded','failed','cancelled','timed_out'])
 const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,canonical(item)])) : value
 const MAX_BYTES = 128 * 1024 * 1024
 
+export type FijiJavaResolver = (project?: ProjectRecord) => Promise<{ executable: string; jars: string }>
 export async function fijiJava(): Promise<{ executable: string; jars: string }> {
   const root = dirname(await realpath(engineExecutable('fiji')))
   const override = process.env.ZEROWALL_FIJI_JAVA?.trim()
@@ -35,7 +36,9 @@ export class FijiWorkflowService {
   private readonly live = new Map<string, { child: ChildProcess; timer: NodeJS.Timeout }>()
   private readonly finishing = new Map<string, Promise<FijiWorkflowResponse>>()
   private disposed = false
-  constructor(private readonly store: ResearchStore) {}
+  constructor(private readonly store: ResearchStore, private readonly javaResolver?: FijiJavaResolver) {}
+
+  private resolveJava(project: ProjectRecord): Promise<{ executable: string; jars: string }> { return this.javaResolver ? this.javaResolver(project) : fijiJava() }
 
   async execute(project: ProjectRecord, input: FijiWorkflowRequest): Promise<FijiWorkflowResponse> {
     if (this.disposed) throw new Error('Fiji workflow service stopped.')
@@ -94,7 +97,7 @@ export class FijiWorkflowService {
       await writeFile(sourcePath,bytes,{flag:'wx'});await writeFile(scriptPath,westernBlotRunner,{flag:'wx'})
       const request={workflow:'fiji.western-blot',version:1,runId:run.id,directory,sourcePath,sourceAssetId:source.id,sourceSha256:annotation.sourceSha256,annotationRevisionId:annotation.id,annotation:annotation.payload,plan,runnerSha256:runnerHash}
       const requestText=JSON.stringify(request,null,2)+'\n';await writeFile(requestPath,requestText,{flag:'wx'})
-      const java=await fijiJava()
+      const java=await this.resolveJava(project)
       if(this.disposed)throw new Error('Host stopped during preparation; no process was launched.')
       const active=this.store.listRuns(project.id).filter(item=>item.id!==run.id && item.leaseOwner==='fiji-workflow' && !terminal.has(item.status))
       if(active.length)throw new Error('Another Fiji quantification is pending. Local heavy-job concurrency is 1.')

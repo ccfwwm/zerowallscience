@@ -25,10 +25,8 @@ import { evaluateMethod } from './method-check.js'
 import { validateNhanesContract } from './nhanes-contract.js'
 import { NhanesSurveyService } from './nhanes-runner.js'
 import { GeneticAnalysisService, type GeneticWorkflow } from './genetic-runner.js'
-import { PILOT_VERSION, PilotEvaluationService, type PilotSpec } from './pilot-evaluation.js'
 import type { NhanesSurveyRequest, GeneticAnalysisRequest, GeneticRefreshRequest } from '../shared/types.js'
 import { validateGeneticContract } from './genetic-contract.js'
-import { OBESITY_ALOPECIA_RECON_QUERIES, buildReconFindings, buildReconRecord, summarizeReconRemoteRuns } from './obesity-alopecia-recon.js'
 import { ScienceViewerService } from './science-viewer.js'
 import { ImageViewerService } from './image-viewer.js'
 import { FijiWorkflowService } from './fiji-workflow.js'
@@ -42,19 +40,22 @@ import type { MoleculeDockingRequest } from '../shared/molecule-docking.js'
 import type { MoleculeRequest } from '../shared/types.js'
 import { CanvasService } from './canvas.js'
 import { ReportService } from './report.js'
-import { registerLocalAsset } from './local-assets.js'
+import { importLocalAsset as importLocalScienceAsset, registerLocalAsset } from './local-assets.js'
 import { CellViewerService } from './cell-viewer.js'
 import { BrainTransformService } from './brain-transform.js'
 import type { BrainTransformRequest } from '../shared/brain-transform.js'
-import { BrainAtlasService } from './brain-atlas.js'
+import { BrainAtlasService, probeBrainGlobe } from './brain-atlas.js'
 import type { CanvasRequest, FijiExperimentRequest, FijiExperimentResponse, FlowRequest, HeRequest, SangerRequest } from '../shared/types.js'
 import type { FijiWorkflowRequest, FijiWorkflowResponse } from '../shared/types.js'
-import { engineEnvironment, engineExecutable, NativeEngineService } from './native-engines.js'
+import { engineEnvironment, NativeEngineService } from './native-engines.js'
 import { readFile, stat, access } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { basename, isAbsolute, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { ScientificPreviewPayload, ScientificEngineLaunchResult, ScientificEngineStatus, ScienceViewerRequest, ScienceViewerResponse, CellViewerRequest, BrainAtlasRequest } from '../shared/types.js'
+import type { ScientificPreviewPayload, ScientificEngineConfig, ScientificEngineId, ScientificEngineLaunchResult, ScientificEngineStatus, ScienceViewerRequest, ScienceViewerResponse, CellViewerRequest, BrainAtlasRequest } from '../shared/types.js'
+import type { ScienceWorkbenchRequest, ScienceWorkbenchEventsResponse, ScienceWorkbenchEvent, ScienceToolId } from '../shared/types.js'
+import { ScienceWorkbenchEventStore } from './workbench-events.js'
+import { scienceViewerAction, scienceToolForAction, workbenchContext, workbenchTabTitle } from './workbench-router.js'
 
 export type { ScientificPreviewPayload } from '../shared/types.js'
 export const inject = ['tools'] as const
@@ -84,14 +85,14 @@ export class ZeroWallResearchService extends TypertRemoteService {
   private readonly brain: BrainAtlasService
   private readonly nhanes: NhanesSurveyService
   private readonly genetics: GeneticAnalysisService
-  private readonly pilot: PilotEvaluationService
+  private readonly workbenchEventStore: ScienceWorkbenchEventStore
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallResearch')
     const path = process.env.ZEROWALL_RESEARCH_DB?.trim()
     if (!path) throw new Error('ZEROWALL_RESEARCH_DB is required.')
     this.store = new ResearchStore(path)
-    this.pilot = new PilotEvaluationService(this.store)
+    this.workbenchEventStore = new ScienceWorkbenchEventStore(this.store)
     this.viewer = new ScienceViewerService(this.store)
     this.nativeEngines = new NativeEngineService(this.store)
     this.imageViewer = new ImageViewerService(this.store, this.nativeEngines)
@@ -180,12 +181,33 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('fijiWorkflow') async fijiWorkflow(input: FijiWorkflowRequest): Promise<FijiWorkflowResponse> {
     const project = this.projectForSession({ sessionId: input.sessionId })
     if (!project) throw new Error('An active registered project session is required.')
-    return this.fijiWorkflows.execute(project,input)
+    const tool: ScienceToolId = 'imagej'
+    this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: input.action === 'submit' ? 'run.accepted' : 'tab.focus', tool, ...(input.runId ? { runId: input.runId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), payload: { operation: input.action, requestId: input.requestId ?? null } })
+    try {
+      const result = await this.fijiWorkflows.execute(project,input)
+      const run = result.run
+      this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: run?.status === 'failed' ? 'run.failed' : run?.status === 'succeeded' ? 'run.completed' : 'run.progress', tool, ...(run?.id ? { runId: run.id } : {}), payload: { operation: input.action, status: run?.status ?? null, artifactCount: result.artifacts?.length ?? 0 } })
+      for (const artifact of result.artifacts ?? []) this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: 'artifact.created', tool, ...(run?.id ? { runId: run.id } : {}), artifactId: artifact.id, payload: { operation: input.action, name: artifact.name } })
+      return result
+    } catch (error) {
+      this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: 'run.failed', tool, ...(input.runId ? { runId: input.runId } : {}), payload: { operation: input.action, error: error instanceof Error ? error.message : String(error) } })
+      throw error
+    }
   }
   @Remote('fijiExperiment') async fijiExperiment(input: FijiExperimentRequest): Promise<FijiExperimentResponse> {
     const project = this.projectForSession({ sessionId: input.sessionId })
     if (!project) throw new Error('An active registered project session is required.')
-    return this.fijiExperiments.execute(project, input)
+    this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: input.action === 'analyze' ? 'run.accepted' : 'tab.focus', tool: 'imagej', ...(input.runId ? { runId: input.runId } : {}), ...(input.sourceAssetId ? { assetId: input.sourceAssetId } : {}), payload: { operation: `fiji.${input.experiment ?? input.action}`, requestId: input.requestId ?? null } })
+    try {
+      const result = await this.fijiExperiments.execute(project, input)
+      const run = result.run
+      this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: run?.status === 'failed' ? 'run.failed' : run?.status === 'succeeded' ? 'run.completed' : 'run.progress', tool: 'imagej', ...(run?.id ? { runId: run.id } : {}), ...(input.sourceAssetId ? { assetId: input.sourceAssetId } : {}), payload: { operation: `fiji.${input.experiment ?? input.action}`, status: run?.status ?? null, artifactCount: result.artifacts?.length ?? 0 } })
+      for (const artifact of result.artifacts ?? []) this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: 'artifact.created', tool: 'imagej', ...(run?.id ? { runId: run.id } : {}), artifactId: artifact.id, ...(input.sourceAssetId ? { assetId: input.sourceAssetId } : {}), payload: { operation: `fiji.${input.experiment ?? input.action}`, name: artifact.name } })
+      return result
+    } catch (error) {
+      this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: 'run.failed', tool: 'imagej', ...(input.runId ? { runId: input.runId } : {}), payload: { operation: `fiji.${input.experiment ?? input.action}`, error: error instanceof Error ? error.message : String(error) } })
+      throw error
+    }
   }
   async executeMoleculeDocking(input: MoleculeDockingRequest, exec: ToolRunContext): Promise<JsonObject> {
     const sessionId = String(exec.agent?.session.id ?? '')
@@ -204,7 +226,50 @@ export class ZeroWallResearchService extends TypertRemoteService {
     if (!project) throw new Error('An active registered project session is required.')
     return this.brainTransforms.execute(project, input)
   }
+  /** Direct science_viewer calls are also reflected in the durable workbench event stream. */
   @Remote('scienceViewer') async scienceViewer(input: ScienceViewerRequest): Promise<ScienceViewerResponse> {
+    const project = this.projectForSession({ sessionId: input.sessionId })
+    const tool = scienceToolForAction(input.action)
+    if (project && input.requestId) {
+      const prior = this.workbenchEventStore.latestRequest(project.id, input.sessionId, input.requestId)
+      if (prior) {
+        if (prior.tool && tool && prior.tool !== tool) throw new Error('IDEMPOTENCY_CONFLICT: requestId was already used by another science tool.')
+        if (prior.payload.operation !== input.action) throw new Error('IDEMPOTENCY_CONFLICT: requestId was already used with another science operation.')
+        if (prior.payload.result && typeof prior.payload.result === 'object' && !Array.isArray(prior.payload.result)) return prior.payload.result as unknown as ScienceViewerResponse
+        return {} as ScienceViewerResponse
+      }
+    }
+    const emit = (type: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'], payload: JsonObject = {}): void => {
+      if (!project || !tool) return
+      this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type, tool, ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.runId ? { runId: input.runId } : {}), payload: { operation: input.action, ...(input.requestId ? { requestId: input.requestId } : {}), ...payload } })
+    }
+    const active = /(?:_analyze|_submit|_segment|_register|_cellfinder|_render|_transform|_revise|_measure|_save|_cancel)$/u.test(input.action)
+    emit(active ? 'run.accepted' : 'tab.focus')
+    try {
+      const result = await this.scienceViewerImpl(input)
+      const resultObject = result as unknown as JsonObject
+      const nestedRuns = Object.values(resultObject).flatMap(value => value && typeof value === 'object' && !Array.isArray(value) && 'run' in value && value.run && typeof value.run === 'object' && !Array.isArray(value.run) ? [value.run as JsonObject] : [])
+      const run = resultObject.run && typeof resultObject.run === 'object' && !Array.isArray(resultObject.run) ? resultObject.run as JsonObject : nestedRuns[0]
+      const runId = typeof run?.id === 'string' ? run.id : input.runId
+      const status = typeof run?.status === 'string' ? run.status : undefined
+      const eventType: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'] = status === 'succeeded' ? 'run.completed' : status === 'failed' || status === 'timed_out' ? 'run.failed' : status === 'cancelled' ? 'run.cancelled' : active ? 'run.progress' : 'tab.focus'
+      emit(eventType, { ...(runId ? { runId } : {}), status: status ?? null, result: resultObject })
+      const artifacts: JsonObject[] = []
+      if (resultObject.artifact && typeof resultObject.artifact === 'object' && !Array.isArray(resultObject.artifact)) artifacts.push(resultObject.artifact as JsonObject)
+      for (const value of Object.values(resultObject)) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+        const list = 'artifacts' in value && Array.isArray(value.artifacts) ? value.artifacts : []
+        for (const artifact of list) if (artifact && typeof artifact === 'object' && !Array.isArray(artifact)) artifacts.push(artifact as JsonObject)
+      }
+      for (const artifact of artifacts) if (typeof artifact.id === 'string') emit('artifact.created', { ...(runId ? { runId } : {}), artifactId: artifact.id, name: typeof artifact.name === 'string' ? artifact.name : null })
+      return result
+    } catch (error) {
+      emit('run.failed', { error: error instanceof Error ? error.message : String(error) })
+      throw error
+    }
+  }
+
+  private async scienceViewerImpl(input: ScienceViewerRequest): Promise<ScienceViewerResponse> {
     const project = this.projectForSession({ sessionId: input.sessionId })
     if (!project) throw new Error('An active registered project session is required.')
     if (input.action === 'native_status') return { launches: this.nativeEngines.list(project.id) }
@@ -305,12 +370,115 @@ export class ZeroWallResearchService extends TypertRemoteService {
     if (input.action.startsWith('image_') || input.action.startsWith('annotation_')) return this.imageViewer.execute(project, input)
     return this.viewer.execute(project, input)
   }
+  /** Durable workbench cursor API used by the desktop and conversation bridge. */
+  @Remote('scienceWorkbenchEvents') scienceWorkbenchEvents(input: { sessionId: string; afterSequence?: number; limit?: number }): ScienceWorkbenchEventsResponse {
+    const project = this.projectForSession({ sessionId: input.sessionId })
+    if (!project) throw new Error('An active registered project session is required.')
+    return this.workbenchEventStore.read(project.id, input.sessionId, input.afterSequence, input.limit)
+  }
+
+  @Remote('scienceWorkbench') async scienceWorkbench(input: ScienceWorkbenchRequest): Promise<JsonObject> {
+    const sessionId = String(input.sessionId ?? '').trim()
+    const requestId = String(input.requestId ?? '').trim()
+    if (!sessionId || requestId === '') throw new Error('sessionId and requestId are required.')
+    if (!/^[A-Za-z0-9_.:-]{1,128}$/u.test(requestId)) throw new Error('requestId must contain 1-128 letters, numbers, dots, underscores, colons or hyphens.')
+    if (input.expectedRevision !== undefined && (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 0)) throw new Error('expectedRevision must be a non-negative integer.')
+    const project = this.projectForSession({ sessionId })
+    if (!project) throw new Error('An active registered project session is required.')
+    if (input.projectId !== undefined && input.projectId !== project.id) throw new Error('Workbench access is limited to the active project workspace.')
+    const tool = input.tool
+    const context = workbenchContext(input)
+    const prior = this.workbenchEventStore.latestRequest(project.id, sessionId, requestId)
+    if (prior) {
+      const priorTool = prior.tool
+      const priorOperation = typeof prior.payload.operation === 'string' ? prior.payload.operation : undefined
+      const priorAction = typeof prior.payload.action === 'string' ? prior.payload.action : undefined
+      if ((tool && priorTool && tool !== priorTool) || (priorAction && priorAction !== input.action) || (input.operation && priorOperation && input.operation !== priorOperation)) throw new Error('IDEMPOTENCY_CONFLICT: requestId was already used with different workbench inputs.')
+      return { status: 'accepted', idempotent: true, action: input.action, tool: priorTool ?? tool, ...(prior.runId ? { runId: prior.runId } : {}), event: prior, ...(prior.payload.result && typeof prior.payload.result === 'object' && !Array.isArray(prior.payload.result) ? { result: prior.payload.result as JsonObject } : {}) } as unknown as JsonObject
+    }
+    const emit = (type: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'], payload: JsonObject = {}): ScienceWorkbenchEvent => this.workbenchEventStore.append({ sessionId, projectId: project.id, type, ...(tool ? { tool } : {}), ...(input.studyId ? { studyId: input.studyId } : {}), ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.artifactId ? { artifactId: input.artifactId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.runId ? { runId: input.runId } : {}), payload: { ...context, ...payload, action: input.action, requestId } })
+    if (input.action === 'open' || input.action === 'focus') {
+      if (!tool) throw new Error('tool is required for workbench open/focus.')
+      const event = emit(input.action === 'open' ? 'tab.open' : 'tab.focus', { title: workbenchTabTitle(tool), requestId: input.requestId })
+      if (input.assetId) emit('asset.selected', { requestId: input.requestId })
+      return { status: 'accepted', action: input.action, tool, event } as unknown as JsonObject
+    }
+    if (input.action === 'engine') {
+      const statuses = await this.probeScientificEngines({ sessionId: input.sessionId })
+      const event = emit('engine.status', { statuses: statuses as unknown as JsonObject, requestId: input.requestId })
+      return { status: 'succeeded', action: input.action, statuses: statuses as unknown as JsonObject, event } as unknown as JsonObject
+    }
+    if (input.action === 'status') {
+      if (!input.runId) throw new Error('runId is required for workbench status.')
+      const run = this.store.getRun(input.runId)
+      if (!run || run.projectId !== project.id) throw new Error('Run is not in the active project.')
+      if (!this.workbenchEventStore.ownsRun(project.id, sessionId, run.id)) throw new Error('Run is not owned by this workbench session.')
+      return { status: run.status, run } as unknown as JsonObject
+    }
+    if (input.action === 'cancel') {
+      if (!input.runId) throw new Error('runId is required for workbench cancel.')
+      const run = this.store.getRun(input.runId)
+      if (!run || run.projectId !== project.id) throw new Error('Run is not in the active project.')
+      if (!this.workbenchEventStore.ownsRun(project.id, sessionId, run.id)) throw new Error('Run is not owned by this workbench session.')
+      const cancellation = await this.cancelWorkbenchRun(project, sessionId, run)
+      const candidate = cancellation.run
+      const updated = candidate && typeof candidate === 'object' && !Array.isArray(candidate) && typeof candidate.status === 'string' && typeof candidate.id === 'string' ? candidate as unknown as RunRecord : run
+      const event = emit(updated.status === 'cancelled' ? 'run.cancelled' : 'run.progress', { status: updated.status, runId: updated.id })
+      return { status: updated.status, run: updated, event, ...(cancellation as unknown as JsonObject) } as unknown as JsonObject
+    }
+    if (input.action === 'export') {
+      if (!input.artifactId) throw new Error('artifactId is required for workbench export.')
+      const artifact = this.store.listArtifacts(project.id).find(item => item.id === input.artifactId)
+      if (!artifact || artifact.projectId !== project.id) throw new Error('Artifact is not in the active project.')
+      const event = emit('artifact.created', { requestId: input.requestId, exported: true })
+      return { status: 'succeeded', artifact, event } as unknown as JsonObject
+    }
+    if (input.action !== 'analyze') throw new Error(`Unsupported workbench action: ${input.action}`)
+    if (!tool) throw new Error('tool is required for workbench analyze.')
+    const operation = scienceViewerAction(tool, input.operation)
+    emit('run.accepted', { requestId: input.requestId, operation })
+    try {
+      const parameters = input.parameters ?? {}
+      // Context fields are owned by the router; parameters cannot smuggle a
+      // different session or action into the deterministic service.
+      const { sessionId: _parameterSessionId, action: _parameterAction, ...safeParameters } = parameters as JsonObject & { sessionId?: unknown; action?: unknown }
+      void _parameterSessionId; void _parameterAction
+      const result = await this.scienceViewerImpl({ sessionId, action: operation as ScienceViewerRequest['action'], ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.expectedRevision === undefined ? {} : { expectedVersion: input.expectedRevision }), requestId, ...(safeParameters as unknown as Partial<ScienceViewerRequest>) })
+      const resultObject = result as unknown as JsonObject
+      const nestedRuns = Object.values(resultObject).flatMap(value => value && typeof value === 'object' && !Array.isArray(value) && 'run' in value && value.run && typeof value.run === 'object' && !Array.isArray(value.run) ? [value.run as JsonObject] : [])
+      const run = (resultObject.run && typeof resultObject.run === 'object' && !Array.isArray(resultObject.run)) ? resultObject.run as JsonObject : nestedRuns[0]
+      const runId = typeof run?.id === 'string' ? run.id : input.runId
+      const runStatus = typeof run?.status === 'string' ? run.status : undefined
+      const eventType: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'] = runStatus === 'succeeded' ? 'run.completed' : runStatus === 'failed' || runStatus === 'timed_out' ? 'run.failed' : runStatus === 'cancelled' ? 'run.cancelled' : 'run.progress'
+      const event = emit(eventType, { requestId: input.requestId, operation, ...(runId ? { runId } : {}), result: resultObject })
+      return { status: 'succeeded', tool, operation, runId, result: resultObject, event } as unknown as JsonObject
+    } catch (error) {
+      const event = emit('run.failed', { requestId: input.requestId, operation, error: error instanceof Error ? error.message : String(error) })
+      throw Object.assign(error instanceof Error ? error : new Error(String(error)), { workbenchEvent: event })
+    }
+  }
+
+  private async cancelWorkbenchRun(project: ProjectRecord, sessionId: string, run: RunRecord): Promise<JsonObject> {
+    const terminal = new Set(['succeeded', 'failed', 'cancelled', 'timed_out'])
+    if (terminal.has(run.status)) return { run } as unknown as JsonObject
+    if (run.leaseOwner === 'fiji-experiment') return await this.fijiExperiments.cancel(project, run.id) as unknown as JsonObject
+    if (run.leaseOwner === 'fiji-workflow') return await this.fijiWorkflows.execute(project, { sessionId, action: 'cancel', runId: run.id }) as unknown as JsonObject
+    if (run.leaseOwner === 'he-segmentation') return await this.he.execute(project, { sessionId, action: 'cancel', runId: run.id }) as unknown as JsonObject
+    if (run.leaseOwner === 'flow-batch') return await this.flow.execute(project, { sessionId, action: 'batch_cancel', runId: run.id }) as unknown as JsonObject
+    throw new Error(`Run owner ${run.leaseOwner ?? 'unknown'} does not expose a safe cancellation adapter.`)
+  }
+
   @Remote('listExecutionContexts') listExecutionContexts(projectId: string): ExecutionContextRecord[] { return this.store.listExecutionContexts(projectId) }
   @Remote('createDataAsset') createDataAsset(input: CreateDataAssetInput): DataAssetRecord { return this.store.createDataAsset(input) }
   @Remote('registerLocalAsset') async registerLocalAsset(input: { sessionId: string; path: string }): Promise<DataAssetRecord> {
     const project = this.projectForSession(input)
     if (!project) throw new Error('Register the current workspace before adding assets.')
     return registerLocalAsset(this.store, project, input.path)
+  }
+  @Remote('importLocalAsset') async importLocalAsset(input: { sessionId: string; sourcePath: string }): Promise<DataAssetRecord> {
+    const project = this.projectForSession(input)
+    if (!project) throw new Error('Register the current workspace before importing a science file.')
+    return importLocalScienceAsset(this.store, project, input.sourcePath)
   }
   @Remote('listDataAssets') listDataAssets(projectId: string): DataAssetRecord[] { return this.store.listDataAssets(projectId) }
   @Remote('createRun') createRun(input: CreateRunInput): RunRecord { return this.store.createRun(input) }
@@ -334,22 +502,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('getResearchDocument') getResearchDocument(documentId: string): ResearchDocumentRecord | undefined { return this.store.getResearchDocument(documentId) }
   @Remote('listResearchDocuments') listResearchDocuments(input: { studyId: string; kind?: ResearchRecordKind }): ResearchDocumentRecord[] { return this.store.listResearchDocuments(input.studyId, input.kind) }
   @Remote('updateResearchDocument') updateResearchDocument(input: { id: string; changes: UpdateResearchDocumentInput }): ResearchDocumentRecord {
-    if (this.store.getResearchDocument(input.id)?.payload.schema === PILOT_VERSION || input.changes.payload.schema === PILOT_VERSION) throw new Error('Frozen pilot evaluations can only be changed by the pilot service.')
     return this.store.updateResearchDocument(input.id, input.changes)
-  }
-  @Remote('pilotEvaluation') pilotEvaluation(input: { sessionId: string; studyId: string; action: 'catalog' | 'list' | 'freeze' | 'summary'; evaluationId?: string; spec?: JsonObject }): JsonObject {
-    const project = this.projectForSession({ sessionId: input.sessionId })
-    const study = this.store.getResearchStudy(input.studyId)
-    if (!project || !study || study.projectId !== project.id) throw new Error('Pilot study is not in the active project.')
-    let response: unknown
-    if (input.action === 'catalog') response = this.pilot.catalog()
-    else if (input.action === 'list') response = { evaluations: this.store.listResearchDocuments(study.id, 'evaluation').filter(doc => doc.payload.schema === PILOT_VERSION).map(doc => this.pilot.summary(project.id, doc.id)) }
-    else if (input.action === 'freeze') response = this.pilot.freeze(project.id, study.id, input.spec as unknown as PilotSpec)
-    else if (input.action === 'summary') {
-      if (this.store.getResearchDocument(input.evaluationId ?? '')?.studyId !== study.id) throw new Error('Pilot evaluation is not in the active study.')
-      response = this.pilot.summary(project.id, input.evaluationId ?? '')
-    } else throw new Error('Unsupported pilot action.')
-    return JSON.parse(JSON.stringify(response)) as JsonObject
   }
   @Remote('validateAnalysisPlan') validateAnalysisPlan(planId: string): ResearchDocumentRecord { return this.store.validateAnalysisPlan(planId) }
   @Remote('methodCheckEvaluate') methodCheckEvaluate(input: { studyId: string; method: string; assumptions?: JsonObject }): JsonObject {
@@ -424,92 +577,55 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('refreshResearchTaskReadiness') refreshResearchTaskReadiness(studyId: string): ResearchTaskRecord[] { return this.store.refreshResearchTaskReadiness(studyId) }
   @Remote('getResearchTaskBudget') getResearchTaskBudget(studyId: string): ResearchTaskBudgetReport { return this.store.getResearchTaskBudget(studyId) }
   @Remote('reconcileResearchTaskRun') reconcileResearchTaskRun(input: { id: string; expectedVersion?: number }): ResearchTaskRecord { return this.store.reconcileResearchTaskRun(input.id, input.expectedVersion) }
-  @Remote('createObesityAlopeciaPilot') createObesityAlopeciaPilot(projectId: string): ResearchStudySnapshot {
-    const study = this.store.createResearchStudy({ projectId, title: '肥胖—脱发先导研究', phase: 'question', budget: { maxRemoteThreads: 8, maxMemoryGiB: 24 } })
-    this.store.createResearchDocument({ projectId, studyId: study.id, kind: 'observation', payload: { status: 'unverified', text: '肥胖与脱发的关系待核验；不能预设阳性结果或核心基因。', source: 'user-case-template' } })
-    const question = this.store.createResearchDocument({ projectId, studyId: study.id, kind: 'question', payload: { phenotypeCandidates: ['androgenetic-alopecia', 'alopecia-areata', 'unclassified-hair-loss'], exposureCandidates: ['BMI', 'waist', 'body-fat'], freezeAfterScout: true, estimand: 'association-or-causal-only-after-method-check' } })
-    const current = this.store.getResearchStudy(study.id)!
-    this.store.updateResearchStudy(study.id, { expectedVersion: current.version, currentQuestionId: question.id })
-    return this.store.getResearchStudySnapshot(study.id)
-  }
-  /**
-   * Run the bounded, read-only NHANES catalog reconnaissance used by the
-   * obesity—alopecia pilot. It records observations and a pending data
-   * contract, but never chooses a phenotype or starts a statistical model.
-   */
-  async runObesityAlopeciaRecon(studyId: string, exec: ToolRunContext): Promise<JsonObject> {
-    const study = this.store.getResearchStudy(studyId)
-    if (!study) throw new Error('Research study was not found.')
-    const project = this.projectForSession({ sessionId: String(exec.agent?.session.id ?? '') })
-    if (!project || project.id !== study.projectId) throw new Error('The research study is not in the active project.')
-    const workflow = this.ctx.get('researchWorkflow')?.get()
-    if (!workflow) throw new Error('The rdatalinux research workflow is unavailable; connect the rmcp server first.')
-    const responses: Array<{ query: (typeof OBESITY_ALOPECIA_RECON_QUERIES)[number]; response?: unknown; error?: string; remote?: JsonObject }> = []
-    for (const query of OBESITY_ALOPECIA_RECON_QUERIES) {
-      try {
-        const remote = await workflow.run('r.nhanes', {
-          operation: 'r.nhanes.search.variables',
-          request_id: `obesity-alopecia-recon-${study.id}-${query.key}`,
-          arguments: { q: query.query, limit: 100 },
-        }, exec)
-        responses.push({ query, response: remote.result ?? remote, remote })
-      } catch (error) {
-        responses.push({ query, error: String(error) })
-      }
-    }
-    const findings = buildReconFindings(responses)
-    const remoteRunRecords = summarizeReconRemoteRuns(responses)
-    const record = buildReconRecord(findings, {
-      studyId: study.id,
-      source: 'rdatalinux-rmcp:r.nhanes.search.variables',
-      executedAt: new Date().toISOString(),
-      remoteRuns: remoteRunRecords,
-      remoteRunCount: remoteRunRecords.filter(item => item.localRunId !== undefined || item.remoteId !== undefined).length,
-      remoteManifestRefs: remoteRunRecords.flatMap(item => item.artifactNames).slice(0, 100),
-    })
-    const observation = this.store.createResearchDocument({
-      projectId: project.id,
-      studyId: study.id,
-      kind: 'observation',
-      payload: JSON.parse(JSON.stringify({ ...record, findings, observationType: 'catalog-reconnaissance', status: record.status })) as JsonObject,
-    })
-    const contract = this.store.createResearchDocument({
-      projectId: project.id,
-      studyId: study.id,
-      kind: 'dataset-contract',
-      payload: JSON.parse(JSON.stringify({
-        source: 'NHANES',
-        applicability: 'pending',
-        sourceStatus: findings.some(item => item.status === 'unavailable' || item.status === 'invalid-response') ? 'access-limited' : 'catalog-only',
-        phenotypeCandidates: findings.filter(item => item.kind === 'phenotype').map(item => item.key),
-        exposureCandidates: findings.filter(item => item.kind === 'exposure').map(item => item.key),
-        variableFindings: findings,
-        requires: ['cycle', 'component', 'dataset', 'codebook', 'sample intersection', 'weight', 'strata', 'psu'],
-        note: '目录检索未命中不能证明所有官方周期不存在该表型；必须在冻结前核验周期与代码本。',
-      })) as JsonObject,
-    })
-    return JSON.parse(JSON.stringify({ version: '7.0.0-obesity-alopecia-recon.1', studyId: study.id, record, findings, observation, contract })) as JsonObject
-  }
-  @Remote('runObesityAlopeciaRecon') async runObesityAlopeciaReconRemote(input: { sessionId: string; studyId: string }): Promise<JsonObject> {
-    const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
-    if (!session) throw new Error('An active session is required.')
-    const exec = { agent: { session }, callId: `rpc:obesity-alopecia-recon:${input.studyId}`, rootCallId: `rpc:obesity-alopecia-recon:${input.studyId}`, signal: new AbortController().signal } as unknown as ToolRunContext
-    return this.runObesityAlopeciaRecon(input.studyId, exec)
-  }
   @Remote('generateResearchReport') async generateResearchReport(input: { sessionId: string; studyId: string; mode?: 'draft' | 'final' }): Promise<JsonObject> {
     const project = this.projectForSession({ sessionId: input.sessionId })
     if (!project) throw new Error('An active registered project session is required.')
     return await this.reports.generate(project, input.studyId, input.mode ?? 'draft') as unknown as JsonObject
   }
-  @Remote('probeScientificEngines') async probeScientificEngines(): Promise<ScientificEngineStatus[]> {
-    const fijiRoot = process.env.ZEROWALL_FIJI_PATH?.trim() || 'C:\\softworks\\fiji'
-    const napariPython = engineExecutable('napari')
-    const fijiExecutable = engineExecutable('fiji')
-    return [
-      await probeEngine('fiji', fijiRoot, fijiExecutable, ['--headless', '--version']),
-      await probeEngine('napari', napariPython, napariPython, ['-c', 'import numpy as np; np.linalg.inv(np.eye(4)); import napari; print(napari.__version__)'], 15000),
-      await probeBrainGlobe(),
-    ]
+  /**
+   * Probe every engine the Host knows about. The previous implementation
+   * returned a fixed three-element array, so he-python, he-stardist and
+   * remote-r were never probed and their status was whatever the UI defaulted to.
+   */
+  @Remote('probeScientificEngines') async probeScientificEngines(input: { sessionId?: string }): Promise<ScientificEngineStatus[]> {
+    const project = input?.sessionId ? this.projectForSession({ sessionId: input.sessionId }) : undefined
+    const configs = await this.nativeEngines.configs(project?.id)
+    return await Promise.all(configs.map(async config => {
+      try { return await this.nativeEngines.probe(project?.id, config.id) }
+      catch (error) { return { id: config.id, name: config.id, available: false, status: 'invalid' as const, source: config.source, reason: String(error) } }
+    }))
+  }
+  /**
+   * Download the managed atlas. Exposed as its own remote because the
+   * science_viewer action union is protocol-owned and the installation is
+   * environment setup, not a project analysis step, so it must work before a
+   * project exists.
+   */
+  @Remote('installBrainAtlas') async installBrainAtlas(input: { sessionId?: string; atlasDirectory?: string }): Promise<JsonObject> {
+    const result = await this.brain.installAtlas(input.atlasDirectory ? { atlasDirectory: input.atlasDirectory } : {})
+    const project = input.sessionId ? this.projectForSession({ sessionId: input.sessionId }) : undefined
+    const atlas = (result as { atlas?: { status?: string; atlasVersion?: string | null; directory?: string } }).atlas
+    if (project && atlas?.directory && atlas.status === 'installed') {
+      // Register the atlas as a project asset so the download is discoverable
+      // from the asset list instead of only from the settings panel.
+      const uri = `brainatlas://${'allen_mouse_25um'}`
+      if (!this.store.listDataAssets(project.id).some(item => item.uri === uri)) {
+        this.store.createDataAsset({ projectId: project.id, name: 'Allen mouse CCF 25 um atlas', uri, location: 'web', mediaType: 'application/x-brainglobe-atlas', provenance: { atlas: 'allen_mouse_25um', runner: 'zerowall-brainglobe/7.0.0-3', source: 'BrainGlobe atlasapi', managedDirectory: atlas.directory } })
+      }
+    }
+    return result
+  }
+  @Remote('getScientificEngineConfigs') async getScientificEngineConfigs(input: { sessionId: string }): Promise<ScientificEngineConfig[]> {
+    const project = this.projectForSession(input)
+    return this.nativeEngines.configs(project?.id)
+  }
+  @Remote('setScientificEngineConfig') async setScientificEngineConfig(input: { sessionId: string; config: ScientificEngineConfig }): Promise<ScientificEngineConfig> {
+    const project = this.projectForSession(input)
+    return this.nativeEngines.setConfig(project?.id, input.config)
+  }
+  @Remote('probeScientificEngine') async probeScientificEngine(input: { sessionId: string; engine: ScientificEngineId }): Promise<ScientificEngineStatus> {
+    const project = this.projectForSession(input)
+    return await this.nativeEngines.probe(project?.id, input.engine)
   }
   @Remote('launchScientificEngine') async launchScientificEngine(input: { sessionId: string; engine: 'fiji' | 'napari'; assetId?: string }): Promise<ScientificEngineLaunchResult> {
     const project = this.projectForSession({ sessionId: input.sessionId })
@@ -586,6 +702,30 @@ export function apply(ctx: Context): void {
 }
 
 function registerResearchTools(ctx: Context): void {
+  ctx.effect(() => ctx.tools.register(defineTool({
+    name: 'science_workbench',
+    description: 'Route conversation actions to the ZeroWall Science workbench. Opens/focuses a tool, starts an existing deterministic analysis, reads status, cancels or exports. This router never invents scientific numeric results.',
+    parameters: {
+      action: { type: 'string', required: true, enum: ['open', 'focus', 'analyze', 'status', 'cancel', 'export', 'engine'] },
+      session_id: { type: 'string', description: 'Optional when called from the active conversation; Host uses the agent session id.' }, project_id: { type: 'string' }, study_id: { type: 'string' },
+      tool: { type: 'string', enum: ['home', 'imagej', 'he', 'molecule', 'sanger', 'flow', 'canvas', 'cells', 'sequence', 'brainglobe'] },
+      asset_id: { type: 'string' }, artifact_id: { type: 'string' }, viewer_id: { type: 'string' }, run_id: { type: 'string' },
+      operation: { type: 'string' }, parameters: { type: 'json' }, request_id: { type: 'string', required: true }, expected_revision: { type: 'integer' },
+    },
+    output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    async execute(args, exec) {
+      const sessionId = String(args.session_id ?? exec.agent?.session.id ?? '').trim()
+      if (!sessionId) throw new Error('An active conversation session is required.')
+      return ctx.zerowallResearch.scienceWorkbench({
+        action: String(args.action) as ScienceWorkbenchRequest['action'], sessionId, requestId: String(args.request_id),
+        ...(args.project_id === undefined ? {} : { projectId: String(args.project_id) }), ...(args.study_id === undefined ? {} : { studyId: String(args.study_id) }),
+        ...(args.tool === undefined ? {} : { tool: String(args.tool) as ScienceToolId }), ...(args.asset_id === undefined ? {} : { assetId: String(args.asset_id) }),
+        ...(args.artifact_id === undefined ? {} : { artifactId: String(args.artifact_id) }), ...(args.viewer_id === undefined ? {} : { viewerId: String(args.viewer_id) }),
+        ...(args.run_id === undefined ? {} : { runId: String(args.run_id) }), ...(args.operation === undefined ? {} : { operation: String(args.operation) }),
+        ...(args.parameters === undefined ? {} : { parameters: requireJsonObject(args.parameters) }), ...(args.expected_revision === undefined ? {} : { expectedRevision: Number(args.expected_revision) }),
+      })
+    },
+  })), 'zerowall-research: register science_workbench router')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'science_viewer',
     description: 'View registered AnnData H5AD (local h5py/NumPy required; first-N previews and whole-X descriptive QC), FASTA (<=16 MiB), SCF/AB1 Sanger traces, and PNG/JPEG/TIFF (<=128 MiB); analyze sequences, Sanger traces, accepted image ROIs and single-channel integer label masks with bounded raw-pixel statistics, export/import traceable results. Launch local Fiji/napari and inspect process status (not GUI readiness). No study required. Sequence coordinates 1-based inclusive; image coordinates original pixel edges with 0-based page (not assumed Z/T). Image intensity and mask results are descriptive and remain pending scientific review. Sanger quality is stored-call confidence, not a Phred score; incomplete AB1 tags are rejected.',
@@ -717,7 +857,7 @@ function registerResearchTools(ctx: Context): void {
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'research_study',
     description: 'Read and update structured research records. Human gate approval and plan freezing remain UI-only actions.',
-    parameters: { action: { type: 'string', required: true, enum: ['list', 'get', 'documents', 'create_document', 'register_evidence', 'audit_claim', 'method_check_evaluate', 'validate_nhanes_contract', 'run_nhanes_survey', 'run_genetic_analysis', 'refresh_genetic_analysis', 'validate_genetic_contract', 'obesity_alopecia_recon', 'generate_report', 'tasks', 'create_task', 'update_task', 'refresh_tasks', 'task_budget', 'reconcile_task_run', 'pilot_catalog', 'pilot_summary'] }, project_id: { type: 'string' }, study_id: { type: 'string' }, task_id: { type: 'string' }, claim_id: { type: 'string' }, evaluation_id: { type: 'string' }, task: { type: 'json' }, expected_version: { type: 'integer' }, kind: { type: 'string' }, payload: { type: 'json' }, method: { type: 'string' }, assumptions: { type: 'json' }, contract: { type: 'json' }, run_id: { type: 'string' }, contract_id: { type: 'string' }, plan_id: { type: 'string' }, request_id: { type: 'string' }, expected_revision: { type: 'integer', description: 'Expected analysis plan version for run_nhanes_survey. The saved plan must contain nhanesSurvey and reference contract_id in inputs.' }, report_mode: { type: 'string', enum: ['draft', 'final'] } },
+    parameters: { action: { type: 'string', required: true, enum: ['list', 'get', 'documents', 'create_document', 'register_evidence', 'audit_claim', 'method_check_evaluate', 'validate_nhanes_contract', 'run_nhanes_survey', 'run_genetic_analysis', 'refresh_genetic_analysis', 'validate_genetic_contract', 'generate_report', 'tasks', 'create_task', 'update_task', 'refresh_tasks', 'task_budget', 'reconcile_task_run'] }, project_id: { type: 'string' }, study_id: { type: 'string' }, task_id: { type: 'string' }, claim_id: { type: 'string' }, evaluation_id: { type: 'string' }, task: { type: 'json' }, expected_version: { type: 'integer' }, kind: { type: 'string' }, payload: { type: 'json' }, method: { type: 'string' }, assumptions: { type: 'json' }, contract: { type: 'json' }, run_id: { type: 'string' }, contract_id: { type: 'string' }, plan_id: { type: 'string' }, request_id: { type: 'string' }, expected_revision: { type: 'integer', description: 'Expected analysis plan version for run_nhanes_survey. The saved plan must contain nhanesSurvey and reference contract_id in inputs.' }, report_mode: { type: 'string', enum: ['draft', 'final'] } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args, exec: ToolRunContext) {
       const service = ctx.zerowallResearch
@@ -731,9 +871,7 @@ function registerResearchTools(ctx: Context): void {
       const study = args.study_id ? service.getResearchStudy(String(args.study_id)) : undefined
       if (!study || study.projectId !== project.id) throw new Error('Research study is not in the active project.')
       if (args.action === 'get') return { study: study as unknown as JsonObject }
-      if (args.action === 'pilot_catalog' || args.action === 'pilot_summary') return service.pilotEvaluation({ sessionId: String(exec.agent?.session.id ?? ''), studyId: study.id, action: args.action === 'pilot_catalog' ? 'catalog' : 'summary', ...(args.evaluation_id === undefined ? {} : { evaluationId: String(args.evaluation_id) }) })
       if (args.action === 'documents') return { documents: service.listResearchDocuments({ studyId: String(args.study_id) }) as unknown as JsonObject }
-      if (args.action === 'obesity_alopecia_recon') return service.runObesityAlopeciaRecon(study.id, exec)
       if (args.action === 'generate_report') return await service.generateResearchReport({ sessionId: String(exec.agent?.session.id ?? ''), studyId: study.id, mode: args.report_mode === 'final' ? 'final' : 'draft' })
       if (args.action === 'tasks') return { tasks: service.listResearchTasks(String(args.study_id)) as unknown as JsonObject }
       if (['task_budget', 'refresh_tasks'].includes(String(args.action))) {
@@ -792,42 +930,30 @@ function requireJsonArray(value: unknown): unknown[] {
 }
 
 export async function probeEngine(id: string, path: string, executable: string, args: string[], timeoutMs = 5000): Promise<ScientificEngineStatus> {
-  try { await access(executable) } catch { return { id, name: id === 'fiji' ? 'Fiji / ImageJ' : 'napari', available: false, path, reason: `未找到可执行文件：${executable}` } }
+  const name = id === 'fiji' ? 'Fiji / ImageJ' : id === 'napari' ? 'napari' : id
+  try { await access(executable) } catch { return { id, name, available: false, path, status: 'invalid', reason: `未找到可执行文件：${executable}` } }
   const env = id === 'napari' ? await engineEnvironment('napari', executable) : process.env
   return await new Promise(resolve => {
-    const child = spawn(executable, args, { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(executable, args, { env, windowsHide: true, shell: process.platform === 'win32' && /\.(?:bat|cmd)$/iu.test(executable), stdio: ['ignore', 'pipe', 'pipe'] })
     let output = ''
     const append = (chunk: unknown): void => { output = `${output}${String(chunk)}`.slice(0, 8192) }
     child.stdout.on('data', append)
     child.stderr.on('data', () => { /* Drain diagnostics without mistaking them for a version. */ })
     let settled = false
     const finish = (result: ScientificEngineStatus): void => { if (settled) return; settled = true; resolve(result) }
-    const timer = setTimeout(() => { child.kill(); finish({ id, name: id === 'fiji' ? 'Fiji / ImageJ' : 'napari', available: false, path, reason: '版本探测超时。' }) }, timeoutMs)
+    const timer = setTimeout(() => { child.kill(); finish({ id, name, available: false, path, status: 'invalid', reason: '版本探测超时。' }) }, timeoutMs)
     child.on('close', (code, signal) => {
       clearTimeout(timer)
       const version = output.trim().split(/\r?\n/u).find(Boolean)
-      if (code !== 0) finish({ id, name: id === 'fiji' ? 'Fiji / ImageJ' : 'napari', available: false, path, ...(version === undefined ? {} : { version }), reason: `版本探测失败（退出码 ${String(code)}${signal ? `，信号 ${signal}` : ''}）。` })
-      else if (version === undefined) finish({ id, name: id === 'fiji' ? 'Fiji / ImageJ' : 'napari', available: false, path, reason: '版本探测未返回版本信息；需要原生窗口验收。' })
-      else finish({ id, name: id === 'fiji' ? 'Fiji / ImageJ' : 'napari', available: true, path, version, reason: '可执行文件与版本探测通过。' })
+      if (code !== 0) finish({ id, name, available: false, path, status: 'invalid', ...(version === undefined ? {} : { version }), reason: `版本探测失败（退出码 ${String(code)}${signal ? `，信号 ${signal}` : ''}）。` })
+      else if (version === undefined) finish({ id, name, available: false, path, status: 'degraded', reason: '版本探测未返回版本信息；需要原生窗口验收。' })
+      else finish({ id, name, available: true, path, status: 'available', version, reason: '可执行文件与版本探测通过。' })
     })
-    child.on('error', error => { clearTimeout(timer); finish({ id, name: id === 'fiji' ? 'Fiji / ImageJ' : 'napari', available: false, path, reason: error.message }) })
+    child.on('error', error => { clearTimeout(timer); finish({ id, name, available: false, path, status: 'invalid', reason: error.message }) })
   })
 }
 
 /** Probe only a user-provided managed BrainGlobe Python; never installs into napari. */
-export async function probeBrainGlobe(): Promise<ScientificEngineStatus> {
-  const executable = process.env.ZEROWALL_BRAINGLOBE_PYTHON?.trim()
-  if (!executable) return { id: 'brainglobe', name: 'BrainGlobe managed environment', available: false, reason: '未配置 ZEROWALL_BRAINGLOBE_PYTHON；不会修改现有 napari 环境。' }
-  try { await access(executable) } catch { return { id: 'brainglobe', name: 'BrainGlobe managed environment', available: false, path: executable, reason: `未找到受管理 Python：${executable}` } }
-  return await new Promise(resolve => {
-    const child = spawn(executable, ['-c', 'import json, importlib.metadata as m\nnames=["brainglobe-atlasapi","brainreg","cellfinder","brainrender"]\ndef version(n):\n try: return m.version(n)\n except m.PackageNotFoundError: return None\nprint(json.dumps({"packages":{n:version(n) for n in names}}))'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
-    let output = ''; let error = ''; let settled = false
-    const finish = (result: ScientificEngineStatus): void => { if (settled) return; settled = true; resolve(result) }
-    const timer = setTimeout(() => { child.kill(); finish({ id: 'brainglobe', name: 'BrainGlobe managed environment', available: false, path: executable, reason: 'BrainGlobe 环境探测超时。' }) }, 8000)
-    child.stdout.on('data', chunk => { output += String(chunk) })
-    child.stderr.on('data', chunk => { error += String(chunk).slice(-2000) })
-    child.on('close', code => { clearTimeout(timer); if (code !== 0) { finish({ id: 'brainglobe', name: 'BrainGlobe managed environment', available: false, path: executable, reason: error.trim() || `BrainGlobe Python exited with code ${code}.` }); return } try { const parsed = JSON.parse(output.trim()) as { packages?: Record<string, string | null> }; const packages = parsed.packages ?? {}; const missing = Object.entries(packages).filter(([, version]) => version == null).map(([name]) => name); finish({ id: 'brainglobe', name: 'BrainGlobe managed environment', available: missing.length === 0, path: executable, version: Object.entries(packages).map(([name, version]) => `${name}=${version ?? 'missing'}`).join(', '), ...(missing.length ? { reason: `缺少 BrainGlobe 组件：${missing.join(', ')}` } : {}) }) } catch { finish({ id: 'brainglobe', name: 'BrainGlobe managed environment', available: false, path: executable, reason: 'BrainGlobe 环境版本输出不可解析。' }) } })
-  })
-}
+export { probeBrainGlobe }
 
 export default { inject, apply }

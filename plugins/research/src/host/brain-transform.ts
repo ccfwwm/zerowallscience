@@ -9,16 +9,32 @@ import type {JsonObject,ProjectRecord} from '@zerowallscience/research-store/typ
 import type {BrainTransformContract,BrainTransformRequest} from '../shared/brain-transform.js'
 import {containedFile} from './science-viewer.js'
 import {BRAIN_TRANSFORM_RUNNER} from './brain-transform-runner.js'
-import {BrainJobScope,stopBrainProcess} from './brain-process.js'
+import {BrainJobScope,settleRunner,stopBrainProcess} from './brain-process.js'
+
+import { pythonChildEnvironment } from './python-env.js'
+import {defaultAtlasDirectory} from './brain-atlas.js'
+
+/**
+ * Resolve the managed atlas directory the same way the atlas service does.
+ *
+ * Reading ZEROWALL_BRAINGLOBE_DIR alone broke every packaged build: nothing in
+ * the application sets that variable, so transform inspection and transform use
+ * both threw before reaching any runner. The environment variable stays the
+ * override; the managed root is the default, matching brain-atlas.ts.
+ */
+function managedAtlasDirectory():string|undefined{
+ const configured=process.env.ZEROWALL_BRAINGLOBE_DIR?.trim()
+ return configured&&configured.length>0?configured:defaultAtlasDirectory()
+}
 
 const NAMES=['downsampled.tiff','deformation_field_0.tiff','deformation_field_1.tiff','deformation_field_2.tiff']
 export const brainFileHash=async(path:string)=>{const hash=createHash('sha256');for await(const bytes of createReadStream(path))hash.update(bytes);return hash.digest('hex')}
 export async function runBrainTransform(input:unknown,scope?:BrainJobScope):Promise<JsonObject>{
  const python=process.env.ZEROWALL_BRAINGLOBE_PYTHON?.trim()||process.env.ZEROWALL_PYTHON?.trim()||'python'
- return new Promise((yes,no)=>{const child=(scope?.spawn??spawn)(python,['-E','-P','-c',BRAIN_TRANSFORM_RUNNER],{windowsHide:true,shell:false,detached:process.platform!=='win32',stdio:['pipe','pipe','pipe'],env:{...process.env,OMP_NUM_THREADS:'1',OPENBLAS_NUM_THREADS:'1',MKL_NUM_THREADS:'1'}});let output='',error='';let exceeded=false;const timer=setTimeout(()=>{exceeded=true;stopBrainProcess(child)},180000);child.on('error',e=>{clearTimeout(timer);no(e)});child.stdout.on('data',b=>{output+=b;if(output.length>32*1024**2){exceeded=true;stopBrainProcess(child)}});child.stderr.on('data',b=>error=(error+b).slice(-12000));child.on('close',code=>{clearTimeout(timer);if(exceeded)return no(new Error('Brain transform exceeded its time/output bound.'));if(code!==0)return no(new Error(error||output));try{const value=JSON.parse(output);if(value.error)throw new Error(value.error);yes(value)}catch(e){no(e)}});child.stdin.end(JSON.stringify(input))})
+ return new Promise((yes,no)=>{const child=(scope?.spawn??spawn)(python,['-E','-P','-c',BRAIN_TRANSFORM_RUNNER],{windowsHide:true,shell:false,detached:process.platform!=='win32',stdio:['pipe','pipe','pipe'],env: pythonChildEnvironment(undefined,{OMP_NUM_THREADS:'1',OPENBLAS_NUM_THREADS:'1',MKL_NUM_THREADS:'1'})});let output='',error='';let exceeded=false;const timer=setTimeout(()=>{exceeded=true;stopBrainProcess(child)},180000);child.on('error',e=>{clearTimeout(timer);no(e)});child.stdout.on('data',b=>{output+=b;if(output.length>32*1024**2){exceeded=true;stopBrainProcess(child)}});child.stderr.on('data',b=>error=(error+b).slice(-12000));const settle=settleRunner(child,code=>{clearTimeout(timer);if(exceeded)return no(new Error('Brain transform exceeded its time/output bound.'));if(code===null)return no(new Error(error||'Brain transform runner exited without reporting a status.'));if(code!==0)return no(new Error(error||output));try{const value=JSON.parse(output);if(value.error)throw new Error(value.error);yes(value)}catch(e){no(e)}});child.on('exit',code=>settle.gone(code));child.stdin.end(JSON.stringify(input))})
 }
 export async function createBrainTransformContract(directory:string,scope?:BrainJobScope):Promise<BrainTransformContract>{
- const atlasDirectory=process.env.ZEROWALL_BRAINGLOBE_DIR?.trim();if(!atlasDirectory)throw new Error('Managed atlas directory is required for transform inspection.')
+ const atlasDirectory=managedAtlasDirectory();if(!atlasDirectory)throw new Error('Managed atlas directory is required for transform inspection; configure the shared Python environment first.')
  const inspected=await runBrainTransform({action:'inspect',directory,atlasDirectory},scope)
  const producer=inspected.producer as unknown as BrainTransformContract['producer']
  if(producer.brainreg!=='1.0.16')throw new Error('Transform semantics currently validated only for brainreg 1.0.16.')
@@ -48,7 +64,7 @@ export class BrainTransformService{
   const directory=await containedFile(project.rootPath,String(manifest.outputDirectory))
   const verifyFiles=async()=>{for(const entry of contract.files){if(!Number.isSafeInteger(entry.bytes)||entry.bytes<1||!/^[a-f0-9]{64}$/u.test(entry.sha256))throw new Error('Invalid transform file integrity metadata.');const file=await containedFile(directory,join(directory,entry.name));const info=await stat(file);if(!info.isFile()||info.size!==entry.bytes||await brainFileHash(file)!==entry.sha256)throw new Error('Brainreg transform file checksum changed: '+entry.name)}}
   await verifyFiles()
-  const atlasDirectory=process.env.ZEROWALL_BRAINGLOBE_DIR?.trim();if(!atlasDirectory)throw new Error('Managed atlas directory is required for transform use.')
+  const atlasDirectory=managedAtlasDirectory();if(!atlasDirectory)throw new Error('Managed atlas directory is required for transform use; configure the shared Python environment first.')
   const live=await runBrainTransform({action:'atlas-metadata',directory,atlasDirectory},this.jobs)
   if(String(live.atlasVersion)!==contract.atlasVersion||JSON.stringify(live.atlasShape)!==JSON.stringify(contract.atlasShape)||JSON.stringify(live.atlasResolution)!==JSON.stringify(contract.atlasResolution))throw new Error('Managed atlas version or geometry differs from the registration contract.')
   if(input.action==='inspect')return JSON.parse(JSON.stringify({contract,registrationArtifactId:artifact.id,scientificReview:'pending',notes:['Coordinates must come from the exact downsampled.tiff grid, in zero-based ASR array axes. Raw sample/cellfinder XYZ is not accepted.']}))

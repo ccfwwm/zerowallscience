@@ -21,7 +21,7 @@ export async function collectSnapshots(root: string, now = Date.now()): Promise<
   const slots = join(root, 'slots')
   for (const entry of await readdir(slots, { withFileTypes: true }).catch(() => [])) {
     // Never remove legacy/external installations or follow a junction.
-    if (!entry.isDirectory() || !/^(?:a|b|local)-[a-f0-9-]{36}$/u.test(entry.name)) continue
+    if (!entry.isDirectory() || !/^(?:a|b|local|shared)-[a-f0-9-]{36}$/u.test(entry.name)) continue
     const path = join(slots, entry.name)
     if (protectedRoots.has(resolve(path).toLowerCase())) continue
     const info = await lstat(path)

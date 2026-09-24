@@ -4,6 +4,7 @@ import type { DataAssetRecord, RunRecord, ViewerSessionRecord } from '@zerowalls
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { FlowAnalysis, FlowDataset, FlowGate } from '../shared/flow.js'
 import type { FlowBatchItem, ScienceViewerRequest } from '../shared/types.js'
+import { useWorkbenchSelection } from './workbench-selection.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 type FlowResponse = { dataset?: FlowDataset; analysis?: FlowAnalysis; viewer?: ViewerSessionRecord; artifact?: { name: string; uri: string; checksum: string }; run?: RunRecord; runs?: RunRecord[]; batch?: { items: FlowBatchItem[]; workspaceSha256?: string; notes: string[] } }
@@ -20,7 +21,26 @@ export function FlowViewer({ remote, sessionId }: { remote: Remote; sessionId: s
   const refresh = async (): Promise<void> => { const response = await call({ action: 'list' }); setAssets(response.assets ?? []); setViewers((response.viewers ?? []).filter(item => String(item.tool) === 'flow')) }
   useEffect(() => { const current = ++generation.current; setAssets([]); setViewers([]); setViewer(undefined); setDataset(undefined); setAnalysis(undefined); setBatch(undefined); setBatchRun(undefined); setBatchRequestId(''); setMessage(''); void refresh().catch(error => { if (current === generation.current) setMessage(String(error)) }); return () => { generation.current++ } }, [remote, sessionId])
   const apply = (response: FlowResponse): void => { if (response.viewer) { setViewer(response.viewer); setTransform(response.viewer.state.transform === 'arcsinh' ? 'arcsinh' : 'none'); setCofactor(Number(response.viewer.state.cofactor ?? 5)); setApplyCompensation(Boolean(response.viewer.state.applyCompensation)); setGates(Array.isArray(response.viewer.state.gates) ? response.viewer.state.gates as unknown as FlowGate[] : []) } if (response.dataset) setDataset(response.dataset); if (response.analysis) setAnalysis(response.analysis); if (response.batch) setBatch(response.batch); if (response.run) setBatchRun(response.run); if (response.artifact) setMessage(`已登记产物：${response.artifact.name}\n${response.artifact.uri}\nSHA-256: ${response.artifact.checksum}`) }
-  const run = async (input: Omit<ScienceViewerRequest, 'sessionId'>): Promise<void> => { if (busy) return; setBusy(true); setMessage(''); try { const response = await call(input); apply(response); await refresh() } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) } finally { setBusy(false) } }
+  // `current` is captured before the request and re-checked before anything is
+  // painted: switching asset or tab mid-flight bumps `generation`, so a slow open
+  // of the previous file can no longer land on top of the new selection's state.
+  const run = async (input: Omit<ScienceViewerRequest, 'sessionId'>): Promise<void> => { if (busy) return; const current = generation.current; setBusy(true); setMessage(''); try { const response = await call(input); if (current !== generation.current) return; apply(response); await refresh() } catch (error) { if (current !== generation.current) return; setMessage(error instanceof Error ? error.message : String(error)) } finally { if (current === generation.current) setBusy(false) } }
+  const selection = useWorkbenchSelection(); const handled = useRef('')
+  // Mirror the workbench sidebar pick into the local dropdown, so the panel shows
+  // the file the user selected. An empty selection leaves the dropdown untouched,
+  // because then the user is choosing inside the viewer.
+  useEffect(() => { if (selection.assetId) setAssetId(selection.assetId) }, [selection.assetId])
+  useEffect(() => {
+    if (!selection.assetId || selection.revision == null) return
+    // Keyed by revision: selecting the same asset again is a second request, but a
+    // re-render of the same selection must not reissue the remote open call.
+    const key = `${selection.assetId}:${selection.revision}`
+    if (handled.current === key) return
+    handled.current = key
+    // Fired from the effect, so it runs before any user interaction can flip run()'s
+    // busy guard and swallow the requested open.
+    void run({ action: 'flow_open', assetId: selection.assetId })
+  }, [selection.assetId, selection.revision])
   useEffect(() => {
     if (!batchRun || !activeBatchStatuses.has(batchRun.status)) return
     const current = generation.current; let live = true

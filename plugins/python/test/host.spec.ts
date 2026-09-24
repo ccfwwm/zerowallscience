@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { resolveManagedPython } from '../src/host/index.js'
+import { resolveManagedPython, pythonChildEnvironment } from '../src/host/index.js'
 
 const roots: string[] = []
 const previous = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
@@ -17,6 +17,23 @@ afterEach(async () => {
 })
 
 describe('managed Python runtime', () => {
+  it('pins shared tasks to their snapshot and uses one package directory', async () => {
+    const store = await mkdtemp(join(tmpdir(), 'zerowall-shared-')); roots.push(store)
+    const installed = join(store, 'snapshots', 'candidate')
+    const sitePackages = join(installed, 'Python', 'Lib', 'site-packages')
+    await mkdir(sitePackages, { recursive: true }); await writeFile(join(installed, 'Python', 'python.exe'), 'fixture')
+    const manifest = { python: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } }
+    await writeFile(join(store, 'current.json'), JSON.stringify({ root: installed, health: 'ready', manifest, overlayPath: 'obsolete' }))
+    await writeFile(join(store, 'runtime.json'), JSON.stringify({ rootPath: 'untrusted', executablePath: process.execPath, sitePackagesPath: store }))
+    process.env.ZEROWALL_PYTHON_ROOT = store
+    await expect(resolveManagedPython()).resolves.toMatchObject({ root: installed, sitePackages, overlayPath: sitePackages })
+  })
+  it('uses the current snapshot CA for all Python aliases', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'python-ca-')); roots.push(root)
+    await mkdir(join(root, 'certifi')); const ca = join(root, 'certifi', 'cacert.pem'); await writeFile(ca, 'certificate fixture')
+    const env = pythonChildEnvironment(root)
+    for (const key of ['SSL_CERT_FILE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', 'PIP_CERT']) expect(env[key]).toBe(ca)
+  })
   it('returns a stable unavailable error before the MCP environment is ready', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-python-missing-'))
     roots.push(root)

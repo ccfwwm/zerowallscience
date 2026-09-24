@@ -68,7 +68,7 @@ function renderMarkdown(snapshot: ResearchStudySnapshot, mode: ReportMode, gener
   const lines = [
     `# ${study.title}`,
     '',
-    `> ZeroWall Science 7.0.0 IMRAD ${mode === 'final' ? '正式交付版' : '草稿'} · 生成时间：${generatedAt}`,
+    `> ZeroWall Science 7.0.2 IMRAD ${mode === 'final' ? '正式交付版' : '草稿'} · 生成时间：${generatedAt}`,
     '',
     '## 摘要',
     '',

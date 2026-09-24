@@ -48,8 +48,33 @@ export interface FijiWorkflowResponse { run?: RunRecord; runs?: RunRecord[]; art
 export interface FijiExperimentRequest { sessionId: string; action: 'list' | 'analyze' | 'status' | 'cancel'; runId?: string; experiment?: FijiExperimentId; requestId?: string; measurements?: JsonObject[]; sourceAssetId?: string; image?: FijiImageConfig }
 export interface FijiExperimentResponse { run?: RunRecord; artifacts?: ArtifactRecord[]; result?: FijiExperimentResult; runs?: RunRecord[]; annotations?: AnnotationRevisionRecord[]; experiments?: FijiExperimentId[] }
 export interface ScientificPreviewPayload { uri: string; mediaType: string; byteSize: number; base64: string }
-export interface ScientificEngineStatus { id: string; name: string; available: boolean; path?: string; version?: string; reason?: string }
-export type ScientificEngineId = 'fiji' | 'napari'
+/** Scientific executable/environment identifiers supported by the workbench. */
+export type ScientificEngineId = 'fiji' | 'napari' | 'brain-globe' | 'he-python' | 'he-stardist' | 'remote-r'
+export type ScientificEngineSource = 'project' | 'user' | 'environment' | 'discovered' | 'default'
+export type ScientificEngineHealth = 'unknown' | 'available' | 'invalid' | 'degraded'
+export interface ScientificEngineConfig {
+  id: ScientificEngineId
+  enabled: boolean
+  executablePath?: string
+  installDirectory?: string
+  pythonPath?: string
+  javaPath?: string
+  environmentPath?: string
+  modelPath?: string
+  workingDirectory?: string
+  remoteEndpoint?: string
+  version?: string
+  capabilities?: string[]
+  source: ScientificEngineSource
+  status: ScientificEngineHealth
+  diagnostic?: string
+  lastProbeAt?: string
+}
+export interface ScientificEngineStatus {
+  id: string; name: string; available: boolean; path?: string; version?: string; reason?: string
+  source?: ScientificEngineSource; status?: ScientificEngineHealth; capabilities?: string[]
+  diagnostic?: string; lastProbeAt?: string
+}
 export interface ScientificEngineLaunchResult {
   launchId: string; id: ScientificEngineId; projectId: string; sessionId: string; lifecycleRevision: number
   started: boolean; status: 'starting' | 'spawned' | 'exited' | 'failed' | 'unobserved'; guiReady: 'unverified'
@@ -171,3 +196,16 @@ export type { MoleculeDockingRequest } from './molecule-docking.js'
 export type { SequenceSimulationOptions, SequenceSimulationResult } from './sequence.js'
 
 export type { BrainTransformRequest } from './brain-transform.js'
+
+// Public protocol types used by the conversation/workbench remotes.  Keep
+// these on the package's existing `./types` subpath so Typert can expose the
+// remote boundary without depending on a private source path.
+export type {
+  ScienceToolId,
+  ScienceTab,
+  ScienceWorkbenchEventType,
+  ScienceWorkbenchEvent,
+  ScienceWorkbenchAction,
+  ScienceWorkbenchRequest,
+  ScienceWorkbenchEventsResponse,
+} from './workbench.js'

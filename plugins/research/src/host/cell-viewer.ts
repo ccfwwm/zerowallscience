@@ -10,6 +10,7 @@ import type { CellAnalysis, CellPreview, CellResponse, CellViewerRequest } from 
 import { containedFile } from './science-viewer.js'
 import { validateCellSelection, type CellSelectionResult } from '../shared/cell-selection.js'
 import { DEFAULT_CELL_CAMERA, validateCellCamera } from '../shared/cell-camera.js'
+import { pythonChildEnvironment } from './python-env.js'
 
 const RUNNER = 'zerowall-cell-viewer/7.0.0-1'
 const MAX_BYTES = 20 * 1024 * 1024 * 1024
@@ -123,7 +124,7 @@ export class CellViewerService {
     const python = process.env.ZEROWALL_CELL_PYTHON?.trim() || process.env.ZEROWALL_PYTHON?.trim() || 'python'
     const stdout = await new Promise<string>((resolve, reject) => {
       // Ignore PYTHONPATH/current directory imports; retain configured user-site packages.
-      const child = spawn(python, ['-E', '-P', '-c', CELL_READER], { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1' } })
+      const child = spawn(python, ['-E', '-P', '-c', CELL_READER], { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: pythonChildEnvironment(undefined, { OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1' }) })
       const chunks: Buffer[] = []; let size = 0; let stderr = ''; let failure: Error | undefined
       const timer = setTimeout(() => { failure = new Error('Cell reader exceeded the 120-second limit.'); child.kill() }, 120000)
       child.stdout.on('data', (chunk: Buffer) => {

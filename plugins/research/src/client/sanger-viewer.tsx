@@ -4,6 +4,7 @@ import type { DataAssetRecord, ViewerSessionRecord } from '@zerowallscience/rese
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { BidirectionalSangerReview, SangerAnalysis, SangerTrace } from '../shared/sanger.js'
 import type { ScienceViewerRequest } from '../shared/types.js'
+import { useWorkbenchSelection } from './workbench-selection.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 type SangerResponse = { trace?: SangerTrace; analysis?: SangerAnalysis; review?: BidirectionalSangerReview; viewer?: ViewerSessionRecord; artifact?: { name: string; uri: string; checksum: string } }
@@ -29,6 +30,8 @@ export function SangerViewer({ remote, sessionId }: { remote: Remote; sessionId:
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const generation = useRef(0)
+  const selection = useWorkbenchSelection()
+  const handled = useRef('')
   const call = async (input: Omit<ScienceViewerRequest, 'sessionId'>): Promise<SangerResponse & { assets?: DataAssetRecord[]; viewers?: ViewerSessionRecord[] }> => { const result = unwrapRemoteResult('scienceViewer', await remote.scienceViewer({ ...input, sessionId })) as unknown as SangerResponse & { sanger?: SangerResponse; assets?: DataAssetRecord[]; viewers?: ViewerSessionRecord[] }; return result.sanger ?? result }
   const refresh = async (): Promise<void> => {
     const current = generation.current
@@ -52,6 +55,21 @@ export function SangerViewer({ remote, sessionId }: { remote: Remote; sessionId:
       await refresh()
     } catch (error) { if (current === generation.current) setMessage(error instanceof Error ? error.message : String(error)) } finally { if (current === generation.current) setBusy(false) }
   }
+  // Mirror the workbench sidebar pick into the local dropdown, so the panel shows
+  // the file the user selected. An empty selection leaves the dropdown untouched,
+  // because then the user is choosing inside the viewer.
+  useEffect(() => { if (selection.assetId) setAssetId(selection.assetId) }, [selection.assetId])
+  useEffect(() => {
+    if (!selection.assetId || selection.revision == null) return
+    // Keyed by revision: selecting the same asset again is a second request, but a
+    // re-render of the same selection must not reissue the remote open call.
+    const key = `${selection.assetId}:${selection.revision}`
+    if (handled.current === key) return
+    handled.current = key
+    // Fired from the effect, so it runs before any user interaction can flip run()'s
+    // busy guard and swallow the requested open.
+    void run({ action: 'sanger_open', assetId: selection.assetId })
+  }, [selection.assetId, selection.revision])
   const traces = useMemo(() => trace ? trace.channels : undefined, [trace])
   const start = Math.min(sampleStart, Math.max(0, (trace?.sampleCount ?? 1) - 1))
   const end = Math.min(trace?.sampleCount ?? 0, start + sampleWindow)

@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "baseRequirementsFile": "requirements-base.txt",
+  "baseRoots": ["pip", "setuptools", "packaging", "pywin32"],
+  "mandatoryBaseModules": ["mcp", "anyio", "requests", "httpx", "psutil", "lxml", "pydantic", "tenacity", "rich", "orjson", "pandas", "numpy", "pillow", "python-dotenv"],
+  "mandatoryScienceModules": ["cv2", "imagehash", "skimage", "structlog", "pikepdf", "markdown", "pyzotero"],
+  "minBasePackages": 40,
+  "floorRationale": "The retired 127-package floor asserted the size of the whole managed runtime, which is no longer what ships inside the archive. The shipped base layer is the base profile plus its closure: 47 packages against the 387-entry lock at split time, and it cannot be a fixed list because the closure grows whenever a base dependency gains a dependency. The floor is therefore set below the known-good closure so it catches a truncated or unreadable lock, while exact membership is enforced by the closure walk, the residual-distribution check on the pruned archive, and the packer input being the pruned tree rather than the full staging runtime."
+}

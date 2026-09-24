@@ -12,6 +12,7 @@ import type { HeRequest, HeResponse } from '../shared/types.js'
 import { containedFile } from './science-viewer.js'
 import { HE_READER } from './he-reader.js'
 import { HeSegmentationService } from './he-segmentation.js'
+import { pythonChildEnvironment } from './python-env.js'
 
 const RUNNER = 'zerowall-he/7.0.0-2'
 const MAX_BYTES = 20 * 1024 ** 3
@@ -148,7 +149,7 @@ export class HeService {
     if (this.activeNative >= 2) throw new Error('OpenSlide is busy: at most two tile readers can run concurrently.')
     this.activeNative++
     try { return await new Promise<{ he: HeSlideMetadata; tile?: HeTile }>((resolve,reject) => {
-      const child = spawn(executable,['-E','-P','-c',HE_READER],{ stdio:['pipe','pipe','pipe'],windowsHide:true })
+      const child = spawn(executable,['-E','-P','-c',HE_READER],{ stdio:['pipe','pipe','pipe'],windowsHide:true,env:pythonChildEnvironment() })
       let stdout = ''; let stderr = ''; let stopped = false
       const fail = (error: Error) => { if (stopped) return; stopped = true; clearTimeout(timer); child.kill(); reject(error) }
       const timer = setTimeout(() => fail(new Error('OpenSlide tile process timed out.')),this.options.timeoutMs ?? 30000)
