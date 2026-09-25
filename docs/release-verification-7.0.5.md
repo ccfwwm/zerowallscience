@@ -22,6 +22,12 @@
 - blockmap：HTTP 200，492,578 bytes，SHA-256 `EB7DAC640760F48FC6597FAD25BD9902919F5D0F4C42CBEE55A028EE6A009ABC`。
 - `stable/latest.yml` 和 7.0.5/Stable JSON 更新元数据：HTTP 200，版本均为 7.0.5。
 
+## GitHub 公开验证
+
+- 代码发布提交：`0356fb4803e613df773375a9f19ca861227b929a`，标签 `v7.0.5`；Release 为 Latest、非草稿、非预发布。
+- 公开下载六个 Release 资产并逐个流式校验，安装包 473,975,967 bytes，SHA-256 `F03CE839F6C1B19DC7E4EA2E8F5EC97A04FDA112E8DE62AA9D68DB880FCB036F`，与本地、七牛云一致。blockmap 和四个更新元数据文件也与本地逐字节一致。
+- GitHub Release：`https://github.com/ccfwwm/zerowallscience/releases/tag/v7.0.5`。
+
 ## 构建输出
 
 - 安装包：`desktop/dist/zerowall-science-7.0.5-win-x64.exe`
